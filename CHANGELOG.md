@@ -44,6 +44,24 @@
   parent read differently from two modules in unrelated subtrees. `knowledge_edges` is deliberately
   not read — it is a free-text triple store with no module convention, and reading it as one would
   invent the second declared-edge store this issue exists to avoid. (ISS-951)
+
+- **A project can require a typed component on comments written at a stage, and read how many
+  already carry one before deciding to.** `pipelineConfig.states[stage].bodyPolicy.requireComponent`
+  names a root component (`forge-outcome`, `forge-review`, …); an agent's comment written at that
+  stage without it is refused with `BODY_COMPONENT_REQUIRED`, naming the component, the stage and
+  what to write. **Off everywhere** — absent from the shipped defaults and from every stored
+  document, so nothing changed for any project until an operator sets it. A person writing prose is
+  never refused, at any stage, under any policy. `GET /api/body/adoption` answers the question that
+  used to need SQL by hand — per stage, what fraction of bodies carry a component over a window —
+  counting what is STORED (`format='html'` plus the root component) rather than a regex over body
+  text, and Project settings → Pipeline shows the figure beside the switch. Two new columns on
+  `comments` make that measurable: `stage`, the issue's status at the moment of the write (grouping
+  by its *current* status would file every agent comment under `closed` and leave `open` reading
+  empty), and `author_agency`, the door's own principal — the gate and the number read the same
+  column, so the fraction always describes the rule that exists. Measured when this shipped: zero
+  comments fleet-wide are agent-authored, because the agent accounts ISS-932 wave 4 introduced are
+  not provisioned yet, so the switch refuses nothing and the number counts nothing until they are.
+
 - **The backlog can be read by module: counts, open and closed, and recent activity.** Tier 2
   shipped the `?module=` filter, which answers "show me the issues in module X"; nothing answered
   "which module is hot" or "what is open against each". The Issues screen has a fourth view,

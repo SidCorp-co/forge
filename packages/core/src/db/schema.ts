@@ -447,7 +447,7 @@ export const personalAccessTokens = pgTable(
     // `forge_pat_<env>_<4 hex>` — 18 chars, indexed for fast lookup.
     tokenPrefix: varchar('token_prefix', { length: 18 }).notNull(),
     scopes: text('scopes').array().notNull().default(sql`ARRAY['read','write']::text[]`),
-    // NULL = inherit user's project memberships (global PAT). Non-null = strict allowlist.
+    // cm:guard NULL is the WIDER grant, not the narrower one: it inherits the user's project memberships, so a non-null array is a strict allowlist and emptying it back to NULL re-opens every project the owner can reach.
     projectIds: uuid('project_ids').array(),
     // ISS-497 — project-level token: NULL = user-level (today's behavior, zero backfill);
     // set = bound to exactly this project (slug-omitted default AND auth fence).
@@ -1129,12 +1129,8 @@ export const comments = pgTable(
     authorId: uuid('author_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
-    // ISS-519 — agent-authored marker. The authorId FK always points at the
-    // device's human owner (NOT-NULL FK to users), so it cannot tell an agent
-    // comment apart from one the owner wrote by hand. A non-null
-    // authorDeviceId is the authoritative "this was posted by an agent/device"
-    // signal; the human REST path leaves it null. `set null` on device delete
-    // de-marks the comment back to its owner rather than blocking the delete.
+    // cm:why ISS-519 — `authorId` always points at the device's human owner (a NOT-NULL FK), so it cannot tell an agent's comment from one that owner typed. This column is the authoritative "posted by an agent" signal, and `set null` on device delete de-marks the comment back to its owner rather than blocking the delete.
+    // cm:guard NULL does not mean "a person" — it means "no device token was presented". A driver posting through the `forge` CLI or `POST /api/issues/:id/comments` authenticates with a person's PAT and lands here NULL (ISS-931 removed the synthetic device that used to fill it). ISS-932 wave 4 then made it the BOX a credential was issued to, so it answers *where*, never *who* — anything asking whether an agent wrote a comment reads `author_agency` below instead.
     authorDeviceId: uuid('author_device_id').references(() => devices.id, {
       onDelete: 'set null',
     }),
@@ -1142,6 +1138,11 @@ export const comments = pgTable(
     // cm:edge contract -> packages/core/src/body/prepare.ts — ISS-898. `format` decides which renderer and which validator a body gets, and its DEFAULT is load-bearing: every pre-existing row and every shipped SKILL.md example omits it, so `markdown` is what keeps them all valid. `template` is the root component name, replacing the regex guess in web-v2 `features/issues/derive.ts:deriveCommentKind`.
     format: text('format', { enum: BODY_FORMATS }).notNull().default('markdown'),
     template: text('template'),
+    // cm:guard ISS-969 — the kernel status the issue was at when this comment was WRITTEN, which is what `pipelineConfig.states` keys a stage by. Stored rather than derived because the issue moves on: a drive comment is written at `open` and the issue is `closed` an hour later, so grouping the adoption metric by the issue's CURRENT status attributes every one of them to the wrong stage. NULL means written before this existed and stays unbackfilled. No CHECK, unlike the `format` sibling above: that guards a two-value set the renderer must know, this mirrors `issues.status`, whose set is open enough that a constraint would need migrating in lockstep with every status the lane gains.
+    stage: text('stage'),
+    // cm:guard ISS-969 — who was at the keyboard, and NOT a rename of `author_device_id` two lines up: that column became the BOX a credential was issued to (ISS-932 wave 4) and every live `job:` token carries none, so a rule keyed on it fires for almost nobody while its number reads a confident zero. NULL is "written before this column existed" and is NOT 'human' — defaulting it would sweep 13,556 rows into the population the adoption fraction claims to describe, the same reason `stage` above has no backfill.
+    // cm:edge contract -> packages/core/src/middleware/require-pat.ts — derived there from the token OWNER's `users.kind`, in the ONE place a PAT principal is built; every door writing this passes that value through rather than re-deciding it.
+    authorAgency: text('author_agency', { enum: actorAgencies }),
     parentId: uuid('parent_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1150,6 +1151,10 @@ export const comments = pgTable(
     // cm:guard the CHECK is the backstop, not a duplicate of the TS enum: `text(..., { enum })` is a compile-time type only and emits no constraint, so the ~17 kernel paths that `db.insert(comments)` without going through `prepareBody` have nothing else stopping an unrenderable format. Same reason `issues_complexity_chk` exists.
     formatChk: check('comments_format_chk', sql`${t.format} IN ('markdown', 'html')`),
     issueIdx: index('comments_issue_id_idx').on(t.issueId),
+    // cm:edge contract -> packages/core/src/body/adoption.ts — the adoption read scans (stage, created_at) over a window on the largest table in the schema; without this it is a seq scan on every settings page open
+    stageCreatedAtIdx: index('comments_stage_created_at_idx')
+      .on(t.stage, t.createdAt)
+      .where(sql`stage IS NOT NULL`),
     parentIdx: index('comments_parent_id_idx').on(t.parentId),
     parentFk: foreignKey({
       columns: [t.parentId],

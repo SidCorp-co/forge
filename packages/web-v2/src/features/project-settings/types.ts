@@ -188,7 +188,43 @@ export interface PipelineStateConfig {
 	budget?: { perRunUsd?: number; perMonthUsd?: number; action?: "warn" | "pause" };
 	/** Runner pool — the only devices this stage's jobs may land on. Empty/absent = whole fleet. */
 	deviceIds?: string[];
+	/**
+	 * ISS-969 — the root component a comment body written at this stage must
+	 * carry. ABSENT is off, and absent is where every project starts: core's
+	 * `defaultStatesConfig()` does not name this key, so nothing acquires a
+	 * mandate by upgrading. Mirrors `stageConfigSchema.bodyPolicy`.
+	 */
+	bodyPolicy?: { requireComponent: string };
 	[key: string]: unknown;
+}
+
+/**
+ * ISS-969 — how much of what agents actually write at a stage is a typed
+ * component. Mirrors `StageAdoption` in core `body/adoption.ts`.
+ *
+ * `byComponent` is what makes the figure readable BEFORE anything is required:
+ * it answers "if I required `forge-outcome` at `open`, what already carries
+ * it". `requireComponent` and the two fields under it are `null` until a
+ * project has declared something.
+ */
+export interface StageAdoption {
+	stage: string;
+	/**
+	 * Comment bodies the policy applies to — `author_agency = 'agent'` — in the
+	 * window. The same test the refusal applies, so the fraction always
+	 * describes the rule that exists.
+	 */
+	total: number;
+	byComponent: Record<string, number>;
+	requireComponent: string | null;
+	carryingRequired: number | null;
+	fractionRequired: number | null;
+}
+
+export interface BodyAdoptionReport {
+	windowDays: number;
+	since: string;
+	stages: StageAdoption[];
 }
 
 /**

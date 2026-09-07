@@ -19,21 +19,21 @@ import { hooks } from '../pipeline/hooks.js';
 import { getStorage, isEnoent } from '../storage/index.js';
 import { AttachmentError, persistCommentAttachment } from './attachment-service.js';
 import {
+  bodyRefusalHttp,
   commentBodySchema,
   commentCreateSchema,
-  prepareCommentBody,
   rethrowBodyInvalid,
 } from './body-input.js';
 import { CommentCursorInvalidError, decodeCommentCursor } from './cursor.js';
 import { pgConstraintName, pgErrorCode } from './error-mapping.js';
 import { parseMentions, resolveMentions } from './mentions.js';
-import { commentThreadColumns, listIssueCommentPage, updateCommentBody } from './service.js';
 import {
-  attachAuthors,
-  buildCommentTree,
-  type CommentAttachmentLite,
-  type CommentRow,
-} from './tree.js';
+  commentThreadColumns,
+  insertComment,
+  listIssueCommentPage,
+  updateCommentBody,
+} from './service.js';
+import { attachAuthors, buildCommentTree, type CommentAttachmentLite } from './tree.js';
 
 /** The comment projection every REST response here shares. */
 const idParamSchema = z.object({ id: z.uuid() });
@@ -113,24 +113,24 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
         }
       }
 
-      const prepared = prepareCommentBody({ raw: body, format });
-      let inserted: CommentRow | undefined;
+      // cm:guard ISS-969 — this route had its own `db.insert(comments)` copy of the write, and a body gate has to stand at every door a caller reaches. Going through `insertComment` is what makes the stage policy and the `stage` column one rule with one implementation instead of two that agree until somebody edits one. The pg error mapping below stays HERE, where the route's own 400/404 vocabulary is.
+      let written: Awaited<ReturnType<typeof insertComment>> | undefined;
       try {
-        const rows = await db
-          .insert(comments)
-          .values({
-            issueId,
-            authorId: userId,
-            body: prepared.body,
-            format: prepared.format,
-            template: prepared.template,
-            parentId: parentId ?? null,
-          })
-          .returning(commentThreadColumns);
-        inserted = rows[0];
+        written = await insertComment({
+          issueId,
+          authorId: userId,
+          authorDeviceId: null,
+          // cm:guard the agency the DOOR authenticated, never a literal. `restActor` is the one place a REST actor is built and its own guard says why: three route files each hardcoded `user` and all three were wrong the same way. A `'human'` here would exempt every agent writing over REST from the mandate AND drop it out of the number that decides the mandate, in one line.
+          authorAgency: restActor(c).agency,
+          body,
+          format,
+          parentId: parentId ?? null,
+        });
       } catch (err) {
+        const refusal = bodyRefusalHttp(err);
+        if (refusal) throw refusal;
         const pgCode = pgErrorCode(err);
-        // 23514: depth-trigger check_violation (parent chain too deep).
+        // cm:why `23514` is the depth trigger (parent chain deeper than 3) and `23503` an FK violation, and both arrive as opaque pg codes that no type states — mapping them here is what turns a 500 into a message the caller can act on
         if (pgCode === '23514') {
           throw new HTTPException(400, {
             message: 'comment depth exceeds 3',
@@ -150,7 +150,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
         }
         throw err;
       }
-      if (!inserted) throw new Error('comments: insert returned no row');
+      const inserted = written.row;
       await hooks.emit('commentCreated', {
         issueId,
         projectId: issue.projectId,
@@ -188,9 +188,9 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
         logger.error({ err, commentId: insertedId }, 'comment mention fan-out failed');
       }
 
-      // cm:guard ISS-898 — surface `prepared.warnings` here, the same as the PATCH half below and both MCP actions: a strip the gate performed and the transport swallowed is a body the caller believes they wrote. AC 6/7 measure this response, not the stored row.
+      // cm:guard ISS-898 — surface `written.warnings` here, the same as the PATCH half below and both MCP actions: a strip the gate performed and the transport swallowed is a body the caller believes they wrote. AC 6/7 measure this response, not the stored row.
       return c.json(
-        prepared.warnings.length > 0 ? { ...inserted, warnings: prepared.warnings } : inserted,
+        written.warnings.length > 0 ? { ...inserted, warnings: written.warnings } : inserted,
         201,
       );
     },
@@ -265,10 +265,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
 
       const tree = buildCommentTree(rows, attachmentsByCommentId);
 
-      // Resolve every comment's author to a display identity (email for a
-      // human, device name + agent marker for an agent comment) so the UI never
-      // has to guess from the project-members list or render a raw UUID. An
-      // authorDeviceId routes to the device actor; otherwise the human author.
+      // cm:guard the display identity only — `authorDeviceId` says WHICH BOX a credential was issued to since ISS-932 wave 4, not that an agent wrote the comment. Whether a person or an agent wrote it is `authorAgency` (ISS-969); routing this branch off agency instead would name a device that did not exist, and reading agency off this branch would call a person on a paired box an agent.
       const refs: ActorRef[] = rows.map((r) =>
         r.authorDeviceId
           ? { type: 'device', id: r.authorDeviceId }

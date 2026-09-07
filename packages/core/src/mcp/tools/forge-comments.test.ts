@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { commentAttachments } from '../../db/schema.js';
+import { commentAttachments, issues } from '../../db/schema.js';
 import { makeFakeJobPrincipal, makeFakePrincipal } from '../fake-principal.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
@@ -39,11 +39,23 @@ const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
 const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
 // cm:guard branch on the TABLE, never on the chain shape — the ISS-963 name lookup reads comment_attachments through the same .where().orderBy().limit() shape the auth lookups use, so a shared resolver hands it a row queued for a project row and every attachment is refused as a duplicate of itself
 const noCollision = { orderBy: () => ({ limit: async () => [] as unknown[] }) };
-const selectFrom = vi.fn((table: unknown) =>
-  table === commentAttachments
-    ? { where: () => noCollision, innerJoin: selectInnerJoin, leftJoin: selectLeftJoin }
-    : { where: selectWhere, innerJoin: selectInnerJoin, leftJoin: selectLeftJoin },
-);
+// cm:guard branch on the TABLE — `from(issues).innerJoin(projects)` is `insertComment`'s stage read (ISS-969) and nothing else in this path, so it answers off its own row; routed through the shared chain it would eat a `selectLimit` the tests below queued for an auth lookup, and every one of them would resolve one link early.
+const stageContextRow: { stage: string; agentConfig: unknown } = {
+  stage: 'open',
+  agentConfig: null,
+};
+const selectStageJoin = vi.fn(() => ({
+  where: () => ({ limit: async () => [{ ...stageContextRow }] }),
+}));
+const selectFrom = vi.fn((table: unknown) => {
+  if (table === commentAttachments) {
+    return { where: () => noCollision, innerJoin: selectInnerJoin, leftJoin: selectLeftJoin };
+  }
+  if (table === issues) {
+    return { where: selectWhere, innerJoin: selectStageJoin, leftJoin: selectLeftJoin };
+  }
+  return { where: selectWhere, innerJoin: selectInnerJoin, leftJoin: selectLeftJoin };
+});
 const insertReturning = vi.fn();
 const insertValues = vi.fn(() => ({ returning: insertReturning }));
 const deleteWhere = vi.fn();
@@ -157,8 +169,7 @@ describe('forge_comments tool', () => {
 
     expect(result.comments).toHaveLength(1);
     expect(result.comments[0]?.documentId).toBe(COMMENT_ID);
-    // ISS-532: comment body is framed as untrusted DATA on the agent-facing
-    // MCP surface — the original text is preserved inside the frame.
+    // cm:guard ISS-532 — the frame WRAPS, never replaces: an agent reads a comment as data, and a framing that dropped the original text would make every body unreadable while this assertion, checking only the frame, stayed green.
     expect(result.comments[0]?.body).toContain('Hello');
     expect(result.comments[0]?.body).toContain('UNTRUSTED_DATA source="comment.body"');
     expect((result.comments[0] as unknown as { attachments: unknown[] }).attachments).toEqual([]);

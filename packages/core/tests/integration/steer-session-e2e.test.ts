@@ -112,6 +112,7 @@ describe('steer E2E', () => {
 
     const result = await (await steer())(s.issueId, 'stop refactoring, fix the failing test', {
       actorUserId: s.ownerId,
+      actorAgency: 'human' as const,
       reason: 'going the wrong way',
       source: 'rest',
     });
@@ -144,6 +145,7 @@ describe('steer E2E', () => {
 
     await (await steer())(s.issueId, 'use the existing helper', {
       actorUserId: s.ownerId,
+      actorAgency: 'human' as const,
       reason: 'duplicating a helper',
       source: 'mcp',
     });
@@ -177,6 +179,7 @@ describe('steer E2E', () => {
       await refusal(async () =>
         (await steer())(s.issueId, 'do it this way instead', {
           actorUserId: s.ownerId,
+          actorAgency: 'human' as const,
           reason: 'redirect',
           source: 'rest',
         }),
@@ -197,6 +200,7 @@ describe('steer E2E', () => {
       await refusal(async () =>
         (await steer())(s.issueId, 'too late', {
           actorUserId: s.ownerId,
+          actorAgency: 'human' as const,
           reason: 'redirect',
           source: 'rest',
         }),
@@ -212,6 +216,7 @@ describe('steer E2E', () => {
       await refusal(async () =>
         (await steer())(s.issueId, 'nowhere to go', {
           actorUserId: s.ownerId,
+          actorAgency: 'human' as const,
           reason: 'redirect',
           source: 'rest',
         }),
@@ -223,7 +228,12 @@ describe('steer E2E', () => {
   it('gives two separate steers two rows', async () => {
     const s = await seed();
     const send = await steer();
-    const opts = { actorUserId: s.ownerId, reason: 'redirect', source: 'rest' as const };
+    const opts = {
+      actorUserId: s.ownerId,
+      actorAgency: 'human' as const,
+      reason: 'redirect',
+      source: 'rest' as const,
+    };
 
     const first = await send(s.issueId, 'first', opts);
     const second = await send(s.issueId, 'second', opts);
