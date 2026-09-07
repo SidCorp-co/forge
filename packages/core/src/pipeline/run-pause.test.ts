@@ -1,12 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// db.update(pipelineRuns).set(...).where(...).returning() — scripted rows.
 const updateReturning = vi.fn(async () => [] as unknown[]);
 const updateSet = vi.fn((_set: unknown) => ({ where: () => ({ returning: updateReturning }) }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
 const selectWhere = vi.fn(async () => [] as unknown[]);
 const dbSelect = vi.fn(() => ({ from: () => ({ where: selectWhere }) }));
-vi.mock('../db/client.js', () => ({ db: { update: dbUpdate, select: dbSelect } }));
+// cm:why `pauseRun` / `resumeRunsWhere` write through `withKernelMarker`, which opens a transaction and stamps `forge.kernel_txn` with `tx.execute` first; a double without `transaction` + `execute` fails these tests on the marker rather than on the pause.
+const dbStub = {
+  update: dbUpdate,
+  select: dbSelect,
+  execute: vi.fn(async () => []),
+  transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(dbStub)),
+};
+vi.mock('../db/client.js', () => ({ db: dbStub }));
 
 vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },

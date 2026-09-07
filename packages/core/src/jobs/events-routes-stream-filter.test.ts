@@ -45,7 +45,7 @@ const txInsert = vi.fn(() => ({
 }));
 const txExecute = vi.fn();
 const transaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
-  const tx = { execute: txExecute, insert: txInsert };
+  const tx = { execute: txExecute, insert: txInsert, update: dbUpdate };
   return fn(tx);
 });
 
@@ -176,7 +176,8 @@ describe('jobs/events-routes stream_event persistence filter', () => {
       }),
     );
     expect(r.status).toBe(200);
-    expect(transaction).not.toHaveBeenCalled();
+    // cm:why `transaction` is no longer the proxy for "nothing was persisted": the heartbeat CAS opens one of its own to stamp `forge.kernel_txn` (ISS-943), so the persistence door is `txInsert` — the event dual-write's only writer — and that is what this asserts.
+    expect(txInsert).not.toHaveBeenCalled();
     expect(insertValues).not.toHaveBeenCalled();
     expect(sets('lastHeartbeatAt')).toBeGreaterThan(0);
     expect(await r.json()).toEqual({ accepted: 0, firstSeq: null, lastSeq: null });

@@ -13,8 +13,7 @@ const updateWhere = vi.fn(async () => undefined);
 const updateSet = vi.fn((..._args: unknown[]) => ({ where: updateWhere }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
 
-// ISS-450 — deriveCcStartupSignals queries job_events counts. Tests set
-// `ccSignalRow` to simulate the failed job's event stream.
+// cm:why `deriveCcStartupSignals` reads `job_events` counts, so the classification under test is driven by `ccSignalRow` rather than by the job row — a test that sets only the job and expects a class is asserting against the wrong input.
 let ccSignalRow: { total: number; toolCalls: number; messages: number } = {
   total: 0,
   toolCalls: 0,

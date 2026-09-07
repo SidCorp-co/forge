@@ -297,11 +297,9 @@ function CommentItem({
   readOnly?: boolean;
 }) {
   const [replying, setReplying] = useState(false);
-  const kind = deriveCommentKind(node.body);
+  const { kind } = deriveCommentKind(node);
   const meta = COMMENT_KIND_META[kind];
-  // Prefer the server-resolved author (email for a human, device name for an
-  // agent). Fall back to the project-members lookup only for older payloads
-  // that predate `author` — never render a raw UUID (ISS-519, AC5).
+  // cm:why the members lookup is a fallback for payloads that predate `author`, not a second source of truth — without it those rows render a raw UUID, which is what ISS-519 was filed about
   const isAgent = node.author?.isAgent ?? false;
   const author = node.author?.displayName ?? memberLabel(node.authorId, members);
   const ownerEmail = node.author?.ownerEmail;

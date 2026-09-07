@@ -28,7 +28,9 @@ vi.mock('../db/client.js', () => ({
     select: vi.fn(() => ({ from: selectFrom })),
     insert: vi.fn(() => ({ values: insertValues })),
     update: vi.fn(() => ({ set: updateSet })),
-    transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb({ update: txUpdate })),
+    transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
+      cb({ update: txUpdate, execute: vi.fn(async () => []) }),
+    ),
   },
 }));
 

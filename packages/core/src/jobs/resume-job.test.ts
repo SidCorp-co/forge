@@ -18,6 +18,7 @@ vi.mock('../db/client.js', () => ({
     select: () => ({ from: () => ({ where: () => ({ limit: async () => selectRows() }) }) }),
     transaction: async (fn: (tx: unknown) => Promise<unknown>) =>
       fn({
+        execute: async () => [],
         update: () => ({
           set: (v: unknown) => {
             updateSet(v);

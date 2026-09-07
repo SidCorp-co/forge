@@ -1,8 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Stub eager env validation (config/env.js throws at import when DATABASE_URL /
-// JWT_SECRET / DEVICE_TOKEN_PEPPER are absent) so this unit suite stays hermetic
-// and never depends on the operator's shell — same pattern as schedules/routes.test.ts.
+// cm:why `config/env.js` validates at IMPORT time and throws when DATABASE_URL / JWT_SECRET / DEVICE_TOKEN_PEPPER are absent, so without this stub the suite passes or fails on the operator's shell rather than on the code — the same reason `schedules/routes.test.ts` stubs it.
 vi.mock('../config/env.js', () => ({
   env: { JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef', NODE_ENV: 'test' },
 }));
@@ -25,6 +23,8 @@ vi.mock('../db/client.js', () => {
   const dbStub = {
     select: vi.fn(() => ({ from: selectFrom })),
     update: vi.fn(() => ({ set: updateSet })),
+    // cm:why `withKernelMarker` (db/kernel-marker.ts) opens a transaction and stamps `forge.kernel_txn` through `tx.execute` before the write, so a db double that omits `execute` fails every wrapped path with `exec.transaction is not a function` or a missing method rather than with what the test is about.
+    execute: vi.fn(async () => []),
     transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(dbStub)),
   };
   return { db: dbStub };

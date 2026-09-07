@@ -26,6 +26,8 @@ vi.mock('../db/client.js', () => {
   const dbStub = {
     select: vi.fn(() => ({ from: selectFrom })),
     update: vi.fn(() => ({ set: updateSet })),
+    // cm:why `withKernelMarker` (db/kernel-marker.ts) opens a transaction and stamps `forge.kernel_txn` through `tx.execute` before the write, so a db double that omits `execute` fails every wrapped path with `exec.transaction is not a function` or a missing method rather than with what the test is about.
+    execute: vi.fn(async () => []),
     transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(dbStub)),
   };
   return { db: dbStub };

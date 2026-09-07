@@ -1588,6 +1588,19 @@
 
 ### Fixed
 
+- **A character entity written in an issue or comment body is no longer escaped a second time on
+  every save.** The component parser decoded entities in attributes but not in prose, while the
+  serializer escaped both — so a body containing `&quot;` was stored as `&amp;quot;`, rendered as
+  the literal text `&quot;`, and grew one `amp;` for each re-save. `forge_comments.update`
+  re-saves, so an edited body degraded further every time it was corrected.
+
+  `normalize.ts` has always declared itself idempotent and the test asserting it used an
+  entity-free body, which is the one shape that cannot see the defect. A non-raw text node now
+  holds decoded characters, the projection every prompt, embedding and MCP serializer reads
+  returns the character rather than the entity, and the idempotence test carries the entity case.
+  Markdown bodies are a passthrough that is never parsed, so only the five `html` rows written
+  since 2026-09-03 were affected and none needed a backfill.
+
 - **A typed record of any block count now lands in one comment write.** A comment body was capped
   at 10,000 characters, and the plugin's issue-flow contract posts every typed record — plan,
   confirmation, review, verdict, verification — as a comment, because a comment is the only
@@ -3194,6 +3207,39 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+
+- **The interventions metric now counts a hand on `agent_sessions`, a hand on a non-terminal
+  status, and a hand that deletes the row — and it stopped charging an ordinary auto-release to a
+  human.** ISS-884 taught the ruler to see a `psql` terminal flip on `jobs` or `pipeline_runs` by
+  the absence of a `forge.kernel_txn` marker, and recorded the other three shapes of hand-written
+  intervention as permanent edges of the instrument. They were not edges. Each was uncounted for the
+  same reason — only the TERMINAL writers stamped the marker — so widening it to every legitimate
+  status writer and row deleter closed all three at once, with no new discriminator.
+
+  `db/kernel-marker.ts` now owns the stamp (`withKernelMarker`), `applyKernelTransition` is
+  one of its callers, and `0219_unaudited_transition_reach.sql` widens the two triggers to any
+  status change, adds the same trigger on `agent_sessions`, and adds an `AFTER DELETE` arm that
+  records `<status>→deleted`. A DELETE of a `projects` or `issues` row cascades kernel rows in the
+  parent's transaction, so the parent's marker covers every child it takes with it.
+  `db/kernel-marker-guard.test.ts` is what keeps this true as the tree grows: it reads the
+  SHAPE of a `.set()` argument rather than its status literal, which is how it catches
+  `PATCH /api/agent-sessions/:id` writing `patch.status` — the writer whose invisibility to the
+  older literal-scanning guard is the whole reason the session class was uncounted.
+
+  It also fixes an overcount ISS-884 shipped on the arm it did prove. The detector is
+  `AFTER UPDATE OF status`; the I1 backstop is a `BEFORE` trigger that rewrites `NEW.status` to
+  `cancelled` when an active child is written under a terminal run. An ordinary requeue writes
+  `queued`, stamped nothing, and I1 turned it terminal — so releasing a held job whose run had
+  closed was charted as manual SQL. Asserted as a regression, red on the parent commit.
+
+  Two premises recorded as reasons in `docs/modules/control-observability/README.md` did not survive
+  contact with the tree and are corrected there rather than quietly dropped: the retention sweeper
+  deletes `job_events`, never `jobs`, and there is no in-code delete of a `jobs` or `pipeline_runs`
+  row anywhere. One edge stays, and it is not a shape of write — a migration that backfills a
+  `status` is charged to the metric, so such a migration stamps the marker itself. Priced: the
+  session PATCH no longer skips its transaction on a status-free heartbeat, costing one
+  `SELECT set_config` per PATCH, because a marker gated on a runtime condition is one the guard
+  cannot see.
 
 - **The rule that decides which MCP tools may be deleted was measured against the copy of the
   `forge` CLI the fleet actually runs, and three tools it had cleared turned out to have live

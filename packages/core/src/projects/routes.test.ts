@@ -8,8 +8,7 @@ vi.mock('../config/env.js', () => ({
   env: { JWT_SECRET: TEST_SECRET, NODE_ENV: 'test' },
 }));
 
-// Verified-email lookup (from assertEmailVerified) is the first select call
-// every authenticated test makes. We queue results FIFO via selectLimit.
+// cm:guard `assertEmailVerified` makes the FIRST select of every authenticated test, so the FIFO queue on `selectLimit` must be primed with its row before the one the test is about — a queue that starts with the test's own row hands it to the email check and 403s.
 const selectLimit = vi.fn();
 const selectWhere = vi.fn((): unknown => ({ limit: selectLimit }));
 const selectOn = vi.fn(() => ({ where: selectWhere }));
@@ -42,7 +41,7 @@ const txInsertMembers = vi.fn(() => ({ values: txInsertMembersValues }));
 const txInsert = vi.fn();
 
 const transaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
-  const tx = { insert: txInsert };
+  const tx = { insert: txInsert, execute: vi.fn(async () => []), delete: dbDelete };
   return fn(tx);
 });
 

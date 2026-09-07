@@ -48,7 +48,6 @@ describe('renderStageFactsText', () => {
     expect(text).toContain('### Status ladder');
     expect(text).toContain('### Issue relation kinds');
     expect(text).toContain('### Project integrations');
-    // No sibling-level headers besides the wrapper itself.
     expect(text.match(/^## (?!Forge context)/gm)).toBeNull();
   });
 
@@ -398,6 +397,7 @@ describe('renderStageFactsText — module attribution is gated on the taxonomy (
       '### Issue relation kinds',
       '### Status ladder',
       '### Comment + status ordering',
+      '### Body components',
       '### Step handoff (best-effort)',
       '### The workspace you were handed',
       '### Project integrations',

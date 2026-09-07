@@ -17,6 +17,7 @@
 
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { withKernelMarker } from '../db/kernel-marker.js';
 import { jobs } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { logger } from '../logger.js';
@@ -78,7 +79,7 @@ export async function resumeHeldJob(
 
   const heldReason = readHoldState(job.payload)?.reason ?? job.failureReason ?? null;
 
-  const updated = await db.transaction(async (tx) => {
+  const updated = await withKernelMarker(db, async (tx) => {
     const [row] = await tx
       .update(jobs)
       .set(buildRequeueUpdate(job, new Date()))

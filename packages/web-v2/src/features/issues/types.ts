@@ -365,14 +365,15 @@ export interface CommentNode {
   id: string;
   issueId: string;
   authorId: string;
-  /** ISS-898 — `markdown` for every pre-existing row. */
-  format?: string | null;
-  template?: string | null;
   /** ISS-967 — parsed tree for a `format:'html'` body, null otherwise. */
-  nodes?: BodyNode[] | null;
+  nodes: BodyNode[] | null;
   /** Non-null when posted by an agent/device (ISS-519). */
   authorDeviceId?: string | null;
   body: string;
+  /** `markdown` (the default and every pre-existing row) or `html` (ISS-898). */
+  format: string;
+  /** Root component name when `format` is `html`; null for a markdown body. */
+  template: string | null;
   parentId: string | null;
   createdAt: string;
   updatedAt: string;
@@ -426,7 +427,10 @@ export interface AttachmentRow {
   createdAt: string;
 }
 
-/** Lifecycle comment kind derived from the body (no server field). */
+/**
+ * Lifecycle comment kind. Read from `template` when the body is in component
+ * form, and matched against the prose otherwise — `derive.ts:deriveCommentKind`.
+ */
 export type CommentKind =
   | "triage"
   | "clarify"
@@ -438,6 +442,8 @@ export type CommentKind =
   | "approved"
   | "qa"
   | "released"
+  | "outcome"
+  | "blocked"
   | "comment";
 
 export type { StageKey, StatusKey };

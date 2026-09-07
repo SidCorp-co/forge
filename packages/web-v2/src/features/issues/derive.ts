@@ -196,11 +196,11 @@ export function statusToChip(
 		case "tested":
 			return "passed";
 		case "released":
-			return "shipped"; // ISS-511 — distinct flame, "shipped to prod"
+			return "shipped";
 		case "closed":
 		// cm:guard `dropped` must not fall through to the `queued` default — a terminal issue rendered as queued reads as work still waiting, which is the exact misreading the status was added to stop. It shares `archived` with `closed` because the difference between them is that dependents stay blocked, and that is not a colour.
 		case "dropped":
-			return "archived"; // ISS-511 — heavy ink, "filed away"
+			return "archived";
 		case "on_hold":
 			return "paused";
 		default:
@@ -434,11 +434,42 @@ export function groupRows(rows: IssueRow[], groupBy: GroupBy): IssueGroup[] {
 }
 
 /**
- * Heuristic lifecycle-kind for a comment. The pipeline writes comments in fixed
- * formats but there is no server `kind` column, so match the body. Order
- * matters — more specific markers first. Falls back to a plain comment.
+ * Lifecycle-kind for a comment, read from whichever form the body is in.
+ *
+ * `template` is the root component name the kernel stored on write (ISS-898),
+ * so a component body names its shape outright. A markdown body has no such
+ * column and is matched against the prose markers the pipeline has always
+ * written; order matters there — more specific markers first.
  */
-export function deriveCommentKind(body: string): CommentKind {
+// cm:edge contract -> packages/core/src/body/components.ts — the keys below are root component names and the `verdict` values are `forge-review`'s enum. A root renamed there without a change here silently falls back to the prose regex, which for a component body matches nothing and badges every review as a plain comment.
+const TEMPLATE_KIND: Record<string, CommentKind> = {
+	"forge-triage": "triage",
+	"forge-plan": "plan",
+	"forge-qa-report": "qa",
+	"forge-outcome": "outcome",
+	"forge-blocked": "blocked",
+	"forge-close": "released",
+};
+
+const REVIEW_VERDICT_KIND: Record<string, CommentKind> = {
+	approve: "approved",
+	"request-changes": "changes",
+	abstain: "review",
+};
+
+/**
+ * `forge-review` carries its verdict in an attribute the comment row does not
+ * project, so it is read off the canonical bytes. Safe as a regex only because
+ * `body/normalize.ts` emits every attribute as `name="value"`, double-quoted
+ * and escaped, and the body was validated before it was stored.
+ */
+function reviewVerdictKind(body: string): CommentKind {
+	const match = /<forge-review\b[^>]*\sverdict="([a-z-]+)"/.exec(body);
+	const verdict = match?.[1];
+	return (verdict && REVIEW_VERDICT_KIND[verdict]) || "review";
+}
+
+function prefixKind(body: string): CommentKind {
 	const b = body.toLowerCase();
 	if (/^#+\s*triage|triage (report|summary)|\btriaged\b/.test(b))
 		return "triage";
@@ -466,6 +497,29 @@ export function deriveCommentKind(body: string): CommentKind {
 	if (/^#+\s*clarif|clarif(y|ication)/.test(b)) return "clarify";
 	if (/^#+\s*review\b|reviewing|self-review/.test(b)) return "review";
 	return "comment";
+}
+
+/**
+ * Which of the two body forms answered. Reported so the component migration's
+ * progress is countable off real traffic rather than assumed (ISS-968).
+ */
+export type CommentBodyForm = "component" | "prefix";
+
+export interface DerivedCommentKind {
+	kind: CommentKind;
+	form: CommentBodyForm;
+}
+
+export function deriveCommentKind(comment: {
+	body: string;
+	template?: string | null;
+}): DerivedCommentKind {
+	const template = comment.template ?? null;
+	if (template === "forge-review")
+		return { kind: reviewVerdictKind(comment.body), form: "component" };
+	const mapped = template ? TEMPLATE_KIND[template] : undefined;
+	if (mapped) return { kind: mapped, form: "component" };
+	return { kind: prefixKind(comment.body), form: "prefix" };
 }
 
 export interface ChecklistItem {
@@ -804,9 +858,7 @@ export function deriveStageOutcomes(
 		}
 	}
 
-	// Duration + cost per stage, scoped to the MOST-RECENT run for that stage so a
-	// reopened issue (multiple runs of the same step) doesn't double-count. Within
-	// the chosen run, sum across attempts. ISS-377 review fix.
+	// cm:why scoped to the most-recent run per stage, then summed across that run's attempts — a reopened issue has several runs of the same step, and summing all of them double-counts every earlier attempt into the figure a reader takes for this one
 	const byStageRun = new Map<
 		StageKey,
 		Map<string, { durationSeconds: number; costUsd: number; latest: string }>
@@ -1058,5 +1110,7 @@ export const COMMENT_KIND_META: Record<
 	approved: { label: "Approved", tone: "green" },
 	qa: { label: "QA", tone: "amber" },
 	released: { label: "Released", tone: "green" },
+	outcome: { label: "Outcome", tone: "accent" },
+	blocked: { label: "Blocked", tone: "red" },
 	comment: { label: "Comment", tone: "neutral" },
 };

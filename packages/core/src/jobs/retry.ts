@@ -147,8 +147,7 @@ export function nextRotation(
   now: Date,
 ): RotationOutcome {
   const ranOn = job.deviceId ?? null;
-  // First failure has no prior target: the device that just ran IS this
-  // round's first target, and the original attempt counts as its first try.
+  // cm:why the first failure has no prior target, so the device that just ran IS this round's first target and the original attempt counts as its first try — seeding an empty round instead would give that device a second free try before the sweep moves on.
   const target = state.target ?? ranOn;
   const tries = state.target ? state.tries : 1;
 
@@ -321,6 +320,50 @@ export async function deriveCcStartupSignals(
 }
 
 /**
+ * Backfill `failure_kind` / `failure_action` on a row that reached here without
+ * them, and mirror the write onto the in-memory `job` the caller keeps using.
+ */
+// cm:why ISS-823 review #2 — the two columns are gated INDEPENDENTLY so a row whose `failureKind` was pre-stamped at flip time (dispatcher.ts / lifecycle-routes.ts / loop-monitor.ts / runs-cascade.ts) still gets `failure_action` written instead of reading null on the `forge_jobs` projection.
+async function persistClassification(
+  job: JobRow,
+  classified: ReturnType<typeof classifyFailure>,
+): Promise<void> {
+  const needsKindPersist = job.failureKind === null || job.failureKind === undefined;
+  const needsActionPersist = job.failureAction === null || job.failureAction === undefined;
+  if (needsKindPersist || needsActionPersist) {
+    // cm:why backfills from the EXISTING failureKind, not from re-classifying the current error text, so the persisted action never disagrees with the effectiveAction fallback below
+    const actionToPersist = needsKindPersist
+      ? classified.action
+      : deriveActionFromKind(job.failureKind as NonNullable<typeof job.failureKind>);
+    try {
+      // cm:why a literal SET list rather than a built `Partial<JobRow>`: `db/kernel-marker-guard.test.ts` can prove a literal carries no `status` and cannot prove it of a variable, so the shape is what saves this backfill a marker round-trip it does not need.
+      await db
+        .update(jobs)
+        .set({
+          ...(needsKindPersist
+            ? {
+                failureKind: classified.kind,
+                failureReason: classified.reason,
+                failureMeta: classified.meta as never,
+                classifierVersion: classified.version,
+              }
+            : {}),
+          ...(needsActionPersist ? { failureAction: actionToPersist } : {}),
+        })
+        .where(eq(jobs.id, job.id));
+      if (needsKindPersist) {
+        job.failureKind = classified.kind;
+        job.failureReason = classified.reason;
+        job.classifierVersion = classified.version;
+      }
+      if (needsActionPersist) job.failureAction = actionToPersist;
+    } catch (err) {
+      logger.warn({ err, jobId: job.id }, 'retry: failed to persist classification, continuing');
+    }
+  }
+}
+
+/**
  * Schedule the next retry under the per-class policy (see module header), or
  * return `{ scheduled: false }` so the caller parks the issue at `waiting`.
  *
@@ -331,47 +374,14 @@ export async function scheduleAutoRetryWithVerify(
   job: JobRow,
   reason: string,
 ): Promise<RetryOutcome> {
-  // ISS-450 — the classification below DRIVES the per-class retry policy
-  // (code → no retry, transient-cc → immediate device failover) as well as
-  // labelling the row for the operator UI / recovery stats.
+  // cm:why the classification below DRIVES the per-class retry policy — `code` gets no retry, `transient-cc` an immediate device failover — as well as labelling the row for the operator UI and recovery stats, so removing the persist block does not merely lose a label (ISS-450).
   const inputError = typeof job.error === 'string' && job.error.length > 0 ? job.error : reason;
   const classified = classifyFailure({
     error: inputError,
     meta: (job.failureMeta as Record<string, unknown> | null) ?? null,
     signals: await deriveCcStartupSignals(job),
   });
-  // cm:why ISS-823 review #2 — gated independently so a row whose failureKind was pre-stamped at flip time (dispatcher.ts/lifecycle-routes.ts/loop-monitor.ts/runs-cascade.ts) still gets failure_action written instead of reading null on the forge_jobs projection
-  const needsKindPersist = job.failureKind === null || job.failureKind === undefined;
-  const needsActionPersist = job.failureAction === null || job.failureAction === undefined;
-  if (needsKindPersist || needsActionPersist) {
-    // cm:why backfills from the EXISTING failureKind, not from re-classifying the current error text, so the persisted action never disagrees with the effectiveAction fallback below
-    const actionToPersist = needsKindPersist
-      ? classified.action
-      : deriveActionFromKind(job.failureKind as NonNullable<typeof job.failureKind>);
-    try {
-      const patch: Partial<JobRow> = {};
-      if (needsKindPersist) {
-        patch.failureKind = classified.kind;
-        patch.failureReason = classified.reason;
-        patch.failureMeta = classified.meta as never;
-        patch.classifierVersion = classified.version;
-      }
-      if (needsActionPersist) {
-        patch.failureAction = actionToPersist;
-      }
-      await db.update(jobs).set(patch).where(eq(jobs.id, job.id));
-      if (needsKindPersist) {
-        job.failureKind = classified.kind;
-        job.failureReason = classified.reason;
-        job.classifierVersion = classified.version;
-      }
-      if (needsActionPersist) {
-        job.failureAction = actionToPersist;
-      }
-    } catch (err) {
-      logger.warn({ err, jobId: job.id }, 'retry: failed to persist classification, continuing');
-    }
-  }
+  await persistClassification(job, classified);
 
   // cm:guard ISS-812 AC2 — this guard must stay BELOW the persist block above: a cancelled job still failed, and returning before classification is what left 4 rows on forge-beta (measured 2026-08-26, 60d window) at status='failed' carrying real error text ([NO_RESULT_EXIT], [RESULT_ERROR]) with failure_kind, failure_reason and classifier_version all NULL. Every other no-retry path pre-stamps the row at flip time; this was the only one that recorded nothing, and silence is the defect the epic exists to remove.
   if (job.cancellationRequested) {
@@ -390,20 +400,13 @@ export async function scheduleAutoRetryWithVerify(
     }
   }
 
-  // Verify-first (structural, NOT error-type): if the issue already moved past
-  // this step, retrying is wasted spend.
+  // cm:guard verify FIRST and structurally, never by error type: if the issue already moved past this step, the retry is wasted spend on work that is done.
   if (job.issueId) {
     let verdict: 'advanced' | 'reverted' | 'pending';
     try {
       verdict = await verifyRecovery(job);
     } catch (err) {
-      // ISS-702 — this reverses the ISS-197 fail-open-to-pending default for
-      // the throw case only. `verifyRecovery` throws solely when its single
-      // PK SELECT throws (a DB outage), during which we cannot confirm the
-      // issue is still eligible for a retry. Failing open let a stale zombie
-      // job's finalize-failure clobber a deliberately-parked `waiting`/
-      // `on_hold` status back to this job's entry-status (the ISS-701
-      // incident). Fail SAFE instead: no retry, caller parks at `waiting`.
+      // cm:guard fail SAFE on a THROW, reversing ISS-197's fail-open-to-pending default for this branch alone: `verifyRecovery` throws only when its single PK SELECT does (a DB outage), and during one we cannot confirm the issue is still eligible. Failing open let a stale zombie job's finalize-failure clobber a deliberately-parked `waiting`/`on_hold` back to this job's entry-status — the ISS-701 incident (ISS-702).
       logger.warn(
         { err, jobId: job.id, issueId: job.issueId },
         'retry: verifyRecovery failed, failing safe — no retry scheduled',
