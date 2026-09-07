@@ -28,6 +28,7 @@ import {
   stagedFiles,
   writeBaseline,
 } from './lib/debt-ratchet.mjs';
+import { absentPrerequisites, remedyLines } from './lib/prerequisite.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const BASELINE_PATH = join(ROOT, '.forge', 'size-baseline.json');
@@ -40,6 +41,10 @@ const FN_RULE = 'lint/complexity/noExcessiveLinesPerFunction';
 function collect(scopes) {
   const measured = new Map();
   let sawAnyDiagnostic = false;
+
+  // cm:guard name the absent TOOL before spawning it. Without biome on disk this function reports `biome output in <scope> was not JSON` — a sentence about biome's behaviour, from which a reader concludes the reporter broke rather than that nothing was installed (ISS-938).
+  const missing = absentPrerequisites(ROOT, ['deps']);
+  if (missing.length > 0) return { error: `could not run — ${remedyLines(missing)[0]}` };
 
   for (const scope of scopes) {
     const cwd = join(ROOT, scope.cwd);
