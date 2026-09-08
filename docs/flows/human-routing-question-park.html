@@ -1,0 +1,117 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flow · human-routing-question-park — how a question reaches a person once the process is gone, and how the answer gets a run restarted</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .board { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; margin:1rem 0; }
+  .bad { color:var(--bad); font-weight:600; }
+  .ok { color:var(--acc); font-weight:600; }
+</style>
+<main>
+
+
+<h1>human-routing-question-park — how a question reaches a person once the process is gone, and how the answer gets a run restarted</h1>
+<p class="sub">The episode a park is: the agent asks and <em>exits</em>, the row waits with no time
+limit, a person answers whenever they answer, and something else entirely restarts the work. Nothing
+holds a socket open across it, and nothing holds a runner slot. The sibling flow
+<code>agent-execution-blocked-branch</code> owns <em>which</em> branch is taken; this one owns what
+happens after the human branch is. Owner of the decision: the four typed columns on the box's ledger
+(<code>incarnation</code>, <code>work</code>, <code>blocker_kind</code>, <code>resume_id</code>).</p>
+
+<h2>The episode</h2>
+<div class="board"><pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant M as master (has the token)
+  participant D as forge-runner daemon
+  participant L as box ledger (SQLite)
+  participant C as core
+  participant H as a person
+  M->>D: pool ask --run-id --prompt
+  Note over D: token -> session; a master may park<br/>only a run it is the parent OF
+  D->>C: GET /me/protections
+  C-->>D: the names this build runs
+  D->>L: begin_question + declare_parked_human
+  D->>D: kill the run's process GROUP
+  D->>C: POST /me/questions (id minted HERE)
+  Note over D,C: core last: the park already happened,<br/>and the reconcile sweep re-posts
+  H->>C: answers, in their own time
+  C->>L: work: blocked -> runnable (via the box)
+  Note over L: exited x runnable — owed a revival
+  D->>L: CAS on (exited, runnable) — rowcount 1 may spawn
+  D->>D: revive in the SAME worktree, resume_id
+</pre></div>
+
+<div class="rule"><strong>Asking is a declaration, not a call.</strong> The session writes the question
+and exits; nothing blocks waiting for a reply. So the answer cannot be <em>delivered</em> to it — it is
+read back off the row. With the websocket down for the whole episode nothing is lost but latency.</div>
+
+<div class="rule"><strong>The kill comes after the ledger write, never before.</strong> A process killed
+first leaves the run reading <code>live</code> behind a dead pid — the one state the four columns exist
+to make impossible. Core is told last because it is the only step that may fail for free.</div>
+
+<h2>The four states, and why one status string cannot hold them</h2>
+<table>
+<thead><tr><th><code>incarnation</code> × <code>work</code></th><th>What is true</th><th>Who is holding what</th></tr></thead>
+<tbody>
+<tr><td><code>live</code> × <code>runnable</code></td><td>an agent is working</td><td>process, worktree, lease</td></tr>
+<tr><td><code>live</code> × <code>blocked</code></td><td>bounded wait — machine or peer</td><td>process, worktree, lease</td></tr>
+<tr><td><code>exited</code> × <code>blocked</code></td><td class="ok">parked: a person owes an answer</td><td>worktree, lease, <code>resume_id</code> — <strong>no process</strong></td></tr>
+<tr><td><code>exited</code> × <code>runnable</code></td><td class="bad">answered, and nothing has restarted it</td><td>worktree, lease — owed a revival</td></tr>
+</tbody>
+</table>
+<p>A single <code>status</code> word collapses the middle two into &ldquo;blocked&rdquo; and cannot say
+the last one at all — which is the most stuck a run can be, because it is waiting on nobody. Reading the
+ledger alone distinguishes <em>waiting</em> from <em>dead</em> with no process inspected, and that is the
+property the design exists for.</p>
+
+<h2>Revival: four gates, in order</h2>
+<div class="board"><pre class="mermaid">
+flowchart TD
+  A["answer lands: work -> runnable"] --> C{"CAS on<br/>incarnation='exited' AND work='runnable'"}
+  C -- "rowcount 0" --> X["somebody else won, or not owed"]
+  C -- "rowcount 1" --> F{"claim generation matches?"}
+  F -- no --> S["refused: fence_superseded"]
+  F -- yes --> P{"premises"}
+  P -- "tree gone" --> T1["terminal: worktree_gone"]
+  P -- "work closed" --> T2["terminal: work_closed"]
+  P -- ok --> E["spawn in the same worktree"]
+  E -- "startup failed" --> R["back to exited x runnable<br/>NEVER to blocked"]
+</pre></div>
+<div class="rule"><strong>The CAS predicate is <code>work='runnable'</code>, and predicating it on
+<code>blocked</code> is the bug that looks right.</strong> An answered park is <em>already</em>
+<code>runnable</code> — so a CAS on <code>blocked</code> matches zero rows and the run is owed a revival
+forever. A failed startup returns the row to <code>exited × runnable</code> for the same reason: sent
+back to <code>blocked</code> it would wait for a second answer nobody sends.</div>
+<p>The attempt carries a token and a startup deadline so recovery can tell an attempt on its way to
+<code>exec</code> from an abandoned one, and may reset only an <em>expired</em> one. Without the
+deadline, recovery resets the window between the CAS commit and the process registering, and a second
+wake wins while the first is still spawning.</p>
+
+<h2>Where it ends if nobody ever answers</h2>
+<p>A park waits with no time limit, but not under <em>no</em> clock: the asker sets
+<code>park_deadline_at</code> under a project ceiling, and expiry closes <strong>loudly</strong> —
+<code>ended_reason=unanswered_&lt;n&gt;d</code>, the question stays in the bucket flagged expired rather
+than being removed, and the worktree is released only after the diff is preserved. A <code>NULL</code>
+deadline is an unbounded wait and never matches, so the one wait the design says has no limit does not
+get one silently.</p>
+<div class="rule"><strong>The failure kind is <code>code</code>, chosen for its ACTION and not its
+English.</strong> <code>deriveActionFromKind</code> maps <code>infra</code> to <em>retry</em>, and
+retrying a job whose park went unanswered puts a second agent on a question still nobody has
+answered.</div>
+
+<p><a href="index.html">← all flows</a></p>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script>

@@ -23,6 +23,30 @@
 
 ### Added
 
+- **An agent that needs your decision now asks you and gets out of the way.** When a run hits
+  something only a person can settle, it writes the question down, releases the machine it was
+  holding, and stops — keeping its branch, its working copy and its place in the work so it can pick
+  up exactly where it left off. The question appears in your queue with a recommended answer already
+  chosen, so the usual case is one click, and the queue is ordered by what the waiting costs rather
+  than by what arrived last: a question holding two machines and blocking three other issues sits
+  above one holding nothing, and each row now shows those numbers and who can end the wait, so the
+  order can be checked rather than trusted. Answering is enough — nothing else has to be poked, and
+  the boxes serving that project are told the moment you do. Your answer belongs to the question and
+  not to whoever was waiting on it, so one answer releases everything that was blocked on it, and it
+  stays on the record if the work has to be picked up by something else later. A question nobody can
+  answer is no longer filed as a question at all: it fails with a name.
+  While a run is parked it holds no agent and burns nothing, and it survives its box rebooting, its
+  supervising agent crashing, and the browser being closed on it — none of which used to be true, and
+  each of which used to end with the work quietly thrown away. If a question goes unanswered past the
+  deadline the asker set, the run closes loudly and says how long it waited, with the diff saved
+  before the working copy is released; a question with no deadline waits indefinitely on purpose and
+  is never closed out from under you.
+  The project's Agents screen was rebuilt around what a run is actually doing: whether an agent is
+  working, waiting on a machine, parked for a person, or — the state nothing could previously show —
+  answered and waiting to be restarted. Three separate wind-down steps that used to read as one flag
+  now read as three, so a run whose agent has finished but whose working copy is still on disk is
+  visibly recoverable instead of looking finished.
+
 - **You can now see which agent sessions a box is running without logging into it.**
   `GET /api/projects/:id/run-sessions` answers any member of the project with every run the fleet is
   holding for it: the run's own worktree and process id, the master session that started it, the
