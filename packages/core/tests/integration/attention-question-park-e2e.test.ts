@@ -93,6 +93,8 @@ describe('attention · the question park', () => {
   interface Bucket {
     issueRef: string;
     status: string;
+    blockerKind?: string | null;
+    cost?: { claimsHeld: number; workspacesPinned: number; dependents: number };
   }
 
   async function attention(): Promise<{ awaitingInput: Bucket[]; needsReview: Bucket[] }> {
@@ -156,6 +158,33 @@ describe('attention · the question park', () => {
   it('leaves needs_review assignee-only', async () => {
     await parkIssue({ status: 'developed', assignee: null, createdBy: ownerId });
     expect((await attention()).needsReview).toHaveLength(0);
+  });
+  // cm:why the ROUTE half of criterion 53. `selectAwaitingInput` grew the cost and the blocker, and `issueItem` is shared by six buckets — so the fields reached the selector and stopped there, which reads exactly like a query that never returned them.
+  it('serves the cost and the blocker on the awaiting bucket', async () => {
+    const issueId = await parkIssue({ assignee: null, createdBy: ownerId });
+    await harness.db.execute(sql`
+      INSERT INTO agent_questions (id, project_id, issue_id, status, blocker_kind, steps,
+                                   claims_held, workspaces_pinned, dependents)
+      VALUES (${randomUUID()}, ${projectId}, ${issueId}, 'open', 'human', '[]'::jsonb, 2, 1, 3)
+    `);
+
+    const [row] = await awaitingInput();
+
+    expect(
+      row?.cost,
+      'the reader is shown what the wait costs, in the same numbers the order was computed from',
+    ).toEqual({ claimsHeld: 2, workspacesPinned: 1, dependents: 3 });
+    expect(row?.blockerKind).toBe('human');
+  });
+
+  // cm:guard the OTHER buckets must NOT grow these keys: `needsReview` is not a wait anybody is paying for, and a cost of three zeros there reads as a measured zero rather than as not-applicable.
+  it("leaves the other buckets' shape alone", async () => {
+    await parkIssue({ status: 'developed', assignee: ownerId, createdBy: ownerId });
+    const { needsReview } = await attention();
+
+    expect(needsReview).toHaveLength(1);
+    expect(needsReview[0]).not.toHaveProperty('cost');
+    expect(needsReview[0]).not.toHaveProperty('blockerKind');
   });
 });
 

@@ -528,3 +528,32 @@ green.
 - **`run-ledger-ws.test.ts` asserts the mapped entry shape field-by-field**, so it broke on this
   change and was updated. That is the lockstep working: the wire shape has exactly one test that
   fails when a field is added silently.
+
+## S11a (second half) — criterion 53 was ordered but not shown
+
+The cost ordering shipped in S5 and the numbers it ordered by never left the database:
+`issueFields` carries neither them nor `blocker_kind`, so a reader saw the right row first and no
+reason why, and nothing said WHO could end the wait. A queue whose order cannot be explained is one
+whose order gets overridden by hand.
+
+| # | Criterion | Test | RED (quoted) | Commit |
+|---|---|---|---|---|
+| 19, 53 | the selector carries the cost it ordered by | `attention-awaiting-cost-order-e2e` — `carries the cost it ordered by, and who can end the wait` | `expected [ undefined, undefined, undefined ] to deeply equal [ 2, 1, 3 ]` | S11a |
+| 53 | and only for OPEN questions | same file, `shows nothing for a question already answered` | `expected [ undefined, undefined ] to deeply equal [ +0, null ]` | S11a |
+| 53 | the ROUTE serves them | `attention-question-park-e2e` — `serves the cost and the blocker on the awaiting bucket` | `expected undefined to deeply equal { claimsHeld: 2, …(2) }` — reached the selector and stopped at `issueItem`, which six buckets share | S11a |
+| 53 | and the other buckets keep their shape | same file, `leaves the other buckets' shape alone` | passes as the baseline: a cost of three zeros on `needsReview` would read as a measured zero rather than not-applicable | S11a |
+
+**`::int` is load-bearing the moment a cost is SELECTED rather than only ordered by.** Postgres
+`sum()` is numeric and this driver returns numerics as STRINGS, so the first green attempt handed back
+`['2','1','3']` against a `number` type. Left uncast it would also have broken any client-side sort,
+since `"10" < "9"`. Mutation removing the cast is red.
+
+**One writer for the shared fields.** `awaitingItem` wraps `issueItem` rather than replacing it, so
+an awaiting row cannot drift into showing a different `link` or `since` for the same issue depending
+on which bucket a reader found it in. The widening stops at that bucket, and the two new keys are
+OPTIONAL for the same reason.
+
+**The `cm:edge contract` did its job.** `attention-routes.ts` names
+`web-v2/src/features/attention/types.ts` as its mirror ("do NOT guess field names"); that file was
+updated in the same change, with a note that absent means not-applicable rather than zero, so the
+screen renders nothing instead of "0 claims".

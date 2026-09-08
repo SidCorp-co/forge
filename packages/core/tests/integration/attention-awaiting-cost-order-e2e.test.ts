@@ -158,4 +158,33 @@ describe('awaiting input is ranked by the cost of waiting (real Postgres)', () =
     for (let i = 0; i < AWAITING_INPUT_CAP + 3; i += 1) await blockedIssue(i);
     expect((await bucket()).length).toBe(AWAITING_INPUT_CAP);
   });
+
+  // cm:why criterion 53 wants the cost of waiting SHOWN, not merely obeyed. The ordering shipped without the numbers, so a reader saw the right row first and no reason why — and `blocker_kind`, which says WHO can end the wait, was not on the row at all. A queue whose order cannot be explained is one whose order gets overridden by hand (ISS-964 criteria 19, 53).
+  it('carries the cost it ordered by, and who can end the wait', async () => {
+    const { selectAwaitingInput } = await import('../../src/me/attention-buckets.js');
+    const issueId = await blockedIssue(1);
+    await question(issueId, { claims: 2, workspaces: 1, dependents: 3 });
+
+    const [row] = await selectAwaitingInput(userId);
+    if (!row) throw new Error('the bucket must return the issue it ordered');
+
+    expect(
+      [row.claimsHeld, row.workspacesPinned, row.dependents],
+      'the three numbers the order is computed from must reach the reader, or the queue shows a rank with no visible reason',
+    ).toEqual([2, 1, 3]);
+    expect(
+      row.blockerKind,
+      'and who can resolve it: a machine wait and a human wait sit in the same bucket and mean different things to the person reading it',
+    ).toBe('human');
+  });
+
+  // cm:guard the numbers come from OPEN questions only, matching the ordering's own rule: a settled question holds no claim, so counting it would show a cost that is not being paid.
+  it('shows nothing for a question already answered', async () => {
+    const { selectAwaitingInput } = await import('../../src/me/attention-buckets.js');
+    const issueId = await blockedIssue(1);
+    await question(issueId, { claims: 5 }, 'answered');
+
+    const [row] = await selectAwaitingInput(userId);
+    expect([row?.claimsHeld, row?.blockerKind]).toEqual([0, null]);
+  });
 });
