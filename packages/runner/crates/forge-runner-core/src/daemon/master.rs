@@ -41,6 +41,11 @@ const POLL_INTERVAL: Duration = Duration::from_secs(30);
 // cm:guard this is a COALESCING FLOOR, never a rate limit that drops work. A wake inside the window waits out the remainder and then sweeps; it is not discarded. Core publishes one `master.wake` per issue arrival, so promoting five drafts or closing a batch delivers five frames in about as many milliseconds, and a sweep per frame would be five `/me/runners` reads plus five pool reads per project to find what the first one already found. The channel is capacity 1 and extra frames are dropped ON PURPOSE while one is pending — the sweep that follows reads the WHOLE pool, so a dropped frame costs nothing a later read does not already cover.
 const WAKE_FLOOR: Duration = Duration::from_secs(5);
 
+/// The longest a master may go un-nudged while the work in front of it is unchanged.
+// cm:guard a CEILING ON SILENCE, never a gate: an unchanged pool still reaches the master on this period, so a pass lost to a wedged pane, an ignored line or a limit cleared out of band is retried without an operator. The same reason `LIMITED_POLL_INTERVAL` is a backoff and not a blackout — read it as permission to stop nudging and the fleet cannot self-heal.
+// cm:guard the pane costs REAL MONEY per nudge, which is why this exists at all: one nudge is one full agent pass, measured at ~$0.18 on forge-vm 2026-09-08, and 1,354 nudges over 95 minutes bought 0 claims and $245 while every runner sat rate-limited. An unconditional nudge on every sweep is a spend proportional to sweeps rather than to work.
+const NUDGE_REFRESH: Duration = Duration::from_secs(5 * 60);
+
 /// Sweep spacing once every project this box serves is rate-limited.
 // cm:guard this is a BACKOFF, never a blackout, and the distinction is the whole design. Core clears a limit only when a job SUCCEEDS (`clearRunnerLimit`), so a master that declines to sweep while limited removes the only thing that can clear the stamp, and an operator who fixes the account out of band is left watching an idle fleet forever. Slowing down costs a few minutes of latency; stopping costs the self-heal.
 const LIMITED_POLL_INTERVAL: Duration = Duration::from_secs(5 * 60);
@@ -117,6 +122,37 @@ struct MasterState {
     name: String,
     /// When this project's pool last held anything at all.
     last_work: Instant,
+    /// The work this master was last nudged about, and when.
+    last_nudge: Option<(u64, Instant)>,
+}
+
+/// What the master is being asked to look at, as one comparable value.
+///
+/// Identity only — a job id or an issue id, never a title, a priority or a
+/// status. Those change while the decision does not, and a digest that moves
+/// on them re-nudges for nothing.
+// cm:guard ORDER-INDEPENDENT by construction (the ids are sorted before hashing) because neither route promises a stable order: `readPool` ranks and `readAdmissibleIssues` runs one query per project, so hashing the sequence would report new work every time two rows swapped.
+// cm:guard the `job:`/`issue:` prefix is part of the identity, not decoration: the two routes carry different id spaces, and hashing bare strings made one job indistinguishable from one admissible issue that happened to share an id — caught by this function's own test while it was being written.
+fn work_digest(items: &[pool::PoolEntry], admissible: &[pool::AdmissibleIssue]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut ids: Vec<String> = Vec::with_capacity(items.len() + admissible.len());
+    ids.extend(items.iter().map(|i| format!("job:{}", i.job_id)));
+    ids.extend(admissible.iter().map(|a| format!("issue:{}", a.issue_id)));
+    ids.sort_unstable();
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    for id in ids {
+        id.hash(&mut h);
+    }
+    h.finish()
+}
+
+/// Whether the master should hear about this pool now.
+// cm:guard TRUE is the safe answer and every unknown returns it: a master with no recorded nudge is nudged, and changed work is nudged immediately rather than waiting out the period. Only the exact case "same ids, seen recently" is held back, so a mistake here costs a duplicate pass, never a missed one.
+fn nudge_due(prev: Option<(u64, Instant)>, digest: u64, now: Instant) -> bool {
+    match prev {
+        None => true,
+        Some((seen, at)) => seen != digest || now.saturating_duration_since(at) >= NUDGE_REFRESH,
+    }
 }
 
 impl Masters {
@@ -142,6 +178,23 @@ impl Masters {
         if let Some(m) = reg.live.get_mut(project_id) {
             m.last_work = Instant::now();
         }
+    }
+
+    /// Decide whether to nudge this project now, and record having done so.
+    ///
+    /// One call, because a check that did not record would nudge on every
+    /// sweep exactly as before.
+    fn claim_nudge(&self, project_id: &str, digest: u64) -> bool {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        let Some(m) = reg.live.get_mut(project_id) else {
+            return false;
+        };
+        let now = Instant::now();
+        if !nudge_due(m.last_nudge, digest, now) {
+            return false;
+        }
+        m.last_nudge = Some((digest, now));
+        true
     }
 
     /// How long this project has had nothing, or `None` if it has no master.
@@ -353,7 +406,9 @@ async fn sweep(
             continue;
         }
 
-        nudge_master(masters, &runner.project_id, &resolved.slug, &session).await;
+        if masters.claim_nudge(&runner.project_id, work_digest(&items, &admissible)) {
+            nudge_master(masters, &runner.project_id, &resolved.slug, &session).await;
+        }
     }
 
     give_back_lost_runs(
@@ -520,6 +575,7 @@ fn remember(masters: &Arc<Masters>, project_id: &str, session: &master_api::Mast
             session_id: session.session_id.clone(),
             name: session.name.clone(),
             last_work: Instant::now(),
+            last_nudge: None,
         },
     );
 }
@@ -535,7 +591,8 @@ pool, decide, claim what you are confident about, report, and stop."
 }
 
 /// Tell a master there is something to look at.
-// cm:guard nothing gates this on the master looking idle. Residency used to be policed from outside — transcript growth read as liveness, a quiet window before prompting, a ceiling that killed — and every one of those inferred a process state from a pane's byte count (ISS-933 criteria 17 and 18). A wake is coalesced by `WAKE_FLOOR` and carries no work, so an extra one costs a line in a composer.
+// cm:guard nothing gates this on the master looking idle. Residency used to be policed from outside — transcript growth read as liveness, a quiet window before prompting, a ceiling that killed — and every one of those inferred a process state from a pane's byte count (ISS-933 criteria 17 and 18). `claim_nudge` is NOT that gate and must not become it: it reads the POOL's identity, never the pane, so it cannot be wrong about whether the master is alive or working.
+// cm:guard an extra nudge costs a full agent pass, NOT a line in a composer — ~$0.18 measured on forge-vm 2026-09-08, where 1,354 unconditional nudges over 95 minutes bought 0 claims and $245. That is why the caller gates on `claim_nudge`; a new call site that skips it reinstates a spend proportional to sweeps.
 async fn nudge_master(
     masters: &Arc<Masters>,
     project_id: &str,
@@ -1012,5 +1069,120 @@ mod give_back_tests {
             Some(1),
             "the sweep must reconcile what this box holds on EVERY pass; behind a condition, or gone, nothing beats a run session and core reaps every healthy one after ten minutes"
         );
+    }
+
+    fn entry(job_id: &str) -> pool::PoolEntry {
+        serde_json::from_value(serde_json::json!({ "jobId": job_id, "type": "drive" }))
+            .expect("pool entry fixture")
+    }
+
+    fn admiss(issue_id: &str) -> pool::AdmissibleIssue {
+        serde_json::from_value(serde_json::json!({ "issueId": issue_id }))
+            .expect("admissible fixture")
+    }
+
+    #[test]
+    fn a_master_with_no_recorded_nudge_is_nudged() {
+        assert!(nudge_due(None, 7, Instant::now()));
+    }
+
+    // cm:guard the falsifying case: everything else here passes against the unconditional nudge this replaced.
+    #[test]
+    fn the_same_work_twice_in_a_row_is_not_nudged_twice() {
+        let now = Instant::now();
+        assert!(!nudge_due(Some((7, now)), 7, now));
+    }
+
+    #[test]
+    fn changed_work_is_nudged_without_waiting_out_the_period() {
+        let now = Instant::now();
+        assert!(nudge_due(Some((7, now)), 8, now));
+    }
+
+    // cm:guard the ceiling on silence, and the test that has to fail if anyone turns this backoff into a skip. Unchanged work must STILL reach the master on `NUDGE_REFRESH`, because a pass lost to a wedged pane or a limit cleared out of band is otherwise never retried.
+    #[test]
+    fn unchanged_work_is_nudged_again_once_the_period_is_up() {
+        let now = Instant::now();
+        let then = now
+            .checked_sub(NUDGE_REFRESH)
+            .expect("clock older than the refresh window");
+        assert!(nudge_due(Some((7, then)), 7, now));
+    }
+
+    #[test]
+    fn the_digest_does_not_move_when_the_rows_merely_swap_places() {
+        let a = work_digest(&[entry("j1"), entry("j2")], &[admiss("i1"), admiss("i2")]);
+        let b = work_digest(&[entry("j2"), entry("j1")], &[admiss("i2"), admiss("i1")]);
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn the_digest_moves_when_a_row_arrives_or_leaves() {
+        let one = work_digest(&[entry("j1")], &[]);
+        assert_ne!(one, work_digest(&[entry("j1"), entry("j2")], &[]));
+        assert_ne!(one, work_digest(&[], &[]));
+        assert_ne!(one, work_digest(&[], &[admiss("j1")]));
+    }
+
+    // cm:guard identity ONLY. A title or a priority moving is not new work, and a digest that tracked them would nudge on every edit an operator makes in the UI.
+    #[test]
+    fn the_digest_ignores_everything_but_the_ids() {
+        let plain: pool::PoolEntry =
+            serde_json::from_value(serde_json::json!({ "jobId": "j1", "type": "drive" })).unwrap();
+        let dressed: pool::PoolEntry = serde_json::from_value(serde_json::json!({
+            "jobId": "j1", "type": "drive", "title": "renamed", "priority": "critical",
+            "status": "queued"
+        }))
+        .unwrap();
+        assert_eq!(work_digest(&[plain], &[]), work_digest(&[dressed], &[]));
+    }
+
+    #[test]
+    fn claim_nudge_records_so_the_next_sweep_is_held_back() {
+        let masters = Arc::new(Masters::new());
+        let session = master_api::MasterSession {
+            session_id: "s1".into(),
+            name: "forge-master-p1".into(),
+            created: true,
+        };
+        remember(&masters, "p1", &session);
+
+        assert!(
+            masters.claim_nudge("p1", 7),
+            "the first sight of work nudges"
+        );
+        assert!(
+            !masters.claim_nudge("p1", 7),
+            "the same work on the next sweep must not spend another pass"
+        );
+        assert!(masters.claim_nudge("p1", 8), "new work nudges at once");
+    }
+
+    #[test]
+    fn a_project_with_no_master_is_never_nudged() {
+        let masters = Masters::new();
+        assert!(!masters.claim_nudge("nobody", 7));
+    }
+
+    // cm:guard the ratchet on the call SITE, not the helper: `claim_nudge` is worth nothing if a later edit calls `nudge_master` beside it rather than inside it, and that mistake restores a spend proportional to sweeps with every unit test still green.
+    #[test]
+    fn every_nudge_in_the_sweep_is_gated_on_claim_nudge() {
+        let production = THIS_SOURCE.split("#[cfg(test)]").next().unwrap();
+        let sites: Vec<&str> = production
+            .match_indices("nudge_master(")
+            .map(|(i, _)| &production[i.saturating_sub(260)..i])
+            .filter(|before| !before.ends_with("async fn ") && !before.ends_with("fn "))
+            .collect();
+        let calls = sites.len();
+        assert_eq!(
+            calls, 1,
+            "expected exactly one nudge_master call site in production; found {calls}"
+        );
+        for before in sites {
+            assert!(
+                before.contains("claim_nudge("),
+                "a nudge_master call must sit inside a claim_nudge gate — an ungated one spends a full agent pass on every sweep (~$0.18, measured 2026-09-08)"
+            );
+        }
     }
 }

@@ -1728,6 +1728,17 @@
 
 ### Fixed
 
+- **A machine no longer spends an agent pass every 30 seconds to be told the same thing.** The
+  daemon nudged each project's resident master on every sweep whenever anything sat in its pool,
+  and one nudge is one full agent pass. When nothing was claimable — every runner on the box
+  rate-limited, say — that produced a pass a minute per project whose only output was to repeat
+  why it could not act. Measured on one box: 1,354 nudges over 95 minutes, 0 claims, $245. A
+  master is now told when the work in front of it actually changes, identified by job and issue
+  id rather than by titles or priorities that move without the decision moving. Unchanged work
+  still reaches it every five minutes, so a pass lost to a stuck pane or a limit lifted out of
+  band is still retried with nobody watching — the period is a ceiling on silence, not permission
+  to stop.
+
 - **A master is offered your issues again after a run was cancelled.** An issue only reached the
   new event-driven backlog if no job row had *ever* been created for it, so any issue whose earlier
   run was cancelled or failed carried a finished row that hid it for good — and every project that
