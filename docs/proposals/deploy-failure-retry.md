@@ -1,7 +1,8 @@
 # Should a failed deploy retry itself?
 
 Status: **Open decision** on the retry itself · Raised by ISS-854 · Verified against the tree
-2026-08-26 · **Half of option B shipped in ISS-922, 2026-09-06** — see "What ISS-922 settled" below
+2026-08-26 · **Half of option B shipped in ISS-922, 2026-09-06** — see "What ISS-922 settled" below ·
+**ISS-971 added an automatic rollback beside it, 2026-09-08** — see "What ISS-971 changed" below
 
 ISS-854 removed one cause of transient deploy failure by vendoring the two Google fonts the
 `web-v2` build used to download. It deliberately did **not** answer the more general question
@@ -85,6 +86,25 @@ the 90 minutes — the run itself now says it.
 It deliberately added **no retry and no notification destination**. The two costed rows above that
 belong to a notice — choosing a destination, an owner, and a de-duplication rule — are untouched,
 and so is every row costed for A. This file stays open for exactly those.
+
+## What ISS-971 changed underneath this question, and what a human must confirm
+
+ISS-971 (2026-09-08) added a post-deploy **health gate**: a target that declares a `healthUrl` is
+polled after its deploy, and one that never answers healthy inside a bounded window fails the deploy
+and is **rolled back to the previous image automatically**. That is detect-and-recover, and it is a
+different question from this file's — it never re-deploys anything.
+
+Two consequences a human should confirm rather than inherit:
+
+1. **A new failure shape now exists that A's classifier would have to handle.** "Built fine, does not
+   serve" is not a non-zero build exit, and it is now a `failed` run like any other. An automatic
+   re-dispatch that fired on it would re-deploy the build that just proved it cannot serve.
+2. **The recovery path is no longer only manual, for health failures.** The "90 minutes, nobody
+   looking" cost in the table above is bounded for a health-gated target — the previous image is
+   restored without a human. It is unchanged for every other deploy failure, and unchanged for a
+   target that declares no `healthUrl`.
+
+Neither of these decides A or B. The retry question is still open and still a human's.
 
 ## What ISS-854 did settle
 

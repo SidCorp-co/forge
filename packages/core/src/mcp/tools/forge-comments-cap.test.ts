@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { issues } from '../../db/schema.js';
 import { makeFakePrincipal } from '../fake-principal.fixture.js';
 
 /**
@@ -30,11 +31,27 @@ const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy })
 const selectInnerJoin = vi.fn(() => ({ where: selectWhere }));
 const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
 const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
-const selectFrom = vi.fn(() => ({
-  where: selectWhere,
-  innerJoin: selectInnerJoin,
-  leftJoin: selectLeftJoin,
+// cm:guard branch on the TABLE — `from(issues).innerJoin(projects)` is `insertComment`'s stage read (ISS-969) and nothing else in this path, so it answers off its own row; routed through the shared chain it would eat a `selectLimit` the tests below queued for an auth lookup, and every one of them would resolve one link early.
+const stageContextRow: { stage: string; agentConfig: unknown } = {
+  stage: 'open',
+  agentConfig: null,
+};
+const selectStageJoin = vi.fn(() => ({
+  where: () => ({ limit: async () => [{ ...stageContextRow }] }),
 }));
+const selectFrom = vi.fn((table: unknown) =>
+  table === issues
+    ? {
+        where: selectWhere,
+        innerJoin: selectStageJoin,
+        leftJoin: selectLeftJoin,
+      }
+    : {
+        where: selectWhere,
+        innerJoin: selectInnerJoin,
+        leftJoin: selectLeftJoin,
+      },
+);
 const insertReturning = vi.fn();
 const insertValues = vi.fn((_row: Record<string, unknown>) => ({ returning: insertReturning }));
 

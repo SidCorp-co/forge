@@ -15,6 +15,10 @@ import type { CoolifyApplication, CoolifyTargetInput } from "../types";
  * a bound target renders the name, domain and branch@sha Coolify reports for
  * it — a wrong binding is then visible without leaving Forge.
  */
+// cm:guard every fixed column in a target row must be mobile-exempt (`hidden`/`w-full` below `sm`) and the flexible ones need `min-w-0` — a non-shrinking column makes the whole targets fieldset overflow its panel at 375px, measured 315px inside a 218px container on forge-beta (ISS-971)
+const ALIGN_LABEL_COL = "hidden w-40 shrink-0 sm:block";
+const ALIGN_BUTTON_COL = "hidden w-9 shrink-0 sm:block";
+
 export function CoolifyTargetsField({
   projectId,
   environment,
@@ -66,7 +70,9 @@ export function CoolifyTargetsField({
       <p className="fg-body-sm text-muted">
         The Coolify application(s) this project deploys for {environment}. Add
         one row per app — e.g. a separate backend and frontend; they deploy
-        together and the pipeline only completes once all succeed.
+        together and the pipeline only completes once all succeed. Give a
+        target a health URL and Forge reads it after every deploy: one that
+        never answers healthy fails the deploy and restores the previous image.
         {inherited
           ? " Currently inherited from the shared connection — saving stores project-level targets."
           : ""}
@@ -81,8 +87,8 @@ export function CoolifyTargetsField({
         const identity = identityFor(t.resourceUuid);
         return (
           <div key={t.id ?? idx} className="flex flex-col gap-1">
-            <div className="flex items-end gap-2">
-              <div className="w-40 shrink-0">
+            <div className="flex flex-wrap items-end gap-2 sm:flex-nowrap">
+              <div className="w-full shrink-0 sm:w-40">
                 {idx === 0 && (
                   <span className="fg-label mb-1 block text-subtle">Label</span>
                 )}
@@ -92,7 +98,7 @@ export function CoolifyTargetsField({
                   placeholder="Backend"
                 />
               </div>
-              <div className="flex-1">
+              <div className="min-w-0 flex-1">
                 {idx === 0 && (
                   <span className="fg-label mb-1 block text-subtle">
                     Coolify application
@@ -133,6 +139,25 @@ export function CoolifyTargetsField({
                   )
                 }
               />
+            </div>
+            <div className="flex items-end gap-2">
+              <div className={ALIGN_LABEL_COL} aria-hidden />
+              <div className="min-w-0 flex-1">
+                {idx === 0 && (
+                  <span className="fg-label mb-1 block text-subtle">
+                    Health URL (optional)
+                  </span>
+                )}
+                <Input
+                  aria-label={`Health URL for ${t.label || "this target"}`}
+                  value={t.healthUrl ?? ""}
+                  onChange={(e) =>
+                    updateTarget(idx, { healthUrl: e.target.value })
+                  }
+                  placeholder="https://api.example.com/health"
+                />
+              </div>
+              <div className={ALIGN_BUTTON_COL} aria-hidden />
             </div>
             {identity && !identity.found && (
               <Badge tone="red">Coolify does not list this application</Badge>

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ROOT_COMPONENT_NAMES } from '../body/components.js';
 import { issueStatuses } from '../db/schema.js';
 import { ENTRY_CRITERION_KEYS } from '../issues/entry-criteria-keys.js';
 import { BACKLOG_ADMISSIBLE_STATUSES } from './autonomous-mode.js';
@@ -147,6 +148,20 @@ export const stageConfigSchema = z.object({
   systemPrompt: systemPromptOverrideSchema.optional(),
   userPromptPolicy: userPromptPolicySchema.optional(),
   budget: budgetConfigSchema.optional(),
+  /**
+   * ISS-969 — the component a comment body written at this stage must carry.
+   *
+   * Absent is OFF, and absent is where every project starts: `defaultStatesConfig()`
+   * does not name this key, so nothing acquires a mandate by upgrading.
+   */
+  // cm:guard never give this a `.default()` and never add it to `defaultStatesConfig()`. The default IS the safety property: this document is stored per project across the whole fleet, and a value that arrives without an operator typing it refuses comment writes on every tenant project at once. The same reasoning `intakeGate` states for its own absent-means-off.
+  // cm:edge contract -> packages/core/src/body/stage-policy.ts — `resolveStageBodyPolicy` is the only reader, and this object is the only writer; the enum below is `ROOT_COMPONENT_NAMES`, so a component the registry drops becomes a zod refusal naming the legal set rather than a stage nobody can satisfy
+  bodyPolicy: z
+    .object({
+      requireComponent: z.enum(ROOT_COMPONENT_NAMES as unknown as [string, ...string[]]),
+    })
+    .strict()
+    .optional(),
   // cm:why per-state runner pool: unset/empty = whole fleet (pre-pool behaviour), one element = a hard pin, and every other selection rule still applies WITHIN the pool rather than being replaced by it
   // cm:edge contract -> packages/core/src/runners/select.ts — apply the pool INSIDE the candidate query next to rate_limited_until, never as an exclude set: the retry rotation deliberately clears its exclusions when a round wraps, which would evaporate a pool expressed that way
   // cm:guard an all-busy/all-limited pool leaves the job queued — never widen the pool to place it, or the operator loses the guarantee that a stage ran where they pinned it
@@ -239,10 +254,7 @@ export const pipelineConfigSchema = z
       .optional(),
     // cm:why ISS-917 — statuses whose issues a master may SEE but not claim; the shape is `poolBacklogSchema` above and the refusal pairing it with `intakeGate` lives in the `superRefine` at the bottom of this object
     poolBacklog: poolBacklogSchema.optional(),
-    // ISS-108 Phase 1 / ISS-110 Phase 3 — per-stage enable/mode toggle. When
-    // `states[X].enabled === false`, the orchestrator auto-transitions past
-    // `X` (soft-skip) rather than dispatching a job. Cycle/dead-end detection
-    // runs at PATCH time.
+    // cm:why ISS-108/ISS-110 — `states[X].enabled === false` makes the orchestrator auto-transition PAST `X` rather than dispatching a job there, which is not derivable from a boolean called `enabled`; cycle and dead-end detection for the resulting walk runs at PATCH time
     states: statesConfigSchema,
     // cm:why ISS-580 — a resume carries the prior session's whole context, so past a peak the fresh session plus its handoff is cheaper and no less informed; 0 disables the bound, absent means 150000 tokens / 3 reopen cycles (jobs/resume-policy.ts)
     maxResumeTokens: z.number().int().min(0).optional(),

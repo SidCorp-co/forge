@@ -1,5 +1,6 @@
 /**
- * The question park has to reach a human — against real Postgres.
+ * The question park has to reach a human — against real Postgres — and a pause
+ * nobody must answer has to stay out of it.
  *
  * Two halves of one path: the notification row the park writes, and the
  * attention bucket that lists it. Both are asserted on ROWS, because both
@@ -129,10 +130,26 @@ describe('attention · the question park', () => {
     expect(await awaitingInput()).toHaveLength(0);
   });
 
-  it('carries the other two parks through the same predicate', async () => {
+  it('carries the other park that asks a human through the same predicate', async () => {
     await parkIssue({ status: 'waiting', assignee: null, createdBy: ownerId });
+    const rows = await awaitingInput();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.status).toBe('waiting');
+  });
+
+  // cm:guard ISS-970 — the negative case, and the one the unit lane cannot hold: `on_hold` is a pause a person CHOSE, and `cancel` sets it with the `parkIssue: true` default, so a bucket that carries it manufactures one "a human is needed" row per cancelled duplicate run. Measured 2026-09-07: 3 cancels, 3 rows, 0 questions. Widening the predicate back turns this file red before any screen shows the alarm again.
+  it('does not surface a deliberate pause as a question for a human', async () => {
     await parkIssue({ status: 'on_hold', assignee: null, createdBy: ownerId });
-    expect(await awaitingInput()).toHaveLength(2);
+    await parkIssue({ status: 'on_hold', assignee: ownerId, createdBy: otherId });
+    expect(await awaitingInput()).toHaveLength(0);
+  });
+
+  it('still surfaces a real question filed beside a deliberate pause', async () => {
+    await parkIssue({ status: 'on_hold', assignee: null, createdBy: ownerId });
+    await parkIssue({ status: 'needs_info', assignee: null, createdBy: ownerId });
+    const rows = await awaitingInput();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.status).toBe('needs_info');
   });
 
   // cm:why `needsReview` deliberately keeps assignee-only, so a `developed` issue the user filed and nobody owns must NOT appear here — this is the boundary of the change and it regresses silently.

@@ -14,6 +14,12 @@ export interface CoolifyTarget {
   label: string;
   /** Coolify resource (application) UUID to deploy. */
   resourceUuid: string;
+  /**
+   * Absolute URL of this application's own health endpoint. Declared, never
+   * derived: Forge cannot know an arbitrary application's health path.
+   */
+  // cm:edge contract -> packages/core/src/integrations/coolify/health-gate.ts — a target carrying this is post-deploy health-gated and auto-rolled-back; one without it settles on Coolify's build verdict alone, which is the pre-ISS-971 behaviour. Absence is the off switch, so nothing may default it.
+  healthUrl?: string;
 }
 
 export interface CoolifyConfig extends Record<string, unknown> {

@@ -23,6 +23,18 @@
 
 ### Added
 
+- **A deploy that builds but cannot serve is now caught and undone without a human.** Give a Coolify
+  deploy target a health URL in its integration settings and Forge reads that URL after every deploy
+  to it: a grace period, then polling for up to five minutes. Healthy means the app answers `200`
+  with `ok: true` — a connection that is refused counts as unhealthy rather than as no answer, which
+  is what the 2026-09-07 pg-boss crash-loop actually looked like from outside. A target that never
+  goes healthy inside the window fails its deploy, records which deployment failed and on what
+  signal, and is rolled back to the previous image Coolify still lists. The rollback is health-checked
+  too; one that also cannot serve is reported loudly and never rolled back a second time. Targets
+  with no health URL deploy exactly as before, and a build that finishes too close to its own
+  confirmation deadline to be given that grace period is left unproven and said so, rather than
+  failed on one reading of a container that is still starting.
+
 - **Forge now reports the module pairs your issues keep linking that your module hierarchy never
   declares as connected.** `GET /api/projects/:id/modules/drift` compares two edge sets over the
   same nodes — *observed*, a self-join of `issue_labels` scoped to `kind='module'` on both sides,
@@ -44,6 +56,24 @@
   parent read differently from two modules in unrelated subtrees. `knowledge_edges` is deliberately
   not read — it is a free-text triple store with no module convention, and reading it as one would
   invent the second declared-edge store this issue exists to avoid. (ISS-951)
+
+- **A project can require a typed component on comments written at a stage, and read how many
+  already carry one before deciding to.** `pipelineConfig.states[stage].bodyPolicy.requireComponent`
+  names a root component (`forge-outcome`, `forge-review`, …); an agent's comment written at that
+  stage without it is refused with `BODY_COMPONENT_REQUIRED`, naming the component, the stage and
+  what to write. **Off everywhere** — absent from the shipped defaults and from every stored
+  document, so nothing changed for any project until an operator sets it. A person writing prose is
+  never refused, at any stage, under any policy. `GET /api/projects/:id/body-adoption` answers the question that
+  used to need SQL by hand — per stage, what fraction of bodies carry a component over a window —
+  counting what is STORED (`format='html'` plus the root component) rather than a regex over body
+  text, and Project settings → Pipeline shows the figure beside the switch. Two new columns on
+  `comments` make that measurable: `stage`, the issue's status at the moment of the write (grouping
+  by its *current* status would file every agent comment under `closed` and leave `open` reading
+  empty), and `author_agency`, the door's own principal — the gate and the number read the same
+  column, so the fraction always describes the rule that exists. Measured when this shipped: zero
+  comments fleet-wide are agent-authored, because the agent accounts ISS-932 wave 4 introduced are
+  not provisioned yet, so the switch refuses nothing and the number counts nothing until they are.
+
 - **The backlog can be read by module: counts, open and closed, and recent activity.** Tier 2
   shipped the `?module=` filter, which answers "show me the issues in module X"; nothing answered
   "which module is hot" or "what is open against each". The Issues screen has a fourth view,
@@ -1697,6 +1727,61 @@
   set is now 59.
 
 ### Fixed
+
+- **An issue you paused on purpose no longer says a human is needed.** Three statuses used to share
+  one word on the dashboard: `needs_info`, where an agent asked you something; `waiting`, where the
+  work is blocked on a decision or a resource only you can supply; and `on_hold`, where somebody
+  deliberately pressed pause. Only the first two are a question. `on_hold` now reads **Paused** on
+  the board, in the rail and on the issue header, and it no longer appears in the Awaiting-input
+  list on your Attention inbox. This matters more than it sounds: stopping a duplicate pipeline run
+  parks its issue by default, so the inbox grew one "needs a human" row per cancellation and none of
+  them wanted anything — which teaches you to skim past the rows that do. The Blocked tab on the
+  issues list also gained `waiting`, a real question it had been leaving out while carrying pauses,
+  and `waiting` left the Active tab, so no status now sits in two tabs at once. Nothing about what
+  `on_hold` *means* changed, and no status was added: the three surfaces that each kept their own
+  list of "parked" statuses now read one shared map, held together by a test that fails when either
+  side is edited alone. Drawn in `docs/flows/human-routing-attention-claim.html`.
+
+- **A paused issue's own page reads calm now, instead of amber.** The banner at the top of an issue
+  somebody put on hold still offers **Resume**, but it no longer wears the colour this app reserves
+  for something a person has to clear — and it says an operator *can* resume it when the work is
+  wanted again, rather than that one *must*. The banners for the two statuses that really are
+  waiting on you, "Needs a human" and "Waiting", are unchanged.
+
+- **Prose a model wrote is refused before core stores it when it carries a script the model's own
+  input never used.** `memory/extraction.ts` and `memory/consolidation.ts` are the only two places
+  this repo stores LLM-composed text — extracted facts and `knowledge_edges`, consolidated and
+  rewritten memories, and the evidence on a reconcile archive — and all three prompts instruct the
+  model to *preserve the original language*. Nothing checked a character, which is how the Cyrillic
+  for "bypass" reached an otherwise-Vietnamese acceptance criterion on another project (ISS-962).
+  The new `memory/script-guard.ts` answers `foreignScriptChars(rendered, source)`: Latin, Common and
+  Inherited are always storable — that is ASCII, precomposed Vietnamese, digits, punctuation, emoji
+  and the combining marks an NFD spelling decomposes into — and anything else is storable only if
+  that exact character occurs in the source. A failing item is dropped unstored, logged with its
+  offending code points, and counted on the run's new `refused` field, so a drop is visible rather
+  than silent. Extraction computes the allowance from the human signal alone (issue title and
+  comments, never the existing-memories block in the same prompt), because licensing off already-stored
+  model output lets one leaked character license the next; consolidation and reconcile, which only
+  rewrite what is stored, use their whole prompt. Drawn in
+  `docs/flows/knowledge-memory-model-prose.html`. **Core still renders no Vietnamese** — the tracker's
+  prose pipeline and its `.vi-glossary.json` handling are `forge-plugin`'s and are reported there.
+
+- **`pg-boss` is pinned back to 10, because 12 cannot start against the schema this project's
+  databases hold.** The Dependabot majors group (#317) took it from `10.4.2` to `12.30.0`. Every
+  gate passed — 15 conformance checks, 5,825 unit tests, 1,167 integration tests, the build, CI on
+  two PRs — and the deploy that carried it took the staging API down for 40 minutes: `boss.start()`
+  aborts with *"Cannot migrate pg-boss schema from version 24: the oldest supported starting
+  version is 25"*, before the server listens, so the proxy answered `no available server` on every
+  route including `/health`.
+
+  No suite could have caught it: they all build a fresh schema, where pg-boss installs its own
+  tables at whatever version the installed release wants. The failing state — an existing schema at
+  24 — exists only in a deployed environment.
+
+  The other sixteen updates in that group stand. **The price:** the queue is two majors behind and
+  the same bump will be re-proposed and pass the same gates. Adopting 12 needs two API deploys in
+  sequence (11 to move the schema to 25, then 12), which is a decision about a shared environment
+  rather than a diff — `docs/proposals/pg-boss-12-upgrade.md` carries it.
 
 - **A character entity written in an issue or comment body is no longer escaped a second time on
   every save.** The component parser decoded entities in attributes but not in prose, while the

@@ -17,8 +17,7 @@ vi.mock('./indexer.js', () => ({
   indexMemory: (input: unknown, opts: unknown) => indexMemoryMock(input, opts),
 }));
 
-// Generic table-aware query stub: every read chain ends in .limit(); results
-// are keyed off the table reference passed to .from().
+// cm:guard results are keyed off the TABLE REFERENCE passed to `.from()`, and every read chain must end at `.limit()` — a query added to the subject that ends anywhere else resolves to `[]` here rather than failing where the gap is
 type Row = Record<string, unknown>;
 const tableResults = new Map<unknown, Row[]>();
 const insertedValues: Array<{ table: unknown; values: Row }> = [];
@@ -48,6 +47,9 @@ const schema = await import('../db/schema.js');
 const { hasMemoryWorthyContent, parseExtractionOutput, runExtractionForIssue } = await import(
   './extraction.js'
 );
+
+const OBHOD = 'обход';
+const HAN_BEIJING = '北京';
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const ISSUE_ID = '22222222-2222-4222-8222-222222222222';
@@ -148,7 +150,7 @@ describe('runExtractionForIssue', () => {
 
     const result = await runExtractionForIssue(PROJECT_ID, ISSUE_ID);
 
-    expect(result).toEqual({ facts: 1, edges: 1 });
+    expect(result).toEqual({ facts: 1, edges: 1, refused: 0 });
     expect(indexMemoryMock).toHaveBeenCalledWith(
       expect.objectContaining({
         source: 'knowledge',
@@ -177,6 +179,60 @@ describe('runExtractionForIssue', () => {
     const result = await runExtractionForIssue(PROJECT_ID, ISSUE_ID);
     expect(result.edges).toBe(0);
     expect(insertedValues).toHaveLength(0);
+  });
+
+  it('stores no fact carrying a script the issue and its comments never used', async () => {
+    tableResults.set(schema.comments, [
+      { body: 'actually the deploy branch is master, not main — please remember this' },
+    ]);
+    llmResponds(
+      JSON.stringify({
+        facts: [
+          { fact: `deploy branch is master, not main ${OBHOD}`, category: 'correction' },
+          { fact: 'deploy branch is master, not main', category: 'correction' },
+        ],
+        edges: [],
+      }),
+    );
+
+    const result = await runExtractionForIssue(PROJECT_ID, ISSUE_ID);
+
+    expect(result).toEqual({ facts: 1, edges: 0, refused: 1 });
+    expect(indexMemoryMock).toHaveBeenCalledTimes(1);
+    expect(indexMemoryMock.mock.calls[0]?.[0]).toMatchObject({
+      text: 'deploy branch is master, not main',
+    });
+  });
+
+  it('inserts no knowledge edge carrying such a script', async () => {
+    tableResults.set(schema.comments, [{ body: 'actually the deploy branch is master' }]);
+    llmResponds(
+      JSON.stringify({
+        facts: [],
+        edges: [{ subject: 'deploy', predicate: 'uses', object: OBHOD }],
+      }),
+    );
+
+    const result = await runExtractionForIssue(PROJECT_ID, ISSUE_ID);
+
+    expect(result).toEqual({ facts: 0, edges: 0, refused: 1 });
+    expect(insertedValues).toHaveLength(0);
+  });
+
+  it('stores a fact in the script the comments themselves used', async () => {
+    tableResults.set(schema.comments, [
+      { body: `the office is ${HAN_BEIJING} and this is a genuine long-form correction to keep` },
+    ]);
+    llmResponds(
+      JSON.stringify({
+        facts: [{ fact: `the office is ${HAN_BEIJING}`, category: 'convention' }],
+        edges: [],
+      }),
+    );
+
+    const result = await runExtractionForIssue(PROJECT_ID, ISSUE_ID);
+
+    expect(result).toEqual({ facts: 1, edges: 0, refused: 0 });
   });
 
   it('survives a failing LLM', async () => {

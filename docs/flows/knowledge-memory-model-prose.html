@@ -1,0 +1,118 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flow · knowledge-memory-model-prose — how a model's words become a stored memory, and the one hop that refuses them</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .board { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; margin:1rem 0; }
+  .bad { color:var(--bad); font-weight:600; }
+</style>
+<main>
+
+<h1>knowledge-memory-model-prose — how a model's words become a stored memory, and the one hop that refuses them</h1>
+<p class="sub">Three paths in this repo write prose a model composed straight into
+<code>memories</code> and <code>knowledge_edges</code>. This is what each one shows the model, what
+it stores, and where a rendering it invented is dropped instead. Owner:
+<code>packages/core/src/memory/extraction.ts</code>,
+<code>packages/core/src/memory/consolidation.ts</code>,
+<code>packages/core/src/memory/script-guard.ts</code>.
+The <em>human</em> write — a knowledge upsert and its embedding —
+is <a href="knowledge-memory-skills.html">knowledge-memory-skills</a>; nothing on this page touches it.</p>
+
+<h2>The three writers and the one gate</h2>
+<p>Each writer builds a prompt out of rows it has just read, calls <code>callFastModel</code>, and
+stores what comes back. <code>foreignScriptChars(rendered, source)</code> sits between the parse and
+the store: it returns the code points in the model's output whose script the prompt's own source
+never used, and a non-empty answer drops that one item.</p>
+
+<div class="board"><pre class="mermaid">
+flowchart TD
+  J["jobCompleted (review / test / fix)"] --> E1["extraction.ts:runExtractionForIssue<br/>issue title + ≤8 recent comments<br/>+ ≤20 existing memories, for dedup only"]
+  S["sweeper tick"] --> C1["consolidation.ts:runConsolidationForProject<br/>candidate memories + comments<br/>+ status changes + reopens"]
+  T["transition landing merged_at"] --> R1["consolidation.ts:reconcileForReleasedIssue<br/>release text + candidate memories"]
+
+  E1 --> M["callFastModel"]
+  C1 --> M
+  R1 --> M
+  M --> P{"parses as JSON?"}
+  P -- no --> PF["skipped: 'parse-failed'<br/>nothing stored"]
+  P -- yes --> G{"foreignScriptChars(item, source)"}
+
+  G -- "non-empty" --> X["<b>refused</b> — item dropped, never stored<br/>logged with the offending code points<br/>counted on the result's <code>refused</code>"]
+  G -- "empty" --> W["indexMemory / knowledge_edges insert /<br/>runMemoryFeedback(verdict: 'outdated')"]
+  W --> DB[("memories · knowledge_edges")]
+</pre></div>
+
+<h2>What each writer counts as the source, and why the two differ</h2>
+<table>
+<thead><tr><th>Writer</th><th>Guarded output</th><th>Source the allowance is computed from</th></tr></thead>
+<tbody>
+<tr><td><code>runExtractionForIssue</code></td>
+    <td>each fact; each <code>(subject, predicate, object, value)</code> edge</td>
+    <td>the issue title and its comments — <b>not</b> the existing-memories block that shares the prompt</td></tr>
+<tr><td><code>runConsolidationForProject</code></td>
+    <td><code>create[].content</code>, <code>update[].newContent</code></td>
+    <td>the whole prompt, existing memories included</td></tr>
+<tr><td><code>reconcileForReleasedIssue</code></td>
+    <td><code>contradicted[].evidence</code></td>
+    <td>the release text and the candidate memories</td></tr>
+</tbody>
+</table>
+
+<div class="rule">
+<b>Extraction is the narrow one on purpose, and it is the asymmetry to preserve.</b> Extraction is
+where prose <em>enters</em> the store, so it may only license the scripts a human wrote. Let it
+license the existing-memories block as well and one leaked character licenses the next one, and the
+store stops being able to correct itself. Consolidation and reconcile only ever <em>rewrite</em>
+what is already stored, so refusing the scripts of their own inputs would refuse a team's own
+memory the moment it was consolidated. The <code>cm:guard</code> naming this sits on
+<code>extraction.ts:refuseForeignScript</code>.
+</div>
+
+<div class="rule">
+<b>Latin, Common and Inherited are always allowed, and Inherited is the one that is easy to drop.</b>
+Latin covers precomposed Vietnamese (<code>Ạ–ỹ</code> is Latin Extended Additional) and Common covers
+digits, punctuation and emoji — but an <b>NFD</b> spelling of the same Vietnamese word is a base
+letter plus combining marks, which is <code>Script=Inherited</code>. A guard written as a character
+<em>range</em> passes the NFC spelling and refuses the NFD one, which is the same word.
+</div>
+
+<h2>When it goes wrong</h2>
+<table>
+<thead><tr><th>Symptom</th><th>What it is</th></tr></thead>
+<tbody>
+<tr><td>A fact you expected is missing and the log says <em>refused output in a script its input never used</em></td>
+    <td>Working as designed. The model wrote a character no comment on the issue used — the ISS-962
+    defect, where the Cyrillic for "bypass" reached a stored acceptance criterion. The log line
+    carries the offending code points and the first 60 characters.</td></tr>
+<tr><td>A legitimately non-Latin memory is refused at extraction</td>
+    <td>The script was in an existing memory but not in the issue's own comments. Extraction reads
+    the human signal only; consolidation, which does see the memories, will carry it.</td></tr>
+<tr><td><code>refused &gt; 0</code> but the run still reports work done</td>
+    <td>The refusal is per item, not per batch. The clean items of the same response are stored.</td></tr>
+<tr><td>Nothing is refused, ever, on a live project</td>
+    <td>Expected. <code>fastModelConfigured()</code> is false without <code>LITELLM_API_URL</code>,
+    and all three writers return <code>skipped: 'disabled'</code> before any prompt is built.</td></tr>
+</tbody>
+</table>
+
+<div class="rule">
+<b>This gate is not the renderer.</b> Core does not translate anything — the tracker's Vietnamese
+prose is rendered in <code>forge-plugin</code>, before a write reaches this repo. What is here
+refuses a model's own invented script at the point core stores it; choosing the words, and reading a
+project's <code>.vi-glossary.json</code>, belong where the text is produced (ISS-962).
+</div>
+
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script>

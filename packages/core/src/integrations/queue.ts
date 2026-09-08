@@ -2,8 +2,19 @@ import { INTEGRATIONS_QUEUE_NAME } from '../jobs/queue-name.js';
 import { logger } from '../logger.js';
 import { boss } from '../queue/boss.js';
 import { coolifyAdapter } from './coolify/adapter.js';
-import { type CoolifyConfirmJob, runCoolifyConfirm } from './coolify/confirm.js';
+import {
+  applyDeploySettlement,
+  type CoolifyConfirmJob,
+  runCoolifyConfirm,
+} from './coolify/confirm.js';
+import { listCoolifyRollbackImages, runCoolifyRollback } from './coolify/controls.js';
+import {
+  type CoolifyHealthGateJob,
+  probeHealth,
+  runCoolifyHealthGate,
+} from './coolify/health-gate.js';
 import type { CoolifyConfig, CoolifySecrets } from './coolify/types.js';
+import { findDeliveryByRequestId } from './deliveries.js';
 import { buildContextFromBinding, findBindingById, findConnectionById } from './store.js';
 
 export interface CoolifyDispatchJob {
@@ -34,7 +45,11 @@ export async function registerIntegrationsWorker(): Promise<void> {
     async (arg: any) => {
       const entries = Array.isArray(arg) ? arg : [arg];
       for (const entry of entries) {
-        const data = entry?.data as CoolifyDispatchJob | CoolifyConfirmJob | undefined;
+        const data = entry?.data as
+          | CoolifyDispatchJob
+          | CoolifyConfirmJob
+          | CoolifyHealthGateJob
+          | undefined;
         if (!data) continue;
         try {
           if (data.jobKind === 'coolify.dispatch') {
@@ -47,7 +62,14 @@ export async function registerIntegrationsWorker(): Promise<void> {
                 'integrations worker: coolify deploy confirmation settled',
               );
             }
-          } else {
+          } else if (data.jobKind === 'coolify.health-gate') {
+            const outcome = await runCoolifyHealthGate(data, healthGateDeps(data));
+            if (outcome.verdict) {
+              logger.info(
+                { bindingId: data.bindingId, runId: data.runId, ...outcome },
+                'integrations worker: coolify post-deploy health gate resolved',
+              );
+            }
           }
         } catch (err) {
           // cm:guard rethrow — pg-boss's retry policy is the only thing that re-runs this, and the delivery row plus the breaker were already written by the adapter, so swallowing here loses the retry and keeps the failure.
@@ -62,6 +84,32 @@ export async function registerIntegrationsWorker(): Promise<void> {
   )) as string;
   workerId = id;
   logger.info({ workerId, queue: INTEGRATIONS_QUEUE_NAME }, 'integrations worker registered');
+}
+
+/**
+ * The collaborators the health gate calls out to, bound here so the gate
+ * itself stays a decision function a test drives without a queue or a network.
+ */
+function healthGateDeps(data: CoolifyHealthGateJob) {
+  return {
+    probe: (url: string) => probeHealth(url),
+    // cm:guard a gate with no `deliveryId` is watching a ROLLBACK's own build, which holds nothing — settling there would resolve a hold the failed deploy already owns and hand the run a second, contradictory outcome.
+    settle: async (verdict: 'succeeded' | 'failed', detail?: string) => {
+      const deliveryId = data.deliveryId;
+      if (!deliveryId) return;
+      await applyDeploySettlement({ ...data, deliveryId }, verdict, detail);
+    },
+    rollback: async (input: {
+      projectId: string;
+      integrationId: string;
+      resourceUuid: string;
+      commit: string;
+    }) => runCoolifyRollback(input),
+    listImages: async (input: { projectId: string; integrationId: string; resourceUuid: string }) =>
+      listCoolifyRollbackImages(input),
+    findRollbackMarker: async (bindingId: string, requestId: string) =>
+      (await findDeliveryByRequestId(bindingId, requestId)) !== null,
+  };
 }
 
 async function runCoolifyDispatch(data: CoolifyDispatchJob): Promise<void> {
@@ -106,7 +154,8 @@ export async function enqueueCoolifyDispatch(
     retryLimit: opts.retryLimit ?? 5,
     retryBackoff: opts.retryBackoff ?? true,
     retryDelay: opts.retryDelay ?? 30,
-    singletonKey: job.requestId, // pg-boss dedup if same requestId already in-flight
+    // cm:guard the dedup key is the caller's `requestId` — pg-boss DROPS a send whose singletonKey is already in flight, so two deploys that reuse one requestId become one deploy and the second one's caller waits on a hold nothing will settle
+    singletonKey: job.requestId,
   })) as string;
   return id;
 }

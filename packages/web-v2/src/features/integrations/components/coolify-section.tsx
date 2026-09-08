@@ -129,7 +129,12 @@ function EnvironmentPanel({
   const cfg = (existing?.config ?? {}) as ProviderConfig;
   const seedTargets = (): CoolifyTargetInput[] =>
     cfg.targets && cfg.targets.length > 0
-      ? cfg.targets.map((t) => ({ id: t.id, label: t.label, resourceUuid: t.resourceUuid }))
+      ? cfg.targets.map((t) => ({
+          id: t.id,
+          label: t.label,
+          resourceUuid: t.resourceUuid,
+          healthUrl: t.healthUrl ?? "",
+        }))
       : [{ label: "", resourceUuid: "" }];
   const [baseUrl, setBaseUrl] = useState(cfg.baseUrl ?? "");
   const [targets, setTargets] = useState<CoolifyTargetInput[]>(seedTargets);
@@ -165,11 +170,13 @@ function EnvironmentPanel({
   async function handleSave() {
     setError(null);
     setTestResult(null);
+    // cm:guard carry `healthUrl` through — a config PATCH replaces the whole `targets` array, so a save that drops the key silently disarms the post-deploy health gate and its rollback (ISS-971). Empty stays absent: the field's absence is what turns the gate off.
     const cleanTargets = targets
       .map((t) => ({
         ...(t.id ? { id: t.id } : {}),
         label: t.label.trim(),
         resourceUuid: t.resourceUuid.trim(),
+        ...(t.healthUrl?.trim() ? { healthUrl: t.healthUrl.trim() } : {}),
       }))
       .filter((t) => t.label && t.resourceUuid);
     if (cleanTargets.length === 0) {
@@ -178,9 +185,7 @@ function EnvironmentPanel({
     }
     try {
       if (existing) {
-        // `targets` is binding-tier (per project) — always sendable by a project
-        // admin. baseUrl + token are connection-tier (shared) and org-gated, so
-        // an org-locked save must not include them (403).
+        // cm:guard `targets` is binding-tier and always sendable by a project admin; baseUrl and token are connection-tier and org-gated, so an org-locked save must NOT include them or the whole PATCH answers 403 and the targets edit is lost with it
         const config: Record<string, unknown> = { targets: cleanTargets };
         if (!orgLocked && baseUrl.trim()) config.baseUrl = baseUrl.trim();
         await update.mutateAsync({
@@ -240,7 +245,6 @@ function EnvironmentPanel({
           : "Staging — auto-dispatch on release."}
       </p>
 
-      {/* ── Section 1: SHARED CREDENTIAL (connection-tier) ─────────────── */}
       <fieldset className="flex flex-col gap-3 rounded-md border border-subtle bg-sunken/40 p-3">
         <legend className="fg-label px-1 text-subtle">
           Coolify server · shared credential

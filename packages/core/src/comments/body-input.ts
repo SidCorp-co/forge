@@ -10,7 +10,7 @@
 
 import { z } from 'zod';
 import { BODY_FORMATS } from '../body/formats.js';
-import { prepareBodyOrThrow, rethrowBodyInvalid } from '../body/http-error.js';
+import { bodyRefusalHttp, prepareBodyOrThrow, rethrowBodyInvalid } from '../body/http-error.js';
 
 // cm:why one number for EVERY comment body, not a tier per record kind: a typed record (`format:'html'`, root `<forge-*>`) carries one block per acceptance criterion, and a 34-criterion verdict measures ~48,000 chars. A cap that differs by kind cannot be written as the single `maxLength` a client reads out of the tool schema, and a client that must know its tier before it can refuse cannot refuse before it uploads evidence it cannot take back (ISS-958).
 // cm:edge contract -> packages/core/src/mcp/tools/forge-comments.ts — this constant is what `z.toJSONSchema` publishes as `data.body.maxLength`, and that number IS the client-side contract (forge-plugin ISS-456 reads it). Restate the literal at the MCP door instead of importing this and the two drift, which is the state ISS-958 found them in.
@@ -27,4 +27,5 @@ export const commentCreateSchema = z
 
 export const commentBodySchema = z.object({ body: commentBodyField, format: formatField }).strict();
 
-export { prepareBodyOrThrow as prepareCommentBody, rethrowBodyInvalid };
+// cm:guard the comment domain reaches `body/` THROUGH this file and nowhere else. `routes.ts` imported `bodyRefusalHttp` directly for one line and the archmap fan-out gate refused it — this module already exists to be "the mapping from a refusal to a 400, in one place", so the re-export is where that line belongs rather than a widened budget.
+export { bodyRefusalHttp, prepareBodyOrThrow as prepareCommentBody, rethrowBodyInvalid };

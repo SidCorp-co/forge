@@ -6,8 +6,10 @@ attributes and slots, plus a fixed set of plain text tags. Markdown stays for ex
 **Status:** P1 shipped by ISS-898 (2026-09-03) — the registry, the kernel gate, the columns,
 `forge_comments.update`, and the read projection. P2 shipped by ISS-967 (2026-09-07) — the web
 renderer, the fallback card, the composer's insert menu and preview, and description editing.
-P3–P4 are unstarted and unfiled. Decisions 1–9 were locked by the owner on 2026-09-03; a rejected
-option in §7 stays rejected.
+P3 (ISS-968) landed 1 and 2 on 2026-09-07 — readers accept both forms, writers switched — and its
+landing 3 is open, held until `forge-plugin` ISS-728. P4 shipped by ISS-969 (2026-09-07) — the
+per-stage `bodyPolicy` switch and the adoption metric, with no stage mandated anywhere.
+Decisions 1–9 were locked by the owner on 2026-09-03; a rejected option in §7 stays rejected.
 
 ## 1. Why a guide was not enough
 
@@ -166,11 +168,46 @@ RAW body and would have been blinded: web-v2's `deriveCommentKind`, which landin
 | **P1** (ISS-898, shipped) | registry, kernel validate/normalize on write for comments and issue descriptions, the four columns + CHECKs, `forge_comments.update`, `slots`/`text` on read, projection at four sites, tests | `core`, `contracts` |
 | **P2** (ISS-967, shipped) | web renderer (components → design system), fallback card, composer insert menu + preview, description editing on the detail screen. Added `GET /api/body/components` and `POST /api/body/preview`, and `descriptionNodes` / comment `nodes` on the read paths | `web-v2`, `core` |
 | P3 (ISS-968, landings 1-2 shipped) | readers accept both forms → writers switch → regex removed. The `body-components` fact renders the set from the registry, so adding a component reaches every stage prompt with no prompt edit. Landing 3 waits on adoption data and on `forge-plugin` | `prompt/facts`, `web-v2`, `forge-plugin` |
-| P4 | `bodyPolicy` per project and stage (the `RELEASE_RECORD_REQUIRED` mechanism, requiring a component rather than only validating one), adoption metrics per stage | `core`, `web-v2` |
+| **P4** (ISS-969, shipped) | `states[stage].bodyPolicy.requireComponent` — off everywhere, refused by `BODY_COMPONENT_REQUIRED` naming the component and the stage when a project turns it on. `comments.stage` and `comments.author_agency` record the issue's status and the door's own principal at the write, `GET /api/projects/:id/body-adoption` counts what is stored per stage, and the Pipeline settings tab shows the number beside the switch. No stage is mandated anywhere | `core`, `web-v2` |
 
 The mandate ladder is separate from the phases and deliberately lags them: syntax refusal is on
 from day one (P1), but *requiring* a component at a stage waits for two weeks of adoption data
 (P4). A human writing plain prose is valid at every level.
+
+**P4 built the switch and the number; it raised nothing.** `bodyPolicy` is absent from
+`defaultStatesConfig()` and from every project's stored document, including forge-dev's, so no
+comment write anywhere changed behaviour. Each mandate is now its own decision, taken against that
+stage's own figure and recorded beside the change that raises it. Two weeks is the floor.
+
+**The number at the moment the switch shipped**, measured 2026-09-08 02:29Z on the forge-beta
+read-only replica over the preceding 14 days:
+
+| Population | Comments | Carrying a component |
+|---|---|---|
+| all comments, fleet-wide | 13,564 | 7 |
+| `author_agency = 'agent'` — the population `bodyPolicy` applies to | **0** | **0** |
+
+**Zero is the correct reading, and it is a data-migration state rather than a defect.** `agency`
+comes from the token OWNER's `users.kind` (ISS-932 wave 4, `middleware/require-pat.ts`), and every
+one of the 22 users on the deployment is still `kind = 'human'` — the agent accounts that axis
+introduced have not been provisioned. Until they are, no comment anywhere is agent-authored by the
+definition the gate and the metric share, so the mandate refuses nothing and the number counts
+nothing. Both are correct; neither is useful yet. **That is the condition to re-measure against
+before any stage is raised**, and it is why the two-week floor starts when agent accounts land, not
+when this shipped.
+
+**The signal this phase nearly built on, and why it did not.** The first draft keyed both the gate
+and the metric on `author_device_id IS NOT NULL`, on the strength of that column's own ISS-519
+comment calling it "the authoritative *this was posted by an agent* signal". Measured on the same
+replica, that read 1,042 agent comments over 14 days and would have looked like a working
+denominator. It is no longer that column: ISS-932 wave 4 made it **the box a credential was issued
+to**, and all 6 live `job:` tokens carry `device_id = NULL`. A mandate keyed on it would have fired
+for almost nobody while its adoption number read a confident zero — a wrong answer indistinguishable
+from a right one, which is exactly the failure this phase exists to end. The gate and the metric
+both key on `comments.author_agency` instead, written at the write from the door's own principal.
+
+**A person is never refused, and never counted.** Both halves follow from one column, so the
+fraction always describes the rule that exists rather than a neighbouring one.
 
 ## Honest costs
 

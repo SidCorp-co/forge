@@ -20,6 +20,7 @@ import { formatApiError, formatPipelineConfigError } from "@/lib/api/error";
 import { useProjectRunners } from "@/features/runners/hooks";
 import { isFeatureOff, usePipelineConfig, useUpdatePipelineConfig } from "../hooks";
 import { McpServersSection } from "./mcp-servers-section";
+import { BodyPolicySection } from "./body-policy-section";
 import { IntakeGateSection } from "./intake-gate-section";
 import { PoolBacklogSection } from "./pool-backlog-section";
 import { KnowledgePromotionSection } from "./knowledge-promotion-section";
@@ -230,6 +231,8 @@ export function PipelineTab({
         <IntakeGateSection projectId={projectId} config={server} canEdit={canEdit} />
 
         <PoolBacklogSection projectId={projectId} config={server} canEdit={canEdit} />
+
+        <BodyPolicySection projectId={projectId} config={server} canEdit={canEdit} />
         <KnowledgePromotionSection projectId={projectId} config={server} canEdit={canEdit} />
 
         <AgentConfigSection projectId={projectId} canEdit={canEdit} />

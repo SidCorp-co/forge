@@ -23,8 +23,15 @@ const coolifyTargetSchema = z
     id: z.string().min(1).max(64).optional(),
     label: z.string().min(1).max(100),
     resourceUuid: z.string().min(1).max(200),
+    healthUrl: z.string().url().max(500).optional(),
   })
-  .transform((t) => ({ id: t.id ?? randomUUID(), label: t.label, resourceUuid: t.resourceUuid }));
+  // cm:guard never default `healthUrl` — an absent one is the operator declaring NO post-deploy health gate for this target, and a derived default would arm automatic rollback on every application whose health path Forge guessed wrong (ISS-971)
+  .transform((t) => ({
+    id: t.id ?? randomUUID(),
+    label: t.label,
+    resourceUuid: t.resourceUuid,
+    ...(t.healthUrl ? { healthUrl: t.healthUrl } : {}),
+  }));
 
 const releaseVerifyProbeSchema = z.object({
   url: z.string().url().max(500),
@@ -88,7 +95,24 @@ const coolifyRollbackSchema = z
 const coolifyConfigSchema = z.object({
   baseUrl: z.string().url().max(500),
   // cm:why several targets under one binding because a split BE/FE deploy is two separate Coolify applications sharing one project's credential and release gate
-  targets: z.array(coolifyTargetSchema).min(1).max(20),
+  // cm:guard labels are UNIQUE within a binding, and the refusal is here because nothing downstream can recover from a duplicate: a `coolify.confirm` job carries only `targetLabel`, so two targets sharing one makes the post-deploy health gate read the first match's health URL and roll back that application instead of the one that failed (ISS-971)
+  targets: z
+    .array(coolifyTargetSchema)
+    .min(1)
+    .max(20)
+    .superRefine((targets, ctx) => {
+      const seen = new Set<string>();
+      for (const t of targets) {
+        if (seen.has(t.label)) {
+          ctx.addIssue({
+            code: 'custom',
+            message: `two deploy targets are both labelled "${t.label}" — a label names one application and must be unique within this binding`,
+          });
+          return;
+        }
+        seen.add(t.label);
+      }
+    }),
   ...releaseChannelFields,
   rollback: coolifyRollbackSchema,
 });
@@ -155,12 +179,8 @@ const postmanSecretsSchema = z.object({
   apiKey: z.string().min(8).max(2000),
 });
 
-// ISS-387 — Epodsystem provider. One store per project; staging↔theme draft,
-// prod↔theme main. Config is the non-secret store context; the `crmk_` API key
-// is the only secret and is vault-encrypted like coolify/postman. The endpoint
-// is NOT user config — it is fixed platform config (EPODSYSTEM_ENDPOINT env).
-// Store identity fields (slug/name/theme ids) are filled by the healthcheck, so
-// every config field is optional on input — the operator only supplies the key.
+// cm:guard the endpoint is NOT a config key here and must not become one — it is platform config read from `EPODSYSTEM_ENDPOINT`, so a field for it would let one project point the integration at another host (ISS-387)
+// cm:guard every field is optional on input BECAUSE the healthcheck fills the store identity (slug, name, theme ids) — requiring any of them would make the operator transcribe what Forge is about to discover, and staging binds the draft theme against prod's main
 const epodsystemConfigBase = z.object({
   storeSlug: z.string().min(1).max(200).optional(),
   storeName: z.string().min(1).max(200).optional(),
@@ -299,8 +319,7 @@ export const createSchema = z.discriminatedUnion('provider', [
   }),
 ]);
 
-// PATCH carries no provider, so config/secrets are validated loosely here and
-// re-validated against the EXISTING binding's provider inside the handler.
+// cm:guard this shape is loose ON PURPOSE — a PATCH carries no provider, so `config`/`secrets` are re-validated against the EXISTING binding's provider inside the handler; tightening it here would validate against a provider nobody named
 export const updateSchema = z.object({
   config: z.record(z.string(), z.unknown()).optional(),
   secrets: z.record(z.string(), z.unknown()).optional(),

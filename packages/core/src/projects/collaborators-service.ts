@@ -38,7 +38,7 @@ export async function listCollaborators(
   if (candidateIds.length === 0) return { users: [], total: 0 };
 
   const searchClause = q.search
-    ? ilike(users.email, `${q.search.replace(/[%_]/g, '\\$&')}%`)
+    ? ilike(users.email, `${q.search.replace(/[\\%_]/g, '\\$&')}%`)
     : undefined;
   const whereClause = searchClause
     ? and(inArray(users.id, candidateIds), searchClause)
