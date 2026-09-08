@@ -357,6 +357,9 @@ async fn sweep(
     }
 
     give_back_lost_runs(
+        crate::runner::inflight::boot_identity()
+            .unwrap_or_default()
+            .as_str(),
         &PaneMasters { masters },
         &CoreRunState { client },
         &CoreRunState { client },
@@ -371,6 +374,7 @@ async fn sweep(
 // cm:guard runs AFTER the per-project loop, and the order is the assertion. `ensure_master` re-registers every live master into `Masters` on each pass, and `PaneMasters` reads that map for the pane NAME — placed before the loop, a daemon restart would meet an empty map and read every live run on the box as orphaned (ISS-933 criterion 16).
 // cm:guard the beat rides in this same call and is not separable: core reaps a run session silent for ten minutes, so a sweep that reconciled without beating would take back every healthy run on the box (ISS-933 criteria 16 and 25a).
 async fn give_back_lost_runs(
+    boot_id: &str,
     live: &dyn recovery::MasterLiveness,
     sessions: &dyn crate::runner::close_loop::SessionReader,
     leases: &dyn crate::runner::close_loop::LeaseKeeper,
@@ -378,12 +382,12 @@ async fn give_back_lost_runs(
     ledger: &mut Option<Ledger>,
 ) {
     let Some(led) = ledger.as_mut() else { return };
-    // cm:guard no boot id means no reconcile, and that refusal is the safe direction. The boot is what separates "the master died within this boot" from "everything recorded before a reboot belongs to a stranger"; guessing one would close the loop over live runs on a box that simply cannot report its own boot (ISS-933 criterion 16).
-    let Some(boot_id) = crate::runner::inflight::boot_identity() else {
+    // cm:guard an unreadable boot id means NO reconcile, and that refusal is the safe direction. The boot is what separates "the master died within this boot" from "everything recorded before a reboot belongs to a stranger"; an empty one matches nothing recorded, so every live run on the box would read as orphaned and lose its worktree (ISS-933 criterion 16). Windows is not hypothetical here: `boot_identity` answers `None` there.
+    if boot_id.is_empty() {
         tracing::warn!("[master] this box reports no boot id — leaving unclosed runs alone");
         return;
-    };
-    match recovery::reconcile(led, &boot_id, live, sessions, leases, beat).await {
+    }
+    match recovery::reconcile(led, boot_id, live, sessions, leases, beat).await {
         Ok(done) => {
             for r in done.iter().filter(|r| !r.state.is_closed()) {
                 // cm:guard say WHICH marks are missing, never "partially closed". A run holding two of three leases and one holding none are different operator problems, and a line that does not separate them is the report this whole loop exists to replace.
@@ -882,29 +886,30 @@ mod give_back_tests {
         }
     }
 
-    fn a_ledger_holding_one_run() -> (Ledger, String) {
+    const BOOT: &str = "boot-under-test";
+
+    fn a_ledger_holding_one_run() -> Ledger {
         let mut led = Ledger::open_in_memory().unwrap();
-        let boot = crate::runner::inflight::boot_identity().unwrap_or_default();
         led.create_run_group(NewRun {
             run_id: "run-1".into(),
             master_session_id: "master-1".into(),
             worktree_path: "/nonexistent/wt".into(),
-            boot_id: boot.clone(),
+            boot_id: BOOT.into(),
             issue_keys: vec!["ISS-1".into(), "ISS-2".into()],
         })
         .unwrap();
         led.attach_session("run-1", "core-sess-1").unwrap();
-        (led, boot)
+        led
     }
 
     // cm:guard the discriminating assertion is the BEAT, not that a run was closed. Core reaps a run session silent for ten minutes, so a sweep that reconciled without beating would take every healthy run on this box back after ten minutes — a test that only watched the closing half would go green on exactly that build (ISS-933 criteria 16 and 25a).
     #[tokio::test]
     async fn a_sweep_beats_the_runs_this_box_still_holds() {
-        let (led, _) = a_ledger_holding_one_run();
-        let mut ledger = Some(led);
+        let mut ledger = Some(a_ledger_holding_one_run());
         let beats = Beats::default();
 
         give_back_lost_runs(
+            BOOT,
             &Alive(true),
             &Terminal(false),
             &Leases::default(),
@@ -922,12 +927,19 @@ mod give_back_tests {
 
     #[tokio::test]
     async fn a_dead_master_leaves_its_leases_returned_and_no_beat_sent() {
-        let (led, _) = a_ledger_holding_one_run();
-        let mut ledger = Some(led);
+        let mut ledger = Some(a_ledger_holding_one_run());
         let beats = Beats::default();
         let leases = Leases::default();
 
-        give_back_lost_runs(&Alive(false), &Terminal(true), &leases, &beats, &mut ledger).await;
+        give_back_lost_runs(
+            BOOT,
+            &Alive(false),
+            &Terminal(true),
+            &leases,
+            &beats,
+            &mut ledger,
+        )
+        .await;
 
         assert!(
             beats.0.lock().unwrap().is_empty(),
@@ -939,6 +951,29 @@ mod give_back_tests {
             returned,
             ["ISS-1", "ISS-2"],
             "every issue of the group comes back, per issue — a run carrying two that returned one is not closed"
+        );
+    }
+
+    // cm:guard the branch Windows actually took: `inflight::boot_identity` answers `None` there, and `unwrap_or_default` hands this an empty string. An empty boot matches NO recorded run, so a build without this refusal reads every live run on the box as orphaned and takes its worktree — the two tests above went red on CI's windows-latest before this branch existed.
+    #[tokio::test]
+    async fn a_box_that_cannot_name_its_boot_reconciles_nothing() {
+        let mut ledger = Some(a_ledger_holding_one_run());
+        let beats = Beats::default();
+        let leases = Leases::default();
+
+        give_back_lost_runs(
+            "",
+            &Alive(false),
+            &Terminal(true),
+            &leases,
+            &beats,
+            &mut ledger,
+        )
+        .await;
+
+        assert!(
+            leases.0.lock().unwrap().is_empty() && beats.0.lock().unwrap().is_empty(),
+            "an unreadable boot id must leave every run alone — an empty one matches nothing recorded, so reconciling on it gives back the leases of runs that are still live"
         );
     }
 
