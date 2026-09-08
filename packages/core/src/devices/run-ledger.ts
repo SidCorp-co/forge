@@ -30,8 +30,16 @@ export interface RunLedgerEntry {
   work: string;
   blockerKind: string | null;
   waitingOn: string | null;
+  /** Epoch SECONDS, which is the unit the box's ledger stamps. */
+  // cm:guard the unit is in the NAME because it has to be: the box has no date library and stamps `as_secs()`, so this crosses the wire as a bare number. A field called `sessionTerminalAt` carrying seconds is the shape that gets read as milliseconds and dated to 1970 — and a mark 56 years old reads as a mark, so nothing would look wrong (ISS-964 criterion 52).
+  sessionTerminalAtEpochS: number | null;
+  worktreeGoneAtEpochS: number | null;
   issues: RunLedgerIssue[];
 }
+
+// cm:guard the ONE converter, and it is here rather than at each call site so the unit is asserted once. A zero is a real stamp and must not be read as absent, so the check is `== null` and never falsy.
+const fromEpochSeconds = (s: number | null | undefined): Date | null =>
+  s == null ? null : new Date(s * 1000);
 
 /**
  * Replace everything core holds for one device with what that device just said.
@@ -89,6 +97,8 @@ export async function applyRunLedgerSnapshot(args: {
         work: e.work,
         blockerKind: e.blockerKind,
         waitingOn: e.waitingOn,
+        sessionTerminalAt: fromEpochSeconds(e.sessionTerminalAtEpochS),
+        worktreeGoneAt: fromEpochSeconds(e.worktreeGoneAtEpochS),
         issues: e.issues,
         observedAt,
       };
@@ -104,7 +114,11 @@ export async function applyRunLedgerSnapshot(args: {
   logger.debug({ deviceId: args.deviceId, runs: entries.length }, 'run-ledger: snapshot applied');
 }
 
-export interface ProjectRunSessionRow extends RunLedgerEntry {
+export interface ProjectRunSessionRow
+  extends Omit<RunLedgerEntry, 'sessionTerminalAtEpochS' | 'worktreeGoneAtEpochS'> {
+  /** ISO, because this half is read by a browser rather than written by a box. */
+  sessionTerminalAt: string | null;
+  worktreeGoneAt: string | null;
   deviceId: string;
   deviceName: string | null;
   observedAt: string;
@@ -131,6 +145,8 @@ export async function readProjectRunSessions(projectId: string): Promise<Project
       work: deviceRunLedger.work,
       blockerKind: deviceRunLedger.blockerKind,
       waitingOn: deviceRunLedger.waitingOn,
+      sessionTerminalAt: deviceRunLedger.sessionTerminalAt,
+      worktreeGoneAt: deviceRunLedger.worktreeGoneAt,
       issues: deviceRunLedger.issues,
       observedAt: deviceRunLedger.observedAt,
       deviceName: devices.name,
@@ -153,5 +169,8 @@ export async function readProjectRunSessions(projectId: string): Promise<Project
     issues: (r.issues ?? []) as RunLedgerIssue[],
     observedAt: new Date(r.observedAt).toISOString(),
     lastActivityAt: r.lastActivityAt ? new Date(r.lastActivityAt).toISOString() : null,
+    // cm:guard each mark is `null` when unset and never omitted: a reader deciding whether a diff is still recoverable has to tell "this has not happened" from "the box never reported it", and an absent key reads as the second (ISS-964 criterion 52).
+    sessionTerminalAt: r.sessionTerminalAt ? new Date(r.sessionTerminalAt).toISOString() : null,
+    worktreeGoneAt: r.worktreeGoneAt ? new Date(r.worktreeGoneAt).toISOString() : null,
   }));
 }

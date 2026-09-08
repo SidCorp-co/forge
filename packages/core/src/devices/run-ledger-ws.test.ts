@@ -64,6 +64,8 @@ describe('runner:sessions', () => {
           work: 'runnable',
           blockerKind: null,
           waitingOn: null,
+          sessionTerminalAtEpochS: null,
+          worktreeGoneAtEpochS: null,
           issues: [{ issueKey: 'ISS-934', leaseReturned: false }],
         },
       ],

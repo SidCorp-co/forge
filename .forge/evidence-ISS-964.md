@@ -487,3 +487,44 @@ pointing at it.
   and 34 forbid together; a type wrongly left out of this one merely keeps a clock it does not need.
   It lives in `session-kinds.ts` under the existing `cm:edge lockstep` to `master-session.ts`,
   because `reapExpiredParks` reasons from the same premise and an inline copy would drift from it.
+
+## S11a — the read surface could not carry criterion 52
+
+The UI half cannot render three marks the API does not serve. `device_run_ledger` mirrored
+`issues[].leaseReturned` and neither of the other two, so a screen built on that shape could show one
+flag and would have to infer the rest — which is the single `closed` flag criterion 52 exists to
+refuse. `snapshot` publishes UNCLOSED runs only, so the window it covers is exactly the one where the
+three disagree: a session that reached terminal with its worktree still on disk is a diff somebody
+can still recover.
+
+| # | Criterion | Test | RED (quoted) | Commit |
+|---|---|---|---|---|
+| 52 | the read surface carries each mark separately | `run-ledger-read-e2e` — `carries each mark separately` | `expected undefined to be '2026-09-09T10:00:00.000Z'` — the field did not exist | S11a |
+| 52 | an unset mark is `null`, not absent | same test | absent is what a field the box never sent looks like, and a reader deciding whether a diff is recoverable needs the two apart | S11a |
+| 52 | the box reports each mark on its own | `session_ledger::a_half_closed_run_reports_each_mark_on_its_own` | mutation (both fields fed from `session_terminal_at.or(worktree_gone_at)` — one flag wearing two names): `the worktree is still there, and none is what says the diff is recoverable` | S11a |
+| 52 | the wire NAMES its unit | `session_ledger::the_marks_name_their_unit_on_the_wire` | mutation (`#[serde(rename = "sessionTerminalAt")]`): ``missing `sessionTerminalAtEpochS` in {…"sessionTerminalAt":1788894247…}`` | S11a |
+
+**The unit is in the field name, and that is not cosmetic.** The box has no date library — `now()` in
+`ledger.rs` is `as_secs()` — so the marks cross the wire as bare numbers. A field called
+`sessionTerminalAt` carrying seconds is read as milliseconds and dated to 1970, and **a mark 56 years
+old still reads as a mark**: nothing would look wrong. So both sides spell `…EpochS`, core converts in
+one place (`fromEpochSeconds`, checked `== null` so a zero stamp is not read as absent), and the READ
+half serves ISO because a browser reads it.
+
+Considered and rejected: a `marks` jsonb blob to avoid the migration. Nothing filters on these two
+today, but "session terminal while the worktree is not" is precisely the orphan-hygiene question this
+repo's cascade invariants are about, and every other scalar on that table is a column. Migration
+`0226`, `when` = `max(previous) + 86400000` per the journal invariant, `migrations-journal.test.ts`
+green.
+
+### Priced
+
+- **A second reason for core-before-runner, and it is not the same failure as c27's.** The snapshot
+  schema is `.strict()` — there is a test for that — so an OLD core rejects a NEW runner's snapshot
+  WHOLESALE. Deploying in the stated order has no window; a rollback of core under a running new
+  runner empties that box's read surface until core returns. It is visible rather than silent (the
+  list goes empty, no run is harmed, nothing is lost on the box) and it self-heals, but it belongs in
+  c27a's rollback procedure rather than being discovered during one.
+- **`run-ledger-ws.test.ts` asserts the mapped entry shape field-by-field**, so it broke on this
+  change and was updated. That is the lockstep working: the wire shape has exactly one test that
+  fails when a field is added silently.

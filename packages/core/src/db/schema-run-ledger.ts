@@ -47,6 +47,9 @@ export const deviceRunLedger = pgTable(
     work: text('work').notNull(),
     blockerKind: text('blocker_kind'),
     waitingOn: text('waiting_on'),
+    // cm:guard two columns and NOT one `closed` flag, which is criterion 52's whole point: a run whose session reached terminal while its worktree is still on disk is recoverable, and one where both are done is not. Collapsed into a single boolean the two are indistinguishable and an operator cannot tell whether a diff is still there. The third mark of the three is per-issue and lives in `issues`, because a run over three issues can have returned one lease and not the others.
+    sessionTerminalAt: timestamp('session_terminal_at', { withTimezone: true }),
+    worktreeGoneAt: timestamp('worktree_gone_at', { withTimezone: true }),
     issues: jsonb('issues').$type<Array<{ issueKey: string; leaseReturned: boolean }>>().notNull(),
     observedAt: timestamp('observed_at', { withTimezone: true }).notNull().defaultNow(),
   },

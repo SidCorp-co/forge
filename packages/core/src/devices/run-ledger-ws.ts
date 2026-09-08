@@ -26,6 +26,9 @@ const runSchema = z
     work: z.enum(['runnable', 'blocked', 'done']),
     blockerKind: z.enum(['machine', 'master_or_peer', 'human', 'nobody']).nullish(),
     waitingOn: z.string().max(1024).nullish(),
+    // cm:guard EPOCH SECONDS, and non-negative rather than positive: zero is a legal stamp from a box whose clock has not been set, and `positive()` would drop the whole snapshot for it — one unset clock taking every other run on that box down with it.
+    sessionTerminalAtEpochS: z.number().int().nonnegative().nullish(),
+    worktreeGoneAtEpochS: z.number().int().nonnegative().nullish(),
     issues: z
       .array(z.object({ issueKey: z.string().min(1).max(64), leaseReturned: z.boolean() }).strict())
       .max(64),
@@ -68,6 +71,8 @@ export async function handleRunnerSessions(ws: LedgerWs, msg: unknown): Promise<
         incarnation: r.incarnation,
         work: r.work,
         blockerKind: r.blockerKind ?? null,
+        sessionTerminalAtEpochS: r.sessionTerminalAtEpochS ?? null,
+        worktreeGoneAtEpochS: r.worktreeGoneAtEpochS ?? null,
         waitingOn: r.waitingOn ?? null,
         issues: r.issues,
       })),
