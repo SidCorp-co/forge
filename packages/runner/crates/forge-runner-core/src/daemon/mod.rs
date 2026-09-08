@@ -793,4 +793,14 @@ mod tests {
         let _ = drain_to_idle(&inflight, "test", || std::future::ready(0)).await;
         assert!(started.elapsed().as_secs() <= DRAIN_TIMEOUT_SECS + DRAIN_POLL_SECS);
     }
+
+    // cm:guard measured against the FRESHNESS THIS SURFACE PROMISES (30s), not against itself. A reader off the box has no other clock, so lengthening the period past that makes a live run look abandoned (ISS-934 criterion 3).
+    #[test]
+    fn the_registry_is_republished_well_inside_the_freshness_this_surface_promises() {
+        assert!(
+            SESSION_LEDGER_INTERVAL <= std::time::Duration::from_secs(30),
+            "a box must speak at least every 30s; this one waits {:?}",
+            SESSION_LEDGER_INTERVAL
+        );
+    }
 }

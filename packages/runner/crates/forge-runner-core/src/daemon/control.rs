@@ -678,4 +678,32 @@ mod tests {
         }
         assert!(!is_usable_branch_name(&"x".repeat(61)));
     }
+
+    // cm:guard the CLI sends camelCase and the enum's `rename_all` renames VARIANTS, not fields — a `sessionId` that fails to decode does not fail the frame, it silently arrives as `None` and the run is recorded parentless (ISS-934 criterion 1).
+    #[test]
+    fn a_run_open_carries_the_master_session_id_the_cli_sent() {
+        let line = r#"{"op":"run_open","projectId":"p1","issueKeys":["ISS-934"],"agent":"grp","sessionId":"master-7"}"#;
+        match serde_json::from_str::<Request>(line).expect("the CLI's own shape must decode") {
+            Request::RunOpen {
+                session_id,
+                project_id,
+                ..
+            } => {
+                assert_eq!(session_id.as_deref(), Some("master-7"));
+                assert_eq!(project_id, "p1");
+            }
+            other => panic!("decoded as {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_run_open_from_an_older_cli_still_decodes_with_no_parent() {
+        let line = r#"{"op":"run_open","projectId":"p1","issueKeys":["ISS-934"],"agent":"grp"}"#;
+        match serde_json::from_str::<Request>(line)
+            .expect("a runner one release behind must still open runs")
+        {
+            Request::RunOpen { session_id, .. } => assert_eq!(session_id, None),
+            other => panic!("decoded as {other:?}"),
+        }
+    }
 }
