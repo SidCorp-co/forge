@@ -9,10 +9,12 @@
 //! - `skills`         — device skill sync: manifest/content pull + install report (ISS-278)
 //! - `agent_sessions` — GET/PATCH `/api/agent-sessions/:id` for interactive chat (ISS-321)
 //! - `pool`           — `/api/devices/me/pool|load`: what work exists, taking it, box load
+//! - `git_credential` — POST `/api/devices/me/git-credential`: one git ask, one token
 
 pub mod agent_sessions;
 pub mod events;
 pub mod frames;
+pub mod git_credential;
 pub mod heartbeat;
 pub mod inbox;
 pub mod lifecycle;

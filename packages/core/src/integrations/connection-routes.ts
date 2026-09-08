@@ -18,6 +18,8 @@ import { projects } from '../db/schema.js';
 import { loadOrgRole, orgRoleAtLeast } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { githubInboundSecret, syncRepoUrlFromGitHubBinding } from './github/bind-effects.js';
+import type { GitHubConfig } from './github/types.js';
 import { raceWithTimeout } from './probe.js';
 import {
   applySecretsPatch,
@@ -194,8 +196,10 @@ integrationConnectionsRoutes.post(
       bindingConfig = splitProviderConfig(provider, parsed.data as Record<string, unknown>).binding;
     }
 
-    // Auto-mint a per-binding HMAC secret for inbound webhook verification.
-    const integrationSecret = `whsec_${randomBytes(24).toString('hex')}`;
+    // cm:why minted per binding, except where the provider signs with a secret of its own — see `githubInboundSecret`
+    const integrationSecret =
+      (provider === 'github' ? githubInboundSecret(connection) : null) ??
+      `whsec_${randomBytes(24).toString('hex')}`;
     let binding: Awaited<ReturnType<typeof createBinding>>;
     try {
       binding = await createBinding({
@@ -212,11 +216,22 @@ integrationConnectionsRoutes.post(
       if (isUniqueViolation(err)) throw alreadyExists();
       throw err;
     }
+    const repoUrl =
+      provider === 'github'
+        ? await syncRepoUrlFromGitHubBinding({
+            projectId: body.projectId,
+            environment: body.environment,
+            config: bindingConfig as GitHubConfig,
+          })
+        : { kind: 'unchanged' as const };
     reloadRocketChatIfNeeded(provider, id);
     // Re-probe on bind so the target project starts from current health rather
     // than whatever the connection last recorded (ISS-429).
     return c.json(
-      await buildCreatedBindingResponse({ binding, connection }, integrationSecret),
+      {
+        ...(await buildCreatedBindingResponse({ binding, connection }, integrationSecret)),
+        repoUrl,
+      },
       201,
     );
   },

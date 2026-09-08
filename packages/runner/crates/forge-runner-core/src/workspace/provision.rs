@@ -96,6 +96,18 @@ async fn process_one(client: &CoreClient, cfg: &Config, p: &Provision) {
         None => None,
     };
 
+    // 2b. GitHub App credential (optional). Scoped to the remote's host.
+    // cm:guard both halves must hold before the helper is attached — core's say-so AND an https remote. Attaching it to an ssh remote is inert but misleading, and attaching it without core's say-so puts a helper on every https clone that will refuse every ask.
+    let cred_host = if p.github_app_credential {
+        p.repo_url.as_deref().and_then(git_cred::https_host)
+    } else {
+        None
+    };
+    let git_cfg = cred_host
+        .as_deref()
+        .map(git_cred::credential_helper_git_args)
+        .unwrap_or_default();
+
     // 3. Clone, or recognise a deliberately repo-less workspace.
     match classify_workspace(&repo_path, p.repo_url.as_deref()) {
         WorkspaceMode::AlreadyRepo => {}
@@ -154,6 +166,7 @@ async fn process_one(client: &CoreClient, cfg: &Config, p: &Provision) {
                 repo_url,
                 &repo_path,
                 ssh_cmd.as_deref(),
+                &git_cfg,
                 p.branch.as_deref(),
             ) {
                 report(client, &p.runner_id, "needs_manual_setup", Some(&detail)).await;
@@ -174,6 +187,7 @@ async fn process_one(client: &CoreClient, cfg: &Config, p: &Provision) {
                 repo_url,
                 &repo_path,
                 ssh_cmd.as_deref(),
+                &git_cfg,
                 p.branch.as_deref(),
             ) {
                 // cm:why an unfinishable clone is manual-setup, not `failed` — the operator can clone it by hand and re-assign, which a hard failure would not invite
@@ -187,6 +201,9 @@ async fn process_one(client: &CoreClient, cfg: &Config, p: &Provision) {
     // git config). Applies whether we just cloned or the folder pre-existed.
     if let Some(cmd) = ssh_cmd.as_deref() {
         set_repo_ssh_command(&repo_path, cmd);
+    }
+    if let Some(host) = cred_host.as_deref() {
+        git_cred::set_repo_credential_helper(&repo_path, host);
     }
 
     finish_workspace(client, cfg, p, &repo_path).await;
@@ -243,13 +260,15 @@ fn clone_repo(
     repo_url: &str,
     repo_path: &Path,
     ssh_cmd: Option<&str>,
+    git_cfg: &[String],
     branch: Option<&str>,
 ) -> std::result::Result<(), String> {
     if let Some(parent) = repo_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("mkdir parent: {e}"))?;
     }
     let mut cmd = Command::new("git");
-    cmd.arg("clone").arg(repo_url).arg(repo_path);
+    // cm:guard the credential config must ride on the CLONE command line — there is no repo yet to hold it, so a helper written only repo-locally afterwards leaves the clone itself unauthenticated.
+    cmd.args(git_cfg).arg("clone").arg(repo_url).arg(repo_path);
     if let Some(ssh) = ssh_cmd {
         cmd.env("GIT_SSH_COMMAND", ssh);
     }
@@ -297,11 +316,12 @@ fn adopt_repo(
     repo_url: &str,
     repo_path: &Path,
     ssh_cmd: Option<&str>,
+    git_cfg: &[String],
     branch: Option<&str>,
 ) -> std::result::Result<(), String> {
     let git = |args: &[&str]| -> std::result::Result<String, String> {
         let mut cmd = Command::new("git");
-        cmd.arg("-C").arg(repo_path).args(args);
+        cmd.arg("-C").arg(repo_path).args(git_cfg).args(args);
         if let Some(ssh) = ssh_cmd {
             cmd.env("GIT_SSH_COMMAND", ssh);
         }

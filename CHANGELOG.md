@@ -48,6 +48,49 @@
   with no health URL deploy exactly as before, and a build that finishes too close to its own
   confirmation deadline to be given that grace period is left unproven and said so, rather than
   failed on one reading of a container that is still starting.
+- **A runner can now clone and push a GitHub repository with no deploy key, using the GitHub App
+  the project already connected.** Picking a repository in the GitHub card fills
+  `projects.repo_url` (`https://github.com/<owner>/<repo>.git`) so it is chosen once rather than
+  retyped, and `forge-runner git-credential` — a git credential helper — asks
+  `POST /api/devices/me/git-credential` for an installation token on every fetch and push.
+
+  **A helper, not a stored credential, because an installation token lives one hour and jobs do
+  not.** The provision side-channel delivers once, and `auth/git_cred.rs` writes a *static* line
+  into a `store --file=` helper, so a token handed over that path goes stale mid-job and git keeps
+  presenting the expired one as a rejected password. The helper is asked per invocation, stores
+  nothing on the box, and emits `password_expiry_utc` so git >=2.34 drops its own cache at the right
+  instant. Provisioning puts the required config entries on the clone command line, because there
+  is no repo yet to hold them, then repo-locally for every later fetch.
+
+  **It resets the helper list before adding itself, and that is load-bearing.** Git asks
+  `credential.<url>.helper` entries in config order — system, then global, then local — so on a box
+  where anything else configured one (installing `gh` does) the ambient helper answers first and the
+  push lands as that identity. Measured 2026-09-08 on this repo's own checkout: `git credential fill`
+  for `SidCorp-co/epodsystem_cli` returned a personal `gho_` token while this helper was configured
+  for it. With the empty-value reset first, git asks nobody else and fails loudly when the App path
+  cannot answer, which is the whole point of routing git through a project's own credential. The
+  reset is proven twice, because `-c` flags and a config file are different code paths in git and
+  only the file half governs every fetch and push after the clone: one test reads the checkout's own
+  config back, and one plants an ambient global helper in a temp repo and fails if it is the one that
+  answers.
+
+  **The integration is a capability and never a requirement.** Which credential is used follows the
+  remote's transport, not whether an integration exists: an `ssh://`/`git@` remote takes the
+  project's deploy key exactly as before, an `https://` remote takes an App token only when core
+  says a binding with an installation exists, and a project with no GitHub integration provisions
+  with no extra step. The absent `githubAppCredential` field reads false, so an older core cannot
+  turn the helper on by omission.
+
+  What the device may reach is recomputed on every ask from the projects it actually runs — the
+  `runners.device_id` join is what keeps a paired box from minting a token for every repository
+  bound anywhere in the fleet, which is narrower than the deploy keys this replaces. Removing that
+  join turns `a repository bound to a project this device does NOT run` red.
+
+  The App manifest now requests `contents: write` rather than `contents: read`; **an App created
+  before this change can clone but cannot push** until its Contents permission is raised in the
+  App's settings and the new permission approved on each installation. That arrives as HTTP 403,
+  which is a permission to grant and not a credential to replace.
+
 
 - **Forge now reports the module pairs your issues keep linking that your module hierarchy never
   declares as connected.** `GET /api/projects/:id/modules/drift` compares two edge sets over the
@@ -1800,6 +1843,19 @@
   rewrite what is stored, use their whole prompt. Drawn in
   `docs/flows/knowledge-memory-model-prose.html`. **Core still renders no Vietnamese** — the tracker's
   prose pipeline and its `.vi-glossary.json` handling are `forge-plugin`'s and are reported there.
+- **A GitHub repository bound to an existing App connection was deaf to every webhook.**
+  `POST /api/integration-connections/:id/bindings` minted a `whsec_` secret of its own, while
+  `handleInbound` verifies deliveries against that same field and GitHub signs with the webhook
+  secret it generated when the App was created. Every delivery therefore failed signature
+  verification, with no delivery row and nothing on screen — the hub rendered the integration as
+  configured. The bind path now carries the App's own secret, as the manifest flow already did; only
+  providers that sign with a Forge-minted secret still get one.
+
+- **The git-credential mint named a repository by the spelling git asked with.** GitHub folds
+  repository case, so a fetch of `sidcorp-co/EPODSYSTEM_CLI` was resolved correctly and then logged
+  under a name that matches no repository on GitHub. The binding's spelling is now what the grant
+  and every refusal report.
+
 
 - **`pg-boss` is pinned back to 10, because 12 cannot start against the schema this project's
   databases hold.** The Dependabot majors group (#317) took it from `10.4.2` to `12.30.0`. Every

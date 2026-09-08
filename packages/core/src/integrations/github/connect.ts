@@ -82,7 +82,7 @@ export function buildAppManifest(args: {
     setup_on_update: true,
     public: false,
     default_permissions: {
-      contents: 'read',
+      contents: 'write',
       issues: 'write',
       metadata: 'read',
       pull_requests: 'write',

@@ -10,15 +10,12 @@ import {
   devicePlatforms,
   devices,
   pairingCodes,
-  projectGitCredentials,
   projects,
   runnerProvisionStatuses,
   runners,
-  workspaceSshKeys,
 } from '../db/schema.js';
 import { cmpVersion } from '../install/fetch-release.js';
 import { getLatestRunnerVersion } from '../install/routes.js';
-import { decryptSecret } from '../integrations/vault.js';
 import { assertOrgAccess, assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
@@ -28,6 +25,7 @@ import { readPluginDesignations, unionPluginDesignations } from '../plugins/desi
 import { insertRunnerEvent } from '../runners/runner-events.js';
 import { revokeDeviceCredentials } from './credential.js';
 import { mirrorHeartbeatToRunners } from './heartbeat-runner-mirror.js';
+import { deviceProvisionRoutes } from './me-provisions.js';
 import { listDeviceAssignments } from './me-runners.js';
 import { redeemPairingCode } from './pair.js';
 
@@ -108,7 +106,6 @@ devicePublicRoutes.post(
   },
 );
 
-// User-auth — owner-scoped device management (list / rename / revoke own devices).
 export const deviceOwnerRoutes = new Hono<{ Variables: AuthVars }>();
 deviceOwnerRoutes.use('*', requireAuth(), assertEmailVerified());
 
@@ -128,7 +125,6 @@ deviceOwnerRoutes.get('/me/devices', async (c) => {
     const parsed = z.uuid().safeParse(orgIdParam);
     if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
     orgId = parsed.data;
-    // Member is the floor: any org member may see the org's runner fleet.
     await assertOrgAccess(orgId, userId, 'member');
   }
 
@@ -396,6 +392,8 @@ deviceUserRoutes.post(
 // Device-auth — agent reports in every ~30s.
 export const deviceAuthRoutes = new Hono<{ Variables: DeviceVars }>();
 
+deviceAuthRoutes.route('/', deviceProvisionRoutes);
+
 deviceAuthRoutes.post(
   '/heartbeat',
   requireDevice(),
@@ -533,72 +531,6 @@ deviceAuthRoutes.patch(
     return c.json(runner);
   },
 );
-
-// Workspace-provisioning pull. The device polls this (and is woken by the
-// `provision.request` WS event) to fetch its `queued` provisions: the clone
-// target + the project's git SSH private key (decrypted, delivered once over
-// TLS — mirrors the ISS-305 credential side-channel, never re-read in plaintext
-// server-side). The device then clones-if-missing, writes its `.mcp.json`,
-// syncs skills, and reports progress via POST /me/runners/:runnerId/
-// provision-status. Pull model => an offline device just picks rows up later,
-// so bind never blocks on device presence.
-deviceAuthRoutes.get('/me/provisions', requireDevice(), async (c) => {
-  const device = c.get('device');
-  if (device.status === 'revoked') throw unauth();
-
-  const rows = await db
-    .select({
-      runnerId: runners.id,
-      projectId: runners.projectId,
-      slug: projects.slug,
-      repoPath: runners.repoPath,
-      branch: runners.branch,
-      repoUrl: projects.repoUrl,
-      baseBranch: projects.baseBranch,
-      provisionStatus: runners.provisionStatus,
-      sshSource: workspaceSshKeys.source,
-      sshPublicKey: workspaceSshKeys.publicKey,
-      sshPrivateKeyEnc: workspaceSshKeys.privateKeyEnc,
-    })
-    .from(runners)
-    .innerJoin(projects, eq(projects.id, runners.projectId))
-    .leftJoin(projectGitCredentials, eq(projectGitCredentials.projectId, runners.projectId))
-    .leftJoin(workspaceSshKeys, eq(workspaceSshKeys.id, projectGitCredentials.sshKeyId))
-    .where(
-      and(
-        eq(runners.deviceId, device.id),
-        eq(runners.type, 'claude-code'),
-        eq(runners.provisionStatus, 'queued'),
-      ),
-    );
-
-  // Decrypt the SSH private key per row (delivered once). Decrypt failures (bad
-  // key / rotated master) degrade to "no key" so the device falls back to its
-  // own git auth rather than failing the whole pull.
-  const provisions = rows.map((r) => {
-    let sshPrivateKey: string | null = null;
-    if (r.sshPrivateKeyEnc) {
-      try {
-        sshPrivateKey = decryptSecret(r.sshPrivateKeyEnc);
-      } catch {
-        sshPrivateKey = null;
-      }
-    }
-    return {
-      runnerId: r.runnerId,
-      projectId: r.projectId,
-      slug: r.slug,
-      repoPath: r.repoPath,
-      branch: r.branch ?? r.baseBranch,
-      repoUrl: r.repoUrl,
-      sshKeySource: sshPrivateKey ? r.sshSource : null,
-      sshPublicKey: sshPrivateKey ? r.sshPublicKey : null,
-      sshPrivateKey,
-    };
-  });
-
-  return c.json(provisions);
-});
 
 // Device → server provision progress report. Scoped to runners owned by the
 // calling device (404 otherwise). Bridges to the project room (live stepper).

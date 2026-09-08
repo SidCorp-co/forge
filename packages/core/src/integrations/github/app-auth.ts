@@ -60,12 +60,29 @@ export async function installationToken(args: {
   fetchImpl?: typeof fetch;
   nowMs?: number;
 }): Promise<string> {
+  return (await installationTokenWithExpiry(args)).token;
+}
+
+/**
+ * The same mint, with the expiry the caller must plan around. Git asks a
+ * credential helper per invocation, so a long job outlives any single token and
+ * the expiry is the only thing that explains why.
+ */
+export async function installationTokenWithExpiry(args: {
+  appId: string;
+  privateKey: string;
+  installationId: number;
+  apiBaseUrl?: string;
+  fetchImpl?: typeof fetch;
+  nowMs?: number;
+}): Promise<{ token: string; expiresAt: number }> {
   const base = (args.apiBaseUrl ?? GITHUB_API_BASE).replace(/\/+$/, '');
   const now = args.nowMs ?? Date.now();
   const key = `${base}|${args.appId}|${args.installationId}`;
 
   const hit = cache.get(key);
-  if (hit && hit.expiresAt - TOKEN_REFRESH_MARGIN_MS > now) return hit.token;
+  if (hit && hit.expiresAt - TOKEN_REFRESH_MARGIN_MS > now)
+    return { token: hit.token, expiresAt: hit.expiresAt };
 
   const doFetch = args.fetchImpl ?? fetch;
   const res = await doFetch(`${base}/app/installations/${args.installationId}/access_tokens`, {
@@ -102,5 +119,5 @@ export async function installationToken(args: {
   if (!body.token) throw new GitHubAuthError(500, 'GitHub returned no installation token');
   const expiresAt = body.expires_at ? Date.parse(body.expires_at) : now + 3600_000;
   cache.set(key, { token: body.token, expiresAt });
-  return body.token;
+  return { token: body.token, expiresAt };
 }

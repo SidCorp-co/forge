@@ -34,6 +34,7 @@ flowchart LR
 | Interactive chat (not a pipeline job) | `core/src/chat/`, `core/src/chat-logs/` |
 | Transport | `core/src/ws/` |
 | Worktree and git work | `core/src/git/` |
+| Git credential for a checkout | `core/src/git/github-app-credential.ts` (mint), `packages/runner` `cmd/git_credential.rs` (helper) |
 | The daemon itself | `packages/runner` (crates `forge-runner`, `forge-runner-core`) |
 | Evidence retention | `core/src/jobs/retention-sweeper.ts` |
 | UI | web `features/runners/`, `pairing/`, `sessions/`, `session/`, `conversations/`, `agents/` |

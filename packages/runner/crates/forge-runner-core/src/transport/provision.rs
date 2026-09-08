@@ -28,6 +28,12 @@ pub struct Provision {
     pub ssh_key_source: Option<String>,
     pub ssh_public_key: Option<String>,
     pub ssh_private_key: Option<String>,
+    /// Core says this project's HTTPS remote authenticates through its GitHub
+    /// App, so git must ask `forge-runner git-credential` per invocation.
+    // cm:guard the ABSENT case must stay FALSE — this field only ever turns an extra credential source ON. Reading a missing field as `true` would attach the helper to every https remote on an older core, including repositories no App is bound to.
+    // cm:edge contract -> packages/core/src/devices/routes.ts — core derives it from the repo URL transport AND an active binding with an installation; nothing type-checks the name across the two languages.
+    #[serde(default)]
+    pub github_app_credential: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -38,6 +38,9 @@ enum Command {
     Config(cmd::config::Args),
     /// Diagnose the environment (claude CLI, git, cred store, core reachability).
     Doctor(cmd::doctor::Args),
+    /// git credential helper: hand git a GitHub App token for one repository.
+    #[command(name = "git-credential")]
+    GitCredential(cmd::git_credential::Args),
     /// Install/uninstall the OS service (systemd/launchd).
     Service(cmd::service::Args),
     /// List runners registered for this device.
@@ -75,6 +78,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Logs(a) => cmd::logs::run(ctx, a).await,
         Command::Config(a) => cmd::config::run(ctx, a).await,
         Command::Doctor(a) => cmd::doctor::run(ctx, a).await,
+        Command::GitCredential(a) => cmd::git_credential::run(ctx, a).await,
         Command::Service(a) => cmd::service::run(ctx, a).await,
         Command::Runners(a) => cmd::runners::run(ctx, a).await,
         Command::Pool(a) => cmd::pool::run(ctx, a).await,
