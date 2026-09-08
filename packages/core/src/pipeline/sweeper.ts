@@ -32,6 +32,7 @@ import {
   runLoopMonitor,
 } from '../jobs/loop-monitor.js';
 import { recordPipelineSweeperTick } from '../jobs/pgboss-health.js';
+import { NON_CLIENT_METADATA_TYPES, PIPELINE_METADATA_TYPES } from '../jobs/session-kinds.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
@@ -61,8 +62,6 @@ import { emitPipelineWedge } from './wedge.js';
 
 export const PIPELINE_SWEEPER_QUEUE = 'pipeline-sweeper';
 
-const PIPELINE_METADATA_TYPES = sql`('pipeline','pm')`;
-
 /** Back-compat shim — thresholds are owned by the loop monitor now (single
  *  source: same env names, same clamps). */
 export function getZombieThresholds(): { queueMs: number; heartbeatMs: number } {
@@ -71,7 +70,7 @@ export function getZombieThresholds(): { queueMs: number; heartbeatMs: number } 
 }
 
 export interface ZombieSweepResult {
-  // Counts are ALARMED rows (loop misses), not reaps — see module header.
+  // cm:guard these count ALARMED rows, never reaped ones. Read as reaps they say the sweep fixed something it only reported, which is the difference between a wedge that cleared and one nobody has touched.
   queueTimedOut: number;
   heartbeatTimedOut: number;
   noClientAcked: number;
@@ -361,7 +360,7 @@ export async function alarmZombieSessions(
     FROM agent_sessions s
     WHERE s.status = 'running'
       AND s.claude_session_id IS NULL
-      AND COALESCE(s.metadata->>'type','') NOT IN ${PIPELINE_METADATA_TYPES}
+      AND COALESCE(s.metadata->>'type','') NOT IN ${NON_CLIENT_METADATA_TYPES}
       AND ((s.last_heartbeat_at IS NOT NULL AND s.last_heartbeat_at < ${heartbeatCutoffIso})
         OR (s.last_heartbeat_at IS NULL AND s.created_at < ${heartbeatCutoffIso}))
       ${projectClause}
@@ -508,7 +507,7 @@ export async function reapOrphanedOneShotRuns(
   scope: SweepScope = {},
 ): Promise<OneShotRunReapResult> {
   const { heartbeatMs } = getZombieThresholds();
-  // postgres-js rejects raw Date params; serialise to ISO before binding.
+  // cm:guard serialise to ISO before binding — postgres-js throws on a raw `Date` param at bind time, so a cutoff passed as a Date fails the sweep rather than mis-selecting, and the whole tick is lost.
   const cutoffIso = new Date(now.getTime() - heartbeatMs).toISOString();
   // ISS-442 — a job-less agent (esp. a schedule audit fanning out parallel
   // subagents) can go many minutes between worker-side writes while genuinely
@@ -631,7 +630,7 @@ export async function closeIdleChatSessions(
   now: Date = new Date(),
   scope: SweepScope = {},
 ): Promise<IdleChatCloseResult> {
-  // postgres-js rejects raw Date params; serialise to ISO before binding.
+  // cm:guard serialise to ISO before binding — postgres-js throws on a raw `Date` param at bind time, so a cutoff passed as a Date fails the sweep rather than mis-selecting, and the whole tick is lost.
   const cutoffIso = new Date(now.getTime() - CHAT_IDLE_CLOSE_MS).toISOString();
   const projectClause = scope.projectId ? sql`AND s.project_id = ${scope.projectId}` : sql``;
 
@@ -713,7 +712,7 @@ export async function reapOrphanedIssueRuns(
   scope: SweepScope = {},
 ): Promise<IssueRunReapResult> {
   const { heartbeatMs } = getZombieThresholds();
-  // postgres-js rejects raw Date params; serialise to ISO before binding.
+  // cm:guard serialise to ISO before binding — postgres-js throws on a raw `Date` param at bind time, so a cutoff passed as a Date fails the sweep rather than mis-selecting, and the whole tick is lost.
   const cutoffIso = new Date(now.getTime() - heartbeatMs).toISOString();
   const projectClause = scope.projectId ? sql`AND r.project_id = ${scope.projectId}` : sql``;
 

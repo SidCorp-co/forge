@@ -62,7 +62,6 @@ vi.mock('../../db/client.js', () => ({
 vi.mock('../../pipeline/hooks.js', () => ({
   hooks: { emit: vi.fn().mockResolvedValue(undefined) },
 }));
-vi.mock('../../jobs/dispatch-tick.js', () => ({ dispatchTickForProject: vi.fn() }));
 vi.mock('../../pipeline/work-evidence.js', () => ({
   findMissingWorkEvidence: vi.fn(async () => null),
 }));

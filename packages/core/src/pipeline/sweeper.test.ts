@@ -264,7 +264,10 @@ describe('alarmZombieSessions — demoted to alarm-only (ISS-449)', () => {
     expect(pass1).toMatch(/->>\s*'type'\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*\)/);
     expect(pass2).toMatch(/->>\s*'type'\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*\)/);
     expect(pass3).toMatch(/COALESCE/i);
-    expect(pass3).toMatch(/NOT\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*\)/);
+    expect(
+      pass3,
+      'this arm and the no-client hop it alarms for are ONE predicate, and both must exclude every type that never reports a `claude_session_id`: a run session (reaped by `devices/run-session-reaper.ts` — two sweeps over one row is two writers on one fact) and a master (a tmux pane, which matches every term of this arm and survives only on the daemon re-registering it) (ISS-933 criteria 21 and 25a)',
+    ).toMatch(/NOT\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*,\s*'master'\s*,\s*'run_session'\s*\)/);
     expect(pass3).toMatch(/claude_session_id\s+IS\s+NULL/i);
     expect(pass1).not.toMatch(/NOT\s+IN\s*\(\s*'pipeline'/);
     expect(pass2).not.toMatch(/NOT\s+IN\s*\(\s*'pipeline'/);
@@ -308,7 +311,7 @@ describe('alarmOrphanedJobs — demoted to alarm-only (was ISS-280 reconcile)', 
     const result = await alarmOrphanedJobs(new Date('2026-05-30T00:00:00Z'));
 
     expect(result.reconciled).toBe(1);
-    expect(sessionsWhere).not.toHaveBeenCalled(); // no UPDATE issued
+    expect(sessionsWhere).not.toHaveBeenCalled();
     expect(loggerWarn).toHaveBeenCalledWith(
       expect.objectContaining({ hop: 'heartbeat', ids: ['orphan-1'] }),
       'loop-miss',
@@ -355,20 +358,15 @@ describe('runPipelineSweep — per-pass fault isolation', () => {
   it('still runs the reapers when an upstream pass (loop monitor) throws, and re-throws to keep the missed-tick alarm', async () => {
     runLoopMonitorMock.mockRejectedValueOnce(new Error('loop boom'));
 
-    // The sweep still rejects (pgboss-health missed-tick contract preserved)…
     await expect(runPipelineSweep()).rejects.toThrow('loop boom');
 
-    // …but the one-shot reaper pass DID run despite the upstream throw — proven
-    // by its distinctive candidate SELECT reaching the db. This is the
-    // regression guard for the global schedule.run / interactive run leak.
+    // cm:guard every pass must have RUN before the tick surfaces a failure, so this asserts the one-shot reaper's own candidate SELECT reached the db despite the upstream throw. Assert only the rejection and one buggy pass can starve the reapers again, which leaked every global schedule.run and interactive run.
     const ranOneShotReaper = dbExecute.mock.calls.some((c) =>
       /r\.kind\s+IN\s*\(\s*'system'\s*,\s*'interactive'\s*\)/.test(sqlText(c[0])),
     );
     expect(ranOneShotReaper).toBe(true);
 
-    // A failed tick must NOT record a clean heartbeat (so the alarm fires)…
     expect(recordTickMock).not.toHaveBeenCalled();
-    // …and the failing pass is captured individually for triage.
     expect(sentryCapture).toHaveBeenCalled();
   });
 });
@@ -390,7 +388,7 @@ describe('reapOrphanedOneShotRuns (ISS-445 — still an ACTIVE reaper)', () => {
   });
 
   it('force-fails a lingering stale session then closes the run as failed', async () => {
-    dbExecute.mockResolvedValueOnce([{ id: 'run-stale' }]); // one candidate
+    dbExecute.mockResolvedValueOnce([{ id: 'run-stale' }]);
     sessionsWhere.mockResolvedValueOnce([{ id: 'sess-1', projectId: 'p1', deviceId: 'd1' }]);
     selectWhere.mockResolvedValueOnce([{ status: 'failed' }]);
 
@@ -410,7 +408,7 @@ describe('reapOrphanedOneShotRuns (ISS-445 — still an ACTIVE reaper)', () => {
 
   it('closes a run as completed when the session already finished (missed /desktop/status)', async () => {
     dbExecute.mockResolvedValueOnce([{ id: 'run-done' }]);
-    sessionsWhere.mockResolvedValueOnce([]); // nothing left to flip
+    sessionsWhere.mockResolvedValueOnce([]);
     selectWhere.mockResolvedValueOnce([{ status: 'completed' }]);
 
     const result = await reapOrphanedOneShotRuns(new Date('2026-06-12T00:00:00Z'));
@@ -611,7 +609,7 @@ describe('reapJoblessRuns wiring (ISS-654 — the job-less issue-run phantom)', 
 describe('runPipelineSweep — queue snapshots (ISS-381 2.2)', () => {
   it('emits a grouped per-project INSERT into queue_snapshots each tick', async () => {
     const result = await runPipelineSweep();
-    expect(result.queueSnapshots).toBe(0); // default mock returns []
+    expect(result.queueSnapshots).toBe(0);
     const insertCall = dbExecute.mock.calls.find((c) => sqlText(c[0]).includes('queue_snapshots'));
     expect(insertCall).toBeDefined();
     const text = sqlText(insertCall?.[0]);

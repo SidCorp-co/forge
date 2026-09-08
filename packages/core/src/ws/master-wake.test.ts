@@ -75,7 +75,7 @@ describe('master.wake — which statuses wake a box', () => {
 describe('master.wake — who it reaches', () => {
   it('publishes one frame per box serving the project, on that box own device room', async () => {
     servedBy(['dev-a', 'dev-b']);
-    const delivered = await wakeMastersForProject({
+    const result = await wakeMastersForProject({
       projectId: 'p1',
       issueId: 'i1',
       status: 'open',
@@ -87,7 +87,7 @@ describe('master.wake — who it reaches', () => {
       'device:dev-a',
       { event: 'master.wake', data: { projectId: 'p1', issueId: 'i1', status: 'open' } },
     ]);
-    expect(delivered).toBe(2);
+    expect(result).toEqual({ boxes: 2, delivered: 2 });
   });
 
   // cm:guard the frame carries NO work, no job id and no token — a wake that carried the work would be a second dispatcher, and the box would then hold two sources of truth about what to run that nothing reconciles.
@@ -100,7 +100,10 @@ describe('master.wake — who it reaches', () => {
 
   it('publishes nothing for a project no box is bound to', async () => {
     servedBy([]);
-    expect(await wakeMastersForProject({ projectId: 'p1', issueId: 'i1', status: 'open' })).toBe(0);
+    expect(
+      await wakeMastersForProject({ projectId: 'p1', issueId: 'i1', status: 'open' }),
+      'zero BOXES is the operator-visible state — nothing on the fleet is bound to do this project work — where zero delivered is only a socket that will be back',
+    ).toEqual({ boxes: 0, delivered: 0 });
     expect(publish).not.toHaveBeenCalled();
   });
 
@@ -110,7 +113,7 @@ describe('master.wake — who it reaches', () => {
     publish.mockReturnValue(0);
     await expect(
       wakeMastersForProject({ projectId: 'p1', issueId: 'i1', status: 'released' }),
-    ).resolves.toBe(0);
+    ).resolves.toEqual({ boxes: 2, delivered: 0 });
   });
 
   // cm:guard this is the assertion that has to fail if the try/catch is removed — every caller is a hook subscriber running after its own mutation committed, so a throw here turns a successful transition into a 500 for a push that is only ever an optimisation over the timer.
@@ -118,7 +121,7 @@ describe('master.wake — who it reaches', () => {
     servedByThrowing(new Error('connection terminated'));
     await expect(
       wakeMastersForProject({ projectId: 'p1', issueId: 'i1', status: 'open' }),
-    ).resolves.toBe(0);
+    ).resolves.toEqual({ boxes: 0, delivered: 0 });
   });
 });
 

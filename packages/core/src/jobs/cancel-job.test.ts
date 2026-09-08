@@ -26,7 +26,6 @@ vi.mock('../ws/rooms.js', () => ({
   projectRoom: (id: string) => `project:${id}`,
 }));
 vi.mock('../ws/server.js', () => ({ roomManager: { publish: vi.fn() } }));
-vi.mock('./dispatch-tick.js', () => ({ dispatchTickForProject: vi.fn() }));
 vi.mock('../issues/pipeline-health.js', () => ({ publishPipelineHealthChanged: vi.fn() }));
 
 const syncAgentSessionLifecycleMock = vi.fn(async (..._args: unknown[]) => undefined);

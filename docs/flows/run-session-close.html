@@ -1,0 +1,103 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flow · run-session-close — three marks, none of them a report</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .warn { border-left-color:var(--bad); }
+  .board { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; overflow-x:auto; }
+</style>
+<main>
+
+
+<h1>run-session-close — three marks, none of them a report</h1>
+<p class="sub">A run closes on what the world says, never on what it says about itself. Every mark
+is set by a caller that has just READ the fact back — the setters are named <code>_observed</code>
+so a caller who has merely finished doing the thing cannot reach one. The measured failure this
+replaces: a master reported the loop closed having done one and a half of three.</p>
+
+<h2>The three marks</h2>
+<div class="board"><pre class="mermaid">
+flowchart TD
+  S{"session terminal?"} -- "core says the session ended" --> S1["session_terminal_at"]
+  S -- "no session id AND no pid" --> S1
+  S -- "a pid but no session id" --> SU["UNKNOWN — leave it unset"]
+  W{"worktree gone?"} -- "the path is absent from disk" --> W1["worktree_gone_at"]
+  L{"per issue: lease back?"} -- "the tracker says so on a READ BACK" --> L1["run_issues.lease_returned_at"]
+  L -- "the release call returned ok" --> LN["sets NOTHING"]
+  S1 --> C{"all three?"}
+  W1 --> C
+  L1 --> C
+  C -- "yes" --> D["closed"]
+  C -- "no" --> P["partially closed, and the ledger says WHICH"]
+</pre></div>
+
+<div class="rule warn"><b>A cheerful response is not evidence.</b> The lease mark comes from asking
+the tracker again after the release, never from the release returning <code>ok</code>. A stale
+success is exactly the shape that let a master report a loop it had not closed, and the close
+function takes NO argument by which a caller could assert a mark — that is what makes
+&ldquo;a master's declaration sets none of the three&rdquo; true by construction rather than by
+convention.</div>
+
+<div class="rule"><b>Per ISSUE, never per run.</b> A run carrying three issues that returned one
+lease must read as exactly that. One flag for the group makes a partial return indistinguishable
+from a clean one, which is the whole defect this loop exists to expose.</div>
+
+<h2>Who closes it when the master is gone</h2>
+<div class="board"><pre class="mermaid">
+flowchart LR
+  T["daemon sweep · reconcile()"] --> A{"master alive? same boot?"}
+  A -- "yes" --> BEAT["beat core — this box still holds this run"]
+  A -- "no, or a different boot" --> CL["close the loop from the ledger"]
+  CORE["core · run-session-reaper"] --> H{"heartbeat silent 10 min?"}
+  H -- "yes" --> REL["fail the session, close the run, NAME the issues freed"]
+</pre></div>
+
+<div class="rule"><b>The beat and the recovery are ONE sweep on purpose.</b> Core reaps a run
+session that stops beating, so a build that could wire recovery without wiring the beat would reap
+every healthy run on the box after ten minutes. Split them and nothing but review stands between
+here and that.</div>
+
+<div class="rule warn"><b>Two triggers, and only the second survives losing power.</b> The local
+ledger is the fast path and cannot answer for a box that is unreachable — a design in which the
+unreachable box is the only thing that can release its own work fails however well it handles a dead
+pane. So core keys on the heartbeat going silent, never on the box reporting its own death.</div>
+
+<h2>Why ten minutes, and not the master's three</h2>
+<p>The daemon's sweep normally runs every 30s but stretches to <code>LIMITED_POLL_INTERVAL</code>
+(5 min) on a rate-limited box. Ten minutes is two of the SLOWEST beat, not of the fastest: a
+three-minute bound like the master's would reap a healthy run the moment the box got throttled. A
+run also holds a worktree and a branch, so taking it back early costs an operator a diff rather
+than a claim.</p>
+
+<h2>What an operator sees on a partial close</h2>
+<table>
+<thead><tr><th>State</th><th>Reads as</th></tr></thead>
+<tbody>
+<tr><td>session terminal, worktree gone, 3 of 3 leases back</td><td>closed — nothing owes anything</td></tr>
+<tr><td>session terminal, worktree gone, 1 of 3 leases back</td><td>partially closed; the ledger names the two issues still out, and the sweep retries them</td></tr>
+<tr><td>worktree still on disk</td><td>not closed. The mark is unset because the path is THERE, not because anyone failed to report</td></tr>
+<tr><td>a pid but no session id</td><td>unknown, deliberately: a process started whose session this box cannot name. Answering <code>terminal</code> would close the loop over a live agent</td></tr>
+</tbody>
+</table>
+
+<h2>Do not</h2>
+<p>Add a <code>done: bool</code> to the close function — that reopens the exact hole. Give the
+close a single lease flag for the group. Set a mark from a caller that has finished an action rather
+than read a fact: the <code>_observed</code> suffix is the reminder, and the only thing enforcing it
+is that every setter carries it.</p>
+
+<p><a href="index.html">&larr; all flows</a></p>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script>

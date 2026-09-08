@@ -44,7 +44,6 @@ vi.mock('../db/client.js', () => {
 });
 
 vi.mock('../ws/server.js', () => ({ roomManager: { publish: vi.fn() } }));
-vi.mock('../jobs/dispatch-tick.js', () => ({ dispatchTickForProject: vi.fn(async () => {}) }));
 
 const projectAccess = vi.fn();
 vi.mock('../lib/authz.js', async (importOriginal) => ({

@@ -35,9 +35,8 @@ pub enum Command {
     Release(ReleaseArgs),
     /// Raw occupancy: this box, its project, the project's fleet.
     Load(LoadArgs),
-    /// Turn one backlog issue into work: move it to the entry status so a
-    /// `drive` job exists, then claim that job as usual.
-    Promote(PromoteArgs),
+    /// Open ONE run session over a group of issues, in its own worktree.
+    Run(RunArgs),
 }
 
 #[derive(ClapArgs)]
@@ -78,9 +77,17 @@ pub struct ReleaseArgs {
 }
 
 #[derive(ClapArgs)]
-pub struct PromoteArgs {
-    /// The backlog issue's id, as `pool list` printed it.
-    pub issue_id: String,
+pub struct RunArgs {
+    #[arg(long)]
+    pub project_id: String,
+    /// The issues this ONE run carries, comma separated. A group of one is a group.
+    #[arg(long, value_delimiter = ',')]
+    pub issues: Vec<String>,
+    /// The name of the run: its git branch and its worktree directory.
+    #[arg(long)]
+    pub agent: String,
+    #[arg(long)]
+    pub start_point: Option<String>,
 }
 
 #[derive(ClapArgs)]
@@ -106,18 +113,20 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         Command::List(a) => {
             let view = pool::pool(&c, a.limit, a.project_id.as_deref()).await?;
             let items = view.items;
-            let backlog = view.backlog;
+            let admissible = pool::admissible(&c, a.project_id.as_deref())
+                .await
+                .unwrap_or_default();
             if a.json {
                 println!(
                     "{}",
                     serde_json::to_string_pretty(&serde_json::json!({
                         "items": items,
-                        "backlog": backlog,
+                        "admissible": admissible,
                     }))?
                 );
                 return Ok(());
             }
-            if items.is_empty() && backlog.is_empty() {
+            if items.is_empty() && admissible.is_empty() {
                 println!("pool is empty");
                 return Ok(());
             }
@@ -147,7 +156,7 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
                 }
                 println!("      job {}", e.job_id);
             }
-            print_backlog(&backlog);
+            print_admissible(&admissible);
         }
         // cm:guard the claim goes to the LOCAL DAEMON, never straight to core. The daemon holds the repo lock and the in-flight map in memory, so a claim made from this process would take a lock the daemon cannot see and start a job it cannot cancel, reap or salvage. If the daemon is not running, refusing here is the correct answer — there is nothing on this box that could run the job anyway.
         // cm:guard `claim` is prepare-then-start over the SAME two socket ops the primitives use, never a third daemon verb. The one irreversible op is what ISS-919 B2 removed; re-adding it here so the common case is one round trip would put it straight back, one layer up, where no test of the split can see it.
@@ -208,16 +217,23 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
                 std::process::exit(1);
             }
         }
-        // cm:guard promote goes to CORE, not the daemon — the opposite of `claim` directly above, and for the opposite reason: nothing starts here, so there is no repo lock and no in-flight map to be outside of. It returns a jobId the master then claims through the daemon exactly as it claims anything else.
-        Command::Promote(a) => {
-            let out = pool::promote(&c, &a.issue_id).await?;
-            println!("{}", serde_json::to_string_pretty(&out)?);
+        // cm:guard the run open goes to the LOCAL DAEMON, never straight to core, for the same reason `claim` does: the daemon holds the ledger and the repo lock, and a run opened from this process would take a worktree the daemon cannot see.
+        Command::Run(a) => {
+            let sock = socket()?;
+            let out = ask(
+                "run",
+                control::request_run_open(
+                    &sock,
+                    &a.project_id,
+                    &a.issues,
+                    &a.agent,
+                    a.start_point.as_deref(),
+                )
+                .await,
+                &sock,
+            )?;
+            report(&out)?;
             if !out.ok {
-                eprintln!(
-                    "promote refused ({}): {}",
-                    out.reason.as_deref().unwrap_or("?"),
-                    out.detail.as_deref().unwrap_or("no detail")
-                );
                 std::process::exit(1);
             }
         }
@@ -241,18 +257,18 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     Ok(())
 }
 
-// cm:guard print the backlog as its OWN block, under its own heading, never interleaved with the claimable rows. A master scanning one list cannot tell which rows carry a job, and `pool claim <issueId>` is the mistake that costs it a turn.
-// cm:guard the same rule the pool rows follow: raw status and merge stamp, and NO promote/leave verdict. Deciding which draft is worth pulling up now is exactly the judgement this surface exists to hand the master, and a CLI that pre-answers it is the gate this design deleted, reappearing in the display layer.
-fn print_backlog(backlog: &[pool::BacklogEntry]) {
-    if backlog.is_empty() {
+// cm:guard print these as their OWN block, under their own heading, never interleaved with the claimable rows. A master scanning one list cannot tell which rows carry a job, and `pool claim <issueId>` is the mistake that costs it a turn — core answers `not_found`, naming the job rather than the mistake.
+// cm:guard the same rule the pool rows follow: raw status and merge stamp, and NO take/leave verdict. Deciding which issue is worth opening a run over is exactly the judgement this surface exists to hand the master, and a CLI that pre-answers it is the gate this design deleted, reappearing in the display layer.
+fn print_admissible(admissible: &[pool::AdmissibleIssue]) {
+    if admissible.is_empty() {
         return;
     }
     println!();
     println!(
-        "backlog ({} visible, not claimable — `pool promote <issueId>` to make one work)",
-        backlog.len()
+        "admissible ({} issue(s) a run session may be opened over — not pool rows, `pool claim` cannot take one)",
+        admissible.len()
     );
-    for e in backlog {
+    for e in admissible {
         println!(
             "{}  {:<10} {:<9} {:>5.0}m  {}",
             e.issue_key.as_deref().unwrap_or("-"),

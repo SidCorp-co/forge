@@ -1,22 +1,23 @@
-//! What starts work now that nothing pushes it, and what keeps it alive.
+//! What starts work now that nothing pushes it, and what ends it.
 //!
-//! Core keeps jobs `queued` and offers them; this loop is the only thing on the
-//! box that notices. It asks core which projects this device serves, reads each
-//! one's pool, and keeps one RESIDENT master per project — a Claude session
+//! Core wakes this box and keeps jobs `queued`; this loop is the only thing on
+//! the box that notices. It asks core which projects this device serves, reads
+//! each pool, and keeps one RESIDENT master per project — a Claude session
 //! running the `forge-master` skill, which decides order and batch size and
 //! claims through the control socket.
 //!
-//! Resident, and parented by tmux rather than by this daemon (ISS-919). That
-//! buys an attachable pane, a master that survives a `forge-runner` restart,
-//! one appended transcript and a warm context per pass. It costs the socket a
-//! dead master used to drop, so the detector is `supervise` below and the old
-//! per-pass kill is now a bound on silence after a prompt.
+//! Resident, and parented by tmux rather than by this daemon (ISS-919): an
+//! attachable pane, a master that survives a `forge-runner` restart.
+//!
+//! Nothing here supervises that master any more (ISS-933). A pane's byte count
+//! cannot tell a master idle on purpose from one that has stopped, so the
+//! silence ceiling, the quiet gate, the transcript reads and the crashloop
+//! breaker are gone — leaving one detector, the pane exists or it does not,
+//! and one exit the master earns for itself out of the ledger.
 //!
 //! The daemon deliberately makes NO routing decision. It answers one question
 //! per project, "is there anything at all", and hands the rest to judgement.
 //!
-//! Restarting it is bounded: `MASTER_DEATH_LIMIT` deaths in a window stop the
-//! respawn, and `workspace::trust` shuts the door that opened it (ISS-928).
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -24,8 +25,11 @@ use std::time::{Duration, Instant};
 
 use crate::config::Config;
 use crate::daemon::dispatch::resolve_repo;
+use crate::daemon::master_exit::{self, Verdict};
+use crate::daemon::recovery;
+use crate::daemon::recovery_ports::{CoreBeat, CoreRunState, PaneMasters};
 use crate::daemon::terminal;
-use crate::runner::process::{mcp_tool_timeout_default, resolve_claude_bin};
+use crate::runner::ledger::Ledger;
 use crate::transport::{master as master_api, pool, runners, CoreClient};
 use tokio::sync::mpsc;
 
@@ -36,31 +40,6 @@ const POLL_INTERVAL: Duration = Duration::from_secs(30);
 /// The closest together two wake-driven sweeps may run.
 // cm:guard this is a COALESCING FLOOR, never a rate limit that drops work. A wake inside the window waits out the remainder and then sweeps; it is not discarded. Core publishes one `master.wake` per issue arrival, so promoting five drafts or closing a batch delivers five frames in about as many milliseconds, and a sweep per frame would be five `/me/runners` reads plus five pool reads per project to find what the first one already found. The channel is capacity 1 and extra frames are dropped ON PURPOSE while one is pending — the sweep that follows reads the WHOLE pool, so a dropped frame costs nothing a later read does not already cover.
 const WAKE_FLOOR: Duration = Duration::from_secs(5);
-
-/// How long a prompted master may print NOTHING before it is treated as hung.
-///
-/// The replacement B4 owes for `SESSION_IDLE_TIMEOUT`, which stopped governing
-/// a process this daemon does not parent.
-// cm:guard this bounds SILENCE AFTER A PROMPT, never residency, and the difference is the whole point. The old ceiling killed a master for still being alive, which is why §6 of the proposal had to design the master as a ticking loop; a resident master that is between passes is idle on purpose and must not be reaped for it. Sized against the same dev1 measurement 2026-09-05 that set the old 600s: passes weighing 1-2 jobs took 30-88s and 3-4 jobs took 75-112s, all of them printing throughout, so ten minutes of total silence is not a slow pass — it is a process that stopped.
-// cm:guard what this must NOT go back to claiming is that core reclaims anything when it fires: since `fd1265751` a claim ends its own hold in the statement that stamps, so a killed master leaves nothing behind to reclaim — the jobs it started keep running and report for themselves. What the kill DOES owe is the hold on anything prepared and not started, which `supervise` releases on the same path.
-const MASTER_SILENCE_CEILING: Duration = Duration::from_secs(600);
-
-/// How quiet a master must be before the next pass prompt is typed at it.
-// cm:guard a resident master shares ONE composer with the pass prompts, so a prompt sent while it is mid-turn queues behind the turn and the two run back to back on a stale pool read. Transcript growth is the only progress signal available through a tmux pane — there is no structured stdout to parse here, by design — so quiet-for-a-while is what "idle" means, and it is deliberately shorter than a pass so a finished master is prompted on the next sweep rather than the one after.
-const MASTER_QUIET_BEFORE_PROMPT: Duration = Duration::from_secs(15);
-
-/// How many deaths in `MASTER_DEATH_WINDOW` mean this project's master is not
-/// coming up, whatever the box does next.
-// cm:guard three, not one, and the reason is that a SINGLE death is normal: an operator running `tmux kill-session`, a box reboot, an OOM. The respawn on the next sweep is the design working, and a breaker that opened on the first one would turn every ordinary restart into a half-hour outage for that project.
-const MASTER_DEATH_LIMIT: u32 = 3;
-
-/// How far back a death still counts.
-// cm:guard measured against the failure this exists for: on forge-vm 2026-09-06 the session died within SECONDS of every spawn, so three deaths landed inside ~90s of a 30s sweep. The window only has to be wide enough that a crashloop fills it and narrow enough that three unrelated restarts spread over an afternoon never do.
-const MASTER_DEATH_WINDOW: Duration = Duration::from_secs(10 * 60);
-
-/// How long the box stops respawning once the limit is reached.
-// cm:guard a BACKOFF, never a latch, the same rule `LIMITED_POLL_INTERVAL` states for rate limits. What put this here was a box whose fix was one edit to `~/.claude.json` made out of band, and a breaker that stayed open until someone restarted the daemon would leave that box idle after the thing was already repaired. One probe after the cooldown costs a spawn every half hour, against the 120 an unbounded loop was costing.
-const MASTER_BREAKER_COOLDOWN: Duration = Duration::from_secs(30 * 60);
 
 /// Sweep spacing once every project this box serves is rate-limited.
 // cm:guard this is a BACKOFF, never a blackout, and the distinction is the whole design. Core clears a limit only when a job SUCCEEDS (`clearRunnerLimit`), so a master that declines to sweep while limited removes the only thing that can clear the stamp, and an operator who fixes the account out of band is left watching an idle fleet forever. Slowing down costs a few minutes of latency; stopping costs the self-heal.
@@ -120,37 +99,6 @@ is re-sent to every master this box starts, so it survives this session.\n\n",
     out
 }
 
-/// One pass: the pool as it stands, and nothing else.
-fn pass_prompt(session_id: &str, issue_keys: &[String], backlog_keys: &[String]) -> String {
-    let mut out = format!(
-        "Pass. Your master session id is `{session_id}` — pass it as `--session-id`.\n\nIssues \
-with claimable work right now:\n"
-    );
-    for id in issue_keys {
-        out.push_str("- ");
-        out.push_str(id);
-        out.push('\n');
-    }
-    // cm:guard name the backlog as a SEPARATE list and say what it is not. Folded into the list above, a master reads `pool claim <issueId>` as the next step and burns its turn on a refusal core answers as `not_found` — a message that names the job rather than the mistake, so nothing in the transcript says why. The two lists answer different questions and the prompt is where that distinction has to survive.
-    if !backlog_keys.is_empty() {
-        out.push_str(
-            "\nBacklog — declared visible, NOT claimable. No job and no run exists for these; \
-`forge-runner pool promote <issueId>` is what turns one into work, and whether any of them is \
-worth pulling up now is your call:\n",
-        );
-        for id in backlog_keys {
-            out.push_str("- ");
-            out.push_str(id);
-            out.push('\n');
-        }
-    }
-    out.push_str(
-        "\nTake the time you need to decide, then stop. Claim what you are confident about, \
-report, and let the next pass take the rest.\n",
-    );
-    out
-}
-
 /// What this box knows about each project's resident master.
 // cm:guard one master per PROJECT, and the key is the project id rather than the box. Two masters on one project read the same pool and both claim: core's L1 refuses the second for the same ISSUE, but two jobs on two issues sharing that project's checkout would both start and collide on the same tree, which the repo lock then serialises into a stall neither master understands. Two masters on DIFFERENT projects are fine and are the point — they share no tree.
 // cm:guard this map is now an OPTIMISATION, not the bound. The bound moved to two places that survive this process: tmux refuses a second session under a name that exists, and core refuses a second live `agent_sessions` row for the same (device, project). It had to move, because a session parented by the multiplexer is invisible to any in-process set — which is exactly the hole ISS-919 B1 names. Never re-derive the bound from this map alone: a daemon restart empties it while every master is still running.
@@ -162,27 +110,13 @@ pub struct Masters(Arc<Mutex<Registry>>);
 #[derive(Default)]
 struct Registry {
     live: HashMap<String, MasterState>,
-    deaths: HashMap<String, Breaker>,
-}
-
-/// One project's consecutive-death tally, and the stop it earns.
-// cm:guard the tally is keyed per PROJECT for the same reason the live map is: two projects on this box fail for unrelated reasons, and a box-wide counter would let one broken checkout stop every other project's master.
-struct Breaker {
-    count: u32,
-    /// When the run of deaths being counted started.
-    first: Instant,
-    open_until: Option<Instant>,
 }
 
 struct MasterState {
     session_id: String,
     name: String,
-    transcript: Option<std::path::PathBuf>,
-    /// Transcript length last seen, and when it last differed from the one before.
-    seen_len: u64,
-    last_growth: Instant,
-    /// True between typing a pass prompt and seeing the pane answer it.
-    prompted: bool,
+    /// When this project's pool last held anything at all.
+    last_work: Instant,
 }
 
 impl Masters {
@@ -190,11 +124,11 @@ impl Masters {
         Self::default()
     }
 
-    fn get(&self, project_id: &str) -> Option<(String, String, Option<std::path::PathBuf>)> {
+    fn get(&self, project_id: &str) -> Option<(String, String)> {
         let reg = self.0.lock().expect("masters poisoned");
         reg.live
             .get(project_id)
-            .map(|m| (m.session_id.clone(), m.name.clone(), m.transcript.clone()))
+            .map(|m| (m.session_id.clone(), m.name.clone()))
     }
 
     fn remember(&self, project_id: &str, state: MasterState) {
@@ -202,26 +136,23 @@ impl Masters {
         reg.live.insert(project_id.to_string(), state);
     }
 
+    /// This project's pool held something; the idle clock restarts.
+    fn note_work(&self, project_id: &str) {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        if let Some(m) = reg.live.get_mut(project_id) {
+            m.last_work = Instant::now();
+        }
+    }
+
+    /// How long this project has had nothing, or `None` if it has no master.
+    fn idle_for(&self, project_id: &str) -> Option<Duration> {
+        let reg = self.0.lock().expect("masters poisoned");
+        reg.live.get(project_id).map(|m| m.last_work.elapsed())
+    }
+
     fn forget(&self, project_id: &str) -> Option<String> {
         let mut reg = self.0.lock().expect("masters poisoned");
         reg.live.remove(project_id).map(|m| m.session_id)
-    }
-
-    /// Record what the transcript looks like now, and answer what it means.
-    ///
-    /// `(quiet_for, prompted)` — how long the pane has printed nothing, and
-    /// whether it owes an answer to a prompt already typed at it.
-    fn observe(&self, project_id: &str, len: u64) -> (Duration, bool) {
-        let mut reg = self.0.lock().expect("masters poisoned");
-        let Some(m) = reg.live.get_mut(project_id) else {
-            return (Duration::ZERO, false);
-        };
-        if len != m.seen_len {
-            m.seen_len = len;
-            m.last_growth = Instant::now();
-            m.prompted = false;
-        }
-        (m.last_growth.elapsed(), m.prompted)
     }
 
     /// The pane name for a master session id, for the inbox's terminal arm.
@@ -233,63 +164,6 @@ impl Masters {
             .find(|m| m.session_id == session_id)
             .map(|m| m.name.clone())
     }
-
-    fn mark_prompted(&self, project_id: &str) {
-        let mut reg = self.0.lock().expect("masters poisoned");
-        if let Some(m) = reg.live.get_mut(project_id) {
-            m.prompted = true;
-            m.last_growth = Instant::now();
-        }
-    }
-
-    /// Count one master ending. Answers the tally, and whether it just tripped.
-    ///
-    /// `now` is a parameter so the window and the cooldown can be tested; every
-    /// caller passes `Instant::now()`.
-    // cm:guard everything that leaves this project without a running master counts here, and there are exactly two such paths: `end_master` for a session that existed and ended, and a `terminal::ensure` that refused. A path that dropped a master without counting would give a crashloop an unbounded supply of fresh starts again.
-    fn record_death(&self, project_id: &str, now: Instant) -> (u32, bool) {
-        let mut reg = self.0.lock().expect("masters poisoned");
-        let b = reg.deaths.entry(project_id.to_string()).or_insert(Breaker {
-            count: 0,
-            first: now,
-            open_until: None,
-        });
-        if now.duration_since(b.first) > MASTER_DEATH_WINDOW {
-            b.count = 0;
-            b.first = now;
-        }
-        b.count += 1;
-        let tripped = b.count >= MASTER_DEATH_LIMIT && b.open_until.is_none();
-        if tripped {
-            b.open_until = Some(now + MASTER_BREAKER_COOLDOWN);
-        }
-        (b.count, tripped)
-    }
-
-    /// How long this project's master must stay unstarted, if at all.
-    // cm:guard the expiry does not clear the tally, it sets it one death BELOW the limit, and that is what makes the retry a probe rather than a fresh licence. Clearing it would buy a box that is still broken another full run of three spawns every half hour, which is the unbounded loop back at a slower rate.
-    fn cooldown_remaining(&self, project_id: &str, now: Instant) -> Option<(u32, Duration)> {
-        let mut reg = self.0.lock().expect("masters poisoned");
-        let b = reg.deaths.get_mut(project_id)?;
-        let open_until = b.open_until?;
-        if now < open_until {
-            return Some((b.count, open_until - now));
-        }
-        b.open_until = None;
-        b.count = MASTER_DEATH_LIMIT - 1;
-        b.first = now;
-        None
-    }
-}
-
-/// What an operator reads on a sweep that refuses to start a master.
-// cm:guard this says WHEN the box will try again, and that is the half a log line about a dead master usually leaves out. The reader has to be able to tell a project this box has stopped serving from one it is about to serve, and the ordinary spawn line is silent about both.
-fn breaker_notice(slug: &str, deaths: u32, remaining: Duration) -> String {
-    format!(
-        "[master] {slug}: DEGRADED — {deaths} master deaths inside {}m, so this box is not starting another for {}m. Nothing is claiming for this project until then; check `~/.claude.json` trust, the checkout and `tmux ls`.",
-        MASTER_DEATH_WINDOW.as_secs() / 60,
-        remaining.as_secs().div_ceil(60)
-    )
 }
 
 /// Why a sweep is happening now, when it is not the timer.
@@ -334,10 +208,18 @@ pub async fn run(
 ) {
     let mut delay = POLL_INTERVAL;
     let mut last_sweep = Instant::now();
+    // cm:guard a ledger that will not open is announced and the box keeps sweeping. It is the input to ONE decision — whether an idle master may leave — and a daemon that refused to dispatch over it would trade every project's work for a housekeeping question.
+    let mut ledger = match Ledger::default_path().and_then(|p| Ledger::open(&p)) {
+        Ok(l) => Some(l),
+        Err(e) => {
+            tracing::error!("[master] ledger unavailable ({e}) — no master will retire itself");
+            None
+        }
+    };
     loop {
         tokio::select! {
             _ = tokio::time::sleep(delay) => {
-                delay = sweep(&client, &cfg, &masters).await;
+                delay = sweep(&client, &cfg, &masters, &mut ledger).await;
                 last_sweep = Instant::now();
             }
             Some(w) = wake.recv() => {
@@ -346,7 +228,7 @@ pub async fn run(
                     tokio::time::sleep(WAKE_FLOOR - since).await;
                 }
                 tracing::info!("[master] wake ({}) — sweeping now", w.describe());
-                delay = sweep(&client, &cfg, &masters).await;
+                delay = sweep(&client, &cfg, &masters, &mut ledger).await;
                 last_sweep = Instant::now();
             }
             _ = cancel.changed() => { if *cancel.borrow() { break; } }
@@ -389,7 +271,12 @@ fn next_poll_delay(served: &[runners::MeRunner]) -> Duration {
 
 /// One look at every project this device serves.
 // cm:guard the project list comes from `/me/runners`, NEVER from `config.toml` bindings. Core is the source of truth for what a device serves and for where the checkout lives (`resolve_repo` reads the local binding only as a fallback), and the two disagree in practice: dev1 serves epodsystem-core with no local binding for it at all, so a sweep driven by the config file would leave that project's pool unread forever with nothing reporting why.
-async fn sweep(client: &CoreClient, cfg: &Config, masters: &Arc<Masters>) -> Duration {
+async fn sweep(
+    client: &CoreClient,
+    cfg: &Config,
+    masters: &Arc<Masters>,
+    ledger: &mut Option<Ledger>,
+) -> Duration {
     let served = match runners::list_me(client).await {
         Ok(rs) => rs,
         Err(e) => {
@@ -430,11 +317,20 @@ async fn sweep(client: &CoreClient, cfg: &Config, masters: &Arc<Masters>) -> Dur
             }
         };
         let items = view.items;
-        let backlog = view.backlog;
+        // cm:guard read the admissible issues too, and never gate on `items` alone. The pool holds jobs for the four kinds that have no issue to rank; a project whose entire content is issues would otherwise get a master, a brief and never a single pass, leaving `pipelineConfig.poolBacklog` configurable, savable and dead (ISS-933 criterion 26).
+        // cm:guard an unreadable admissible read is EMPTY, not fatal. It is the newer of the two routes, so a box talking to an older core must still serve that core's pool rather than going quiet on every project at once.
+        let admissible = pool::admissible(client, Some(&runner.project_id))
+            .await
+            .unwrap_or_default();
         // cm:guard an EMPTY pool starts no master, and that bound survives residency. A resident session is a `claude` process that lives until something ends it, and nothing counts it — `duplex_max_sessions` covers duplex pipeline jobs alone, so a box serving six projects would carry six permanent processes for however many of them never have work. A master that already exists is kept and still supervised; residency is for a project doing something, not for every row `/me/runners` returns.
-        // cm:guard a declared backlog alone is reason enough to start a master, and this is why the emptiness test names BOTH lists. Gating on `items` only means a project whose entire content is a backlog never gets a master, so the promote path it opted into fires nowhere — the knob would be configurable, savable and dead.
-        if items.is_empty() && backlog.is_empty() && masters.get(&runner.project_id).is_none() {
-            continue;
+        if items.is_empty() && admissible.is_empty() {
+            if retire_if_idle(client, masters, ledger, &runner.project_id, &runner.slug).await
+                || masters.get(&runner.project_id).is_none()
+            {
+                continue;
+            }
+        } else {
+            masters.note_work(&runner.project_id);
         }
 
         let resolved = match resolve_repo(&served, cfg, &runner.project_id) {
@@ -453,34 +349,60 @@ async fn sweep(client: &CoreClient, cfg: &Config, masters: &Arc<Masters>) -> Dur
             continue;
         };
 
-        // cm:guard a backlog-only project is prompted too. `items` alone was the test while a pool held nothing but jobs; a project that opted into `poolBacklog` and has only drafts would otherwise get a master, a brief and never a single pass — the knob configurable, savable and dead.
-        if items.is_empty() && backlog.is_empty() {
+        if items.is_empty() && admissible.is_empty() {
             continue;
         }
 
-        // cm:guard list what the master can NAME back to core, not the internal ids — a pool entry carries `issueKey` and no projectId, and an entry with neither still counts. Dropping the keyless ones from the count would tell a master the pool is emptier than it is.
-        let mut keys: Vec<String> = items.iter().filter_map(|i| i.issue_key.clone()).collect();
-        keys.sort();
-        keys.dedup();
-
-        let mut backlog_keys: Vec<String> =
-            backlog.iter().filter_map(|b| b.issue_key.clone()).collect();
-        backlog_keys.sort();
-        backlog_keys.dedup();
-
-        prompt_pass(
-            masters,
-            &runner.project_id,
-            &resolved.slug,
-            &session,
-            &keys,
-            &backlog_keys,
-            items.len(),
-            backlog.len(),
-        )
-        .await;
+        nudge_master(masters, &runner.project_id, &resolved.slug, &session).await;
     }
+
+    give_back_lost_runs(
+        crate::runner::inflight::boot_identity()
+            .unwrap_or_default()
+            .as_str(),
+        &PaneMasters { masters },
+        &CoreRunState { client },
+        &CoreRunState { client },
+        &CoreBeat { client },
+        ledger,
+    )
+    .await;
     delay
+}
+
+/// Beat what this box still holds, and close the loop on what it does not.
+// cm:guard runs AFTER the per-project loop, and the order is the assertion. `ensure_master` re-registers every live master into `Masters` on each pass, and `PaneMasters` reads that map for the pane NAME — placed before the loop, a daemon restart would meet an empty map and read every live run on the box as orphaned (ISS-933 criterion 16).
+// cm:guard the beat rides in this same call and is not separable: core reaps a run session silent for ten minutes, so a sweep that reconciled without beating would take back every healthy run on the box (ISS-933 criteria 16 and 25a).
+async fn give_back_lost_runs(
+    boot_id: &str,
+    live: &dyn recovery::MasterLiveness,
+    sessions: &dyn crate::runner::close_loop::SessionReader,
+    leases: &dyn crate::runner::close_loop::LeaseKeeper,
+    beat: &dyn recovery::Heartbeat,
+    ledger: &mut Option<Ledger>,
+) {
+    let Some(led) = ledger.as_mut() else { return };
+    // cm:guard an unreadable boot id means NO reconcile, and that refusal is the safe direction. The boot is what separates "the master died within this boot" from "everything recorded before a reboot belongs to a stranger"; an empty one matches nothing recorded, so every live run on the box would read as orphaned and lose its worktree (ISS-933 criterion 16). Windows is not hypothetical here: `boot_identity` answers `None` there.
+    if boot_id.is_empty() {
+        tracing::warn!("[master] this box reports no boot id — leaving unclosed runs alone");
+        return;
+    }
+    match recovery::reconcile(led, boot_id, live, sessions, leases, beat).await {
+        Ok(done) => {
+            for r in done.iter().filter(|r| !r.state.is_closed()) {
+                // cm:guard say WHICH marks are missing, never "partially closed". A run holding two of three leases and one holding none are different operator problems, and a line that does not separate them is the report this whole loop exists to replace.
+                tracing::warn!(
+                    "[master] run {} is partially closed: session_terminal={} worktree_gone={} leases={}/{}",
+                    r.run_id,
+                    r.state.session_terminal,
+                    r.state.worktree_gone,
+                    r.state.leases_returned,
+                    r.state.leases_total
+                );
+            }
+        }
+        Err(e) => tracing::warn!("[master] reconcile failed: {e}"),
+    }
 }
 
 /// The master's own process, versioned with this binary.
@@ -504,32 +426,6 @@ fn transcript_path(slug: &str) -> Option<std::path::PathBuf> {
     Some(dir.join("transcript.log"))
 }
 
-fn transcript_len(path: Option<&std::path::Path>) -> u64 {
-    path.and_then(|p| std::fs::metadata(p).ok())
-        .map_or(0, |m| m.len())
-}
-
-/// The argv a master's pane runs.
-// cm:guard `unset CLAUDECODE` through a shell rather than tmux's `-e`. A tmux session inherits the client environment and `-e` can only SET a variable, so the daemon's own `CLAUDECODE` would reach the pane and the master would believe it is nested inside another Claude session. `build_command` removes it for every other spawn on this box; this is the same removal on the one path that does not go through it.
-// cm:guard no `-p`. The whole change is that this process reads from a terminal instead of taking one prompt and exiting, so `-p` here would restore the per-pass process with a tmux session wrapped uselessly around it.
-fn master_argv() -> Vec<String> {
-    let bin = terminal::shell_quote(resolve_claude_bin());
-    vec![
-        "sh".into(),
-        "-c".into(),
-        format!("unset CLAUDECODE; exec {bin} --permission-mode bypassPermissions"),
-    ]
-}
-
-/// The environment a master's pane needs that a tmux session does not inherit.
-// cm:guard `MCP_TOOL_TIMEOUT` must be carried here explicitly. Every other spawn on this box gets it from `build_command`, which a tmux session does not go through — and Claude Code's own default is ~28h, so one hung MCP call would wedge a master's turn for the rest of the day with the silence ceiling reading it as a healthy pause it cannot distinguish. The operator's own value wins, exactly as it does on the other path.
-fn master_env() -> Vec<(String, String)> {
-    match mcp_tool_timeout_default(std::env::var_os("MCP_TOOL_TIMEOUT").as_deref()) {
-        Some(v) => vec![("MCP_TOOL_TIMEOUT".into(), v.into())],
-        None => Vec::new(),
-    }
-}
-
 /// Make sure this project has a live, registered master, and return its id.
 // cm:guard register with core on EVERY sweep, not only when the pane is created. The row is what `jobs.held_by` carries, so a cached id would keep claiming onto a session core had already reaped — holds nobody can see, under an identity nobody is beating for. `ensureMasterSession` is idempotent precisely so this can be unconditional.
 async fn ensure_master(
@@ -548,14 +444,6 @@ async fn ensure_master(
         return None;
     }
 
-    // cm:guard the breaker stops a START and nothing else, which is why it is read AFTER the liveness check and before the registration. A pane that is alive must still be adopted and supervised even while the breaker is open — refusing that would leave a running master unwatched and its holds unreturned when it dies, and would register an identity with no process behind it besides.
-    if !terminal::alive(&name).await {
-        if let Some((deaths, left)) = masters.cooldown_remaining(project_id, Instant::now()) {
-            tracing::error!("{}", breaker_notice(&resolved.slug, deaths, left));
-            return None;
-        }
-    }
-
     let session = match master_api::register(client, project_id, &name).await {
         Ok(s) => s,
         Err(e) => {
@@ -571,7 +459,7 @@ async fn ensure_master(
                 "[master] {}: adopting the resident session {name}",
                 resolved.slug
             );
-            remember(masters, project_id, &session, &resolved.slug);
+            remember(masters, project_id, &session);
         }
         return Some(session);
     }
@@ -593,8 +481,8 @@ async fn ensure_master(
     match terminal::ensure(
         &name,
         &resolved.repo_path,
-        &master_argv(),
-        &master_env(),
+        &terminal::pane_argv(),
+        &terminal::pane_env(),
         transcript.as_deref(),
     )
     .await
@@ -602,8 +490,6 @@ async fn ensure_master(
         Ok(_) => {}
         Err(e) => {
             tracing::error!("[master] {}: could not start {name}: {e}", resolved.slug);
-            // cm:guard a spawn that never succeeds is the same failure as one that dies a second later, and it counts the same. Leaving it uncounted would keep exactly one unbounded retry loop alive — the one where `tmux new-session` refuses on every sweep forever.
-            note_failed_master(masters, project_id, &resolved.slug);
             return None;
         }
     }
@@ -612,7 +498,7 @@ async fn ensure_master(
         resolved.slug,
         resolved.repo_path.display()
     );
-    remember(masters, project_id, &session, &resolved.slug);
+    remember(masters, project_id, &session);
 
     // cm:guard the standing brief is typed ONCE, into a pane that has just started, and the sleep is not decoration: Claude Code draws its composer after a startup that takes a second or two, and a paste that lands before it is dropped on the floor with no error anywhere. The next sweep would then prompt a master that was never briefed.
     tokio::time::sleep(Duration::from_secs(5)).await;
@@ -627,51 +513,41 @@ async fn ensure_master(
     Some(session)
 }
 
-fn remember(
-    masters: &Arc<Masters>,
-    project_id: &str,
-    session: &master_api::MasterSession,
-    slug: &str,
-) {
-    let transcript = transcript_path(slug);
+fn remember(masters: &Arc<Masters>, project_id: &str, session: &master_api::MasterSession) {
     masters.remember(
         project_id,
         MasterState {
             session_id: session.session_id.clone(),
             name: session.name.clone(),
-            seen_len: transcript_len(transcript.as_deref()),
-            transcript,
-            last_growth: Instant::now(),
-            prompted: false,
+            last_work: Instant::now(),
         },
     );
 }
 
-/// Type one pass at a master that is idle enough to read it.
-async fn prompt_pass(
+/// The whole of one pass prompt: go, and who you are.
+// cm:guard the pool is NOT embedded here, and that absence is what let the quiet gate go. The skill's own first step is `pool list`, so a snapshot typed at the master is a second copy that is already stale by the time the turn reaches it — and a prompt that queued behind a turn then acted on that copy is exactly what the deleted quiet gate existed to prevent (ISS-933 criterion 17).
+// cm:edge contract -> packages/runner/crates/forge-runner-core/assets/forge-master-skill.md — the skill is told `--session-id` is GIVEN, never invented, and this line is the only thing that gives it. A pass that omitted it has the master mint a fresh uuid and split its own inbox.
+fn nudge(session_id: &str) -> String {
+    format!(
+        "Pass. Your master session id is `{session_id}` — pass it as `--session-id`. Read the \
+pool, decide, claim what you are confident about, report, and stop."
+    )
+}
+
+/// Tell a master there is something to look at.
+// cm:guard nothing gates this on the master looking idle. Residency used to be policed from outside — transcript growth read as liveness, a quiet window before prompting, a ceiling that killed — and every one of those inferred a process state from a pane's byte count (ISS-933 criteria 17 and 18). A wake is coalesced by `WAKE_FLOOR` and carries no work, so an extra one costs a line in a composer.
+async fn nudge_master(
     masters: &Arc<Masters>,
     project_id: &str,
     slug: &str,
     session: &master_api::MasterSession,
-    keys: &[String],
-    backlog_keys: &[String],
-    claimable: usize,
-    backlog: usize,
 ) {
-    let Some((_, name, transcript)) = masters.get(project_id) else {
+    let Some((_, name)) = masters.get(project_id) else {
         return;
     };
-    let (quiet_for, _) = masters.observe(project_id, transcript_len(transcript.as_deref()));
-    if quiet_for < MASTER_QUIET_BEFORE_PROMPT {
-        tracing::debug!("[master] {slug}: still working — not prompting this sweep");
-        return;
-    }
-    tracing::info!(
-        "[master] {slug}: {claimable} job(s) claimable, {backlog} backlog row(s) — prompting {name}"
-    );
-    match terminal::send_line(&name, &pass_prompt(&session.session_id, keys, backlog_keys)).await {
-        Ok(()) => masters.mark_prompted(project_id),
-        Err(e) => tracing::warn!("[master] {slug}: could not prompt {name}: {e}"),
+    tracing::info!("[master] {slug}: work in the pool — nudging {name}");
+    if let Err(e) = terminal::send_line(&name, &nudge(&session.session_id)).await {
+        tracing::warn!("[master] {slug}: could not nudge {name}: {e}");
     }
 }
 
@@ -683,7 +559,7 @@ async fn prompt_pass(
 // cm:guard the holds come back on BOTH arms, and that is the load-bearing half. A master that dies holding a preparation parks claimable work until core's reaper notices; `pool::release` with no job id is the same "everything this session holds" call the socket-drop path used to make, and losing it would leave the fast detector detecting and not repairing.
 // cm:guard close the row AFTER releasing, never before. Core's reaper reads a terminal status as reason enough to sweep, so a close that landed with the release still to come would race the reaper for the same rows — harmless twice over, but only in that order; the reverse leaves a live row with no holds and nothing to say why.
 async fn supervise(client: &CoreClient, masters: &Arc<Masters>, project_id: &str, slug: &str) {
-    let Some((session_id, name, transcript)) = masters.get(project_id) else {
+    let Some((session_id, name)) = masters.get(project_id) else {
         return;
     };
 
@@ -693,31 +569,54 @@ async fn supervise(client: &CoreClient, masters: &Arc<Masters>, project_id: &str
             client,
             masters,
             project_id,
-            slug,
             &session_id,
             "terminal session vanished",
         )
         .await;
-        return;
     }
+}
 
-    let (quiet_for, prompted) = masters.observe(project_id, transcript_len(transcript.as_deref()));
-    // cm:guard `prompted` is half the condition and dropping it inverts the rule. A resident master between passes is idle on purpose and prints nothing for as long as the pool stays empty; only silence that follows a prompt it was given is evidence of a hang.
-    if prompted && quiet_for >= MASTER_SILENCE_CEILING {
-        tracing::error!(
-            "[master] {slug}: {name} has printed nothing for {}s since it was prompted — killing it and returning its holds",
-            quiet_for.as_secs()
-        );
-        let _ = terminal::kill(&name).await;
-        end_master(
-            client,
-            masters,
-            project_id,
-            slug,
-            &session_id,
-            "silent past the ceiling",
-        )
-        .await;
+/// Let an idle master go, if the ledger says its children are done.
+// cm:guard both halves are asked EVERY time, and the ledger read is not skipped when the pool is empty. An empty pool is the idle half already — reading the children is the half that is easy to drop, and dropping it is what abandons a run's close loop to core's ten-minute reaper.
+async fn retire_if_idle(
+    client: &CoreClient,
+    masters: &Arc<Masters>,
+    ledger: &mut Option<Ledger>,
+    project_id: &str,
+    slug: &str,
+) -> bool {
+    let (Some(led), Some(idle), Some((session_id, name))) = (
+        ledger.as_ref(),
+        masters.idle_for(project_id),
+        masters.get(project_id),
+    ) else {
+        return false;
+    };
+    let kids = match master_exit::children(led, &session_id) {
+        Ok(k) => k,
+        Err(e) => {
+            tracing::warn!("[master] {slug}: ledger unreadable ({e}) — keeping the master");
+            return false;
+        }
+    };
+    match master_exit::verdict(idle, &kids) {
+        Verdict::Stay(_) => false,
+        Verdict::Exit => {
+            tracing::info!(
+                "[master] {slug}: nothing for {}m and every child run closed — retiring {name}",
+                idle.as_secs() / 60
+            );
+            let _ = terminal::kill(&name).await;
+            end_master(
+                client,
+                masters,
+                project_id,
+                &session_id,
+                "idle, children done",
+            )
+            .await;
+            true
+        }
     }
 }
 
@@ -725,7 +624,6 @@ async fn end_master(
     client: &CoreClient,
     masters: &Arc<Masters>,
     project_id: &str,
-    slug: &str,
     session_id: &str,
     reason: &str,
 ) {
@@ -738,20 +636,52 @@ async fn end_master(
         tracing::warn!("[master] could not close session {session_id}: {e}");
     }
     masters.forget(project_id);
-    note_failed_master(masters, project_id, slug);
-}
-
-/// Count this project as having no master, and say so when that trips the breaker.
-fn note_failed_master(masters: &Arc<Masters>, project_id: &str, slug: &str) {
-    let (deaths, tripped) = masters.record_death(project_id, Instant::now());
-    if tripped {
-        tracing::error!("{}", breaker_notice(slug, deaths, MASTER_BREAKER_COOLDOWN));
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const THIS_SOURCE: &str = include_str!("master.rs");
+
+    #[test]
+    fn nothing_here_infers_liveness_from_a_pane() {
+        let production = THIS_SOURCE.split("#[cfg(test)]").next().unwrap();
+        for banned in [
+            "SILENCE_CEILING",
+            "QUIET_BEFORE_PROMPT",
+            "pass_prompt",
+            "fn observe",
+            "DEATH_LIMIT",
+            "DEATH_WINDOW",
+            "BREAKER_COOLDOWN",
+            "transcript_len",
+            "seen_len",
+            "last_growth",
+        ] {
+            assert!(
+                !production.contains(banned),
+                "`{banned}` is part of the supervision cluster this issue deletes: every one of them inferred a process's state from a pane's byte count, and the pane is where a master that is idle ON PURPOSE looks identical to one that has stopped (ISS-933 criteria 17 and 18)"
+            );
+        }
+        assert!(
+            production.contains("fn nudge("),
+            "the cluster is replaced, not merely removed — a master still has to be told there is work"
+        );
+    }
+
+    #[test]
+    fn the_retirement_path_asks_the_ledger_and_not_just_the_clock() {
+        let body = THIS_SOURCE
+            .split("async fn retire_if_idle(")
+            .nth(1)
+            .and_then(|r| r.split("\nasync fn ").next())
+            .unwrap_or_default();
+        assert!(
+            body.contains("master_exit::children("),
+            "the wiring must read the children out of the ledger — a caller that passed an empty slice would satisfy `verdict` and retire a master over live runs, which is criterion 19's failure arriving through the call site rather than the decision (ISS-933 criteria 19 and 20)"
+        );
+    }
 
     fn served(entries: &[(&str, Option<u64>)]) -> Vec<runners::MeRunner> {
         entries
@@ -869,7 +799,7 @@ mod tests {
             created: true,
         };
         let masters = Arc::new(masters);
-        remember(&masters, "p1", &session, "p1");
+        remember(&masters, "p1", &session);
         assert_eq!(masters.get("p1").map(|m| m.0), Some("s1".into()));
         assert!(
             masters.get("p2").is_none(),
@@ -877,105 +807,6 @@ mod tests {
         );
         assert_eq!(masters.forget("p1"), Some("s1".into()));
         assert!(masters.get("p1").is_none());
-    }
-
-    // cm:guard silence only counts AFTER a prompt. A resident master between passes prints nothing for as long as the pool stays empty, so a ceiling that ignored `prompted` would kill every idle master on a quiet project — the exact failure `SESSION_IDLE_TIMEOUT` produced, rebuilt on new machinery.
-    #[test]
-    fn silence_is_only_evidence_of_a_hang_once_the_master_has_been_prompted() {
-        let masters = Arc::new(Masters::new());
-        let session = master_api::MasterSession {
-            session_id: "s1".into(),
-            name: "forge-master-p1".into(),
-            created: true,
-        };
-        remember(&masters, "p1", &session, "p1");
-
-        let (_, prompted) = masters.observe("p1", 0);
-        assert!(!prompted, "an idle master owes nothing");
-
-        masters.mark_prompted("p1");
-        let (_, prompted) = masters.observe("p1", 0);
-        assert!(prompted, "a prompted master owes an answer");
-
-        // Any growth in the transcript is the answer arriving.
-        let (quiet, prompted) = masters.observe("p1", 42);
-        assert!(!prompted, "output clears the debt");
-        assert!(quiet < MASTER_QUIET_BEFORE_PROMPT);
-    }
-
-    // cm:guard the prompt gate must be SHORTER than the hang ceiling, or a master is killed for being silent before it is ever prompted again — the two bounds would then race, and the loser is always the healthy master.
-    #[test]
-    fn the_quiet_gate_is_shorter_than_the_hang_ceiling() {
-        assert!(MASTER_QUIET_BEFORE_PROMPT < MASTER_SILENCE_CEILING);
-        assert!(POLL_INTERVAL < MASTER_SILENCE_CEILING);
-    }
-
-    // cm:guard `-p` must never come back, and neither may `CLAUDECODE`. The first would restore the per-pass process this change removed, with a tmux session wrapped uselessly around it; the second makes the master believe it is nested inside another Claude session, which changes its behaviour with nothing in any log naming why.
-    #[test]
-    fn the_master_runs_interactively_with_no_inherited_claudecode() {
-        let argv = master_argv();
-        assert_eq!(argv[0], "sh");
-        let line = &argv[2];
-        assert!(line.contains("unset CLAUDECODE"), "{line}");
-        assert!(
-            line.contains("--permission-mode bypassPermissions"),
-            "{line}"
-        );
-        assert!(
-            !line.contains(" -p "),
-            "a resident master takes no -p: {line}"
-        );
-    }
-
-    // cm:guard a tmux session inherits the client environment and `-e` can only SET, never unset — so every variable the master needs that `build_command` would have given it has to be listed here, and the ones it must NOT have are removed by the `sh` line instead. Dropping either half is silent: the master runs, and behaves differently.
-    #[test]
-    fn the_pane_carries_the_mcp_timeout_and_respects_an_operator_override() {
-        let env = master_env();
-        match std::env::var_os("MCP_TOOL_TIMEOUT") {
-            Some(v) if !v.is_empty() => assert!(env.is_empty(), "an operator value must win"),
-            _ => {
-                assert_eq!(env.len(), 1);
-                assert_eq!(env[0].0, "MCP_TOOL_TIMEOUT");
-                assert!(env[0].1.parse::<u64>().is_ok(), "{:?}", env[0].1);
-            }
-        }
-    }
-
-    // cm:guard the two lists must stay TOLD APART in the prompt. A master that reads a backlog key as claimable spends its turn on `pool claim <issueId>`, which core refuses as `not_found` — and the refusal names the job, not the mistake, so nothing in the transcript says why.
-    #[test]
-    fn the_pass_prompt_separates_the_backlog_from_the_claimable_pool() {
-        let p = pass_prompt("sess-1", &["ISS-901".into()], &["ISS-917".into()]);
-        assert!(p.contains("ISS-901"));
-        assert!(p.contains("ISS-917"));
-        assert!(p.contains("NOT claimable"), "{p}");
-        assert!(p.contains("pool promote"), "{p}");
-    }
-
-    // cm:guard a project that declared no backlog must be prompted EXACTLY as it was before ISS-917. That is every other project on the fleet, so a stray heading here changes what every master on it reads.
-    #[test]
-    fn a_pass_prompt_with_no_backlog_says_nothing_about_one() {
-        let p = pass_prompt("sess-1", &["ISS-901".into()], &[]);
-        assert!(!p.contains("Backlog"), "{p}");
-        assert!(!p.contains("pool promote"), "{p}");
-    }
-
-    // cm:guard the standing brief and the pass prompt must stay SEPARATE, and this is the assertion that fails if they are folded back together: re-sending the brief every 30 seconds is the cold start this change removed, arriving as tokens instead of as a process.
-    #[test]
-    fn the_pass_prompt_carries_the_pool_and_not_the_brief() {
-        let brief = standing_prompt("forge-dev", Some("main"), None);
-        assert!(brief.contains("forge-master"));
-        assert!(brief.contains("origin/main"));
-
-        let pass = pass_prompt("sess-1", &["ISS-1".into(), "ISS-2".into()], &[]);
-        assert!(
-            pass.contains("sess-1"),
-            "the master needs its own session id: {pass}"
-        );
-        assert!(pass.contains("ISS-1") && pass.contains("ISS-2"));
-        assert!(
-            !pass.contains("forge-master skill"),
-            "the brief must not repeat: {pass}"
-        );
     }
 
     // cm:guard the policy must arrive VERBATIM and this asserts exactly that. A master briefed with a summary of the owner's instruction is a master following the summariser, and the whole failure ISS-929 fixes is an instruction that reached the pane wrong or not at all.
@@ -1003,113 +834,183 @@ mod tests {
             "{brief}"
         );
     }
+}
 
-    fn breaker_masters() -> Arc<Masters> {
-        Arc::new(Masters::new())
+#[cfg(test)]
+mod give_back_tests {
+    use super::*;
+    use crate::runner::close_loop::{LeaseKeeper, SessionReader};
+    use crate::runner::ledger::{Ledger, NewRun};
+    use std::sync::Mutex;
+
+    const THIS_SOURCE: &str = include_str!("master.rs");
+
+    type R<T> = crate::error::Result<T>;
+
+    struct Alive(bool);
+    #[async_trait::async_trait]
+    impl recovery::MasterLiveness for Alive {
+        async fn is_alive(&self, _id: &str) -> bool {
+            self.0
+        }
     }
 
-    // cm:guard this is the test that has to fail if the respawn goes back to being unbounded. Three deaths inside the window on forge-vm cost 90 seconds and then two spawns a minute for as long as nobody looked.
-    #[test]
-    fn deaths_stacking_inside_the_window_stop_the_respawn() {
-        let m = breaker_masters();
-        let t0 = Instant::now();
+    #[derive(Default)]
+    struct Beats(Mutex<Vec<String>>);
+    #[async_trait::async_trait]
+    impl recovery::Heartbeat for Beats {
+        async fn beat(&self, session_id: &str) -> R<()> {
+            self.0.lock().unwrap().push(session_id.to_string());
+            Ok(())
+        }
+    }
 
-        assert_eq!(m.record_death("p1", t0), (1, false));
-        assert!(
-            m.cooldown_remaining("p1", t0).is_none(),
-            "one death is an ordinary restart, not a crashloop"
-        );
+    struct Terminal(bool);
+    #[async_trait::async_trait]
+    impl SessionReader for Terminal {
+        async fn is_terminal(&self, _id: &str) -> R<bool> {
+            Ok(self.0)
+        }
+    }
+
+    #[derive(Default)]
+    struct Leases(Mutex<Vec<String>>);
+    #[async_trait::async_trait]
+    impl LeaseKeeper for Leases {
+        async fn release(&self, issue_key: &str) -> R<()> {
+            self.0.lock().unwrap().push(issue_key.to_string());
+            Ok(())
+        }
+        async fn is_returned(&self, issue_key: &str) -> R<bool> {
+            Ok(self.0.lock().unwrap().iter().any(|k| k == issue_key))
+        }
+    }
+
+    const BOOT: &str = "boot-under-test";
+
+    fn a_ledger_holding_one_run() -> Ledger {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(NewRun {
+            run_id: "run-1".into(),
+            master_session_id: "master-1".into(),
+            worktree_path: "/nonexistent/wt".into(),
+            boot_id: BOOT.into(),
+            issue_keys: vec!["ISS-1".into(), "ISS-2".into()],
+        })
+        .unwrap();
+        led.attach_session("run-1", "core-sess-1").unwrap();
+        led
+    }
+
+    // cm:guard the discriminating assertion is the BEAT, not that a run was closed. Core reaps a run session silent for ten minutes, so a sweep that reconciled without beating would take every healthy run on this box back after ten minutes — a test that only watched the closing half would go green on exactly that build (ISS-933 criteria 16 and 25a).
+    #[tokio::test]
+    async fn a_sweep_beats_the_runs_this_box_still_holds() {
+        let mut ledger = Some(a_ledger_holding_one_run());
+        let beats = Beats::default();
+
+        give_back_lost_runs(
+            BOOT,
+            &Alive(true),
+            &Terminal(false),
+            &Leases::default(),
+            &beats,
+            &mut ledger,
+        )
+        .await;
+
         assert_eq!(
-            m.record_death("p1", t0 + Duration::from_secs(30)),
-            (2, false)
+            beats.0.lock().unwrap().as_slice(),
+            ["core-sess-1"],
+            "a live run this box holds must be beaten every sweep, or core's ten-minute reaper takes its worktree back"
         );
-        assert!(m
-            .cooldown_remaining("p1", t0 + Duration::from_secs(30))
-            .is_none());
-
-        let (deaths, tripped) = m.record_death("p1", t0 + Duration::from_secs(60));
-        assert_eq!(deaths, MASTER_DEATH_LIMIT);
-        assert!(
-            tripped,
-            "the third death inside the window opens the breaker"
-        );
-
-        let (_, left) = m
-            .cooldown_remaining("p1", t0 + Duration::from_secs(61))
-            .expect("the breaker is open");
-        assert!(left <= MASTER_BREAKER_COOLDOWN && left > Duration::ZERO);
     }
 
-    // cm:guard the tally is per project. A box-wide counter would let one broken checkout stop every other project this box serves, which is a worse outage than the crashloop it replaced.
-    #[test]
-    fn deaths_on_one_project_never_stop_another() {
-        let m = breaker_masters();
-        let t0 = Instant::now();
-        for _ in 0..MASTER_DEATH_LIMIT {
-            m.record_death("p1", t0);
+    #[tokio::test]
+    async fn a_dead_master_leaves_its_leases_returned_and_no_beat_sent() {
+        let mut ledger = Some(a_ledger_holding_one_run());
+        let beats = Beats::default();
+        let leases = Leases::default();
+
+        give_back_lost_runs(
+            BOOT,
+            &Alive(false),
+            &Terminal(true),
+            &leases,
+            &beats,
+            &mut ledger,
+        )
+        .await;
+
+        assert!(
+            beats.0.lock().unwrap().is_empty(),
+            "beating for a master that is gone tells core this box still holds a run nobody is running"
+        );
+        let mut returned = leases.0.lock().unwrap().clone();
+        returned.sort();
+        assert_eq!(
+            returned,
+            ["ISS-1", "ISS-2"],
+            "every issue of the group comes back, per issue — a run carrying two that returned one is not closed"
+        );
+    }
+
+    // cm:guard the branch Windows actually took: `inflight::boot_identity` answers `None` there, and `unwrap_or_default` hands this an empty string. An empty boot matches NO recorded run, so a build without this refusal reads every live run on the box as orphaned and takes its worktree — the two tests above went red on CI's windows-latest before this branch existed.
+    #[tokio::test]
+    async fn a_box_that_cannot_name_its_boot_reconciles_nothing() {
+        let mut ledger = Some(a_ledger_holding_one_run());
+        let beats = Beats::default();
+        let leases = Leases::default();
+
+        give_back_lost_runs(
+            "",
+            &Alive(false),
+            &Terminal(true),
+            &leases,
+            &beats,
+            &mut ledger,
+        )
+        .await;
+
+        assert!(
+            leases.0.lock().unwrap().is_empty() && beats.0.lock().unwrap().is_empty(),
+            "an unreadable boot id must leave every run alone — an empty one matches nothing recorded, so reconciling on it gives back the leases of runs that are still live"
+        );
+    }
+
+    /// The brace depth every statement of `sweep`'s own body sits at.
+    fn depth_of_call_in_sweep(needle: &str) -> Option<usize> {
+        let production = THIS_SOURCE.split("#[cfg(test)]").next().unwrap();
+        let sweep = production
+            .split("async fn sweep(")
+            .nth(1)
+            .expect("sweep is gone");
+        let body = &sweep[sweep.find('{')?..];
+        let mut depth = 0usize;
+        for (i, ch) in body.char_indices() {
+            match ch {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return None;
+                    }
+                }
+                _ => {}
+            }
+            if body[i..].starts_with(needle) {
+                return Some(depth);
+            }
         }
-        assert!(m.cooldown_remaining("p1", t0).is_some());
-        assert!(
-            m.cooldown_remaining("p2", t0).is_none(),
-            "p2's master has died no times"
+        None
+    }
+
+    // cm:guard depth 1 is the assertion and a mere `contains` is NOT enough: measured while writing this, `if false { give_back_lost_runs(...) }` passed a containment check, so the scan agreed with a build in which no run on the box is ever beaten. A call sitting under any condition is a call an operator cannot rely on.
+    #[test]
+    fn the_sweep_reconciles_unconditionally() {
+        assert_eq!(
+            depth_of_call_in_sweep("give_back_lost_runs("),
+            Some(1),
+            "the sweep must reconcile what this box holds on EVERY pass; behind a condition, or gone, nothing beats a run session and core reaps every healthy one after ten minutes"
         );
-    }
-
-    // cm:guard deaths spread thinly are not a crashloop, and the window is what says so — without the reset, a box that restarts its master once a week would trip the breaker on the third week.
-    #[test]
-    fn a_death_older_than_the_window_does_not_count() {
-        let m = breaker_masters();
-        let t0 = Instant::now();
-        m.record_death("p1", t0);
-        m.record_death("p1", t0 + Duration::from_secs(10));
-
-        let (deaths, tripped) =
-            m.record_death("p1", t0 + MASTER_DEATH_WINDOW + Duration::from_secs(1));
-        assert_eq!(deaths, 1, "the run restarted");
-        assert!(!tripped);
-    }
-
-    // cm:guard half-open, and the second half of this test is the point: the retry after the cooldown is ONE probe, so a box that is still broken pays one spawn per cooldown rather than a fresh run of three.
-    #[test]
-    fn the_cooldown_buys_one_probe_and_a_death_reopens_it_at_once() {
-        let m = breaker_masters();
-        let t0 = Instant::now();
-        for _ in 0..MASTER_DEATH_LIMIT {
-            m.record_death("p1", t0);
-        }
-        assert!(m.cooldown_remaining("p1", t0).is_some());
-
-        let after = t0 + MASTER_BREAKER_COOLDOWN + Duration::from_secs(1);
-        assert!(
-            m.cooldown_remaining("p1", after).is_none(),
-            "the cooldown elapsed, so one attempt is allowed"
-        );
-
-        let (deaths, tripped) = m.record_death("p1", after + Duration::from_secs(5));
-        assert_eq!(deaths, MASTER_DEATH_LIMIT);
-        assert!(
-            tripped,
-            "a probe that dies re-opens the breaker immediately"
-        );
-    }
-
-    // cm:guard a spawn that is refused every time is a respawn loop too, and this is the assertion that fails if the refusal arm stops counting — the tally is the only thing standing between `tmux new-session` failing forever and a sweep that asks it to, forever.
-    #[test]
-    fn a_spawn_that_never_succeeds_trips_the_breaker_as_a_death_does() {
-        let m = breaker_masters();
-        for _ in 0..MASTER_DEATH_LIMIT {
-            note_failed_master(&m, "p1", "p1");
-        }
-        assert!(m.cooldown_remaining("p1", Instant::now()).is_some());
-    }
-
-    // cm:guard the line has to say WHEN the box will try again. An operator reading a dead-master log needs to tell a project this box has stopped serving from one it is about to serve, and no other line on this path says which.
-    #[test]
-    fn the_degraded_line_names_the_project_the_tally_and_the_next_attempt() {
-        let notice = breaker_notice("forge-dev", 3, Duration::from_secs(29 * 60));
-        assert!(notice.contains("forge-dev"), "{notice}");
-        assert!(notice.contains('3'), "{notice}");
-        assert!(notice.contains("29m"), "{notice}");
-        assert!(notice.contains("DEGRADED"), "{notice}");
     }
 }

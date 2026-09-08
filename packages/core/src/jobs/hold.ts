@@ -5,7 +5,7 @@
  * A hold is a successor row at `status='held'`, not a reused one: the failed
  * attempt keeps its error, its session link and its timings, exactly as the
  * retry engine's clone-per-attempt shape already guarantees. `held` is
- * non-terminal and slotless (see `dispatch-gates.ts`), so the row may sit for
+ * non-terminal and slotless (see `queued-gates.ts`), so the row may sit for
  * hours without wedging the project.
  *
  * Auto-release happens at most ONCE per lineage. A capacity outage that clears

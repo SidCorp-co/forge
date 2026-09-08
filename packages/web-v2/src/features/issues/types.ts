@@ -290,7 +290,6 @@ export interface PipelineHealth {
    *  the board card have for a step that exists but is not running. */
   // cm:edge contract -> packages/core/src/issues/pipeline-health-types.ts — this interface is a hand-mirror of core `PipelineHealth`, not an import; a field added there is invisible here until it is added here too
   queuedStep?: PipelineHealthQueuedStep;
-  lastTickAt?: string;
   /** Only set when `stage === "waiting"`. */
   waitingCause?: { kind: WaitingCause };
   /** ISS-853 — the issue's paused pipeline run. Present whatever the issue's own

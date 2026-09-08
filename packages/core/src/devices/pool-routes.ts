@@ -12,7 +12,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
-import { readBacklog } from './backlog.js';
+import { readAdmissibleIssues } from './admissible.js';
 import {
   prepareJobForMaster,
   releaseAllHeldBySession,
@@ -22,10 +22,18 @@ import {
 import { readDeviceLoad, readFleetLoad, readProjectLoad } from './load.js';
 import { closeMasterSession, ensureMasterSession } from './master-session.js';
 import { readPool } from './pool.js';
-import { promoteFromBacklog } from './promote.js';
+import {
+  isIssueLeaseHeld,
+  openRunSession,
+  readRunSessionTerminal,
+  releaseIssueLease,
+} from './run-session.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
+
+const notFound = (what: string) =>
+  new HTTPException(404, { message: `${what} not found`, cause: { code: 'NOT_FOUND' } });
 
 // cm:guard `requireDevice`, never `requireAnyAuth`. Only the latter sets `userId = device.ownerId`, which would hand a master session its owner's whole account authority; these routes must stay scoped to the device's own bindings so `loadProjectAccess` fails closed.
 export const devicePoolRoutes = new Hono<{ Variables: DeviceVars }>();
@@ -44,30 +52,94 @@ devicePoolRoutes.get(
   async (c) => {
     const { limit, projectId } = c.req.valid('query');
     const deviceId = c.get('device').id;
-    const [items, backlog] = await Promise.all([
-      readPool({ deviceId, projectId, limit }),
-      readBacklog({ deviceId, projectId }),
-    ]);
-    // cm:guard ISS-917 — `backlog` is a SIBLING key and its rows must never be folded into `items`. A row with no `jobId` sitting in the array a master claims from is a malformed claim waiting to happen, and an older runner (which decodes only `items`) keeps parsing this response unchanged precisely because the new key is additive.
-    return c.json({ items, count: items.length, backlog, backlogCount: backlog.length });
+    const items = await readPool({ deviceId, projectId, limit });
+    // cm:guard the pool is JOBS, and since ISS-933 it is jobs for the four kinds that have no issue to rank — `smoke`, `release_batch`, `reconcile`, `verify_skill`. `drive` reaches a box as a run session instead, so an issue never belongs in this array: a row with no `jobId` where a master claims from is a malformed claim waiting to happen.
+    return c.json({ items, count: items.length });
   },
 );
 
-const promoteBodySchema = z.object({
-  issueId: z.string().uuid(),
-});
-
-// cm:guard a refusal answers 200 with `ok:false` and a NAMED reason, exactly as a refused claim does. An entry-gated project and a race lost to another master are ordinary outcomes a master handles by choosing differently; making either an error invites a retry loop against a condition retrying cannot change, and `entry_gated` in particular clears only when a human edits the config.
-devicePoolRoutes.post(
-  '/me/pool/promote',
+// cm:guard the issues a master may open a run session over, and the ONLY reader of `pipelineConfig.poolBacklog.statuses` after ISS-933 deleted `pool promote`. Without a live consumer that config key is configurable, savable and dead, which is the shape this repo refuses; a change that drops this route owes the key another reader or owes the key its deletion.
+devicePoolRoutes.get(
+  '/me/issues/admissible',
   requireDevice(),
-  zValidator('json', promoteBodySchema, (r) => {
+  zValidator('query', poolQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
-    const { issueId } = c.req.valid('json');
-    const result = await promoteFromBacklog({ deviceId: c.get('device').id, issueId });
-    return c.json(result);
+    const { projectId } = c.req.valid('query');
+    const items = await readAdmissibleIssues({ deviceId: c.get('device').id, projectId });
+    return c.json({ items, count: items.length });
+  },
+);
+
+const runSessionBodySchema = z.object({
+  projectId: z.string().uuid(),
+  runId: z.string().uuid(),
+  // cm:guard a LIST with a minimum of one, and no scalar sibling. A group of one takes the same path as a group of three, which is the whole of ISS-933 criterion 8 — a scalar entry point is how "one run, one issue" comes back, measured as two sessions in one worktree.
+  issueKeys: z.array(z.string().min(1)).min(1).max(16),
+  name: z.string().min(1).max(60),
+});
+
+// cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/run_sessions.rs — `open` posts this shape and reads `sessionId` back; the runner has already committed its ledger row by the time it calls, so a refusal here leaves a recorded run with no session, which its own close loop reads as "never started".
+devicePoolRoutes.post(
+  '/me/run-sessions',
+  requireDevice(),
+  zValidator('json', runSessionBodySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const body = c.req.valid('json');
+    const session = await openRunSession({
+      deviceId: c.get('device').id,
+      projectId: body.projectId,
+      issueKeys: body.issueKeys,
+      name: body.name,
+    });
+    return c.json(session);
+  },
+);
+
+const sessionParamsSchema = z.object({ sessionId: z.string().uuid() });
+const leaseParamsSchema = z.object({ issueKey: z.string().min(1).max(64) });
+
+// cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/recovery_ports.rs — `CoreRunState` reads these back; the close loop sets a mark ONLY from what they answer, never from the ack of the write it just made (ISS-933 criterion 13).
+devicePoolRoutes.get(
+  '/me/run-sessions/:sessionId',
+  requireDevice(),
+  zValidator('param', sessionParamsSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { sessionId } = c.req.valid('param');
+    const terminal = await readRunSessionTerminal({ deviceId: c.get('device').id, sessionId });
+    if (terminal === null) throw notFound('run session');
+    return c.json({ sessionTerminal: terminal });
+  },
+);
+
+devicePoolRoutes.get(
+  '/me/issue-leases/:issueKey',
+  requireDevice(),
+  zValidator('param', leaseParamsSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { issueKey } = c.req.valid('param');
+    return c.json({ held: await isIssueLeaseHeld({ deviceId: c.get('device').id, issueKey }) });
+  },
+);
+
+// cm:guard answers 200 whether or not anything was held — the close loop retries every mark it still owes, so a second return of the same lease must be a no-op rather than a failure that parks the run.
+devicePoolRoutes.delete(
+  '/me/issue-leases/:issueKey',
+  requireDevice(),
+  zValidator('param', leaseParamsSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { issueKey } = c.req.valid('param');
+    await releaseIssueLease({ deviceId: c.get('device').id, issueKey });
+    return c.json({ ok: true });
   },
 );
 

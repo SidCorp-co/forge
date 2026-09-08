@@ -32,10 +32,11 @@ fact, so an owner changing it reaches the next master with no release and no res
 
 ## The loop
 
-1. `forge-runner pool list --limit 20` — what could run, and (where a project
-   declares one) the `backlog` of what nobody has decided about yet.
+1. `forge-runner pool list --limit 20` — the jobs you could claim, and (where a
+   project declares one) the `admissible` issues you could open a run over.
 2. `forge-runner pool load --project-id <id>` — what is already running, where.
-3. Decide, then `forge-runner pool claim <jobId> --session-id <yours> --agent <name>`.
+3. Decide, then take it. A job: `pool claim <jobId> --session-id <yours> --agent <name>`.
+   Issues: `pool run --project-id <id> --issues ISS-1,ISS-2 --agent <name>`.
 4. Say what you decided and why. Then stop and wait for the next pass.
 
 **`--session-id` is GIVEN TO YOU, not invented.** Every pass prompt carries it,
@@ -127,51 +128,41 @@ rewrite the same module cannot — a declared dependency is not the only way wor
 collides, and you are the only thing that can see the other ways. Read the
 descriptions.
 
-## Deciding what to promote
+## Deciding what to open a run over
 
-Some projects declare a **backlog**: issue statuses whose issues you can SEE but
-nobody has decided about yet. `pool list` prints them under `backlog`, below the
-claimable rows and never mixed into them. A backlog row has no job and no run —
-`pool claim` cannot take one, and trying spends your turn on a refusal.
+Some projects declare an **admissible set**: issue statuses whose issues you may open work over.
+`pool list` prints them under `admissible`, below the claimable jobs and never mixed into them. An
+admissible row has no job and no run — `pool claim` cannot take one, and trying spends your turn on
+a refusal core answers as `not_found`, which names the job rather than the mistake.
 
-`forge-runner pool promote <issueId>` is what turns one into work: it moves the
-issue to the entry status, so core opens a run and a `drive` job, and it hands
-you that job's id. You then claim that id exactly as you claim anything else.
-Promote decides nothing about ordering — it only creates the job you were going
-to have to decide about anyway.
+`forge-runner pool run --project-id <id> --issues ISS-1,ISS-2 --agent <name>` is what turns them
+into work. It opens ONE run session over the whole group: one worktree, one branch named `<name>`,
+one terminal session. **A group of one is a group** — there is no second, scalar way in, because
+that is what put two agents in one directory.
 
-**The promote is the decision; the claim is not a second chance at it.** Once a
-draft is `open` it is in the pipeline, and putting it back is a human's edit,
-not a command you have.
+Group issues that touch the same code and split ones that do not. Two runs over the same worktree
+are refused by name, and so is a second run over an issue another run already carries — the refusal
+names the run that holds it, so you can read what you collided with.
 
-What the backlog row gives you, raw:
+What an admissible row gives you, raw:
 
 | Fact | Means | What it does NOT mean |
 |---|---|---|
 | `status` | where the issue sits today | not how ready it is — a `draft` may be complete and a `waiting` may be stale |
 | age | how long it has sat unclaimed | not that it is urgent, and not that it is dead |
 | `priority` | what the author typed | not a queue position; nobody re-reads it as the project changes |
-| blocker rows | the same raw status + merge stamp the pool gives | read them by the table above; a promoted issue with an unmerged blocker is a job that will sit |
-| description | the only place scope lives | a backlog row is unrefined by definition — nothing has triaged it |
+| blocker rows | the same raw status + merge stamp the pool gives | read them by the table above; a run over an issue with an unmerged blocker is a run that will sit |
+| description | the only place scope lives | an admissible row is unrefined by definition — nothing has triaged it |
 
-Weigh it against what you are already running, not in isolation: a promote adds
-a job to a box you have already decided the load for, and it is the one addition
-that was not in `pool list` when you decided.
+Weigh it against what you are already running, not in isolation: a run adds a process to a box you
+have already decided the load for.
 
-Reasons a promote is refused, none of them an error:
+**Opening the run is the decision, and there is no second chance at it.** Once a run holds an issue
+it holds it until the run's loop closes — session terminal, worktree gone, lease returned. Putting
+an issue back is that loop finishing, not a command you have.
 
-| reason | what it means | what to do |
-|---|---|---|
-| `entry_gated` | the project's entry stage is off or set to manual — a human presses Run here | promote NOTHING on this project and say so; only an operator's config edit clears it |
-| `not_in_backlog` | the issue is not at a status this project admits | nothing to do — it is not yours to start |
-| `issue_busy` | a job or an open run already exists | it is already work; find it in `pool list` |
-| `backlog_disabled` | the project declares no backlog | you should not have seen a row — say so |
-| `dispatch_failed` | the move happened but no job appeared | read the `detail`: it says whether the issue was restored or left for the reconciler |
-
-A project can admit a status and still gate the entry stage. That pairing is
-deliberate, not a misconfiguration: it means an operator wants you to READ the
-backlog and wants a human to start the work. Say what you would have promoted
-and leave it.
+A project can admit a status and still want a human to start the work; if the project's owner policy
+says so, say what you would have opened and leave it.
 
 ## Deciding how many
 

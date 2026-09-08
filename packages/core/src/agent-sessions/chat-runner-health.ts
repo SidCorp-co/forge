@@ -46,7 +46,7 @@ export interface ChatRunnerHealthInput {
  * Stamp or clear the executing runner's limit/quarantine from one chat-lane
  * terminal report. Never throws — a health write must not fail the PATCH.
  */
-// cm:guard gate the STAMP on the DEVICE principal — a user/member PATCH can carry an arbitrary crafted `messages` array (patchSchema.messages is unvalidated), so classifying non-device-authored PATCHes would let a project member mis-stamp a healthy runner and DoS pipeline dispatch (dispatch-gates.ts hard-excludes a rate-limited runner)
+// cm:guard gate the STAMP on the DEVICE principal — a user/member PATCH can carry an arbitrary crafted `messages` array (patchSchema.messages is unvalidated), so classifying non-device-authored PATCHes would let a project member mis-stamp a healthy runner and DoS pipeline dispatch (queued-gates.ts hard-excludes a rate-limited runner)
 // cm:guard the stamp reads the REPORTED status and the clear reads the PERSISTED one, and the asymmetry is deliberate: a core-side rewrite of `completed` into `failed` (skill_not_synced, audit_ran_blind) is core's own verdict about the AGENT, not evidence the runner is rate-limited — clearing on the rewritten outcome would hide the failure from the health gate, stamping on it would blame the box for the model
 export async function syncRunnerHealthFromChatTerminal(
   input: ChatRunnerHealthInput,

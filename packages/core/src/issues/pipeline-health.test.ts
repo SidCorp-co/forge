@@ -22,12 +22,10 @@ vi.mock('../db/client.js', () => ({
   db: { select: vi.fn(), execute: vi.fn() },
 }));
 
-const { classifyPipelineHealthForIssue, recordTickAt, getLastTickAt, resetLastTickAtForTest } =
-  await import('./pipeline-health.js');
+const { classifyPipelineHealthForIssue } = await import('./pipeline-health.js');
 type ClassifyInput = import('./pipeline-health.js').ClassifyInput;
 
 const QUEUED_AT = new Date('2026-05-17T08:00:00.000Z');
-const TICK_AT = new Date('2026-05-17T08:01:00.000Z');
 
 function baseInput(over: Partial<ClassifyInput> = {}): ClassifyInput {
   return {
@@ -35,7 +33,6 @@ function baseInput(over: Partial<ClassifyInput> = {}): ClassifyInput {
     sessions: [],
     jobs: [],
     runnerPool: { total: 1 },
-    lastTickAt: null,
     ...over,
   };
 }
@@ -70,11 +67,6 @@ describe('classifyPipelineHealthForIssue', () => {
   it('returns `{ stage }` only when no queued jobs exist', () => {
     const out = classifyPipelineHealthForIssue(baseInput());
     expect(out).toEqual({ stage: 'approved' });
-  });
-
-  it('includes lastTickAt when set', () => {
-    const out = classifyPipelineHealthForIssue(baseInput({ lastTickAt: TICK_AT }));
-    expect(out.lastTickAt).toBe(TICK_AT.toISOString());
   });
 
   it('exposes activeSession for a running session', () => {
@@ -232,25 +224,6 @@ describe('waitingCause is a pass-through of issues.waiting_kind (RFC 0002 INV-5)
       }),
     );
     expect(out.waitingCause).toBeUndefined();
-  });
-});
-
-describe('lastTickAt heartbeat', () => {
-  it('records and retrieves per-project tick timestamps', () => {
-    resetLastTickAtForTest();
-    expect(getLastTickAt('p-1')).toBeNull();
-    const at = new Date('2026-05-17T09:00:00.000Z');
-    recordTickAt('p-1', at);
-    expect(getLastTickAt('p-1')).toEqual(at);
-    expect(getLastTickAt('p-other')).toBeNull();
-  });
-
-  it('reset clears all entries', () => {
-    recordTickAt('p-1');
-    recordTickAt('p-2');
-    resetLastTickAtForTest();
-    expect(getLastTickAt('p-1')).toBeNull();
-    expect(getLastTickAt('p-2')).toBeNull();
   });
 });
 

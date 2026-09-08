@@ -30,7 +30,7 @@ vi.mock('../logger.js', () => ({
 
 const { runMemoryDecay, DECAY_SOURCES, STALE_UNCONFIRMED_DAYS } = await import('./decay.js');
 
-/** Mirrors `collectSqlFragments` from dispatch-gates.test.ts — flattens a
+/** Mirrors `collectSqlFragments` from queued-gates.test.ts — flattens a
  *  drizzle `sql`/`and(...)` tree down to its raw string literals so a WHERE
  *  clause built entirely in-DB (no fetch-then-filter) is still inspectable. */
 function collectSqlFragments(sqlArg: unknown): string {

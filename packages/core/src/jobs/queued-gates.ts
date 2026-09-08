@@ -11,7 +11,7 @@
  * extending one can no longer drift the other. The CASE arm order is the
  * precedence between them.
  *
- * Two invariants, both with a regression assertion in `dispatch-gates.test.ts`:
+ * Two invariants, both with a regression assertion in `queued-gates.test.ts`:
  * no temporal predicate beyond `valid_until`, the heartbeat, runner load and
  * `retry_after_at` (ISS-197) — a `gate_at + N seconds` debouncer trips it; and
  * no writes from either reader.
@@ -100,8 +100,8 @@ export interface BarrierFragments {
 
 /**
  * SSOT — single builder for the dispatch-barrier CTEs + EXISTS-form
- * predicates used by both the picker (`pickNextDispatchableJobForProject`)
- * and the asserter ({@link assertDispatchable}).
+ * predicates used by both readers: {@link gateReasonsForQueuedJobs} and
+ * {@link assertDispatchable}.
  *
  * All predicate SQL refers to the surrounding query's standard aliases:
  *   `j` — the jobs row
@@ -112,7 +112,7 @@ export interface BarrierFragments {
  * the trivially-shared scalar checks (`j.status='queued'`, `r.status='running'`,
  * the `retry_after_at` cooldown, and the
  * runner-availability EXISTS checks). The parity test in
- * `dispatch-gates.test.ts` keeps the two sites in lockstep — extending one
+ * `queued-gates.test.ts` keeps the two sites in lockstep — extending one
  * without extending the other will flip a recorded scenario from
  * `ok:false` ⇔ "picker would not pick".
  */
@@ -184,7 +184,7 @@ export function buildBarrierFragments(args: {
  *
  * EXISTS predicates come from {@link buildBarrierFragments} — same builder
  * the picker uses. New gates that touch EXISTS sub-queries must extend the
- * builder; the parity test in `dispatch-gates.test.ts` will fail if the two
+ * builder; the parity test in `queued-gates.test.ts` will fail if the two
  * sites disagree on any of 20 mixed scenarios.
  */
 /**

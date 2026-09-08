@@ -72,7 +72,7 @@ export type SessionFailureReason = FailureCause | LegacyFailureReason;
 /**
  * Strings that appear in this field on live rows without being causes.
  *
- * The dispatcher's skip reasons come from `jobs/dispatch-gates.ts` and describe
+ * The dispatcher's skip reasons come from `jobs/queued-gates.ts` and describe
  * why a job was not started, not how a session died — ISS-162 made them
  * stateless, recomputed every tick, so they are never stored as a terminal
  * cause. `job_failed` and `ws-publish-failed` are retired spellings that 1,787

@@ -3,7 +3,6 @@ import {
   applyStatusTransitionMock,
   autonomousWedgeQueue,
   capMock,
-  jobsQueue,
   recordRescueMock,
   reEnqueueMock,
   resetHarness,
@@ -11,6 +10,12 @@ import {
   staleCountQueue,
   stuckQueue,
 } from './reconciler-test-harness.js';
+
+const wakeMastersForProject = vi.fn(async () => ({ boxes: 1, delivered: 1 }));
+
+vi.mock('../ws/master-wake.js', () => ({
+  wakeMastersForProject: (...a: unknown[]) => wakeMastersForProject(...(a as [])),
+}));
 
 vi.mock('../db/client.js', async () => {
   const h = await import('./reconciler-test-harness.js');
@@ -183,9 +188,10 @@ describe('the rescue cap on the open path (ISS-890 extra fix)', () => {
     expect(recordRescueMock).toHaveBeenCalledWith('run-o1');
   });
 
-  it('charges nothing when the re-enqueue produced no job', async () => {
+  // cm:guard the charge follows the OUTCOME, and since ISS-933 the outcome is a box bound to serve the project rather than a job appearing. A project nothing serves spends no allowance — the issue is not being retried, it is waiting for an operator.
+  it('charges nothing when no box is bound to serve the project', async () => {
     seedAutonomousStuck();
-    jobsQueue.push([]);
+    wakeMastersForProject.mockResolvedValueOnce({ boxes: 0, delivered: 0 });
 
     const result = await runReconcilerOnce();
 

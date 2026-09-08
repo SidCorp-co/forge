@@ -9,7 +9,7 @@ Two pieces of code decide whether a job can run, and they do not agree:
 
 | | Where | Answers |
 |---|---|---|
-| picker | `jobs/dispatch-gates.ts` — the `fresh_capable_runners` CTE | "is this job dispatchable?" → drives `gateReason` |
+| picker | `jobs/queued-gates.ts` — the `fresh_capable_runners` CTE | "is this job dispatchable?" → drives `gateReason` |
 | selector | `runners/select.ts` — `poolClause` and friends | "which runner takes it?" → returns a runner or `null` |
 
 The CTE has **no per-state device-pool predicate**. `selectRunnerForJob` has one

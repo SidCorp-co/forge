@@ -45,7 +45,6 @@ export interface PipelineHealth {
    *  has not dispatched; this says what has not dispatched. */
   // cm:guard set this from the queued candidate even when `waitingOn` reports a HELD sibling — a queued step that is invisible on the surfaces derived from `agent_sessions` is exactly the blind spot ISS-903 closed, and a held-plus-queued issue is the case where the queued half is easiest to drop
   queuedStep?: PipelineHealthQueuedStep;
-  lastTickAt?: string;
   /** Only set when `stage === 'waiting'`. */
   waitingCause?: { kind: WaitingCause };
   /** ISS-853 — the issue's paused pipeline run, whatever the issue's own status
@@ -115,7 +114,6 @@ export interface ClassifyInput {
   jobs: PipelineHealthJob[];
   /** From `freshRunnerAvailability` — the picker's own runner-pool counts. */
   runnerPool: RunnerAvailability;
-  lastTickAt: Date | null;
   /** ISS-853 — the issue's paused pipeline run, from `loadPausedRunsByIssue`. */
   pausedRun?: PipelineHealthPausedRun;
   /** Injectable clock for the retry-cooldown comparison; defaults to now. */

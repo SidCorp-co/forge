@@ -2,8 +2,8 @@
  * ISS-101 — unit tests for the pipeline_runs lifecycle helpers. The helpers
  * are thin wrappers over `db.insert/update`, so the contract under test is
  * "what shape of write does each helper issue, under which preconditions?".
- * Heavy integration coverage (migration backfill, picker ordering against a
- * real DB) lives in dispatch-tick.test.ts and the migration smoke tests.
+ * Heavy integration coverage against a real DB lives in the migration smoke
+ * tests.
  *
  * ISS-104 — extended to assert that lifecycle helpers emit
  * `pipelineRunStatusChanged` exactly when the underlying write produced a

@@ -28,6 +28,7 @@ flowchart LR
 | Device pairing, revocation, binding | `core/src/devices/`, `schema.ts:devices`, `schema.ts:pairingCodes` |
 | Runner capability and selection | `core/src/runners/`, `schema.ts:runners` (`capabilities` jsonb) |
 | The claimable job pool | `core/src/devices/pool.ts`, `core/src/devices/claim.ts`, `schema.ts:jobs.heldBy` |
+| The run session a master opens over a group of issues | `core/src/devices/run-session.ts`, `packages/runner/crates/forge-runner-core/src/runner/run_session.rs` |
 | Job preparation and event stream | `core/src/jobs/`, `schema.ts:jobEvents`, `schema.ts:jobEventKinds` |
 | Agent sessions and their inbox | `core/src/agent-sessions/`, `schema.ts:agentSessions`, `schema.ts:sessionInbox` |
 | Interactive chat (not a pipeline job) | `core/src/chat/`, `core/src/chat-logs/` |
@@ -54,6 +55,9 @@ flowchart LR
 - **Chat and pipeline jobs share the runner, not the entry.** Chat is a conversation with no issue
   status to advance; a job is one step of a run. Both exec through the same shared path, so a change
   there touches chat and schedules too.
+- **One run session is one worktree, one pane and one ledger row — for a GROUP of issues.** A group
+  of one takes the same path as a group of three; a scalar entry point is how "one run, one issue"
+  returns, measured as two sessions in one worktree.
 - **`job_events` are pruned at 30 days** for jobs in terminal states. Anything that must outlive
   that belongs in `activity_log` or memory, not in the event stream.
 

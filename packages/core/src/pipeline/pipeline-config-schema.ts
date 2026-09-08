@@ -178,8 +178,8 @@ export type StageConfig = z.infer<typeof stageConfigSchema>;
  * Absent or `statuses: []` is today's behaviour exactly: no backlog, and
  * `GET /api/devices/me/pool` answers with the same `items` it always did.
  */
-// cm:guard visibility ONLY. Admitting a status here must never enqueue anything: a backlog row carries no job, and turning one into work is `POST /me/pool/promote`, which re-checks the entry gate. The obvious alternative — making `AUTONOMOUS_ENTRY_STATUS` per-project so `draft` dispatches — deletes the `draft` affordance instead of extending the pool, makes `AUTONOMOUS_INFLIGHT_STATUSES` (and therefore wedge detection) per-project, and breaks the STAGE_NAMES contract that every stage name is a driver status. It was considered and rejected on the issue; do not re-derive it.
-// cm:edge contract -> packages/core/src/devices/backlog.ts — the only reader; a status admitted here appears there and nowhere else
+// cm:guard visibility ONLY. Admitting a status here must never enqueue anything: a backlog row carries no job, and turning one into work is a run session the master opens itself (ISS-933), which is why an admitted status must never enqueue anything. The obvious alternative — making `AUTONOMOUS_ENTRY_STATUS` per-project so `draft` dispatches — deletes the `draft` affordance instead of extending the pool, makes `AUTONOMOUS_INFLIGHT_STATUSES` (and therefore wedge detection) per-project, and breaks the STAGE_NAMES contract that every stage name is a driver status. It was considered and rejected on the issue; do not re-derive it.
+// cm:edge contract -> packages/core/src/devices/admissible.ts — the only reader; a status admitted here appears there and nowhere else
 export const poolBacklogSchema = z
   .object({
     statuses: z.array(z.enum(BACKLOG_ADMISSIBLE_STATUSES as [string, ...string[]])).max(16),

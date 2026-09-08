@@ -49,6 +49,7 @@ import {
   devicePublicRoutes,
   deviceUserRoutes,
 } from './devices/routes.js';
+import { registerRunSessionReaper } from './devices/run-session-reaper.js';
 import { deviceSkillRoutes, deviceSkillStatusRoutes } from './devices/skills-routes.js';
 import { registerDeviceStaleDetector } from './devices/stale-detector.js';
 import { domainTemplateRoutes } from './domain-templates/routes.js';
@@ -279,11 +280,7 @@ app.route('/api', installRoutes);
 app.route('/', guideRoutes);
 app.route('/api', guideRoutes);
 
-// The CLI runner's browser-approve login prints `{core_url}/pair?code=…`, but
-// `core_url` is the API host (e.g. forge-beta-api.…) while the /pair page lives
-// on the WEB origin (APP_BASE_URL). Existing runners build that URL from
-// core_url and can't know the web host, so bounce them here — fixes every
-// already-installed runner without cutting a runner release.
+// cm:guard a redirect on the API host to the WEB origin, and it exists for runners already installed. Their browser-approve login builds `{core_url}/pair?code=…` from the API host and cannot know `APP_BASE_URL`, so removing this breaks every box in the field with no upgrade available to fix it — and only a runner release would repair it.
 app.get('/pair', (c) => {
   const code = c.req.query('code');
   const base = env.APP_BASE_URL.replace(/\/+$/, '');
@@ -491,6 +488,7 @@ if (isMain) {
   await registerCandidatesDecay();
   await registerDevicePrune();
   await registerMasterReaper();
+  await registerRunSessionReaper();
   await registerRunnerStaleDetector();
   await registerGhostRunnerReaper();
   await registerRetentionSweeper();

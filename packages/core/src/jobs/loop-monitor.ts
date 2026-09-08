@@ -34,12 +34,9 @@ import {
 import { reapExpiredParks } from './park-deadline.js';
 import { LAST_PHASE_CTE, LAST_PROGRESS_AT } from './progress-signal.js';
 import { NOT_PARKED, RESIDENT_SESSION_JOIN, RESULT_GUARD } from './resident-session.js';
+import { NON_CLIENT_METADATA_TYPES, PIPELINE_METADATA_TYPES } from './session-kinds.js';
 
-// Lazily loaded (ISS-584 B). schedules/dispatch.js pulls a heavy prompt-builder
-// chain (and through it the env-validating embeddings module); importing it
-// statically here would drag that into every consumer of the loop-monitor (and
-// break hermetic unit suites that don't stub env). The sweeper only needs it at
-// runtime, so resolve it on first use and cache.
+// cm:guard resolve `schedules/dispatch.js` at first USE, never as a static import — it pulls a prompt-builder chain and through it the env-validating embeddings module, which every consumer of the loop monitor would then load, breaking hermetic suites that do not stub env (ISS-584 B).
 type RedispatchFn = (
   sessionId: string,
 ) => Promise<{ ok: boolean; status: string; sessionId?: string; deviceId?: string }>;
@@ -77,8 +74,6 @@ const ACK_FAST_MS_DEFAULT = 90_000;
  *  derive its margin from the same number. */
 // cm:guard never lower RESULT_QUIET_MINUTES — legitimate release/code merges run long and get reaped as orphans
 export const RESULT_QUIET_MINUTES = 60;
-
-const PIPELINE_METADATA_TYPES = sql`('pipeline','pm')`;
 
 function readTimeoutEnv(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -500,7 +495,7 @@ export async function reapZombieSessions(
     where: and(
       eq(agentSessions.status, 'running'),
       sql`${agentSessions.claudeSessionId} IS NULL`,
-      sql`COALESCE(${agentSessions.metadata}->>'type','') NOT IN ${PIPELINE_METADATA_TYPES}`,
+      sql`COALESCE(${agentSessions.metadata}->>'type','') NOT IN ${NON_CLIENT_METADATA_TYPES}`,
       or(
         // ISS-584 (C) fast path: the runner ACKed (a live client received the
         // turn) but claude never emitted a session id within the short grace →

@@ -64,7 +64,7 @@ struct Marker {
 /// daemon cannot obtain one.
 // cm:guard a platform with NO boot identity MUST return None here, and `record` + `marker_is_current` must both refuse to act on that — the empty-string fallback this replaced made `marker.boot_id != current` compare "" against "", which never rejects, so on macOS (a shipped release target) a marker that outlived a reboot went straight to kill_group on a pid something else now owns. Reporting `not_found` for a process we cannot vouch for is wrong-but-honest; killing a stranger is not.
 #[cfg(target_os = "linux")]
-fn boot_identity() -> Option<String> {
+pub fn boot_identity() -> Option<String> {
     std::fs::read_to_string(BOOT_ID_PATH)
         .ok()
         .map(|s| s.trim().to_string())
@@ -74,7 +74,7 @@ fn boot_identity() -> Option<String> {
 /// `kern.boottime` is a fixed wall-clock instant per boot, so it separates
 /// boots exactly as well as Linux's random id.
 #[cfg(target_os = "macos")]
-fn boot_identity() -> Option<String> {
+pub fn boot_identity() -> Option<String> {
     std::process::Command::new("sysctl")
         .args(["-n", "kern.boottime"])
         .output()
@@ -85,7 +85,7 @@ fn boot_identity() -> Option<String> {
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-fn boot_identity() -> Option<String> {
+pub fn boot_identity() -> Option<String> {
     None
 }
 

@@ -5,7 +5,8 @@ its own lifecycle over kernel primitives that stay strict.
 
 ```mermaid
 flowchart LR
-  I[(issue status)] -->|dispatch| RUN[pipeline_run<br/>issue · pm · interactive · system]
+  I[(issue status)] -->|wake| MA[master on a paired box<br/>reads the pool, groups the issues]
+  MA -->|opens| RUN[pipeline_run<br/>issue · pm · interactive · system]
   RUN --> J1[job: triage] --> J2[job: plan] --> J3[job: code] --> J4[job: review] --> J5[job: test] --> J6[job: release]
   J3 -.failure.-> RETRY[retry chain]
   RETRY -.pool empty.-> HELD[job held]
@@ -26,6 +27,8 @@ flowchart LR
 | Failure cause taxonomy | `core/src/pipeline/failure-causes.ts:FAILURE_CAUSES`, `core/src/pipeline/failure-patterns.ts:CAUSE_RULES` |
 | Orphan hygiene | `core/src/pipeline/runs-cascade.ts`, `core/src/jobs/loop-monitor.ts`, `core/src/jobs/kill-gate.ts` |
 | Autonomous driver mode | `core/src/pipeline/autonomous-mode.ts:AUTONOMOUS_DRIVER_STATUSES` |
+| What a box is offered, and the wake that says so | `core/src/devices/admissible.ts`, `core/src/ws/master-wake.ts` |
+| The run session a box opens over a group of issues | `core/src/devices/run-session.ts`, `core/src/devices/run-session-reaper.ts` |
 | Release gate and batches | `core/src/release-batch/`, `core/src/issues/release-gate-hold.ts` |
 | Branch resolution | `core/src/branches/`, `core/src/git/` |
 | Cron-fired work | `core/src/schedules/`, `schema.ts:scheduleKinds` |
@@ -55,6 +58,12 @@ flowchart LR
 - **A stop must say why.** `reopen`, `waiting` and `needs_info` are rejected without a `reason`;
   `waiting` additionally requires `waitingKind`. A stopped pipeline that does not say what it waits
   for is a question nobody can answer.
+- **Core mints no drive work.** An issue reaching the entry status publishes a wake; the master on
+  a paired box decides what runs. A `pipeline_run` for autonomous work is opened BY the box, over a
+  group of issues, and closes on three marks it read back — the session went terminal, the worktree
+  left disk, and each issue's lease came back. A declaration by an agent sets none of them.
+  Drawn in [`../../flows/run-session-lifecycle.html`](../../flows/run-session-lifecycle.html) and
+  [`run-session-close.html`](../../flows/run-session-close.html).
 - **A park no master picks up is not representable.**
   `core/src/issues/autonomous-park.ts` rewrites at write time to the only two statuses the driver
   reads: `reopen` → `open` for **any** actor, and `waiting` → `needs_info` for an **agent** only. A

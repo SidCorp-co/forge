@@ -3,7 +3,7 @@
  *
  * Four places counted this independently — the PM's runner-load report, the
  * digest it primes a decision turn with, the ops health snapshot and the
- * runner list — and a fifth, `countInFlightForRunner` in `dispatch-gates.ts`,
+ * runner list — and a fifth, `countInFlightForRunner` in `queued-gates.ts`,
  * answered it for the dispatcher with a filter none of the other four had.
  */
 

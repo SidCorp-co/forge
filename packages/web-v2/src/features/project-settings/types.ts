@@ -364,7 +364,7 @@ export interface PipelineConfig {
 	 * ISS-917 — per-project pool admission. Statuses whose issues a master agent
 	 * SEES as a backlog beside the claimable pool. Visible only: a backlog row
 	 * carries no job and cannot be claimed, and turning one into work is an
-	 * explicit `pool promote` that re-checks the entry gate. Absent/empty = off.
+	 * run session the master opens over them itself. Absent/empty = off.
 	 * Mirrors `poolBacklog` in core `pipeline/pipeline-config-schema.ts`.
 	 */
 	poolBacklog?: { statuses: string[]; limit?: number };

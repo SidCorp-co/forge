@@ -65,7 +65,7 @@ single rung can be honest about both.</p>
 <tr><td>Does a branch exist</td><td><code>issues.session_context.branch</code></td>
     <td>Written by the session; the project's own base/production branch does not count</td></tr>
 <tr><td>Which of those a master sees on a backlog row</td>
-    <td><code>packages/core/src/devices/backlog.ts</code> &rarr; <code>BacklogEntry.mergedAt</code>, <code>.branch</code></td>
+    <td><code>packages/core/src/devices/admissible.ts</code> &rarr; <code>AdmissibleIssue.mergedAt</code>, <code>.branch</code></td>
     <td>Raw, beside the same module's raw <code>blockerStatus</code>/<code>blockerMergedAt</code>; never a <code>shipped</code> or <code>ready</code> boolean</td></tr>
 <tr><td>Is there a commit</td><td><code>issue_step_contexts</code> <code>kind='handoff'</code> &rarr; <code>payload.commitSha</code></td>
     <td>From a <code>code</code>/<code>fix</code>/<code>drive</code> step; an empty handoff is not evidence</td></tr>
@@ -253,7 +253,7 @@ the door built for that decision.</p>
 <tr><td>Which rules hold against whom</td><td><code>packages/core/src/issues/transition-evidence.ts</code> &rarr; <code>EvidenceRule.agentOnly</code></td></tr>
 <tr><td>The one status that dispatches</td><td><code>packages/core/src/pipeline/autonomous-mode.ts</code> &rarr; <code>autonomousStepFor</code></td></tr>
 <tr><td>Re-dispatch, and its refusal on a merged row</td><td><code>packages/core/src/pipeline/reconciler.ts</code></td></tr>
-<tr><td>What a master reads before promoting</td><td><code>packages/core/src/devices/backlog.ts</code></td></tr>
+<tr><td>What a master reads before opening a run</td><td><code>packages/core/src/devices/admissible.ts</code></td></tr>
 <tr><td>Who stamped <code>merged_at</code>, and whether this call did</td><td><code>packages/core/src/issues/merge-marker.ts</code></td></tr>
 <tr><td>Surfacing the owed close</td><td><code>packages/core/src/pipeline/stranded-issues.ts</code> &rarr; <code>detectOwedCloses</code></td></tr>
 <tr><td>What the agent is told</td><td><code>packages/core/src/guides/registry.ts</code> &rarr; <code>pipeline-and-issue-lifecycle</code></td></tr>

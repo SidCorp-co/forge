@@ -6,6 +6,11 @@ const mocks = vi.hoisted(() => ({
   setCurrentStep: vi.fn(async () => {}),
 }));
 
+const wakeMastersForProject = vi.fn(async () => ({ boxes: 1, delivered: 1 }));
+vi.mock('../ws/master-wake.js', () => ({
+  wakeMastersForProject: (...a: unknown[]) => wakeMastersForProject(...(a as [])),
+}));
+
 vi.mock('../db/client.js', () => ({
   db: {
     insert: () => ({

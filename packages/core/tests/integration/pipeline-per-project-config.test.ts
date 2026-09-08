@@ -84,11 +84,7 @@ async function seedProject(
     skillIdByName.set(name, await insertGlobalSkill(name));
   }
 
-  // Bootstrap-equivalent: one registration per mapped stage pointing at the
-  // default `forge-<type>` global skill.
-  // Stage→skill map mirrors the current PIPELINE_STEPS (registry.ts):
-  // open→triage, confirmed→clarify, clarified→plan, approved→code,
-  // developed→review, testing→test, reopen→fix, released→release.
+  // cm:guard registrations for the STAGED ladder, kept as the noise this fixture proves the driver ignores: ISS-897 left one job type and ISS-933 left core minting none at all, so a registered skill must change nothing core produces.
   const stagePairs: Array<[string, string]> = [
     ['open', 'forge-triage'],
     ['confirmed', 'forge-clarify'],
@@ -289,7 +285,8 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
     mods.registerActivitySubscribers(mods.hooks);
   });
 
-  it('enqueues ONE drive job at the entry status, and nothing at any other', async () => {
+  // cm:guard ZERO jobs at every status including the entry one, since ISS-933: `drive` reaches a box as a run session the master opens itself, and a job minted here would claim the same issue from the other side with the box's ledger able to see only one of them.
+  it('enqueues nothing at the entry status, and nothing at any other', async () => {
     const { owner, project } = await seedProject();
     let issue = await insertOpenIssue(project.id, owner.id);
 
@@ -299,9 +296,7 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
     }
 
     expect(issue.status).toBe('closed');
-    expect(
-      (await jobsFor(issue.id)).map((j) => ({ type: j.type, skillName: j.payload.skillName })),
-    ).toEqual([{ type: 'drive', skillName: 'issue-flow' }]);
+    expect(await jobsFor(issue.id)).toEqual([]);
   });
 
   // cm:guard the three rungs ISS-895 deleted must enqueue NOTHING, and they are named one by one rather than covered by the walk above — the walk goes `in_progress → released → closed`, which never touches them, so it would stay green with a staged rung dispatching beside it.
@@ -320,14 +315,14 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
   );
 
   // cm:guard the driver skill name reaches the agent as TEXT in the prompt and is never resolved from `skill_registrations` — the fixture registers eight `forge-*` skills precisely so a resolver that started reading them would produce a different skillName here and go red.
-  it('names the plugin skill, not a registered one, however many are registered', async () => {
+  // cm:guard the skill a run session uses is named by the runner's brief (`run_session.rs:brief`), not by a job payload core writes — core stopped writing one at ISS-933. A registered skill must still not be substituted for it: this asserts that registering several changes nothing core mints, which is nothing.
+  it('registers skills without any of them becoming work core mints', async () => {
     const { owner, project } = await seedProject();
     const issue = await insertOpenIssue(project.id, owner.id);
 
     await emitIssueCreated(issue, owner.id);
 
-    const [job] = await jobsFor(issue.id);
-    expect(job?.payload.skillName).toBe('issue-flow');
+    expect(await jobsFor(issue.id)).toEqual([]);
   });
 
   // cm:guard the entry stage gated to a human must enqueue NOTHING. It is the operator's one way to hold an issue before a session starts, and `dispatchAutonomous` is the only place it is honoured — the staged copy of this check went with the lane.
@@ -342,7 +337,7 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
     expect(await jobsFor(issue.id)).toEqual([]);
   });
 
-  it('a human moving a park `waiting` → `open` hands the issue back to the driver', async () => {
+  it('a human moving a park `waiting` → `open` offers the issue to a master again', async () => {
     const { owner, project } = await seedProject();
     const issue = await insertOpenIssue(project.id, owner.id);
     await harness.db.execute(
@@ -358,10 +353,7 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
     }
 
     expect((await readIssue(issue.id)).status).toBe('open');
-    const summary = (await jobsFor(issue.id)).map((j) => ({
-      type: j.type,
-      skillName: j.payload.skillName,
-    }));
-    expect(summary).toEqual([{ type: 'drive', skillName: 'issue-flow' }]);
+    // cm:guard the hand-back is the STATUS reaching the entry, not a job appearing. A park a human answers is offered to a master again exactly as a fresh issue is; core mints nothing for either since ISS-933.
+    expect(await jobsFor(issue.id)).toEqual([]);
   });
 });

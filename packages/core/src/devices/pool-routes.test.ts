@@ -1,5 +1,5 @@
 // The route layer only: what shape core answers with. The readers themselves
-// own their own suites (backlog.test.ts, promote.test.ts) and are stubs here,
+// own their own suites (admissible.test.ts, run-session's e2e) and are stubs here,
 // so a change to the RESPONSE — the key a runner decodes, the status code a
 // refusal arrives on — fails here and nowhere else.
 
@@ -16,12 +16,14 @@ vi.mock('../auth/device-credential.js', () => ({
 }));
 
 const readPool = vi.fn(async (_args: unknown) => [] as unknown[]);
-const readBacklog = vi.fn(async (_args: unknown) => [] as unknown[]);
-const promoteFromBacklog = vi.fn(async (_args: unknown) => ({}) as unknown);
+const readAdmissibleIssues = vi.fn(async (_args: unknown) => [] as unknown[]);
+const openRunSession = vi.fn(async (_args: unknown) => ({}) as unknown);
 
 vi.mock('./pool.js', () => ({ readPool: (a: unknown) => readPool(a) }));
-vi.mock('./backlog.js', () => ({ readBacklog: (a: unknown) => readBacklog(a) }));
-vi.mock('./promote.js', () => ({ promoteFromBacklog: (a: unknown) => promoteFromBacklog(a) }));
+vi.mock('./admissible.js', () => ({
+  readAdmissibleIssues: (a: unknown) => readAdmissibleIssues(a),
+}));
+vi.mock('./run-session.js', () => ({ openRunSession: (a: unknown) => openRunSession(a) }));
 vi.mock('./claim.js', () => ({
   claimJobForMaster: vi.fn(),
   releaseAllHeldBySession: vi.fn(),
@@ -43,12 +45,12 @@ const ISSUE = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 
 beforeEach(() => {
   readPool.mockReset().mockResolvedValue([]);
-  readBacklog.mockReset().mockResolvedValue([]);
-  promoteFromBacklog.mockReset();
+  readAdmissibleIssues.mockReset().mockResolvedValue([]);
+  openRunSession.mockReset();
 });
 
 describe('GET /me/pool', () => {
-  // cm:guard AC1 — a project with no declared backlog changes nothing here: the `items` array and its `count` are what every runner already decoded, and an empty `backlog` beside them is additive.
+  // cm:guard `items` and `count` are what every runner already decoded; ISS-933 removed the sibling `backlog` key rather than changing either.
   it('keeps items and count exactly as they were', async () => {
     readPool.mockResolvedValue([{ jobId: 'j1' }]);
     const res = await app.request('/api/devices/me/pool', { headers: AUTH });
@@ -58,22 +60,14 @@ describe('GET /me/pool', () => {
     expect(body.count).toBe(1);
   });
 
-  // cm:guard AC4/B6 — a row with no `jobId` sitting in the array a master claims from is a malformed claim waiting to happen. `backlog` is a SIBLING key and must never be folded into `items`.
-  it('answers the backlog as its own top-level key, never inside items', async () => {
+  // cm:guard the pool answers JOBS and nothing else since ISS-933: an issue in the array a master claims from is a malformed claim waiting to happen, and `pool claim <issueId>` is a turn spent on a refusal core answers as `not_found`.
+  it('carries no issues at all, under any key', async () => {
     readPool.mockResolvedValue([{ jobId: 'j1' }]);
-    readBacklog.mockResolvedValue([{ issueId: ISSUE, status: 'draft' }]);
+    readAdmissibleIssues.mockResolvedValue([{ issueId: ISSUE, status: 'draft' }]);
     const res = await app.request('/api/devices/me/pool', { headers: AUTH });
     const body = (await res.json()) as Record<string, unknown>;
-    expect(body.backlog).toEqual([{ issueId: ISSUE, status: 'draft' }]);
-    expect(body.backlogCount).toBe(1);
-    expect(body.items).toEqual([{ jobId: 'j1' }]);
-    expect(JSON.stringify(body.items)).not.toContain('draft');
-  });
-
-  it('scopes the backlog read to the same device and project as the pool read', async () => {
-    const projectId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-    await app.request(`/api/devices/me/pool?projectId=${projectId}`, { headers: AUTH });
-    expect(readBacklog).toHaveBeenCalledWith({ deviceId: 'dev-1', projectId });
+    expect(body).toEqual({ items: [{ jobId: 'j1' }], count: 1 });
+    expect(JSON.stringify(body)).not.toContain('draft');
   });
 
   it('401s without a device token', async () => {
@@ -82,55 +76,79 @@ describe('GET /me/pool', () => {
   });
 });
 
-describe('POST /me/pool/promote', () => {
-  it('returns the drive job id on success', async () => {
-    promoteFromBacklog.mockResolvedValue({
-      ok: true,
-      jobId: 'j9',
-      issueId: ISSUE,
-      issueKey: 'ISS-917',
-    });
-    const res = await app.request('/api/devices/me/pool/promote', {
-      method: 'POST',
-      headers: { ...AUTH, 'content-type': 'application/json' },
-      body: JSON.stringify({ issueId: ISSUE }),
+describe('GET /me/issues/admissible', () => {
+  // cm:guard the ONLY reader of `pipelineConfig.poolBacklog.statuses` after ISS-933 deleted `pool promote`. A change that drops this route owes the config key another reader or owes the key its deletion — a knob that is configurable, savable and dead is the shape this repo refuses.
+  it('answers the admissible issues on their own route, scoped to the device', async () => {
+    const projectId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    readAdmissibleIssues.mockResolvedValue([{ issueId: ISSUE, status: 'draft' }]);
+    const res = await app.request(`/api/devices/me/issues/admissible?projectId=${projectId}`, {
+      headers: AUTH,
     });
     expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ ok: true, jobId: 'j9' });
-  });
-
-  // cm:guard AC7/B4 — an entry-gated project and a race lost to another master are ordinary outcomes a master handles by choosing differently. Making either an error invites a retry loop against a condition retrying cannot change: `entry_gated` clears only when a human edits the config.
-  it.each(['entry_gated', 'not_in_backlog', 'issue_busy', 'not_found', 'backlog_disabled'])(
-    'answers 200 with ok:false for the refusal %s',
-    async (reason) => {
-      promoteFromBacklog.mockResolvedValue({ ok: false, reason, detail: 'because' });
-      const res = await app.request('/api/devices/me/pool/promote', {
-        method: 'POST',
-        headers: { ...AUTH, 'content-type': 'application/json' },
-        body: JSON.stringify({ issueId: ISSUE }),
-      });
-      expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({ ok: false, reason, detail: 'because' });
-    },
-  );
-
-  it('400s on a malformed body — that is a caller bug, not an outcome', async () => {
-    const res = await app.request('/api/devices/me/pool/promote', {
-      method: 'POST',
-      headers: { ...AUTH, 'content-type': 'application/json' },
-      body: JSON.stringify({ issueId: 'not-a-uuid' }),
+    expect(await res.json()).toEqual({
+      items: [{ issueId: ISSUE, status: 'draft' }],
+      count: 1,
     });
-    expect(res.status).toBe(400);
-    expect(promoteFromBacklog).not.toHaveBeenCalled();
+    expect(readAdmissibleIssues).toHaveBeenCalledWith({ deviceId: 'dev-1', projectId });
   });
 
   it('401s without a device token', async () => {
-    const res = await app.request('/api/devices/me/pool/promote', {
+    const res = await app.request('/api/devices/me/issues/admissible');
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('POST /me/run-sessions', () => {
+  it('opens one run over the whole group and answers the session core minted', async () => {
+    openRunSession.mockResolvedValue({ sessionId: 's9', runId: 'r9' });
+    const res = await app.request('/api/devices/me/run-sessions', {
+      method: 'POST',
+      headers: { ...AUTH, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        projectId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        runId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+        issueKeys: ['ISS-957', 'ISS-958'],
+        name: 'grp-957-958',
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ sessionId: 's9', runId: 'r9' });
+    expect(openRunSession).toHaveBeenCalledWith({
+      deviceId: 'dev-1',
+      projectId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      issueKeys: ['ISS-957', 'ISS-958'],
+      name: 'grp-957-958',
+    });
+  });
+
+  // cm:guard an EMPTY group is refused at the schema. A run with no issues is a worktree nothing will ever close the loop on, and `create_run_group` refuses it on the box too — this is the same refusal one hop earlier, where it costs no ledger row.
+  it('400s on an empty issue group — a run carries at least one', async () => {
+    const res = await app.request('/api/devices/me/run-sessions', {
+      method: 'POST',
+      headers: { ...AUTH, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        projectId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        runId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+        issueKeys: [],
+        name: 'grp',
+      }),
+    });
+    expect(res.status).toBe(400);
+    expect(openRunSession).not.toHaveBeenCalled();
+  });
+
+  it('401s without a device token', async () => {
+    const res = await app.request('/api/devices/me/run-sessions', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ issueId: ISSUE }),
+      body: JSON.stringify({
+        projectId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        runId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+        issueKeys: ['ISS-957'],
+        name: 'grp',
+      }),
     });
     expect(res.status).toBe(401);
-    expect(promoteFromBacklog).not.toHaveBeenCalled();
+    expect(openRunSession).not.toHaveBeenCalled();
   });
 });
