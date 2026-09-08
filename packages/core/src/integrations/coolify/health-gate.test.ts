@@ -33,9 +33,10 @@ const findBindingMock = vi.fn(async () => ({
   connectionId: 'conn-1',
   projectId: 'proj-1',
 }));
+let connectionActive = true;
 vi.mock('../store.js', () => ({
   findBindingById: (...a: unknown[]) => findBindingMock(...(a as [])),
-  findConnectionById: async () => ({ id: 'conn-1' }),
+  findConnectionById: async () => ({ id: 'conn-1', active: connectionActive }),
   effectiveConfig: () => bindingConfig,
 }));
 
@@ -51,6 +52,7 @@ vi.mock('../../logger.js', () => ({
 
 const {
   HEALTH_GRACE_MS,
+  HEALTH_MIN_WINDOW_MS,
   HEALTH_WINDOW_MS,
   healthGateFor,
   pickRollbackImage,
@@ -93,7 +95,8 @@ function deps(over: Record<string, unknown> = {}) {
     probe: vi.fn(async () => ({ healthy: false, reason: 'unreachable (ECONNREFUSED)' })),
     settle: vi.fn(async () => {}),
     rollback: vi.fn(async () => ({ performed: true, deploymentUuid: 'dep-rb' })),
-    listImages: vi.fn(async () => ({ images: IMAGES })),
+    listImages: vi.fn(async () => ({ current: 'sha-new', images: IMAGES })),
+    findRollbackMarker: vi.fn(async () => false),
     now: () => NOW,
     ...over,
     // biome-ignore lint/suspicious/noExplicitAny: the test builds a partial deps bag on purpose
@@ -101,6 +104,7 @@ function deps(over: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
+  connectionActive = true;
   bindingConfig = {
     targets: [
       { id: 't1', label: 'Backend', resourceUuid: 'res-1', healthUrl: 'https://api/health' },
@@ -162,68 +166,101 @@ describe('probeHealth', () => {
   });
 });
 
+type Img = { tag: string; createdAt: string | null; isCurrent: boolean };
+
 describe('pickRollbackImage', () => {
   it('takes the newest image that is not the one running now', () => {
-    expect(pickRollbackImage(IMAGES)).toBe('sha-good');
+    expect(pickRollbackImage(IMAGES, 'sha-new')).toBe('sha-good');
   });
 
   it('refuses when the only image listed is the current one', () => {
-    expect(pickRollbackImage([IMAGES[0] as (typeof IMAGES)[number]])).toBeNull();
+    expect(pickRollbackImage([IMAGES[0] as Img], 'sha-new')).toBeNull();
   });
 
   it('refuses an empty list — Coolify answers 200 with no images when the server is unreachable', () => {
-    expect(pickRollbackImage([])).toBeNull();
+    expect(pickRollbackImage([], null)).toBeNull();
+  });
+
+  it('refuses a list where NOTHING says which image is running — the failed build is the newest in it', () => {
+    const unmarked = IMAGES.map((i) => ({ ...i, isCurrent: false }));
+    expect(pickRollbackImage(unmarked, null)).toBeNull();
+  });
+
+  it('excludes the running build by `current` when no row carries is_current', () => {
+    const unmarked = IMAGES.map((i) => ({ ...i, isCurrent: false }));
+    expect(pickRollbackImage(unmarked, 'sha-new')).toBe('sha-good');
+  });
+
+  it('sorts an unparseable createdAt LAST, whichever order Coolify listed it in', () => {
+    const undated: Img = { tag: 'sha-undated', createdAt: null, isCurrent: false };
+    const dated: Img = { tag: 'sha-good', createdAt: '2026-09-06T10:00:00Z', isCurrent: false };
+    expect(pickRollbackImage([undated, dated], 'sha-new')).toBe('sha-good');
+    expect(pickRollbackImage([dated, undated], 'sha-new')).toBe('sha-good');
   });
 });
+
+const gateArgs = {
+  config: null as never,
+  bindingId: 'bind-1',
+  runId: null as string | null,
+  deliveryId: null,
+  deploymentUuid: 'dep-1',
+  targetLabel: 'Backend',
+  forRollback: false,
+};
 
 describe('healthGateFor', () => {
   it('declines a target that declares no health URL', () => {
     expect(
       healthGateFor({
+        ...gateArgs,
         config: {
           baseUrl: 'x',
           environment: 'staging',
           targets: [{ id: 't1', label: 'Backend', resourceUuid: 'r' }],
-        },
-        bindingId: 'bind-1',
-        runId: null,
-        deliveryId: null,
-        deploymentUuid: 'dep-1',
-        targetLabel: 'Backend',
-        forRollback: false,
+        } as never,
       }),
-    ).toBeNull();
+    ).toEqual({ kind: 'not-declared' });
   });
 
   it('never outlives the confirmation hold it defers — a slow build shortens the window', () => {
-    const gate = healthGateFor({
+    const decision = healthGateFor({
+      ...gateArgs,
       config: bindingConfig as never,
-      bindingId: 'bind-1',
-      runId: null,
-      deliveryId: null,
-      deploymentUuid: 'dep-1',
-      targetLabel: 'Backend',
-      forRollback: false,
+      notAfter: new Date(NOW + HEALTH_MIN_WINDOW_MS + 5_000).toISOString(),
+      now: NOW,
+    });
+    expect(decision.kind).toBe('gate');
+    const job = (decision as { job: { deadlineAt: string; graceUntil: string } }).job;
+    expect(Date.parse(job.deadlineAt)).toBe(NOW + HEALTH_MIN_WINDOW_MS + 5_000);
+    expect(Date.parse(job.graceUntil)).toBe(NOW + HEALTH_GRACE_MS);
+  });
+
+  it('REFUSES to gate a window too short to give the container its grace period', () => {
+    const decision = healthGateFor({
+      ...gateArgs,
+      config: bindingConfig as never,
       notAfter: new Date(NOW + 20_000).toISOString(),
       now: NOW,
     });
-    expect(Date.parse(gate?.deadlineAt ?? '')).toBe(NOW + 20_000);
-    expect(Date.parse(gate?.graceUntil ?? '')).toBe(NOW + 20_000);
+    expect(decision).toEqual({ kind: 'window-too-short', remainingMs: 20_000 });
+  });
+
+  it('refuses a confirmation deadline already past, rather than probing once beyond it', () => {
+    const decision = healthGateFor({
+      ...gateArgs,
+      config: bindingConfig as never,
+      notAfter: new Date(NOW - 1_000).toISOString(),
+      now: NOW,
+    });
+    expect(decision.kind).toBe('window-too-short');
   });
 
   it('opens the window AFTER the grace period, never at the deploy', () => {
-    const gate = healthGateFor({
-      config: bindingConfig as never,
-      bindingId: 'bind-1',
-      runId: null,
-      deliveryId: null,
-      deploymentUuid: 'dep-1',
-      targetLabel: 'Backend',
-      forRollback: false,
-      now: NOW,
-    });
-    expect(Date.parse(gate?.graceUntil ?? '')).toBe(NOW + HEALTH_GRACE_MS);
-    expect(Date.parse(gate?.deadlineAt ?? '')).toBe(NOW + HEALTH_GRACE_MS + HEALTH_WINDOW_MS);
+    const decision = healthGateFor({ ...gateArgs, config: bindingConfig as never, now: NOW });
+    const job = (decision as { job: { deadlineAt: string; graceUntil: string } }).job;
+    expect(Date.parse(job.graceUntil)).toBe(NOW + HEALTH_GRACE_MS);
+    expect(Date.parse(job.deadlineAt)).toBe(NOW + HEALTH_GRACE_MS + HEALTH_WINDOW_MS);
   });
 });
 
@@ -273,7 +310,9 @@ describe('runCoolifyHealthGate', () => {
       payload: { deployment_uuid: 'dep-1', targetLabel: 'Backend' },
     });
   });
+});
 
+describe('the rollback a failed gate dispatches', () => {
   it('rolls back to the previous image and health-gates the rollback', async () => {
     const d = deps();
     const out = await runCoolifyHealthGate(
@@ -287,7 +326,7 @@ describe('runCoolifyHealthGate', () => {
       commit: 'sha-good',
     });
     expect(out.rolledBackTo).toBe('sha-good');
-    expect(queuedGates()[0]?.[1]).toMatchObject({
+    expect(queuedGates().at(-1)?.[1]).toMatchObject({
       deploymentUuid: 'dep-rb',
       forRollback: true,
       deliveryId: null,
@@ -295,7 +334,9 @@ describe('runCoolifyHealthGate', () => {
   });
 
   it('dispatches nothing when Coolify lists no image other than the current one', async () => {
-    const d = deps({ listImages: vi.fn(async () => ({ images: [IMAGES[0]] })) });
+    const d = deps({
+      listImages: vi.fn(async () => ({ current: 'sha-new', images: [IMAGES[0]] })),
+    });
     const out = await runCoolifyHealthGate(
       gateJob({ deadlineAt: new Date(NOW - 1).toISOString() }),
       d,
@@ -303,7 +344,7 @@ describe('runCoolifyHealthGate', () => {
     expect(d.rollback).not.toHaveBeenCalled();
     expect(out.rolledBackTo).toBeUndefined();
     expect(errorLog.mock.calls.map((c) => String(c[1])).join(' ')).toContain(
-      'no earlier image to restore',
+      'named no earlier image it could be restored to',
     );
   });
 
@@ -380,6 +421,46 @@ describe('runCoolifyHealthGate', () => {
     expect(d.listImages).not.toHaveBeenCalled();
     expect(errorLog.mock.calls.map((c) => String(c[1])).join(' ')).toContain(
       'no longer configured',
+    );
+  });
+
+  it('does not roll back a second time when a marker for this deploy already exists', async () => {
+    const d = deps({ findRollbackMarker: vi.fn(async () => true) });
+    const out = await runCoolifyHealthGate(
+      gateJob({ deadlineAt: new Date(NOW - 1).toISOString() }),
+      d,
+    );
+    expect(d.rollback).not.toHaveBeenCalled();
+    expect(out.rolledBackTo).toBeUndefined();
+    expect(errorLog.mock.calls.map((c) => String(c[1])).join(' ')).toContain('already dispatched');
+    expect(d.settle.mock.calls[0]?.[0]).toBe('failed');
+  });
+
+  it('writes the rollback marker BEFORE dispatching, so a retry after a throw cannot double it', async () => {
+    const d = deps();
+    await runCoolifyHealthGate(gateJob({ deadlineAt: new Date(NOW - 1).toISOString() }), d);
+    const events = recordDeliveryMock.mock.calls.map(
+      (c) => (c[0] as { eventName: string }).eventName,
+    );
+    expect(events).toEqual(['deploy.unhealthy', 'deploy.rollback.auto']);
+    expect(recordDeliveryMock.mock.calls[1]?.[0]).toMatchObject({
+      direction: 'outbound',
+      requestId: 'health-rollback:dep-1',
+    });
+  });
+
+  it('names the OPEN circuit breaker rather than reporting a configuration problem', async () => {
+    connectionActive = false;
+    const d = deps();
+    const out = await runCoolifyHealthGate(
+      gateJob({ deadlineAt: new Date(NOW - 1).toISOString() }),
+      d,
+    );
+    expect(d.listImages).not.toHaveBeenCalled();
+    expect(d.rollback).not.toHaveBeenCalled();
+    expect(out.rolledBackTo).toBeUndefined();
+    expect(errorLog.mock.calls.map((c) => String(c[1])).join(' ')).toContain(
+      'circuit breaker is OPEN',
     );
   });
 });

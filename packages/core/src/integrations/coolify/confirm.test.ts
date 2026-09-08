@@ -19,6 +19,16 @@ vi.mock('../../config/env.js', () => ({
 vi.mock('../../db/client.js', () => ({ db: {} }));
 vi.mock('../../queue/boss.js', () => ({ boss: { send: vi.fn() } }));
 
+const errorLog = vi.fn();
+vi.mock('../../logger.js', () => ({
+  logger: {
+    error: (...a: unknown[]) => errorLog(...a),
+    info: vi.fn(),
+    warn: vi.fn(),
+    debug: vi.fn(),
+  },
+}));
+
 const recordDeliveryMock = vi.fn(async (_input: unknown) => 'inb-1');
 vi.mock('../deliveries.js', () => ({
   recordDelivery: (input: unknown) => recordDeliveryMock(input),
@@ -300,6 +310,22 @@ describe('the post-deploy health gate handoff', () => {
 
     expect(await runCoolifyConfirm(job())).toEqual({ settled: 'succeeded', closedRun: false });
     expect(settleMock).toHaveBeenCalled();
+  });
+
+  it('settles on the build verdict, loudly, when the hold leaves too little window to prove anything', async () => {
+    withHealthTarget();
+    getDeploymentMock.mockResolvedValue({ status: 'finished' });
+
+    const out = await runCoolifyConfirm(
+      job({ deadlineAt: new Date(Date.now() + 20_000).toISOString() }),
+    );
+
+    expect(out).toEqual({ settled: 'succeeded', closedRun: false });
+    expect(settleMock).toHaveBeenCalled();
+    expect(
+      sendCalls().some((c) => (c[1] as { jobKind?: string })?.jobKind === 'coolify.health-gate'),
+    ).toBe(false);
+    expect(errorLog.mock.calls.map((c) => String(c[1])).join(' ')).toContain('NOT proven to serve');
   });
 
   it('a FAILED deployment never reaches the gate — there is nothing serving to read', async () => {

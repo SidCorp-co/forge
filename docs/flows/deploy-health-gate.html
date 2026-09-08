@@ -72,7 +72,8 @@ unreachable is an <em>unhealthy reading</em> and it counts against the deadline.
   <text class="m" x="714" y="56">unchanged behaviour</text>
 
   <path class="arrow" d="M430,71 L430,120"/>
-  <text class="m" x="440" y="98">yes &mdash; hold stays pending</text>
+  <text class="m" x="440" y="92">yes, and the hold has</text>
+  <text class="m" x="440" y="106">&gt;105s left &mdash; stays pending</text>
   <rect class="box" x="310" y="120" width="240" height="46" rx="4"/>
   <text class="t" x="324" y="140">coolify.health-gate</text>
   <text class="m" x="324" y="156">grace 45s, then poll every 15s</text>
@@ -132,13 +133,38 @@ unreachable is an <em>unhealthy reading</em> and it counts against the deadline.
 <tr><td><code>healthGateFor</code></td><td>the target declares no <code>healthUrl</code></td>
 <td>Forge cannot know an arbitrary application&rsquo;s health path. A derived default would arm
 automatic rollback on every target whose path it guessed wrong, so absence is the off switch.</td></tr>
+<tr><td><code>healthGateFor</code></td><td>the confirmation hold has less than <code>HEALTH_MIN_WINDOW_MS</code>
+(grace + 60s) left</td>
+<td>The gate is scheduled entirely inside the hold&rsquo;s own 30-minute deadline so two mechanisms
+cannot decide one deploy. Below the floor that clamp would leave one probe taken after the deadline,
+against a container 30 seconds into boot &mdash; a healthy deploy rolled back. So the gate does not
+open: <code>confirm.ts</code> settles on the build verdict and logs that the deploy is
+<em>not proven to serve</em>. An unproven deploy is the state before this gate existed; a
+rolled-back healthy one is a new outage.</td></tr>
 <tr><td><code>probeHealth</code></td><td>never &mdash; every outcome is a reading</td>
 <td>Unreachable, 503, <code>ok:false</code> and an unparseable 200 are four named reasons, not an
 absence. The one this was written for is the first.</td></tr>
-<tr><td><code>pickRollbackImage</code></td><td>nothing is listed but the current image</td>
+<tr><td><code>pickRollbackImage</code></td><td>nothing is listed but the current image, <em>or</em>
+nothing in the list says which image is running</td>
 <td><code>rollback_images</code> answers <code>200 {images:[]}</code> when the application&rsquo;s
-server is unreachable, so empty and clean are the same bytes. Falling through to
-<code>images[0]</code> would restore the broken build and call it a rollback.</td></tr>
+server is unreachable, so empty and clean are the same bytes. And <code>is_current</code> is optional
+on Coolify&rsquo;s row while <code>current</code> can be null: a list that identifies nothing has the
+just-failed build sitting at the top of it, so it is refused rather than restored. An unparseable
+<code>created_at</code> sorts last, because a comparator returning <code>NaN</code> would silently
+make &ldquo;the newest image&rdquo; mean &ldquo;the first one Coolify printed&rdquo;.</td></tr>
+<tr><td><code>restorePrevious</code></td><td>the Coolify connection is inactive &mdash; the circuit
+breaker is open</td>
+<td>The breaker writes <code>connections.active = false</code>, and
+<code>activeCoolifyIntegrations</code> filters on it, so the rollback would surface as
+<em>no active Coolify integration</em> &mdash; a sentence about configuration for a condition that is
+about Coolify refusing calls. Three failed deliveries in five minutes is Coolify refusing
+everything, a rollback included, so the gate names the breaker and pages.</td></tr>
+<tr><td><code>restorePrevious</code></td><td>a <code>health-rollback:&lt;uuid&gt;</code> delivery
+already exists for this deploy</td>
+<td>Anything throwing after the dispatch makes pg-boss re-run the job, and by then
+<code>is_current</code> names the <em>restored</em> image &mdash; so an unguarded retry picks the
+build that just failed. That marker, written before the dispatch, is the one dedup key in the module
+that must not move.</td></tr>
 <tr><td><code>runCoolifyRollback</code></td><td>the tag is not one Coolify lists, or the binding is
 <code>prod</code> without human confirm</td>
 <td>Coolify does not check the tag itself. <code>performed:false</code> is a rollback that did not
@@ -149,12 +175,16 @@ rollback walks the application down a list of builds nobody chose while the outa
 </tbody>
 </table>
 
-<div class="rule"><strong>The circuit breaker does not gate the rollback, and that is deliberate.</strong>
-<code>breakerAllowsDispatch</code> is consulted by <code>coolifyAdapter.dispatchOutbound</code> and by
-nothing else; <code>runCoolifyRollback</code> goes through <code>performControl</code>, which never
-asks it. The breaker exists to stop repeated outbound <em>deploys</em> against a Coolify that is
-refusing them &mdash; a rollback it swallowed would leave the dead build serving, which is the worst
-outcome on this diagram.</div>
+<div class="rule warn"><strong>An open circuit breaker DOES block the rollback, and the gate says so
+by name.</strong> <code>runCoolifyRollback</code> never consults
+<code>breakerAllowsDispatch</code> &mdash; only <code>dispatchOutbound</code> does &mdash; but the
+breaker trips by writing <code>connections.active = false</code>, and every path to a rollback
+resolves the binding through <code>activeCoolifyIntegrations</code>, which filters on exactly that
+column. So a rollback attempted with the breaker open dies as <em>no active Coolify integration</em>,
+which reads as a configuration fault. The gate checks the connection first and pages naming the
+breaker instead. Reactivating the connection to force the rollback through is not the fix: that
+column is the breaker&rsquo;s state, and three failed deliveries in five minutes is Coolify refusing
+everything a rollback would need.</div>
 
 <div class="rule"><strong>One writer of the run&rsquo;s outcome, still.</strong> The gate does not
 close a run. It calls <code>applyDeploySettlement</code>, the same function

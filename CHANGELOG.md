@@ -31,7 +31,9 @@
   goes healthy inside the window fails its deploy, records which deployment failed and on what
   signal, and is rolled back to the previous image Coolify still lists. The rollback is health-checked
   too; one that also cannot serve is reported loudly and never rolled back a second time. Targets
-  with no health URL deploy exactly as before.
+  with no health URL deploy exactly as before, and a build that finishes too close to its own
+  confirmation deadline to be given that grace period is left unproven and said so, rather than
+  failed on one reading of a container that is still starting.
 
 - **Forge now reports the module pairs your issues keep linking that your module hierarchy never
   declares as connected.** `GET /api/projects/:id/modules/drift` compares two edge sets over the

@@ -131,10 +131,23 @@ export async function runCoolifyConfirm(data: CoolifyConfirmJob): Promise<Confir
       forRollback: false,
       notAfter: data.deadlineAt,
     });
-    if (healthGate) {
+    if (healthGate.kind === 'gate') {
       await recordDeployDelivery(data, 'succeeded', detail);
-      await enqueueCoolifyHealthGate(healthGate, { startAfterSeconds: 0 });
+      await enqueueCoolifyHealthGate(healthGate.job, { startAfterSeconds: 0 });
       return { settled: null, closedRun: false, handedToHealthGate: true };
+    }
+    if (healthGate.kind === 'window-too-short') {
+      // cm:guard settle on the build verdict here and SAY the gate did not run — the remaining window is too short to give the container its grace period, so a gate opened on it would take one reading of a booting process and roll a healthy deploy back. An unproven deploy is the state before this gate existed; a rolled-back healthy one is a new outage.
+      logger.error(
+        {
+          bindingId: data.bindingId,
+          runId: data.runId,
+          deploymentUuid: data.deploymentUuid,
+          targetLabel: data.targetLabel,
+          remainingMs: healthGate.remainingMs,
+        },
+        "coolify confirm: the build finished too close to its confirmation deadline to health-check it — settling on Coolify's verdict, this deploy is NOT proven to serve",
+      );
     }
   }
 

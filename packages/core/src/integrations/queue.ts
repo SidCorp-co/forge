@@ -14,6 +14,7 @@ import {
   runCoolifyHealthGate,
 } from './coolify/health-gate.js';
 import type { CoolifyConfig, CoolifySecrets } from './coolify/types.js';
+import { findDeliveryByRequestId } from './deliveries.js';
 import { buildContextFromBinding, findBindingById, findConnectionById } from './store.js';
 
 export interface CoolifyDispatchJob {
@@ -106,6 +107,8 @@ function healthGateDeps(data: CoolifyHealthGateJob) {
     }) => runCoolifyRollback(input),
     listImages: async (input: { projectId: string; integrationId: string; resourceUuid: string }) =>
       listCoolifyRollbackImages(input),
+    findRollbackMarker: async (bindingId: string, requestId: string) =>
+      (await findDeliveryByRequestId(bindingId, requestId)) !== null,
   };
 }
 
