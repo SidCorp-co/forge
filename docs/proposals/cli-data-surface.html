@@ -184,7 +184,7 @@
 <b>Đã kiểm và BỎ</b> — ba chỗ trông như lệch nhưng không phải, đừng vẽ thành mũi tên:<br>
 · <b>sanitize chỉ ở MCP</b> → là thiết kế. <code>forge-issues.ts:365</code> có <code>cm:guard</code>: <i>"REST/web-v2 serialize separately, so the human UI never shows the framing."</i><br>
 · <b>apply-transition chỉ ở MCP</b> → chỉ là bố cục file; REST chạm nó qua <code>issues/transition.ts</code> mount riêng.<br>
-· <b>dispatch-tick chỉ ở MCP</b> → cả hai đều bắn hook <code>issueCreated</code>; MCP chỉ tick thêm trực tiếp.
+· <b>dispatch-tick chỉ ở MCP</b> → không còn lệch nào để vẽ: cả hai vẫn bắn hook <code>issueCreated</code>, và cái tick riêng của MCP biến mất cùng <code>jobs/dispatch-tick.ts</code> (ISS-933 — core không mint job drive nữa).
 </div>
 
 <h2>Thứ tự làm — REST phải lên trước</h2>
