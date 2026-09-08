@@ -11,7 +11,16 @@
 // Split out of `schema.ts` for size, like `schema-session-inbox.ts`, and
 // registered in `drizzle.config.ts` and the client's schema map beside it.
 
-import { index, integer, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import {
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { agentSessions, issues, projects } from './schema.js';
 
 export const questionStatuses = ['open', 'answered', 'void', 'expired', 'needs_info'] as const;
@@ -76,5 +85,23 @@ export const agentQuestions = pgTable(
   (t) => [
     index('agent_questions_project_status_idx').on(t.projectId, t.status),
     index('agent_questions_session_idx').on(t.agentSessionId),
+  ],
+);
+
+// cm:guard the waiter is a ROW per run, never a count on the question. One answer revives all N of them and each needs its own revival to succeed or fail, so a counter would leave a run that failed to revive indistinguishable from one that never waited (ISS-964 criterion 18).
+export const questionWaiters = pgTable(
+  'question_waiters',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    questionId: uuid('question_id')
+      .notNull()
+      .references(() => agentQuestions.id, { onDelete: 'cascade' }),
+    deviceId: uuid('device_id').notNull(),
+    runId: text('run_id').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('question_waiters_question_idx').on(t.questionId),
+    uniqueIndex('question_waiters_run_idx').on(t.questionId, t.deviceId, t.runId),
   ],
 );

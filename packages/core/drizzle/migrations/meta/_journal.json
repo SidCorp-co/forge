@@ -1555,6 +1555,20 @@
       "when": 1792713600000,
       "tag": "0223_agent_questions",
       "breakpoints": true
+    },
+    {
+      "idx": 224,
+      "version": "7",
+      "when": 1792800000000,
+      "tag": "0224_session_cancelled",
+      "breakpoints": true
+    },
+    {
+      "idx": 225,
+      "version": "7",
+      "when": 1792886400000,
+      "tag": "0225_question_waiters",
+      "breakpoints": true
     }
   ]
 }
