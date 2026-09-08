@@ -43,8 +43,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			// Projects console (ISS-290): open-issue counts / health derive from
 			// issue status, so refresh the batch health rollup.
 			qc.invalidateQueries({ queryKey: ["projects", "health"] });
-			// ISS-307 — Attention buckets are status-driven (developed/reopen,
-			// waiting/needs_info/on_hold); refresh the cross-project inbox + rail count.
+			// cm:why every attention bucket is derived from `issues.status` on read (packages/core/src/me/attention-buckets.ts) and none of them is cached server-side, so a status event is the only signal that the cross-project inbox and its rail badge are stale — nothing else fires for an issue in a project this client is not looking at.
 			qc.invalidateQueries({ queryKey: ["attention"] });
 			// ISS-665 — status transitions are the primary "Recent changes" signal.
 			qc.invalidateQueries({ queryKey: ["recent-changes"] });

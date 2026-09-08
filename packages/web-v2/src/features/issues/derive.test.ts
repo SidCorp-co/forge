@@ -251,6 +251,13 @@ describe("label helpers", () => {
 		expect(complexityLabel("xs")).toBe("XS");
 		expect(complexityLabel("m")).toBe("Medium");
 	});
+	// cm:guard ISS-970 — the string this asserts is the one the owner read off the dashboard for an issue that had asked nothing. A pause and a question must not share a label: this is the whole reported defect, on the surface that reported it.
+	it("labels a deliberate pause as paused, never as needing a human", () => {
+		expect(statusLabelFor("on_hold")).toBe("Paused");
+		expect(statusLabelFor("on_hold")).not.toBe("Needs a human");
+		expect(statusLabelFor("waiting")).toBe("Needs a human");
+		expect(statusLabelFor("needs_info")).toBe("Needs a human");
+	});
 	it("renders an em dash for an absent complexity", () => {
 		expect(complexityLabel(null)).toBe("—");
 		expect(complexityLabel(undefined)).toBe("—");
@@ -409,12 +416,17 @@ describe("filterToQueryParams", () => {
 		expect(filterToQueryParams("review").status).toContain("developed");
 		expect(filterToQueryParams("review").status).toContain("testing");
 	});
-	it("blocked targets parked statuses", () => {
+	// cm:guard ISS-970 — this arm asks the contracts label axis which statuses are parked and does NOT hand-write a tuple. The three surfaces that each kept their own copy disagreed, and the tab was the copy that both carried a pause nobody must answer and omitted `waiting`, a real question. Re-typing the literal here is the drift, whatever values it holds.
+	it("blocked targets every parked status the label axis names", () => {
 		expect(filterToQueryParams("blocked")).toEqual({
-			status: ["on_hold", "needs_info"],
+			status: ["waiting", "on_hold", "needs_info"],
 		});
 	});
-	// ISS-438 — explicit Draft + Done buckets.
+
+	it("does not claim a paused issue as active work", () => {
+		expect(filterToQueryParams("active").status).not.toContain("waiting");
+		expect(filterToQueryParams("active").status).not.toContain("on_hold");
+	});
 	it("draft targets only drafts", () => {
 		expect(filterToQueryParams("draft")).toEqual({
 			status: ["draft"],

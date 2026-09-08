@@ -2,7 +2,11 @@
 // `derive.test.ts`). No React, no IO: status → stage / chip / run, dependency
 // counts, filter → server params, client grouping, comment-kind heuristic.
 
-import { type AutonomousLabel, toAutonomousLabel } from "@forge/contracts/issue-vocabulary";
+import {
+	type AutonomousLabel,
+	statusesForLabels,
+	toAutonomousLabel,
+} from "@forge/contracts/issue-vocabulary";
 import { STAGE_INDEX, STAGES, type StageKey } from "@/design/stages";
 import {
 	type SemanticTone,
@@ -64,6 +68,7 @@ export const AUTONOMOUS_STATUS_LABELS: Record<AutonomousLabel, string> = {
 	open: "Open",
 	running: "Running",
 	needs_human: "Needs a human",
+	paused: "Paused",
 	awaiting_release: "Awaiting release",
 	done: "Done",
 	dropped: "Dropped",
@@ -312,7 +317,9 @@ export function depCounts(deps: IssueDependencies | undefined): DepCounts {
  * - findings: unreviewed detector output (scheduled sweeps, server-side passes)
  * - active: the in-flight lifecycle band
  * - review: developed/deploying/testing/tested
- * - blocked: on_hold + needs_info (work parked / waiting on input)
+ * - blocked: every status the contracts label axis calls parked — asked from
+ *   `statusesForLabels` rather than typed out, because a second copy of that
+ *   list is what ISS-970 was filed about
  * - done: shipped work (released + closed)
  */
 export function filterToQueryParams(filter: IssueFilter): {
@@ -328,13 +335,13 @@ export function filterToQueryParams(filter: IssueFilter): {
 		// cm:why unreviewed machine findings get their own lane because on one project they outnumbered the real parked backlog and made the Draft tab unreadable
 		case "findings":
 			return { origin: "detector" };
+		// cm:why `waiting` is absent although it once sat here: the label axis calls it parked, so it belongs to the Blocked arm below, and a status in two tabs is one claim a reader can reach from two places and believe twice (ISS-970).
 		case "active":
 			return {
 				status: [
 					"open",
 					"confirmed",
 					"clarified",
-					"waiting",
 					"approved",
 					"in_progress",
 					"reopen",
@@ -342,8 +349,9 @@ export function filterToQueryParams(filter: IssueFilter): {
 			};
 		case "review":
 			return { status: ["developed", "testing", "tested"] };
+		// cm:edge contract -> packages/contracts/src/issue-vocabulary.ts#KERNEL_TO_LABEL — the tab asks the axis which statuses are parked, so a status whose label moves changes tab in the same commit. Typing the tuple back in restores the drift: this copy is the one that carried `on_hold`, a pause nobody must answer, while omitting `waiting`, a question somebody is owed.
 		case "blocked":
-			return { status: ["on_hold", "needs_info"] };
+			return { status: statusesForLabels("needs_human", "paused") };
 		case "done":
 			return { status: ["released", "closed"] };
 		default:

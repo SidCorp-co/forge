@@ -110,7 +110,8 @@ A status is kept only if the kernel enforces it. That is the whole selection rul
 | `draft` | never claimed by a session | `draft` |
 | `open` | claimable, unless a `blocks` edge holds it | `open` |
 | `running` | **exactly one live session per issue** | `confirmed` `clarified` `approved` `developed` `testing` `tested` `released` `reopen` |
-| `needs_human` | no session, holds no slot, resumed by the answer | `needs_info` `waiting` `on_hold` |
+| `needs_human` | no session, holds no slot, resumed by the answer | `needs_info` `waiting` |
+| `paused` | no session, holds no slot, resumed by an operator — **not** by an answer | `on_hold` |
 | `done` | stamps `merged_at` → unblocks every dependent | `closed` |
 | `dropped` | closes **without** stamping — replaces close + `unmark` | `closed` + `unmark` |
 
@@ -385,7 +386,7 @@ paid for themselves.
   re-triage, was deleted with that lane by ISS-897.
 
 > **Correction: only ONE of the six is a new kernel status.** `running` is what `in_progress`
-> already enforces, `needs_human` what the three parked statuses do, `done` what `closed` does.
+> already enforces, `needs_human` what the parked statuses do, `done` what `closed` does.
 > Adding them would have been two enum values for one rule — the selection rule this document set
 > for itself. The other five are a rendering map, and `dropped` is the only rule nothing enforced.
 >

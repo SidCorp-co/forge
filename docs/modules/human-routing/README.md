@@ -43,7 +43,7 @@ agent-filed issue has no assignee and MCP `forge_issues` cannot set one.
 | Bucket | Fires on | Owner rule |
 |---|---|---|
 | `needsReview` | issues in `developed` or `reopen` | assignee |
-| `awaitingInput` | issues in `waiting`, `needs_info` or `on_hold` | `ownedForAnswer` |
+| `awaitingInput` | issues in `waiting` or `needs_info` — **not** `on_hold`, which is a pause somebody chose rather than a question somebody is owed (ISS-970) | `ownedForAnswer` |
 | `mentions` | unread `@mention` notifications | mentioned user |
 | `failedJobs` | jobs the caller triggered that failed in 7 days — excluding superseded retry attempts and jobs whose issue already reached `closed`/`released` | job creator |
 | `pendingSkillUpdates` | reconcile runs at the human decision gate, for projects the caller admins | project admin |

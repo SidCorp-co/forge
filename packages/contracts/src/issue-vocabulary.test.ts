@@ -4,6 +4,7 @@ import {
 	type AutonomousLabel,
 	LABEL_TO_KERNEL,
 	renderStatus,
+	statusesForLabels,
 	toAutonomousLabel,
 } from "./issue-vocabulary.js";
 import { REGISTRY_ISSUE_STATUSES } from "./pipeline-registry.js";
@@ -27,10 +28,16 @@ describe("toAutonomousLabel", () => {
 		}
 	});
 
-	it("collapses the three parked statuses into needs_human", () => {
-		for (const status of ["waiting", "on_hold", "needs_info"] as const) {
+	it("collapses the two statuses that ask a human into needs_human", () => {
+		for (const status of ["waiting", "needs_info"] as const) {
 			expect(toAutonomousLabel(status)).toBe("needs_human");
 		}
+	});
+
+	// cm:guard ISS-970 — a deliberate pause must NOT read as a question. `on_hold` is set by `cancel` with the `parkIssue: true` default on every duplicate run, so folding it in here manufactures a "needs a human" row per cancellation: 3 cancels on 2026-09-07 produced 3 alarms and 0 questions. It is the negative case, and it is the one that would have caught the bug.
+	it("reads a deliberate pause as paused, never as a question for a human", () => {
+		expect(toAutonomousLabel("on_hold")).toBe("paused");
+		expect(toAutonomousLabel("on_hold")).not.toBe("needs_human");
 	});
 
 	// cm:guard done and dropped must never collapse into each other: closing stamps merged_at and dropping does not, which is the only difference the kernel actually enforces between them
@@ -73,5 +80,28 @@ describe("renderStatus", () => {
 		expect(renderStatus("in_progress")).toBe("running");
 		expect(renderStatus("needs_info")).toBe("needs_human");
 		expect(renderStatus("released")).toBe("awaiting_release");
+	});
+});
+
+describe("statusesForLabels", () => {
+	// cm:guard this is the reader every client uses INSTEAD of hand-copying a status tuple, which is the drift ISS-970 was filed about — three surfaces each held their own list and one of them was wrong.
+	it("answers with exactly the statuses carrying the labels asked for", () => {
+		expect(statusesForLabels("needs_human")).toEqual(["waiting", "needs_info"]);
+		expect(statusesForLabels("paused")).toEqual(["on_hold"]);
+		expect(statusesForLabels("needs_human", "paused")).toEqual([
+			"waiting",
+			"on_hold",
+			"needs_info",
+		]);
+	});
+
+	it("answers with nothing when no status carries the label", () => {
+		expect(statusesForLabels()).toEqual([]);
+	});
+
+	it("returns statuses in the map's own order, not the caller's", () => {
+		expect(statusesForLabels("paused", "needs_human")).toEqual(
+			statusesForLabels("needs_human", "paused"),
+		);
 	});
 });
