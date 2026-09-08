@@ -21,10 +21,42 @@ use rusqlite::{params, Connection, OptionalExtension};
 use crate::error::{Error, Result};
 
 /// Is there a process, and does the boot it belongs to still exist.
+// cm:guard `Starting` is the window between the revival CAS committing and the process registering, and it exists so recovery can tell "a revival is on its way to exec" from "nothing is coming". Without it that state reads as `Exited`, a second wake wins the same CAS while the first is still spawning, and two processes reach one worktree (ISS-964 criteria 38, 39).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Incarnation {
     Live,
+    Starting,
     Exited,
+}
+
+/// What this box can HONESTLY say about a run's process, in three values.
+// cm:guard `Dead` requires a process identity refuted INSIDE the same boot epoch, and everything else is `Unknown` — never `Dead`. A pid from another boot names whatever the kernel has since handed that number to, so concluding death from it reclaims a worktree a live run is writing in; `Unknown` permits no reclamation at all, which is the safe direction (ISS-964 criteria 35, 36).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Liveness {
+    Alive,
+    Dead,
+    Unknown,
+}
+
+/// Why a revival was refused. Each is terminal under its own name.
+// cm:guard every variant is NAMED and none is a retry: a revival that failed its fence is a different operator problem from one whose tree is gone, and a blind retry on either is how a superseded claim spawns anyway (ISS-964 criteria 40, 41).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RevivalRefusal {
+    FenceSuperseded,
+    WorktreeGone,
+    WorkClosed,
+    NotOwed,
+}
+
+impl RevivalRefusal {
+    pub fn name(self) -> &'static str {
+        match self {
+            RevivalRefusal::FenceSuperseded => "fence_superseded",
+            RevivalRefusal::WorktreeGone => "worktree_gone",
+            RevivalRefusal::WorkClosed => "work_closed",
+            RevivalRefusal::NotOwed => "not_owed",
+        }
+    }
 }
 
 /// Can the run move, independent of whether its process is there.
@@ -61,6 +93,7 @@ impl Incarnation {
     pub fn wire(self) -> &'static str {
         match self {
             Incarnation::Live => "live",
+            Incarnation::Starting => "starting",
             Incarnation::Exited => "exited",
         }
     }
@@ -93,6 +126,13 @@ pub struct Run {
     pub resume_id: Option<String>,
     pub session_terminal_at: Option<i64>,
     pub worktree_gone_at: Option<i64>,
+    pub claim_owner: Option<String>,
+    pub claim_generation: i64,
+    pub claim_expires_at: Option<i64>,
+    pub revival_token: Option<String>,
+    pub revival_deadline_at: Option<i64>,
+    pub ended_by: Option<String>,
+    pub ended_reason: Option<String>,
 }
 
 /// One issue's membership in a run, and whether its lease came back.
@@ -131,8 +171,18 @@ const RUN_COLUMNS: &[&str] = &[
     "park_deadline_at",
     "session_terminal_at",
     "worktree_gone_at",
+    "claim_owner",
+    "claim_generation",
+    "claim_expires_at",
+    "revival_token",
+    "revival_deadline_at",
+    "ended_by",
+    "ended_reason",
     "created_at",
 ];
+
+#[cfg(test)]
+const QUESTION_COLUMNS: &[&str] = &["question_id", "run_id", "round", "asked_at"];
 
 #[cfg(test)]
 const RUN_ISSUE_COLUMNS: &[&str] = &["run_id", "issue_key", "lease_returned_at"];
@@ -154,6 +204,13 @@ CREATE TABLE IF NOT EXISTS runs (
   park_deadline_at    INTEGER,
   session_terminal_at INTEGER,
   worktree_gone_at    INTEGER,
+  claim_owner         TEXT,
+  claim_generation    INTEGER NOT NULL DEFAULT 0,
+  claim_expires_at    INTEGER,
+  revival_token       TEXT,
+  revival_deadline_at INTEGER,
+  ended_by            TEXT,
+  ended_reason        TEXT,
   created_at          INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS run_issues (
@@ -162,7 +219,26 @@ CREATE TABLE IF NOT EXISTS run_issues (
   lease_returned_at INTEGER,
   PRIMARY KEY (run_id, issue_key)
 );
+CREATE TABLE IF NOT EXISTS questions (
+  question_id TEXT PRIMARY KEY,
+  run_id      TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
+  round       INTEGER NOT NULL,
+  asked_at    INTEGER NOT NULL
+);
 ";
+
+// cm:guard `CREATE TABLE IF NOT EXISTS` adds NO column to a table that already exists, so a ledger written by an earlier build keeps its old shape and every statement naming a new column fails at RUNTIME on a live box. This runs on every open, is idempotent, and is the only reason a box that parked yesterday can be read today. A column added to `SCHEMA` must be added here in the same edit.
+// cm:guard every entry is NULLABLE or carries a default, because this list runs against a ledger an EARLIER build wrote: `project_id` NOT NULL with a default would give every pre-upgrade run the same wrong project and publish it into one it does not belong to, which is why `session_ledger::snapshot` skips a run with no project and names it (ISS-934).
+const ADDED_COLUMNS: &[(&str, &str)] = &[
+    ("project_id", "TEXT"),
+    ("claim_owner", "TEXT"),
+    ("claim_generation", "INTEGER NOT NULL DEFAULT 0"),
+    ("claim_expires_at", "INTEGER"),
+    ("revival_token", "TEXT"),
+    ("revival_deadline_at", "INTEGER"),
+    ("ended_by", "TEXT"),
+    ("ended_reason", "TEXT"),
+];
 
 /// The ledger, open on one box.
 pub struct Ledger {
@@ -180,8 +256,11 @@ fn sql_err(e: rusqlite::Error) -> Error {
     Error::Other(format!("ledger: {e}"))
 }
 
+// cm:guard the order here IS the index `map_run` reads by, and nothing type-checks the pair: insert a column anywhere but the end and every field after it reads the neighbouring column's value, of the same SQLite type, with no error (ISS-964).
 const SELECT_RUN: &str = "SELECT run_id, project_id, master_session_id, session_id, worktree_path, pid, boot_id,
-        incarnation, work, blocker_kind, waiting_on, resume_id, session_terminal_at, worktree_gone_at
+        incarnation, work, blocker_kind, waiting_on, resume_id, session_terminal_at, worktree_gone_at,
+        claim_owner, claim_generation, claim_expires_at, revival_token, revival_deadline_at,
+        ended_by, ended_reason
  FROM runs";
 
 fn map_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<Run> {
@@ -195,6 +274,7 @@ fn map_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<Run> {
         boot_id: row.get(6)?,
         incarnation: match row.get::<_, String>(7)?.as_str() {
             "live" => Incarnation::Live,
+            "starting" => Incarnation::Starting,
             _ => Incarnation::Exited,
         },
         work: match row.get::<_, String>(8)?.as_str() {
@@ -215,6 +295,13 @@ fn map_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<Run> {
         resume_id: row.get(11)?,
         session_terminal_at: row.get(12)?,
         worktree_gone_at: row.get(13)?,
+        claim_owner: row.get(14)?,
+        claim_generation: row.get(15)?,
+        claim_expires_at: row.get(16)?,
+        revival_token: row.get(17)?,
+        revival_deadline_at: row.get(18)?,
+        ended_by: row.get(19)?,
+        ended_reason: row.get(20)?,
     })
 }
 
@@ -244,28 +331,8 @@ impl Ledger {
         conn.execute_batch("PRAGMA foreign_keys = ON;")
             .map_err(sql_err)?;
         conn.execute_batch(SCHEMA).map_err(sql_err)?;
-        // cm:guard `project_id` is NULLABLE precisely so a ledger written before ISS-934 migrates without inventing a project for rows that never carried one. A NOT NULL column with a default would give every pre-upgrade run the same wrong project, and the snapshot would then publish those runs into a project they do not belong to — the silent substitution this repo refuses. `session_ledger::snapshot` skips a run with no project and names it in the log instead.
-        if !Self::has_column(&conn, "runs", "project_id")? {
-            conn.execute_batch("ALTER TABLE runs ADD COLUMN project_id TEXT;")
-                .map_err(sql_err)?;
-        }
+        Self::add_missing_columns(&conn)?;
         Ok(Self { conn })
-    }
-
-    fn has_column(conn: &Connection, table: &str, column: &str) -> Result<bool> {
-        let mut stmt = conn
-            .prepare(&format!("PRAGMA table_info({table})"))
-            .map_err(sql_err)?;
-        let mut found = false;
-        let rows = stmt
-            .query_map([], |r| r.get::<_, String>(1))
-            .map_err(sql_err)?;
-        for name in rows {
-            if name.map_err(sql_err)? == column {
-                found = true;
-            }
-        }
-        Ok(found)
     }
 
     /// Create a run for a GROUP of issues — the only way a run comes into being.
@@ -455,6 +522,249 @@ impl Ledger {
     #[cfg(test)]
     pub(crate) fn exec_for_test(&self, sql: &str) {
         self.conn.execute_batch(sql).unwrap();
+    }
+
+    /// Bring a ledger written by an earlier build up to this build's shape.
+    fn add_missing_columns(conn: &Connection) -> Result<()> {
+        let mut have: Vec<String> = Vec::new();
+        {
+            let mut stmt = conn.prepare("PRAGMA table_info(runs)").map_err(sql_err)?;
+            let rows = stmt
+                .query_map([], |r| r.get::<_, String>(1))
+                .map_err(sql_err)?;
+            for r in rows {
+                have.push(r.map_err(sql_err)?);
+            }
+        }
+        for (name, ty) in ADDED_COLUMNS {
+            if !have.iter().any(|c| c == name) {
+                conn.execute_batch(&format!("ALTER TABLE runs ADD COLUMN {name} {ty};"))
+                    .map_err(sql_err)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// What this box can honestly say about a run's process.
+    // cm:guard the pid is refuted by a CALLER that inspected this boot's process table, and the boot comparison happens HERE so no caller can skip it. `Unknown` on a boot mismatch is not caution, it is correctness: the recorded pid names a different process now, so an answer of `Dead` would be a guess dressed as a fact (ISS-964 criterion 35).
+    pub fn liveness(run: &Run, this_boot: &str, pid_refuted: bool) -> Liveness {
+        if run.boot_id != this_boot {
+            return Liveness::Unknown;
+        }
+        match (run.incarnation, run.pid) {
+            (Incarnation::Live | Incarnation::Starting, Some(_)) if !pid_refuted => Liveness::Alive,
+            (Incarnation::Live | Incarnation::Starting, Some(_)) => Liveness::Dead,
+            (Incarnation::Exited, _) => Liveness::Dead,
+            (_, None) => Liveness::Unknown,
+        }
+    }
+
+    /// Record that a run is blocked, and take the branch its blocker decides.
+    // cm:guard the BRANCH follows from `blocker_kind` and is not a caller's choice: a human block leaves `Exited` because a human wait is unbounded and holding a slot for it is what the whole park exists to stop, while a machine or peer block stays `Live` because that wait is bounded and resuming costs a transcript re-read (ISS-964 criteria 4, 5).
+    // cm:guard `Nobody` is REFUSED here rather than parked. It is a failure with a name and writes no question anywhere, so a caller that reaches this with `Nobody` has already lost the distinction this enum exists to keep (ISS-964 criteria 3, 6).
+    pub fn park(
+        &self,
+        run_id: &str,
+        blocker: BlockerKind,
+        waiting_on: &str,
+        resume_id: Option<&str>,
+        park_deadline_at: Option<i64>,
+    ) -> Result<Incarnation> {
+        if matches!(blocker, BlockerKind::Nobody) {
+            return Err(Error::Other(
+                "ledger: a `nobody` blocker terminates the run with a named reason and writes no question".into(),
+            ));
+        }
+        let incarnation = match blocker {
+            BlockerKind::Human => Incarnation::Exited,
+            _ => Incarnation::Live,
+        };
+        let kind = match blocker {
+            BlockerKind::Machine => "machine",
+            BlockerKind::MasterOrPeer => "master_or_peer",
+            BlockerKind::Human => "human",
+            BlockerKind::Nobody => unreachable!("refused above"),
+        };
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE runs SET work = ?2, blocker_kind = ?3, waiting_on = ?4, resume_id = ?5,
+                        park_deadline_at = ?6, incarnation = ?7
+                 WHERE run_id = ?1 AND work <> 'done'",
+                params![
+                    run_id,
+                    Work::Blocked.wire(),
+                    kind,
+                    waiting_on,
+                    resume_id,
+                    park_deadline_at,
+                    incarnation.wire()
+                ],
+            )
+            .map_err(sql_err)?;
+        if changed == 0 {
+            return Err(Error::Other(format!(
+                "ledger: run {run_id} is unknown or already done — a finished run cannot park"
+            )));
+        }
+        Ok(incarnation)
+    }
+
+    /// The box's own half of a question, written beside `waiting_on`.
+    // cm:guard the id is the one the RUNNER minted and core is told, so the two halves of a question are joinable across the window where this box has parked and core has not heard (ISS-964 criterion 10).
+    pub fn record_question(&self, question_id: &str, run_id: &str, round: i64) -> Result<()> {
+        self.conn
+            .execute(
+                "INSERT OR IGNORE INTO questions (question_id, run_id, round, asked_at)
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![question_id, run_id, round, now()],
+            )
+            .map_err(sql_err)?;
+        Ok(())
+    }
+
+    /// The rounds asked on one run, oldest first.
+    pub fn questions_for(&self, run_id: &str) -> Result<Vec<(String, i64)>> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT question_id, round FROM questions WHERE run_id = ?1 ORDER BY asked_at, round",
+            )
+            .map_err(sql_err)?;
+        let rows = stmt
+            .query_map(params![run_id], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(sql_err)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(sql_err)
+    }
+
+    /// Declare ownership of a run: an owner, a generation, and an expiry.
+    // cm:guard ownership is DECLARED and never inferred, and the generation is what makes a stale holder harmless: revoking increments it, so a revival presenting the old number is refused rather than racing (ISS-964 criteria 37, 42).
+    pub fn hold_claim(&self, run_id: &str, owner: &str, expires_at: i64) -> Result<i64> {
+        self.conn
+            .execute(
+                "UPDATE runs SET claim_owner = ?2, claim_expires_at = ?3 WHERE run_id = ?1",
+                params![run_id, owner, expires_at],
+            )
+            .map_err(sql_err)?;
+        self.generation_of(run_id)
+    }
+
+    /// Take ownership away, and make every claim presented under it stale.
+    pub fn revoke_claim(&self, run_id: &str) -> Result<i64> {
+        self.conn
+            .execute(
+                "UPDATE runs SET claim_owner = NULL, claim_expires_at = NULL,
+                        claim_generation = claim_generation + 1
+                 WHERE run_id = ?1",
+                params![run_id],
+            )
+            .map_err(sql_err)?;
+        self.generation_of(run_id)
+    }
+
+    fn generation_of(&self, run_id: &str) -> Result<i64> {
+        self.conn
+            .query_row(
+                "SELECT claim_generation FROM runs WHERE run_id = ?1",
+                params![run_id],
+                |r| r.get(0),
+            )
+            .map_err(sql_err)
+    }
+
+    /// An answer arrived: the run is owed a revival, and nothing has claimed it.
+    // cm:guard this flips `work` to `runnable` and leaves `incarnation` at `exited`, because `exited x runnable` IS the state criterion 38 calls "owed a revival" and the state its CAS predicates on. Writing `runnable` while also clearing the block to `live` would skip the CAS and let two wakes spawn (ISS-964 criterion 38).
+    pub fn answer_arrived(&self, run_id: &str) -> Result<bool> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE runs SET work = 'runnable', waiting_on = NULL
+                 WHERE run_id = ?1 AND work = 'blocked'",
+                params![run_id],
+            )
+            .map_err(sql_err)?;
+        Ok(changed == 1)
+    }
+
+    /// Win the right to spawn a revival, or be refused by name.
+    // cm:guard exactly ONE writer may pass, and the CAS is what enforces it: the predicate is `incarnation='exited' AND work='runnable'` — the answered-and-unclaimed state — and only a row count of 1 may go on to exec. A predicate on `work='blocked'` matches zero rows for an ANSWERED park and the run is owed a revival forever (ISS-964 criterion 38).
+    // cm:guard the token and the deadline are written INSIDE the same statement that wins the CAS, so recovery can tell an attempt on its way to exec from an abandoned one and may reset only an EXPIRED attempt. Without the deadline, recovery resets the window between commit and registering and a second wake wins while the first is still spawning (ISS-964 criterion 39).
+    pub fn begin_revival(
+        &self,
+        run_id: &str,
+        generation: i64,
+        token: &str,
+        deadline_at: i64,
+    ) -> std::result::Result<(), RevivalRefusal> {
+        let run = match self.run(run_id) {
+            Ok(Some(r)) => r,
+            _ => return Err(RevivalRefusal::NotOwed),
+        };
+        if run.claim_generation != generation {
+            return Err(RevivalRefusal::FenceSuperseded);
+        }
+        if run.worktree_gone_at.is_some() {
+            return Err(RevivalRefusal::WorktreeGone);
+        }
+        if matches!(run.work, Work::Done) {
+            return Err(RevivalRefusal::WorkClosed);
+        }
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE runs SET incarnation = 'starting', revival_token = ?2, revival_deadline_at = ?3
+                 WHERE run_id = ?1 AND incarnation = 'exited' AND work = 'runnable'
+                   AND claim_generation = ?4",
+                params![run_id, token, deadline_at, generation],
+            )
+            .map_err(|_| RevivalRefusal::NotOwed)?;
+        if changed == 1 {
+            Ok(())
+        } else {
+            Err(RevivalRefusal::NotOwed)
+        }
+    }
+
+    /// A revival that never reached its process hands the row back, still owed.
+    // cm:guard back to `exited x runnable` and NEVER to `blocked`: the answer has already arrived, so a row returned to `blocked` is a run waiting for a second answer nobody will send (ISS-964 criterion 38).
+    pub fn revival_failed(&self, run_id: &str, token: &str) -> Result<bool> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE runs SET incarnation = 'exited', revival_token = NULL,
+                        revival_deadline_at = NULL
+                 WHERE run_id = ?1 AND incarnation = 'starting' AND revival_token = ?2",
+                params![run_id, token],
+            )
+            .map_err(sql_err)?;
+        Ok(changed == 1)
+    }
+
+    /// Reset a revival attempt that missed its deadline, and only such an one.
+    // cm:guard `now >= revival_deadline_at` is the WHOLE predicate and the deadline may not be dropped from it. Recovery legitimately observes `starting` in the window between the CAS commit and the process registering, and resetting there is precisely how a second wake wins while the first is on its way to exec (ISS-964 criterion 39).
+    pub fn reset_expired_revivals(&self, now_at: i64) -> Result<usize> {
+        self.conn
+            .execute(
+                "UPDATE runs SET incarnation = 'exited', revival_token = NULL,
+                        revival_deadline_at = NULL
+                 WHERE incarnation = 'starting' AND revival_deadline_at IS NOT NULL
+                   AND revival_deadline_at <= ?1",
+                params![now_at],
+            )
+            .map_err(sql_err)
+    }
+
+    /// Close a run on the record, with who ended it and why.
+    pub fn end_run(&self, run_id: &str, ended_by: &str, reason: &str) -> Result<()> {
+        self.conn
+            .execute(
+                "UPDATE runs SET work = 'done', incarnation = 'exited', ended_by = ?2,
+                        ended_reason = ?3
+                 WHERE run_id = ?1",
+                params![run_id, ended_by, reason],
+            )
+            .map_err(sql_err)?;
+        Ok(())
     }
 
     /// The issues a run carries, and whether each lease came back.
@@ -686,5 +996,299 @@ mod tests {
             !cols.contains(&"status") && !cols.contains(&"state"),
             "one status string cannot say both `is the process there` and `can it move` (ISS-964 criterion 9)"
         );
+    }
+
+    // cm:guard the falsifying half of the park branch: `Human` must leave `Exited` and the other two `Live`. Assert only the pair together — a version that parks everything `Live` holds a slot for an unbounded human wait, and one that parks everything `Exited` pays a transcript re-read for a wait measured in seconds (ISS-964 criteria 4, 5).
+    #[test]
+    fn a_human_block_releases_the_box_and_a_machine_block_keeps_it() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(seed(&["ISS-1"])).unwrap();
+        assert_eq!(
+            led.park("run-1", BlockerKind::Human, "q-1", Some("r-1"), None)
+                .unwrap(),
+            Incarnation::Exited
+        );
+        let run = led.run("run-1").unwrap().unwrap();
+        assert_eq!(run.work, Work::Blocked);
+        assert_eq!(run.blocker_kind, Some(BlockerKind::Human));
+        assert_eq!(run.resume_id.as_deref(), Some("r-1"));
+
+        let mut other = Ledger::open_in_memory().unwrap();
+        other.create_run_group(seed(&["ISS-2"])).unwrap();
+        for kind in [BlockerKind::Machine, BlockerKind::MasterOrPeer] {
+            assert_eq!(
+                other.park("run-1", kind, "q-2", None, None).unwrap(),
+                Incarnation::Live,
+                "a bounded wait keeps the process"
+            );
+        }
+    }
+
+    // cm:guard a `nobody` blocker must be REFUSED, not parked, and must leave no question row behind. A row nobody can answer is indistinguishable from a run that is merely slow (ISS-964 criteria 3, 6).
+    #[test]
+    fn a_blocker_nobody_could_resolve_is_refused_and_writes_no_question() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(seed(&["ISS-1"])).unwrap();
+        assert!(led
+            .park("run-1", BlockerKind::Nobody, "q-1", None, None)
+            .is_err());
+        assert_eq!(led.run("run-1").unwrap().unwrap().work, Work::Runnable);
+        assert!(led.questions_for("run-1").unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_finished_run_cannot_park() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(seed(&["ISS-1"])).unwrap();
+        led.end_run("run-1", "operator", "abandoned").unwrap();
+        assert!(led
+            .park("run-1", BlockerKind::Human, "q-1", None, None)
+            .is_err());
+    }
+
+    // cm:guard the property the whole design exists for: waiting and dead are told apart from the LEDGER, with no process inspected. Both rows below have no live process; only the two typed columns separate them (ISS-964 criterion 9).
+    #[test]
+    fn the_ledger_alone_tells_waiting_from_dead() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(seed(&["ISS-1"])).unwrap();
+        led.park("run-1", BlockerKind::Human, "q-1", Some("r-1"), None)
+            .unwrap();
+        let waiting = led.run("run-1").unwrap().unwrap();
+
+        let mut dead_led = Ledger::open_in_memory().unwrap();
+        dead_led.create_run_group(seed(&["ISS-9"])).unwrap();
+        dead_led.end_run("run-1", "reaper", "session_lost").unwrap();
+        let dead = dead_led.run("run-1").unwrap().unwrap();
+
+        assert_eq!(
+            (waiting.incarnation, waiting.work),
+            (Incarnation::Exited, Work::Blocked)
+        );
+        assert_eq!(
+            (dead.incarnation, dead.work),
+            (Incarnation::Exited, Work::Done)
+        );
+        assert_eq!(dead.ended_reason.as_deref(), Some("session_lost"));
+    }
+
+    // cm:guard a pid from ANOTHER boot is `Unknown`, never `Dead`. That number names whatever the kernel has since handed it to, so answering `Dead` would reclaim a worktree a live run is writing in (ISS-964 criteria 35, 36).
+    #[test]
+    fn liveness_is_three_valued_and_a_foreign_boot_is_never_dead() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(seed(&["ISS-1"])).unwrap();
+        led.attach_pid("run-1", 4242).unwrap();
+        let run = led.run("run-1").unwrap().unwrap();
+
+        assert_eq!(Ledger::liveness(&run, "boot-a", false), Liveness::Alive);
+        assert_eq!(Ledger::liveness(&run, "boot-a", true), Liveness::Dead);
+        assert_eq!(
+            Ledger::liveness(&run, "a-later-boot", true),
+            Liveness::Unknown,
+            "a refuted pid from another boot refutes nothing"
+        );
+    }
+
+    #[test]
+    fn a_run_with_no_pid_recorded_is_unknown_rather_than_dead() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(seed(&["ISS-1"])).unwrap();
+        let run = led.run("run-1").unwrap().unwrap();
+        assert_eq!(Ledger::liveness(&run, "boot-a", true), Liveness::Unknown);
+    }
+
+    // cm:guard revoking must INCREMENT the generation, because that number is the whole fence: a revival presenting the old one has to be refused rather than raced (ISS-964 criteria 40, 42).
+    #[test]
+    fn revoking_a_claim_makes_every_claim_under_it_stale() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(seed(&["ISS-1"])).unwrap();
+        let gen0 = led.hold_claim("run-1", "master-a", 9_999).unwrap();
+        let gen1 = led.revoke_claim("run-1").unwrap();
+        assert!(gen1 > gen0, "generation must move: {gen0} -> {gen1}");
+
+        led.park("run-1", BlockerKind::Human, "q-1", Some("r-1"), None)
+            .unwrap();
+        led.answer_arrived("run-1").unwrap();
+        assert_eq!(
+            led.begin_revival("run-1", gen0, "tok", 9_999).unwrap_err(),
+            RevivalRefusal::FenceSuperseded
+        );
+    }
+
+    // cm:guard an answered park is `exited x runnable`, and the CAS predicates on exactly that. A predicate on `work='blocked'` matches zero rows here and the run is owed a revival forever (ISS-964 criterion 38).
+    #[test]
+    fn an_answer_leaves_the_run_owed_a_revival_and_exactly_one_wake_wins() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(seed(&["ISS-1"])).unwrap();
+        let gen = led.hold_claim("run-1", "master-a", 9_999).unwrap();
+        led.park("run-1", BlockerKind::Human, "q-1", Some("r-1"), None)
+            .unwrap();
+        assert!(led.answer_arrived("run-1").unwrap());
+
+        let owed = led.run("run-1").unwrap().unwrap();
+        assert_eq!(
+            (owed.incarnation, owed.work),
+            (Incarnation::Exited, Work::Runnable)
+        );
+
+        assert!(led.begin_revival("run-1", gen, "tok-a", 9_999).is_ok());
+        assert_eq!(
+            led.begin_revival("run-1", gen, "tok-b", 9_999).unwrap_err(),
+            RevivalRefusal::NotOwed,
+            "a second wake must not also win the CAS"
+        );
+        assert_eq!(
+            led.run("run-1").unwrap().unwrap().incarnation,
+            Incarnation::Starting
+        );
+    }
+
+    // cm:guard back to `runnable`, NEVER to `blocked`: the answer already arrived, so a row returned to `blocked` waits for a second answer nobody will send (ISS-964 criterion 38).
+    #[test]
+    fn a_revival_that_never_spawned_returns_the_row_still_owed() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(seed(&["ISS-1"])).unwrap();
+        let gen = led.hold_claim("run-1", "m", 9_999).unwrap();
+        led.park("run-1", BlockerKind::Human, "q-1", None, None)
+            .unwrap();
+        led.answer_arrived("run-1").unwrap();
+        led.begin_revival("run-1", gen, "tok-a", 9_999).unwrap();
+
+        assert!(led.revival_failed("run-1", "tok-a").unwrap());
+        let back = led.run("run-1").unwrap().unwrap();
+        assert_eq!(
+            (back.incarnation, back.work),
+            (Incarnation::Exited, Work::Runnable)
+        );
+        assert!(led.begin_revival("run-1", gen, "tok-b", 9_999).is_ok());
+    }
+
+    // cm:guard recovery may reset only an EXPIRED attempt. It legitimately sees `starting` between the CAS commit and the process registering, and resetting there is how a second wake wins while the first is on its way to exec (ISS-964 criterion 39).
+    #[test]
+    fn recovery_resets_an_expired_revival_and_leaves_one_on_its_way_alone() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(seed(&["ISS-1"])).unwrap();
+        let gen = led.hold_claim("run-1", "m", 9_999).unwrap();
+        led.park("run-1", BlockerKind::Human, "q", None, None)
+            .unwrap();
+        led.answer_arrived("run-1").unwrap();
+        led.begin_revival("run-1", gen, "tok", 1_000).unwrap();
+
+        assert_eq!(led.reset_expired_revivals(999).unwrap(), 0, "not yet due");
+        assert_eq!(
+            led.run("run-1").unwrap().unwrap().incarnation,
+            Incarnation::Starting
+        );
+        assert_eq!(
+            led.reset_expired_revivals(1_000).unwrap(),
+            1,
+            "due at the boundary"
+        );
+        assert_eq!(
+            led.run("run-1").unwrap().unwrap().incarnation,
+            Incarnation::Exited
+        );
+    }
+
+    #[test]
+    fn a_revival_is_refused_by_name_when_its_tree_is_gone_or_its_work_is_closed() {
+        let mut gone = Ledger::open_in_memory().unwrap();
+        gone.create_run_group(seed(&["ISS-1"])).unwrap();
+        let g = gone.hold_claim("run-1", "m", 9_999).unwrap();
+        gone.park("run-1", BlockerKind::Human, "q", None, None)
+            .unwrap();
+        gone.answer_arrived("run-1").unwrap();
+        gone.mark_worktree_gone_observed("run-1").unwrap();
+        assert_eq!(
+            gone.begin_revival("run-1", g, "t", 9_999).unwrap_err(),
+            RevivalRefusal::WorktreeGone
+        );
+
+        let mut closed = Ledger::open_in_memory().unwrap();
+        closed.create_run_group(seed(&["ISS-2"])).unwrap();
+        let g2 = closed.hold_claim("run-1", "m", 9_999).unwrap();
+        closed.end_run("run-1", "operator", "abandoned").unwrap();
+        assert_eq!(
+            closed.begin_revival("run-1", g2, "t", 9_999).unwrap_err(),
+            RevivalRefusal::WorkClosed
+        );
+    }
+
+    // cm:guard the id is minted by the RUNNER and re-recording it is a no-op, because the box writes its half before core has heard and the same id is re-posted by the reconcile sweep (ISS-964 criterion 10).
+    #[test]
+    fn a_question_is_recorded_under_the_id_the_box_minted_and_repeats_idempotently() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(seed(&["ISS-1"])).unwrap();
+        led.record_question("q-abc", "run-1", 1).unwrap();
+        led.record_question("q-abc", "run-1", 1).unwrap();
+        led.record_question("q-def", "run-1", 2).unwrap();
+        assert_eq!(
+            led.questions_for("run-1").unwrap(),
+            vec![("q-abc".to_string(), 1), ("q-def".to_string(), 2)]
+        );
+    }
+
+    // cm:guard a park must survive the FILE being reopened, which is what makes criterion 8's "survives a reboot of the box" walkable without one: nothing about the park lives in the process.
+    #[test]
+    fn a_park_survives_the_ledger_being_closed_and_reopened() {
+        let dir = std::env::temp_dir().join(format!("forge-ledger-{}", std::process::id()));
+        let path = dir.join("ledger.sqlite");
+        let _ = std::fs::remove_file(&path);
+        {
+            let mut led = Ledger::open(&path).unwrap();
+            led.create_run_group(seed(&["ISS-1"])).unwrap();
+            led.park("run-1", BlockerKind::Human, "q-1", Some("r-1"), Some(77))
+                .unwrap();
+        }
+        let reopened = Ledger::open(&path).unwrap();
+        let run = reopened.run("run-1").unwrap().unwrap();
+        assert_eq!(
+            (run.incarnation, run.work),
+            (Incarnation::Exited, Work::Blocked)
+        );
+        assert_eq!(run.resume_id.as_deref(), Some("r-1"));
+        assert_eq!(run.waiting_on.as_deref(), Some("q-1"));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    // cm:guard the migration is the reason a box that parked yesterday can be read today: `CREATE TABLE IF NOT EXISTS` adds no column, so without the ALTER pass every statement naming a new column fails at RUNTIME on the live ledger that already exists on forge-vm.
+    #[test]
+    fn a_ledger_written_by_an_earlier_build_gains_the_new_columns_on_open() {
+        let dir = std::env::temp_dir().join(format!("forge-ledger-old-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("ledger.sqlite");
+        let _ = std::fs::remove_file(&path);
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE runs (
+                   run_id TEXT PRIMARY KEY, master_session_id TEXT NOT NULL, session_id TEXT,
+                   worktree_path TEXT NOT NULL, pid INTEGER, boot_id TEXT NOT NULL,
+                   incarnation TEXT NOT NULL, work TEXT NOT NULL, blocker_kind TEXT,
+                   waiting_on TEXT, resume_id TEXT, park_deadline_at INTEGER,
+                   session_terminal_at INTEGER, worktree_gone_at INTEGER,
+                   created_at INTEGER NOT NULL);
+                 INSERT INTO runs (run_id, master_session_id, worktree_path, boot_id,
+                                   incarnation, work, created_at)
+                 VALUES ('old-run', 'm', '/tmp/w', 'boot-1', 'live', 'runnable', 1);",
+            )
+            .unwrap();
+        }
+        let led = Ledger::open(&path).unwrap();
+        let run = led
+            .run("old-run")
+            .expect("an old ledger must still be readable")
+            .expect("the pre-existing row must survive");
+        assert_eq!(run.claim_generation, 0);
+        assert!(run.ended_reason.is_none());
+        led.hold_claim("old-run", "m", 5).unwrap();
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn the_questions_table_carries_only_the_boxs_half() {
+        let led = Ledger::open_in_memory().unwrap();
+        let mut declared: Vec<String> = QUESTION_COLUMNS.iter().map(|s| (*s).to_string()).collect();
+        declared.sort();
+        assert_eq!(columns(&led, "questions"), declared);
     }
 }
