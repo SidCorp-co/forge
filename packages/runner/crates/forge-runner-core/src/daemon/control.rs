@@ -29,6 +29,7 @@ use crate::config::Config;
 #[cfg(unix)]
 use crate::daemon::dispatch;
 use crate::daemon::repo_lock::RepoLocks;
+use crate::daemon::session_tokens::SessionTokens;
 #[cfg(unix)]
 use crate::daemon::InflightGuard;
 use crate::runner::claude_code::ClaudeCodeRunner;
@@ -42,6 +43,7 @@ pub fn socket_path() -> Option<PathBuf> {
     Some(cfg.with_file_name("control.sock"))
 }
 
+// cm:guard every variant carries `token` and NONE declares a session. The daemon maps token -> session and an unknown field on the frame is dropped by serde, so a master that names another master's session is served as itself — one box runs one master per project, which made a declared id a way ACROSS projects (ISS-964 criteria 29-31).
 #[derive(Debug, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 enum Request {
@@ -50,30 +52,48 @@ enum Request {
     #[serde(rename_all = "camelCase")]
     Prepare {
         job_id: String,
-        session_id: String,
+        token: String,
         // cm:guard the master NAMES the agent, and the name is the worktree branch — core no longer sends one. Keep this `Option` rather than making serde require it: a missing name must come back as `agent_required`, which tells a master what to do, where a required field fails the whole frame as "undecodable request" and names nothing.
         #[serde(default)]
         agent: Option<String>,
     },
     /// Start a job this session already prepared.
     #[serde(rename_all = "camelCase")]
-    Start { job_id: String, session_id: String },
+    Start { job_id: String, token: String },
     /// Hand back a preparation that will never start.
     #[serde(rename_all = "camelCase")]
-    Discard { job_id: String, session_id: String },
+    Discard { job_id: String, token: String },
+    /// Hand back one job, or everything this session holds.
+    // cm:guard release travels the socket like the other three rather than going straight to core, because it names a session and the token is now the only thing that may. A CLI flag here would leave one verb able to release another master's holds — the same hole, on the one op whose whole effect is to take work away from somebody (ISS-964 criterion 30).
+    #[serde(rename_all = "camelCase")]
+    Release {
+        token: String,
+        #[serde(default)]
+        job_id: Option<String>,
+    },
     /// Open one run session over a GROUP of issues.
     // cm:guard `issue_keys` is a list and there is no scalar sibling — a group of one takes the same path as a group of three, which is what `ledger::create_run_group` exists to enforce and what two sessions in one worktree came from (ISS-933 criterion 8).
     #[serde(rename_all = "camelCase")]
     RunOpen {
+        token: String,
         project_id: String,
         issue_keys: Vec<String>,
         agent: String,
-        // cm:guard the MASTER's own session id, and it is optional only so a runner one release behind still opens runs. It is what makes the run's parent readable off the box (ISS-934): it was hardcoded empty here until then, so `runs_for_master` and `master_exit::children` matched nothing in production and a reader outside the box could not say which master a pane belonged to.
-        #[serde(default)]
-        session_id: Option<String>,
         #[serde(default)]
         start_point: Option<String>,
     },
+}
+
+impl Request {
+    fn token(&self) -> &str {
+        match self {
+            Request::Prepare { token, .. }
+            | Request::Start { token, .. }
+            | Request::Discard { token, .. }
+            | Request::Release { token, .. }
+            | Request::RunOpen { token, .. } => token,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -110,6 +130,8 @@ pub struct Control {
     pub inflight: Arc<std::sync::atomic::AtomicUsize>,
     /// Jobs taken and not yet started. See [`Preparations`].
     pub prepared: Preparations,
+    /// Which session is on the other end of a frame.
+    pub tokens: SessionTokens,
 }
 
 /// How long a preparation may sit before this daemon hands it back.
@@ -254,35 +276,46 @@ async fn serve_one(ctl: Arc<Control>, stream: UnixStream) {
         return;
     }
     let reply = match serde_json::from_str::<Request>(&line) {
-        Ok(Request::Prepare {
-            job_id,
-            session_id,
-            agent,
-        }) => prepare(&ctl, &job_id, &session_id, agent.as_deref()).await,
-        Ok(Request::Start { job_id, session_id }) => start(&ctl, &job_id, &session_id).await,
-        Ok(Request::Discard { job_id, session_id }) => discard(&ctl, &job_id, &session_id).await,
-        Ok(Request::RunOpen {
-            project_id,
-            issue_keys,
-            agent,
-            session_id,
-            start_point,
-        }) => {
-            run_open(
-                &ctl,
-                &project_id,
-                &issue_keys,
-                &agent,
-                session_id.as_deref(),
-                start_point.as_deref(),
-            )
-            .await
-        }
+        Ok(req) => match ctl.tokens.session_for(req.token()) {
+            // cm:guard resolve the token ONCE, here, and pass the session id down. A handler that took the token and resolved it itself would be a second place the mapping can be got wrong, and the refusal below is the only thing standing between the socket and an unauthenticated caller.
+            Some(session_id) => serve_request(&ctl, req, &session_id).await,
+            None => ClaimReply::refused("unknown_token"),
+        },
         Err(e) => ClaimReply::refused(format!("undecodable request: {e}")),
     };
     let mut out = serde_json::to_string(&reply).unwrap_or_else(|_| "{\"ok\":false}".into());
     out.push('\n');
     let _ = reader.get_mut().write_all(out.as_bytes()).await;
+}
+
+#[cfg(unix)]
+async fn serve_request(ctl: &Arc<Control>, req: Request, session_id: &str) -> ClaimReply {
+    match req {
+        Request::Prepare { job_id, agent, .. } => {
+            prepare(ctl, &job_id, session_id, agent.as_deref()).await
+        }
+        Request::Start { job_id, .. } => start(ctl, &job_id, session_id).await,
+        Request::Discard { job_id, .. } => discard(ctl, &job_id, session_id).await,
+        Request::Release { job_id, .. } => release(ctl, job_id.as_deref(), session_id).await,
+        // cm:guard the run's parent is the session the TOKEN resolved to, never a field on the frame. It is what `runs_for_master` and `master_exit::children` match on and what `recovery` calls `is_alive` with, so a caller able to name it could orphan another master's runs or adopt them (ISS-934 criterion 1, ISS-964 criterion 30).
+        Request::RunOpen {
+            project_id,
+            issue_keys,
+            agent,
+            start_point,
+            ..
+        } => {
+            run_open(
+                ctl,
+                &project_id,
+                &issue_keys,
+                &agent,
+                session_id,
+                start_point.as_deref(),
+            )
+            .await
+        }
+    }
 }
 
 #[cfg(unix)]
@@ -391,6 +424,24 @@ async fn discard(ctl: &Arc<Control>, job_id: &str, session_id: &str) -> ClaimRep
     }
 }
 
+#[cfg(unix)]
+/// Give work back: one job, or everything this session holds.
+async fn release(ctl: &Arc<Control>, job_id: Option<&str>, session_id: &str) -> ClaimReply {
+    if let Some(job_id) = job_id {
+        ctl.prepared.take(job_id, session_id);
+    }
+    match pool::release(&ctl.client, job_id, session_id).await {
+        Ok(n) => ClaimReply {
+            ok: true,
+            job_id: job_id.map(str::to_string),
+            agent_session_id: None,
+            issue_key: None,
+            reason: Some(format!("released {n}")),
+        },
+        Err(e) => ClaimReply::refused(format!("release failed: {e}")),
+    }
+}
+
 /// Open one run session: ledger, worktree, core, pane — in that order.
 // cm:guard the daemon opens the ledger PER CALL rather than holding one. `rusqlite::Connection` is `Send` and not `Sync`, and a shared handle behind a lock would serialise every run open on this box against every other; SQLite's own file locking is what makes concurrent opens correct, and it is the thing designed for it.
 // cm:edge ordering -> packages/runner/crates/forge-runner-core/src/runner/run_session.rs — `start` owns the ordering and its refusals; everything here is the two ports and the reply.
@@ -399,7 +450,7 @@ async fn run_open(
     project_id: &str,
     issue_keys: &[String],
     agent: &str,
-    master_session_id: Option<&str>,
+    master_session_id: &str,
     start_point: Option<&str>,
 ) -> ClaimReply {
     if !is_usable_branch_name(agent) {
@@ -425,7 +476,8 @@ async fn run_open(
     let req = crate::runner::run_session::RunRequest {
         run_id: uuid::Uuid::new_v4().to_string(),
         project_id: project_id.to_string(),
-        master_session_id: master_session_id.unwrap_or_default().to_string(),
+        // cm:guard NOT an `Option` and no `unwrap_or_default` above it: an empty parent here is what left `runs_for_master` and `master_exit::children` matching nothing in production, and it read as a run with no master rather than as an error (ISS-934).
+        master_session_id: master_session_id.to_string(),
         // cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/runner/inflight.rs — ONE boot identity for the box. A second source would have the ledger call a run from this boot foreign, or worse call a pre-reboot run current, and recovery then acts on a pid something else now owns.
         boot_id: crate::runner::inflight::boot_identity().unwrap_or_default(),
         issue_keys: issue_keys.to_vec(),
@@ -470,7 +522,7 @@ fn is_usable_branch_name(name: &str) -> bool {
 pub async fn request_prepare(
     _path: &std::path::Path,
     _job_id: &str,
-    _session_id: &str,
+    _token: &str,
     _agent: &str,
 ) -> std::io::Result<ClaimReply> {
     Err(no_socket())
@@ -479,10 +531,10 @@ pub async fn request_prepare(
 #[cfg(not(unix))]
 pub async fn request_run_open(
     _path: &std::path::Path,
+    _token: &str,
     _project_id: &str,
     _issue_keys: &[String],
     _agent: &str,
-    _master_session_id: Option<&str>,
     _start_point: Option<&str>,
 ) -> std::io::Result<ClaimReply> {
     Err(no_socket())
@@ -493,7 +545,7 @@ pub async fn request_run_open(
 pub async fn request_start(
     _path: &std::path::Path,
     _job_id: &str,
-    _session_id: &str,
+    _token: &str,
 ) -> std::io::Result<ClaimReply> {
     Err(no_socket())
 }
@@ -503,7 +555,7 @@ pub async fn request_start(
 pub async fn request_discard(
     _path: &std::path::Path,
     _job_id: &str,
-    _session_id: &str,
+    _token: &str,
 ) -> std::io::Result<ClaimReply> {
     Err(no_socket())
 }
@@ -519,13 +571,13 @@ fn no_socket() -> std::io::Error {
 pub async fn request_prepare(
     path: &std::path::Path,
     job_id: &str,
-    session_id: &str,
+    token: &str,
     agent: &str,
 ) -> std::io::Result<ClaimReply> {
     ask(
         path,
         serde_json::json!({
-            "op": "prepare", "jobId": job_id, "sessionId": session_id, "agent": agent
+            "op": "prepare", "jobId": job_id, "token": token, "agent": agent
         }),
     )
     .await
@@ -535,31 +587,54 @@ pub async fn request_prepare(
 #[cfg(unix)]
 pub async fn request_run_open(
     path: &std::path::Path,
+    token: &str,
     project_id: &str,
     issue_keys: &[String],
     agent: &str,
-    master_session_id: Option<&str>,
     start_point: Option<&str>,
 ) -> std::io::Result<ClaimReply> {
     ask(
         path,
         serde_json::json!({
-            "op": "run_open", "projectId": project_id, "issueKeys": issue_keys,
-            "agent": agent, "sessionId": master_session_id, "startPoint": start_point
+            "op": "run_open", "token": token, "projectId": project_id, "issueKeys": issue_keys,
+            "agent": agent, "startPoint": start_point
         }),
     )
     .await
+}
+
+/// Ask a running daemon to hand work back.
+#[cfg(unix)]
+pub async fn request_release(
+    path: &std::path::Path,
+    job_id: Option<&str>,
+    token: &str,
+) -> std::io::Result<ClaimReply> {
+    ask(
+        path,
+        serde_json::json!({ "op": "release", "jobId": job_id, "token": token }),
+    )
+    .await
+}
+
+#[cfg(not(unix))]
+pub async fn request_release(
+    _path: &std::path::Path,
+    _job_id: Option<&str>,
+    _token: &str,
+) -> std::io::Result<ClaimReply> {
+    Err(no_socket())
 }
 
 #[cfg(unix)]
 pub async fn request_start(
     path: &std::path::Path,
     job_id: &str,
-    session_id: &str,
+    token: &str,
 ) -> std::io::Result<ClaimReply> {
     ask(
         path,
-        serde_json::json!({ "op": "start", "jobId": job_id, "sessionId": session_id }),
+        serde_json::json!({ "op": "start", "jobId": job_id, "token": token }),
     )
     .await
 }
@@ -568,11 +643,11 @@ pub async fn request_start(
 pub async fn request_discard(
     path: &std::path::Path,
     job_id: &str,
-    session_id: &str,
+    token: &str,
 ) -> std::io::Result<ClaimReply> {
     ask(
         path,
-        serde_json::json!({ "op": "discard", "jobId": job_id, "sessionId": session_id }),
+        serde_json::json!({ "op": "discard", "jobId": job_id, "token": token }),
     )
     .await
 }
@@ -596,16 +671,16 @@ mod tests {
 
     #[test]
     fn a_prepare_request_parses_in_the_shape_the_cli_sends() {
-        let raw = r#"{"op":"prepare","jobId":"j1","sessionId":"s1","agent":"catalog-sweep"}"#;
+        let raw = r#"{"op":"prepare","jobId":"j1","token":"t1","agent":"catalog-sweep"}"#;
         match serde_json::from_str::<Request>(raw).expect("must parse") {
             Request::Prepare {
                 job_id,
-                session_id,
+                token,
                 agent,
             } => {
                 assert_eq!(agent.as_deref(), Some("catalog-sweep"));
                 assert_eq!(job_id, "j1");
-                assert_eq!(session_id, "s1");
+                assert_eq!(token, "t1");
             }
             other => panic!("wrong variant: {other:?}"),
         }
@@ -614,15 +689,15 @@ mod tests {
     // cm:guard the two ops must stay SEPARATE on the wire, which is the whole of B2. A `start` that carried an agent name would be a claim wearing two words, and the master could no longer take a job, look at it and hand it back.
     #[test]
     fn start_and_discard_name_a_job_this_session_already_holds() {
-        match serde_json::from_str::<Request>(r#"{"op":"start","jobId":"j1","sessionId":"s1"}"#)
+        match serde_json::from_str::<Request>(r#"{"op":"start","jobId":"j1","token":"t1"}"#)
             .expect("must parse")
         {
-            Request::Start { job_id, session_id } => {
-                assert_eq!((job_id.as_str(), session_id.as_str()), ("j1", "s1"));
+            Request::Start { job_id, token } => {
+                assert_eq!((job_id.as_str(), token.as_str()), ("j1", "t1"));
             }
             other => panic!("wrong variant: {other:?}"),
         }
-        match serde_json::from_str::<Request>(r#"{"op":"discard","jobId":"j1","sessionId":"s1"}"#)
+        match serde_json::from_str::<Request>(r#"{"op":"discard","jobId":"j1","token":"t1"}"#)
             .expect("must parse")
         {
             Request::Discard { job_id, .. } => assert_eq!(job_id, "j1"),
@@ -653,7 +728,7 @@ mod tests {
     /// prevent, and nothing replaces it but this.
     #[test]
     fn a_claim_with_no_agent_name_still_parses_so_it_can_be_refused_by_name() {
-        let raw = r#"{"op":"prepare","jobId":"j1","sessionId":"s1"}"#;
+        let raw = r#"{"op":"prepare","jobId":"j1","token":"t1"}"#;
         match serde_json::from_str::<Request>(raw).expect("must parse") {
             Request::Prepare { agent, .. } => assert!(agent.is_none()),
             other => panic!("wrong variant: {other:?}"),
@@ -679,31 +754,54 @@ mod tests {
         assert!(!is_usable_branch_name(&"x".repeat(61)));
     }
 
-    // cm:guard the CLI sends camelCase and the enum's `rename_all` renames VARIANTS, not fields — a `sessionId` that fails to decode does not fail the frame, it silently arrives as `None` and the run is recorded parentless (ISS-934 criterion 1).
+    // cm:guard the frame is decoded from a LITERAL string here rather than built from `Request`, because the whole claim is about a field the struct no longer has: a planted `sessionId` must reach serde and be dropped, and a round-trip through the Rust type could not plant it (ISS-964 criterion 30).
     #[test]
-    fn a_run_open_carries_the_master_session_id_the_cli_sent() {
-        let line = r#"{"op":"run_open","projectId":"p1","issueKeys":["ISS-934"],"agent":"grp","sessionId":"master-7"}"#;
-        match serde_json::from_str::<Request>(line).expect("the CLI's own shape must decode") {
-            Request::RunOpen {
-                session_id,
-                project_id,
-                ..
-            } => {
-                assert_eq!(session_id.as_deref(), Some("master-7"));
-                assert_eq!(project_id, "p1");
-            }
-            other => panic!("decoded as {other:?}"),
-        }
+    fn a_frame_naming_another_session_is_served_as_the_token_owner() {
+        let dir = std::env::temp_dir().join(format!("ct-{}", uuid::Uuid::new_v4()));
+        let tokens = SessionTokens::at(dir.join("control-tokens.json"));
+        let a = tokens.mint("sess-a").unwrap();
+        tokens.mint("sess-b").unwrap();
+
+        let frame = format!(
+            r#"{{"op":"prepare","jobId":"j1","token":"{a}","sessionId":"sess-b","agent":"work"}}"#
+        );
+        let req: Request = serde_json::from_str(&frame).expect("frame must decode");
+        let Request::Prepare { token, .. } = &req else {
+            panic!("wrong variant");
+        };
+        assert_eq!(
+            tokens.session_for(token),
+            Some("sess-a".to_string()),
+            "a master that can name another master's session can park it, read its question and revive it — one box runs one master per project, so a declared id reaches ACROSS projects (ISS-964 criterion 30)"
+        );
     }
 
     #[test]
-    fn a_run_open_from_an_older_cli_still_decodes_with_no_parent() {
-        let line = r#"{"op":"run_open","projectId":"p1","issueKeys":["ISS-934"],"agent":"grp"}"#;
-        match serde_json::from_str::<Request>(line)
-            .expect("a runner one release behind must still open runs")
-        {
-            Request::RunOpen { session_id, .. } => assert_eq!(session_id, None),
-            other => panic!("decoded as {other:?}"),
-        }
+    fn a_frame_carrying_no_known_token_names_nobody() {
+        let dir = std::env::temp_dir().join(format!("ct-{}", uuid::Uuid::new_v4()));
+        let tokens = SessionTokens::at(dir.join("control-tokens.json"));
+        tokens.mint("sess-a").unwrap();
+        assert_eq!(tokens.session_for("forged"), None);
+    }
+
+    // cm:guard scans the source rather than the types, because the claim is about what CANNOT be written: a variant that reintroduces `session_id` compiles, passes every behavioural test, and silently restores the weakness (ISS-964 criterion 31).
+    #[test]
+    fn no_frame_declares_a_session_and_every_frame_carries_a_token() {
+        let src = include_str!("control.rs");
+        let body = src
+            .split("enum Request {")
+            .nth(1)
+            .and_then(|s| s.split("\n}\n").next())
+            .expect("the Request enum must be findable");
+        assert!(
+            !body.contains("session_id:"),
+            "the daemon must map token -> session and ignore any session named on the frame; a declared id here is the weakness ISS-964 criterion 29 removes"
+        );
+        let variants = body.matches("#[serde(rename_all = \"camelCase\")]").count();
+        assert_eq!(
+            body.matches("token: String").count(),
+            variants,
+            "every verb on this socket acts on a session, so every frame needs the capability — one variant without it is a way in for all of them (ISS-964 criterion 31)"
+        );
     }
 }

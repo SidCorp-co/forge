@@ -16,6 +16,7 @@ pub mod preflight;
 pub mod recovery;
 pub mod recovery_ports;
 pub mod repo_lock;
+pub mod session_tokens;
 pub mod setup_agent;
 pub mod skill_pull;
 pub mod terminal;
@@ -515,6 +516,12 @@ pub async fn run(
 
     // cm:guard both loops start, or the box does neither half of its own work: the control socket is the ONLY way a master turns a decision into a running job, and the pool poll is the only thing that notices work exists now that core pushes nothing. A daemon that starts one without the other looks healthy and never runs anything.
     {
+        // cm:guard refuse to serve the socket with no token map rather than serving it unauthenticated. Every verb on this socket acts on a session by capability, and a daemon that could not resolve the map would either refuse every frame or, worse, be tempted back to the declared id (ISS-964 criterion 29).
+        let Some(tokens_path) = session_tokens::default_path() else {
+            return Err(crate::error::Error::Other(
+                "cannot resolve the control token map path".into(),
+            ));
+        };
         let prepared = control::Preparations::new();
         let ctl = Arc::new(control::Control {
             client: (*client).clone(),
@@ -523,6 +530,7 @@ pub async fn run(
             locks: repo_locks.clone(),
             inflight: inflight.clone(),
             prepared: prepared.clone(),
+            tokens: session_tokens::SessionTokens::at(tokens_path),
         });
         // cm:guard the preparation reaper starts with the socket, always. `prepare` can park a hold, and the only process that knows it happened is this one — a daemon serving the split without this loop leaves a master free to take ten jobs, start two and strand eight until core's three-minute reaper notices each of them.
         {
