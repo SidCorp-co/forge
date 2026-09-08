@@ -46,6 +46,10 @@
   answered and waiting to be restarted. Three separate wind-down steps that used to read as one flag
   now read as three, so a run whose agent has finished but whose working copy is still on disk is
   visibly recoverable instead of looking finished.
+  And the counterpart of asking is now on the record too: an agent notes each reversible thing it
+  decided for itself rather than interrupting you for, so how much it asks can be read against how
+  much it settled alone. Without that second number a pass that asked twice and decided forty things
+  looks the same as one that asked twice and did nothing else.
 
 - **You can now see which agent sessions a box is running without logging into it.**
   `GET /api/projects/:id/run-sessions` answers any member of the project with every run the fleet is
