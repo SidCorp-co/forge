@@ -63,9 +63,10 @@ async function devicesServing(projectId: string): Promise<string[]> {
  * operator's problem and the first resolves itself on the next sweep.
  */
 // cm:guard never throw out of here. Every caller is a hook subscriber firing after its own mutation has already committed, so an error raised here would turn a successful transition into a 500 for a push that is only ever an optimisation over the timer.
+// cm:guard `issueId` is NULLABLE and the frame carries the null through. Since ISS-933 a wake also fires on the mint of a job kind with no issue behind it — `smoke`, `release_batch`, `reconcile`, `verify_skill` — and a wake carries no work anyway: `daemon/mod.rs` reads the event NAME and `projectId`, then reads the whole pool for itself.
 export async function wakeMastersForProject(args: {
   projectId: string;
-  issueId: string;
+  issueId: string | null;
   status: IssueStatus;
 }): Promise<{ boxes: number; delivered: number }> {
   try {
