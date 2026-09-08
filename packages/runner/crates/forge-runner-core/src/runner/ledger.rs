@@ -87,6 +87,17 @@ impl BlockerKind {
             BlockerKind::Nobody => "nobody",
         }
     }
+
+    // cm:guard the inverse of `wire` and the ONLY parser of these four words, because the strings are a wire format two processes agree on: a caller that matches them inline is a second spelling of the enum, and the one that rots is the one read less often.
+    pub fn from_wire(s: &str) -> Option<Self> {
+        match s {
+            "machine" => Some(BlockerKind::Machine),
+            "master_or_peer" => Some(BlockerKind::MasterOrPeer),
+            "human" => Some(BlockerKind::Human),
+            "nobody" => Some(BlockerKind::Nobody),
+            _ => None,
+        }
+    }
 }
 
 impl Incarnation {

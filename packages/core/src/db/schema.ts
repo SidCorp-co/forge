@@ -2164,7 +2164,8 @@ export const terminalAgentSessionStatuses = [
 ] as const satisfies readonly AgentSessionStatus[];
 
 // cm:guard `status` and `runtimeState` answer different questions and must never be collapsed: `status` is the JOB's lifecycle (a `running` session may be mid-turn or parked on stdin), `runtimeState` is the PROCESS's, and it is the only one that distinguishes a session waiting for input from one still working. Print-mode sessions leave it NULL — a NULL here means "this runner never reported, infer nothing", which is not the same as `working`.
-// cm:guard `awaiting_input` is exempt from the loop-monitor QUIET-TIMEOUT only — it still HOLDS ITS RUNNER SLOT the entire time it is parked, exactly like `working`, and the residency window is what bounds it instead. Reading this as slot-exempt is the misreading that leaks a duplex session permanently: the box's `duplex_max_sessions` is a small number (3 by default) and core enforces no ceiling of its own, so once the quiet clock no longer applies the residency deadline is the only thing that will ever reap a parked session.
+// cm:guard `awaiting_input` is exempt from the loop-monitor QUIET-TIMEOUT only, and for a BOUNDED wait it still holds its runner slot exactly like `working`, with the residency window as the only bound. Reading that as slot-exempt is the misreading that leaks a duplex session permanently: `duplex_max_sessions` is 3 by default and core enforces no ceiling of its own.
+// cm:edge contract -> packages/core/src/jobs/park-deadline.ts — a wait whose open question carries `blocker_kind = 'human'` is the ONE exception to the guard above and neither half of it applies: `park_for_human` releases the process outright, so there is no permit to hold, and `reapUnansweredParks` bounds it, so residency is not the only clock. Read as "every park keeps its slot until residency" this reaps the park ISS-964 exists to protect.
 export const sessionRuntimeStates = [
   'starting',
   'working',

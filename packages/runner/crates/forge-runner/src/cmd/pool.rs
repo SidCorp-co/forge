@@ -44,6 +44,8 @@ pub enum Command {
     Load(LoadArgs),
     /// Open ONE run session over a group of issues, in its own worktree.
     Run(RunArgs),
+    /// Park one of this session's runs on a question, releasing its process.
+    Ask(AskArgs),
 }
 
 #[derive(ClapArgs)]
@@ -89,6 +91,18 @@ pub struct RunArgs {
     pub agent: String,
     #[arg(long)]
     pub start_point: Option<String>,
+}
+
+#[derive(ClapArgs)]
+pub struct AskArgs {
+    /// The run to park. A master may park only a run it is the parent of.
+    #[arg(long)]
+    pub run_id: String,
+    #[arg(long)]
+    pub prompt: String,
+    /// Who can resolve this. Only `human` releases the box; the rest are refused here.
+    #[arg(long, default_value = "human")]
+    pub blocker_kind: String,
 }
 
 #[derive(ClapArgs)]
@@ -232,6 +246,19 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
                     a.start_point.as_deref(),
                 )
                 .await,
+                &sock,
+            )?;
+            report(&out)?;
+            if !out.ok {
+                std::process::exit(1);
+            }
+        }
+        // cm:guard the park goes to the LOCAL DAEMON like the run open, and for a sharper reason: the daemon is what holds the ledger the park is written in, and it is the only process that may kill the run's group. A park sent straight to core would record a question with the agent still running (ISS-964 criterion 7).
+        Command::Ask(a) => {
+            let sock = socket()?;
+            let out = ask(
+                "ask",
+                control::request_ask(&sock, &token()?, &a.run_id, &a.prompt, &a.blocker_kind).await,
                 &sock,
             )?;
             report(&out)?;

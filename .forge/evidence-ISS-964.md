@@ -318,3 +318,55 @@ socket that still trusts a caller-declared `session_id` is what c31 forbids.
 
 - Gates: `cargo fmt --check`, `clippy --workspace --all-targets`, `cargo test --workspace` 430
   (from 421).
+
+## S9b part 2 — the park gets a caller (c5 slot half, c7)
+
+Two of advisor's three items were answered by code rather than by writing anything, and the answer
+changed the step:
+
+**c5's slot half has only one true side on this path.** `counts_against_session_cap: true` appears in
+exactly ONE place in the runner — `daemon/dispatch.rs:624`, the duplex pipeline-job path. A run session
+spawns through `run_session::start` -> `TmuxSpawner` and never reaches `acquire_session_permit`, so it
+holds no `duplex_max_sessions` permit at all, parked or working. A test asserting "the human park releases
+a slot the other two keep" would have passed with both sides zero — the T7 shape. What a run session
+actually holds is its issue lease (`devices/admissible.ts`' `rs.metadata -> 'runIssues'` exclusion), and
+that must KEEP excluding while parked, because the park is a promise to resume (c8). The release c5 names
+is therefore the PROCESS, which `ledger::a_human_block_releases_the_box_and_a_machine_block_keeps_it`
+already asserts as `Exited` vs `Live` (S6). Nothing new was written for it; the two stale core guards were.
+
+**The ask transport already existed on both sides.** `transport/questions.rs::ask` <-> `POST /me/questions`
+(`devices/pool-routes.ts:311`), which defaults `blockerKind` to `human`. `Ask` owed no core half.
+
+**What was actually missing was a caller.** `enum Request` had no verb, so nothing could reach the park:
+the runner's park arms were library code with no door onto them.
+
+| # | Criterion | Test | RED (quoted) | Commit |
+|---|---|---|---|---|
+| 7, 30 | the park has a verb at all | `control::a_park_names_the_run_it_cannot_find` + 5 siblings | `error[E0425]: cannot find function plan_park in this scope` | S9b |
+| 30 | a master may park only a run it parents | `control::a_master_cannot_park_another_masters_run` | mutation (the parent comparison deleted): `assertion left == right failed: a run's parent is the only session that may park it / left: Ok(Human) / right: Err("not_your_run")` | S9b |
+| 7, 27 | permit -> park -> kill, in that order | `control::the_park_is_written_before_the_process_is_killed` | mutation (`kill_group` hoisted above `park_for_human`): `order must be permit -> park -> kill; found permit@844 park@1389 kill@1316` | S9b |
+| 4, 5 | the bounded kinds are not judged twice | `control::the_bounded_blockers_are_left_for_the_arm_that_owns_the_rule` | no mutation owed: the assertion is that `plan_park` returns `Ok(Machine)` and does NOT refuse, so a copy of `park_for_human`'s rule appearing here turns it red by construction | S9b |
+
+**`Ask` is HUMAN-ONLY, and that is a design refusal rather than an omission.** `blocked::arm_bounded`
+returns the run's `Listening` and the caller owns its lifetime; a per-call socket handler would open the
+door and drop it, leaving the ledger advertising an ear every later ring meets with `ENXIO` (c11). The
+bounded arms belong in the run's own process, which is what holds the ear. A non-human `blockerKind` on
+the frame is passed through to `park_for_human`, which refuses it by name and points at `arm_bounded` —
+one owner for that rule, on the side that does not ship separately.
+
+### Priced
+
+- **Two core guards narrowed, not deleted.** `db/schema.ts`' `awaiting_input` guard said a park "still
+  HOLDS ITS RUNNER SLOT... the residency deadline is the only thing that will ever reap" it. Both clauses
+  are now false for a human park — `park_for_human` releases the process, `reapUnansweredParks` bounds it —
+  and that guard is injected into the next editor's context before they touch the file. It keeps its
+  bounded-park half and gained a `cm:edge contract` naming the exception. Same premise, same repair, at
+  `agent-sessions/routes.ts`' device-principal guard.
+- **The park's IO half is covered by a source scan, not a behavioural test.** `park` needs a `CoreClient`
+  and a live pid; the decidable half was split into `plan_park` so its four refusals are reachable, and the
+  ORDER of the three side effects is asserted by scanning the handler. Ends when there is an in-process
+  fake for `CoreClient` — a fixture two other modules also want.
+- **Deploy order, unchanged and now sharper.** Core must ship before the runner: the box requires all
+  three of `PARK_PROTECTIONS` and `park-exempt-oneshot` exists only on this branch. Until core ships,
+  `pool ask` refuses every park by name. That is the gate working, and it reads as a broken feature to
+  anyone who does not know.

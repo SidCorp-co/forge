@@ -82,6 +82,28 @@ enum Request {
         #[serde(default)]
         start_point: Option<String>,
     },
+    /// Park one run this session owns on a human, releasing its process.
+    // cm:guard this verb carries the HUMAN park alone. The bounded arms cannot live behind a socket call: `blocked::arm_bounded` returns the run's ear and the caller owns its lifetime, so a per-call handler would open the door and drop it, leaving the ledger advertising a listener that every later ring meets with `ENXIO` (ISS-964 criteria 5, 11).
+    #[serde(rename_all = "camelCase")]
+    Ask {
+        token: String,
+        run_id: String,
+        prompt: String,
+        #[serde(default = "human_blocker")]
+        blocker_kind: String,
+        #[serde(default)]
+        options: Option<serde_json::Value>,
+        #[serde(default)]
+        recommended_option_id: Option<String>,
+        #[serde(default)]
+        round: Option<i64>,
+        #[serde(default)]
+        resume_id: Option<String>,
+    },
+}
+
+fn human_blocker() -> String {
+    crate::runner::ledger::BlockerKind::Human.wire().to_string()
 }
 
 impl Request {
@@ -91,7 +113,8 @@ impl Request {
             | Request::Start { token, .. }
             | Request::Discard { token, .. }
             | Request::Release { token, .. }
-            | Request::RunOpen { token, .. } => token,
+            | Request::RunOpen { token, .. }
+            | Request::Ask { token, .. } => token,
         }
     }
 }
@@ -315,6 +338,128 @@ async fn serve_request(ctl: &Arc<Control>, req: Request, session_id: &str) -> Cl
             )
             .await
         }
+        Request::Ask {
+            run_id,
+            prompt,
+            blocker_kind,
+            options,
+            recommended_option_id,
+            round,
+            resume_id,
+            ..
+        } => {
+            park(
+                ctl,
+                AskArgs {
+                    run_id: &run_id,
+                    prompt: &prompt,
+                    blocker_kind: &blocker_kind,
+                    options: options.unwrap_or_else(|| serde_json::json!([])),
+                    recommended_option_id: recommended_option_id.as_deref().unwrap_or_default(),
+                    round: round.unwrap_or(1),
+                    resume_id: resume_id.as_deref(),
+                },
+                session_id,
+            )
+            .await
+        }
+    }
+}
+
+/// What the caller sends with a park, once the token has named the asker.
+struct AskArgs<'a> {
+    run_id: &'a str,
+    prompt: &'a str,
+    blocker_kind: &'a str,
+    options: serde_json::Value,
+    recommended_option_id: &'a str,
+    round: i64,
+    resume_id: Option<&'a str>,
+}
+
+/// Everything about a park that is decidable without touching core or a process.
+// cm:guard split out so the refusals are reachable by a test: the handler below cannot run without a core client and a live pid, and a refusal nothing can exercise is a refusal nobody knows is gone (ISS-964 criteria 30, 60).
+fn plan_park(
+    run: Option<&crate::runner::ledger::Run>,
+    asker: &str,
+    blocker_wire: &str,
+) -> Result<crate::runner::ledger::BlockerKind, String> {
+    let run = run.ok_or("unknown_run")?;
+    if run.master_session_id != asker {
+        return Err("not_your_run".into());
+    }
+    if run.ended_by.is_some() {
+        return Err("run_ended".into());
+    }
+    crate::runner::ledger::BlockerKind::from_wire(blocker_wire).ok_or("blocker_kind_unknown".into())
+}
+
+#[cfg(unix)]
+/// Park a run on a human: permit, then the ledger, then the process, then core.
+// cm:guard the ORDER is permit -> park -> kill -> tell core, and each step is where it is for a different reason. The permit first because a park core cannot protect must not happen at all; the ledger before the kill because a process killed first leaves the run reading `live` behind a dead pid; core LAST because it is the only step that may fail without costing anything — the id is minted here and `INSERT OR IGNORE` makes the reconcile sweep's re-post free (ISS-964 criteria 7, 10, 27).
+async fn park(ctl: &Arc<Control>, args: AskArgs<'_>, asker: &str) -> ClaimReply {
+    let mut ledger = match crate::runner::ledger::Ledger::default_path()
+        .and_then(|p| crate::runner::ledger::Ledger::open(&p))
+    {
+        Ok(l) => l,
+        Err(e) => return ClaimReply::refused(format!("ledger unavailable: {e}")),
+    };
+    let run = match ledger.run(args.run_id) {
+        Ok(r) => r,
+        Err(e) => return ClaimReply::refused(format!("ledger unreadable: {e}")),
+    };
+    let blocker = match plan_park(run.as_ref(), asker, args.blocker_kind) {
+        Ok(b) => b,
+        Err(reason) => return ClaimReply::refused(reason),
+    };
+    let run = run.expect("plan_park refuses a missing run");
+    let advertised = crate::transport::protections::park_protections(&ctl.client).await;
+    let permit = match crate::runner::blocked::ParkPermit::from_advertisement(&advertised) {
+        Ok(p) => p,
+        Err(e) => return ClaimReply::refused(e.to_string()),
+    };
+    let question_id = uuid::Uuid::new_v4().to_string();
+    let what = crate::runner::blocked::Wait {
+        run_id: args.run_id,
+        question_id: &question_id,
+        round: args.round,
+        blocker,
+        resume_id: args.resume_id,
+        park_deadline_at: None,
+    };
+    if let Err(e) = crate::runner::blocked::park_for_human(&mut ledger, what, &permit) {
+        return ClaimReply::refused(e.to_string());
+    }
+    // cm:guard the pid is killed through `inflight::kill_group` and never with a bare `kill`, because what has to go is the process GROUP: a pane's shell outlives a signal sent to the agent alone, and the run then reads parked with a live tree behind it (ISS-964 criterion 7).
+    if let Some(pid) = run.pid {
+        crate::runner::inflight::kill_group(pid).await;
+    }
+    let told = crate::transport::questions::ask(
+        &ctl.client,
+        crate::transport::questions::Ask {
+            id: &question_id,
+            project_id: run.project_id.as_deref().unwrap_or_default(),
+            run_id: args.run_id,
+            issue_id: None,
+            agent_session_id: run.session_id.as_deref(),
+            prompt: args.prompt,
+            blocker_kind: blocker.wire(),
+            options: args.options,
+            recommended_option_id: args.recommended_option_id,
+            assumed: None,
+            cost: None,
+        },
+    )
+    .await;
+    ClaimReply {
+        ok: true,
+        job_id: None,
+        agent_session_id: run.session_id,
+        issue_key: Some(question_id),
+        // cm:guard a core that could not be told is reported and is NOT a refusal: the park has already happened, the process is already gone, and the run is recoverable by the reconcile sweep. Turning this into a failure would tell the master its run is still live (ISS-964 criterion 10).
+        reason: told
+            .err()
+            .map(|e| format!("parked; core not yet told: {e}")),
     }
 }
 
@@ -540,6 +685,18 @@ pub async fn request_run_open(
     Err(no_socket())
 }
 
+/// Ask a running daemon to park one of this session's runs on a human.
+#[cfg(not(unix))]
+pub async fn request_ask(
+    _path: &std::path::Path,
+    _token: &str,
+    _run_id: &str,
+    _prompt: &str,
+    _blocker_kind: &str,
+) -> std::io::Result<ClaimReply> {
+    Err(no_socket())
+}
+
 /// Ask a running daemon to start a job this session prepared.
 #[cfg(not(unix))]
 pub async fn request_start(
@@ -598,6 +755,26 @@ pub async fn request_run_open(
         serde_json::json!({
             "op": "run_open", "token": token, "projectId": project_id, "issueKeys": issue_keys,
             "agent": agent, "startPoint": start_point
+        }),
+    )
+    .await
+}
+
+/// Ask a running daemon to park one of this session's runs on a human.
+// cm:guard the blocker rides on the frame instead of this being two verbs, so the daemon refuses a bounded kind by the one rule that owns it (`blocked::park_for_human`) rather than the CLI deciding which arm exists. A `--machine` flag here would be a second copy of that rule, on the side that ships separately (ISS-964 criteria 4, 5).
+#[cfg(unix)]
+pub async fn request_ask(
+    path: &std::path::Path,
+    token: &str,
+    run_id: &str,
+    prompt: &str,
+    blocker_kind: &str,
+) -> std::io::Result<ClaimReply> {
+    ask(
+        path,
+        serde_json::json!({
+            "op": "ask", "token": token, "runId": run_id,
+            "prompt": prompt, "blockerKind": blocker_kind
         }),
     )
     .await
@@ -782,6 +959,103 @@ mod tests {
         let tokens = SessionTokens::at(dir.join("control-tokens.json"));
         tokens.mint("sess-a").unwrap();
         assert_eq!(tokens.session_for("forged"), None);
+    }
+
+    fn parked_run(master: &str) -> crate::runner::ledger::Run {
+        crate::runner::ledger::Run {
+            run_id: "run-1".into(),
+            project_id: Some("p-1".into()),
+            master_session_id: master.into(),
+            session_id: None,
+            worktree_path: std::path::PathBuf::from("/tmp/wt"),
+            pid: Some(4242),
+            boot_id: "boot-a".into(),
+            incarnation: crate::runner::ledger::Incarnation::Live,
+            work: crate::runner::ledger::Work::Runnable,
+            blocker_kind: None,
+            waiting_on: None,
+            resume_id: None,
+            session_terminal_at: None,
+            worktree_gone_at: None,
+            claim_owner: None,
+            claim_generation: 0,
+            claim_expires_at: None,
+            revival_token: None,
+            revival_deadline_at: None,
+            ended_by: None,
+            ended_reason: None,
+        }
+    }
+
+    #[test]
+    fn a_park_names_the_run_it_cannot_find() {
+        assert_eq!(
+            plan_park(None, "master-1", "human"),
+            Err("unknown_run".into())
+        );
+    }
+
+    // cm:guard the authorisation claim of this verb: the asker is the session the TOKEN resolved to, and a master may park only a run whose parent it IS. Without it one master parks another's run — the same hole a declared `session_id` was (ISS-964 criterion 30).
+    #[test]
+    fn a_master_cannot_park_another_masters_run() {
+        let run = parked_run("master-2");
+        assert_eq!(
+            plan_park(Some(&run), "master-1", "human"),
+            Err("not_your_run".into()),
+            "a run's parent is the only session that may park it"
+        );
+    }
+
+    #[test]
+    fn a_master_parks_its_own_run() {
+        let run = parked_run("master-1");
+        assert_eq!(
+            plan_park(Some(&run), "master-1", "human"),
+            Ok(crate::runner::ledger::BlockerKind::Human)
+        );
+    }
+
+    // cm:guard a non-human blocker is NOT refused here, and that is deliberate: `blocked::park_for_human` owns that rule and names the arm to use instead, so judging it here would be a second copy of it — and the copy that drifts is the one no test reads (ISS-964 criteria 4, 5).
+    #[test]
+    fn the_bounded_blockers_are_left_for_the_arm_that_owns_the_rule() {
+        let run = parked_run("master-1");
+        assert_eq!(
+            plan_park(Some(&run), "master-1", "machine"),
+            Ok(crate::runner::ledger::BlockerKind::Machine)
+        );
+        assert_eq!(
+            plan_park(Some(&run), "master-1", "sideways"),
+            Err("blocker_kind_unknown".into())
+        );
+    }
+
+    #[test]
+    fn an_ended_run_is_not_parkable() {
+        let mut run = parked_run("master-1");
+        run.ended_by = Some("reaper".into());
+        assert_eq!(
+            plan_park(Some(&run), "master-1", "human"),
+            Err("run_ended".into()),
+            "a park is a promise to resume, and there is nothing left to resume"
+        );
+    }
+
+    // cm:guard scans the source because the claim is an ORDER between three side effects, and every ordering compiles: the permit is asked for BEFORE the ledger is written, the park is written BEFORE the process is killed, and core is told last. Killing first leaves the run reading `live` behind a dead pid — the exact state the four columns exist to make impossible (ISS-964 criteria 7, 27).
+    #[test]
+    fn the_park_is_written_before_the_process_is_killed() {
+        let src = include_str!("control.rs");
+        let body = src
+            .split("async fn park(")
+            .nth(1)
+            .and_then(|s| s.split("\n}\n").next())
+            .expect("the park handler must be findable");
+        let permit = body.find("from_advertisement").expect("permit asked for");
+        let park = body.find("park_for_human").expect("park written");
+        let kill = body.find("kill_group").expect("process killed");
+        assert!(
+            permit < park && park < kill,
+            "order must be permit -> park -> kill; found permit@{permit} park@{park} kill@{kill}"
+        );
     }
 
     // cm:guard scans the source rather than the types, because the claim is about what CANNOT be written: a variant that reintroduces `session_id` compiles, passes every behavioural test, and silently restores the weakness (ISS-964 criterion 31).

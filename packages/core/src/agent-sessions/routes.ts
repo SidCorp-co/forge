@@ -564,7 +564,7 @@ agentSessionRoutes.patch(
     if (patch.title !== undefined) updates.title = patch.title;
     if (patch.status !== undefined) updates.status = patch.status;
     if (patch.claudeSessionId !== undefined) updates.claudeSessionId = patch.claudeSessionId;
-    // cm:guard DEVICE principal only, for the same reason `toolCallCount` is. `awaiting_input` exempts a session from the heartbeat hop, so a project member who could set it could park any session outside the quiet clock forever — an un-reapable `running` row holding one of the box's few duplex session slots.
+    // cm:guard DEVICE principal only, for the same reason `toolCallCount` is. `awaiting_input` exempts a session from the heartbeat hop, so a project member who could set it could declare a BOUNDED wait outside the quiet clock and leave an un-reapable `running` row on one of the box's few duplex slots — bounded by residency and by nothing a person here can shorten. A human park is not that shape: it is written by the box with a permit and `reapUnansweredParks` bounds it.
     if (patch.runtimeState !== undefined && c.get('principal') === 'device') {
       updates.runtimeState = patch.runtimeState;
     }
