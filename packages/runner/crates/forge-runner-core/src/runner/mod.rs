@@ -15,6 +15,7 @@ pub mod claude_code;
 pub mod inflight;
 pub mod ledger;
 pub mod process;
+pub mod run_session;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]

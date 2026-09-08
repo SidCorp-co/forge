@@ -308,6 +308,18 @@ impl Ledger {
             .map_err(sql_err)
     }
 
+    /// Record the process a started run is running as, once it exists.
+    // cm:guard the pid arrives AFTER the row, never with it. A row written with a pid the spawn had not yet produced would name a process that may never exist, and the recovery path cannot tell that from a process that died — the ledger's whole value is that a recorded run with no pid is a KNOWN unstarted run rather than an unknown one.
+    pub fn attach_pid(&self, run_id: &str, pid: u32) -> Result<()> {
+        self.conn
+            .execute(
+                "UPDATE runs SET pid = ?2 WHERE run_id = ?1",
+                params![run_id, pid as i64],
+            )
+            .map_err(sql_err)?;
+        Ok(())
+    }
+
     /// The issues a run carries, and whether each lease came back.
     // cm:guard membership is many-to-many and lease return is PER ISSUE (ISS-933 criteria 7 and 14). A run that returned one of three leases must read as exactly that — an `issue_id` column on the run, or one boolean for the group, both make a partial return indistinguishable from a clean one, which is the failure this replaced: a master reported the loop closed having done one and a half of three.
     pub fn issues(&self, run_id: &str) -> Result<Vec<Membership>> {

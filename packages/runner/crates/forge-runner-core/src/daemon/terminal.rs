@@ -21,6 +21,10 @@ use crate::error::{Error, Result};
 // cm:guard the name is the IDENTITY, both halves. tmux refuses a second session under a name that exists, which is what bounds one master per (box, project) now that the daemon's in-process map cannot see a session it does not parent; and the same string round-trips to core on the `agent_sessions` row so an operator reading the UI knows what to attach to. Two names for one master would leave both checks looking at something the other cannot see.
 pub const MASTER_PREFIX: &str = "forge-master";
 
+/// A run session's pane, distinct from its master's so `alive`/`kill` cannot cross them.
+// cm:guard a run pane and a master pane differ ONLY by this string and share every primitive below — `ensure`, `alive`, `kill` and `send_line` all take the name a caller built from a prefix. A second copy of those primitives for runs is what this constant exists to prevent: two spawn paths drift, and the one that runs less often is the one that rots (ISS-933 criterion 1).
+pub const RUN_PREFIX: &str = "forge-run";
+
 /// Whether this box can host a resident session at all.
 // cm:guard REFUSE by name when tmux is missing rather than falling back to the `claude -p` pass this replaced. A box that quietly reverted would look identical in the log to one that is working, while none of B3's liveness, B5's transcript or B6's inbox exist on it — the silent substitution `CLAUDE.md` forbids, on the exact machinery that is supposed to detect silence. `forge-runner doctor` names the same missing binary before an operator finds it this way.
 pub fn available() -> bool {
