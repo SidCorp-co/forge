@@ -320,6 +320,42 @@ impl Ledger {
         Ok(())
     }
 
+    /// Stamp *session terminal*, once the authoritative row said so.
+    // cm:guard every mark setter here is `_observed` on purpose: the ONLY legitimate caller is one that has just read the fact back from the world (ISS-933 criterion 13). A setter named for the mark rather than for the evidence invites a caller that has merely finished doing the thing, and "I did it" is what the measured failure believed — a master reported the loop closed having done one and a half of three.
+    pub fn mark_session_terminal_observed(&self, run_id: &str) -> Result<()> {
+        self.stamp("session_terminal_at", run_id)
+    }
+
+    /// Stamp *worktree gone*, once the filesystem said the path is absent.
+    pub fn mark_worktree_gone_observed(&self, run_id: &str) -> Result<()> {
+        self.stamp("worktree_gone_at", run_id)
+    }
+
+    // cm:guard the column name is chosen from a FIXED set two lines up, never taken from a caller. This is the one place a column name is interpolated into SQL in this file, and an argument that reached it would be an injection point in a file that otherwise binds every value.
+    fn stamp(&self, column: &str, run_id: &str) -> Result<()> {
+        debug_assert!(matches!(column, "session_terminal_at" | "worktree_gone_at"));
+        self.conn
+            .execute(
+                &format!("UPDATE runs SET {column} = ?2 WHERE run_id = ?1 AND {column} IS NULL"),
+                params![run_id, now()],
+            )
+            .map_err(sql_err)?;
+        Ok(())
+    }
+
+    /// Stamp ONE issue's lease as returned, once the tracker said it was.
+    // cm:guard per ISSUE and never per run (ISS-933 criterion 14). A run carrying three issues that returned one lease must read as exactly that; a single flag for the group makes a partial return indistinguishable from a clean one, which is the defect this whole close-loop exists to expose.
+    pub fn mark_lease_returned_observed(&self, run_id: &str, issue_key: &str) -> Result<()> {
+        self.conn
+            .execute(
+                "UPDATE run_issues SET lease_returned_at = ?3
+                 WHERE run_id = ?1 AND issue_key = ?2 AND lease_returned_at IS NULL",
+                params![run_id, issue_key, now()],
+            )
+            .map_err(sql_err)?;
+        Ok(())
+    }
+
     /// The issues a run carries, and whether each lease came back.
     // cm:guard membership is many-to-many and lease return is PER ISSUE (ISS-933 criteria 7 and 14). A run that returned one of three leases must read as exactly that — an `issue_id` column on the run, or one boolean for the group, both make a partial return indistinguishable from a clean one, which is the failure this replaced: a master reported the loop closed having done one and a half of three.
     pub fn issues(&self, run_id: &str) -> Result<Vec<Membership>> {
