@@ -15,6 +15,9 @@ use crate::runner::ledger::Ledger;
 #[async_trait::async_trait]
 pub trait MasterLiveness: Send + Sync {
     async fn is_alive(&self, master_session_id: &str) -> bool;
+    /// The master now serving this project, if one is up.
+    // cm:guard asked ONLY for a park, and the reason is the asymmetry below: a live run whose master died is genuinely orphaned and must be closed, while a park is a question already put to a human and has to outlive the process that asked it. Re-parenting a live run would hand a new master a pane it never spawned and cannot address (ISS-964 criterion 28).
+    async fn live_master_for_project(&self, project_id: &str) -> Option<String>;
 }
 
 /// Telling core this box still holds a run.
@@ -44,6 +47,21 @@ pub async fn reconcile(
 ) -> Result<Vec<Recovered>> {
     let mut out = Vec::new();
     for run in ledger.unclosed_runs()? {
+        // cm:guard the park is answered BEFORE either orphan premise is read, because a park satisfies both of them by design: its process is gone, so a reboot changes the boot it recorded, and its master may well have exited over it. Read in the other order, the death of a master — or any reboot of the box — releases the worktree and returns the lease of a question a human has already been asked (ISS-964 criterion 28).
+        if run.is_parked_on_human() {
+            if !masters.is_alive(&run.master_session_id).await {
+                if let Some(project) = run.project_id.as_deref() {
+                    if let Some(parent) = masters.live_master_for_project(project).await {
+                        ledger.reparent_run(&run.run_id, &parent)?;
+                    }
+                }
+            }
+            // cm:guard the beat is NOT skipped by this exemption: `run-session-reaper.ts` gives back a run whose heartbeat stops for ten minutes, so a park the box preserves while going silent is one core takes anyway — the exemption would move the reaping rather than prevent it.
+            if let Some(id) = run.session_id.as_deref() {
+                let _ = core.beat(id).await;
+            }
+            continue;
+        }
         // cm:guard a DIFFERENT boot short-circuits the liveness question rather than answering it — a pid or a pane name recorded before a reboot may belong to something else entirely by now, so asking whether it is alive is asking about a stranger. Keying on the boot ALONE, though, never fires for a master that died within this one, which is the failure recovery exists to repair (ISS-933 criterion 16).
         let orphaned = run.boot_id != boot_id || !masters.is_alive(&run.master_session_id).await;
         if !orphaned {
@@ -76,6 +94,20 @@ mod tests {
     impl MasterLiveness for Masters {
         async fn is_alive(&self, master_session_id: &str) -> bool {
             self.0.contains(master_session_id)
+        }
+        async fn live_master_for_project(&self, _: &str) -> Option<String> {
+            None
+        }
+    }
+
+    struct Respawned(&'static str);
+    #[async_trait::async_trait]
+    impl MasterLiveness for Respawned {
+        async fn is_alive(&self, master_session_id: &str) -> bool {
+            master_session_id == self.0
+        }
+        async fn live_master_for_project(&self, _: &str) -> Option<String> {
+            Some(self.0.to_string())
         }
     }
 
@@ -255,6 +287,96 @@ mod tests {
         assert!(
             !sig.contains("session_id") && !sig.contains("agent_session"),
             "recovery must read the run's session from the LEDGER, not from a caller — a caller that could name it is a caller that could name the wrong one, and the ledger is the only thing that survives the master that knew it (ISS-933 criterion 16); signature was: {sig}"
+        );
+    }
+    fn parked(run_id: &str, master: &str, boot: &str) -> Ledger {
+        let mut led = seeded(run_id, master, boot, &["ISS-964"]);
+        led.begin_question("q-1", run_id, 1, "q-1").unwrap();
+        led.declare_parked_human(run_id, Some("resume-1"), None)
+            .unwrap();
+        led
+    }
+
+    // cm:guard the defect this exempts is not hypothetical: a master crash-loop is a routine event on a box, and a park is `unclosed` by design — so before this, the death of the master released the worktree, returned the lease and destroyed a question a human had already been asked (ISS-964 criterion 28).
+    #[tokio::test]
+    async fn a_park_is_not_closed_because_its_master_died() {
+        let mut led = parked("run-1", "master-dead", "boot-a");
+        let done = reconcile(
+            &mut led,
+            "boot-a",
+            &Masters(HashSet::new()),
+            &Sessions,
+            &Leases(Mutex::new(HashSet::new())),
+            &Beats::default(),
+        )
+        .await
+        .unwrap();
+        assert!(
+            done.is_empty(),
+            "a park whose master is gone is waiting, not abandoned — closing it throws away the answer somebody is about to give"
+        );
+        let run = led.run("run-1").unwrap().unwrap();
+        assert!(run.ended_by.is_none(), "the run must still be open");
+        assert_eq!(run.resume_id.as_deref(), Some("resume-1"));
+    }
+
+    // cm:guard a park is exempt from the BOOT premise too, and this is the case that premise cannot express: the process being gone is what a park IS, so a reboot makes every park on the box look exactly like the state recovery exists to clean up.
+    #[tokio::test]
+    async fn a_park_survives_the_box_rebooting_under_it() {
+        let mut led = parked("run-1", "master-dead", "boot-before");
+        let done = reconcile(
+            &mut led,
+            "boot-after",
+            &Masters(HashSet::new()),
+            &Sessions,
+            &Leases(Mutex::new(HashSet::new())),
+            &Beats::default(),
+        )
+        .await
+        .unwrap();
+        assert!(done.is_empty(), "a reboot is not an abandonment of a park");
+        assert!(led.run("run-1").unwrap().unwrap().ended_by.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_park_whose_master_respawned_is_reparented_onto_it() {
+        let mut led = parked("run-1", "master-old", "boot-a");
+        reconcile(
+            &mut led,
+            "boot-a",
+            &Respawned("master-new"),
+            &Sessions,
+            &Leases(Mutex::new(HashSet::new())),
+            &Beats::default(),
+        )
+        .await
+        .unwrap();
+        let run = led.run("run-1").unwrap().unwrap();
+        assert_eq!(
+            run.master_session_id, "master-new",
+            "the new master must be able to find this run: `runs_for_master` is what `master_exit::children` reads, so a stale parent leaves the master free to exit over a live park"
+        );
+    }
+
+    // cm:guard the park must keep BEATING while it is exempt here, and the two halves are one rule: `run-session-reaper.ts` releases a run session whose heartbeat stops for ten minutes, so an exemption that skipped the beat would have core destroy the park from the other side while the box carefully preserved it.
+    #[tokio::test]
+    async fn a_park_keeps_beating_so_cores_reaper_leaves_it_alone() {
+        let mut led = parked("run-1", "master-dead", "boot-a");
+        let beats = Beats::default();
+        reconcile(
+            &mut led,
+            "boot-a",
+            &Masters(HashSet::new()),
+            &Sessions,
+            &Leases(Mutex::new(HashSet::new())),
+            &beats,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            beats.0.lock().unwrap().as_slice(),
+            ["core-sess-1"],
+            "a park the box is preserving must go on asserting that the box holds it"
         );
     }
 }

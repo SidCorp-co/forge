@@ -28,6 +28,7 @@ import {
   jobs,
   terminalAgentSessionStatuses,
 } from '../db/schema.js';
+import { agentQuestions, questionWaiters } from '../db/schema-questions.js';
 import { sessionInbox } from '../db/schema-session-inbox.js';
 import { transitionIssueStatus } from '../issues/apply-transition.js';
 import type { LoopScope } from '../jobs/loop-monitor.js';
@@ -97,6 +98,33 @@ async function deliverToPark(issueId: string, commentId: string, body: string): 
 }
 
 /**
+ * Whether a run parked with no process is waiting for an answer on this issue.
+ *
+ * The answer itself does not travel this path: a person settles the question by
+ * choosing an option (`questions/read.ts:answerAs`), and the box reads it back
+ * from `GET /me/questions/:id`. What this decides is only whether the FALLBACK
+ * may run — and for a parked run it may not (ISS-964 criterion 26).
+ */
+// cm:guard `blocker_kind = 'human'` and nothing wider. A machine or master-or-peer park carries an open question too and KEEPS its process, so it is `deliverToPark`'s to serve — claiming it here would silence the duplex send that works today.
+// cm:guard the WAITER row is the evidence, not the question alone: it names the device and run that will come back for the answer. An open question nobody registered against is a park with nothing on the other end, and returning true for it would hold the issue at the question status forever.
+// cm:guard a comment on a parked issue is NOT the answer, and this returning true is not a dead end for the human: `recommended` is mandatory on every question (criterion 14), so their route out is one click in the bucket, which reaches the box through the question row.
+export async function answerReachesAParkedRun(issueId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: agentQuestions.id })
+    .from(agentQuestions)
+    .innerJoin(questionWaiters, eq(questionWaiters.questionId, agentQuestions.id))
+    .where(
+      and(
+        eq(agentQuestions.issueId, issueId),
+        eq(agentQuestions.status, 'open'),
+        eq(agentQuestions.blockerKind, 'human'),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
+}
+
+/**
  * Register the answer-resume subscriber. Called once at boot from
  * `src/index.ts`, and only meaningful for projects running the autonomous
  * driver — a staged project takes the early return and pays one issue read.
@@ -114,6 +142,14 @@ export function registerAnswerResume(bus: HooksBus): void {
           logger.info(
             { issueId: p.issueId, commentId: p.commentId },
             'answer-resume: human answered, sent to the session that asked',
+          );
+          return;
+        }
+        // cm:guard BEFORE the fallback and AFTER `deliverToPark`, and both halves of that order matter: a processless park matches neither of `parkedSessionFor`'s two conditions, while a park that DOES hold a process must still be served by the send above (ISS-964 criterion 26).
+        if (await answerReachesAParkedRun(p.issueId)) {
+          logger.info(
+            { issueId: p.issueId, commentId: p.commentId },
+            'answer-resume: a parked run is waiting on this issue, dispatching nothing',
           );
           return;
         }

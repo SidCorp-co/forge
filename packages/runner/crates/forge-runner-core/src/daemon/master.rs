@@ -28,6 +28,7 @@ use crate::daemon::dispatch::resolve_repo;
 use crate::daemon::master_exit::{self, Verdict};
 use crate::daemon::recovery;
 use crate::daemon::recovery_ports::{CoreBeat, CoreRunState, PaneMasters};
+use crate::daemon::session_tokens;
 use crate::daemon::terminal;
 use crate::runner::ledger::Ledger;
 use crate::transport::{master as master_api, pool, runners, CoreClient};
@@ -73,8 +74,7 @@ agent you start works in a worktree cut from `origin/{base}`, never in this tree
         ));
     }
     out.push_str(
-        "\nYou NAME every agent you start: `forge-runner pool claim <jobId> --session-id <id> \
---agent <name>`. The name becomes that agent's git branch and its worktree, so it must read as \
+        "\nYou NAME every agent you start: `forge-runner pool claim <jobId> --agent <name>`. The name becomes that agent's git branch and its worktree, so it must read as \
 the work — `ISS-175` when an agent takes one issue, something like `catalog-eav` when you group \
 several into one. Give two jobs the SAME name deliberately and they share one checkout and one \
 branch; give them different names and they cannot see each other's work. A claim with no name is \
@@ -158,6 +158,12 @@ fn nudge_due(prev: Option<(u64, Instant)>, digest: u64, now: Instant) -> bool {
 impl Masters {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// The session id and pane of the master this box has up for a project.
+    // cm:guard returns the pane NAME with the session id rather than the id alone, because every caller has to ask tmux whether that pane is still there — a registry entry outlives the process it names by design (the ISS-919 B1 hole), so an answer that could not be checked would be a claim this struct cannot make.
+    pub fn live_for_project(&self, project_id: &str) -> Option<(String, String)> {
+        self.get(project_id)
     }
 
     fn get(&self, project_id: &str) -> Option<(String, String)> {
@@ -397,17 +403,16 @@ async fn sweep(
             }
         };
 
-        let Some(session) = ensure_master(client, masters, &runner.project_id, &resolved).await
-        else {
+        if !ensure_master(client, masters, &runner.project_id, &resolved).await {
             continue;
-        };
+        }
 
         if items.is_empty() && admissible.is_empty() {
             continue;
         }
 
         if masters.claim_nudge(&runner.project_id, work_digest(&items, &admissible)) {
-            nudge_master(masters, &runner.project_id, &resolved.slug, &session).await;
+            nudge_master(masters, &runner.project_id, &resolved.slug).await;
         }
     }
 
@@ -488,7 +493,7 @@ async fn ensure_master(
     masters: &Arc<Masters>,
     project_id: &str,
     resolved: &crate::daemon::dispatch::Resolved,
-) -> Option<master_api::MasterSession> {
+) -> bool {
     let name = terminal::session_name(terminal::MASTER_PREFIX, &resolved.slug);
     // cm:guard refuse by name when tmux is missing rather than falling back to the per-pass `claude -p` this replaced. A box that quietly reverted would look identical in the log to one that is working, while none of the liveness, the transcript or the addressable pane exist on it.
     if !terminal::available() {
@@ -496,14 +501,14 @@ async fn ensure_master(
             "[master] {}: tmux is not installed on this box — no master will run for it; install tmux (`forge-runner doctor` checks for it)",
             resolved.slug
         );
-        return None;
+        return false;
     }
 
     let session = match master_api::register(client, project_id, &name).await {
         Ok(s) => s,
         Err(e) => {
             tracing::warn!("[master] {}: cannot register with core: {e}", resolved.slug);
-            return None;
+            return false;
         }
     };
 
@@ -516,7 +521,7 @@ async fn ensure_master(
             );
             remember(masters, project_id, &session);
         }
-        return Some(session);
+        return true;
     }
 
     // cm:guard refuse to start when the skill cannot be written, rather than starting without it. A master with no skill still starts, still claims, and runs the whole orchestration off a four-line prompt — work that looks like it is being managed and is not.
@@ -526,18 +531,39 @@ async fn ensure_master(
             resolved.slug,
             resolved.repo_path.display()
         );
-        return None;
+        return false;
     }
 
     // cm:guard the pane is the ONE session this runner opens on a TTY, and a TTY is the only place Claude Code shows the workspace-trust prompt. An unanswered prompt is a session that ends without doing anything and takes the breaker above with it, so the stamp belongs immediately before the spawn — `workspace::provision` covers a fresh box, this covers every box provisioned before it shipped (ISS-928, forge-vm 2026-09-06).
     crate::workspace::trust::pre_trust_logged(&resolved.repo_path, &resolved.slug);
 
     let transcript = transcript_path(&resolved.slug);
+    // cm:guard mint on the SPAWN path only, never on the adopt path above. A pane carries its capability in its environment and cannot be told a new one, so re-minting for a master this daemon merely adopted would refuse every frame that master sends for the rest of its life (ISS-964 criterion 29).
+    let mut env = terminal::pane_env();
+    match session_tokens::default_path().map(session_tokens::SessionTokens::at) {
+        Some(store) => match store.mint(&session.session_id) {
+            Ok(token) => env.push((session_tokens::TOKEN_ENV.to_string(), token)),
+            Err(e) => {
+                tracing::error!(
+                    "[master] {}: cannot mint a control capability: {e} — not starting a master",
+                    resolved.slug
+                );
+                return false;
+            }
+        },
+        None => {
+            tracing::error!(
+                "[master] {}: cannot resolve the control token map — not starting a master",
+                resolved.slug
+            );
+            return false;
+        }
+    }
     match terminal::ensure(
         &name,
         &resolved.repo_path,
         &terminal::pane_argv(),
-        &terminal::pane_env(),
+        &env,
         transcript.as_deref(),
     )
     .await
@@ -545,7 +571,7 @@ async fn ensure_master(
         Ok(_) => {}
         Err(e) => {
             tracing::error!("[master] {}: could not start {name}: {e}", resolved.slug);
-            return None;
+            return false;
         }
     }
     tracing::info!(
@@ -565,7 +591,7 @@ async fn ensure_master(
     if let Err(e) = terminal::send_line(&name, &brief).await {
         tracing::warn!("[master] {}: could not brief {name}: {e}", resolved.slug);
     }
-    Some(session)
+    true
 }
 
 fn remember(masters: &Arc<Masters>, project_id: &str, session: &master_api::MasterSession) {
@@ -582,28 +608,20 @@ fn remember(masters: &Arc<Masters>, project_id: &str, session: &master_api::Mast
 
 /// The whole of one pass prompt: go, and who you are.
 // cm:guard the pool is NOT embedded here, and that absence is what let the quiet gate go. The skill's own first step is `pool list`, so a snapshot typed at the master is a second copy that is already stale by the time the turn reaches it — and a prompt that queued behind a turn then acted on that copy is exactly what the deleted quiet gate existed to prevent (ISS-933 criterion 17).
-// cm:edge contract -> packages/runner/crates/forge-runner-core/assets/forge-master-skill.md — the skill is told `--session-id` is GIVEN, never invented, and this line is the only thing that gives it. A pass that omitted it has the master mint a fresh uuid and split its own inbox.
-fn nudge(session_id: &str) -> String {
-    format!(
-        "Pass. Your master session id is `{session_id}` — pass it as `--session-id`. Read the \
-pool, decide, claim what you are confident about, report, and stop."
-    )
+// cm:edge contract -> packages/runner/crates/forge-runner-core/assets/forge-master-skill.md — the skill is told it never names itself, and this prompt is what must not contradict it. A pass that handed a master its session id would invite it back onto a flag no command has (ISS-964 criterion 29).
+fn nudge() -> String {
+    "Pass. Read the pool, decide, claim what you are confident about, report, and stop.".into()
 }
 
 /// Tell a master there is something to look at.
 // cm:guard nothing gates this on the master looking idle. Residency used to be policed from outside — transcript growth read as liveness, a quiet window before prompting, a ceiling that killed — and every one of those inferred a process state from a pane's byte count (ISS-933 criteria 17 and 18). `claim_nudge` is NOT that gate and must not become it: it reads the POOL's identity, never the pane, so it cannot be wrong about whether the master is alive or working.
 // cm:guard an extra nudge costs a full agent pass, NOT a line in a composer — ~$0.18 measured on forge-vm 2026-09-08, where 1,354 unconditional nudges over 95 minutes bought 0 claims and $245. That is why the caller gates on `claim_nudge`; a new call site that skips it reinstates a spend proportional to sweeps.
-async fn nudge_master(
-    masters: &Arc<Masters>,
-    project_id: &str,
-    slug: &str,
-    session: &master_api::MasterSession,
-) {
+async fn nudge_master(masters: &Arc<Masters>, project_id: &str, slug: &str) {
     let Some((_, name)) = masters.get(project_id) else {
         return;
     };
     tracing::info!("[master] {slug}: work in the pool — nudging {name}");
-    if let Err(e) = terminal::send_line(&name, &nudge(&session.session_id)).await {
+    if let Err(e) = terminal::send_line(&name, &nudge()).await {
         tracing::warn!("[master] {slug}: could not nudge {name}: {e}");
     }
 }
@@ -691,6 +709,10 @@ async fn end_master(
     }
     if let Err(e) = master_api::close(client, session_id, reason).await {
         tracing::warn!("[master] could not close session {session_id}: {e}");
+    }
+    // cm:guard the capability dies with the session it names. A token left in the map outlives the master and is a live way onto the socket held by whatever can still read the pane's environment — a dead master's tmux buffer among them (ISS-964 criterion 29).
+    if let Some(store) = session_tokens::default_path().map(session_tokens::SessionTokens::at) {
+        store.retire(session_id);
     }
     masters.forget(project_id);
 }
@@ -867,6 +889,19 @@ mod tests {
     }
 
     // cm:guard the policy must arrive VERBATIM and this asserts exactly that. A master briefed with a summary of the owner's instruction is a master following the summariser, and the whole failure ISS-929 fixes is an instruction that reached the pane wrong or not at all.
+    // cm:edge lockstep -> packages/runner/crates/forge-runner-core/assets/forge-master-skill.md — the verb and the instruction to use it ship in one binary and are useless apart: a `decide` nothing tells the master about is a denominator that stays zero, which reads as a master that asks about everything (ISS-964 criterion 2).
+    #[test]
+    fn the_brief_tells_the_master_to_record_what_it_decided_rather_than_asked() {
+        assert!(
+            MASTER_SKILL.contains("pool decide"),
+            "the brief must name the verb that records a decision; without it the ratio's denominator is zero for every master (ISS-964 criteria 1, 2)"
+        );
+        assert!(
+            MASTER_SKILL.contains("reversible"),
+            "tier 0 is the rule that a reversible write is TAKEN and recorded — the brief is where the master reads it"
+        );
+    }
+
     #[test]
     fn the_owner_policy_reaches_the_brief_verbatim() {
         let policy = "Budget: 5 sessions.\nDrafts are eligible work.\nGroup related issues.";
@@ -909,6 +944,9 @@ mod give_back_tests {
     impl recovery::MasterLiveness for Alive {
         async fn is_alive(&self, _id: &str) -> bool {
             self.0
+        }
+        async fn live_master_for_project(&self, _: &str) -> Option<String> {
+            None
         }
     }
 

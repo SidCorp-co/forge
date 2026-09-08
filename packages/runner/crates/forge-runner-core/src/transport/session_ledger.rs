@@ -41,6 +41,9 @@ pub struct RunEntry {
     pub work: String,
     pub blocker_kind: Option<String>,
     pub waiting_on: Option<String>,
+    // cm:edge contract -> packages/core/src/devices/run-ledger-ws.ts — EPOCH SECONDS, and the unit is in the field name on both sides because this box has no date library and stamps `as_secs()`. A field named `sessionTerminalAt` carrying seconds is read as milliseconds and dated to 1970 — and a mark 56 years old still reads as a mark, so nothing looks wrong (ISS-964 criterion 52).
+    pub session_terminal_at_epoch_s: Option<i64>,
+    pub worktree_gone_at_epoch_s: Option<i64>,
     pub issues: Vec<IssueEntry>,
 }
 
@@ -77,6 +80,9 @@ pub fn snapshot(ledger: &Ledger) -> Result<Vec<RunEntry>> {
             work: run.work.wire().to_string(),
             blocker_kind: run.blocker_kind.map(|b| b.wire().to_string()),
             waiting_on: run.waiting_on,
+            // cm:guard the two marks travel SEPARATELY and neither is derived from the other. This snapshot covers unclosed runs only, which is exactly the window where they disagree: a session that reached terminal with its worktree still on disk is a diff somebody can still recover, and one flag for the pair hides that (ISS-964 criterion 52).
+            session_terminal_at_epoch_s: run.session_terminal_at,
+            worktree_gone_at_epoch_s: run.worktree_gone_at,
             issues,
         });
     }
@@ -203,5 +209,47 @@ mod tests {
         assert_eq!(v["type"], FRAME_TYPE);
         assert_eq!(v["data"]["bootId"], "boot-a");
         assert_eq!(v["data"]["runs"].as_array().unwrap().len(), 1);
+    }
+    // cm:guard the three marks are asserted as THREE, which is the claim: a half-closed run — session terminal, worktree still on disk, one lease of two returned — must read as exactly that off the box. One flag for the group makes it indistinguishable from a clean finish, and the diff is then nobody's (ISS-964 criterion 52).
+    #[test]
+    fn a_half_closed_run_reports_each_mark_on_its_own() {
+        let led = seeded();
+        led.attach_session("run-1", "sess-1").unwrap();
+        led.mark_lease_returned_observed("run-1", "ISS-933")
+            .unwrap();
+        led.mark_session_terminal_observed("run-1").unwrap();
+
+        let runs = snapshot(&led).unwrap();
+        let r = &runs[0];
+        assert!(
+            r.session_terminal_at_epoch_s.is_some(),
+            "the session mark is set and must travel"
+        );
+        assert!(
+            r.worktree_gone_at_epoch_s.is_none(),
+            "the worktree is still there, and `none` is what says the diff is recoverable"
+        );
+        let mut leases: Vec<(&str, bool)> = r
+            .issues
+            .iter()
+            .map(|i| (i.issue_key.as_str(), i.lease_returned))
+            .collect();
+        leases.sort();
+        assert_eq!(
+            leases,
+            vec![("ISS-933", true), ("ISS-934", false)],
+            "the third mark stays per-issue: one lease of two is back, and WHICH one is the point"
+        );
+    }
+
+    // cm:guard the field NAMES on the wire, because the unit lives in them: core parses `sessionTerminalAtEpochS` and a rename on this side silently drops the mark — `nullish()` on the other end accepts its absence, so no snapshot would fail and every mark would simply stop arriving.
+    #[test]
+    fn the_marks_name_their_unit_on_the_wire() {
+        let led = seeded();
+        led.mark_session_terminal_observed("run-1").unwrap();
+        let json = serde_json::to_string(&snapshot(&led).unwrap()[0]).unwrap();
+        for key in ["sessionTerminalAtEpochS", "worktreeGoneAtEpochS"] {
+            assert!(json.contains(key), "missing `{key}` in {json}");
+        }
     }
 }

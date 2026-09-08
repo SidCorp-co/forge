@@ -28,6 +28,11 @@ export interface AttentionItem {
   status?: string;
   projectSlug?: string;
   projectName?: string;
+  /** Awaiting-input only: who can end the wait, and what it costs meanwhile.
+   *  Core sets these on that bucket alone, so absent means not-applicable
+   *  rather than zero — render nothing, never "0 claims". */
+  blockerKind?: string | null;
+  cost?: { claimsHeld: number; workspacesPinned: number; dependents: number };
 }
 
 /** Shape of `GET /api/me/attention` (verbatim from the core route). */

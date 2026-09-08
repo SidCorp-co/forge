@@ -217,6 +217,7 @@ export const FAILURE_REASON_LABEL: Record<SessionFailureReason, string> = {
   runner_unsupported_type: "Runner can't run this step",
   resume_failed: "Resume failed",
   residency_expired: "Session window expired",
+  park_unanswered: "Question went unanswered",
   audit_ran_blind: "Ran without evidence",
   orphan_under_terminal_run: "Cleaned up (run ended)",
   pipeline_cancelled: "Pipeline cancelled",
@@ -265,6 +266,7 @@ export const FAILURE_REASON_ACTION: Record<SessionFailureReason, string> = {
   runner_unsupported_type: "This runner can't run this step — assign a runner that can.",
   resume_failed: "Resuming the previous session failed — Rerun to start fresh.",
   residency_expired: "The session outlived its window — Rerun to start fresh.",
+  park_unanswered: "Nobody answered the agent's question before its deadline — the work stopped and its branch was kept.",
   audit_ran_blind: "The scheduled run called no tools, so it produced no evidence — Rerun.",
   unclassified: "The cause wasn't recorded — open the run timeline to see why.",
   queue_timeout: "No runner picked it up — check the fleet strip for an online runner.",
@@ -388,7 +390,6 @@ export function statusToChip(display: AgentSessionDisplayStatus): StatusKey {
   }
 }
 
-// ─── ISS-322: benign-cleanup vs real-failure classifier ─────────────────────
 
 /**
  * Four-bucket outcome for a terminal session, so the UI never paints a benign

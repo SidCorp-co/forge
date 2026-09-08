@@ -258,3 +258,46 @@ describe('what one box reported', () => {
     expect(theirs.count).toBe(0);
   });
 });
+
+// cm:why criterion 52 wants the three close-loop marks rendered as THREE, and the UI can only render what this surface carries: `issues[].leaseReturned` was the only one of them here, so a screen built on today's shape could show one flag and would have to guess the other two. `snapshot` publishes unclosed runs only, which is exactly the window where the three disagree.
+describe('the three close-loop marks', () => {
+  it('carries each mark separately, so a half-closed run reads as half-closed', async () => {
+    const m = await member();
+    const sessionId = await seedSession(m.projectId, '2026-09-09T09:00:00Z');
+    await applySnapshot({
+      deviceId: m.deviceId,
+      entries: [
+        entry(m.projectId, {
+          sessionId,
+          sessionTerminalAtEpochS: Math.floor(Date.parse('2026-09-09T10:00:00.000Z') / 1000),
+          worktreeGoneAtEpochS: null,
+          issues: [
+            { issueKey: 'ISS-934', leaseReturned: true },
+            { issueKey: 'ISS-933', leaseReturned: false },
+          ],
+        }),
+      ],
+    });
+
+    const body = (await (await read(m.projectId, m.token)).json()) as {
+      items: Array<Record<string, unknown>>;
+    };
+    const row = body.items[0];
+    if (!row) throw new Error('the snapshot wrote one row and the read must return it');
+
+    expect(
+      row.sessionTerminalAt,
+      'the session reaching terminal is one mark of three and the reader must see it on its own — collapsed into a single `closed` flag, a run whose session ended but whose worktree is still on disk is indistinguishable from one that finished cleanly (ISS-964 criterion 52)',
+    ).toBe('2026-09-09T10:00:00.000Z');
+    expect(
+      row.worktreeGoneAt,
+      'and the mark NOT yet set must come back null rather than absent: absent is what a field the box never sent looks like, and the two mean different things to a reader deciding whether a diff is still recoverable',
+    ).toBeNull();
+    expect(
+      (row.issues as Array<{ issueKey: string; leaseReturned: boolean }>).map(
+        (i) => i.leaseReturned,
+      ),
+      'the third mark is per-issue and stays per-issue: a run over three issues can have returned one lease and not the others',
+    ).toEqual([true, false]);
+  });
+});

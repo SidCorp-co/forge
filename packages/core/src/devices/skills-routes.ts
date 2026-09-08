@@ -4,12 +4,13 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { deviceSkills, runners, skillActivityEvents, skills } from '../db/schema.js';
+import { deviceSkills, skillActivityEvents, skills } from '../db/schema.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { recordSkillActivityEvent, resolvePacketIdForHash } from '../skills/activity.js';
 import { loadDeviceSkillStatus, resolveRegisteredEffectiveSkills } from '../skills/effective.js';
+import { assertDeviceBoundToProject } from './device-project.js';
 
 // Skill Studio 4 (ISS-278) — server-driven device skill sync.
 //
@@ -25,32 +26,8 @@ const badRequest = (details: unknown) =>
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
 const unauth = () =>
   new HTTPException(401, { message: 'unauthenticated', cause: { code: 'UNAUTHENTICATED' } });
-
-/**
- * Device↔project binding gate. A device may only pull/report skills for a
- * project it is a `claude-code` runner for. No binding → 403 (prevents
- * cross-project skill leakage). The `requireDevice` middleware already 401s on
- * a missing/invalid/revoked token before this runs.
- */
-async function assertDeviceBoundToProject(deviceId: string, projectId: string): Promise<void> {
-  const [row] = await db
-    .select({ id: runners.id })
-    .from(runners)
-    .where(
-      and(
-        eq(runners.deviceId, deviceId),
-        eq(runners.projectId, projectId),
-        eq(runners.type, 'claude-code'),
-      ),
-    )
-    .limit(1);
-  if (!row) throw forbidden('device not bound to project');
-}
 
 const projectQuerySchema = z.object({
   projectId: z.uuid(),
@@ -86,13 +63,9 @@ function truthy(v: string | undefined): boolean {
   return v === '1' || v === 'true' || v === 'yes';
 }
 
-// ── Device-token routes (mounted under /api/devices) ────────────────────────
 export const deviceSkillRoutes = new Hono<{ Variables: DeviceVars }>();
 
-// GET /api/devices/me/skills?projectId=&includeFiles=1
-// Lightweight manifest by default (hashes only) so the runner can diff against
-// its local cache and fetch only changed skills. `?includeFiles=1` returns the
-// full bodies in one shot (used for a cold cache / convenience).
+// cm:guard hashes ONLY by default. The runner diffs this against its local cache and fetches just the changed skills; `?includeFiles=1` is the cold-cache path and sending bodies unconditionally would put every project's whole skill tree on every poll.
 deviceSkillRoutes.get(
   '/me/skills',
   requireDevice(),
@@ -428,9 +401,6 @@ async function recordPrunedSkill(input: {
   });
 }
 
-// ── User-token route (mounted under /api/projects) ──────────────────────────
-// GET /api/projects/:projectId/devices/:deviceId/skills
-// Per-device synced/outdated/missing status for the web UI (Skill Studio 5).
 export const deviceSkillStatusRoutes = new Hono<{ Variables: AuthVars }>();
 
 const statusParamSchema = z.object({ projectId: z.uuid(), deviceId: z.uuid() });

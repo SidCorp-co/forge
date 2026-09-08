@@ -10,8 +10,28 @@ import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import type { QuestionBlockerKind, QuestionOption } from '../db/schema-questions.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
+import { PARK_PROTECTIONS } from '../questions/protections.js';
+import { answerOf, registerWaiter, waiterFor } from '../questions/read.js';
+import { askQuestion, QuestionRefused } from '../questions/write.js';
+import { assertDeviceBoundToProject } from './device-project.js';
+
+type AskBody = {
+  id?: string;
+  projectId?: string;
+  issueId?: string;
+  agentSessionId?: string;
+  runId?: string;
+  prompt?: string;
+  blockerKind?: QuestionBlockerKind;
+  options?: QuestionOption[];
+  recommendedOptionId?: string;
+  assumed?: Record<string, unknown>;
+  cost?: { claimsHeld?: number; workspacesPinned?: number; dependents?: number };
+};
+
 import { readAdmissibleIssues } from './admissible.js';
 import {
   prepareJobForMaster,
@@ -279,3 +299,50 @@ devicePoolRoutes.post(
     return c.json({ closed });
   },
 );
+
+// cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/protections.rs — the box reads this BEFORE it releases a process, and requires every member of its own named set. An old core has no such route, so a 404 is a legitimate answer meaning "no protections" rather than a fault (ISS-964 criterion 27).
+// cm:guard no project scope and no device state — this reports what THIS BUILD of core runs, which is what the box cannot otherwise know. Making it per-project would let a park be protected on one project and eaten on another by the same deployed code.
+devicePoolRoutes.get('/me/protections', requireDevice(), async (c) =>
+  c.json({ protections: PARK_PROTECTIONS }),
+);
+
+// cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/questions.rs — `ask` posts this shape and the box has already committed its own half; `id` is the join key and the runner mints it.
+// cm:guard the box MINTS the question id and sends it; core never allocates one. The box has already written its own half of the park in a local transaction before this call, and a server-allocated id would make the two halves unjoinable across the window where the box has parked and core has not heard (ISS-964 criterion 10).
+devicePoolRoutes.post('/me/questions', requireDevice(), async (c) => {
+  const body = await c.req.json<AskBody>().catch(() => null);
+  if (!body?.id || !body.projectId || !body.prompt) {
+    throw badRequest('id, projectId and prompt are required');
+  }
+  await assertDeviceBoundToProject(c.get('device').id, body.projectId);
+  try {
+    const q = await askQuestion({
+      ...body,
+      id: body.id,
+      projectId: body.projectId,
+      prompt: body.prompt,
+      blockerKind: body.blockerKind ?? 'human',
+      options: body.options ?? [],
+      recommendedOptionId: body.recommendedOptionId ?? '',
+    });
+    if (body.runId) {
+      await registerWaiter({ questionId: q.id, deviceId: c.get('device').id, runId: body.runId });
+    }
+    return c.json({ questionId: q.id });
+  } catch (e) {
+    if (e instanceof QuestionRefused) throw badRequest(e.message);
+    throw e;
+  }
+});
+
+// cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/questions.rs — `answer` reads this, and it distinguishes `answer: null` (not yet) from 404 (not this box's question); collapsing the two on either side turns somebody else's question into an eternal wait.
+// cm:guard the box reads the ANSWER back rather than being sent it. A websocket that was down for the whole episode costs latency and nothing else, which is the only thing criterion 12 allows to be lost.
+devicePoolRoutes.get('/me/questions/:questionId', requireDevice(), async (c) => {
+  const questionId = c.req.param('questionId');
+  const waiter = await waiterFor({
+    questionId,
+    deviceId: c.get('device').id,
+    runId: c.req.query('runId') ?? '',
+  });
+  if (!waiter) throw notFound('question');
+  return c.json({ answer: await answerOf(questionId) });
+});

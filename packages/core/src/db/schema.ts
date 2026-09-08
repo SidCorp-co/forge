@@ -279,17 +279,12 @@ export const projects = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
     description: text('description'),
-    // ISS-387 — project kind. `standard` = code repo project (default);
-    // `website` = an Epodsystem-backed storefront (the store is the source of
-    // truth, so a git repo is optional). Free-text column gated by the
-    // `projectKinds` app-level enum; default keeps every existing row valid.
+    // cm:guard free text gated by the `projectKinds` app enum and nothing else — a `website` project's source of truth is the store, so `repoPath` may legitimately be absent on one (ISS-387).
     kind: text('kind').notNull().default('standard'),
     repoPath: text('repo_path'),
     baseBranch: text('base_branch'),
     productionBranch: text('production_branch'),
-    // Per-project git clone URL (SSH form, e.g. git@github.com:org/repo.git).
-    // Optional: when set with a project git credential, a freshly-assigned
-    // device auto-clones here during provision; absent => manual folder setup.
+    // cm:guard SSH form, and set together with a project git credential or not at all: provision auto-clones from this and a URL with no credential fails on a box nobody is watching.
     repoUrl: text('repo_url'),
     // cm:guard prose ON PURPOSE, and never executed as a command list: any project admin can write this, and the runner would be running it unreviewed on every box. NULL is not an error — it means the setup agent derives the procedure from the repo itself, at a paid model's rates, on every job that needs it.
     // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/setup_agent.rs — this column plus the live findings ARE that agent's whole prompt
@@ -301,9 +296,7 @@ export const projects = pgTable(
     previewDeploy: jsonb('preview_deploy'),
     webhookSecret: text('webhook_secret'),
     apiKey: text('api_key'),
-    // ISS-353 — soft archive. Nullable: NULL = active, a timestamp = archived.
-    // Archived projects are hidden from the default project list and paused
-    // from auto-pipeline dispatch; nothing is destroyed (fully restorable).
+    // cm:guard a soft archive that DESTROYS nothing: it hides the project from the default list and pauses auto-dispatch, and every archive is restorable (ISS-353).
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -321,8 +314,7 @@ export const projects = pgTable(
 export const projectKinds = ['standard', 'website'] as const;
 export type ProjectKind = (typeof projectKinds)[number];
 
-// Project roles (no `owner` — project "ownership" is an org concern; the org
-// owner/admin get implicit project `admin`). `viewer` is read-only.
+// cm:guard no `owner` here on purpose — project ownership is an ORG concern and org owner/admin derive an implicit project `admin`; `viewer` is read-only.
 export const projectMemberRoles = ['admin', 'member', 'viewer'] as const;
 export type ProjectMemberRole = (typeof projectMemberRoles)[number];
 
@@ -2157,19 +2149,23 @@ export const agentSessionStatuses = [
   'failed',
   'completed_via_recovery',
   'cancelled_stale',
+  'cancelled',
 ] as const;
 export type AgentSessionStatus = (typeof agentSessionStatuses)[number];
 
-// cm:guard the four statuses after which NOTHING more can happen in the session. `resolveSessionSend` reads this to decide a queued message can never be consumed, and `lifecycle/transition.ts` restricts its `to` to it — a status added here that is not in fact terminal would let a send resolve `gone` against a session still running, which is the second-agent-on-one-worktree race RFC 0003 exists to avoid.
+// cm:guard the statuses after which NOTHING more can happen in the session. `resolveSessionSend` reads this to decide a queued message can never be consumed, and `lifecycle/transition.ts` restricts its `to` to it — a status added here that is not in fact terminal would let a send resolve `gone` against a session still running, which is the second-agent-on-one-worktree race RFC 0003 exists to avoid.
 export const terminalAgentSessionStatuses = [
   'completed',
   'failed',
   'completed_via_recovery',
   'cancelled_stale',
+  // cm:guard `cancelled` is a PERSON stopping this session and `cancelled_stale` is a reaper finding it abandoned; they are not interchangeable and neither may be written for the other. An operator reading `cancelled_stale` on a session they stopped themselves is told their own action was a cleanup (ISS-964 criterion 17).
+  'cancelled',
 ] as const satisfies readonly AgentSessionStatus[];
 
 // cm:guard `status` and `runtimeState` answer different questions and must never be collapsed: `status` is the JOB's lifecycle (a `running` session may be mid-turn or parked on stdin), `runtimeState` is the PROCESS's, and it is the only one that distinguishes a session waiting for input from one still working. Print-mode sessions leave it NULL — a NULL here means "this runner never reported, infer nothing", which is not the same as `working`.
-// cm:guard `awaiting_input` is exempt from the loop-monitor QUIET-TIMEOUT only — it still HOLDS ITS RUNNER SLOT the entire time it is parked, exactly like `working`, and the residency window is what bounds it instead. Reading this as slot-exempt is the misreading that leaks a duplex session permanently: the box's `duplex_max_sessions` is a small number (3 by default) and core enforces no ceiling of its own, so once the quiet clock no longer applies the residency deadline is the only thing that will ever reap a parked session.
+// cm:guard `awaiting_input` is exempt from the loop-monitor QUIET-TIMEOUT only, and for a BOUNDED wait it still holds its runner slot exactly like `working`, with the residency window as the only bound. Reading that as slot-exempt is the misreading that leaks a duplex session permanently: `duplex_max_sessions` is 3 by default and core enforces no ceiling of its own.
+// cm:edge contract -> packages/core/src/jobs/park-deadline.ts — a wait whose open question carries `blocker_kind = 'human'` is the ONE exception to the guard above and neither half of it applies: `park_for_human` releases the process outright, so there is no permit to hold, and `reapUnansweredParks` bounds it, so residency is not the only clock. Read as "every park keeps its slot until residency" this reaps the park ISS-964 exists to protect.
 export const sessionRuntimeStates = [
   'starting',
   'working',

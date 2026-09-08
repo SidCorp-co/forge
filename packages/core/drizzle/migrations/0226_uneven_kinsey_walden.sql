@@ -1,0 +1,2 @@
+ALTER TABLE "device_run_ledger" ADD COLUMN "session_terminal_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "device_run_ledger" ADD COLUMN "worktree_gone_at" timestamp with time zone;

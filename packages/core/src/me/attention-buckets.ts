@@ -107,6 +107,9 @@ const PENDING_SKILL_UPDATES_CAP = 20;
 // cm:why 20, not PER_BUCKET: the cap must still return the draft this bucket was built to surface. Measured on forge-beta 2026-08-30 against the CALLER's full cross-project set (428 drafts, 16 projects — not the 22 in forge-dev alone), ISS-871 ranks 17th under this bucket's priority-then-recency order, so every cap at or below 16 renders the bucket unable to show its own reason for existing. Under plain recency it ranked 28th, which is why the order is not `desc(updatedAt)` like its neighbours.
 export const UNSEEN_DRAFTS_CAP = 20;
 
+// cm:why 20, on the `UNSEEN_DRAFTS_CAP` precedent and measured the same way: 56 issues sat at `waiting`/`needs_info` across 17 of 33 projects fleet-wide on 2026-09-08, so `PER_BUCKET` reaches 9% of the population. It is 20 rather than 56 because the ordering below is what makes a cap defensible — every question holding a claim sorts above every question holding none, so the rows this bucket exists for are inside any cap by construction, which is the guarantee plain recency could not give at any size (ISS-964 criterion 23).
+export const AWAITING_INPUT_CAP = 20;
+
 // cm:why drizzle cannot reference one table twice in a statement, and the retry-chain exclusion compares a job against its own retry row.
 const retryJobs = alias(jobs, 'retry_jobs');
 
@@ -118,6 +121,14 @@ export interface AttentionIssueRow {
   updatedAt: Date;
   projectSlug: string;
   projectName: string;
+}
+
+/** The awaiting-input row, which carries WHY it is ranked where it is. */
+export interface AttentionAwaitingRow extends AttentionIssueRow {
+  claimsHeld: number;
+  workspacesPinned: number;
+  dependents: number;
+  blockerKind: string | null;
 }
 
 export interface AttentionMentionRow {
@@ -177,14 +188,46 @@ export function selectNeedsReview(userId: string): Promise<AttentionIssueRow[]> 
     .limit(PER_BUCKET) as Promise<AttentionIssueRow[]>;
 }
 
-export function selectAwaitingInput(userId: string): Promise<AttentionIssueRow[]> {
+// cm:guard the identifiers are written LITERALLY and the subquery is CORRELATED on purpose. Drizzle renders a column reference inside a raw `sql` template unqualified, which here would bind `issue_id` to the outer row and cost every issue the whole table's total; and a grouped subquery would need `groupBy`/`as`, which `attention-routes.test.ts`'s mock chain does not implement, so the unit lane would fail on a shape rather than on a claim.
+// cm:guard only `status='open'` costs anything: an answered or voided question holds no claim and no worktree, so counting it would rank a settled decision above a live one for as long as the row exists (ISS-964 criterion 19).
+// cm:guard the `::int` is load-bearing now that this is SELECTED and not only ordered by: postgres `sum()` is numeric and this driver hands numerics back as STRINGS, so without the cast the reader gets "2" where it typed `number` — and `"10" < "9"` is true, so any client-side sort over these would rank ten below nine while every server-side order stayed correct.
+function openQuestionCost(column: string): SQL<number> {
+  return sql<number>`coalesce((select sum(q.${sql.raw(column)}) from agent_questions q
+    where q.issue_id = issues.id and q.status = 'open'), 0)::int`;
+}
+
+// cm:guard cost FIRST and age only as the tie-break, in this order: `claims_held` denies a runner slot to every other issue, `workspaces_pinned` denies a checkout, `dependents` denies progress to issues that are merely waiting. Ordering by recency instead is what put a question costing nothing above one holding two claims since yesterday (ISS-964 criterion 19).
+// cm:guard the tie-break is ASCENDING — longest-waiting first — where every neighbouring bucket is `desc(updatedAt)`. This is a queue of answers a human OWES, so the row that has waited longest is the one to show; newest-first buries it exactly as the cost ordering above exists to prevent. `updatedAt` stays in `issueFields` because the reader is told how long it has waited.
+const AWAITING_COST_ORDER = [
+  desc(openQuestionCost('claims_held')),
+  desc(openQuestionCost('workspaces_pinned')),
+  desc(openQuestionCost('dependents')),
+  issues.updatedAt,
+] as const;
+
+// cm:guard this bucket's row is WIDER than `issueFields` and the widening stops here: cost is meaningful only where somebody is waiting, so putting these on the shared shape would have every other bucket carry three zeros and a null. The same correlated-subquery form as the ordering, for the reason its own guard gives — a grouped subquery needs `groupBy`/`as`, which `attention-routes.test.ts`' mock chain does not implement, so the unit lane would fail on a shape rather than on a claim.
+// cm:guard the numbers are the ones the ORDER is computed from, read through the same `openQuestionCost` helper rather than restated: a reader shown a cost that does not match the rank is worse off than one shown no cost, because the queue then looks wrong rather than unexplained (ISS-964 criteria 19, 53).
+export function selectAwaitingInput(userId: string): Promise<AttentionAwaitingRow[]> {
   return db
-    .select(issueFields)
+    .select({
+      ...issueFields,
+      claimsHeld: openQuestionCost('claims_held'),
+      workspacesPinned: openQuestionCost('workspaces_pinned'),
+      dependents: openQuestionCost('dependents'),
+      blockerKind: openQuestionBlocker(),
+    })
     .from(issues)
     .innerJoin(projects, eq(projects.id, issues.projectId))
     .where(and(ownedForAnswer(userId), inArray(issues.status, [...AWAITING_INPUT_STATUSES])))
-    .orderBy(desc(issues.updatedAt))
-    .limit(PER_BUCKET) as Promise<AttentionIssueRow[]>;
+    .orderBy(...AWAITING_COST_ORDER)
+    .limit(AWAITING_INPUT_CAP) as Promise<AttentionAwaitingRow[]>;
+}
+
+// cm:guard `status='open'` here too, matching `openQuestionCost` exactly: a settled question names no blocker anybody still has to act on, and showing one would put a resolver's name against a wait that has ended. NULL is the honest answer for an issue a person blocked by hand, which has no question row at all.
+function openQuestionBlocker(): SQL<string | null> {
+  return sql<string | null>`(select q.blocker_kind from agent_questions q
+    where q.issue_id = issues.id and q.status = 'open'
+    order by q.created_at desc limit 1)`;
 }
 
 function adminsProject(userId: string) {

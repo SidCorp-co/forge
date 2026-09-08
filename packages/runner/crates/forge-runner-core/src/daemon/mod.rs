@@ -16,6 +16,7 @@ pub mod preflight;
 pub mod recovery;
 pub mod recovery_ports;
 pub mod repo_lock;
+pub mod session_tokens;
 pub mod setup_agent;
 pub mod skill_pull;
 pub mod terminal;
@@ -441,16 +442,34 @@ pub async fn run(
             loop {
                 tokio::select! {
                     _ = tick.tick() => {
+                        // cm:guard the snapshot is taken per TICK and a failure to take it SKIPS the sweep entirely — it does not fall through to a shape-only judgement. `Connection` is not `Send`, so the ledger is read and dropped here rather than held across the `git` awaits below (ISS-964 criterion 25).
+                        let held_by = crate::runner::ledger::Ledger::default_path()
+                            .and_then(|p| crate::runner::ledger::Ledger::open(&p))
+                            .and_then(|l| crate::workspace::worktree_reap::HeldTrees::from_ledger(&l));
+                        let held_by = match held_by {
+                            Ok(h) => h,
+                            Err(err) => {
+                                tracing::warn!("[worktree-reap] skipped: the ledger could not be read ({err})");
+                                continue;
+                            }
+                        };
                         for (slug, b) in &cfg.bindings {
-                            let gone = crate::workspace::worktree_reap::reap_repo(
+                            let swept = crate::workspace::worktree_reap::reap_repo(
                                 &b.repo_path,
                                 crate::workspace::worktree_reap::MIN_AGE,
+                                &held_by,
                             )
                             .await;
-                            if !gone.is_empty() {
+                            if !swept.removed.is_empty() {
                                 tracing::info!(
                                     "[worktree-reap] {slug}: removed {} stale worktree(s)",
-                                    gone.len()
+                                    swept.removed.len()
+                                );
+                            }
+                            for (path, run_id) in &swept.held {
+                                tracing::info!(
+                                    "[worktree-reap] {slug}: kept {} for run {run_id}",
+                                    path.display()
                                 );
                             }
                         }
@@ -515,6 +534,12 @@ pub async fn run(
 
     // cm:guard both loops start, or the box does neither half of its own work: the control socket is the ONLY way a master turns a decision into a running job, and the pool poll is the only thing that notices work exists now that core pushes nothing. A daemon that starts one without the other looks healthy and never runs anything.
     {
+        // cm:guard refuse to serve the socket with no token map rather than serving it unauthenticated. Every verb on this socket acts on a session by capability, and a daemon that could not resolve the map would either refuse every frame or, worse, be tempted back to the declared id (ISS-964 criterion 29).
+        let Some(tokens_path) = session_tokens::default_path() else {
+            return Err(crate::error::Error::Other(
+                "cannot resolve the control token map path".into(),
+            ));
+        };
         let prepared = control::Preparations::new();
         let ctl = Arc::new(control::Control {
             client: (*client).clone(),
@@ -523,6 +548,7 @@ pub async fn run(
             locks: repo_locks.clone(),
             inflight: inflight.clone(),
             prepared: prepared.clone(),
+            tokens: session_tokens::SessionTokens::at(tokens_path),
         });
         // cm:guard the preparation reaper starts with the socket, always. `prepare` can park a hold, and the only process that knows it happened is this one — a daemon serving the split without this loop leaves a master free to take ten jobs, start two and strand eight until core's three-minute reaper notices each of them.
         {

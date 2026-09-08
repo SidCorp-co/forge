@@ -209,8 +209,10 @@ fn prune_previous_boots(dir: &Path, current: &str) {
     }
 }
 
+/// Kill a process GROUP by the leader's pid, reporting whether one was there.
+// cm:guard the ONE killer on this box, and it is public so a second caller cannot grow its own: `terminate.rs` kills a run's process group through this, `reap_orphan` kills a job's, and both must send SIGTERM to the GROUP with the same grace before SIGKILL — a caller signalling the leader alone leaves the agent's children holding the worktree (ISS-964 criterion 32).
 #[cfg(unix)]
-async fn kill_group(pid: u32) -> Reaped {
+pub async fn kill_group(pid: u32) -> Reaped {
     use nix::sys::signal::{kill, Signal};
     use nix::unistd::Pid;
 
@@ -234,7 +236,7 @@ async fn kill_group(pid: u32) -> Reaped {
 }
 
 #[cfg(not(unix))]
-async fn kill_group(pid: u32) -> Reaped {
+pub async fn kill_group(pid: u32) -> Reaped {
     match std::process::Command::new("taskkill")
         .args(["/F", "/T", "/PID", &pid.to_string()])
         .output()

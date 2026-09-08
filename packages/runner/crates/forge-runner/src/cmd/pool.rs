@@ -9,9 +9,16 @@ use clap::{Args as ClapArgs, Subcommand};
 use forge_runner_core::auth::cred_store;
 use forge_runner_core::config::Config;
 use forge_runner_core::daemon::control;
+use forge_runner_core::daemon::session_tokens;
 use forge_runner_core::transport::{pool, CoreClient};
 
 use super::Ctx;
+
+/// This session's capability, from the environment the daemon spawned it with.
+// cm:guard the CLI no longer names a session and cannot: the daemon maps token -> session and drops any session on the frame. A flag here would be exactly the declared id ISS-964 criterion 29 removes, one layer out.
+fn token() -> anyhow::Result<String> {
+    Ok(session_tokens::token_from_env()?)
+}
 
 #[derive(ClapArgs)]
 pub struct Args {
@@ -37,6 +44,10 @@ pub enum Command {
     Load(LoadArgs),
     /// Open ONE run session over a group of issues, in its own worktree.
     Run(RunArgs),
+    /// Park one of this session's runs on a question, releasing its process.
+    Ask(AskArgs),
+    /// Record a decision taken instead of asked about.
+    Decide(DecideArgs),
 }
 
 #[derive(ClapArgs)]
@@ -53,8 +64,6 @@ pub struct ListArgs {
 #[derive(ClapArgs)]
 pub struct ClaimArgs {
     pub job_id: String,
-    #[arg(long)]
-    pub session_id: String,
     /// Your name for the agent that will run this job. Becomes its git branch
     /// and its worktree; reuse one name to put several jobs in one checkout.
     #[arg(long)]
@@ -64,14 +73,10 @@ pub struct ClaimArgs {
 #[derive(ClapArgs)]
 pub struct HeldArgs {
     pub job_id: String,
-    #[arg(long)]
-    pub session_id: String,
 }
 
 #[derive(ClapArgs)]
 pub struct ReleaseArgs {
-    #[arg(long)]
-    pub session_id: String,
     /// Omit to release everything this session holds.
     pub job_id: Option<String>,
 }
@@ -86,12 +91,27 @@ pub struct RunArgs {
     /// The name of the run: its git branch and its worktree directory.
     #[arg(long)]
     pub agent: String,
-    /// The MASTER's own session id — the run's parent. The master is given it
-    /// in its standing brief and never invents one.
-    #[arg(long)]
-    pub session_id: Option<String>,
     #[arg(long)]
     pub start_point: Option<String>,
+}
+
+#[derive(ClapArgs)]
+pub struct AskArgs {
+    /// The run to park. A master may park only a run it is the parent of.
+    #[arg(long)]
+    pub run_id: String,
+    #[arg(long)]
+    pub prompt: String,
+    /// Who can resolve this. Only `human` releases the box; the rest are refused here.
+    #[arg(long, default_value = "human")]
+    pub blocker_kind: String,
+}
+
+#[derive(ClapArgs)]
+pub struct DecideArgs {
+    /// What was decided, in a few words. Free text — the tier-0 inventory lives on ISS-964.
+    #[arg(long)]
+    pub verb: String,
 }
 
 #[derive(ClapArgs)]
@@ -168,7 +188,7 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
             let sock = socket()?;
             let out = ask(
                 "prepare",
-                control::request_prepare(&sock, &a.job_id, &a.session_id, &a.agent).await,
+                control::request_prepare(&sock, &a.job_id, &token()?, &a.agent).await,
                 &sock,
             )?;
             if !out.ok {
@@ -177,7 +197,7 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
             }
             let out = ask(
                 "start",
-                control::request_start(&sock, &a.job_id, &a.session_id).await,
+                control::request_start(&sock, &a.job_id, &token()?).await,
                 &sock,
             )?;
             report(&out)?;
@@ -189,7 +209,7 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
             let sock = socket()?;
             let out = ask(
                 "prepare",
-                control::request_prepare(&sock, &a.job_id, &a.session_id, &a.agent).await,
+                control::request_prepare(&sock, &a.job_id, &token()?, &a.agent).await,
                 &sock,
             )?;
             report(&out)?;
@@ -201,7 +221,7 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
             let sock = socket()?;
             let out = ask(
                 "start",
-                control::request_start(&sock, &a.job_id, &a.session_id).await,
+                control::request_start(&sock, &a.job_id, &token()?).await,
                 &sock,
             )?;
             report(&out)?;
@@ -213,7 +233,7 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
             let sock = socket()?;
             let out = ask(
                 "discard",
-                control::request_discard(&sock, &a.job_id, &a.session_id).await,
+                control::request_discard(&sock, &a.job_id, &token()?).await,
                 &sock,
             )?;
             report(&out)?;
@@ -228,10 +248,10 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
                 "run",
                 control::request_run_open(
                     &sock,
+                    &token()?,
                     &a.project_id,
                     &a.issues,
                     &a.agent,
-                    a.session_id.as_deref(),
                     a.start_point.as_deref(),
                 )
                 .await,
@@ -242,9 +262,44 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
                 std::process::exit(1);
             }
         }
+        // cm:guard the park goes to the LOCAL DAEMON like the run open, and for a sharper reason: the daemon is what holds the ledger the park is written in, and it is the only process that may kill the run's group. A park sent straight to core would record a question with the agent still running (ISS-964 criterion 7).
+        Command::Ask(a) => {
+            let sock = socket()?;
+            let out = ask(
+                "ask",
+                control::request_ask(&sock, &token()?, &a.run_id, &a.prompt, &a.blocker_kind).await,
+                &sock,
+            )?;
+            report(&out)?;
+            if !out.ok {
+                std::process::exit(1);
+            }
+        }
+        // cm:guard the counterpart of `ask` and it goes to the same daemon for the same reason: the ledger is the store, and a count that lived in the master's pane would die with the pane before anybody read the ratio (ISS-964 criterion 2).
+        Command::Decide(a) => {
+            let sock = socket()?;
+            let id = uuid::Uuid::new_v4().to_string();
+            let out = ask(
+                "decide",
+                control::request_decide(&sock, &token()?, &id, &a.verb).await,
+                &sock,
+            )?;
+            report(&out)?;
+            if !out.ok {
+                std::process::exit(1);
+            }
+        }
         Command::Release(a) => {
-            let n = pool::release(&c, a.job_id.as_deref(), &a.session_id).await?;
-            println!("released {n}");
+            let sock = socket()?;
+            let out = ask(
+                "release",
+                control::request_release(&sock, a.job_id.as_deref(), &token()?).await,
+                &sock,
+            )?;
+            report(&out)?;
+            if !out.ok {
+                std::process::exit(1);
+            }
         }
         Command::Load(a) => {
             let v = pool::load(&c, a.project_id.as_deref()).await?;

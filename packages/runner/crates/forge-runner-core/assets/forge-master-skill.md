@@ -35,25 +35,23 @@ fact, so an owner changing it reaches the next master with no release and no res
 1. `forge-runner pool list --limit 20` — the jobs you could claim, and (where a
    project declares one) the `admissible` issues you could open a run over.
 2. `forge-runner pool load --project-id <id>` — what is already running, where.
-3. Decide, then take it. A job: `pool claim <jobId> --session-id <yours> --agent <name>`.
-   Issues: `pool run --project-id <id> --issues ISS-1,ISS-2 --agent <name> --session-id <yours>`.
+3. Decide, then take it. A job: `pool claim <jobId> --agent <name>`.
+   Issues: `pool run --project-id <id> --issues ISS-1,ISS-2 --agent <name>`.
 4. Say what you decided and why. Then stop and wait for the next pass.
 
-**`--session-id` is GIVEN TO YOU, not invented.** Every pass prompt carries it,
-and it is the same id for as long as this session lives: it is your row in core,
-the handle your holds are released by if you die, and the address a human's
-message to you is sent to. Do not generate one — a fresh uuid each pass splits
-your holds across identities nobody is beating for, and `uuidgen` is exactly the
-habit that does it.
+**You never name yourself.** No command takes a session id. The daemon spawned
+this session with a capability in its environment and knows from it which
+session you are, so a command you send acts on you and cannot be pointed at
+another master — including a master for another project on this same box.
 
 **Taking a job and starting it are two acts.**
 
 | command | does |
 |---|---|
-| `pool prepare <jobId> --session-id <yours> --agent <name>` | takes the job row and its token. Nothing runs. |
-| `pool start <jobId> --session-id <yours>` | spawns the agent. |
-| `pool discard <jobId> --session-id <yours>` | hands the preparation back, unstarted. |
-| `pool claim <jobId> --session-id <yours> --agent <name>` | the first two in order, for when you have already decided. |
+| `pool prepare <jobId> --agent <name>` | takes the job row and its token. Nothing runs. |
+| `pool start <jobId>` | spawns the agent. |
+| `pool discard <jobId>` | hands the preparation back, unstarted. |
+| `pool claim <jobId> --agent <name>` | the first two in order, for when you have already decided. |
 
 A preparation you neither start nor discard is given back for you after two
 minutes, and that is a backstop rather than a plan: work you are holding is work
@@ -135,14 +133,14 @@ Some projects declare an **admissible set**: issue statuses whose issues you may
 admissible row has no job and no run — `pool claim` cannot take one, and trying spends your turn on
 a refusal core answers as `not_found`, which names the job rather than the mistake.
 
-`forge-runner pool run --project-id <id> --issues ISS-1,ISS-2 --agent <name> --session-id <yours>`
+`forge-runner pool run --project-id <id> --issues ISS-1,ISS-2 --agent <name>`
 is what turns them into work. It opens ONE run session over the whole group: one worktree, one
 branch named `<name>`, one terminal session. **A group of one is a group** — there is no second,
 scalar way in, because that is what put two agents in one directory.
 
-`--session-id` is yours here for the same reason it is on `pool claim`: it records you as the run's
-parent, which is what lets anyone off this box say which master a pane belongs to. Omit it and the
-run still opens, and reads as parentless.
+You do not name yourself on this command, or on any other. The socket reads your session from the
+token your pane already holds, and that is what the run records as its parent — so a run cannot be
+opened under another master's name, and one cannot be opened with no parent at all.
 
 Group issues that touch the same code and split ones that do not. Two runs over the same worktree
 are refused by name, and so is a second run over an issue another run already carries — the refusal
@@ -231,6 +229,27 @@ The one whose cwd is `.worktrees/<name>` is that agent. Kill it, then release
 the job. Two rules: never kill a process you cannot place in a worktree you
 named, and never kill your own session — check the pid you found is not yours.
 A wrong kill takes an agent that was working.
+
+## Deciding without asking
+
+**A write you can undo is taken, not asked about.** Editing a file in a run's
+worktree, committing, pushing the run's own `ISS-*` branch, opening a PR,
+commenting on an issue, moving its status — every one of those is reversible, so
+none of them is a question. The irreversible ones are: pushing to a shared
+branch, force-pushing, merging somebody else's PR, deploying, touching a live
+database, writing project config, and pushing a skill. Those are the only writes
+that may ever become a question.
+
+Record the ones you took:
+
+```
+forge-runner pool decide --verb "pushed the run's own branch"
+```
+
+It costs nothing and it is the only thing that makes *asked* a ratio rather than
+a tally. A pass that records nothing and asks twice is indistinguishable from a
+pass that decided forty things and asked twice — and the second is a master
+doing its job.
 
 ## Ending a pass
 

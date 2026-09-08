@@ -31,6 +31,7 @@ import {
   type LoopScope,
   runLoopMonitor,
 } from '../jobs/loop-monitor.js';
+import { parkedOnAHuman } from '../jobs/park-deadline.js';
 import { recordPipelineSweeperTick } from '../jobs/pgboss-health.js';
 import { NON_CLIENT_METADATA_TYPES, PIPELINE_METADATA_TYPES } from '../jobs/session-kinds.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
@@ -509,15 +510,8 @@ export async function reapOrphanedOneShotRuns(
   const { heartbeatMs } = getZombieThresholds();
   // cm:guard serialise to ISO before binding — postgres-js throws on a raw `Date` param at bind time, so a cutoff passed as a Date fails the sweep rather than mis-selecting, and the whole tick is lost.
   const cutoffIso = new Date(now.getTime() - heartbeatMs).toISOString();
-  // ISS-442 — a job-less agent (esp. a schedule audit fanning out parallel
-  // subagents) can go many minutes between worker-side writes while genuinely
-  // alive, so the bare 3-min heartbeat floor force-failed LIVE runs (the run
-  // closed mid-work; the still-running session was then orphaned by the
-  // terminal-run trigger). Add a device-aware grace: a session whose heartbeat
-  // is within DEVICE_GRACE *and* whose device is still beating on the runner WS
-  // (`runners.last_seen_at` fresh) counts as live. A dead/disconnected device
-  // still reaps on the bare heartbeat floor; a truly abandoned session reaps
-  // once even the grace lapses.
+  // cm:guard a session parked on a PERSON counts as live here, and it is a third term rather than a wider window: parking freezes `last_heartbeat_at` (agent-sessions/routes.ts does not bump it on `awaiting_input`), so on the heartbeat premise alone a park that is alive and waiting is indistinguishable from an agent that died three minutes ago — and this sweep force-fails it `heartbeat_timeout` and closes its run, which is the whole of the park undone. A run session is the shape that lands here: `issue_id` is NULL, and `pipeline_runs_issue_kind_chk` makes that incompatible with `kind='issue'`, so `reapJoblessRuns` can never see one (ISS-964 criterion 24).
+  // cm:guard the device grace is the SECOND liveness term and it exists because the bare heartbeat floor force-failed live runs — a job-less agent between worker-side writes looked dead, its run closed mid-work, and the terminal-run trigger then orphaned the session still running under it (ISS-442). A disconnected device still reaps on the floor alone, so shrinking this toward `heartbeatMs` restores that failure rather than tightening anything.
   const deviceGraceMs = Math.max(heartbeatMs, 20 * 60_000);
   const graceCutoffIso = new Date(now.getTime() - deviceGraceMs).toISOString();
   const projectClause = scope.projectId ? sql`AND r.project_id = ${scope.projectId}` : sql``;
@@ -545,6 +539,7 @@ export async function reapOrphanedOneShotRuns(
                   AND rn.last_seen_at >= ${cutoffIso}
               )
             )
+            OR ${parkedOnAHuman(sql`s.id`)}
           )
       )
       ${projectClause}

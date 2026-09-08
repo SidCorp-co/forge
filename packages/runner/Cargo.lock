@@ -445,6 +445,7 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
+ "uuid",
  "webbrowser",
  "which",
 ]

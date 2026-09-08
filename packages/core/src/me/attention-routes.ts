@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
+  type AttentionAwaitingRow,
   type AttentionFailedJobRow,
   type AttentionIssueRow,
   type AttentionMentionRow,
@@ -31,6 +32,10 @@ interface AttentionItem {
   status?: string;
   projectSlug?: string;
   projectName?: string;
+  /** Awaiting-input only: who can end the wait, and what it costs meanwhile. */
+  // cm:guard OPTIONAL and set by `awaitingItem` alone. `needsReview` is not a wait anybody is paying for, so a cost of three zeros there would read as a measured zero rather than as not-applicable — and the bucket ordered by cost is the only one whose rank needs explaining (ISS-964 criterion 53).
+  blockerKind?: string | null;
+  cost?: { claimsHeld: number; workspacesPinned: number; dependents: number };
 }
 
 // cm:edge contract -> packages/web-v2/src/features/attention/types.ts — that file mirrors this response verbatim and says so ("do NOT guess field names"); the two move together or the screen renders a bucket the API stopped sending.
@@ -58,6 +63,19 @@ function issueItem(kind: AttentionKind, r: AttentionIssueRow): AttentionItem {
     status: r.status,
     projectSlug: r.projectSlug,
     projectName: r.projectName,
+  };
+}
+
+// cm:guard wraps `issueItem` rather than replacing it, so the six shared fields have ONE writer: an awaiting row that drifted from the others would show a different link or a different `since` for the same issue depending on which bucket a reader found it in.
+function awaitingItem(r: AttentionAwaitingRow): AttentionItem {
+  return {
+    ...issueItem('awaiting_input', r),
+    blockerKind: r.blockerKind,
+    cost: {
+      claimsHeld: r.claimsHeld,
+      workspacesPinned: r.workspacesPinned,
+      dependents: r.dependents,
+    },
   };
 }
 
@@ -124,7 +142,7 @@ meAttentionRoutes.get('/attention', async (c) => {
   ]);
 
   const needsReview = needsReviewRows.map((r) => issueItem('needs_review', r));
-  const awaitingInput = awaitingInputRows.map((r) => issueItem('awaiting_input', r));
+  const awaitingInput = awaitingInputRows.map(awaitingItem);
   const mentions = mentionRows.map(mentionItem);
   const failedJobs = failedJobRows.map(failedJobItem);
   const pendingSkillUpdates = pendingSkillUpdateRows.map(skillUpdateItem);
