@@ -66,10 +66,58 @@ pub fn arm_bounded(
     Ok((ear, incarnation))
 }
 
+/// The two protections the box cannot observe about core, and must be told.
+// cm:edge contract -> packages/core/src/questions/protections.ts — the names are that file's `PARK_PROTECTIONS`, verbatim. A rename on either side shuts the park on every box, silently, because a missing name is indistinguishable from an old core by design.
+pub const PROTECTIONS_FROM_CORE: [&str; 2] = ["park-exempt-residency", "answer-resume-park"];
+
+/// The third protection, which is this binary's own reaper.
+// cm:guard asserted from THIS build rather than read from core, and that split is deliberate: core cannot observe which runner is asking, so advertising this one would be core promising something it has no way to know. `the_ledger_reaper_this_permit_claims_is_in_this_build` is what keeps the claim honest.
+pub const PROTECTION_FROM_THIS_BUILD: &str = "worktree-reap-ledger";
+
+/// Proof that all three park protections are in place.
+// cm:guard the ONLY constructor is `from_advertisement`, and that is the whole mechanism: `park_for_human` takes a `&ParkPermit`, so a park produced without having asked core is not something a caller can write. A boolean parameter here would make the unprotected park one typo away (ISS-964 criterion 27).
+#[derive(Debug)]
+pub struct ParkPermit {
+    granted: Vec<String>,
+}
+
+impl ParkPermit {
+    /// Read core's advertisement and require every name, or refuse.
+    // cm:guard ALL of the named set, never any-of and never a count: one flag cannot represent a core running two protections out of three, and a park is only safe when every one of them is up. An empty advertisement — which is what an old core, an unreachable core and a starting core all produce — refuses here.
+    pub fn from_advertisement(advertised: &[String]) -> Result<Self> {
+        let missing: Vec<&str> = PROTECTIONS_FROM_CORE
+            .iter()
+            .copied()
+            .filter(|name| !advertised.iter().any(|a| a == name))
+            .collect();
+        if !missing.is_empty() {
+            return Err(Error::Other(format!(
+                "park refused: core advertises no park protections [missing: {}] — the run keeps its process until it does",
+                missing.join(", ")
+            )));
+        }
+        let mut granted: Vec<String> = PROTECTIONS_FROM_CORE
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        granted.push(PROTECTION_FROM_THIS_BUILD.to_string());
+        Ok(Self { granted })
+    }
+
+    pub fn protections(&self) -> &[String] {
+        &self.granted
+    }
+}
+
 /// Park for a human: ask, then declare the process gone. No door.
+// cm:guard the `ParkPermit` is a PRECONDITION expressed in the type and is not read inside: what it proves is that core's protections were asked for and granted BEFORE the process was released, and a park without one is unwritable rather than merely discouraged (ISS-964 criterion 27).
 // cm:guard NO door is opened here, and adding one would be a lie the ledger then publishes: the process is about to exit, so the read fd dies with it and every ring after that meets `ENXIO` anyway. The human answer arrives by revival, not by ring (ISS-964 criteria 5, 7, 8).
 // cm:guard `blocker` is READ here and anything but `Human` is refused before any write, because `declare_parked_human` hard-codes `Human` into the row: a machine wait parked through this arm releases the box for a wait measured in seconds AND publishes a blocker kind that names the wrong resolver (ISS-964 criteria 4, 5).
-pub fn park_for_human(ledger: &mut Ledger, what: Wait<'_>) -> Result<Incarnation> {
+pub fn park_for_human(
+    ledger: &mut Ledger,
+    what: Wait<'_>,
+    _permit: &ParkPermit,
+) -> Result<Incarnation> {
     let Wait {
         run_id,
         question_id,
@@ -112,6 +160,71 @@ mod tests {
         .unwrap();
     }
 
+    /// A permit granted by an advertisement carrying everything core owes.
+    fn permit() -> ParkPermit {
+        let advertised: Vec<String> = PROTECTIONS_FROM_CORE
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        ParkPermit::from_advertisement(&advertised).unwrap()
+    }
+
+    // cm:guard the falsifying case for the new-runner-on-old-core leg of criterion 27's matrix: an old core has no protections route, so `park_protections` answers with an empty list, and this is where the box declines to release its process. The refusal names what is missing — an operator mid-deploy needs to read which half has not landed.
+    #[test]
+    fn an_old_core_advertising_nothing_grants_no_permit() {
+        let err =
+            ParkPermit::from_advertisement(&[]).expect_err("no advertisement must grant no permit");
+        let text = format!("{err}");
+        assert!(text.contains("park refused"), "{text}");
+        for name in PROTECTIONS_FROM_CORE {
+            assert!(text.contains(name), "{name} unnamed in: {text}");
+        }
+    }
+
+    // cm:guard ALL-of, never any-of: a core running two protections out of three reaps or double-answers the park through the one it is missing, so a partial advertisement must refuse exactly as an empty one does — and the refusal must name the missing member alone, not the whole set.
+    #[test]
+    fn a_core_running_only_some_of_them_grants_no_permit() {
+        for held_back in PROTECTIONS_FROM_CORE {
+            let advertised: Vec<String> = PROTECTIONS_FROM_CORE
+                .iter()
+                .filter(|n| **n != held_back)
+                .map(|s| s.to_string())
+                .collect();
+            let err = ParkPermit::from_advertisement(&advertised)
+                .expect_err("a partial advertisement must refuse");
+            let text = format!("{err}");
+            assert!(text.contains(held_back), "{held_back} unnamed in: {text}");
+        }
+    }
+
+    // cm:guard the permit records THREE and the third is this build's own, so a reader of the granted set can see that the runner's reaper is counted rather than assumed away. Core never advertises it, by design.
+    #[test]
+    fn a_granted_permit_counts_the_runners_own_reaper_as_the_third() {
+        let p = permit();
+        assert_eq!(p.protections().len(), 3, "{:?}", p.protections());
+        assert!(p
+            .protections()
+            .iter()
+            .any(|n| n == PROTECTION_FROM_THIS_BUILD));
+    }
+
+    // cm:guard an unknown extra name must not be read as a substitute for a missing required one, which is what a length or count check would do.
+    #[test]
+    fn an_advertisement_of_other_names_grants_no_permit() {
+        ParkPermit::from_advertisement(&["something-else".to_string(), "and-another".to_string()])
+            .expect_err("unrelated names must not grant a permit");
+    }
+
+    // cm:guard the third protection is a claim about THIS binary, so it is asserted from this binary's source. `worktree_reap.rs` judging on shape alone is what eats a well-behaved park, and a permit that keeps claiming the reaper after the consult was removed is an advertisement with nothing behind it.
+    #[test]
+    fn the_ledger_reaper_this_permit_claims_is_in_this_build() {
+        let src = include_str!("../workspace/worktree_reap.rs");
+        assert!(
+            src.contains("held_by.holder(&p)"),
+            "the reaper no longer consults the ledger, so `{PROTECTION_FROM_THIS_BUILD}` is a false claim"
+        );
+    }
+
     // cm:guard the OTHER half of the two-arm refusal, and the falsifying case for it: `declare_parked_human` hard-codes `Human`, so a machine wait accepted here does not merely take the wrong branch — it writes a row claiming a person owes the answer, and the run is then waited on by nobody.
     #[test]
     fn the_human_park_refuses_a_bounded_blocker_and_writes_nothing() {
@@ -129,6 +242,7 @@ mod tests {
                     resume_id: None,
                     park_deadline_at: None,
                 },
+                &permit(),
             )
             .expect_err("a bounded blocker must not park for a human");
             assert!(format!("{err}").contains("arm_bounded"), "{err}");
@@ -159,6 +273,7 @@ mod tests {
                 resume_id: None,
                 park_deadline_at: None,
             },
+            &permit(),
         )
         .expect_err("`nobody` must never park");
         assert!(format!("{err}").contains("writes no question"), "{err}");
@@ -254,6 +369,7 @@ mod tests {
                 resume_id: Some("r-5"),
                 park_deadline_at: None,
             },
+            &permit(),
         )
         .unwrap();
         assert_eq!(inc, Incarnation::Exited);
@@ -279,6 +395,21 @@ mod tests {
         assert!(
             sig.contains("doorbell::Listening"),
             "the open door must be a parameter of the declaration, not a convention: {sig}"
+        );
+    }
+
+    // cm:guard the gate is the SIGNATURE, so this asserts the signature: with the permit a parameter, an unprotected park does not compile, and with it read from a boolean or a global it is one typo away. Every behavioural test here would pass on that weaker shape, which is why this one reads the source (ISS-964 criterion 27).
+    #[test]
+    fn the_human_park_cannot_be_written_without_a_permit() {
+        let src = include_str!("blocked.rs");
+        let sig = src
+            .split("pub fn park_for_human(")
+            .nth(1)
+            .and_then(|s| s.split(") -> Result<Incarnation>").next())
+            .expect("park_for_human must be findable");
+        assert!(
+            sig.contains("&ParkPermit"),
+            "the permit must be a parameter of the park, not a convention: {sig}"
         );
     }
 }

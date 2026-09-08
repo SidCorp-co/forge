@@ -442,16 +442,34 @@ pub async fn run(
             loop {
                 tokio::select! {
                     _ = tick.tick() => {
+                        // cm:guard the snapshot is taken per TICK and a failure to take it SKIPS the sweep entirely — it does not fall through to a shape-only judgement. `Connection` is not `Send`, so the ledger is read and dropped here rather than held across the `git` awaits below (ISS-964 criterion 25).
+                        let held_by = crate::runner::ledger::Ledger::default_path()
+                            .and_then(|p| crate::runner::ledger::Ledger::open(&p))
+                            .and_then(|l| crate::workspace::worktree_reap::HeldTrees::from_ledger(&l));
+                        let held_by = match held_by {
+                            Ok(h) => h,
+                            Err(err) => {
+                                tracing::warn!("[worktree-reap] skipped: the ledger could not be read ({err})");
+                                continue;
+                            }
+                        };
                         for (slug, b) in &cfg.bindings {
-                            let gone = crate::workspace::worktree_reap::reap_repo(
+                            let swept = crate::workspace::worktree_reap::reap_repo(
                                 &b.repo_path,
                                 crate::workspace::worktree_reap::MIN_AGE,
+                                &held_by,
                             )
                             .await;
-                            if !gone.is_empty() {
+                            if !swept.removed.is_empty() {
                                 tracing::info!(
                                     "[worktree-reap] {slug}: removed {} stale worktree(s)",
-                                    gone.len()
+                                    swept.removed.len()
+                                );
+                            }
+                            for (path, run_id) in &swept.held {
+                                tracing::info!(
+                                    "[worktree-reap] {slug}: kept {} for run {run_id}",
+                                    path.display()
                                 );
                             }
                         }

@@ -31,7 +31,7 @@ import {
   requestJobKill,
   resolveKillConfirmation,
 } from './kill-gate.js';
-import { reapExpiredParks } from './park-deadline.js';
+import { reapExpiredParks, reapUnansweredParks } from './park-deadline.js';
 import { LAST_PHASE_CTE, LAST_PROGRESS_AT } from './progress-signal.js';
 import { NOT_PARKED, RESIDENT_SESSION_JOIN, RESULT_GUARD } from './resident-session.js';
 import { NON_CLIENT_METADATA_TYPES, PIPELINE_METADATA_TYPES } from './session-kinds.js';
@@ -125,6 +125,8 @@ export interface LoopMonitorResult {
   sessionLostJobs: JobAxisReapResult;
   /** parks closed because the runner never honoured its own residency ceiling. */
   expiredParks: number;
+  /** Processless parks closed at the deadline their asker set (ISS-964 c34). */
+  unansweredParks: number;
   /** result-hop misses reaped (`stale`, no event for RESULT_QUIET_MINUTES). */
   resultMisses: JobAxisReapResult;
   /** answers whose session turned out to be gone, returned to the driver as a dispatch. */
@@ -393,9 +395,7 @@ export async function reapZombieSessions(
   const ackFastCutoffIso = new Date(now.getTime() - ackFastMs).toISOString();
   const projectFilter = scope.projectId ? eq(agentSessions.projectId, scope.projectId) : undefined;
 
-  // Claim hop: queued past timeout. CAS via WHERE status='queued' so a worker
-  // that claims concurrently isn't stomped. dispatchedAt falls back to
-  // createdAt for rows that pre-date the migration.
+  // cm:guard the CAS on `status='queued'` is what keeps a worker claiming concurrently from being stomped, and `dispatchedAt` falls back to `createdAt` because rows predating that column have none — without the fallback every one of them reads as queued since the epoch and is failed on the first tick.
   const queuedFailed = await applyKernelTransition(db, {
     entity: 'session',
     to: 'failed',
@@ -437,7 +437,7 @@ export async function reapZombieSessions(
     set: { failureReason: 'heartbeat_timeout', updatedAt: now },
     where: and(
       eq(agentSessions.status, 'running'),
-      // cm:guard the ONLY exemption from this hop, and it is an exemption from the QUIET CLOCK alone — a parked session still holds its runner slot, and the residency deadline is what bounds it (schema.ts, `sessionRuntimeStates`). Written as IS DISTINCT FROM so a NULL still gets reaped: print-mode sessions never report a state, and reading NULL as "maybe parked" would exempt every job on the old path from the heartbeat hop.
+      // cm:guard the ONLY exemption from this hop, and it is an exemption from the QUIET CLOCK alone — the park is bounded elsewhere: by residency where it holds a process, and by the asker's own deadline where it released one (`park-deadline.ts`, both clocks). Written as IS DISTINCT FROM so a NULL still gets reaped: print-mode sessions never report a state, and reading NULL as "maybe parked" would exempt every job on the old path from the heartbeat hop.
       sql`${agentSessions.runtimeState} IS DISTINCT FROM 'awaiting_input'`,
       or(
         and(
@@ -715,12 +715,16 @@ export async function runLoopMonitor(
   const ackMisses = await reapAckMisses(now, scope);
   const sessions = await reapZombieSessions(now, scope);
   // cm:guard BEFORE reapSessionLostJobs, same same-tick propagation as ISS-280 — a park closed this tick must free its job on this tick too, or the runner slot it was holding stays held for a full extra minute for no reason.
-  const expiredParks = await reapExpiredParks(now, scope);
+  // cm:guard TWO clocks, and both are needed: the residency clause exempts a human park, so the deadline reap is the only clock left over it — drop either call and a park sits under none at all (ISS-964 criteria 24, 34).
+  const parkClocks = {
+    expiredParks: await reapExpiredParks(now, scope),
+    unansweredParks: await reapUnansweredParks(now, scope),
+  };
   const sessionLostJobs = await reapSessionLostJobs(now, scope);
   const resultMisses = await reapResultMisses(now, scope);
   // cm:guard AFTER the park reap, and that order is the hop's only path out of `unknown`: a park closed this tick is a terminal session, which is what makes `resolveSessionSend` say `gone` rather than keep waiting. Running it first would defer every fallback by a full tick for no reason.
   const lapsedAnswers = await resumeLapsedAnswers(now, scope);
-  return { ackMisses, sessions, expiredParks, sessionLostJobs, resultMisses, lapsedAnswers };
+  return { ackMisses, sessions, ...parkClocks, sessionLostJobs, resultMisses, lapsedAnswers };
 }
 
 function broadcastZombieTransition(

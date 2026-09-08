@@ -521,12 +521,14 @@ describe('reapResultMisses — result hop (was ISS-258 runStaleSweep), now kill-
 });
 
 describe('runLoopMonitor — one tick, hops in dependency order', () => {
+  // cm:guard `toEqual` on the WHOLE object, so a new hop that runs but is not reported fails here. A hop whose count never reaches the caller is a sweep nobody can see working, which is how the inverse-cascade half went unnoticed for 98 runs (ISS-923).
   it('aggregates all hop results', async () => {
     const result = await runLoopMonitor(new Date('2026-06-12T00:00:00Z'));
     expect(result).toEqual({
       ackMisses: { reaped: 0, killRequested: 0, awaitingKill: 0 },
       sessions: { queueTimedOut: 0, heartbeatTimedOut: 0, noClientAcked: 0 },
       expiredParks: 0,
+      unansweredParks: 0,
       sessionLostJobs: { reaped: 0, killRequested: 0, awaitingKill: 0 },
       resultMisses: { reaped: 0, killRequested: 0, awaitingKill: 0 },
       lapsedAnswers: 0,

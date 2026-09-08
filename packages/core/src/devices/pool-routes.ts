@@ -13,6 +13,7 @@ import { z } from 'zod';
 import type { QuestionBlockerKind, QuestionOption } from '../db/schema-questions.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
+import { PARK_PROTECTIONS } from '../questions/protections.js';
 import { answerOf, registerWaiter, waiterFor } from '../questions/read.js';
 import { askQuestion, QuestionRefused } from '../questions/write.js';
 import { assertDeviceBoundToProject } from './device-project.js';
@@ -297,6 +298,12 @@ devicePoolRoutes.post(
     const closed = await closeMasterSession({ deviceId: c.get('device').id, sessionId, reason });
     return c.json({ closed });
   },
+);
+
+// cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/protections.rs — the box reads this BEFORE it releases a process, and requires every member of its own named set. An old core has no such route, so a 404 is a legitimate answer meaning "no protections" rather than a fault (ISS-964 criterion 27).
+// cm:guard no project scope and no device state — this reports what THIS BUILD of core runs, which is what the box cannot otherwise know. Making it per-project would let a park be protected on one project and eaten on another by the same deployed code.
+devicePoolRoutes.get('/me/protections', requireDevice(), async (c) =>
+  c.json({ protections: PARK_PROTECTIONS }),
 );
 
 // cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/questions.rs — `ask` posts this shape and the box has already committed its own half; `id` is the join key and the runner mints it.

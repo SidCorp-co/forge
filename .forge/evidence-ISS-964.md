@@ -80,3 +80,80 @@ Probed before fixing: `MACHINE-AS-HUMAN => Ok(Exited) row=(Exited, Blocked, Some
 
 The `refuse_nobody` guard claimed "in both arms" while only one arm called it; the claim is true
 now rather than aspirational.
+
+## S9 — the park protections and the capability gate (c24, c25, c26, c27, c34)
+
+Landed BEFORE any producer, which is the safe side of criterion 27 rather than the letter of it:
+`park_for_human`, `arm_bounded`, `park_protections` and `stopSession` still have no production
+caller, verified by grep at commit time. 27 forbids a producer shipping ahead of the protections;
+this is the reverse order, and the producer wiring (c5b, c7, the control verbs, c28, c32/c33)
+carries the permit that only exists because of this commit.
+
+Three premises re-read on this tree before writing, all confirmed unmoved: the heartbeat exemption
+already existed (so c24 extends one exemption story rather than adding a second mechanism);
+`parkedSessionFor` still joins through `jobs` and requires `awaiting_input` non-terminal; and
+`reap_repo` still judged on age ∧ clean ∧ nothing-unpushed with no pid, session or ledger read.
+
+### The discriminator, and the bug the first design had
+
+`NOT EXISTS (open agent_questions)` was the wrong exemption and would have un-reaped the case
+residency exists for: `begin_question` is step one of BOTH arms of `runner/blocked.rs`, so a
+machine or master-or-peer park writes an open row too — and those keep their process. The
+discriminator is `blocker_kind = 'human'`, since only the human branch releases a process (c5).
+
+| Mutation | Red |
+|---|---|
+| T1 widen the residency exemption to any open question | `still reaps a machine park…` + `still reaps a master-or-peer park…` |
+| T2 read a NULL `park_deadline_at` as expired | `never closes a park the asker set no deadline on` |
+| T3 drop the floor on the day count | `floors the named duration at one day` |
+| U1 widen the answer-resume branch to any blocker kind | `is not claimed for a machine park…` + `…master-or-peer…` |
+| U2 drop the waiter join | `is not claimed when no run registered as a waiter` |
+| U3 drop the issue predicate | `is not claimed by a park open on a different issue` |
+| U4 log the branch but fall through to the fallback | `dispatches nothing and leaves the issue parked` |
+| V1 drop the reaper's ledger consult | 3 hold tests, incl. criterion 36's own case |
+| V2 answer the hold question with `live_run_at_path`'s predicate (`incarnation='live'`) | `refuses_a_clean_pushed_silent_tree_a_park_still_holds` + `holds_a_park_that_outlived_the_boot_it_was_made_in` |
+| V3 ignore the path key in the held snapshot | `a_hold_on_another_tree_shields_nothing` |
+| V4 let an ended run keep holding its tree | `reaps_a_tree_whose_run_has_ended` |
+| W1 grant the permit on any-of instead of all-of | `a_core_running_only_some_of_them_grants_no_permit` |
+| W2 grant the permit on an empty advertisement | 3 permit tests |
+| W3 remove `&ParkPermit` from the signature, call sites repaired | `the_human_park_cannot_be_written_without_a_permit` (no compile error) |
+| W4 the runner's own reaper stops consulting the ledger | `the_ledger_reaper_this_permit_claims_is_in_this_build` |
+
+### The old/new matrix — two tests and one procedure, said as such
+
+- **new runner + old core** → no advertisement → no permit, refusal naming what is missing.
+  `an_old_core_advertising_nothing_grants_no_permit`, plus the partial case W1 covers.
+- **old runner + new core** → a park minted before ISS-964 carries no question row and must STILL
+  be reaped: `still reaps a park that predates the question table`. Asserted this way round because
+  "the new code is inert when nothing changed" cannot go red.
+- **downgrade with a park already open** → NOT a test this box can run. It is what 27a's procedure
+  exists to make safe, and it is on the issue as a comment before any deploy.
+
+Claiming three tests here would have been a green that cannot fail.
+
+### One refinement to criterion 27, declared
+
+The criterion says core advertises the three protections. Core advertises **two** —
+`park-exempt-residency` and `answer-resume-park` — because the third, `worktree-reap-ledger`, is
+the runner's own reaper and core cannot observe which runner build is asking; advertising it would
+be core promising something it has no way to know. The runner requires all three: two from the
+advertisement, the third asserted from its own source by
+`the_ledger_reaper_this_permit_claims_is_in_this_build`. Each assertion is made by the side that
+can actually make it. `park-protections.test.ts` keeps core's two from becoming empty promises by
+reading the source behind each name.
+
+### Paid, not waived
+
+- `loop-monitor.ts` went 1 line over its frozen size budget. Paid by grouping the two park clocks
+  into `parkClocks` (−7 lines), NOT by `--update-baseline`.
+- CM013 on the same file paid by converting its `Claim hop:` restatement block to the `cm:guard`
+  that block's last two sentences already were.
+- The stale claims corrected in this commit rather than left standing: `worktree_reap.rs`'s
+  *"a drive session runs 60-90 minutes"* (both the module guard and the age-gate test's), and
+  `loop-monitor.ts`'s *"a parked session still holds its runner slot, and the residency deadline
+  is what bounds it"* — a processless park falsifies both halves.
+- `failure_reason` took ONE fixed member (`park_unanswered`, origin `user`, so it stays out of the
+  real-failure rate); the per-park duration lives on the question's `ended_reason`. A dynamic
+  `unanswered_2d` in the closed taxonomy would land every park in `unclassified`.
+- Gates: `pnpm verify` 20 ok / 0 red · core 5959 unit, 1292 integration · web-v2 906 + build ·
+  `cargo fmt --check`, `clippy --workspace --all-targets`, `test --workspace` (418) · `pnpm build` 4/4.

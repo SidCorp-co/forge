@@ -416,6 +416,29 @@ impl Ledger {
         .map_err(sql_err)
     }
 
+    /// Every worktree a run still holds, with the run that holds it.
+    ///
+    /// Any incarnation and any boot, deliberately: a park is `none` and outlives
+    /// a reboot, so this is what a sweeper must ask rather than
+    /// `live_run_at_path` (ISS-964 criteria 8, 25).
+    // cm:guard NOT `live_run_at_path`, and the difference is the whole point: that one predicates on `incarnation = 'live' AND boot_id = ?`, which is exactly what a processless park is not. Reusing it here would report every parked tree as unheld and the reaper would delete the diff the park exists to keep.
+    // cm:guard `ended_by IS NULL` is the hold, never a status word: a run reaches terminal by being ENDED, and reading any other column to mean "finished" gives the reaper a second definition of done to disagree with.
+    pub fn held_worktrees(&self) -> Result<Vec<(PathBuf, String)>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT worktree_path, run_id FROM runs WHERE ended_by IS NULL")
+            .map_err(sql_err)?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    PathBuf::from(row.get::<_, String>(0)?),
+                    row.get::<_, String>(1)?,
+                ))
+            })
+            .map_err(sql_err)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(sql_err)
+    }
+
     /// One run by id.
     pub fn run(&self, run_id: &str) -> Result<Option<Run>> {
         self.conn
@@ -860,6 +883,14 @@ mod tests {
                 resume_id: resume,
                 park_deadline_at: deadline,
             },
+            // cm:guard a permit built from the FULL advertisement, so these tests keep asserting the ledger branch rather than the gate — the gate's own refusals are `blocked.rs`'s to assert.
+            &crate::runner::blocked::ParkPermit::from_advertisement(
+                &crate::runner::blocked::PROTECTIONS_FROM_CORE
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap(),
         )
     }
 

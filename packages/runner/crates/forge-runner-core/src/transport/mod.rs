@@ -21,6 +21,7 @@ pub mod lifecycle;
 pub mod master;
 pub mod plugins;
 pub mod pool;
+pub mod protections;
 pub mod provision;
 pub mod questions;
 pub mod run_sessions;
