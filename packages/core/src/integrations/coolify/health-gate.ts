@@ -287,20 +287,7 @@ async function failGate(
 
   // cm:guard the rollback's own gate must NOT roll back again. A restored image that also cannot serve is a state no further automation improves, and a second rollback walks the application down a list of builds nobody chose while the outage continues.
   if (data.forRollback) {
-    await recordDelivery({
-      bindingId: data.bindingId,
-      direction: 'inbound',
-      eventName: 'deploy.rollback.unhealthy',
-      payload: {
-        source: 'health-gate',
-        deployment_uuid: data.deploymentUuid,
-        targetLabel: data.targetLabel,
-        healthUrl: data.healthUrl,
-        detail,
-      },
-      requestId: `health:${data.deploymentUuid}`,
-      status: 'failed',
-    });
+    await recordGateFailure(data, 'deploy.rollback.unhealthy', detail);
     logger.error(
       {
         bindingId: data.bindingId,
@@ -313,20 +300,7 @@ async function failGate(
     return { verdict: 'unhealthy', reason: detail };
   }
 
-  await recordDelivery({
-    bindingId: data.bindingId,
-    direction: 'inbound',
-    eventName: 'deploy.unhealthy',
-    payload: {
-      source: 'health-gate',
-      deployment_uuid: data.deploymentUuid,
-      targetLabel: data.targetLabel,
-      healthUrl: data.healthUrl,
-      detail,
-    },
-    requestId: `health:${data.deploymentUuid}`,
-    status: 'failed',
-  });
+  await recordGateFailure(data, 'deploy.unhealthy', detail);
 
   const rolledBackTo = await restorePrevious(data, detail, deps);
   await deps.settle('failed', rolledBackTo ? `${detail}; rolled back to ${rolledBackTo}` : detail);
@@ -335,6 +309,38 @@ async function failGate(
     reason: detail,
     ...(rolledBackTo ? { rolledBackTo } : {}),
   };
+}
+
+/**
+ * The inbound row saying this gate's window closed unhealthy.
+ */
+// cm:guard a SECOND write of this row must not end the job. Its `requestId` is deterministic and `integration_deliveries_binding_request_id_uq` is unique on (binding_id, request_id), so a re-run after a transient failure downstream would die here — before the rollback marker that is supposed to make `failGate` idempotent is ever read, and before the hold is settled. Swallowing the collision is what makes that marker the live mechanism rather than a guard describing something the code cannot reach.
+async function recordGateFailure(
+  data: CoolifyHealthGateJob,
+  eventName: 'deploy.unhealthy' | 'deploy.rollback.unhealthy',
+  detail: string,
+): Promise<void> {
+  try {
+    await recordDelivery({
+      bindingId: data.bindingId,
+      direction: 'inbound',
+      eventName,
+      payload: {
+        source: 'health-gate',
+        deployment_uuid: data.deploymentUuid,
+        targetLabel: data.targetLabel,
+        healthUrl: data.healthUrl,
+        detail,
+      },
+      requestId: `health:${data.deploymentUuid}`,
+      status: 'failed',
+    });
+  } catch (err) {
+    logger.error(
+      { err, bindingId: data.bindingId, deploymentUuid: data.deploymentUuid, eventName, detail },
+      'coolify health gate: could not write the unhealthy-deploy row — carrying on so the rollback and the settle still happen',
+    );
+  }
 }
 
 /**
@@ -405,7 +411,7 @@ async function restorePrevious(
     return null;
   }
 
-  // cm:guard the deterministic requestId IS the dedup key here and must NOT move, against every other `singletonKey` in this module — it is what a retry after a dispatched rollback reads to know the rollback happened. By then `is_current` names the RESTORED image, so an unguarded retry picks the build that just failed and restores that one.
+  // cm:guard the deterministic requestId IS the dedup key here and must NOT move, against every other `singletonKey` in this module — it is what a re-run after a dispatched rollback reads to know the rollback happened. By then `is_current` names the RESTORED image, so an unguarded re-run picks the build that just failed and restores that one. It only reaches this check because `recordGateFailure` swallows its own unique-key collision; make that write fatal again and this becomes a guard describing a branch nothing can execute.
   const marker = `health-rollback:${data.deploymentUuid}`;
   let markerDeliveryId: string;
   try {
@@ -522,6 +528,9 @@ async function closeMarker(
         : { errorMessage: detail instanceof Error ? detail.message : String(detail ?? 'refused') }),
     });
   } catch (err) {
-    logger.warn({ err, deliveryId }, 'coolify health gate: could not close the rollback marker');
+    logger.error(
+      { err, deliveryId },
+      'coolify health gate: could not close the rollback marker — it stays the newest outbound row and will shadow the last real deploy for `runCoolifyCancel`',
+    );
   }
 }

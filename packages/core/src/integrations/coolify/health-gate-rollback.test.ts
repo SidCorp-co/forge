@@ -383,4 +383,30 @@ describe('the rollback is dispatched at most once, and never left unwatched', ()
       expect.objectContaining({ status: 'failed' }),
     );
   });
+
+  it('a re-run whose unhealthy row already exists still reaches the marker, and rolls back nothing twice', async () => {
+    // cm:why this is the shape of a pg-boss retry after a transient failure downstream — the deterministic `health:<uuid>` row collides on the unique index and the marker for the rollback that already went out is present, which is the only way to reach the marker check at all
+    recordDeliveryMock.mockImplementation(async (input: unknown) => {
+      if ((input as { eventName: string }).eventName === 'deploy.unhealthy') {
+        throw new Error('duplicate key value violates unique constraint');
+      }
+      return 'inb-1';
+    });
+    const d = deps({ findRollbackMarker: vi.fn(async () => true) });
+
+    const out = await runCoolifyHealthGate(
+      gateJob({ deadlineAt: new Date(NOW - 1).toISOString() }),
+      d,
+    );
+
+    expect(d.rollback).not.toHaveBeenCalled();
+    expect(out.verdict).toBe('unhealthy');
+    expect(d.settle).toHaveBeenCalledWith(
+      'failed',
+      expect.stringContaining('never became healthy'),
+    );
+    const paged = errorLog.mock.calls.map((c) => String(c[1])).join(' ');
+    expect(paged).toContain('could not write the unhealthy-deploy row');
+    expect(paged).toContain('already dispatched');
+  });
 });
