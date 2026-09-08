@@ -11,8 +11,10 @@ use tokio::sync::mpsc;
 
 use crate::error::Result;
 
+pub mod blocked;
 pub mod claude_code;
 pub mod close_loop;
+pub mod doorbell;
 pub mod inflight;
 pub mod ledger;
 pub mod process;

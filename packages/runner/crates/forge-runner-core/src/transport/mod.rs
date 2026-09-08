@@ -22,6 +22,7 @@ pub mod master;
 pub mod plugins;
 pub mod pool;
 pub mod provision;
+pub mod questions;
 pub mod run_sessions;
 pub mod runners;
 pub mod session_ledger;

@@ -559,43 +559,101 @@ impl Ledger {
         }
     }
 
-    /// Record that a run is blocked, and take the branch its blocker decides.
-    // cm:guard the BRANCH follows from `blocker_kind` and is not a caller's choice: a human block leaves `Exited` because a human wait is unbounded and holding a slot for it is what the whole park exists to stop, while a machine or peer block stays `Live` because that wait is bounded and resuming costs a transcript re-read (ISS-964 criteria 4, 5).
-    // cm:guard `Nobody` is REFUSED here rather than parked. It is a failure with a name and writes no question anywhere, so a caller that reaches this with `Nobody` has already lost the distinction this enum exists to keep (ISS-964 criteria 3, 6).
-    pub fn park(
+    /// Ask: the question row and `waiting_on` in ONE local transaction.
+    // cm:guard one transaction, and `waiting_on` is the question id the RUNNER minted. Two writes would let a crash between them leave a run pointing at a question this box has no record of asking, or a question row belonging to a run that never says it is waiting — and the pair is what makes the two halves joinable across the window where the box has parked and core has not heard (ISS-964 criterion 10).
+    // cm:guard this is step ONE of three and it does NOT declare the block. Setting `work`/`incarnation` here would collapse the order criterion 10 fixes, because the declaration is what tells a ringer somebody is listening and the door is not open yet.
+    pub fn begin_question(
+        &mut self,
+        question_id: &str,
+        run_id: &str,
+        round: i64,
+        waiting_on: &str,
+    ) -> Result<()> {
+        let tx = self.conn.transaction().map_err(sql_err)?;
+        let changed = tx
+            .execute(
+                "UPDATE runs SET waiting_on = ?2 WHERE run_id = ?1 AND work <> 'done'",
+                params![run_id, waiting_on],
+            )
+            .map_err(sql_err)?;
+        if changed == 0 {
+            return Err(Error::Other(format!(
+                "ledger: run {run_id} is unknown or already done — a finished run cannot ask"
+            )));
+        }
+        tx.execute(
+            "INSERT OR IGNORE INTO questions (question_id, run_id, round, asked_at)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![question_id, run_id, round, now()],
+        )
+        .map_err(sql_err)?;
+        tx.commit().map_err(sql_err)?;
+        Ok(())
+    }
+
+    /// Step THREE for a run that keeps its process: declare `live × blocked`.
+    // cm:guard the `Listening` is a PRECONDITION expressed in the type, not a courtesy: a caller cannot declare this state without having opened the door first, which is criterion 10's ordering made unwritable rather than merely tested (ISS-964 criterion 10).
+    // cm:guard `Human` and `Nobody` are REFUSED here by name. A human wait is unbounded and releases the process, so it cannot hold a read fd and must not claim `Live`; `Nobody` is a failure with a name that writes no question at all (ISS-964 criteria 4, 5, 6).
+    pub fn declare_blocked_live(
         &self,
         run_id: &str,
         blocker: BlockerKind,
-        waiting_on: &str,
         resume_id: Option<&str>,
         park_deadline_at: Option<i64>,
+        _ear: &crate::runner::doorbell::Listening,
     ) -> Result<Incarnation> {
-        if matches!(blocker, BlockerKind::Nobody) {
-            return Err(Error::Other(
-                "ledger: a `nobody` blocker terminates the run with a named reason and writes no question".into(),
-            ));
-        }
-        let incarnation = match blocker {
-            BlockerKind::Human => Incarnation::Exited,
-            _ => Incarnation::Live,
-        };
         let kind = match blocker {
             BlockerKind::Machine => "machine",
             BlockerKind::MasterOrPeer => "master_or_peer",
-            BlockerKind::Human => "human",
-            BlockerKind::Nobody => unreachable!("refused above"),
+            BlockerKind::Human => {
+                return Err(Error::Other(
+                    "ledger: a human block releases the process, so it cannot be declared live — use `declare_parked_human`".into(),
+                ))
+            }
+            BlockerKind::Nobody => {
+                return Err(Error::Other(
+                    "ledger: a `nobody` blocker terminates the run with a named reason and writes no question".into(),
+                ))
+            }
         };
+        self.declare(run_id, kind, Incarnation::Live, resume_id, park_deadline_at)
+    }
+
+    /// The human branch: blocked, and the process is gone.
+    // cm:guard `Exited` is the whole point and is not a detail of this call: a human wait has no time limit, so holding a runner slot for it is what the park exists to stop. A live incarnation here would make the slot unreclaimable by every reader that trusts these two columns (ISS-964 criteria 5, 8, 9).
+    pub fn declare_parked_human(
+        &self,
+        run_id: &str,
+        resume_id: Option<&str>,
+        park_deadline_at: Option<i64>,
+    ) -> Result<Incarnation> {
+        self.declare(
+            run_id,
+            "human",
+            Incarnation::Exited,
+            resume_id,
+            park_deadline_at,
+        )
+    }
+
+    fn declare(
+        &self,
+        run_id: &str,
+        kind: &str,
+        incarnation: Incarnation,
+        resume_id: Option<&str>,
+        park_deadline_at: Option<i64>,
+    ) -> Result<Incarnation> {
         let changed = self
             .conn
             .execute(
-                "UPDATE runs SET work = ?2, blocker_kind = ?3, waiting_on = ?4, resume_id = ?5,
-                        park_deadline_at = ?6, incarnation = ?7
+                "UPDATE runs SET work = ?2, blocker_kind = ?3, resume_id = ?4,
+                        park_deadline_at = ?5, incarnation = ?6
                  WHERE run_id = ?1 AND work <> 'done'",
                 params![
                     run_id,
                     Work::Blocked.wire(),
                     kind,
-                    waiting_on,
                     resume_id,
                     park_deadline_at,
                     incarnation.wire()
@@ -608,19 +666,6 @@ impl Ledger {
             )));
         }
         Ok(incarnation)
-    }
-
-    /// The box's own half of a question, written beside `waiting_on`.
-    // cm:guard the id is the one the RUNNER minted and core is told, so the two halves of a question are joinable across the window where this box has parked and core has not heard (ISS-964 criterion 10).
-    pub fn record_question(&self, question_id: &str, run_id: &str, round: i64) -> Result<()> {
-        self.conn
-            .execute(
-                "INSERT OR IGNORE INTO questions (question_id, run_id, round, asked_at)
-                 VALUES (?1, ?2, ?3, ?4)",
-                params![question_id, run_id, round, now()],
-            )
-            .map_err(sql_err)?;
-        Ok(())
     }
 
     /// The rounds asked on one run, oldest first.
@@ -792,8 +837,31 @@ impl Ledger {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::runner::blocked::Wait;
 
     const SOURCE: &str = include_str!("ledger.rs");
+
+    /// The human park in one call, as the old `park` was, so the cases below
+    /// keep asserting the branch rather than the new call shape.
+    fn park_human(
+        led: &mut Ledger,
+        run_id: &str,
+        q: &str,
+        resume: Option<&str>,
+        deadline: Option<i64>,
+    ) -> Result<Incarnation> {
+        crate::runner::blocked::park_for_human(
+            led,
+            crate::runner::blocked::Wait {
+                run_id,
+                question_id: q,
+                round: 1,
+                blocker: BlockerKind::Human,
+                resume_id: resume,
+                park_deadline_at: deadline,
+            },
+        )
+    }
 
     fn seed(issues: &[&str]) -> NewRun {
         NewRun {
@@ -1004,8 +1072,7 @@ mod tests {
         let mut led = Ledger::open_in_memory().unwrap();
         led.create_run_group(seed(&["ISS-1"])).unwrap();
         assert_eq!(
-            led.park("run-1", BlockerKind::Human, "q-1", Some("r-1"), None)
-                .unwrap(),
+            park_human(&mut led, "run-1", "q-1", Some("r-1"), None).unwrap(),
             Incarnation::Exited
         );
         let run = led.run("run-1").unwrap().unwrap();
@@ -1013,25 +1080,72 @@ mod tests {
         assert_eq!(run.blocker_kind, Some(BlockerKind::Human));
         assert_eq!(run.resume_id.as_deref(), Some("r-1"));
 
-        let mut other = Ledger::open_in_memory().unwrap();
-        other.create_run_group(seed(&["ISS-2"])).unwrap();
         for kind in [BlockerKind::Machine, BlockerKind::MasterOrPeer] {
-            assert_eq!(
-                other.park("run-1", kind, "q-2", None, None).unwrap(),
-                Incarnation::Live,
-                "a bounded wait keeps the process"
-            );
+            let dir = std::env::temp_dir().join(format!("led-{}", uuid::Uuid::new_v4()));
+            std::fs::create_dir_all(&dir).unwrap();
+            let mut other = Ledger::open_in_memory().unwrap();
+            other.create_run_group(seed(&["ISS-2"])).unwrap();
+            let (_ear, inc) = crate::runner::blocked::arm_bounded(
+                &mut other,
+                &dir.join("ledger.sqlite"),
+                Wait {
+                    run_id: "run-1",
+                    question_id: "q-2",
+                    round: 1,
+                    blocker: kind,
+                    resume_id: None,
+                    park_deadline_at: None,
+                },
+            )
+            .unwrap();
+            assert_eq!(inc, Incarnation::Live, "a bounded wait keeps the process");
         }
     }
 
-    // cm:guard a `nobody` blocker must be REFUSED, not parked, and must leave no question row behind. A row nobody can answer is indistinguishable from a run that is merely slow (ISS-964 criteria 3, 6).
+    // cm:guard a `nobody` blocker must be REFUSED before anything is written, and must leave the run runnable and the question table empty. A row nobody can answer is indistinguishable from a run that is merely slow, and refusing AFTER `begin_question` would leave exactly that row (ISS-964 criteria 3, 6).
     #[test]
     fn a_blocker_nobody_could_resolve_is_refused_and_writes_no_question() {
         let mut led = Ledger::open_in_memory().unwrap();
         led.create_run_group(seed(&["ISS-1"])).unwrap();
-        assert!(led
-            .park("run-1", BlockerKind::Nobody, "q-1", None, None)
-            .is_err());
+        assert!(crate::runner::blocked::arm_bounded(
+            &mut led,
+            std::env::temp_dir().as_path(),
+            Wait {
+                run_id: "run-1",
+                question_id: "q-1",
+                round: 1,
+                blocker: BlockerKind::Nobody,
+                resume_id: None,
+                park_deadline_at: None,
+            },
+        )
+        .is_err());
+        assert_eq!(led.run("run-1").unwrap().unwrap().work, Work::Runnable);
+        assert!(led.questions_for("run-1").unwrap().is_empty());
+    }
+
+    // cm:guard the two arms are NOT interchangeable and each refuses the other's blocker by name. A human wait declared live holds a runner slot with no bound on it, and a bounded wait parked as human pays a transcript re-read for a wait measured in seconds (ISS-964 criteria 4, 5).
+    #[test]
+    fn the_bounded_arm_refuses_a_human_block_by_name() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(seed(&["ISS-1"])).unwrap();
+        let err = crate::runner::blocked::arm_bounded(
+            &mut led,
+            std::env::temp_dir().as_path(),
+            Wait {
+                run_id: "run-1",
+                question_id: "q-1",
+                round: 1,
+                blocker: BlockerKind::Human,
+                resume_id: None,
+                park_deadline_at: None,
+            },
+        )
+        .expect_err("a human wait is unbounded and cannot be declared live");
+        assert!(
+            format!("{err}").contains("park_for_human"),
+            "the refusal must name the way out, not merely refuse: {err}"
+        );
         assert_eq!(led.run("run-1").unwrap().unwrap().work, Work::Runnable);
         assert!(led.questions_for("run-1").unwrap().is_empty());
     }
@@ -1041,9 +1155,7 @@ mod tests {
         let mut led = Ledger::open_in_memory().unwrap();
         led.create_run_group(seed(&["ISS-1"])).unwrap();
         led.end_run("run-1", "operator", "abandoned").unwrap();
-        assert!(led
-            .park("run-1", BlockerKind::Human, "q-1", None, None)
-            .is_err());
+        assert!(park_human(&mut led, "run-1", "q-1", None, None).is_err());
     }
 
     // cm:guard the property the whole design exists for: waiting and dead are told apart from the LEDGER, with no process inspected. Both rows below have no live process; only the two typed columns separate them (ISS-964 criterion 9).
@@ -1051,8 +1163,7 @@ mod tests {
     fn the_ledger_alone_tells_waiting_from_dead() {
         let mut led = Ledger::open_in_memory().unwrap();
         led.create_run_group(seed(&["ISS-1"])).unwrap();
-        led.park("run-1", BlockerKind::Human, "q-1", Some("r-1"), None)
-            .unwrap();
+        park_human(&mut led, "run-1", "q-1", Some("r-1"), None).unwrap();
         let waiting = led.run("run-1").unwrap().unwrap();
 
         let mut dead_led = Ledger::open_in_memory().unwrap();
@@ -1105,8 +1216,7 @@ mod tests {
         let gen1 = led.revoke_claim("run-1").unwrap();
         assert!(gen1 > gen0, "generation must move: {gen0} -> {gen1}");
 
-        led.park("run-1", BlockerKind::Human, "q-1", Some("r-1"), None)
-            .unwrap();
+        park_human(&mut led, "run-1", "q-1", Some("r-1"), None).unwrap();
         led.answer_arrived("run-1").unwrap();
         assert_eq!(
             led.begin_revival("run-1", gen0, "tok", 9_999).unwrap_err(),
@@ -1120,8 +1230,7 @@ mod tests {
         let mut led = Ledger::open_in_memory().unwrap();
         led.create_run_group(seed(&["ISS-1"])).unwrap();
         let gen = led.hold_claim("run-1", "master-a", 9_999).unwrap();
-        led.park("run-1", BlockerKind::Human, "q-1", Some("r-1"), None)
-            .unwrap();
+        park_human(&mut led, "run-1", "q-1", Some("r-1"), None).unwrap();
         assert!(led.answer_arrived("run-1").unwrap());
 
         let owed = led.run("run-1").unwrap().unwrap();
@@ -1148,8 +1257,7 @@ mod tests {
         let mut led = Ledger::open_in_memory().unwrap();
         led.create_run_group(seed(&["ISS-1"])).unwrap();
         let gen = led.hold_claim("run-1", "m", 9_999).unwrap();
-        led.park("run-1", BlockerKind::Human, "q-1", None, None)
-            .unwrap();
+        park_human(&mut led, "run-1", "q-1", None, None).unwrap();
         led.answer_arrived("run-1").unwrap();
         led.begin_revival("run-1", gen, "tok-a", 9_999).unwrap();
 
@@ -1168,8 +1276,7 @@ mod tests {
         let mut led = Ledger::open_in_memory().unwrap();
         led.create_run_group(seed(&["ISS-1"])).unwrap();
         let gen = led.hold_claim("run-1", "m", 9_999).unwrap();
-        led.park("run-1", BlockerKind::Human, "q", None, None)
-            .unwrap();
+        park_human(&mut led, "run-1", "q", None, None).unwrap();
         led.answer_arrived("run-1").unwrap();
         led.begin_revival("run-1", gen, "tok", 1_000).unwrap();
 
@@ -1194,8 +1301,7 @@ mod tests {
         let mut gone = Ledger::open_in_memory().unwrap();
         gone.create_run_group(seed(&["ISS-1"])).unwrap();
         let g = gone.hold_claim("run-1", "m", 9_999).unwrap();
-        gone.park("run-1", BlockerKind::Human, "q", None, None)
-            .unwrap();
+        park_human(&mut gone, "run-1", "q", None, None).unwrap();
         gone.answer_arrived("run-1").unwrap();
         gone.mark_worktree_gone_observed("run-1").unwrap();
         assert_eq!(
@@ -1218,9 +1324,9 @@ mod tests {
     fn a_question_is_recorded_under_the_id_the_box_minted_and_repeats_idempotently() {
         let mut led = Ledger::open_in_memory().unwrap();
         led.create_run_group(seed(&["ISS-1"])).unwrap();
-        led.record_question("q-abc", "run-1", 1).unwrap();
-        led.record_question("q-abc", "run-1", 1).unwrap();
-        led.record_question("q-def", "run-1", 2).unwrap();
+        led.begin_question("q-abc", "run-1", 1, "q-abc").unwrap();
+        led.begin_question("q-abc", "run-1", 1, "q-abc").unwrap();
+        led.begin_question("q-def", "run-1", 2, "q-def").unwrap();
         assert_eq!(
             led.questions_for("run-1").unwrap(),
             vec![("q-abc".to_string(), 1), ("q-def".to_string(), 2)]
@@ -1236,8 +1342,7 @@ mod tests {
         {
             let mut led = Ledger::open(&path).unwrap();
             led.create_run_group(seed(&["ISS-1"])).unwrap();
-            led.park("run-1", BlockerKind::Human, "q-1", Some("r-1"), Some(77))
-                .unwrap();
+            park_human(&mut led, "run-1", "q-1", Some("r-1"), Some(77)).unwrap();
         }
         let reopened = Ledger::open(&path).unwrap();
         let run = reopened.run("run-1").unwrap().unwrap();
