@@ -70,6 +70,7 @@ impl Work {
 pub struct Run {
     pub run_id: String,
     pub master_session_id: String,
+    pub session_id: Option<String>,
     pub worktree_path: PathBuf,
     pub pid: Option<u32>,
     pub boot_id: String,
@@ -104,6 +105,7 @@ pub struct NewRun {
 const RUN_COLUMNS: &[&str] = &[
     "run_id",
     "master_session_id",
+    "session_id",
     "worktree_path",
     "pid",
     "boot_id",
@@ -125,6 +127,7 @@ const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS runs (
   run_id              TEXT PRIMARY KEY,
   master_session_id   TEXT NOT NULL,
+  session_id          TEXT,
   worktree_path       TEXT NOT NULL,
   pid                 INTEGER,
   boot_id             TEXT NOT NULL,
@@ -160,6 +163,43 @@ fn now() -> i64 {
 
 fn sql_err(e: rusqlite::Error) -> Error {
     Error::Other(format!("ledger: {e}"))
+}
+
+const SELECT_RUN: &str = "SELECT run_id, master_session_id, session_id, worktree_path, pid, boot_id,
+        incarnation, work, blocker_kind, waiting_on, resume_id, session_terminal_at, worktree_gone_at
+ FROM runs";
+
+fn map_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<Run> {
+    Ok(Run {
+        run_id: row.get(0)?,
+        master_session_id: row.get(1)?,
+        session_id: row.get(2)?,
+        worktree_path: PathBuf::from(row.get::<_, String>(3)?),
+        pid: row.get::<_, Option<i64>>(4)?.map(|p| p as u32),
+        boot_id: row.get(5)?,
+        incarnation: match row.get::<_, String>(6)?.as_str() {
+            "live" => Incarnation::Live,
+            _ => Incarnation::Exited,
+        },
+        work: match row.get::<_, String>(7)?.as_str() {
+            "runnable" => Work::Runnable,
+            "blocked" => Work::Blocked,
+            _ => Work::Done,
+        },
+        blocker_kind: row
+            .get::<_, Option<String>>(8)?
+            .and_then(|s| match s.as_str() {
+                "machine" => Some(BlockerKind::Machine),
+                "master_or_peer" => Some(BlockerKind::MasterOrPeer),
+                "human" => Some(BlockerKind::Human),
+                "nobody" => Some(BlockerKind::Nobody),
+                _ => None,
+            }),
+        waiting_on: row.get(9)?,
+        resume_id: row.get(10)?,
+        session_terminal_at: row.get(11)?,
+        worktree_gone_at: row.get(12)?,
+    })
 }
 
 impl Ledger {
@@ -268,44 +308,39 @@ impl Ledger {
     pub fn run(&self, run_id: &str) -> Result<Option<Run>> {
         self.conn
             .query_row(
-                "SELECT run_id, master_session_id, worktree_path, pid, boot_id, incarnation, work,
-                        blocker_kind, waiting_on, resume_id, session_terminal_at, worktree_gone_at
-                 FROM runs WHERE run_id = ?1",
+                &format!("{SELECT_RUN} WHERE run_id = ?1"),
                 params![run_id],
-                |row| {
-                    Ok(Run {
-                        run_id: row.get(0)?,
-                        master_session_id: row.get(1)?,
-                        worktree_path: PathBuf::from(row.get::<_, String>(2)?),
-                        pid: row.get::<_, Option<i64>>(3)?.map(|p| p as u32),
-                        boot_id: row.get(4)?,
-                        incarnation: match row.get::<_, String>(5)?.as_str() {
-                            "live" => Incarnation::Live,
-                            _ => Incarnation::Exited,
-                        },
-                        work: match row.get::<_, String>(6)?.as_str() {
-                            "runnable" => Work::Runnable,
-                            "blocked" => Work::Blocked,
-                            _ => Work::Done,
-                        },
-                        blocker_kind: row.get::<_, Option<String>>(7)?.and_then(|s| {
-                            match s.as_str() {
-                                "machine" => Some(BlockerKind::Machine),
-                                "master_or_peer" => Some(BlockerKind::MasterOrPeer),
-                                "human" => Some(BlockerKind::Human),
-                                "nobody" => Some(BlockerKind::Nobody),
-                                _ => None,
-                            }
-                        }),
-                        waiting_on: row.get(8)?,
-                        resume_id: row.get(9)?,
-                        session_terminal_at: row.get(10)?,
-                        worktree_gone_at: row.get(11)?,
-                    })
-                },
+                map_run,
             )
             .optional()
             .map_err(sql_err)
+    }
+
+    /// Every run whose close loop has not finished, oldest first.
+    // cm:guard the ONLY input the recovery path has (ISS-933 criterion 16). `incarnation` is deliberately not in the predicate: a run whose pane exited with a lease still out is exactly the row recovery exists to find, so filtering on it would hide the failure from the thing meant to repair it.
+    pub fn unclosed_runs(&self) -> Result<Vec<Run>> {
+        let mut stmt = self
+            .conn
+            .prepare(&format!(
+                "{SELECT_RUN} WHERE session_terminal_at IS NULL OR worktree_gone_at IS NULL
+                 OR run_id IN (SELECT run_id FROM run_issues WHERE lease_returned_at IS NULL)
+                 ORDER BY created_at"
+            ))
+            .map_err(sql_err)?;
+        let rows = stmt.query_map([], map_run).map_err(sql_err)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(sql_err)
+    }
+
+    /// Record the core session a started run reports as, once core has minted it.
+    // cm:guard stamped AFTER the row like the pid, and for the same reason: core mints the id, so a row written with one would be naming a session that may not exist. Recovery reads it from HERE rather than from a caller, which is what makes closing the loop from the ledger alone possible (ISS-933 criterion 16).
+    pub fn attach_session(&self, run_id: &str, session_id: &str) -> Result<()> {
+        self.conn
+            .execute(
+                "UPDATE runs SET session_id = ?2 WHERE run_id = ?1",
+                params![run_id, session_id],
+            )
+            .map_err(sql_err)?;
+        Ok(())
     }
 
     /// Record the process a started run is running as, once it exists.

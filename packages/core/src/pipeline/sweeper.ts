@@ -62,6 +62,9 @@ import { emitPipelineWedge } from './wedge.js';
 export const PIPELINE_SWEEPER_QUEUE = 'pipeline-sweeper';
 
 const PIPELINE_METADATA_TYPES = sql`('pipeline','pm')`;
+// cm:guard a run session is reaped by `devices/run-session-reaper.ts` and by nothing else, so it is excluded from the arm below that would otherwise select it before it sets `claude_session_id`. Two sweeps over one row is two writers on one fact, and the loser reports a release that already happened to somebody else (ISS-933 criterion 25a).
+// cm:edge lockstep -> packages/core/src/devices/run-session.ts — `RUN_SESSION_TYPE` and this exclusion are one decision.
+const SELF_REAPED_METADATA_TYPES = sql`('pipeline','pm','run_session')`;
 
 /** Back-compat shim — thresholds are owned by the loop monitor now (single
  *  source: same env names, same clamps). */
@@ -361,7 +364,7 @@ export async function alarmZombieSessions(
     FROM agent_sessions s
     WHERE s.status = 'running'
       AND s.claude_session_id IS NULL
-      AND COALESCE(s.metadata->>'type','') NOT IN ${PIPELINE_METADATA_TYPES}
+      AND COALESCE(s.metadata->>'type','') NOT IN ${SELF_REAPED_METADATA_TYPES}
       AND ((s.last_heartbeat_at IS NOT NULL AND s.last_heartbeat_at < ${heartbeatCutoffIso})
         OR (s.last_heartbeat_at IS NULL AND s.created_at < ${heartbeatCutoffIso}))
       ${projectClause}
@@ -508,7 +511,7 @@ export async function reapOrphanedOneShotRuns(
   scope: SweepScope = {},
 ): Promise<OneShotRunReapResult> {
   const { heartbeatMs } = getZombieThresholds();
-  // postgres-js rejects raw Date params; serialise to ISO before binding.
+  // cm:guard serialise to ISO before binding — postgres-js throws on a raw `Date` param at bind time, so a cutoff passed as a Date fails the sweep rather than mis-selecting, and the whole tick is lost.
   const cutoffIso = new Date(now.getTime() - heartbeatMs).toISOString();
   // ISS-442 — a job-less agent (esp. a schedule audit fanning out parallel
   // subagents) can go many minutes between worker-side writes while genuinely
@@ -631,7 +634,7 @@ export async function closeIdleChatSessions(
   now: Date = new Date(),
   scope: SweepScope = {},
 ): Promise<IdleChatCloseResult> {
-  // postgres-js rejects raw Date params; serialise to ISO before binding.
+  // cm:guard serialise to ISO before binding — postgres-js throws on a raw `Date` param at bind time, so a cutoff passed as a Date fails the sweep rather than mis-selecting, and the whole tick is lost.
   const cutoffIso = new Date(now.getTime() - CHAT_IDLE_CLOSE_MS).toISOString();
   const projectClause = scope.projectId ? sql`AND s.project_id = ${scope.projectId}` : sql``;
 
@@ -713,7 +716,7 @@ export async function reapOrphanedIssueRuns(
   scope: SweepScope = {},
 ): Promise<IssueRunReapResult> {
   const { heartbeatMs } = getZombieThresholds();
-  // postgres-js rejects raw Date params; serialise to ISO before binding.
+  // cm:guard serialise to ISO before binding — postgres-js throws on a raw `Date` param at bind time, so a cutoff passed as a Date fails the sweep rather than mis-selecting, and the whole tick is lost.
   const cutoffIso = new Date(now.getTime() - heartbeatMs).toISOString();
   const projectClause = scope.projectId ? sql`AND r.project_id = ${scope.projectId}` : sql``;
 

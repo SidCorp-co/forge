@@ -12,6 +12,7 @@ pub mod dispatch;
 pub mod inbox;
 pub mod master;
 pub mod preflight;
+pub mod recovery;
 pub mod repo_lock;
 pub mod setup_agent;
 pub mod skill_pull;

@@ -49,6 +49,7 @@ import {
   devicePublicRoutes,
   deviceUserRoutes,
 } from './devices/routes.js';
+import { registerRunSessionReaper } from './devices/run-session-reaper.js';
 import { deviceSkillRoutes, deviceSkillStatusRoutes } from './devices/skills-routes.js';
 import { registerDeviceStaleDetector } from './devices/stale-detector.js';
 import { domainTemplateRoutes } from './domain-templates/routes.js';
@@ -346,9 +347,7 @@ app.route('/api/projects', projectActivityRoutes);
 app.route('/api/projects', jobProjectRoutes);
 // cm:guard issueAttachmentRoutes MUST mount before issueExtrasRoutes — extras carries `use('*', requireAuth(), assertEmailVerified())`, which covers every /api/issues path, so registered first it answers 401 for the PAT/device callers the attachment routes exist to serve (ISS-719). Disjoint paths do NOT save you; only registration order does. See middleware/route-mount-order.test.ts.
 app.route('/api/issues', issueAttachmentRoutes);
-// issueExtrasRoutes mounts /pipeline-timing (static) and must register before
-// issueRoutes which has GET /:id with a z.uuid() validator that would
-// 400-reject the literal "pipeline-timing" segment.
+// cm:guard mount before issueRoutes: its `GET /:id` validates with `z.uuid()`, so registered first it 400-rejects the literal `pipeline-timing` segment this module serves. Registration order is the only thing that decides it — disjoint paths do not.
 app.route('/api/issues', issueExtrasRoutes);
 app.route('/api/issues', issueMergeRoutes);
 // Capability-authenticated attachment upload (presigned-URL pattern). On its own
@@ -492,6 +491,7 @@ if (isMain) {
   await registerCandidatesDecay();
   await registerDevicePrune();
   await registerMasterReaper();
+  await registerRunSessionReaper();
   await registerRunnerStaleDetector();
   await registerGhostRunnerReaper();
   await registerRetentionSweeper();

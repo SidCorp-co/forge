@@ -69,7 +69,6 @@ pub fn state(ledger: &Ledger, run_id: &str) -> Result<CloseState> {
 pub async fn close(
     ledger: &mut Ledger,
     run_id: &str,
-    agent_session_id: &str,
     sessions: &dyn SessionReader,
     leases: &dyn LeaseKeeper,
 ) -> Result<CloseState> {
@@ -77,9 +76,12 @@ pub async fn close(
         return state(ledger, run_id);
     };
 
-    if run.session_terminal_at.is_none()
-        && matches!(sessions.is_terminal(agent_session_id).await, Ok(true))
-    {
+    // cm:guard a missing session id reads as "never started", and that is only true because `run_session::start` opens the session BEFORE it spawns anything. Reverse that order and this arm closes the loop over a live agent core cannot name.
+    let session_terminal = match run.session_id.as_deref() {
+        Some(id) => matches!(sessions.is_terminal(id).await, Ok(true)),
+        None => true,
+    };
+    if run.session_terminal_at.is_none() && session_terminal {
         ledger.mark_session_terminal_observed(run_id)?;
     }
 
@@ -176,6 +178,7 @@ mod tests {
             issue_keys: issues.iter().map(|s| (*s).to_string()).collect(),
         })
         .unwrap();
+        led.attach_session("run-1", "sess-1").unwrap();
         led
     }
 
@@ -187,7 +190,7 @@ mod tests {
     async fn a_cheerful_response_over_work_that_did_not_land_sets_nothing() {
         let mut led = seeded(&["ISS-957"], gone());
         let leases = Leases::new(false, &[]);
-        let st = close(&mut led, "run-1", "sess-1", &Sessions(true), &leases)
+        let st = close(&mut led, "run-1", &Sessions(true), &leases)
             .await
             .unwrap();
         assert_eq!(
@@ -201,7 +204,7 @@ mod tests {
     async fn a_dropped_response_over_work_that_did_land_still_closes() {
         let mut led = seeded(&["ISS-957"], gone());
         let leases = Leases::new(true, &["ISS-957"]);
-        let st = close(&mut led, "run-1", "sess-1", &Sessions(true), &leases)
+        let st = close(&mut led, "run-1", &Sessions(true), &leases)
             .await
             .unwrap();
         assert_eq!(
@@ -235,7 +238,6 @@ mod tests {
         let st = close(
             &mut led,
             "run-1",
-            "sess-1",
             &Sessions(false),
             &Leases::new(false, &["ISS-957"]),
         )
@@ -256,7 +258,6 @@ mod tests {
         let st = close(
             &mut led,
             "run-1",
-            "sess-1",
             &Sessions(true),
             &Leases::new(false, &["ISS-957"]),
         )
@@ -271,7 +272,6 @@ mod tests {
         let st = close(
             &mut led,
             "run-1",
-            "sess-1",
             &Sessions(true),
             &Leases::new(false, &["ISS-957"]),
         )
@@ -290,7 +290,6 @@ mod tests {
         let st = close(
             &mut led,
             "run-1",
-            "sess-1",
             &Sessions(true),
             &Leases::new(false, &["ISS-944"]),
         )
@@ -322,7 +321,6 @@ mod tests {
         close(
             &mut led,
             "run-1",
-            "sess-1",
             &Sessions(false),
             &Leases::new(false, &["ISS-944"]),
         )
@@ -342,7 +340,6 @@ mod tests {
         close(
             &mut led,
             "run-1",
-            "sess-1",
             &Sessions(true),
             &Leases::new(false, &["ISS-943", "ISS-944"]),
         )
@@ -360,7 +357,7 @@ mod tests {
     async fn a_lease_already_back_is_marked_without_being_returned_again() {
         let mut led = seeded(&["ISS-957"], gone());
         let leases = Leases::new(false, &[]).already_back("ISS-957");
-        let st = close(&mut led, "run-1", "sess-1", &Sessions(true), &leases)
+        let st = close(&mut led, "run-1", &Sessions(true), &leases)
             .await
             .unwrap();
         assert!(st.is_closed());
@@ -375,13 +372,13 @@ mod tests {
     async fn closing_twice_neither_double_marks_nor_re_releases_what_is_already_back() {
         let mut led = seeded(&["ISS-957"], gone());
         let first = Leases::new(false, &["ISS-957"]);
-        close(&mut led, "run-1", "sess-1", &Sessions(true), &first)
+        close(&mut led, "run-1", &Sessions(true), &first)
             .await
             .unwrap();
         let at = led.issues("run-1").unwrap()[0].lease_returned_at;
 
         let second = Leases::new(false, &["ISS-957"]);
-        let st = close(&mut led, "run-1", "sess-1", &Sessions(true), &second)
+        let st = close(&mut led, "run-1", &Sessions(true), &second)
             .await
             .unwrap();
         assert!(st.is_closed());

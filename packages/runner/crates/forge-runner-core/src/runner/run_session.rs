@@ -23,6 +23,13 @@ pub trait Spawner: Send + Sync {
     async fn spawn(&self, session_name: &str, cwd: &Path, argv: &[String]) -> Result<u32>;
 }
 
+/// How core is told a run session exists. Returns the session id core minted.
+// cm:edge contract -> packages/core/src/devices/run-session.ts — `openRunSession` is the other half, and the group of issues travels in that one call: core records membership on the run's metadata because `pipeline_runs.issue_id` is one column and a run carries many.
+#[async_trait::async_trait]
+pub trait CoreSessions: Send + Sync {
+    async fn open(&self, run_id: &str, issue_keys: &[String], name: &str) -> Result<String>;
+}
+
 /// What the master decided: a group, a branch, and where the repo is.
 pub struct RunRequest {
     pub run_id: String,
@@ -36,9 +43,16 @@ pub struct RunRequest {
 }
 
 /// Create the worktree, record the run, then start it — in that order.
-// cm:guard the three steps are ordered LEDGER, WORKTREE, SPAWN and the order is the deliverable, not an implementation detail. Recording first means a crash anywhere after it leaves a row a recovery can act on; recording last means a live process nothing knows about. The ledger's own refusals also run inside step one, which is what makes criterion 12 true — a worktree path another live run holds is refused BEFORE `git worktree add` can produce the `.worktrees/<name> already exists` failure that killed ISS-593's first job.
-pub async fn start(ledger: &mut Ledger, req: RunRequest, spawner: &dyn Spawner) -> Result<Run> {
+// cm:guard the four steps are ordered LEDGER, WORKTREE, SESSION, SPAWN and the order is the deliverable, not an implementation detail. Recording first means a crash anywhere after it leaves a row a recovery can act on; recording last means a live process nothing knows about. The ledger's own refusals also run inside step one, which is what makes criterion 12 true — a worktree path another live run holds is refused BEFORE `git worktree add` can produce the `.worktrees/<name> already exists` failure that killed ISS-593's first job.
+// cm:guard SESSION strictly before SPAWN, and that ordering is what lets the close loop read a missing session id as "never started" rather than as an unknown. Reverse the two and a crash in the window leaves a live agent core cannot name, which is neither closable locally nor reapable centrally.
+pub async fn start(
+    ledger: &mut Ledger,
+    req: RunRequest,
+    spawner: &dyn Spawner,
+    core: &dyn CoreSessions,
+) -> Result<Run> {
     let worktree_path = crate::workspace::worktree::path(&req.repo, &req.branch);
+    let issue_keys = req.issue_keys.clone();
     let run = ledger.create_run_group(NewRun {
         run_id: req.run_id.clone(),
         master_session_id: req.master_session_id,
@@ -53,6 +67,9 @@ pub async fn start(ledger: &mut Ledger, req: RunRequest, spawner: &dyn Spawner) 
 
     let name =
         crate::daemon::terminal::session_name(crate::daemon::terminal::RUN_PREFIX, &req.branch);
+    let session_id = core.open(&run.run_id, &issue_keys, &name).await?;
+    ledger.attach_session(&run.run_id, &session_id)?;
+
     let pid = spawner.spawn(&name, &created, &req.argv).await?;
     ledger.attach_pid(&run.run_id, pid)?;
 
@@ -65,9 +82,22 @@ pub async fn start(ledger: &mut Ledger, req: RunRequest, spawner: &dyn Spawner) 
 mod tests {
     use super::*;
     use crate::daemon::terminal::{session_name, MASTER_PREFIX, RUN_PREFIX};
+    use std::sync::Mutex;
 
     const TERMINAL_SOURCE: &str = include_str!("../daemon/terminal.rs");
     const THIS_SOURCE: &str = include_str!("run_session.rs");
+
+    pub(super) struct Core(pub(super) Mutex<Vec<String>>);
+    #[async_trait::async_trait]
+    impl CoreSessions for Core {
+        async fn open(&self, run_id: &str, issue_keys: &[String], _: &str) -> Result<String> {
+            self.0
+                .lock()
+                .unwrap()
+                .push(format!("{run_id}:{}", issue_keys.join(",")));
+            Ok("core-sess-1".into())
+        }
+    }
 
     struct Failing;
 
@@ -96,7 +126,8 @@ mod tests {
         let mut led = Ledger::open_in_memory().unwrap();
         let r = req();
         let run_id = r.run_id.clone();
-        let _ = start(&mut led, r, &Failing).await;
+        let core = Core(Mutex::new(Vec::new()));
+        let _ = start(&mut led, r, &Failing, &core).await;
 
         let row = led
             .run(&run_id)
@@ -104,6 +135,10 @@ mod tests {
             .expect("a run that failed to spawn must still be ON the ledger — recording after the spawn leaves a live agent in a worktree nothing knows about (ISS-933 criterion 3)");
         assert_eq!(row.pid, None, "an unstarted run must carry no pid");
         assert_eq!(led.issues(&run_id).unwrap().len(), 2);
+        assert!(
+            core.0.lock().unwrap().is_empty(),
+            "a run whose worktree never came into being must not have been announced to core — a session core believes in over a tree that does not exist is a run nothing local can ever close (ISS-933 criterion 16)"
+        );
     }
 
     #[test]
@@ -161,6 +196,7 @@ mod tests {
 // cm:guard the replay of the incident this issue exists to prevent (ISS-933 criterion 11), and it runs against a REAL git repo, a REAL worktree and a REAL process because the failure it reproduces was two live agents in one directory — a mocked spawn cannot be in the wrong directory, so it cannot witness this. Linux-gated for `/proc/<pid>/cwd`, which is the only way to read where a process actually IS rather than where it was told to go.
 #[cfg(all(test, target_os = "linux"))]
 mod replay {
+    use super::tests::Core;
     use super::*;
     use crate::runner::ledger::Ledger;
     use std::process::{Child, Command};
@@ -222,6 +258,7 @@ mod replay {
         let spawner = RealSpawner {
             children: Mutex::new(Vec::new()),
         };
+        let announced = Core(Mutex::new(Vec::new()));
 
         let run = start(
             &mut led,
@@ -236,12 +273,23 @@ mod replay {
                 argv: vec!["sleep".into()],
             },
             &spawner,
+            &announced,
         )
         .await
         .unwrap();
 
         let issues = led.issues("run-replay").unwrap();
         assert_eq!(issues.len(), 2, "one run must carry the whole group");
+        assert_eq!(
+            run.session_id.as_deref(),
+            Some("core-sess-1"),
+            "the core session is opened BEFORE the spawn, and that order is what lets the close loop read a missing session id as `never started` rather than as an unknown (ISS-933 criterion 16)"
+        );
+        assert_eq!(
+            announced.0.lock().unwrap().as_slice(),
+            ["run-replay:ISS-957,ISS-963"],
+            "the WHOLE group travels to core in ONE call — a run whose membership core learns one issue at a time is a run core cannot release as a group when the box is lost (ISS-933 criterion 25a)"
+        );
 
         let first_pid = run.pid.expect("a started run records its pid");
         let live_cwd = cwd_of(first_pid);
@@ -265,6 +313,7 @@ mod replay {
                 argv: vec!["sleep".into()],
             },
             &spawner,
+            &Core(Mutex::new(Vec::new())),
         )
         .await;
 
