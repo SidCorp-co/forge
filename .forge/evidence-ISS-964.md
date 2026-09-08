@@ -435,3 +435,55 @@ production caller yet (S10 owns that). `Ledger::liveness` does gate on the boot,
 rather than `Dead` for a foreign boot — correct for its own purpose (criterion 35) and not consulted by
 the CAS. So a re-parented park stays revivable. The state to watch for is preserved-and-unreachable,
 which is worse than closed because nothing reports it; S10's executor must not add a boot predicate.
+
+## S10 — the master's half, and the clock I pointed at it
+
+The stage's real content is a defect S9a introduced. `reapUnansweredParks` selects on
+`q.status = 'open' AND q.blocker_kind = 'human'` with no session-type filter, and a MASTER asking a
+person matches that exactly — an open human question — while keeping its process. So the clock added
+in `da373f2a2` would flip a healthy master's session to `failed` while its pane ran on. That is
+ISS-933 criterion 21's failure mode verbatim: core mints the master a second session row and the pane
+goes on claiming under an id core calls dead.
+
+| # | Criterion | Test | RED (quoted) | Commit |
+|---|---|---|---|---|
+| 43, 45 | the park deadline does not reach a master | `master-idle-window-e2e` — `is not reaped by the park deadline` | `a master asking a person is parkedOnAHuman by that predicate's own terms ... expected 1 to be +0` — the master WAS reaped before the filter | S10 |
+| 34, 45 | and still reaps a run session in that state | same file, `still reaps a run session in exactly that state` | passes as the correct baseline before and after; it is the falsifying half that stops the exclusion being a hole | S10 |
+| 24, 34 | an untyped session keeps its clock | same file, `keeps the clock on a session whose type is not recorded` | written because `NOT IN ('master')` is NULL for a NULL left side and PostgreSQL drops the row — the COALESCE is what this test holds | S10 |
+| 43 | the master reads its own question through the SAME waiter row | `agent-questions-routes-e2e` — `a master reading its own question` | no compile RED: the criterion is that NOTHING new is built. Held by mutation instead — `waiterFor` with the `deviceId` term deleted: `a question belongs to the box that asked it ... expected { …(5) } to be falsy` | S10 |
+| 44 | an answer publishes the wake | `ws/master-wake.test.ts` — `an answer as a wake trigger` | `TypeError: wakeMastersForAnswer is not a function` | S10 |
+| 44 | and `answerQuestion` is what publishes it | `questions/answer-wakes-the-box.test.ts` | mutation (the one line deleted): `an answer nobody is told about is an answer the box finds on its next sweep ... expected "vi.fn()" to be called with arguments` | S10 |
+| 12, 44 | the wake comes AFTER the write | same file, `publishes only after the write has landed` | mutation (publish hoisted above the update): `expected [ 'wake', 'write' ] to deeply equal [ 'write', 'wake' ]` | S10 |
+
+**The mutation that caught a missing test.** Deleting the publish call from `answerQuestion` left
+`ws/master-wake.test.ts` entirely green — that suite proves the FRAME is right and says nothing about
+the call site, which is what criterion 44 actually asks for. `answer-wakes-the-box.test.ts` exists
+because of that gap, not because the plan called for it.
+
+**Three things were NOT built, each for a reason read out of the code rather than decided:**
+
+- **No second address on the device question route (c43).** `question_waiters.run_id` is
+  `text('run_id').notNull()` with no reference to a run, so a master registering itself as its own
+  waiter under its own session id needs no route change and `waiterFor` stays the single
+  authorization rule. A second addressing mode would have been the new tier c43 forbids.
+- **No new WS event.** `daemon/mod.rs`' frame loop reads the event NAME and `projectId` and nothing
+  else, so an answer publishes `master.wake` itself. A `question.answered` name would fall to the
+  `other =>` arm on every runner already on the fleet, and the master would learn of its answer only
+  on the next 30s sweep — a push that is worse than the poll it was meant to beat. `status` stays
+  typed as `IssueStatus` and untouched; the answer frame carries `questionId` and a null `issueId`.
+- **No `question.asked` / `question.answered` pair.** Listed as owed in an earlier plan of mine; it
+  is in no criterion. c12 requires an answer to survive a dead socket by READ-BACK, which
+  `GET /me/questions/:id` already does, and c44 requires the wake. Scope, not deliverable.
+
+**c45 cites rather than repeats.** The reaper list is ISS-933 criterion 21's, measured in the block
+already at the top of `master-idle-window-e2e.test.ts`; the new block adds the one state that block
+could not produce — a master WAITING on a person rather than merely idle — and says so in a `cm:why`
+pointing at it.
+
+### Priced
+
+- **The exclusion is a BLACKLIST (`('master')`), not a positive list of parkable types.** A type
+  missing from a positive list would be a park under no clock, which is the one outcome criteria 24
+  and 34 forbid together; a type wrongly left out of this one merely keeps a clock it does not need.
+  It lives in `session-kinds.ts` under the existing `cm:edge lockstep` to `master-session.ts`,
+  because `reapExpiredParks` reasons from the same premise and an inline copy would drift from it.

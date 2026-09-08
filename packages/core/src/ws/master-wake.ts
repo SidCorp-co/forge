@@ -62,31 +62,52 @@ async function devicesServing(projectId: string): Promise<string[]> {
  * on the fleet is bound to do this project's work at all — the second is an
  * operator's problem and the first resolves itself on the next sweep.
  */
-// cm:guard never throw out of here. Every caller is a hook subscriber firing after its own mutation has already committed, so an error raised here would turn a successful transition into a 500 for a push that is only ever an optimisation over the timer.
 // cm:guard `issueId` is NULLABLE and the frame carries the null through. Since ISS-933 a wake also fires on the mint of a job kind with no issue behind it — `smoke`, `release_batch`, `reconcile`, `verify_skill` — and a wake carries no work anyway: `daemon/mod.rs` reads the event NAME and `projectId`, then reads the whole pool for itself.
 export async function wakeMastersForProject(args: {
   projectId: string;
   issueId: string | null;
   status: IssueStatus;
 }): Promise<{ boxes: number; delivered: number }> {
+  return publishWake(args.projectId, {
+    projectId: args.projectId,
+    issueId: args.issueId,
+    status: args.status,
+  });
+}
+
+/**
+ * Publish one `master.wake` per box because a question this project was
+ * waiting on has been answered.
+ */
+// cm:guard the SAME event as an issue arrival, never a new name: `daemon/mod.rs` reads the event name and `projectId` off this frame and nothing else, so a `question.answered` name would be dropped by the `other =>` arm on every runner already on the fleet — and the master would learn of the answer only on its next 30s sweep. It carries no `status`, because an answer is not an issue status and widening that field would change a contract the runner does read (ISS-964 criterion 44).
+export async function wakeMastersForAnswer(args: {
+  projectId: string;
+  questionId: string;
+}): Promise<{ boxes: number; delivered: number }> {
+  return publishWake(args.projectId, {
+    projectId: args.projectId,
+    issueId: null,
+    questionId: args.questionId,
+  });
+}
+
+// cm:guard never throw out of here. Every caller has already committed its own mutation — a transition, an issue insert, an answer — so an error raised here would turn recorded work into a 500 for a push that is only ever an optimisation over the box's own timer.
+async function publishWake(
+  projectId: string,
+  data: Record<string, unknown>,
+): Promise<{ boxes: number; delivered: number }> {
   try {
-    const deviceIds = await devicesServing(args.projectId);
+    const deviceIds = await devicesServing(projectId);
     let delivered = 0;
     for (const id of deviceIds) {
-      delivered += roomManager.publish(deviceRoom(id), {
-        event: 'master.wake',
-        data: { projectId: args.projectId, issueId: args.issueId, status: args.status },
-      });
+      delivered += roomManager.publish(deviceRoom(id), { event: 'master.wake', data });
     }
     if (deviceIds.length > 0) {
-      logger.debug(
-        { projectId: args.projectId, issueId: args.issueId, status: args.status, delivered },
-        'master.wake published',
-      );
+      logger.debug({ ...data, delivered }, 'master.wake published');
     }
     return { boxes: deviceIds.length, delivered };
   } catch (err) {
-    logger.warn({ err, projectId: args.projectId }, 'master.wake could not be published');
+    logger.warn({ err, projectId }, 'master.wake could not be published');
     return { boxes: 0, delivered: 0 };
   }
 }

@@ -208,3 +208,51 @@ describe('stop is enforced on the record', () => {
     expect(question?.voidReason).toMatch(/stop/i);
   });
 });
+
+/** A master's own `agent_sessions` row, written the way the daemon writes it. */
+async function masterSession(deviceId: string): Promise<string> {
+  const { ensureMasterSession } = await import('../../src/devices/master-session.js');
+  const m = await ensureMasterSession({
+    deviceId,
+    projectId: ctx.projectId,
+    name: 'forge-master-asking',
+  });
+  return m.sessionId;
+}
+
+// cm:why criterion 43 says the master's ONLY new work is reading its own question row — no FIFO, no background task, no new tier — so what this proves is that nothing new was built: a master addresses its own question through the SAME waiter row a run does, because `question_waiters.run_id` is plain text with no reference to a run and a master's own session id is a legal value in it. A second addressing mode on the device route would be the new tier this criterion forbids.
+describe('a master reading its own question', () => {
+  it('registers itself as its own waiter and reads the answer back through that row', async () => {
+    const device = await createTestDevice(harness.db, ctx.adminId);
+    const master = await masterSession(device.id);
+    const q = await aQuestion({ agentSessionId: master });
+
+    await read.registerWaiter({ questionId: q.id, deviceId: device.id, runId: master });
+
+    expect(
+      await read.waiterFor({ questionId: q.id, deviceId: device.id, runId: master }),
+      'the master waits on its own question under its own session id — the same authorisation rule a run passes, which is why the device route needs no second address (ISS-964 criterion 43)',
+    ).toBeTruthy();
+
+    await write.answerQuestion({ questionId: q.id, optionId: writerOption.id, by: ctx.memberId });
+
+    expect(
+      (await read.answerOf(q.id))?.optionId,
+      'and the read is the delivery: the master reads the row back inside its 60-minute window rather than being sent anything (ISS-964 criteria 12, 43)',
+    ).toBe(writerOption.id);
+  });
+
+  // cm:guard the falsifying half: the waiter row is what makes the read device-scoped, so another box presenting the same session id as a run must find nothing. Without this the block above would pass just as well if `waiterFor` ignored the device entirely.
+  it('is not readable by another box presenting the same id', async () => {
+    const device = await createTestDevice(harness.db, ctx.adminId);
+    const other = await createTestDevice(harness.db, ctx.adminId);
+    const master = await masterSession(device.id);
+    const q = await aQuestion({ agentSessionId: master });
+    await read.registerWaiter({ questionId: q.id, deviceId: device.id, runId: master });
+
+    expect(
+      await read.waiterFor({ questionId: q.id, deviceId: other.id, runId: master }),
+      "a question belongs to the box that asked it; collapsing this into `any device may read` is the cross-box read the route's waiter check exists to prevent",
+    ).toBeFalsy();
+  });
+});

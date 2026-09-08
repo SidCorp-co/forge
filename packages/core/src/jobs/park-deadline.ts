@@ -21,6 +21,7 @@ import { agentQuestions } from '../db/schema-questions.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import type { LoopScope } from './loop-monitor.js';
+import { NEVER_PARKED_METADATA_TYPES } from './session-kinds.js';
 
 // cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/runner/claude_code.rs — this number and `SESSION_IDLE_TIMEOUT` are ONE value in two places, and `resolve_residency` there reads the same `sessionResidencySeconds` with the same rule: absent or 0 means this default, never zero residency. Diverge and core reaps a park the runner still considers live, at which point `residency_expired` stops meaning "the runner is gone".
 const DEFAULT_RESIDENCY_SECONDS = 10 * 60;
@@ -107,6 +108,7 @@ async function unansweredParks(now: Date, scope: LoopScope): Promise<UnansweredP
        AND q.park_deadline_at IS NOT NULL
        AND q.park_deadline_at < ${at}::timestamptz
        AND s.status = 'running'
+       AND COALESCE(s.metadata->>'type', '') NOT IN ${NEVER_PARKED_METADATA_TYPES}
        ${scope.projectId ? sql`AND q.project_id = ${scope.projectId}` : sql``}
   `);
   return rows.map((r) => ({

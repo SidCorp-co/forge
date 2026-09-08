@@ -12,6 +12,7 @@ import {
   type QuestionOption,
   type QuestionStep,
 } from '../db/schema-questions.js';
+import { wakeMastersForAnswer } from '../ws/master-wake.js';
 
 export type AskInput = {
   id: string;
@@ -108,6 +109,8 @@ export async function answerQuestion(args: { questionId: string; optionId: strin
     .update(agentQuestions)
     .set({ steps, status: 'answered', updatedAt: new Date() })
     .where(eq(agentQuestions.id, args.questionId));
+  // cm:guard published AFTER the write commits and never awaited for its result, because the answer is already on the record: the box reads it back through `GET /me/questions/:id`, so this wake only decides whether that read happens now or on the next 30s sweep. Publishing before the write would wake a box to read an answer that is not there yet (ISS-964 criteria 12, 44).
+  void wakeMastersForAnswer({ projectId: row.projectId, questionId: args.questionId });
   return view({ ...row, steps, status: 'answered' as const });
 }
 

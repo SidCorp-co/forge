@@ -15,6 +15,7 @@ const {
   isMasterWakeStatus,
   registerMasterWakeSubscribers,
   wakeMastersForProject,
+  wakeMastersForAnswer,
 } = await import('./master-wake.js');
 
 /** `db.selectDistinct().from().where()` resolving to these rows. */
@@ -47,6 +48,11 @@ function fakeBus() {
 }
 
 /** The `data` of the Nth publish, narrowed once so no assertion reaches through an optional. */
+function publishedEvent(nth: number): string {
+  const call = publish.mock.calls[nth];
+  return call ? call[1].event : '';
+}
+
 function publishedData(nth: number): Record<string, unknown> {
   const call = publish.mock.calls[nth];
   if (!call) throw new Error(`no publish at index ${nth}`);
@@ -164,5 +170,35 @@ describe('master.wake — what triggers it', () => {
 
     await fire('issueCreated', { projectId: 'p1', issueId: 'i1', status: 'on_hold' });
     expect(publish).not.toHaveBeenCalled();
+  });
+});
+
+// cm:why criterion 44 makes an answer a trigger source ALONGSIDE the issue-status ones, so it publishes the same event rather than a second one: `daemon/mod.rs` reads the event NAME and `projectId` and nothing else off the frame, and a new event name would be ignored by every runner already on the fleet.
+describe('an answer as a wake trigger', () => {
+  it('wakes every box serving the project, carrying no issue', async () => {
+    servedBy(['dev-a', 'dev-b']);
+
+    const result = await wakeMastersForAnswer({ projectId: 'p1', questionId: 'q1' });
+
+    expect(result).toEqual({ boxes: 2, delivered: 2 });
+    expect(publish).toHaveBeenCalledTimes(2);
+    expect(
+      publishedEvent(0),
+      'the SAME event as an issue arrival: a runner that predates this reads the name and the project and re-reads the pool for itself, so an answer needs no new arm on the fleet (ISS-964 criterion 44)',
+    ).toBe('master.wake');
+    expect(
+      publishedData(0).issueId,
+      'an answer has no issue behind it, and the frame carries the null through rather than inventing one',
+    ).toBeNull();
+  });
+
+  // cm:guard never throw, for the same reason the issue arms do not: the caller is `answerQuestion`, whose write has already committed, so an error raised here would turn a recorded answer into a 500 for a push that is only ever an optimisation over the box's own timer.
+  it('is silent rather than throwing when the lookup fails', async () => {
+    servedByThrowing(new Error('pg down'));
+
+    expect(await wakeMastersForAnswer({ projectId: 'p1', questionId: 'q1' })).toEqual({
+      boxes: 0,
+      delivered: 0,
+    });
   });
 });
