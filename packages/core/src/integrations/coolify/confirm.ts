@@ -137,6 +137,8 @@ export async function runCoolifyConfirm(data: CoolifyConfirmJob): Promise<Confir
       return { settled: null, closedRun: false, handedToHealthGate: true };
     }
     if (healthGate.kind === 'window-too-short') {
+      // cm:guard the reason travels ON THE RECORD, not only into the log — this hold settles `succeeded` and stamps `release.deploy.done` like a proven deploy, so without the detail the only trace that nothing read the running application is a log line nobody queries.
+      detail = `health gate skipped: ${Math.max(0, Math.round(healthGate.remainingMs / 1000))}s left on the confirmation deadline, too short to give the container its grace period — this deploy is NOT proven to serve`;
       // cm:guard settle on the build verdict here and SAY the gate did not run — the remaining window is too short to give the container its grace period, so a gate opened on it would take one reading of a booting process and roll a healthy deploy back. An unproven deploy is the state before this gate existed; a rolled-back healthy one is a new outage.
       logger.error(
         {

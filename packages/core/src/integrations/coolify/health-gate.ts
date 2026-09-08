@@ -19,7 +19,7 @@
 import { INTEGRATIONS_QUEUE_NAME } from '../../jobs/queue-name.js';
 import { logger } from '../../logger.js';
 import { boss } from '../../queue/boss.js';
-import { recordDelivery } from '../deliveries.js';
+import { recordDelivery, updateDelivery } from '../deliveries.js';
 import { effectiveConfig, findBindingById, findConnectionById } from '../store.js';
 import { CoolifyCommandError } from './commands.js';
 import type { CoolifyConfig, CoolifyTarget } from './types.js';
@@ -116,7 +116,8 @@ export interface RollbackImage {
 // cm:guard the running build must be IDENTIFIED before anything is excluded. `is_current` is optional on Coolify's row and `current` can be null, and a list where nothing says which image is live has the just-failed build sitting at the top of it — so an unidentifiable list returns null and the caller refuses, rather than restoring the broken build and calling it a rollback.
 // cm:guard a `createdAt` that will not parse sorts LAST, never wherever Coolify happened to list it — a comparator returning NaN reads as 0 and leaves the input order untouched, which silently makes "the newest image" mean "the first one Coolify printed".
 export function pickRollbackImage(images: RollbackImage[], current: string | null): string | null {
-  const identified = current !== null || images.some((i) => i.isCurrent);
+  // cm:guard `current` is trusted only when it NAMES a listed row — a tag Coolify reports as current but does not list identifies nothing, and taking it as identification leaves the just-failed build (the newest) as the pick.
+  const identified = images.some((i) => i.isCurrent || i.tag === current);
   if (!identified) return null;
   const candidates = images.filter((i) => !i.isCurrent && i.tag !== current);
   if (candidates.length === 0) return null;
@@ -168,21 +169,29 @@ export function healthGateFor(args: {
   runId: string | null;
   deliveryId: string | null;
   deploymentUuid: string;
+  /** Preferred over `targetLabel` — a `coolify.confirm` job has only the label. */
+  targetId?: string;
   targetLabel: string;
   forRollback: boolean;
   /** The confirmation hold's own deadline; the gate may never outlive it. */
   notAfter?: string;
   now?: number;
 }): HealthGateDecision {
-  // cm:guard a binding's target LABELS are unique (`provider-schemas.ts` refuses a duplicate), which is what lets a `coolify.confirm` job — which carries only the label — name one target. Drop that rule and this reads the first match's health URL while stamping its id, so the rollback restores a different application.
-  const target = (args.config?.targets ?? []).find((t) => t.label === args.targetLabel);
+  // cm:guard `targetId` wins where the caller has one. The label is the fallback because a `coolify.confirm` job carries only that, and it names one target only while `provider-schemas.ts` refuses a duplicate — a binding STORED with duplicates predates that rule, and there this reads the first match's health URL while stamping its id.
+  const targets = args.config?.targets ?? [];
+  const target = args.targetId
+    ? targets.find((t) => t.id === args.targetId)
+    : targets.find((t) => t.label === args.targetLabel);
   const healthUrl = target?.healthUrl;
   if (!target || !healthUrl) return { kind: 'not-declared' };
   const now = args.now ?? Date.now();
   // cm:guard the gate is SCHEDULED entirely inside the confirmation hold's own deadline, so `resolveDeployGate` cannot read the hold as failed-unconfirmed while this gate is still polling. It bounds the schedule and not the settle: the rollback between the last reading and the settle is unbounded, and what keeps the run's outcome single-writer there is `closeRun`'s own `status IN ('running','paused')` predicate, not this line.
   const limit = args.notAfter ? Date.parse(args.notAfter) : Number.POSITIVE_INFINITY;
   const remainingMs = limit - now;
-  if (remainingMs < HEALTH_MIN_WINDOW_MS) return { kind: 'window-too-short', remainingMs };
+  // cm:guard test the FLOOR with NaN in mind — `remainingMs < floor` is false for NaN, so an unparseable `notAfter` would slip past and throw a RangeError out of `toISOString()` instead of refusing
+  if (Number.isNaN(remainingMs) || remainingMs < HEALTH_MIN_WINDOW_MS) {
+    return { kind: 'window-too-short', remainingMs };
+  }
   const deadline = Math.min(now + HEALTH_GRACE_MS + HEALTH_WINDOW_MS, limit);
   return {
     kind: 'gate',
@@ -396,26 +405,36 @@ async function restorePrevious(
     return null;
   }
 
-  // cm:guard this marker, not the delivery table's unique index, is what stops a SECOND rollback. `failGate` is re-entered whenever anything after the dispatch throws and pg-boss retries the job, and by then `is_current` names the restored image — so an unguarded retry picks the build that just failed and restores THAT. The requestId is deterministic on purpose; it is the one dedup key in this module that must NOT move.
+  // cm:guard the deterministic requestId IS the dedup key here and must NOT move, against every other `singletonKey` in this module — it is what a retry after a dispatched rollback reads to know the rollback happened. By then `is_current` names the RESTORED image, so an unguarded retry picks the build that just failed and restores that one.
   const marker = `health-rollback:${data.deploymentUuid}`;
-  if (await deps.findRollbackMarker(data.bindingId, marker)) {
+  let markerDeliveryId: string;
+  try {
+    if (await deps.findRollbackMarker(data.bindingId, marker)) {
+      page(
+        'coolify health gate: a rollback for this deploy was already dispatched — not rolling back again, this needs a human',
+        { commit },
+      );
+      return null;
+    }
+    markerDeliveryId = await recordDelivery({
+      bindingId: data.bindingId,
+      direction: 'outbound',
+      eventName: 'deploy.rollback.auto',
+      payload: { source: 'health-gate', deployment_uuid: data.deploymentUuid, commit, detail },
+      requestId: marker,
+      status: 'pending',
+    });
+  } catch (err) {
+    // cm:guard page and RETURN, never throw — this runs before the dispatch, and a throw here skips `deps.settle` and leaves the hold pending on a run nothing will close until the sweeper's quiet window.
     page(
-      'coolify health gate: a rollback for this deploy was already dispatched — not rolling back again, this needs a human',
-      { commit },
+      'coolify health gate: the deploy is unhealthy and its rollback could not be recorded, so none was dispatched — this needs a human',
+      { commit, err },
     );
     return null;
   }
-  await recordDelivery({
-    bindingId: data.bindingId,
-    direction: 'outbound',
-    eventName: 'deploy.rollback.auto',
-    payload: { source: 'health-gate', deployment_uuid: data.deploymentUuid, commit, detail },
-    requestId: marker,
-    status: 'pending',
-  });
 
   let outcome: { performed: boolean; deploymentUuid: string | null; detail?: string };
-  // cm:guard the try covers the dispatch ALONE. Widen it and a `boss.send` failure after Coolify accepted the rollback pages "nothing was rolled back", which tells an operator mid-outage that the broken build is still serving while it is being replaced.
+  // cm:guard this try covers the dispatch ALONE, and everything after it has its own. Widen it and a bookkeeping failure pages "nothing was rolled back", which tells an operator mid-outage that the broken build is still serving while it is being replaced; leave the tail bare and the same failure throws past `deps.settle`.
   try {
     outcome = await deps.rollback({
       projectId: binding.projectId,
@@ -424,6 +443,7 @@ async function restorePrevious(
       commit,
     });
   } catch (err) {
+    await closeMarker(markerDeliveryId, 'failed', err);
     page(
       'coolify health gate: the deploy is unhealthy and the rollback was REFUSED — nothing was rolled back, this needs a human',
       { commit, err: err instanceof CoolifyCommandError ? err.message : err },
@@ -433,31 +453,75 @@ async function restorePrevious(
 
   // cm:guard `performed:false` is the human-confirm gate on a production binding answering NO. It is a rollback that did not happen, so it pages — reading it as done is the class of defect this whole gate exists to remove.
   if (!outcome.performed || !outcome.deploymentUuid) {
+    await closeMarker(markerDeliveryId, 'failed', outcome.detail);
     page(
       'coolify health gate: the deploy is unhealthy and the rollback was not dispatched — this needs a human',
       { commit, rollbackDetail: outcome.detail },
     );
     return null;
   }
+
+  const rollbackDeploymentUuid = outcome.deploymentUuid;
   logger.error(
     {
       bindingId: data.bindingId,
       deploymentUuid: data.deploymentUuid,
-      rollbackDeploymentUuid: outcome.deploymentUuid,
+      rollbackDeploymentUuid,
       commit,
       detail,
     },
     'coolify health gate: the deploy never became healthy — rolled back to the previous image',
   );
-  const gate = healthGateFor({
-    config,
-    bindingId: data.bindingId,
-    runId: null,
-    deliveryId: null,
-    deploymentUuid: outcome.deploymentUuid,
-    targetLabel: data.targetLabel,
-    forRollback: true,
-  });
-  if (gate.kind === 'gate') await enqueueCoolifyHealthGate(gate.job, { startAfterSeconds: 0 });
+
+  try {
+    await closeMarker(markerDeliveryId, 'ok', rollbackDeploymentUuid);
+    const gate = healthGateFor({
+      config,
+      bindingId: data.bindingId,
+      runId: null,
+      deliveryId: null,
+      deploymentUuid: rollbackDeploymentUuid,
+      targetId: target.id,
+      targetLabel: target.label,
+      forRollback: true,
+    });
+    if (gate.kind === 'gate') {
+      await enqueueCoolifyHealthGate(gate.job, { startAfterSeconds: 0 });
+    } else {
+      // cm:guard say it when the restored image goes UNWATCHED — the target is resolved by id here and the gate declines on its own terms, so a silent `if` leaves a rollback nobody is checking and an operator with no way to know that
+      page(
+        'coolify health gate: rolled back, but the restored image is NOT being health-checked — this needs a human to confirm it serves',
+        { commit, rollbackDeploymentUuid, why: gate.kind },
+      );
+    }
+  } catch (err) {
+    page(
+      'coolify health gate: rolled back, but the follow-up health check could not be queued — the restored image is unwatched and this needs a human',
+      { commit, rollbackDeploymentUuid, err },
+    );
+  }
   return commit;
+}
+
+/**
+ * Close the rollback marker so the audit log does not carry a delivery that
+ * reads as in flight forever.
+ */
+// cm:edge protocol -> packages/core/src/integrations/deliveries.ts — `findLastOutbound` filters on direction alone, so a marker left `pending` with no `response` is the newest outbound row and makes `runCoolifyCancel` answer "this integration has recorded none" for a binding that has deployed many times.
+async function closeMarker(
+  deliveryId: string,
+  status: 'ok' | 'failed',
+  detail: unknown,
+): Promise<void> {
+  try {
+    await updateDelivery(deliveryId, {
+      status,
+      completedAt: new Date(),
+      ...(status === 'ok'
+        ? { response: { deployment_uuid: String(detail) } }
+        : { errorMessage: detail instanceof Error ? detail.message : String(detail ?? 'refused') }),
+    });
+  } catch (err) {
+    logger.warn({ err, deliveryId }, 'coolify health gate: could not close the rollback marker');
+  }
 }

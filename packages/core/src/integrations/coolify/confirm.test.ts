@@ -326,6 +326,12 @@ describe('the post-deploy health gate handoff', () => {
       sendCalls().some((c) => (c[1] as { jobKind?: string })?.jobKind === 'coolify.health-gate'),
     ).toBe(false);
     expect(errorLog.mock.calls.map((c) => String(c[1])).join(' ')).toContain('NOT proven to serve');
+    expect(settleMock.mock.calls[0]?.[0]).toMatchObject({
+      detail: expect.stringContaining('health gate skipped'),
+    });
+    expect(recordDeliveryMock.mock.calls[0]?.[0]).toMatchObject({
+      payload: { detail: expect.stringContaining('NOT proven to serve') },
+    });
   });
 
   it('a FAILED deployment never reaches the gate — there is nothing serving to read', async () => {
