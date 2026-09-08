@@ -121,7 +121,7 @@ const RELATIONS = sql`
  * of projects, and a per-project cap expressed in SQL windows is unreadable for
  * no gain.
  */
-// cm:guard the exclusions are "no work has been opened for this issue" and NOTHING else — no dependency filter, no priority ordering, no cap beyond the project's own declared `limit`. Same rule `readPool` carries and for the same reason: those are the master's judgements, and a list that pre-decides them is the kernel routing again through a second door.
+// cm:guard the exclusions are "work is OPEN on this issue right now" and NOTHING else — no dependency filter, no priority ordering, no cap beyond the project's own declared `limit`. Same rule `readPool` carries and for the same reason: those are the master's judgements, and a list that pre-decides them is the kernel routing again through a second door. Read as "has ever been opened" it excludes on history, which is the ISS-933 measurement below.
 // cm:guard a row carrying `mergedAt` is NOT excluded here, and adding such a filter is the wrong repair. `merged_at` is caller-asserted — any hop out of the base merge state stamps it, merge or not — so it is a fact to show the master, never grounds for the kernel to hide the row. Measured 2026-09-06: ISS-931 sat at `open` with its code on `origin/main` and was still offered as work (ISS-940).
 export async function readAdmissibleIssues(args: {
   deviceId: string;
@@ -148,7 +148,11 @@ export async function readAdmissibleIssues(args: {
           i.status IN (${statusList})
           ${a.entryOnRelease ? sql`OR (i.status = ${AUTONOMOUS_ENTRY_STATUS} AND i.session_context ? 'runRelease')` : sql``}
         )
-        AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.issue_id = i.id)
+        -- cm:guard asks whether a job is LIVE, never whether one ever existed: a terminal row is history, and held is a job a session still owns so it stays excluding. Unfiltered, this hid every issue a pre-ISS-933 dispatcher had ever minted for — zero admissible rows on all 25 projects forge-vm serves, measured 2026-09-08.
+        AND NOT EXISTS (
+          SELECT 1 FROM jobs j
+          WHERE j.issue_id = i.id AND j.status NOT IN ('done', 'failed', 'cancelled')
+        )
         AND NOT EXISTS (
           SELECT 1 FROM pipeline_runs pr
           WHERE pr.issue_id = i.id AND pr.status IN ('running', 'paused')

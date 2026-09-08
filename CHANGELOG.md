@@ -1728,6 +1728,16 @@
 
 ### Fixed
 
+- **A master is offered your issues again after a run was cancelled.** An issue only reached the
+  new event-driven backlog if no job row had *ever* been created for it, so any issue whose earlier
+  run was cancelled or failed carried a finished row that hid it for good — and every project that
+  ran under the previous dispatcher had such a row on nearly every issue it had touched. Measured
+  right after the change went live: zero admissible issues across all 25 projects one box serves,
+  with the only work left in its pool being two job rows the old dispatcher had already minted. The
+  check now asks whether work is open on the issue *now*, so a finished job is history rather than a
+  lock; a `held` job still withholds the issue, because a session owns it, and an issue whose run is
+  still open stays withheld as before.
+
 - **An issue you paused on purpose no longer says a human is needed.** Three statuses used to share
   one word on the dashboard: `needs_info`, where an agent asked you something; `waiting`, where the
   work is blocked on a decision or a resource only you can supply; and `on_hold`, where somebody
