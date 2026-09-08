@@ -61,3 +61,22 @@ comment. It lives on the branch rather than in a scratch dir so it survives a lo
 | 12 | `answer: null` is *not yet* and a 404 is *not this box's question* | `transport::questions::a_question_this_box_is_not_the_waiter_for_is_an_error_not_an_empty_answer` · `an_unanswered_question_on_a_live_route_reads_as_none` | mutation P (404 mapped to `Ok(None)`): another box's question reads as one this box waits for forever. Held over a real socket — a decode test cannot reach a status code | S7 |
 | — | a 401 is `Unauthorized`, not a generic failure | `transport::questions::an_expired_credential_is_reported_as_unauthorized` | mutation Q (the 401 branch deleted): the caller retries the same dead token instead of re-authenticating | S7 |
 | — | a refusal from core reaches the caller with its status and body | `transport::questions::an_ask_that_core_refuses_names_the_status_and_the_body` | mutation R (body discarded, message flattened): the operator sees `question ask failed` where `400: prompt required` was available | S7 |
+
+### S (post-S7 repair) — `park_for_human` discarded the blocker
+
+The `Wait` params struct introduced to clear clippy's `too_many_arguments` destructured with
+`..` in the human arm, dropping `blocker`. Before the struct the arm was chosen *by choosing the
+function*, so a mismatch was unrepresentable; after it, `park_for_human(led, Wait { blocker:
+Machine, .. })` released the box for a wait measured in seconds **and** wrote
+`blocker_kind = Human`, because `declare_parked_human` hard-codes it — the row named the wrong
+resolver. `blocker: Nobody` wrote the question row criterion 6 forbids.
+
+Probed before fixing: `MACHINE-AS-HUMAN => Ok(Exited) row=(Exited, Blocked, Some(Human))` ·
+`NOBODY-AS-HUMAN => Ok(Exited) questions=[("q", 1)]`.
+
+| Mutation | Red |
+|---|---|
+| restore the `..` discard in `park_for_human` | `the_human_park_refuses_a_bounded_blocker_and_writes_nothing` + `the_human_park_refuses_nobody_before_writing_the_question`, both at the assert (compiles clean — the real regression shape, not a compile error) |
+
+The `refuse_nobody` guard claimed "in both arms" while only one arm called it; the claim is true
+now rather than aspirational.

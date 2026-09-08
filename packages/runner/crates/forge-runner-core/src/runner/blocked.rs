@@ -68,15 +68,22 @@ pub fn arm_bounded(
 
 /// Park for a human: ask, then declare the process gone. No door.
 // cm:guard NO door is opened here, and adding one would be a lie the ledger then publishes: the process is about to exit, so the read fd dies with it and every ring after that meets `ENXIO` anyway. The human answer arrives by revival, not by ring (ISS-964 criteria 5, 7, 8).
+// cm:guard `blocker` is READ here and anything but `Human` is refused before any write, because `declare_parked_human` hard-codes `Human` into the row: a machine wait parked through this arm releases the box for a wait measured in seconds AND publishes a blocker kind that names the wrong resolver (ISS-964 criteria 4, 5).
 pub fn park_for_human(ledger: &mut Ledger, what: Wait<'_>) -> Result<Incarnation> {
     let Wait {
         run_id,
         question_id,
         round,
+        blocker,
         resume_id,
         park_deadline_at,
-        ..
     } = what;
+    refuse_nobody(blocker)?;
+    if !matches!(blocker, BlockerKind::Human) {
+        return Err(Error::Other(format!(
+            "blocked: `{blocker:?}` is a bounded wait that keeps the box — use `arm_bounded`"
+        )));
+    }
     ledger.begin_question(question_id, run_id, round, question_id)?;
     ledger.declare_parked_human(run_id, resume_id, park_deadline_at)
 }
@@ -103,6 +110,59 @@ mod tests {
             issue_keys: vec!["ISS-1".into()],
         })
         .unwrap();
+    }
+
+    // cm:guard the OTHER half of the two-arm refusal, and the falsifying case for it: `declare_parked_human` hard-codes `Human`, so a machine wait accepted here does not merely take the wrong branch — it writes a row claiming a person owes the answer, and the run is then waited on by nobody.
+    #[test]
+    fn the_human_park_refuses_a_bounded_blocker_and_writes_nothing() {
+        for blocker in [BlockerKind::Machine, BlockerKind::MasterOrPeer] {
+            let mut led = Ledger::open_in_memory().unwrap();
+            run_on(&mut led);
+
+            let err = park_for_human(
+                &mut led,
+                Wait {
+                    run_id: "run-1",
+                    question_id: "q-1",
+                    round: 1,
+                    blocker,
+                    resume_id: None,
+                    park_deadline_at: None,
+                },
+            )
+            .expect_err("a bounded blocker must not park for a human");
+            assert!(format!("{err}").contains("arm_bounded"), "{err}");
+
+            assert!(
+                led.questions_for("run-1").unwrap().is_empty(),
+                "{blocker:?} left a question row behind"
+            );
+            let run = led.run("run-1").unwrap().unwrap();
+            assert_eq!(run.work, Work::Runnable, "{blocker:?} left the run blocked");
+            assert_eq!(run.blocker_kind, None, "{blocker:?} named a resolver");
+        }
+    }
+
+    // cm:guard `Nobody` must be refused in THIS arm too, not only in `arm_bounded`: the run terminates with a named reason and writes no question, so a `Nobody` that reached `begin_question` here would leave exactly the unanswerable row criterion 6 forbids.
+    #[test]
+    fn the_human_park_refuses_nobody_before_writing_the_question() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        run_on(&mut led);
+
+        let err = park_for_human(
+            &mut led,
+            Wait {
+                run_id: "run-1",
+                question_id: "q-1",
+                round: 1,
+                blocker: BlockerKind::Nobody,
+                resume_id: None,
+                park_deadline_at: None,
+            },
+        )
+        .expect_err("`nobody` must never park");
+        assert!(format!("{err}").contains("writes no question"), "{err}");
+        assert!(led.questions_for("run-1").unwrap().is_empty());
     }
 
     // cm:guard THE falsifying case for criterion 10. Swap the open and the declaration in `arm_bounded` and this goes red: the run reads `live × blocked` while its door was never opened, so the next ring lands in a gap nothing reads and the answer is lost with the run still claiming to wait for it.
