@@ -23,8 +23,15 @@ const coolifyTargetSchema = z
     id: z.string().min(1).max(64).optional(),
     label: z.string().min(1).max(100),
     resourceUuid: z.string().min(1).max(200),
+    healthUrl: z.string().url().max(500).optional(),
   })
-  .transform((t) => ({ id: t.id ?? randomUUID(), label: t.label, resourceUuid: t.resourceUuid }));
+  // cm:guard never default `healthUrl` — an absent one is the operator declaring NO post-deploy health gate for this target, and a derived default would arm automatic rollback on every application whose health path Forge guessed wrong (ISS-971)
+  .transform((t) => ({
+    id: t.id ?? randomUUID(),
+    label: t.label,
+    resourceUuid: t.resourceUuid,
+    ...(t.healthUrl ? { healthUrl: t.healthUrl } : {}),
+  }));
 
 const releaseVerifyProbeSchema = z.object({
   url: z.string().url().max(500),
@@ -299,8 +306,7 @@ export const createSchema = z.discriminatedUnion('provider', [
   }),
 ]);
 
-// PATCH carries no provider, so config/secrets are validated loosely here and
-// re-validated against the EXISTING binding's provider inside the handler.
+// cm:guard this shape is loose ON PURPOSE — a PATCH carries no provider, so `config`/`secrets` are re-validated against the EXISTING binding's provider inside the handler; tightening it here would validate against a provider nobody named
 export const updateSchema = z.object({
   config: z.record(z.string(), z.unknown()).optional(),
   secrets: z.record(z.string(), z.unknown()).optional(),

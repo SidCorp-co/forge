@@ -27,6 +27,7 @@ import { closeRun, RELEASE_DEPLOY_DONE_STEP, setCurrentStep } from '../../pipeli
 import { boss } from '../../queue/boss.js';
 import { recordDelivery } from '../deliveries.js';
 import { buildContextFromBinding, findBindingById, findConnectionById } from '../store.js';
+import { enqueueCoolifyHealthGate, healthGateFor } from './health-gate.js';
 import { buildClient } from './log-fetch.js';
 import type { CoolifyConfig, CoolifySecrets } from './types.js';
 
@@ -60,6 +61,11 @@ export interface ConfirmOutcome {
   settled: 'succeeded' | 'failed' | null;
   /** Whether this poll wrote the run's terminal status. */
   closedRun: false | 'completed' | 'failed';
+  /**
+   * The build finished and a health gate now owns the hold. Distinct from a
+   * bare `settled: null`, which means this poller queued another poll.
+   */
+  handedToHealthGate?: true;
   detail?: string;
 }
 
@@ -113,6 +119,25 @@ export async function runCoolifyConfirm(data: CoolifyConfirmJob): Promise<Confir
     );
   }
 
+  if (verdict === 'succeeded') {
+    // cm:guard Coolify's `finished` is a verdict on the BUILD, never on what the build does — the pg-boss 10→12 crash-loop reported finished with no port ever open (ISS-971). A target that declares a health URL is proven by reading the running application, so this poller records the build and hands the hold on rather than clearing it.
+    const healthGate = healthGateFor({
+      config: ctx.config,
+      bindingId: data.bindingId,
+      runId: data.runId,
+      deliveryId: data.deliveryId,
+      deploymentUuid: data.deploymentUuid,
+      targetLabel: data.targetLabel,
+      forRollback: false,
+      notAfter: data.deadlineAt,
+    });
+    if (healthGate) {
+      await recordDeployDelivery(data, 'succeeded', detail);
+      await enqueueCoolifyHealthGate(healthGate, { startAfterSeconds: 0 });
+      return { settled: null, closedRun: false, handedToHealthGate: true };
+    }
+  }
+
   if (verdict !== 'pending') return settle(data, verdict, detail);
 
   if (Date.now() >= new Date(data.deadlineAt).getTime()) {
@@ -127,16 +152,22 @@ export async function runCoolifyConfirm(data: CoolifyConfirmJob): Promise<Confir
   return { settled: null, closedRun: false, ...(detail ? { detail } : {}) };
 }
 
-/**
- * Write the inbound audit row, mark the hold, and — when this was the last
- * unresolved hold — perform the close the gate deferred.
- */
-// cm:edge lockstep -> packages/core/src/pipeline/runs.ts — `gatedOutcome` defers a close and records it; this is the only thing that ever performs the deferred close. Change one side's contract and a deferred run waits for a sweeper instead.
+/** Write the inbound audit row, then settle the hold it reports on. */
 async function settle(
   data: CoolifyConfirmJob,
   verdict: Exclude<DeploymentVerdict, 'pending'>,
   detail?: string,
 ): Promise<ConfirmOutcome> {
+  await recordDeployDelivery(data, verdict, detail);
+  return applyDeploySettlement(data, verdict, detail);
+}
+
+/** The inbound audit row for one deployment's outcome. */
+async function recordDeployDelivery(
+  data: Pick<CoolifyConfirmJob, 'bindingId' | 'deploymentUuid' | 'targetLabel'>,
+  verdict: Exclude<DeploymentVerdict, 'pending'>,
+  detail?: string,
+): Promise<void> {
   await recordDelivery({
     bindingId: data.bindingId,
     direction: 'inbound',
@@ -151,7 +182,26 @@ async function settle(
     requestId: data.deploymentUuid,
     status: 'ok',
   });
+}
 
+/** What one target's settled outcome does to its run. */
+export type DeploySettlementTarget = Pick<
+  CoolifyConfirmJob,
+  'bindingId' | 'runId' | 'deliveryId' | 'deploymentUuid' | 'targetLabel'
+>;
+
+/**
+ * Mark the hold and — when this was the last unresolved one — perform the
+ * close the dispatcher deferred. Exported because a health gate settles the
+ * hold this poller handed it, and there is still exactly ONE writer of that
+ * decision.
+ */
+// cm:edge lockstep -> packages/core/src/pipeline/runs.ts — `gatedOutcome` defers a close and records it; this is the only thing that ever performs the deferred close. Change one side's contract and a deferred run waits for a sweeper instead.
+export async function applyDeploySettlement(
+  data: DeploySettlementTarget,
+  verdict: Exclude<DeploymentVerdict, 'pending'>,
+  detail?: string,
+): Promise<ConfirmOutcome> {
   if (!data.runId) {
     // cm:why ISS-922 requirement 3 — a deployment with no run to advance is recorded and said out loud rather than dropped, because silent is how the original defect looked.
     logger[verdict === 'failed' ? 'error' : 'info'](

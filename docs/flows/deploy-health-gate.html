@@ -1,0 +1,165 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flow · deploy-health-gate — proving a deploy serves, and undoing one that does not</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; --warn:#a06a1f; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .rule.warn { border-left-color:var(--bad); }
+  svg { background:#fff; border:1px solid var(--line); border-radius:4px; display:block; max-width:100%; }
+  text { font:12px ui-sans-serif,system-ui,sans-serif; fill:var(--fg); }
+  text.m { font-size:11px; fill:var(--mut); }
+  text.t { font:600 12px ui-monospace,Menlo,monospace; }
+  .box { fill:#fff; stroke:var(--line); }
+  .stop { fill:#fdf0f3; stroke:#e3c2cb; }
+  .gate { fill:#fdf6e8; stroke:#e6d3ac; }
+  .ok   { fill:#eef6f1; stroke:#bcd9c8; }
+  .arrow { stroke:var(--fg); stroke-width:1.2; fill:none; marker-end:url(#a); }
+  .arrow.no { stroke:var(--bad); marker-end:url(#b); }
+</style>
+<main>
+
+<h1>deploy-health-gate — proving a deploy serves, and undoing one that does not</h1>
+<p class="sub">Coolify answers a question about the <em>build</em>. Nothing in Forge used to ask the
+one that matters: is the thing it built serving? Owners:
+<code>packages/core/src/integrations/coolify/health-gate.ts</code> (the probe, the verdict and the
+rollback decision), <code>packages/core/src/integrations/coolify/confirm.ts</code> (which hands the
+hold over), <code>packages/core/src/integrations/coolify/controls.ts</code> (the rollback and its
+refusals), <code>packages/core/src/pipeline/deploy-confirmations.ts</code> (the hold the verdict
+settles).</p>
+
+<div class="rule warn"><strong>The incident this exists for produced no HTTP response at all.</strong>
+On 2026-09-07 a pg-boss 10&nbsp;&rarr;&nbsp;12 bump crash-looped the forge-beta API for ~40 minutes:
+v12 aborts at <code>start()</code> on a DB schema below 25, beta sat at 24, the container never
+opened its port and the proxy answered <code>no available server</code>. Coolify reported the
+deployment <code>finished</code> and it was telling the truth. So a probe that treats
+connection-refused as &ldquo;no reading, try later&rdquo; is blind to exactly this failure:
+unreachable is an <em>unhealthy reading</em> and it counts against the deadline.</div>
+
+<h2>The hops, and where each one refuses</h2>
+<svg viewBox="0 0 900 560" role="img" aria-label="Flowchart from a finished Coolify deployment through the health gate to either a settled run or a verified rollback">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1c1a17"/>
+    </marker>
+    <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8a3b52"/>
+    </marker>
+  </defs>
+
+  <rect class="box" x="20" y="20" width="220" height="46" rx="4"/>
+  <text class="t" x="34" y="40">coolify.confirm</text>
+  <text class="m" x="34" y="56">Coolify says: finished</text>
+
+  <path class="arrow" d="M240,43 L330,43"/>
+  <polygon class="gate" points="330,43 430,15 530,43 430,71"/>
+  <text x="366" y="41">healthUrl on</text>
+  <text x="374" y="55">this target?</text>
+
+  <path class="arrow" d="M530,43 L700,43"/>
+  <text class="m" x="580" y="34">no</text>
+  <rect class="ok" x="700" y="20" width="180" height="46" rx="4"/>
+  <text x="714" y="40">hold succeeded</text>
+  <text class="m" x="714" y="56">unchanged behaviour</text>
+
+  <path class="arrow" d="M430,71 L430,120"/>
+  <text class="m" x="440" y="98">yes &mdash; hold stays pending</text>
+  <rect class="box" x="310" y="120" width="240" height="46" rx="4"/>
+  <text class="t" x="324" y="140">coolify.health-gate</text>
+  <text class="m" x="324" y="156">grace 45s, then poll every 15s</text>
+
+  <path class="arrow" d="M430,166 L430,210"/>
+  <polygon class="gate" points="330,210 430,182 530,210 430,238"/>
+  <text x="356" y="208">200 and ok:true?</text>
+  <text class="m" x="352" y="224">refused / 503 / ok:false = no</text>
+
+  <path class="arrow" d="M530,210 L700,210 L700,86"/>
+  <text class="m" x="590" y="202">yes</text>
+
+  <path class="arrow no" d="M330,210 L200,210 L200,270"/>
+  <text class="m" x="150" y="202">no, and</text>
+  <text class="m" x="140" y="216">past the deadline</text>
+
+  <rect class="stop" x="80" y="270" width="240" height="60" rx="4"/>
+  <text x="94" y="290">record deploy.unhealthy</text>
+  <text class="m" x="94" y="306">deployment uuid + last reading,</text>
+  <text class="m" x="94" y="320">so the failed deploy is named</text>
+
+  <path class="arrow" d="M200,330 L200,376"/>
+  <polygon class="gate" points="100,376 200,348 300,376 200,404"/>
+  <text x="126" y="374">an image that is</text>
+  <text x="136" y="388">not is_current?</text>
+
+  <path class="arrow no" d="M100,376 L40,376 L40,470"/>
+  <text class="m" x="10" y="368">none</text>
+  <rect class="stop" x="20" y="470" width="250" height="60" rx="4"/>
+  <text x="34" y="490">page &mdash; nothing dispatched</text>
+  <text class="m" x="34" y="506">an empty list also means the</text>
+  <text class="m" x="34" y="520">server was unreachable</text>
+
+  <path class="arrow" d="M300,376 L420,376"/>
+  <rect class="box" x="420" y="350" width="230" height="52" rx="4"/>
+  <text class="t" x="434" y="370">runCoolifyRollback</text>
+  <text class="m" x="434" y="386">audited, tag checked, breaker-free</text>
+
+  <path class="arrow" d="M535,402 L535,450"/>
+  <rect class="box" x="420" y="450" width="230" height="46" rx="4"/>
+  <text x="434" y="470">health-gate the rollback</text>
+  <text class="m" x="434" y="486">forRollback: true</text>
+
+  <path class="arrow no" d="M650,473 L730,473"/>
+  <rect class="stop" x="730" y="450" width="150" height="46" rx="4"/>
+  <text x="744" y="470">page, and stop</text>
+  <text class="m" x="744" y="486">never a 2nd rollback</text>
+
+  <path class="arrow" d="M420,376 L360,376 L360,540 L900,540" style="display:none"/>
+  <text class="m" x="420" y="424">then the deploy&rsquo;s own hold settles failed</text>
+</svg>
+
+<h2>What each refusal costs, and why it is a refusal</h2>
+<table>
+<thead><tr><th>Where</th><th>Refuses when</th><th>Because</th></tr></thead>
+<tbody>
+<tr><td><code>healthGateFor</code></td><td>the target declares no <code>healthUrl</code></td>
+<td>Forge cannot know an arbitrary application&rsquo;s health path. A derived default would arm
+automatic rollback on every target whose path it guessed wrong, so absence is the off switch.</td></tr>
+<tr><td><code>probeHealth</code></td><td>never &mdash; every outcome is a reading</td>
+<td>Unreachable, 503, <code>ok:false</code> and an unparseable 200 are four named reasons, not an
+absence. The one this was written for is the first.</td></tr>
+<tr><td><code>pickRollbackImage</code></td><td>nothing is listed but the current image</td>
+<td><code>rollback_images</code> answers <code>200 {images:[]}</code> when the application&rsquo;s
+server is unreachable, so empty and clean are the same bytes. Falling through to
+<code>images[0]</code> would restore the broken build and call it a rollback.</td></tr>
+<tr><td><code>runCoolifyRollback</code></td><td>the tag is not one Coolify lists, or the binding is
+<code>prod</code> without human confirm</td>
+<td>Coolify does not check the tag itself. <code>performed:false</code> is a rollback that did not
+happen, and it pages rather than being read as done.</td></tr>
+<tr><td>the rollback&rsquo;s own gate</td><td>always &mdash; it never rolls back again</td>
+<td>A restored image that also cannot serve is a state no further automation improves; a second
+rollback walks the application down a list of builds nobody chose while the outage continues.</td></tr>
+</tbody>
+</table>
+
+<div class="rule"><strong>The circuit breaker does not gate the rollback, and that is deliberate.</strong>
+<code>breakerAllowsDispatch</code> is consulted by <code>coolifyAdapter.dispatchOutbound</code> and by
+nothing else; <code>runCoolifyRollback</code> goes through <code>performControl</code>, which never
+asks it. The breaker exists to stop repeated outbound <em>deploys</em> against a Coolify that is
+refusing them &mdash; a rollback it swallowed would leave the dead build serving, which is the worst
+outcome on this diagram.</div>
+
+<div class="rule"><strong>One writer of the run&rsquo;s outcome, still.</strong> The gate does not
+close a run. It calls <code>applyDeploySettlement</code>, the same function
+<code>confirm.ts</code> calls, which settles the hold and performs the deferred close. A gate
+watching a rollback carries no <code>deliveryId</code> and settles nothing &mdash; the failed deploy
+already owns that hold.</div>
+
+</main>

@@ -23,6 +23,16 @@
 
 ### Added
 
+- **A deploy that builds but cannot serve is now caught and undone without a human.** Give a Coolify
+  deploy target a health URL in its integration settings and Forge reads that URL after every deploy
+  to it: a grace period, then polling for up to five minutes. Healthy means the app answers `200`
+  with `ok: true` — a connection that is refused counts as unhealthy rather than as no answer, which
+  is what the 2026-09-07 pg-boss crash-loop actually looked like from outside. A target that never
+  goes healthy inside the window fails its deploy, records which deployment failed and on what
+  signal, and is rolled back to the previous image Coolify still lists. The rollback is health-checked
+  too; one that also cannot serve is reported loudly and never rolled back a second time. Targets
+  with no health URL deploy exactly as before.
+
 - **Forge now reports the module pairs your issues keep linking that your module hierarchy never
   declares as connected.** `GET /api/projects/:id/modules/drift` compares two edge sets over the
   same nodes — *observed*, a self-join of `issue_labels` scoped to `kind='module'` on both sides,

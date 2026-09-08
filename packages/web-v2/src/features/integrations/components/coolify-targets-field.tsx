@@ -66,7 +66,9 @@ export function CoolifyTargetsField({
       <p className="fg-body-sm text-muted">
         The Coolify application(s) this project deploys for {environment}. Add
         one row per app — e.g. a separate backend and frontend; they deploy
-        together and the pipeline only completes once all succeed.
+        together and the pipeline only completes once all succeed. Give a
+        target a health URL and Forge reads it after every deploy: one that
+        never answers healthy fails the deploy and restores the previous image.
         {inherited
           ? " Currently inherited from the shared connection — saving stores project-level targets."
           : ""}
@@ -133,6 +135,25 @@ export function CoolifyTargetsField({
                   )
                 }
               />
+            </div>
+            <div className="flex items-end gap-2">
+              <div className="w-40 shrink-0" aria-hidden />
+              <div className="flex-1">
+                {idx === 0 && (
+                  <span className="fg-label mb-1 block text-subtle">
+                    Health URL (optional)
+                  </span>
+                )}
+                <Input
+                  aria-label={`Health URL for ${t.label || "this target"}`}
+                  value={t.healthUrl ?? ""}
+                  onChange={(e) =>
+                    updateTarget(idx, { healthUrl: e.target.value })
+                  }
+                  placeholder="https://api.example.com/health"
+                />
+              </div>
+              <div className="w-9 shrink-0" aria-hidden />
             </div>
             {identity && !identity.found && (
               <Badge tone="red">Coolify does not list this application</Badge>

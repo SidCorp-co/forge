@@ -6,7 +6,7 @@
 // Coolify does not list says so in Forge.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CoolifyTargetsField } from "./coolify-targets-field";
 import type { CoolifyApplication, CoolifyTargetIdentity } from "../types";
@@ -105,5 +105,60 @@ describe("CoolifyTargetsField", () => {
 
     expect(screen.getByPlaceholderText(/application uuid from Coolify/i)).toBeInTheDocument();
     expect(screen.getByText(/Could not read the application list/i)).toBeInTheDocument();
+  });
+});
+
+// cm:why the health URL is what ARMS the post-deploy gate, so it has to be settable here — an operator who cannot type it cannot turn the gate on (ISS-971)
+describe("the post-deploy health URL", () => {
+  it("shows the URL already stored for a target", () => {
+    render(
+      <CoolifyTargetsField
+        projectId="p1"
+        environment="prod"
+        integrationId="b1"
+        baseUrl="https://coolify.example"
+        apiToken=""
+        targets={[
+          {
+            id: "t1",
+            label: "Backend",
+            resourceUuid: "app-1",
+            healthUrl: "https://api.example/health",
+          },
+        ]}
+        onChange={vi.fn()}
+        inherited={false}
+      />,
+    );
+    expect(screen.getByLabelText("Health URL for Backend")).toHaveValue(
+      "https://api.example/health",
+    );
+  });
+
+  it("reports an edit without dropping the rest of the target", () => {
+    const onChange = vi.fn();
+    render(
+      <CoolifyTargetsField
+        projectId="p1"
+        environment="prod"
+        integrationId="b1"
+        baseUrl="https://coolify.example"
+        apiToken=""
+        targets={[{ id: "t1", label: "Backend", resourceUuid: "app-1" }]}
+        onChange={onChange}
+        inherited={false}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Health URL for Backend"), {
+      target: { value: "https://api.example/health" },
+    });
+    expect(onChange).toHaveBeenCalledWith([
+      {
+        id: "t1",
+        label: "Backend",
+        resourceUuid: "app-1",
+        healthUrl: "https://api.example/health",
+      },
+    ]);
   });
 });

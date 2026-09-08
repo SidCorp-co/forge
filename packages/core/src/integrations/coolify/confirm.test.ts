@@ -47,13 +47,12 @@ vi.mock('../../pipeline/runs.js', () => ({
 
 const findBindingMock = vi.fn(async () => ({ id: 'bind-1', connectionId: 'conn-1' }));
 const findConnectionMock = vi.fn(async () => ({ id: 'conn-1' }));
+let contextConfig: Record<string, unknown> = { baseUrl: 'https://coolify.example' };
 vi.mock('../store.js', () => ({
   findBindingById: (...a: unknown[]) => findBindingMock(...(a as [])),
   findConnectionById: (...a: unknown[]) => findConnectionMock(...(a as [])),
-  buildContextFromBinding: () => ({
-    config: { baseUrl: 'https://coolify.example' },
-    secrets: { apiToken: 'cf' },
-  }),
+  effectiveConfig: () => contextConfig,
+  buildContextFromBinding: () => ({ config: contextConfig, secrets: { apiToken: 'cf' } }),
 }));
 
 const getDeploymentMock = vi.fn();
@@ -96,6 +95,9 @@ const holds = (status: 'pending' | 'succeeded' | 'failed', label = 'Frontend') =
 });
 
 beforeEach(() => {
+  contextConfig = { baseUrl: 'https://coolify.example' };
+  // cm:guard restore this every case — `vi.clearAllMocks()` clears calls but KEEPS an implementation a case installed, so the binding-is-gone case leaks its `null` into every test declared after it and they fail on a fixture rather than on the code
+  findBindingMock.mockResolvedValue({ id: 'bind-1', connectionId: 'conn-1' });
   settleMock.mockResolvedValue({});
   isCloseDeferredMock.mockResolvedValue(false);
 });
@@ -241,5 +243,72 @@ describe('enqueueCoolifyConfirm', () => {
     const keys = sendCalls().map((c) => (c[2] as { singletonKey: string }).singletonKey);
     expect(keys).toHaveLength(2);
     expect(keys.every((k) => k.startsWith('del-1:'))).toBe(true);
+  });
+});
+
+/**
+ * ISS-971 — Coolify's `finished` is a verdict on the build. A target that
+ * declares a health URL is not settled on it.
+ */
+describe('the post-deploy health gate handoff', () => {
+  const withHealthTarget = () => {
+    contextConfig = {
+      baseUrl: 'https://coolify.example',
+      targets: [
+        { id: 't1', label: 'Backend', resourceUuid: 'res-1', healthUrl: 'https://api/health' },
+      ],
+    };
+  };
+
+  it('leaves the hold pending and enqueues a health gate', async () => {
+    withHealthTarget();
+    getDeploymentMock.mockResolvedValue({ status: 'finished' });
+
+    expect(await runCoolifyConfirm(job())).toEqual({
+      settled: null,
+      closedRun: false,
+      handedToHealthGate: true,
+    });
+    expect(settleMock).not.toHaveBeenCalled();
+    expect(closeRunMock).not.toHaveBeenCalled();
+    const queued = sendCalls().at(-1)?.[1] as { jobKind: string; healthUrl: string };
+    expect(queued).toMatchObject({
+      jobKind: 'coolify.health-gate',
+      targetId: 't1',
+      healthUrl: 'https://api/health',
+      forRollback: false,
+    });
+  });
+
+  it('still records the build as finished — that part of the audit log stays true', async () => {
+    withHealthTarget();
+    getDeploymentMock.mockResolvedValue({ status: 'finished' });
+
+    await runCoolifyConfirm(job());
+    expect(recordDeliveryMock.mock.calls[0]?.[0]).toMatchObject({
+      eventName: 'deploy.succeeded',
+      payload: { deployment_uuid: 'dep-1' },
+    });
+  });
+
+  it('a target that declares no health URL settles exactly as before', async () => {
+    contextConfig = {
+      baseUrl: 'https://coolify.example',
+      targets: [{ id: 't1', label: 'Backend', resourceUuid: 'res-1' }],
+    };
+    getDeploymentMock.mockResolvedValue({ status: 'finished' });
+
+    expect(await runCoolifyConfirm(job())).toEqual({ settled: 'succeeded', closedRun: false });
+    expect(settleMock).toHaveBeenCalled();
+  });
+
+  it('a FAILED deployment never reaches the gate — there is nothing serving to read', async () => {
+    withHealthTarget();
+    getDeploymentMock.mockResolvedValue({ status: 'failed' });
+
+    expect(await runCoolifyConfirm(job())).toMatchObject({ settled: 'failed' });
+    expect(
+      sendCalls().some((c) => (c[1] as { jobKind?: string })?.jobKind === 'coolify.health-gate'),
+    ).toBe(false);
   });
 });

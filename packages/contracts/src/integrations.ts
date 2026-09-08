@@ -186,6 +186,9 @@ export interface CoolifyTargetInput {
   id?: string;
   label: string;
   resourceUuid: string;
+  /** Absolute URL of this application's health endpoint; absent = no post-deploy health gate. */
+  // cm:edge contract -> packages/core/src/integrations/provider-schemas.ts — the zod target schema is the other half, and a form that sends a target without this key CLEARS a health gate an operator set, because a config PATCH replaces the whole `targets` array (ISS-971)
+  healthUrl?: string;
 }
 
 /**
