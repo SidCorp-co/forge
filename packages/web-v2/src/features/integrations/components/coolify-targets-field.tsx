@@ -15,7 +15,7 @@ import type { CoolifyApplication, CoolifyTargetInput } from "../types";
  * a bound target renders the name, domain and branch@sha Coolify reports for
  * it — a wrong binding is then visible without leaving Forge.
  */
-// cm:guard both spacers must keep `hidden` below `sm` — they exist only to align the Health URL row with the label/application row above, and at 375px they squeeze the URL input to 77px (measured on forge-beta, ISS-971), which is unusable for the one value it takes
+// cm:guard every fixed column in a target row must be mobile-exempt (`hidden`/`w-full` below `sm`) and the flexible ones need `min-w-0` — a non-shrinking column makes the whole targets fieldset overflow its panel at 375px, measured 315px inside a 218px container on forge-beta (ISS-971)
 const ALIGN_LABEL_COL = "hidden w-40 shrink-0 sm:block";
 const ALIGN_BUTTON_COL = "hidden w-9 shrink-0 sm:block";
 
@@ -87,8 +87,8 @@ export function CoolifyTargetsField({
         const identity = identityFor(t.resourceUuid);
         return (
           <div key={t.id ?? idx} className="flex flex-col gap-1">
-            <div className="flex items-end gap-2">
-              <div className="w-40 shrink-0">
+            <div className="flex flex-wrap items-end gap-2 sm:flex-nowrap">
+              <div className="w-full shrink-0 sm:w-40">
                 {idx === 0 && (
                   <span className="fg-label mb-1 block text-subtle">Label</span>
                 )}
@@ -98,7 +98,7 @@ export function CoolifyTargetsField({
                   placeholder="Backend"
                 />
               </div>
-              <div className="flex-1">
+              <div className="min-w-0 flex-1">
                 {idx === 0 && (
                   <span className="fg-label mb-1 block text-subtle">
                     Coolify application
@@ -142,7 +142,7 @@ export function CoolifyTargetsField({
             </div>
             <div className="flex items-end gap-2">
               <div className={ALIGN_LABEL_COL} aria-hidden />
-              <div className="flex-1">
+              <div className="min-w-0 flex-1">
                 {idx === 0 && (
                   <span className="fg-label mb-1 block text-subtle">
                     Health URL (optional)
