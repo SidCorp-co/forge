@@ -1,3 +1,6 @@
+import { readdir, readFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 /**
@@ -271,5 +274,34 @@ describe('parseModuleFlow', () => {
   it('ignores comments and blank lines', () => {
     const flow = parseModuleFlow(flowBody('flowchart TD\n\n  %% a note\n  A --> B'));
     expect(flow?.arrows).toHaveLength(1);
+  });
+});
+
+describe('a generated diagram is a product surface, never a repository write', () => {
+  // cm:guard this is the epic's load-bearing rule and nothing else enforces it — `docs/flows/` is this repository's own hand-drawn surface, and a generator that started writing files into the tree would put churn in git on every issue close while every other test here stayed green.
+  it('reaches no filesystem from any module the diagram route pulls in', async () => {
+    const dir = dirname(fileURLToPath(import.meta.url));
+    const sources = await Promise.all(
+      [
+        'module-diagrams.ts',
+        'module-diagram-flow.ts',
+        'module-diagram-source.ts',
+        'module-diagram-routes.ts',
+      ].map((f) => readFile(join(dir, f), 'utf8')),
+    );
+    for (const src of sources) {
+      expect(src).not.toMatch(/from '(node:)?fs(\/promises)?'/);
+      expect(src).not.toMatch(/\b(writeFile|writeFileSync|mkdir|createWriteStream)\b/);
+    }
+  });
+
+  it('answers a string and leaves the working directory untouched', async () => {
+    const before = (await readdir(process.cwd())).sort();
+    const out = generateModuleDiagram(
+      'mindmap',
+      snap({ modules: [mod({ id: 'a', name: 'Issues' })] }),
+    );
+    expect(typeof out).toBe('string');
+    expect((await readdir(process.cwd())).sort()).toEqual(before);
   });
 });
