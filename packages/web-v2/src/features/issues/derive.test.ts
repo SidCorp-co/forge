@@ -788,7 +788,8 @@ describe("deriveBlockerState", () => {
 		});
 	});
 
-	it("on_hold status → resume action", () => {
+	// cm:guard ISS-970 — the banner keeps its Resume action but must NOT wear the attention tone. Nobody is owed anything by a pause somebody chose: `attention` is the colour that says a person has to act, which is the same false claim the label and the attention bucket carried, in the fourth reader.
+	it("on_hold status → resume action, in the calm tone", () => {
 		const b = deriveBlockerState(
 			blockerIssue({ status: "on_hold" }),
 			undefined,
@@ -796,6 +797,22 @@ describe("deriveBlockerState", () => {
 		);
 		expect(b?.cta.kind).toBe("resume");
 		expect(b?.reason).toContain("paused");
+		expect(b?.tone).toBe("info");
+	});
+
+	it("keeps the attention tone for the two parks that DO ask a person", () => {
+		const needsInfo = deriveBlockerState(
+			blockerIssue({ status: "needs_info" }),
+			undefined,
+			undefined,
+		);
+		const waiting = deriveBlockerState(
+			blockerIssue({ status: "waiting" }),
+			{ waitingCause: { kind: "needs_decision" } } as never,
+			undefined,
+		);
+		expect(needsInfo?.tone).toBe("attention");
+		expect(waiting?.tone).toBe("attention");
 	});
 
 	it("maps each pipelineHealth.waitingOn reason", () => {
@@ -940,7 +957,6 @@ describe("deriveStageOutcomes", () => {
 		);
 		expect(cells.plan.handoff?.attempt).toBe(2);
 		expect(cells.plan.outcomeLabel).toBe("v2");
-		// empty payload at the current stage → no label, no crash
 		const empty = deriveStageOutcomes(
 			"plan",
 			"running",
