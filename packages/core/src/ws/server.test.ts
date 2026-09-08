@@ -1,11 +1,12 @@
+/**
+ * `/ws` upgrade auth, room subscription and inbound runner frames, in-process:
+ * the db and the credential verifiers are mocked, so what is under test is the
+ * socket's own routing rather than anything behind it.
+ */
+
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-
-// /ws upgrade auth — exercises the canonical Sec-WebSocket-Protocol
-// subprotocol path, Bearer header, cookie, and rejection cases. The
-// legacy `?token=<jwt>` query path was removed in ISS-315 cleanup. DB
-// and verifier modules are mocked so the test stays in-process.
 
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
 const VALID_USER_TOKEN = 'valid-user-token';
@@ -23,8 +24,13 @@ vi.mock('../auth/jwt.js', () => ({
   }),
 }));
 
+const VALID_DEVICE_TOKEN = 'valid-device-token';
+const DEVICE_ID = 'device-1';
+
 vi.mock('../auth/device-credential.js', () => ({
-  verifyDeviceCredential: vi.fn(async () => null),
+  verifyDeviceCredential: vi.fn(async (token: string) =>
+    token === VALID_DEVICE_TOKEN ? { id: DEVICE_ID, ownerId: 'owner-1' } : null,
+  ),
 }));
 
 vi.mock('../auth/cookie.js', () => ({
@@ -45,10 +51,16 @@ vi.mock('../db/schema.js', () => ({
   runners: {},
 }));
 
+const handleRunnerRegisterMock = vi.fn();
 vi.mock('../runners/heartbeat-ws.js', () => ({
-  handleRunnerRegister: vi.fn(),
+  handleRunnerRegister: (...args: unknown[]) => handleRunnerRegisterMock(...args),
   handleRunnerUnregister: vi.fn(),
   handleRunnerUpdate: vi.fn(),
+}));
+
+const handleRunnerSessionsMock = vi.fn();
+vi.mock('../devices/run-ledger-ws.js', () => ({
+  handleRunnerSessions: (...args: unknown[]) => handleRunnerSessionsMock(...args),
 }));
 
 vi.mock('../lib/feature-flags.js', () => ({
@@ -265,5 +277,58 @@ describe('/ws subscribe — project room (ISS-653)', () => {
 
     expect(await subscribeOutcome()).toBeNull();
     expect(isPlatformAdminMock).not.toHaveBeenCalled();
+  });
+});
+
+// cm:guard assert a HANDLER CALL, never the absence of a denial: a `runner:*` frame dropped before its handler produces no denial, no log and no red, so only a positive assertion can see it (ISS-934).
+describe('/ws runner frames carry no room (ISS-934)', () => {
+  function dialDevice(): Promise<import('ws').WebSocket> {
+    const url = `ws://127.0.0.1:${port}/ws`;
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocketLib(url, undefined, {
+        headers: { Authorization: `Bearer ${VALID_DEVICE_TOKEN}` },
+      });
+      ws.on('open', () => resolve(ws));
+      ws.on('error', reject);
+    });
+  }
+
+  async function sendAsDevice(frame: unknown): Promise<void> {
+    const ws = await dialDevice();
+    try {
+      ws.send(JSON.stringify(frame));
+      await new Promise((r) => setTimeout(r, 200));
+    } finally {
+      ws.close();
+    }
+  }
+
+  it('routes `runner:register` to its handler although the frame has no room', async () => {
+    await sendAsDevice({
+      type: 'runner:register',
+      data: { type: 'claude-code', name: 'box', projectId: '11111111-1111-4111-8111-111111111111' },
+    });
+    expect(handleRunnerRegisterMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('routes `runner:sessions` to its handler', async () => {
+    await sendAsDevice({ type: 'runner:sessions', data: { bootId: 'boot-a', runs: [] } });
+    expect(handleRunnerSessionsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('never routes `runner:sessions` from a user principal', async () => {
+    const url = `ws://127.0.0.1:${port}/ws`;
+    const ws = await new Promise<import('ws').WebSocket>((resolve, reject) => {
+      const sock = new WebSocketLib(url, [`forge.bearer.${VALID_USER_TOKEN}`]);
+      sock.on('open', () => resolve(sock));
+      sock.on('error', reject);
+    });
+    try {
+      ws.send(JSON.stringify({ type: 'runner:sessions', data: { bootId: 'b', runs: [] } }));
+      await new Promise((r) => setTimeout(r, 200));
+    } finally {
+      ws.close();
+    }
+    expect(handleRunnerSessionsMock).not.toHaveBeenCalled();
   });
 });

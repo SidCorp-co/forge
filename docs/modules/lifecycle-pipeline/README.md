@@ -29,6 +29,7 @@ flowchart LR
 | Autonomous driver mode | `core/src/pipeline/autonomous-mode.ts:AUTONOMOUS_DRIVER_STATUSES` |
 | What a box is offered, and the wake that says so | `core/src/devices/admissible.ts`, `core/src/ws/master-wake.ts` |
 | The run session a box opens over a group of issues | `core/src/devices/run-session.ts`, `core/src/devices/run-session-reaper.ts` |
+| What that box says it is running, read by anyone off it | `core/src/devices/run-ledger.ts`, `packages/runner/crates/forge-runner-core/src/transport/session_ledger.rs` |
 | Release gate and batches | `core/src/release-batch/`, `core/src/issues/release-gate-hold.ts` |
 | Branch resolution | `core/src/branches/`, `core/src/git/` |
 | Cron-fired work | `core/src/schedules/`, `schema.ts:scheduleKinds` |
@@ -62,8 +63,9 @@ flowchart LR
   a paired box decides what runs. A `pipeline_run` for autonomous work is opened BY the box, over a
   group of issues, and closes on three marks it read back — the session went terminal, the worktree
   left disk, and each issue's lease came back. A declaration by an agent sets none of them.
-  Drawn in [`../../flows/run-session-lifecycle.html`](../../flows/run-session-lifecycle.html) and
-  [`run-session-close.html`](../../flows/run-session-close.html).
+  Drawn in [`../../flows/run-session-lifecycle.html`](../../flows/run-session-lifecycle.html),
+  [`run-session-close.html`](../../flows/run-session-close.html) and
+  [`run-session-registry-read.html`](../../flows/run-session-registry-read.html).
 - **A park no master picks up is not representable.**
   `core/src/issues/autonomous-park.ts` rewrites at write time to the only two statuses the driver
   reads: `reopen` → `open` for **any** actor, and `waiting` → `needs_info` for an **agent** only. A

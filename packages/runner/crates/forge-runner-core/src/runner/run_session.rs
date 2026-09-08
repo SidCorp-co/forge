@@ -40,6 +40,7 @@ pub trait CoreSessions: Send + Sync {
 /// What the master decided: a group, a branch, and where the repo is.
 pub struct RunRequest {
     pub run_id: String,
+    pub project_id: String,
     pub master_session_id: String,
     pub boot_id: String,
     pub issue_keys: Vec<String>,
@@ -87,6 +88,7 @@ pub async fn start(
     let issue_keys = req.issue_keys.clone();
     let run = ledger.create_run_group(NewRun {
         run_id: req.run_id.clone(),
+        project_id: req.project_id,
         master_session_id: req.master_session_id,
         worktree_path: worktree_path.clone(),
         boot_id: req.boot_id,
@@ -156,6 +158,7 @@ mod tests {
     fn req() -> RunRequest {
         RunRequest {
             run_id: "run-1".into(),
+            project_id: "proj-1".into(),
             master_session_id: "master-1".into(),
             boot_id: "boot-a".into(),
             issue_keys: vec!["ISS-957".into(), "ISS-963".into()],
@@ -339,6 +342,7 @@ mod replay {
             &mut led,
             RunRequest {
                 run_id: "run-replay".into(),
+                project_id: "proj-1".into(),
                 master_session_id: "master-1".into(),
                 boot_id: "boot-a".into(),
                 issue_keys: vec!["ISS-957".into(), "ISS-963".into()],
@@ -379,6 +383,7 @@ mod replay {
             &mut led,
             RunRequest {
                 run_id: "run-second".into(),
+                project_id: "proj-1".into(),
                 master_session_id: "master-1".into(),
                 boot_id: "boot-a".into(),
                 issue_keys: vec!["ISS-963".into()],

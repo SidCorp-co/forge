@@ -23,6 +23,20 @@
 
 ### Added
 
+- **You can now see which agent sessions a box is running without logging into it.**
+  `GET /api/projects/:id/run-sessions` answers any member of the project with every run the fleet is
+  holding for it: the run's own worktree and process id, the master session that started it, the
+  issues it carries and which of their leases have come back, and whether the box reads the run as
+  live, waiting or finished. Until now the only record of any of that was a SQLite file on the box
+  itself — core did not know, the web UI did not know, and another machine had no way to ask. Each
+  box reports its whole registry every twenty seconds over the websocket it already holds open, and
+  again the moment a dropped connection comes back, so a stale answer is impossible to mistake for a
+  fresh one: every row carries the time its box last spoke. Last activity is read from Forge's own
+  record of the session rather than from the box's report, so a box that has gone quiet while
+  claiming to be busy shows up as exactly that. A run recorded before this change, which has no
+  project on it, is named in the box's log and left out rather than published into a project it may
+  not belong to.
+
 - **A deploy that builds but cannot serve is now caught and undone without a human.** Give a Coolify
   deploy target a health URL in its integration settings and Forge reads that URL after every deploy
   to it: a grace period, then polling for up to five minutes. Healthy means the app answers `200`

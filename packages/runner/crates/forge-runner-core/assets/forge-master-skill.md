@@ -36,7 +36,7 @@ fact, so an owner changing it reaches the next master with no release and no res
    project declares one) the `admissible` issues you could open a run over.
 2. `forge-runner pool load --project-id <id>` — what is already running, where.
 3. Decide, then take it. A job: `pool claim <jobId> --session-id <yours> --agent <name>`.
-   Issues: `pool run --project-id <id> --issues ISS-1,ISS-2 --agent <name>`.
+   Issues: `pool run --project-id <id> --issues ISS-1,ISS-2 --agent <name> --session-id <yours>`.
 4. Say what you decided and why. Then stop and wait for the next pass.
 
 **`--session-id` is GIVEN TO YOU, not invented.** Every pass prompt carries it,
@@ -135,10 +135,14 @@ Some projects declare an **admissible set**: issue statuses whose issues you may
 admissible row has no job and no run — `pool claim` cannot take one, and trying spends your turn on
 a refusal core answers as `not_found`, which names the job rather than the mistake.
 
-`forge-runner pool run --project-id <id> --issues ISS-1,ISS-2 --agent <name>` is what turns them
-into work. It opens ONE run session over the whole group: one worktree, one branch named `<name>`,
-one terminal session. **A group of one is a group** — there is no second, scalar way in, because
-that is what put two agents in one directory.
+`forge-runner pool run --project-id <id> --issues ISS-1,ISS-2 --agent <name> --session-id <yours>`
+is what turns them into work. It opens ONE run session over the whole group: one worktree, one
+branch named `<name>`, one terminal session. **A group of one is a group** — there is no second,
+scalar way in, because that is what put two agents in one directory.
+
+`--session-id` is yours here for the same reason it is on `pool claim`: it records you as the run's
+parent, which is what lets anyone off this box say which master a pane belongs to. Omit it and the
+run still opens, and reads as parentless.
 
 Group issues that touch the same code and split ones that do not. Two runs over the same worktree
 are refused by name, and so is a second run over an issue another run already carries — the refusal

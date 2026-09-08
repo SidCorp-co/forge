@@ -1,0 +1,97 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flow · run-session-registry-read — how a box's session registry becomes readable off the box</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .warn { border-left-color:var(--bad); }
+  .board { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; overflow-x:auto; }
+</style>
+<main>
+
+<h1>run-session-registry-read — how a box's session registry becomes readable off the box</h1>
+<p class="sub">Until ISS-934 the only record of which pane belonged to which run, which master
+started it, what pid it was and which worktree it held was a SQLite file at
+<code>~/.local/share/forge-runner/ledger.sqlite</code>. Machine-local: core did not know, the web UI
+did not know, another box did not know. This is the hop that carries it out, and the three places it
+declines to answer rather than answering wrongly.</p>
+
+<h2>The hop</h2>
+<div class="board"><pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant L as ledger.sqlite (the box)
+  participant P as daemon publisher task
+  participant W as transport/ws.rs
+  participant S as core /ws
+  participant D as device_run_ledger
+  participant R as GET /api/projects/:id/run-sessions
+
+  loop every 20s
+    P->>L: unclosed_runs() + issues(run)
+    P->>W: watch::send(one whole snapshot)
+  end
+  W->>S: runner:sessions {bootId, runs[]}
+  Note over W,S: on connect too, before the read loop
+  S->>S: device principal? strict schema?
+  S->>D: DELETE this device's runs not named, then upsert each — ONE transaction
+  R->>D: rows for this project
+  R->>R: LEFT JOIN agent_sessions for status + last activity
+</pre></div>
+
+<div class="rule"><b>A snapshot, never a delta.</b> The whole unclosed set goes every time and the
+newest replaces the last. A dropped frame, a reconnect and a daemon restart therefore all
+self-correct on the next tick with nothing remembering what it failed to send — which is also what
+keeps the ledger a registry rather than the queue ISS-933 refused it becoming.</div>
+
+<div class="rule"><b>The replace is scoped to one device, in one transaction.</b> Two statements
+would leave a window in which the box holds nothing, and a reader landing in it reports a working
+box as idle. A predicate wider than one device would have one box's snapshot retire another's runs.</div>
+
+<h2>Where it declines instead of guessing</h2>
+<table>
+<thead><tr><th>Condition</th><th>What happens</th><th>Why not the other thing</th></tr></thead>
+<tbody>
+<tr><td>a ledger row written before ISS-934, with no project</td><td>the box logs it by run id and leaves it out of the snapshot</td><td>the read surface authorises per project, so a guessed project id shows one tenant's worktree and pid to another</td></tr>
+<tr><td>the frame arrives on a user principal</td><td>dropped, logged</td><td>a user socket carries its owner's account authority; accepting it would let any signed-in person rewrite what a box is running, and the surface presents it as the box's own word</td></tr>
+<tr><td>one run carries a field this core does not know</td><td>the WHOLE snapshot is refused</td><td>the two sides ship on separate release clocks; a snapshot core half-understands is worse than one it rejects loudly</td></tr>
+<tr><td>the box stops sending</td><td>the rows stay, with <code>observedAt</code> ageing</td><td>a dead box cannot write that it died, so staleness is the only honest signal — deleting on silence would erase the evidence a reader needs</td></tr>
+</tbody>
+</table>
+
+<h2>Who owns which field</h2>
+<table>
+<thead><tr><th>Fact</th><th>Authority</th></tr></thead>
+<tbody>
+<tr><td>parent master session, pid, worktree path, boot, incarnation, work state, blocker</td><td>the box — nothing else can see them</td></tr>
+<tr><td>issue membership and per-issue lease return</td><td>the box's ledger, mirrored; <code>pipeline_runs.metadata.runIssues</code> is core's own copy and the two disagreeing is a signal</td></tr>
+<tr><td>session status and last activity</td><td>core's <code>agent_sessions</code> row, joined at read time and never mirrored</td></tr>
+</tbody>
+</table>
+
+<div class="rule warn"><b>Last activity is not the box's to report.</b> A box reporting its own
+liveness is a box marking its own homework. The heartbeat core already receives is the independent
+reading, so the read surface joins for it — and a box whose snapshot is fresh while its session's
+heartbeat is stale is exactly the state an operator needs to see.</div>
+
+<h2>Do not</h2>
+<p>Add a status column to <code>device_run_ledger</code> that restates something
+<code>agent_sessions</code> already says — that gives the fact two writers and the losing one is
+invisible. Put a foreign key on <code>session_id</code>: a run naming a session core's reaper has
+already removed would fail the whole statement and take every other run on the box down with it.
+Suppress an unchanged snapshot: a silent box would then be indistinguishable from a steady one.</p>
+
+<p><a href="index.html">&larr; all flows</a></p>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script>

@@ -201,3 +201,61 @@ describe('a guarded sub-app at the BROAD /api prefix (the github-callback shape)
     expect(callback.status).toBe(401);
   });
 });
+
+// cm:edge lockstep -> packages/core/src/index.ts — the `/api/projects` mount order: every deep `/:id/<segment>` module registers BEFORE `projectRoutes`, which carries `use('*')` and `GET /:id`; if that order or a deep module's guard scope changes, change this together
+describe('a deep /:id/<segment> module beside a param route (the /api/projects shape)', () => {
+  const deepSubApp = (scope: '*' | '/:id/run-sessions') => {
+    const sub = new Hono();
+    sub.use(scope, async (c, next) => {
+      if (c.req.header('Authorization') !== 'Bearer user-1') {
+        return c.json({ code: 'UNAUTHENTICATED' }, 401);
+      }
+      await next();
+    });
+    sub.get('/:id/run-sessions', (c) => c.json({ items: [], count: 0 }));
+    return sub;
+  };
+
+  const paramSubApp = () => {
+    const sub = new Hono();
+    sub.use('*', async (c, next) => {
+      if (!(c.req.header('Authorization') ?? '').startsWith('Bearer user-')) {
+        return c.json({ code: 'UNAUTHENTICATED' }, 401);
+      }
+      await next();
+    });
+    sub.get('/:id', (c) => c.json({ ok: 'project' }));
+    return sub;
+  };
+
+  it('the deep module mounted FIRST answers its own path, and the param route still answers its own', async () => {
+    const app = new Hono();
+    app.route('/api/projects', deepSubApp('/:id/run-sessions'));
+    app.route('/api/projects', paramSubApp());
+
+    const deep = await app.request('/api/projects/p1/run-sessions', {
+      headers: { Authorization: 'Bearer user-1' },
+    });
+    expect(deep.status).toBe(200);
+    await expect(deep.json()).resolves.toEqual({ items: [], count: 0 });
+
+    const one = await app.request('/api/projects/p1', {
+      headers: { Authorization: 'Bearer user-2' },
+    });
+    expect(one.status).toBe(200);
+    await expect(one.json()).resolves.toEqual({ ok: 'project' });
+  });
+
+  it("a deep module's '*' guard reaches the param route it does not own", async () => {
+    const app = new Hono();
+    app.route('/api/projects', deepSubApp('*'));
+    app.route('/api/projects', paramSubApp());
+
+    // cm:why `Bearer user-2` passes the param route's own guard, so a 401 here is the deep module's narrower guard answering on a path belonging to another module
+    const res = await app.request('/api/projects/p1', {
+      headers: { Authorization: 'Bearer user-2' },
+    });
+    expect(res.status).toBe(401);
+    await expect(res.json()).resolves.toEqual({ code: 'UNAUTHENTICATED' });
+  });
+});

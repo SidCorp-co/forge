@@ -86,6 +86,10 @@ pub struct RunArgs {
     /// The name of the run: its git branch and its worktree directory.
     #[arg(long)]
     pub agent: String,
+    /// The MASTER's own session id — the run's parent. The master is given it
+    /// in its standing brief and never invents one.
+    #[arg(long)]
+    pub session_id: Option<String>,
     #[arg(long)]
     pub start_point: Option<String>,
 }
@@ -227,6 +231,7 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
                     &a.project_id,
                     &a.issues,
                     &a.agent,
+                    a.session_id.as_deref(),
                     a.start_point.as_deref(),
                 )
                 .await,

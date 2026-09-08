@@ -7,6 +7,7 @@ import * as adminThresholdsSchema from './schema-admin-thresholds.js';
 import * as journalSchema from './schema-journal.js';
 import * as memoryChunksSchema from './schema-memory-chunks.js';
 import * as memoryRevisionsSchema from './schema-memory-revisions.js';
+import * as runLedgerSchema from './schema-run-ledger.js';
 import * as sessionInboxSchema from './schema-session-inbox.js';
 import * as unauditedTransitionsSchema from './schema-unaudited-transitions.js';
 
@@ -18,6 +19,7 @@ const schema = {
   ...sessionInboxSchema,
   ...memoryChunksSchema,
   ...memoryRevisionsSchema,
+  ...runLedgerSchema,
   ...unauditedTransitionsSchema,
 };
 

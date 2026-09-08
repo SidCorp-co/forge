@@ -46,8 +46,19 @@ pub enum BlockerKind {
     Nobody,
 }
 
+impl BlockerKind {
+    pub fn wire(self) -> &'static str {
+        match self {
+            BlockerKind::Machine => "machine",
+            BlockerKind::MasterOrPeer => "master_or_peer",
+            BlockerKind::Human => "human",
+            BlockerKind::Nobody => "nobody",
+        }
+    }
+}
+
 impl Incarnation {
-    fn wire(self) -> &'static str {
+    pub fn wire(self) -> &'static str {
         match self {
             Incarnation::Live => "live",
             Incarnation::Exited => "exited",
@@ -56,7 +67,7 @@ impl Incarnation {
 }
 
 impl Work {
-    fn wire(self) -> &'static str {
+    pub fn wire(self) -> &'static str {
         match self {
             Work::Runnable => "runnable",
             Work::Blocked => "blocked",
@@ -69,6 +80,7 @@ impl Work {
 #[derive(Debug, Clone)]
 pub struct Run {
     pub run_id: String,
+    pub project_id: Option<String>,
     pub master_session_id: String,
     pub session_id: Option<String>,
     pub worktree_path: PathBuf,
@@ -94,6 +106,7 @@ pub struct Membership {
 #[derive(Debug, Clone)]
 pub struct NewRun {
     pub run_id: String,
+    pub project_id: String,
     pub master_session_id: String,
     pub worktree_path: PathBuf,
     pub boot_id: String,
@@ -104,6 +117,7 @@ pub struct NewRun {
 #[cfg(test)]
 const RUN_COLUMNS: &[&str] = &[
     "run_id",
+    "project_id",
     "master_session_id",
     "session_id",
     "worktree_path",
@@ -126,6 +140,7 @@ const RUN_ISSUE_COLUMNS: &[&str] = &["run_id", "issue_key", "lease_returned_at"]
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS runs (
   run_id              TEXT PRIMARY KEY,
+  project_id          TEXT,
   master_session_id   TEXT NOT NULL,
   session_id          TEXT,
   worktree_path       TEXT NOT NULL,
@@ -165,29 +180,30 @@ fn sql_err(e: rusqlite::Error) -> Error {
     Error::Other(format!("ledger: {e}"))
 }
 
-const SELECT_RUN: &str = "SELECT run_id, master_session_id, session_id, worktree_path, pid, boot_id,
+const SELECT_RUN: &str = "SELECT run_id, project_id, master_session_id, session_id, worktree_path, pid, boot_id,
         incarnation, work, blocker_kind, waiting_on, resume_id, session_terminal_at, worktree_gone_at
  FROM runs";
 
 fn map_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<Run> {
     Ok(Run {
         run_id: row.get(0)?,
-        master_session_id: row.get(1)?,
-        session_id: row.get(2)?,
-        worktree_path: PathBuf::from(row.get::<_, String>(3)?),
-        pid: row.get::<_, Option<i64>>(4)?.map(|p| p as u32),
-        boot_id: row.get(5)?,
-        incarnation: match row.get::<_, String>(6)?.as_str() {
+        project_id: row.get(1)?,
+        master_session_id: row.get(2)?,
+        session_id: row.get(3)?,
+        worktree_path: PathBuf::from(row.get::<_, String>(4)?),
+        pid: row.get::<_, Option<i64>>(5)?.map(|p| p as u32),
+        boot_id: row.get(6)?,
+        incarnation: match row.get::<_, String>(7)?.as_str() {
             "live" => Incarnation::Live,
             _ => Incarnation::Exited,
         },
-        work: match row.get::<_, String>(7)?.as_str() {
+        work: match row.get::<_, String>(8)?.as_str() {
             "runnable" => Work::Runnable,
             "blocked" => Work::Blocked,
             _ => Work::Done,
         },
         blocker_kind: row
-            .get::<_, Option<String>>(8)?
+            .get::<_, Option<String>>(9)?
             .and_then(|s| match s.as_str() {
                 "machine" => Some(BlockerKind::Machine),
                 "master_or_peer" => Some(BlockerKind::MasterOrPeer),
@@ -195,10 +211,10 @@ fn map_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<Run> {
                 "nobody" => Some(BlockerKind::Nobody),
                 _ => None,
             }),
-        waiting_on: row.get(9)?,
-        resume_id: row.get(10)?,
-        session_terminal_at: row.get(11)?,
-        worktree_gone_at: row.get(12)?,
+        waiting_on: row.get(10)?,
+        resume_id: row.get(11)?,
+        session_terminal_at: row.get(12)?,
+        worktree_gone_at: row.get(13)?,
     })
 }
 
@@ -228,7 +244,28 @@ impl Ledger {
         conn.execute_batch("PRAGMA foreign_keys = ON;")
             .map_err(sql_err)?;
         conn.execute_batch(SCHEMA).map_err(sql_err)?;
+        // cm:guard `project_id` is NULLABLE precisely so a ledger written before ISS-934 migrates without inventing a project for rows that never carried one. A NOT NULL column with a default would give every pre-upgrade run the same wrong project, and the snapshot would then publish those runs into a project they do not belong to — the silent substitution this repo refuses. `session_ledger::snapshot` skips a run with no project and names it in the log instead.
+        if !Self::has_column(&conn, "runs", "project_id")? {
+            conn.execute_batch("ALTER TABLE runs ADD COLUMN project_id TEXT;")
+                .map_err(sql_err)?;
+        }
         Ok(Self { conn })
+    }
+
+    fn has_column(conn: &Connection, table: &str, column: &str) -> Result<bool> {
+        let mut stmt = conn
+            .prepare(&format!("PRAGMA table_info({table})"))
+            .map_err(sql_err)?;
+        let mut found = false;
+        let rows = stmt
+            .query_map([], |r| r.get::<_, String>(1))
+            .map_err(sql_err)?;
+        for name in rows {
+            if name.map_err(sql_err)? == column {
+                found = true;
+            }
+        }
+        Ok(found)
     }
 
     /// Create a run for a GROUP of issues — the only way a run comes into being.
@@ -255,10 +292,11 @@ impl Ledger {
             )));
         }
         tx.execute(
-            "INSERT INTO runs (run_id, master_session_id, worktree_path, pid, boot_id, incarnation, work, created_at)
-             VALUES (?1, ?2, ?3, NULL, ?4, ?5, ?6, ?7)",
+            "INSERT INTO runs (run_id, project_id, master_session_id, worktree_path, pid, boot_id, incarnation, work, created_at)
+             VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6, ?7, ?8)",
             params![
                 new.run_id,
+                new.project_id,
                 new.master_session_id,
                 path,
                 new.boot_id,
@@ -413,6 +451,12 @@ impl Ledger {
         Ok(())
     }
 
+    /// Seed a row the public API cannot produce, so a reader's refusal path is reachable.
+    #[cfg(test)]
+    pub(crate) fn exec_for_test(&self, sql: &str) {
+        self.conn.execute_batch(sql).unwrap();
+    }
+
     /// The issues a run carries, and whether each lease came back.
     // cm:guard membership is many-to-many and lease return is PER ISSUE (ISS-933 criteria 7 and 14). A run that returned one of three leases must read as exactly that — an `issue_id` column on the run, or one boolean for the group, both make a partial return indistinguishable from a clean one, which is the failure this replaced: a master reported the loop closed having done one and a half of three.
     pub fn issues(&self, run_id: &str) -> Result<Vec<Membership>> {
@@ -444,6 +488,7 @@ mod tests {
     fn seed(issues: &[&str]) -> NewRun {
         NewRun {
             run_id: "run-1".into(),
+            project_id: "proj-1".into(),
             master_session_id: "master-1".into(),
             worktree_path: PathBuf::from("/w/one"),
             boot_id: "boot-a".into(),
@@ -595,6 +640,42 @@ mod tests {
     fn an_empty_group_is_refused() {
         let mut led = Ledger::open_in_memory().unwrap();
         assert!(led.create_run_group(seed(&[])).is_err());
+    }
+
+    #[test]
+    fn a_run_records_the_project_it_belongs_to() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        let run = led.create_run_group(seed(&["ISS-934"])).unwrap();
+        assert_eq!(
+            run.project_id.as_deref(),
+            Some("proj-1"),
+            "a run with no project cannot be published to one — the read surface is authorised per project, so a snapshot entry without it has nowhere legal to land (ISS-934 criterion 2)"
+        );
+    }
+
+    #[test]
+    fn a_ledger_written_before_the_project_column_migrates_without_inventing_one() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE runs (
+               run_id TEXT PRIMARY KEY, master_session_id TEXT NOT NULL, session_id TEXT,
+               worktree_path TEXT NOT NULL, pid INTEGER, boot_id TEXT NOT NULL,
+               incarnation TEXT NOT NULL, work TEXT NOT NULL, blocker_kind TEXT,
+               waiting_on TEXT, resume_id TEXT, park_deadline_at INTEGER,
+               session_terminal_at INTEGER, worktree_gone_at INTEGER, created_at INTEGER NOT NULL);
+             INSERT INTO runs (run_id, master_session_id, worktree_path, boot_id, incarnation, work, created_at)
+             VALUES ('old-run', 'master-0', '/w/old', 'boot-a', 'live', 'runnable', 1);",
+        )
+        .unwrap();
+        let led = Ledger::from_conn(conn).unwrap();
+        let run = led
+            .run("old-run")
+            .unwrap()
+            .expect("a run recorded before ISS-934 must survive the migration, not be dropped");
+        assert_eq!(
+            run.project_id, None,
+            "a pre-upgrade run genuinely has no project on the ledger; defaulting one here would publish it into a project it does not belong to"
+        );
     }
 
     #[test]
