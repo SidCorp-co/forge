@@ -22,18 +22,25 @@ const txUpdateSet = vi.fn(() => ({ where: txUpdateWhere }));
 const txUpdate = vi.fn(() => ({ set: txUpdateSet }));
 const txInsertValues = vi.fn(async () => undefined);
 const txInsert = vi.fn(() => ({ values: txInsertValues }));
-// `triggerPipelineStepManual` now serialises via
-// `tx.execute(pg_advisory_xact_lock)` like the auto path — noop stub.
+// cm:why the advisory-lock call is stubbed to a noop; nothing here exercises the serialisation, only the response shape.
 const txExecute = vi.fn(async () => undefined);
 const txProxy = { update: txUpdate, insert: txInsert, execute: txExecute };
 const transactionMock = vi.fn(async (cb: (tx: typeof txProxy) => Promise<unknown>) => cb(txProxy));
 
+const dbExecute = vi.fn(async () => []);
 vi.mock('../db/client.js', () => ({
   db: {
     select: vi.fn(() => ({ from: selectFrom })),
     insert: vi.fn(() => ({ values: insertValues })),
+    execute: (...a: unknown[]) => dbExecute(...(a as [])),
     transaction: (cb: (tx: typeof txProxy) => Promise<unknown>) => transactionMock(cb),
   },
+}));
+
+const wakeMastersForProject = vi.fn(async () => 1);
+vi.mock('../ws/master-wake.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../ws/master-wake.js')>()),
+  wakeMastersForProject: (...a: unknown[]) => wakeMastersForProject(...(a as [])),
 }));
 
 const projectAccess = vi.fn();
@@ -207,19 +214,16 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
     });
   }
 
-  it('202 starts the driver at the entry status', async () => {
+  // cm:guard `released` and no `jobId`, because since ISS-933 core mints nothing for an autonomous issue. Answering `queued` with a fabricated id would tell the UI work started that no box has yet decided to take.
+  it('202 releases the issue at the entry status, minting no job', async () => {
     setupHappyPath({ status: 'open' });
 
     const res = await post();
 
     expect(res.status).toBe(202);
-    expect(await res.json()).toEqual({
-      issueId: ISSUE_ID,
-      jobId: JOB_ID,
-      stage: 'drive',
-      status: 'queued',
-    });
-    expect(enqueueJobMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: JOB_ID }));
+    expect(await res.json()).toEqual({ issueId: ISSUE_ID, status: 'released' });
+    expect(enqueueJobMock).not.toHaveBeenCalled();
+    expect(wakeMastersForProject).toHaveBeenCalledTimes(1);
   });
 
   // cm:guard this endpoint is the one exit from an entry stage set to `mode: 'manual'` — the gate means "a human decides", and this IS the human. It must NOT start honouring the gate.

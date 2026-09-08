@@ -55,15 +55,19 @@ async function devicesServing(projectId: string): Promise<string[]> {
 }
 
 /**
- * Publish one `master.wake` per box serving this project. Answers how many
- * sockets actually took it, which is 0 whenever every box is disconnected.
+ * Publish one `master.wake` per box serving this project.
+ *
+ * Answers both numbers because they mean different things: `delivered` is 0
+ * whenever every box is merely disconnected, while `boxes` at 0 means nothing
+ * on the fleet is bound to do this project's work at all — the second is an
+ * operator's problem and the first resolves itself on the next sweep.
  */
 // cm:guard never throw out of here. Every caller is a hook subscriber firing after its own mutation has already committed, so an error raised here would turn a successful transition into a 500 for a push that is only ever an optimisation over the timer.
 export async function wakeMastersForProject(args: {
   projectId: string;
   issueId: string;
   status: IssueStatus;
-}): Promise<number> {
+}): Promise<{ boxes: number; delivered: number }> {
   try {
     const deviceIds = await devicesServing(args.projectId);
     let delivered = 0;
@@ -79,10 +83,10 @@ export async function wakeMastersForProject(args: {
         'master.wake published',
       );
     }
-    return delivered;
+    return { boxes: deviceIds.length, delivered };
   } catch (err) {
     logger.warn({ err, projectId: args.projectId }, 'master.wake could not be published');
-    return 0;
+    return { boxes: 0, delivered: 0 };
   }
 }
 

@@ -15,6 +15,11 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import {
+  AUTONOMOUS_ENTRY_STATUS,
+  isAutonomous,
+  isEntryGateClosed,
+} from '../pipeline/autonomous-mode.js';
 import { pipelineConfigSchema } from '../pipeline/pipeline-config-schema.js';
 import type { PoolRelation } from './pool.js';
 
@@ -39,19 +44,31 @@ export type AdmissibleIssue = {
 };
 
 /** Statuses this project admits, and how many rows it lets a master read. */
-export type Admission = { projectId: string; statuses: string[]; limit: number };
+export type Admission = {
+  projectId: string;
+  statuses: string[];
+  limit: number;
+  entryOnRelease: boolean;
+};
 
-// cm:guard parse through the CANONICAL schema, never read the jsonb by hand: a config this build can no longer parse (a status dropped from `BACKLOG_ADMISSIBLE_STATUSES`, a key removed) must read as NO BACKLOG, because a hand-read keeps offering rows `promoteFromBacklog` then refuses and the master cannot tell which of the two is wrong.
+// cm:guard parse through the CANONICAL schema, never read the jsonb by hand: a config this build can no longer parse (a status dropped from `BACKLOG_ADMISSIBLE_STATUSES`, a key removed) must read as NO admissible set, because a hand-read keeps offering rows the box then refuses and the master cannot tell which of the two is wrong.
+// cm:guard the entry status is admitted for an AUTONOMOUS project and cannot come from `poolBacklog.statuses`, which is `issueStatuses` minus the driver statuses by construction. Since ISS-933 core mints no `drive` job, so without this an autonomous project offers nothing at all and goes silent with no error anywhere saying why (criterion 23).
+// cm:edge lockstep -> packages/core/src/pipeline/autonomous-dispatch.ts — `isEntryGateClosed` used to decide whether core MINTS and now decides whether the issue is OFFERED. It is the same gate and the same word to an operator; both halves must move together or the project either stalls or starts work a human meant to release.
 function admissionOf(projectId: string, agentConfig: unknown): Admission | null {
   const ac = (agentConfig as { pipelineConfig?: unknown } | null) ?? {};
   const parsed = pipelineConfigSchema.safeParse(ac.pipelineConfig ?? {});
   if (!parsed.success) return null;
-  const cfg = parsed.data.poolBacklog;
-  if (!cfg || cfg.statuses.length === 0) return null;
+  const cfg = parsed.data;
+  const statuses = new Set<string>(cfg.poolBacklog?.statuses ?? []);
+  const entryOpen = isAutonomous(cfg) && !isEntryGateClosed(cfg);
+  if (entryOpen) statuses.add(AUTONOMOUS_ENTRY_STATUS);
+  if (statuses.size === 0) return null;
   return {
     projectId,
-    statuses: [...new Set(cfg.statuses)],
-    limit: cfg.limit ?? DEFAULT_ADMISSIBLE_LIMIT,
+    statuses: [...statuses],
+    limit: cfg.poolBacklog?.limit ?? DEFAULT_ADMISSIBLE_LIMIT,
+    // cm:guard a GATED autonomous project still admits an entry-status issue a human released by hand. The gate is per project and a Run is per issue, so without this the only way to release one is to open the gate for all of them.
+    entryOnRelease: isAutonomous(cfg) && !entryOpen,
   };
 }
 
@@ -127,11 +144,22 @@ export async function readAdmissibleIssues(args: {
              ${RELATIONS}
       FROM issues i
       WHERE i.project_id = ${a.projectId}
-        AND i.status IN (${statusList})
+        AND (
+          i.status IN (${statusList})
+          ${a.entryOnRelease ? sql`OR (i.status = ${AUTONOMOUS_ENTRY_STATUS} AND i.session_context ? 'runRelease')` : sql``}
+        )
         AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.issue_id = i.id)
         AND NOT EXISTS (
           SELECT 1 FROM pipeline_runs pr
           WHERE pr.issue_id = i.id AND pr.status IN ('running', 'paused')
+        )
+        -- cm:guard a run session is CROSS-BOX state and the per-box ledger cannot see it. Without this, two boxes serving one project each open a run over the same issue, and each ledger correctly reports no conflict (ISS-933 criterion 7).
+        AND NOT EXISTS (
+          SELECT 1 FROM pipeline_runs rs
+          WHERE rs.project_id = i.project_id
+            AND rs.kind = 'system'
+            AND rs.status IN ('running', 'paused')
+            AND rs.metadata -> 'runIssues' @> to_jsonb('ISS-' || i.iss_seq)
         )
       ORDER BY i.created_at ASC
       LIMIT ${a.limit}

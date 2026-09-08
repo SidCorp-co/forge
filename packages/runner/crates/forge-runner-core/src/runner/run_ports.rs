@@ -38,7 +38,12 @@ pub struct CoreRunSessions<'a> {
 
 #[async_trait::async_trait]
 impl CoreSessions for CoreRunSessions<'_> {
-    async fn open(&self, run_id: &str, issue_keys: &[String], name: &str) -> Result<String> {
+    async fn open(
+        &self,
+        run_id: &str,
+        issue_keys: &[String],
+        name: &str,
+    ) -> Result<(String, String)> {
         run_sessions::open(self.client, &self.project_id, run_id, issue_keys, name).await
     }
 }

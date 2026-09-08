@@ -38,20 +38,31 @@ beforeEach(() => {
 });
 
 describe('readAdmissions', () => {
-  // cm:guard AC1 — a project that never declared a backlog must contribute NOTHING, which is every project on the fleet on the day this shipped.
-  it('ignores a project with no poolBacklog', async () => {
+  // cm:guard the entry status is admitted with NO `poolBacklog` declared, and that is the whole of criterion 23's other half: since ISS-933 core mints no drive job, so a project that offered only its declared backlog would go silent with no error anywhere saying why.
+  it('admits the entry status even when no poolBacklog is declared', async () => {
     execute.mockResolvedValueOnce([projectRow({ enabled: true })]);
-    await expect(readAdmissions({ deviceId: DEVICE })).resolves.toEqual([]);
+    await expect(readAdmissions({ deviceId: DEVICE })).resolves.toEqual([
+      { projectId: PROJECT, statuses: ['open'], limit: 20, entryOnRelease: false },
+    ]);
   });
 
-  it('ignores a project whose poolBacklog admits nothing', async () => {
-    execute.mockResolvedValueOnce([projectRow({ poolBacklog: { statuses: [] } })]);
-    await expect(readAdmissions({ deviceId: DEVICE })).resolves.toEqual([]);
+  it('admits the entry status beside a declared backlog, never instead of it', async () => {
+    execute.mockResolvedValueOnce([projectRow({ poolBacklog: { statuses: ['draft'] } })]);
+    const [a] = await readAdmissions({ deviceId: DEVICE });
+    expect(a?.statuses).toEqual(['draft', 'open']);
   });
 
-  it('ignores a project with no agent_config at all', async () => {
-    execute.mockResolvedValueOnce([{ id: PROJECT, agent_config: null }]);
-    await expect(readAdmissions({ deviceId: DEVICE })).resolves.toEqual([]);
+  // cm:guard a GATED project admits the entry status only for an issue a human released by hand. `mode:'manual'` means a human presses Run, and it kept that meaning when the gate moved from "core mints" to "the issue is offered".
+  it('withholds the entry status while a human holds the gate', async () => {
+    execute.mockResolvedValueOnce([
+      projectRow({ states: { open: { mode: 'manual' } }, poolBacklog: { statuses: ['draft'] } }),
+    ]);
+    const [a] = await readAdmissions({ deviceId: DEVICE });
+    expect(a?.statuses).toEqual(['draft']);
+    expect(
+      a?.entryOnRelease,
+      'a gate is per project and a Run is per issue, so a gated project must still be able to offer the ONE issue a human released — without this the only way to release one is to open the gate for all of them',
+    ).toBe(true);
   });
 
   it('reads the declared statuses and the declared limit', async () => {
@@ -59,7 +70,12 @@ describe('readAdmissions', () => {
       projectRow({ poolBacklog: { statuses: ['draft', 'on_hold'], limit: 7 } }),
     ]);
     await expect(readAdmissions({ deviceId: DEVICE })).resolves.toEqual([
-      { projectId: PROJECT, statuses: ['draft', 'on_hold'], limit: 7 },
+      {
+        projectId: PROJECT,
+        statuses: ['draft', 'on_hold', 'open'],
+        limit: 7,
+        entryOnRelease: false,
+      },
     ]);
   });
 
@@ -93,8 +109,8 @@ describe('readAdmissions', () => {
 });
 
 describe('readAdmissibleIssues', () => {
-  it('asks the database nothing when no project admits a status', async () => {
-    execute.mockResolvedValueOnce([projectRow({ enabled: true })]);
+  it('asks the database nothing when a gated project declares no backlog either', async () => {
+    execute.mockResolvedValueOnce([projectRow({ states: { open: { mode: 'manual' } } })]);
     await expect(readAdmissibleIssues({ deviceId: DEVICE })).resolves.toEqual([]);
     expect(execute).toHaveBeenCalledTimes(1);
   });

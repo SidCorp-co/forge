@@ -8,6 +8,12 @@ import {
   stuckQueue,
 } from './reconciler-test-harness.js';
 
+const wakeMastersForProject = vi.fn(async () => ({ boxes: 1, delivered: 1 }));
+
+vi.mock('../ws/master-wake.js', () => ({
+  wakeMastersForProject: (...a: unknown[]) => wakeMastersForProject(...(a as [])),
+}));
+
 vi.mock('../db/client.js', async () => {
   const h = await import('./reconciler-test-harness.js');
   return { db: { execute: h.dbExecute } };
@@ -41,7 +47,7 @@ beforeEach(resetHarness);
 
 describe('rescue accounting', () => {
   // cm:guard L0.7 — `rescued` used to count the ATTEMPT. `considerEnqueue` has a dozen paths that enqueue nothing (a disabled stage, a human gate, a race, a missing skill), and an issue parked on any of them is re-read every 60s forever: the counter and the warning breadcrumb both fired every minute for a loop that did nothing, which is how it stayed invisible.
-  it('does not count a rescue when the re-enqueue produced no job', async () => {
+  it('does not count a rescue when no box is bound to serve the project', async () => {
     stuckQueue.push([
       {
         id: 'iss-1',
@@ -53,11 +59,15 @@ describe('rescue accounting', () => {
     ]);
     jobsQueue.push([]);
     staleCountQueue.push([{ count: 0 }]);
+    wakeMastersForProject.mockResolvedValueOnce({ boxes: 0, delivered: 0 });
 
     const result = await runReconcilerOnce();
 
-    expect(reEnqueueMock).toHaveBeenCalledTimes(1);
-    expect(result.rescued).toBe(0);
+    expect(wakeMastersForProject).toHaveBeenCalledTimes(1);
+    expect(
+      result.rescued,
+      'a project no box is bound to serve keeps being reported, never counted as repaired — the difference between latency and work nobody is doing (ISS-933)',
+    ).toBe(0);
     expect(sentryAddBreadcrumb).not.toHaveBeenCalledWith(
       expect.objectContaining({ category: 'pipeline.reconciler.enqueued_missing' }),
     );
@@ -65,7 +75,7 @@ describe('rescue accounting', () => {
 });
 
 describe('reconciler', () => {
-  it('re-enqueues each stuck issue and emits a Sentry breadcrumb', async () => {
+  it('wakes a box for each stuck issue and emits a Sentry breadcrumb', async () => {
     stuckQueue.push([
       {
         id: 'iss-1',
@@ -87,21 +97,16 @@ describe('reconciler', () => {
     const result = await runReconcilerOnce();
 
     expect(result.rescued).toBe(2);
-    expect(reEnqueueMock).toHaveBeenCalledTimes(2);
-    expect(reEnqueueMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        issueId: 'iss-1',
-        status: 'confirmed',
-        actor: expect.objectContaining({ type: 'device', id: 'owner-1' }),
-        reason: expect.objectContaining({ reconciler: true }),
-      }),
+    expect(wakeMastersForProject).toHaveBeenCalledTimes(2);
+    expect(wakeMastersForProject).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: 'proj-1', issueId: 'iss-1', status: 'confirmed' }),
     );
     expect(sentryAddBreadcrumb).toHaveBeenCalledWith(
       expect.objectContaining({ category: 'pipeline.reconciler.enqueued_missing' }),
     );
   });
 
-  it('falls back to the <reconciler> sentinel id when project has no owner', async () => {
+  it('wakes the project boxes even when it has no owner to attribute', async () => {
     stuckQueue.push([
       {
         id: 'iss-3',
@@ -115,9 +120,10 @@ describe('reconciler', () => {
 
     await runReconcilerOnce();
 
-    expect(reEnqueueMock).toHaveBeenCalledWith(
+    expect(wakeMastersForProject).toHaveBeenCalledWith(
       expect.objectContaining({
-        actor: expect.objectContaining({ type: 'device', id: '<reconciler>' }),
+        projectId: 'proj-2',
+        issueId: 'iss-3',
       }),
     );
   });
@@ -137,7 +143,7 @@ describe('reconciler', () => {
     );
   });
 
-  it('does not throw when reEnqueueForIssue throws — continues with the next row', async () => {
+  it('does not throw when the wake throws — continues with the next row', async () => {
     stuckQueue.push([
       {
         id: 'iss-4',
@@ -155,13 +161,12 @@ describe('reconciler', () => {
       },
     ]);
     staleCountQueue.push([{ count: 0 }]);
-    reEnqueueMock.mockRejectedValueOnce(new Error('boom'));
+    wakeMastersForProject.mockRejectedValueOnce(new Error('boom'));
 
     const result = await runReconcilerOnce();
 
-    // First call failed → not rescued. Second call succeeded → rescued: 1.
     expect(result.rescued).toBe(1);
-    expect(reEnqueueMock).toHaveBeenCalledTimes(2);
+    expect(wakeMastersForProject).toHaveBeenCalledTimes(2);
   });
 
   it('returns zero rescues when no issues are stuck', async () => {

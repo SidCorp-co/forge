@@ -12,6 +12,7 @@ use crate::transport::CoreClient;
 #[serde(rename_all = "camelCase")]
 struct OpenReply {
     session_id: String,
+    run_id: String,
 }
 
 /// Open the core-side record for a run, carrying the WHOLE group of issues.
@@ -22,7 +23,7 @@ pub async fn open(
     run_id: &str,
     issue_keys: &[String],
     name: &str,
-) -> Result<String> {
+) -> Result<(String, String)> {
     let url = client.url("/api/devices/me/run-sessions");
     let body = serde_json::json!({
         "projectId": project_id,
@@ -50,7 +51,7 @@ pub async fn open(
         .json()
         .await
         .map_err(|e| Error::Other(format!("run-session open decode: {e}")))?;
-    Ok(parsed.session_id)
+    Ok((parsed.session_id, parsed.run_id))
 }
 
 /// Say this box still holds the run — the ONLY thing that keeps it out of

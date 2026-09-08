@@ -17,6 +17,7 @@ process.env.JWT_SECRET ??= 'integration-test-secret-padded-to-32-chars-long';
 process.env.DEVICE_TOKEN_PEPPER ??= 'integration-test-pepper-padded-to-32-chars-long';
 
 import {
+  createTestDevice,
   createTestProject,
   createTestUser,
   setupTestDatabase,
@@ -86,17 +87,38 @@ describe('ISS-940 shipped-but-never-closed (real Postgres)', () => {
     return { projectId: project.id, issueId };
   }
 
+  /** A box bound to the project, so a wake has somewhere to go. */
+  async function bindABox(projectId: string): Promise<void> {
+    const device = await createTestDevice(harness.db, userId);
+    await harness.db.execute(sql`
+      INSERT INTO runners (device_id, project_id, name, type, status)
+      VALUES (${device.id}, ${projectId}, 'r1', 'claude-code', 'online')
+    `);
+  }
+
   async function detect(projectId: string): Promise<{ detected: number; notified: number }> {
     const { detectOwedCloses } = await import('../../src/pipeline/stranded-issues.js');
     return detectOwedCloses(new Date(), { projectId });
   }
 
   describe('the reconciler refuses to re-dispatch it', () => {
+    // cm:guard the repair is a WAKE since ISS-933, and what counts is a box BOUND rather than a socket connected: a wake is a hint the 30s sweep duplicates, so a disconnected box is not a failed rescue — a project nothing is bound to serve is.
     it('rescues a stuck `open` issue that never shipped', async () => {
-      await seed({ mergedAgo: null });
+      const { projectId } = await seed({ mergedAgo: null });
+      await bindABox(projectId);
       const { runReconcilerOnce } = await import('../../src/pipeline/reconciler.js');
 
       expect((await runReconcilerOnce()).rescued).toBe(1);
+    });
+
+    it('counts no rescue for a project no box is bound to serve', async () => {
+      await seed({ mergedAgo: null });
+      const { runReconcilerOnce } = await import('../../src/pipeline/reconciler.js');
+
+      expect(
+        (await runReconcilerOnce()).rescued,
+        'an issue nothing on the fleet can pick up must keep being reported, not counted as repaired — that is the difference between latency and work nobody is doing',
+      ).toBe(0);
     });
 
     // cm:guard this is the ISS-920 / ISS-931 case and the ONLY difference from the test above is the merge mark — the two run the same seed so a deleted `merged_at IS NULL` clause cannot hide behind a second variable

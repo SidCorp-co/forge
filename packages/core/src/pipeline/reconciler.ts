@@ -4,13 +4,13 @@ import type { IssueStatus } from '../db/schema.js';
 import { applyStatusTransition } from '../issues/apply-transition.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
+import { wakeMastersForProject } from '../ws/master-wake.js';
 import {
   AUTONOMOUS_ENTRY_STATUS,
   AUTONOMOUS_INFLIGHT_STATUSES,
   AUTONOMOUS_JOB_TYPE,
 } from './autonomous-mode.js';
 import { checkAutonomousRescueCap, recordAutonomousRescue } from './autonomous-rescue-cap.js';
-import { reEnqueueForIssue } from './orchestrator.js';
 
 /**
  * ISS-196 — minute-cadence safety net for the trigger → outbox → orchestrator
@@ -38,20 +38,6 @@ const WEDGE_GRACE = '10 minutes';
 const WEDGE_RESET_LIMIT = 50;
 
 let registered = false;
-
-/**
- * Did the re-enqueue actually produce a job? Same predicate as the stuck-issue
- * query's NOT EXISTS, so "rescued" and "stuck" can never disagree about what a
- * live job is.
- */
-async function hasActiveJob(issueId: string): Promise<boolean> {
-  const rows = await db.execute<{ one: number }>(sql`
-    SELECT 1 AS one FROM jobs
-    WHERE issue_id = ${issueId} AND status IN ('queued','dispatched','running')
-    LIMIT 1
-  `);
-  return rows.length > 0;
-}
 
 export async function runReconcilerOnce(): Promise<{
   rescued: number;
@@ -96,21 +82,17 @@ export async function runReconcilerOnce(): Promise<{
         reopenCount: row.reopen_count,
       });
       if (cap.capped) continue;
-      // cm:guard a null runId here is CORRECT, not a miss: on this path `openIssueRun` runs inside `dispatchAutonomous`, i.e. after the check, so a fresh issue has no run yet and its first rescue charges nothing. The loop this cap exists to bound starts at cycle two, where the run exists — charging cycle one would only shorten the allowance by one for every issue that ever entered normally.
       const autonomousRunId: string | null = cap.runId;
 
-      const actorId = row.created_by ?? '<reconciler>';
-      await reEnqueueForIssue({
+      // cm:guard the repair is a WAKE, never an enqueue, since ISS-933 — core mints no `drive` work, so an issue at a live status with nothing running is not missing a job, it is waiting for a master to look. `ws/master-wake.ts` says in its own guard that a wake published while a box's socket is down is gone with no record, and this pass is the backstop that makes that cost latency instead of the work.
+      const { boxes } = await wakeMastersForProject({
         projectId: row.project_id,
         issueId: row.id,
         status: row.status as IssueStatus,
-        // cm:why the project owner stands in as a device principal because this pass has no session behind it — the same substitution orchestrator.resolveSkipDevice makes, and the reason neither needed a schema column
-        actor: { type: 'device', id: actorId, agency: 'agent' },
-        reason: { reconciler: true, reason: 'enqueued_missing' },
       });
 
-      // cm:guard count the OUTCOME, never the attempt. `considerEnqueue` has a dozen paths that enqueue nothing — a disabled stage, a human-gated one, a race, a missing skill — and an issue parked on any of them is re-read every 60s forever. Counting the attempt made that loop indistinguishable from productive work, and the breadcrumb fired every minute for it.
-      if (!(await hasActiveJob(row.id))) continue;
+      // cm:guard count BOXES BOUND, not sockets delivered. A wake is a hint the 30s sweep already duplicates, so a disconnected box is not a failed rescue; a project with NO box bound is, and it is the one an operator has to act on. Counting the attempt instead made this loop indistinguishable from productive work and fired the breadcrumb every minute for it.
+      if (boxes === 0) continue;
 
       if (autonomousRunId) await recordAutonomousRescue(autonomousRunId);
 

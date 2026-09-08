@@ -27,7 +27,14 @@ pub trait Spawner: Send + Sync {
 // cm:edge contract -> packages/core/src/devices/run-session.ts — `openRunSession` is the other half, and the group of issues travels in that one call: core records membership on the run's metadata because `pipeline_runs.issue_id` is one column and a run carries many.
 #[async_trait::async_trait]
 pub trait CoreSessions: Send + Sync {
-    async fn open(&self, run_id: &str, issue_keys: &[String], name: &str) -> Result<String>;
+    /// Answers `(agent session id, pipeline run id)` — the run id is what every
+    /// phase endpoint takes as a path segment.
+    async fn open(
+        &self,
+        run_id: &str,
+        issue_keys: &[String],
+        name: &str,
+    ) -> Result<(String, String)>;
 }
 
 /// What the master decided: a group, a branch, and where the repo is.
@@ -40,6 +47,31 @@ pub struct RunRequest {
     pub branch: String,
     pub start_point: Option<String>,
     pub argv: Vec<String>,
+}
+
+/// What a run session is told, once, when its pane starts.
+// cm:guard the run id MUST be in the brief — every phase endpoint takes it as a path segment, and the agent has no other way to learn its own run without spending a call on the pipeline-runs list route.
+// cm:guard the phase example IS the phase vocabulary: `phase_journal.phase` is free-form and no gate reads it, so whatever name this literal shows is what lands in the table. It read `phase-1` until ISS-921 and 542 rows landed named `phase-0`..`phase-8`, which no reader can interpret and which do not mean the same step run to run. Keep a descriptive name and never reintroduce an ordinal.
+// cm:guard name EVERY issue the run carries. This text moved here from core when a run stopped being one job over one issue (ISS-933); a brief that named only the first would have the agent close one issue and abandon the rest in a worktree it then deletes.
+// cm:guard CROSS-REPO coupling, so no `cm:edge` can hold it: the other side is `guides/skills/issue-flow/guide.md` in github.com/SidCorp-co/forge-plugin, which the agent reads via `forge guide issue-flow`. That guide and this brief are read in one context and must name ONE way to reach Forge and ONE status vocabulary. They disagreed until 2026-09-02 and the agent believed the prompt — 4,806 `forge_step_start` calls on autonomous projects. Nothing here can gate the pair; this line is the only record of it.
+fn brief(issue_keys: &[String], pipeline_run_id: &str) -> String {
+    let issues = issue_keys.join(", ");
+    format!(
+        "Drive {issues} to completion with the `issue-flow` skill. This run carries ALL of them: \
+they share this worktree and this branch, and none of them is done until you have finished the \
+group.\n\nYou reach Forge over the CLI — `forge-runner api <path>`, authenticated by `$FORGE_PAT`, \
+which the runner has already exported. Read each issue and this project's `projectFacts` before \
+Phase 1; the skill is installed as a plugin and knows nothing about this repo.\n\nYour run is \
+{pipeline_run_id}. Declare every phase before you begin it, and close it when it ends. The \
+declaration is your resume point: a session that dies restarts from the last phase you declared, \
+so read the resume point FIRST — if it returns a phase, you are a resumed session and that is \
+where you continue.\n\n    forge-runner api pipeline-runs/{pipeline_run_id}/resume-point\n    \
+forge-runner api pipeline-runs/{pipeline_run_id}/phases -X POST -d '{{\"phase\":\"understand\"}}'\n\n\
+Name the phase for the step it is, in words, never by its number: nothing can say what a row named \
+`phase-4` was, and two runs need not have meant the same step by it. Reuse the name an earlier run \
+used for the same step so the two aggregate — `understand`, `plan`, `code`, `review`, `ship` are \
+already in the journal."
+    )
 }
 
 /// Create the worktree, record the run, then start it — in that order.
@@ -67,11 +99,19 @@ pub async fn start(
 
     let name =
         crate::daemon::terminal::session_name(crate::daemon::terminal::RUN_PREFIX, &req.branch);
-    let session_id = core.open(&run.run_id, &issue_keys, &name).await?;
+    let (session_id, pipeline_run_id) = core.open(&run.run_id, &issue_keys, &name).await?;
     ledger.attach_session(&run.run_id, &session_id)?;
 
     let pid = spawner.spawn(&name, &created, &req.argv).await?;
     ledger.attach_pid(&run.run_id, pid)?;
+
+    // cm:guard the brief is sent AFTER the pid is on the ledger. A pane briefed before its run is
+    // fully recorded is an agent working on a row recovery has not finished writing.
+    if let Err(e) =
+        crate::daemon::terminal::send_line(&name, &brief(&issue_keys, &pipeline_run_id)).await
+    {
+        tracing::warn!("run_session: {name} started but could not be briefed: {e}");
+    }
 
     ledger
         .run(&req.run_id)?
@@ -90,12 +130,17 @@ mod tests {
     pub(super) struct Core(pub(super) Mutex<Vec<String>>);
     #[async_trait::async_trait]
     impl CoreSessions for Core {
-        async fn open(&self, run_id: &str, issue_keys: &[String], _: &str) -> Result<String> {
+        async fn open(
+            &self,
+            run_id: &str,
+            issue_keys: &[String],
+            _: &str,
+        ) -> Result<(String, String)> {
             self.0
                 .lock()
                 .unwrap()
                 .push(format!("{run_id}:{}", issue_keys.join(",")));
-            Ok("core-sess-1".into())
+            Ok(("core-sess-1".into(), "pr-1".into()))
         }
     }
 
@@ -172,6 +217,36 @@ mod tests {
                 "`{verb}` must exist once and take the name a caller built from a prefix"
             );
         }
+    }
+
+    #[test]
+    fn the_brief_names_every_issue_the_run_carries() {
+        let text = brief(&["ISS-957".into(), "ISS-963".into()], "pr-1");
+        for key in ["ISS-957", "ISS-963"] {
+            assert!(
+                text.contains(key),
+                "a brief that names only the first issue has the agent close one and abandon the rest in a worktree it then deletes — this text moved here from core precisely when a run stopped being one job over one issue (ISS-933 criterion 7); brief was: {text}"
+            );
+        }
+        assert!(
+            text.contains("pr-1"),
+            "the run id must be in the brief: every phase endpoint takes it as a path segment and the agent has no other way to learn its own run"
+        );
+    }
+
+    // cm:guard the ordinal is what this asserts, not the wording. `phase_journal.phase` is free-form and no gate reads it, so whatever the example shows is what lands in the table — 542 rows landed named `phase-0`..`phase-8`, which no reader can interpret.
+    #[test]
+    fn the_phase_example_is_a_word_and_never_a_number() {
+        let text = brief(&["ISS-957".into()], "pr-1");
+        let example = text
+            .split("\"phase\":\"")
+            .nth(1)
+            .and_then(|r| r.split('"').next())
+            .unwrap_or_default();
+        assert!(
+            !example.is_empty() && example.chars().all(|c| c.is_ascii_alphabetic()),
+            "the example phase name is the vocabulary — whatever this literal shows is what lands in `phase_journal.phase`, and an ordinal there is a row no reader can interpret; example was `{example}`"
+        );
     }
 
     #[test]

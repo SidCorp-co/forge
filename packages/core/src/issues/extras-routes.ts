@@ -131,12 +131,7 @@ issueExtrasRoutes.patch(
       if (!foundIds.has(id)) result.skipped.push({ id, reason: 'not_found' });
     }
 
-    // Pre-load project access for every distinct project in parallel. The
-    // per-row loop below reads from the resolved map without re-awaiting,
-    // so 100 issues across K projects cost K lookups concurrently rather
-    // than K sequential round-trips. A 404 from `loadProjectAccess` (project
-    // deleted between the issue read and the access read) is mapped to a
-    // `not_found` skip instead of bubbling up to `failed`.
+    // cm:guard resolve access per PROJECT before the row loop, and map a 404 from `loadProjectAccess` to a `not_found` skip rather than letting it bubble — a project deleted between the issue read and the access read would otherwise fail the whole batch on one row.
     const distinctProjects = [...new Set(rows.map((r) => r.projectId))];
     type ProjectAccessState = { allowed: boolean; missing?: boolean };
     const accessMap = new Map<string, ProjectAccessState>();
@@ -371,17 +366,15 @@ issueExtrasRoutes.post(
     assertProjectRole(access, 'member');
 
     try {
-      const result = await triggerPipelineStepManual({
+      await triggerPipelineStepManual({
         projectId: issue.projectId,
         issueId: issue.id,
         status: issue.status,
         actor: restActor(c),
         reason: { manual: true },
       });
-      return c.json(
-        { issueId: issue.id, jobId: result.jobId, stage: result.type, status: 'queued' },
-        202,
-      );
+      // cm:guard `released`, not `queued`, and no `jobId` — since ISS-933 core mints nothing for an autonomous issue. Answering `queued` with a fabricated id would tell the UI work started that no box has yet decided to take.
+      return c.json({ issueId: issue.id, status: 'released' }, 202);
     } catch (err) {
       if (err instanceof ActiveJobConflictError) {
         throw new HTTPException(409, {

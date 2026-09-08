@@ -14,7 +14,7 @@
 
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, type JobType, projects } from '../db/schema.js';
+import { type IssueStatus, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 import type { Actor } from './activity.js';
 import {
@@ -40,10 +40,7 @@ async function loadPipelineConfig(
     .where(eq(projects.id, projectId))
     .limit(1);
   if (!row) return { cfg: null, projectCreatedBy: null };
-  // ISS-353 — archived projects pause auto-pipeline dispatch. cfg=null falls
-  // through to the same "no auto pipeline" path as a missing/invalid config,
-  // so no NEW agent jobs are queued. In-flight jobs are untouched (this only
-  // gates dispatch, not running work).
+  // cm:guard an archived project reads as `cfg: null`, the same path a missing or invalid config takes, so nothing NEW is dispatched while in-flight work finishes untouched (ISS-353).
   if (row.archivedAt != null) return { cfg: null, projectCreatedBy: row.createdBy ?? null };
   const ac = (row.agentConfig as { pipelineConfig?: unknown } | null) ?? {};
   // Parse through the canonical schema so the typed read path stays in
@@ -57,10 +54,10 @@ async function loadPipelineConfig(
 }
 
 /**
- * Manual fire from the issue UI (ISS-5): the whole drive session. Bypasses
- * every automation gate — the user clicked "Run". Throws
- * `ActiveJobConflictError` when a drive job for this issue is already active
- * so the route can return 409.
+ * Manual fire from the issue UI (ISS-5). Since ISS-933 this OFFERS the issue
+ * rather than minting work for it: core no longer starts a drive session, a
+ * master opens the run itself, and a human's Run is the per-issue release that
+ * a project-level gate cannot express.
  */
 export async function triggerPipelineStepManual(args: {
   projectId: string;
@@ -68,7 +65,7 @@ export async function triggerPipelineStepManual(args: {
   status: IssueStatus;
   actor: Actor;
   reason: Record<string, unknown>;
-}): Promise<{ jobId: string; type: JobType }> {
+}): Promise<{ released: true }> {
   const { projectCreatedBy } = await loadPipelineConfig(args.projectId);
   return dispatchDriveManual({ ...args, projectCreatedBy });
 }
