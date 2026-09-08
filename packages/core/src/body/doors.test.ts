@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -19,7 +19,8 @@ const SRC = dirname(dirname(fileURLToPath(import.meta.url)));
 /** Every write path that takes a body from its CALLER. Each must gate it. */
 const DOORS: Record<string, RegExp> = {
   'comments/service.ts': /prepareBody\(/,
-  'comments/routes.ts': /prepareBodyOrThrow\(|updateCommentBody\(/,
+  // cm:guard ISS-969 — this entry named `prepareBodyOrThrow` until the create door was collapsed into `insertComment`. `updateCommentBody(` alone would have kept the row green while create's gate moved somewhere this file no longer looked, so both verbs are named.
+  'comments/routes.ts': /insertComment\(|updateCommentBody\(/,
   'issues/create-service.ts': /prepareBody\(/,
   'issues/patch-fields.ts': /prepareBody\(/,
   'mcp/tools/forge-comments.ts': /insertComment\(|updateCommentBody\(/,
@@ -42,9 +43,6 @@ const KERNEL_AUTHORED = [
   'jobs/budget-check.ts',
   'memory/knowledge-promotion.ts',
   'pipeline/autonomous-rescue-comment.ts',
-  'pipeline/decomposition-subscribers.ts',
-  'pipeline/missing-skill-guard.ts',
-  'pipeline/stage-stall-guard.ts',
   'pm/routes.ts',
   'release-batch/claim-subscriber.ts',
   'release-batch/service.ts',
@@ -112,6 +110,12 @@ function walk(dir: string): string[] {
 }
 
 describe('every caller-supplied body door is gated', () => {
+  // cm:guard ISS-969 — three `KERNEL_AUTHORED` entries named files that had been deleted, and the list is read as a Set of names, so a rotted entry is invisible: it classifies nothing and reports nothing. This is what stops the list from silently becoming an inventory of a repo that no longer exists.
+  it('every name in the enumeration is a file that still exists', () => {
+    const declared = [...Object.keys(DOORS), ...KERNEL_AUTHORED, ...PREPARED_UPSTREAM];
+    expect(declared.filter((rel) => !existsSync(join(SRC, rel)))).toEqual([]);
+  });
+
   it('each declared door calls the gate', () => {
     for (const [rel, pattern] of Object.entries(DOORS)) {
       const src = readFileSync(join(SRC, rel), 'utf8');
@@ -147,6 +151,54 @@ describe('every caller-supplied body door is gated', () => {
       writers.filter((w) => !classified.has(w)),
       'a new write path must be added to DOORS (it takes a caller body → gate it) or to KERNEL_AUTHORED (it formats its own text → column default)',
     ).toEqual([]);
+  });
+});
+
+/**
+ * ISS-969 — the stage mandate is a rule with doors too, and it has fewer of
+ * them than the syntax gate on purpose.
+ *
+ * A comment body arrives through four caller-supplied doors (REST create, REST
+ * patch, MCP create, MCP update) and ALL FOUR now converge on
+ * `comments/service.ts`: ISS-969 collapsed REST create's own
+ * `db.insert(comments)` copy into `insertComment` for exactly that reason. So
+ * the enumeration here is the two service functions, plus the assertion that
+ * the route did not grow its copy back.
+ */
+const STAGE_GATED = {
+  'comments/service.ts': [/refuseMissingComponent\(/, /resolveStageBodyPolicy\(/],
+};
+
+describe('the stage body policy stands at every comment door', () => {
+  it('both service write paths consult the policy', () => {
+    for (const [rel, patterns] of Object.entries(STAGE_GATED)) {
+      const src = codeOf(join(SRC, rel));
+      for (const pattern of patterns) {
+        expect(pattern.test(src), `${rel} no longer reaches the stage policy`).toBe(true);
+      }
+    }
+    const service = codeOf(join(SRC, 'comments/service.ts'));
+    expect(
+      (service.match(/refuseMissingComponent\(/g) ?? []).length,
+      'insertComment and updateCommentBody must each consult it — gating create alone leaves "post it, then edit it away"',
+    ).toBe(2);
+  });
+
+  // cm:guard the REST create route must NOT insert a comment itself. It did until ISS-969, and a second insert site is a second place the policy and the `stage` column have to be remembered — which is the failure `refuseUnrecordedClose` names: a rule with two doors has to stand at both.
+  it('the REST create route inserts through the service rather than its own copy', () => {
+    const route = codeOf(join(SRC, 'comments/routes.ts'));
+    expect(/\.insert\(comments\)/.test(route)).toBe(false);
+    expect(/insertComment\(/.test(route)).toBe(true);
+  });
+
+  // cm:guard the kernel-authored writers do not carry the rule THEMSELVES. Most format their own text and `db.insert(comments)` directly, so they take the `markdown` default and store no stage; `steer-session.ts` is the exception and goes through `insertComment`, which is right — a steer is a person's typed body written at a stage. It is still never refused, because it passes `authorDeviceId: null`, and that is the exemption doing its job rather than a hole.
+  it('leaves the kernel-authored writers ungated', () => {
+    for (const rel of KERNEL_AUTHORED) {
+      const src = codeOf(join(SRC, rel));
+      expect(/refuseMissingComponent\(/.test(src), `${rel} should not carry the mandate`).toBe(
+        false,
+      );
+    }
   });
 });
 

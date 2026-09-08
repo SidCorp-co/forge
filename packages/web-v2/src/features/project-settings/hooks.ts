@@ -98,6 +98,22 @@ export function usePipelineConfig(id: string | undefined) {
 	});
 }
 
+/**
+ * ISS-969 — the adoption number, per stage, over a window.
+ *
+ * `staleTime` is deliberately short: the figure is what a mandate decision is
+ * argued from, and a stale one read as current is the failure this endpoint
+ * exists to end.
+ */
+export function useBodyAdoption(id: string | undefined, days: number) {
+	return useQuery({
+		queryKey: ["project", id, "body-adoption", days],
+		queryFn: () => projectSettingsApi.getBodyAdoption(id as string, days),
+		enabled: Boolean(id),
+		staleTime: 30_000,
+	});
+}
+
 export function useUpdatePipelineConfig(id: string | undefined) {
 	const qc = useQueryClient();
 	const { toast } = useToast();

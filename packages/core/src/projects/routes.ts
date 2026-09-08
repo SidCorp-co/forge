@@ -41,6 +41,7 @@ import { pluginDesignationsPatchSchema } from '../plugins/designation.js';
 import { readAgentConfig } from './agent-config.js';
 import { projectOnboardRoutes } from './onboard-routes.js';
 import { pipelineConfigHttpError } from './pipeline-config-http.js';
+
 import { projectFactsRoutes } from './project-facts-routes.js';
 import { projectRunnerRoutes } from './runners-routes.js';
 import { createProject, generateApiKey, ProjectSlugTakenError } from './service.js';
@@ -76,8 +77,7 @@ const testCredentialSchema = z.object({
   password: z.string().max(500),
 });
 
-// Free-form jsonb so future deploy knobs can be added without a migration.
-// Known fields are validated; unknown keys pass through unchanged.
+// cm:why free-form jsonb, and unknown keys pass THROUGH rather than being stripped: a deploy knob added later must reach the column without a migration, and a client one version ahead must not have its field silently deleted by this one
 export const previewDeployPatchSchema = z
   .object({
     stagingUrl: z.string().trim().url().max(500).nullable().optional(),

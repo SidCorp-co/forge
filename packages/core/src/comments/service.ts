@@ -11,8 +11,14 @@
 import { and, asc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import type { BodyFormat } from '../body/formats.js';
 import { prepareBody } from '../body/prepare.js';
+import {
+  type BodyPolicyConfigSource,
+  refuseMissingComponent,
+  resolveStageBodyPolicy,
+} from '../body/stage-policy.js';
 import { db } from '../db/client.js';
-import { comments, issues } from '../db/schema.js';
+import { comments, issues, projects } from '../db/schema.js';
+import type { ActorAgency } from '../issues/actor-agency.js';
 import { type CommentCursor, encodeCommentCursor } from './cursor.js';
 
 export type CommentThreadRow = {
@@ -23,6 +29,8 @@ export type CommentThreadRow = {
   body: string;
   format: BodyFormat;
   template: string | null;
+  stage: string | null;
+  authorAgency: ActorAgency | null;
   parentId: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -38,6 +46,8 @@ export const commentThreadColumns = {
   body: comments.body,
   format: comments.format,
   template: comments.template,
+  stage: comments.stage,
+  authorAgency: comments.authorAgency,
   parentId: comments.parentId,
   createdAt: comments.createdAt,
   updatedAt: comments.updatedAt,
@@ -179,6 +189,15 @@ export type NewComment = {
   issueId: string;
   authorId: string;
   authorDeviceId: string | null;
+  /**
+   * Who was at the keyboard, from the principal the door authenticated.
+   *
+   * REQUIRED, and never defaulted — the same reasoning `actorAgency`'s own
+   * guard states: a door that forgets it would silently write every agent's
+   * comment as a person's, which both exempts it from the mandate and drops it
+   * out of the number that decides the mandate.
+   */
+  authorAgency: ActorAgency;
   body: string;
   format?: BodyFormat | null | undefined;
   parentId: string | null;
@@ -187,9 +206,41 @@ export type NewComment = {
 /** A written comment plus whatever the sanitizer removed on the way in. */
 export type WrittenComment = { row: CommentThreadRow; warnings: string[] };
 
-// cm:guard ISS-898 — the caller-supplied body is validated HERE, not at each transport, because both REST and MCP create reach this one function and a gate on one of them is a gate on neither. The ~11 kernel-authored `db.insert(comments)` sites (apply-transition, budget-check, merge-marker, stage-stall-guard, pm/routes, release-batch) deliberately do NOT come through here: they take the `markdown` column default, which is right for text core formats itself.
+/**
+ * The stage a body write happens at, and the policy in force there.
+ *
+ * One read for both: `issues.status` IS the stage name (`STAGE_NAMES` in
+ * `pipeline-config-schema.ts` — "a key here must be a status this lane actually
+ * reaches"), and the project's stored `agentConfig` is where the policy lives.
+ */
+async function loadStageContext(
+  issueId: string,
+): Promise<{ stage: string; policySource: BodyPolicyConfigSource | null } | null> {
+  const [row] = await db
+    .select({ stage: issues.status, agentConfig: projects.agentConfig })
+    .from(issues)
+    .innerJoin(projects, eq(issues.projectId, projects.id))
+    .where(eq(issues.id, issueId))
+    .limit(1);
+  if (!row) return null;
+  return {
+    stage: row.stage,
+    policySource: (row.agentConfig ?? null) as BodyPolicyConfigSource | null,
+  };
+}
+
+// cm:guard ISS-898 — the caller-supplied body is validated HERE, not at each transport, because REST and MCP create both reach this one function and a gate on one of them is a gate on neither. ISS-969 collapsed REST's own `db.insert(comments)` copy into this call for that same reason, so there is now exactly one insert site for a body somebody sent us. The ~11 kernel-authored `db.insert(comments)` sites (apply-transition, budget-check, merge-marker, stage-stall-guard, pm/routes, release-batch) deliberately do NOT come through here: they take the `markdown` column default, which is right for text core formats itself, and they store no stage because no stage asked them for a record. `agent-sessions/steer-session.ts` is the one kernel caller that DOES come through here, and correctly: a steer is a person's typed body written at a stage, and it passes `authorDeviceId: null`, so the mandate exempts it while the stage is still recorded.
 export async function insertComment(input: NewComment): Promise<WrittenComment> {
   const prepared = prepareBody({ raw: input.body, format: input.format });
+  const context = await loadStageContext(input.issueId);
+  const refusal = refuseMissingComponent({
+    policy: resolveStageBodyPolicy(context?.policySource, context?.stage ?? ''),
+    agency: input.authorAgency,
+    format: prepared.format,
+    template: prepared.template,
+  });
+  if (refusal) throw refusal;
+
   const { format: _ignored, ...rest } = input;
   const [row] = await db
     .insert(comments)
@@ -198,18 +249,44 @@ export async function insertComment(input: NewComment): Promise<WrittenComment> 
       body: prepared.body,
       format: prepared.format,
       template: prepared.template,
+      stage: context?.stage ?? null,
     })
     .returning(commentThreadColumns);
   if (!row) throw new Error('comment insert returned no row');
   return { row, warnings: prepared.warnings };
 }
 
-/** Replace one comment's body, re-validating it. Returns null when it is gone. */
+/**
+ * Replace one comment's body, re-validating it. Returns null when it is gone.
+ *
+ * `stage` is NOT rewritten. It records when the comment was WRITTEN, and an
+ * edit does not move that; rewriting it would make a comment written at `open`
+ * and corrected an hour later count towards whatever stage the issue reached
+ * meanwhile, which is the exact misattribution the column exists to prevent.
+ */
+// cm:guard the mandate stands at the EDIT door too. Gating create alone leaves the obvious way past it — post a compliant body, then replace it with prose — and a rule with a way around it measures nothing, which is the whole reason the adoption number beside it would be worth reading.
 export async function updateCommentBody(
   commentId: string,
   input: { body: string; format?: BodyFormat | null | undefined },
 ): Promise<WrittenComment | null> {
   const prepared = prepareBody({ raw: input.body, format: input.format });
+  const [existing] = await db
+    .select({ issueId: comments.issueId, authorAgency: comments.authorAgency })
+    .from(comments)
+    .where(eq(comments.id, commentId))
+    .limit(1);
+  if (!existing) return null;
+
+  // cm:why the STORED agency, not the editor's: the rule is about who wrote the record, and a person correcting an agent's comment does not turn it into a person's. A row written before this column exists reads NULL and is exempt, which is the same "no backfill" position `stage` takes.
+  const context = await loadStageContext(existing.issueId);
+  const refusal = refuseMissingComponent({
+    policy: resolveStageBodyPolicy(context?.policySource, context?.stage ?? ''),
+    agency: existing.authorAgency,
+    format: prepared.format,
+    template: prepared.template,
+  });
+  if (refusal) throw refusal;
+
   const [row] = await db
     .update(comments)
     .set({

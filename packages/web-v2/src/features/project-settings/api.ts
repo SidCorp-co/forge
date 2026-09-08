@@ -6,6 +6,7 @@ import type { ProjectDetail } from "@/features/projects/types";
 import { apiClient } from "@/lib/api/client";
 import type {
 	ApplyUxPresetInput,
+	BodyAdoptionReport,
 	PipelineConfig,
 	ProjectFactsPatch,
 	ProjectFactsResponse,
@@ -41,6 +42,16 @@ export const projectSettingsApi = {
 	/** `POST /api/projects/:id/unarchive` — clear `archivedAt` (owner only). */
 	unarchive: (id: string) =>
 		apiClient<ProjectDetail>(`/projects/${id}/unarchive`, { method: "POST" }),
+
+	/**
+	 * `GET /api/body/adoption` — the number a mandate decision is made against
+	 * (ISS-969). Member-gated, and NOT behind the `pipelineControl` flag: the
+	 * point of the figure is that it is readable before anyone has decided to
+	 * configure anything. Under `/body` rather than `/projects/:id` because it
+	 * is a read about BODIES — see core `body/routes.ts`.
+	 */
+	getBodyAdoption: (id: string, days: number) =>
+		apiClient<BodyAdoptionReport>(`/body/adoption?projectId=${id}&days=${days}`),
 
 	/** `GET /api/projects/:id/pipeline-config` → `{ pipelineConfig }`. 404
 	 *  `FEATURE_OFF` when the `pipelineControl` flag is disabled. */

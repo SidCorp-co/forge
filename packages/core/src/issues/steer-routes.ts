@@ -16,7 +16,7 @@ import { SteerError, steerIssue } from '../agent-sessions/steer-session.js';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -75,6 +75,7 @@ issueSteerRoutes.post(
       return c.json(
         await steerIssue(id, body, {
           actorUserId: userId,
+          actorAgency: restActor(c).agency,
           reason: reason ?? 'steer (REST)',
           source: 'rest',
         }),
