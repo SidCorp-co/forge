@@ -725,11 +725,12 @@ export function deriveBlockerState(
 		};
 	}
 
+	// cm:why `info`, not `attention`, although the arm keeps its Resume action: nobody is OWED anything by a pause somebody chose, and `attention` is the colour that says a person has to act. It is the same false claim the label and the attention bucket carried before ISS-970, in the fourth reader — the two arms above, `needs_info` and `waiting`, are the ones that keep it.
 	if (issue.status === "on_hold") {
 		return {
-			tone: "attention",
+			tone: "info",
 			reason: "The issue is paused.",
-			whoMustAct: "An operator must resume it.",
+			whoMustAct: "An operator can resume it when the work is wanted again.",
 			cta: { label: "Resume", kind: "resume" },
 			...(blockingRefs.length ? { blockingRefs } : {}),
 		};
