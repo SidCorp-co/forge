@@ -1698,6 +1698,24 @@
 
 ### Fixed
 
+- **Prose a model wrote is refused before core stores it when it carries a script the model's own
+  input never used.** `memory/extraction.ts` and `memory/consolidation.ts` are the only two places
+  this repo stores LLM-composed text — extracted facts and `knowledge_edges`, consolidated and
+  rewritten memories, and the evidence on a reconcile archive — and all three prompts instruct the
+  model to *preserve the original language*. Nothing checked a character, which is how the Cyrillic
+  for "bypass" reached an otherwise-Vietnamese acceptance criterion on another project (ISS-962).
+  The new `memory/script-guard.ts` answers `foreignScriptChars(rendered, source)`: Latin, Common and
+  Inherited are always storable — that is ASCII, precomposed Vietnamese, digits, punctuation, emoji
+  and the combining marks an NFD spelling decomposes into — and anything else is storable only if
+  that exact character occurs in the source. A failing item is dropped unstored, logged with its
+  offending code points, and counted on the run's new `refused` field, so a drop is visible rather
+  than silent. Extraction computes the allowance from the human signal alone (issue title and
+  comments, never the existing-memories block in the same prompt), because licensing off already-stored
+  model output lets one leaked character license the next; consolidation and reconcile, which only
+  rewrite what is stored, use their whole prompt. Drawn in
+  `docs/flows/knowledge-memory-model-prose.html`. **Core still renders no Vietnamese** — the tracker's
+  prose pipeline and its `.vi-glossary.json` handling are `forge-plugin`'s and are reported there.
+
 - **`pg-boss` is pinned back to 10, because 12 cannot start against the schema this project's
   databases hold.** The Dependabot majors group (#317) took it from `10.4.2` to `12.30.0`. Every
   gate passed — 15 conformance checks, 5,825 unit tests, 1,167 integration tests, the build, CI on

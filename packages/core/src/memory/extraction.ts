@@ -6,6 +6,7 @@ import { logger } from '../logger.js';
 import type { HooksBus } from '../pipeline/hooks.js';
 import { indexMemory } from './indexer.js';
 import { callFastModel, fastModelConfigured } from './llm.js';
+import { foreignScriptChars } from './script-guard.js';
 
 /**
  * memory-v2 phase 3 — session-end fact extraction, ported from forge-agents
@@ -150,14 +151,53 @@ export function parseExtractionOutput(raw: string): ParsedExtraction | null {
 export interface ExtractionResult {
   facts: number;
   edges: number;
+  /** Items the model wrote in a script its input never used, dropped unstored (ISS-962). */
+  refused: number;
   skipped?: 'disabled' | 'no-signal' | 'gated' | 'llm-failed' | 'parse-failed';
+}
+
+export interface RefusedItem {
+  text: string;
+  chars: string[];
+}
+
+/**
+ * The mechanical check ISS-962 asks for, applied to a parsed extraction.
+ *
+ * The prompt tells the model to preserve the input's language, and this is
+ * what holds it to that: an item carrying a character whose script the input
+ * never used does not reach `indexMemory` or `knowledge_edges`. Pure, so the
+ * refusal is testable without a model or a database.
+ */
+// cm:guard `source` is the HUMAN signal only — the issue title and its comments — never the existing-memories block that shares the prompt. Licensing off already-stored model output makes one leaked character license the next, and the store becomes self-perpetuating rather than self-correcting.
+export function refuseForeignScript(
+  parsed: ParsedExtraction,
+  source: string,
+): { kept: ParsedExtraction; refused: RefusedItem[] } {
+  const refused: RefusedItem[] = [];
+  const keep = <T>(items: T[], textOf: (item: T) => string): T[] =>
+    items.filter((item) => {
+      const text = textOf(item);
+      const chars = foreignScriptChars(text, source);
+      if (chars.length === 0) return true;
+      refused.push({ text: text.slice(0, 60), chars });
+      return false;
+    });
+
+  return {
+    kept: {
+      facts: keep(parsed.facts, (f) => f.fact),
+      edges: keep(parsed.edges, (e) => `${e.subject} ${e.predicate} ${e.object} ${e.value ?? ''}`),
+    },
+    refused,
+  };
 }
 
 export async function runExtractionForIssue(
   projectId: string,
   issueId: string,
 ): Promise<ExtractionResult> {
-  if (!fastModelConfigured()) return { facts: 0, edges: 0, skipped: 'disabled' };
+  if (!fastModelConfigured()) return { facts: 0, edges: 0, refused: 0, skipped: 'disabled' };
 
   const [issue] = await db
     .select({ title: issues.title })
@@ -171,8 +211,8 @@ export async function runExtractionForIssue(
     .orderBy(desc(comments.createdAt))
     .limit(MAX_COMMENTS);
   const bodies = recentComments.map((c) => c.body);
-  if (bodies.length === 0) return { facts: 0, edges: 0, skipped: 'no-signal' };
-  if (!hasMemoryWorthyContent(bodies)) return { facts: 0, edges: 0, skipped: 'gated' };
+  if (bodies.length === 0) return { facts: 0, edges: 0, refused: 0, skipped: 'no-signal' };
+  if (!hasMemoryWorthyContent(bodies)) return { facts: 0, edges: 0, refused: 0, skipped: 'gated' };
 
   // Existing knowledge as dedup context — the prompt-level guard; the
   // indexer's semantic dedup is the hard guard behind it.
@@ -200,15 +240,23 @@ export async function runExtractionForIssue(
     .replace('{comments}', commentsStr);
 
   const raw = await callFastModel(prompt, 400);
-  if (!raw) return { facts: 0, edges: 0, skipped: 'llm-failed' };
+  if (!raw) return { facts: 0, edges: 0, refused: 0, skipped: 'llm-failed' };
   const parsed = parseExtractionOutput(raw);
   if (!parsed) {
     logger.warn({ issueId, raw: raw.slice(0, 120) }, 'memory.extraction: parse failed');
-    return { facts: 0, edges: 0, skipped: 'parse-failed' };
+    return { facts: 0, edges: 0, refused: 0, skipped: 'parse-failed' };
+  }
+
+  const { kept, refused } = refuseForeignScript(parsed, `${issue?.title ?? ''}\n${commentsStr}`);
+  if (refused.length > 0) {
+    logger.warn(
+      { projectId, issueId, refused },
+      'memory.extraction: refused output in a script its input never used',
+    );
   }
 
   let factsWritten = 0;
-  for (const f of parsed.facts) {
+  for (const f of kept.facts) {
     const refHash = crypto.createHash('sha1').update(f.fact).digest('hex').slice(0, 12);
     try {
       const result = await indexMemory(
@@ -241,7 +289,7 @@ export async function runExtractionForIssue(
   }
 
   let edgesWritten = 0;
-  for (const e of parsed.edges) {
+  for (const e of kept.edges) {
     try {
       const [dupe] = await db
         .select({ id: knowledgeEdges.id })
@@ -273,7 +321,7 @@ export async function runExtractionForIssue(
     }
   }
 
-  return { facts: factsWritten, edges: edgesWritten };
+  return { facts: factsWritten, edges: edgesWritten, refused: refused.length };
 }
 
 let alreadyRegistered = false;
@@ -285,8 +333,7 @@ export function registerMemoryExtraction(bus: HooksBus): () => void {
   const unsub = bus.on('jobCompleted', (p) => {
     if (!p.issueId || !EXTRACTION_JOB_TYPES.has(p.type)) return;
     const { projectId, issueId, jobId } = p;
-    // Detached: extraction adds an LLM round-trip and must never delay or
-    // fail job finalization.
+    // cm:why detached deliberately — extraction adds an LLM round-trip, and awaiting it here would put a model provider's latency and its outages on the job-finalization path
     queueMicrotask(() => {
       runExtractionForIssue(projectId, issueId as string).catch((err) => {
         logger.warn(
