@@ -7,10 +7,9 @@
  * routes the browser's only options are a second scanner and a second
  * component list, which is exactly the drift the registry exists to avoid.
  *
- * ISS-969 added `adoption`. It lives HERE rather than under `/projects/:id`
- * because it is a read ABOUT bodies — it counts `format` and `template` and
- * resolves `states[stage].bodyPolicy` — and `projects/routes.ts` was already
- * at the archmap fan-out limit, which is the gate saying the same thing.
+ * ISS-969 added `adoption`. Its handler is written here, in the body domain,
+ * because it is a read ABOUT bodies — but it is served on a `/projects/:id`
+ * path from its own router, so the project comes off the PATH.
  *
  * None of the three touches a row. `preview` is `prepareBody` on bytes nobody
  * stored, so what the pane draws and what a save would store come from one
@@ -43,9 +42,10 @@ bodyRoutes.get('/components', (c) => c.json({ items: describeRegistry() }));
 
 // cm:why the window is capped at 90 days rather than left open: the read groups over the largest table in the schema, and a caller asking for all of time is asking for a seq scan `comments_stage_created_at_idx` cannot serve
 const adoptionQuerySchema = z.object({
-  projectId: z.uuid(),
   days: z.coerce.number().int().min(1).max(90).optional(),
 });
+
+const adoptionParamSchema = z.object({ id: z.uuid() });
 
 /**
  * ISS-969 — the number a mandate decision is made against.
@@ -54,8 +54,20 @@ const adoptionQuerySchema = z.object({
  * hides the config screens: the whole point of the figure is that it is
  * readable before anyone has decided to configure anything.
  */
-bodyRoutes.get(
-  '/adoption',
+// cm:guard the project id comes off the PATH, never a query param. `middleware/pat-rest-surface.ts` fences a PAT by prefix, so a project-scoped read mounted on a fan-out path resolves no project and answers 403 PAT_NOT_PERMITTED to every token — measured live on forge-beta 2026-09-08, when this route was `GET /api/body/adoption?projectId=`. A read a project's own token cannot make is not a read anyone can automate.
+export const bodyProjectRoutes = new Hono<{ Variables: AuthVars }>();
+bodyProjectRoutes.use('*', requireAuth(), assertEmailVerified());
+
+bodyProjectRoutes.get(
+  '/:id/body-adoption',
+  zValidator('param', adoptionParamSchema, (r) => {
+    if (!r.success) {
+      throw new HTTPException(400, {
+        message: 'Invalid input',
+        cause: { code: 'BAD_REQUEST', details: z.flattenError(r.error) },
+      });
+    }
+  }),
   zValidator('query', adoptionQuerySchema, (r) => {
     if (!r.success) {
       throw new HTTPException(400, {
@@ -65,15 +77,16 @@ bodyRoutes.get(
     }
   }),
   async (c) => {
-    const { projectId, days } = c.req.valid('query');
-    const access = await loadProjectAccess(projectId, c.get('userId'));
+    const { id } = c.req.valid('param');
+    const { days } = c.req.valid('query');
+    const access = await loadProjectAccess(id, c.get('userId'));
     if (!access.role) {
       throw new HTTPException(403, {
         message: 'not a project member',
         cause: { code: 'FORBIDDEN' },
       });
     }
-    return c.json(await readBodyAdoption(projectId, days ?? ADOPTION_DEFAULT_WINDOW_DAYS));
+    return c.json(await readBodyAdoption(id, days ?? ADOPTION_DEFAULT_WINDOW_DAYS));
   },
 );
 

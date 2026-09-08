@@ -51,7 +51,7 @@
   stage without it is refused with `BODY_COMPONENT_REQUIRED`, naming the component, the stage and
   what to write. **Off everywhere** — absent from the shipped defaults and from every stored
   document, so nothing changed for any project until an operator sets it. A person writing prose is
-  never refused, at any stage, under any policy. `GET /api/body/adoption` answers the question that
+  never refused, at any stage, under any policy. `GET /api/projects/:id/body-adoption` answers the question that
   used to need SQL by hand — per stage, what fraction of bodies carry a component over a window —
   counting what is STORED (`format='html'` plus the root component) rather than a regex over body
   text, and Project settings → Pipeline shows the figure beside the switch. Two new columns on

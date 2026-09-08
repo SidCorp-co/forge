@@ -193,7 +193,7 @@ async function assertAssigneeIsMember(projectId: string, assigneeId: string): Pr
 }
 
 // cm:why the ISS-967 body routes are re-exported through here rather than imported straight into `index.ts`: `.arch.baseline.json` freezes that file's fan-out at 48 modules with `improves: down`, so a 49th — `core-body` — is refused outright and there is no widening available. This module is where the choice belongs anyway: it already owns issue bodies, already imports `core-body` (so this costs its own frozen 7 nothing), and already hosts the comment surface via `registerIssueCommentRoutes`. `index.ts` stays a mount list.
-export { bodyRoutes } from '../body/routes.js';
+export { bodyProjectRoutes, bodyRoutes } from '../body/routes.js';
 
 export const issueProjectRoutes = new Hono<{ Variables: AuthVars }>();
 issueProjectRoutes.use('*', requireAuth(), assertEmailVerified());
@@ -595,9 +595,7 @@ issueRoutes.delete(
     // cm:edge contract -> packages/core/drizzle/migrations/0219_unaudited_transition_reach.sql — `pipeline_runs.issue_id` is `ON DELETE CASCADE`, so this statement deletes kernel rows and owes the `forge.kernel_txn` marker; without it every issue delete is charged to the interventions metric as a hand on the database.
     await withKernelMarker(db, async (tx) => tx.delete(issues).where(eq(issues.id, id)));
 
-    // The issue's memory row references it only by sourceRef (no FK), so a
-    // hard delete would otherwise leave the title/description searchable
-    // forever. Detached: memory cleanup must not delay or fail the delete.
+    // cm:guard delete the issue's memory row too, and do it DETACHED. The row references the issue by `sourceRef` with no FK, so skipping it leaves the title and description searchable forever; awaiting it lets a memory-store failure fail a delete that already succeeded.
     queueMicrotask(() => {
       deleteMemory(issue.projectId, 'issue', id).catch((err) => {
         logger.warn(

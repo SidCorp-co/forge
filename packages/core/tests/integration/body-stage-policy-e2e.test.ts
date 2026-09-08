@@ -33,7 +33,9 @@ let readBodyAdoption: typeof import('../../src/body/adoption.js').readBodyAdopti
 let schema: typeof import('../../src/db/schema.js');
 
 let signUserToken: typeof import('../../src/auth/jwt.js')['signUserToken'];
-let bodyRoutes: typeof import('../../src/body/routes.js')['bodyRoutes'];
+let bodyProjectRoutes: typeof import('../../src/body/routes.js')['bodyProjectRoutes'];
+// cm:guard every core import in this file is DYNAMIC and happens after the env vars in `beforeAll` are set — `middleware/pat-rest-surface.js` reaches `db/client.ts` at module load, so a static import of it fails the whole suite on `Invalid environment` before a single case runs.
+let patAllowedFor: typeof import('../../src/middleware/pat-rest-surface.js')['patAllowedFor'];
 let errorHandler: typeof import('../../src/middleware/error.js')['errorHandler'];
 // biome-ignore lint/suspicious/noExplicitAny: test-only mount
 let app: any;
@@ -52,11 +54,12 @@ beforeAll(async () => {
   process.env.CORS_ORIGINS ??= 'http://localhost:3000';
   ({ insertComment, updateCommentBody } = await import('../../src/comments/service.js'));
   ({ signUserToken } = await import('../../src/auth/jwt.js'));
-  ({ bodyRoutes } = await import('../../src/body/routes.js'));
+  ({ bodyProjectRoutes } = await import('../../src/body/routes.js'));
+  ({ patAllowedFor } = await import('../../src/middleware/pat-rest-surface.js'));
   ({ errorHandler } = await import('../../src/middleware/error.js'));
   app = new Hono();
   app.onError(errorHandler);
-  app.route('/api/body', bodyRoutes);
+  app.route('/api/projects', bodyProjectRoutes);
   ({ readBodyAdoption } = await import('../../src/body/adoption.js'));
   schema = await import('../../src/db/schema.js');
 }, 60_000);
@@ -301,9 +304,9 @@ describe('the adoption number', () => {
  * The HTTP door, which the service-level cases above cannot reach: who may read
  * the number, and what an out-of-range window does.
  */
-describe('GET /api/body/adoption', () => {
+describe('GET /api/projects/:id/body-adoption', () => {
   async function read(query: string, token: string): Promise<Response> {
-    return app.request(`/api/body/adoption?${query}`, {
+    return app.request(`/api/projects/${projectId}/body-adoption?${query}`, {
       headers: { authorization: `Bearer ${token}` },
     });
   }
@@ -313,7 +316,7 @@ describe('GET /api/body/adoption', () => {
     await insertComment(asAgent(issueId, OUTCOME_BODY, 'html'));
     const token = await signUserToken(userId);
 
-    const res = await read(`projectId=${projectId}&days=14`, token);
+    const res = await read('days=14', token);
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       windowDays: number;
@@ -333,19 +336,27 @@ describe('GET /api/body/adoption', () => {
   it('refuses a signed-in stranger', async () => {
     const stranger = await createTestUser(harness.db, { emailVerifiedAt: new Date() });
     const token = await signUserToken(stranger.id);
-    const res = await read(`projectId=${projectId}`, token);
+    const res = await read('', token);
     expect(res.status).toBe(403);
   });
 
   it('refuses a window wider than the index can serve', async () => {
     const token = await signUserToken(userId);
-    expect((await read(`projectId=${projectId}&days=365`, token)).status).toBe(400);
-    expect((await read(`projectId=${projectId}&days=0`, token)).status).toBe(400);
+    expect((await read('days=365', token)).status).toBe(400);
+    expect((await read('days=0', token)).status).toBe(400);
   });
 
-  it('refuses a request that names no project', async () => {
+  it('refuses a project id that is not a uuid', async () => {
     const token = await signUserToken(userId);
-    expect((await read('days=14', token)).status).toBe(400);
+    const res = await app.request('/api/projects/not-a-uuid/body-adoption?days=14', {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  // cm:guard the project comes off the PATH, and this is the case that says so. Mounted on a fan-out path with `?projectId=`, `middleware/pat-rest-surface.ts` resolves no project and answers 403 PAT_NOT_PERMITTED to EVERY personal access token — measured live on forge-beta 2026-09-08, before this route moved.
+  it('sits under a prefix a personal access token may reach', async () => {
+    expect(patAllowedFor(`/api/projects/${projectId}/body-adoption`)).toBe(true);
   });
 });
 
