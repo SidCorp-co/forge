@@ -47,11 +47,13 @@ flowchart TD
   A --> RESP["{ items: [...], backlog: [...] }<br/>siblings, never merged"]
   B0 --> RESP
   B3 --> RESP
-  RESP --> M["master.rs:pass_prompt<br/>two headed lists in one prompt"]
+  RESP --> M["master.rs:nudge<br/>go and read the pool; the skill lists it itself"]
 </pre></div>
 
-<div class="rule">The two lists are told apart in the prompt itself, not just in the response. A
-master that reads a backlog key as claimable spends its turn on <code>pool claim &lt;issueId&gt;</code>,
+<div class="rule">The two lists are told apart in the response, and the master reads them itself:
+since ISS-933 the nudge carries no snapshot of the pool, because a snapshot typed at a pane is
+already stale by the time the turn reaches it. A master that reads a backlog key as claimable
+spends its turn on <code>pool claim &lt;issueId&gt;</code>,
 which core refuses as <code>not_found</code> &mdash; and that refusal names the job rather than the
 mistake, so nothing in the transcript says why. An older runner that has never heard of the key
 ignores it and keeps parsing <code>items</code> unchanged.</div>
