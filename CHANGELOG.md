@@ -1740,9 +1740,13 @@
   and `waiting` left the Active tab, so no status now sits in two tabs at once. Nothing about what
   `on_hold` *means* changed, and no status was added: the three surfaces that each kept their own
   list of "parked" statuses now read one shared map, held together by a test that fails when either
-  side is edited alone. The banner on a paused issue's own page keeps its Resume button but drops
-  the amber attention colour for the calm one, since nobody is owed anything by it. Drawn in
-  `docs/flows/human-routing-attention-claim.html`.
+  side is edited alone. Drawn in `docs/flows/human-routing-attention-claim.html`.
+
+- **A paused issue's own page reads calm now, instead of amber.** The banner at the top of an issue
+  somebody put on hold still offers **Resume**, but it no longer wears the colour this app reserves
+  for something a person has to clear — and it says an operator *can* resume it when the work is
+  wanted again, rather than that one *must*. The banners for the two statuses that really are
+  waiting on you, "Needs a human" and "Waiting", are unchanged.
 
 - **Prose a model wrote is refused before core stores it when it carries a script the model's own
   input never used.** `memory/extraction.ts` and `memory/consolidation.ts` are the only two places
