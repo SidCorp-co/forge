@@ -107,6 +107,9 @@ const PENDING_SKILL_UPDATES_CAP = 20;
 // cm:why 20, not PER_BUCKET: the cap must still return the draft this bucket was built to surface. Measured on forge-beta 2026-08-30 against the CALLER's full cross-project set (428 drafts, 16 projects — not the 22 in forge-dev alone), ISS-871 ranks 17th under this bucket's priority-then-recency order, so every cap at or below 16 renders the bucket unable to show its own reason for existing. Under plain recency it ranked 28th, which is why the order is not `desc(updatedAt)` like its neighbours.
 export const UNSEEN_DRAFTS_CAP = 20;
 
+// cm:why 20, on the `UNSEEN_DRAFTS_CAP` precedent and measured the same way: 56 issues sat at `waiting`/`needs_info` across 17 of 33 projects fleet-wide on 2026-09-08, so `PER_BUCKET` reaches 9% of the population. It is 20 rather than 56 because the ordering below is what makes a cap defensible — every question holding a claim sorts above every question holding none, so the rows this bucket exists for are inside any cap by construction, which is the guarantee plain recency could not give at any size (ISS-964 criterion 23).
+export const AWAITING_INPUT_CAP = 20;
+
 // cm:why drizzle cannot reference one table twice in a statement, and the retry-chain exclusion compares a job against its own retry row.
 const retryJobs = alias(jobs, 'retry_jobs');
 
@@ -177,14 +180,30 @@ export function selectNeedsReview(userId: string): Promise<AttentionIssueRow[]> 
     .limit(PER_BUCKET) as Promise<AttentionIssueRow[]>;
 }
 
+// cm:guard the identifiers are written LITERALLY and the subquery is CORRELATED on purpose. Drizzle renders a column reference inside a raw `sql` template unqualified, which here would bind `issue_id` to the outer row and cost every issue the whole table's total; and a grouped subquery would need `groupBy`/`as`, which `attention-routes.test.ts`'s mock chain does not implement, so the unit lane would fail on a shape rather than on a claim.
+// cm:guard only `status='open'` costs anything: an answered or voided question holds no claim and no worktree, so counting it would rank a settled decision above a live one for as long as the row exists (ISS-964 criterion 19).
+function openQuestionCost(column: string): SQL<number> {
+  return sql<number>`coalesce((select sum(q.${sql.raw(column)}) from agent_questions q
+    where q.issue_id = issues.id and q.status = 'open'), 0)`;
+}
+
+// cm:guard cost FIRST and age only as the tie-break, in this order: `claims_held` denies a runner slot to every other issue, `workspaces_pinned` denies a checkout, `dependents` denies progress to issues that are merely waiting. Ordering by recency instead is what put a question costing nothing above one holding two claims since yesterday (ISS-964 criterion 19).
+// cm:guard the tie-break is ASCENDING — longest-waiting first — where every neighbouring bucket is `desc(updatedAt)`. This is a queue of answers a human OWES, so the row that has waited longest is the one to show; newest-first buries it exactly as the cost ordering above exists to prevent. `updatedAt` stays in `issueFields` because the reader is told how long it has waited.
+const AWAITING_COST_ORDER = [
+  desc(openQuestionCost('claims_held')),
+  desc(openQuestionCost('workspaces_pinned')),
+  desc(openQuestionCost('dependents')),
+  issues.updatedAt,
+] as const;
+
 export function selectAwaitingInput(userId: string): Promise<AttentionIssueRow[]> {
   return db
     .select(issueFields)
     .from(issues)
     .innerJoin(projects, eq(projects.id, issues.projectId))
     .where(and(ownedForAnswer(userId), inArray(issues.status, [...AWAITING_INPUT_STATUSES])))
-    .orderBy(desc(issues.updatedAt))
-    .limit(PER_BUCKET) as Promise<AttentionIssueRow[]>;
+    .orderBy(...AWAITING_COST_ORDER)
+    .limit(AWAITING_INPUT_CAP) as Promise<AttentionIssueRow[]>;
 }
 
 function adminsProject(userId: string) {
