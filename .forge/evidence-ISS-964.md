@@ -370,3 +370,40 @@ one owner for that rule, on the side that does not ship separately.
   three of `PARK_PROTECTIONS` and `park-exempt-oneshot` exists only on this branch. Until core ships,
   `pool ask` refuses every park by name. That is the gate working, and it reads as a broken feature to
   anyone who does not know.
+
+## S9b part 3 — c28: the fourth reader, and it was the box's own
+
+`recovery::reconcile` iterates `unclosed_runs()` and closes every run that is either from another
+boot OR whose master is not alive. A human park is `unclosed` by design, and it satisfies **both**
+premises by design: its process is gone, so a reboot changes the boot it recorded, and its master is
+free to exit over it. So before this commit, a master crash — a routine event, and the one this
+fleet has an incident for — released the park's worktree, returned its issue lease and destroyed a
+question a human had already been asked. A reboot did it to every park on the box at once.
+
+That is the same shape as S9a's three sweeps, one layer down: this reader is the BOX's, not core's,
+which is why S9a's protection audit did not reach it.
+
+| # | Criterion | Test | RED (quoted) | Commit |
+|---|---|---|---|---|
+| 28 | a park is not closed because its master died | `recovery::a_park_is_not_closed_because_its_master_died` | mutation (the exemption block deleted): `a park whose master is gone is waiting, not abandoned — closing it throws away the answer somebody is about to give` | S9b |
+| 28 | a park survives the box rebooting under it | `recovery::a_park_survives_the_box_rebooting_under_it` | same mutation: `a reboot is not an abandonment of a park` | S9b |
+| 28 | a respawned master inherits the park | `recovery::a_park_whose_master_respawned_is_reparented_onto_it` | same mutation: `the new master must be able to find this run: runs_for_master is what master_exit::children reads, so a stale parent leaves the master free to exit over a live park` | S9b |
+| 28 | the exemption does not move the reaping to core | `recovery::a_park_keeps_beating_so_cores_reaper_leaves_it_alone` | same mutation: `a park the box is preserving must go on asserting that the box holds it` | S9b |
+| 27 | the permit's claim about this build stays honest | `blocked::the_box_side_sweeps_this_permit_claims_are_in_this_build` | same mutation: `reconcile no longer exempts a park, so a dead master or a reboot closes it and \`recovery-park-exempt\` is a false claim` | S9b |
+
+**The beat is half of the fix, not a detail.** `run-session-reaper.ts` gives back a run session whose
+heartbeat stops for ten minutes and has no park exemption of its own. An exemption that skipped the
+beat would have moved the reaping from the box to core rather than preventing it — the park would
+have survived `reconcile` and died 10 minutes later anyway, with a `runner_unreachable` on the
+record and nobody able to tell why.
+
+**`PROTECTION_FROM_THIS_BUILD` became `PROTECTIONS_FROM_THIS_BUILD[2]`.** The permit already named
+the box's worktree reaper, on the principle that a park must not be written on a build whose own
+sweeps would eat it. `reconcile` is the second such sweep and now names itself the same way, held by
+the same kind of source assertion — so deleting the exemption turns the PERMIT red rather than
+silently un-protecting every future park. Core's advertised three are untouched.
+
+**One predicate, both sides.** `Run::is_parked_on_human` is the box's single writer of the shape core
+writes as `parkedOnAHuman` (`jobs/park-deadline.ts`), carrying a `cm:edge contract` to it. It reads
+all three columns rather than `blocker_kind` alone, because a run that merely CRASHED while blocked
+on a human is also `Exited x Blocked` — the park is the conjunction, which is criterion 9's point.

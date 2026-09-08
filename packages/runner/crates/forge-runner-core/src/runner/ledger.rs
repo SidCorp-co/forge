@@ -78,6 +78,17 @@ pub enum BlockerKind {
     Nobody,
 }
 
+impl Run {
+    /// Whether this run is the processless park a human has to answer.
+    // cm:edge contract -> packages/core/src/jobs/park-deadline.ts — the same predicate on the other side (`parkedOnAHuman`), and the two must agree: core spares this shape from three sweeps and the box spares it from `recovery::reconcile`, so a side that computes it differently has one of them reaping what the other preserves (ISS-964 criteria 24, 28).
+    // cm:guard all THREE columns, never `blocker_kind` alone: a bounded wait writes an open question with a blocker too, and a run that merely CRASHED while blocked on a human is `Exited x Blocked` with no park behind it. The park is the conjunction (ISS-964 criterion 9).
+    pub fn is_parked_on_human(&self) -> bool {
+        matches!(self.incarnation, Incarnation::Exited)
+            && matches!(self.work, Work::Blocked)
+            && matches!(self.blocker_kind, Some(BlockerKind::Human))
+    }
+}
+
 impl BlockerKind {
     pub fn wire(self) -> &'static str {
         match self {
@@ -498,6 +509,18 @@ impl Ledger {
 
     /// Every run one master started, closed or not.
     // cm:guard scoped to ONE master's session id, because the question "are my children done" is asked per master and two masters share this box's ledger. A query over every run would have one project's master held open by another's work, which is the whole-box coupling residency exists to avoid.
+    /// Move a run onto the master that is now serving its project.
+    // cm:guard writes the parent and NOTHING else — not the boot, not the incarnation, not a mark. A respawned master is a new reader of an unchanged park, so anything else touched here would be this call inventing progress the run has not made (ISS-964 criterion 28).
+    pub fn reparent_run(&mut self, run_id: &str, master_session_id: &str) -> Result<()> {
+        self.conn
+            .execute(
+                "UPDATE runs SET master_session_id = ?2 WHERE run_id = ?1",
+                params![run_id, master_session_id],
+            )
+            .map_err(sql_err)?;
+        Ok(())
+    }
+
     pub fn runs_for_master(&self, master_session_id: &str) -> Result<Vec<Run>> {
         let mut stmt = self
             .conn

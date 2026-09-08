@@ -160,6 +160,12 @@ impl Masters {
         Self::default()
     }
 
+    /// The session id and pane of the master this box has up for a project.
+    // cm:guard returns the pane NAME with the session id rather than the id alone, because every caller has to ask tmux whether that pane is still there — a registry entry outlives the process it names by design (the ISS-919 B1 hole), so an answer that could not be checked would be a claim this struct cannot make.
+    pub fn live_for_project(&self, project_id: &str) -> Option<(String, String)> {
+        self.get(project_id)
+    }
+
     fn get(&self, project_id: &str) -> Option<(String, String)> {
         let reg = self.0.lock().expect("masters poisoned");
         reg.live
@@ -925,6 +931,9 @@ mod give_back_tests {
     impl recovery::MasterLiveness for Alive {
         async fn is_alive(&self, _id: &str) -> bool {
             self.0
+        }
+        async fn live_master_for_project(&self, _: &str) -> Option<String> {
+            None
         }
     }
 

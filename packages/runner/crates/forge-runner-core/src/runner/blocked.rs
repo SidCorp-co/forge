@@ -74,9 +74,9 @@ pub const PROTECTIONS_FROM_CORE: [&str; 3] = [
     "answer-resume-park",
 ];
 
-/// The last protection, which is this binary's own reaper.
-// cm:guard asserted from THIS build rather than read from core, and that split is deliberate: core cannot observe which runner is asking, so advertising this one would be core promising something it has no way to know. `the_ledger_reaper_this_permit_claims_is_in_this_build` is what keeps the claim honest.
-pub const PROTECTION_FROM_THIS_BUILD: &str = "worktree-reap-ledger";
+/// The protections that are this binary's own sweeps, not core's.
+// cm:guard asserted from THIS build rather than read from core, and that split is deliberate: core cannot observe which runner is asking, so advertising these would be core promising something it has no way to know. The two tests naming them are what keep the claims honest.
+pub const PROTECTIONS_FROM_THIS_BUILD: [&str; 2] = ["worktree-reap-ledger", "recovery-park-exempt"];
 
 /// Proof that all three park protections are in place.
 // cm:guard the ONLY constructor is `from_advertisement`, and that is the whole mechanism: `park_for_human` takes a `&ParkPermit`, so a park produced without having asked core is not something a caller can write. A boolean parameter here would make the unprotected park one typo away (ISS-964 criterion 27).
@@ -104,7 +104,7 @@ impl ParkPermit {
             .iter()
             .map(|s| s.to_string())
             .collect();
-        granted.push(PROTECTION_FROM_THIS_BUILD.to_string());
+        granted.extend(PROTECTIONS_FROM_THIS_BUILD.iter().map(|s| (*s).to_string()));
         Ok(Self { granted })
     }
 
@@ -203,18 +203,18 @@ mod tests {
 
     // cm:guard the granted set is core's advertisement PLUS one, and the plus-one is this build's own reaper — asserted as a length relative to `PROTECTIONS_FROM_CORE` so adding a core-side protection cannot silently drop the runner's from the count. Core never advertises that one, by design.
     #[test]
-    fn a_granted_permit_counts_the_runners_own_reaper_as_the_last() {
+    fn a_granted_permit_counts_the_runners_own_sweeps_as_well_as_cores() {
         let p = permit();
         assert_eq!(
             p.protections().len(),
-            PROTECTIONS_FROM_CORE.len() + 1,
+            PROTECTIONS_FROM_CORE.len() + PROTECTIONS_FROM_THIS_BUILD.len(),
             "{:?}",
             p.protections()
         );
         assert!(p
             .protections()
             .iter()
-            .any(|n| n == PROTECTION_FROM_THIS_BUILD));
+            .any(|n| n == PROTECTIONS_FROM_THIS_BUILD[1]));
     }
 
     // cm:guard an unknown extra name must not be read as a substitute for a missing required one, which is what a length or count check would do.
@@ -224,13 +224,20 @@ mod tests {
             .expect_err("unrelated names must not grant a permit");
     }
 
-    // cm:guard the third protection is a claim about THIS binary, so it is asserted from this binary's source. `worktree_reap.rs` judging on shape alone is what eats a well-behaved park, and a permit that keeps claiming the reaper after the consult was removed is an advertisement with nothing behind it.
+    // cm:guard the last two protections are claims about THIS binary, so they are asserted from this binary's source. Both sweeps judge on shape, and shape is exactly what a park cannot be told from: `worktree_reap.rs` sees a tree nothing is running in, `recovery.rs` sees a run whose process is gone and whose master may be too. A permit that keeps claiming a sweep after its exemption was deleted is an advertisement with nothing behind it.
     #[test]
-    fn the_ledger_reaper_this_permit_claims_is_in_this_build() {
-        let src = include_str!("../workspace/worktree_reap.rs");
+    fn the_box_side_sweeps_this_permit_claims_are_in_this_build() {
+        let reap = include_str!("../workspace/worktree_reap.rs");
         assert!(
-            src.contains("held_by.holder(&p)"),
-            "the reaper no longer consults the ledger, so `{PROTECTION_FROM_THIS_BUILD}` is a false claim"
+            reap.contains("held_by.holder(&p)"),
+            "the worktree reaper no longer consults the ledger, so `{}` is a false claim",
+            PROTECTIONS_FROM_THIS_BUILD[0]
+        );
+        let recovery = include_str!("../daemon/recovery.rs");
+        assert!(
+            recovery.contains("if run.is_parked_on_human() {"),
+            "reconcile no longer exempts a park, so a dead master or a reboot closes it and `{}` is a false claim",
+            PROTECTIONS_FROM_THIS_BUILD[1]
         );
     }
 

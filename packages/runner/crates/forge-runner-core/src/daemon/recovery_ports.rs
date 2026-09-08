@@ -28,6 +28,12 @@ impl MasterLiveness for PaneMasters<'_> {
             None => false,
         }
     }
+
+    // cm:guard the registry names the candidate and TMUX decides, exactly as `is_alive` above does and for the same reason: re-parenting a park onto a master that is registered but no longer running would move the run from a parent that is gone to another one that is, and the next sweep would have to move it again.
+    async fn live_master_for_project(&self, project_id: &str) -> Option<String> {
+        let (session_id, name) = self.masters.live_for_project(project_id)?;
+        terminal::pane_pid(&name).await.map(|_| session_id)
+    }
 }
 
 /// Core's own answers: is a session terminal, and is an issue still held.
