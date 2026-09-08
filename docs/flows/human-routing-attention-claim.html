@@ -1,0 +1,123 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flow · human-routing-attention-claim — how a status becomes the claim "a human is needed", and the four surfaces that read it</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .board { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; margin:1rem 0; }
+  .bad { color:var(--bad); font-weight:600; }
+  .ok { color:var(--acc); font-weight:600; }
+</style>
+<main>
+
+<h1>human-routing-attention-claim — how a status becomes the claim "a human is needed", and the four surfaces that read it</h1>
+<p class="sub">One kernel column, <code>issues.status</code>, and four independent readers that each
+turn it into a sentence addressed to a person. This file owns the <em>claim</em>: which statuses mean
+somebody is owed an answer, where that decision is declared, and every hop that used to re-decide it
+on its own. The sibling flow <code>issue-status-placement</code> owns what a status is allowed to
+<em>be</em>; this one owns what it is allowed to <em>say</em>. Owner of the decision:
+<code>packages/contracts/src/issue-vocabulary.ts</code>.</p>
+
+<h2>Who is owed what, per status</h2>
+<p>The kernel enum has three non-terminal statuses in which no session is running. They are not
+interchangeable, and the difference is the whole of this flow:</p>
+<table>
+<thead><tr><th>Status</th><th>Who owes whom</th><th>Is it a question for a person?</th><th>How it is left</th></tr></thead>
+<tbody>
+<tr><td><code>needs_info</code></td><td>the agent asked; a person owes an answer</td><td class="ok">yes</td><td>a comment wakes it — <code>pipeline/answer-resume.ts</code></td></tr>
+<tr><td><code>waiting</code></td><td>blocked on a decision or a resource a person holds</td><td class="ok">yes</td><td>a person transitions it; a comment does <strong>not</strong> wake it</td></tr>
+<tr><td><code>on_hold</code></td><td>nobody — the work was paused on purpose</td><td class="bad">no</td><td>an operator resumes it when they choose to</td></tr>
+</tbody>
+</table>
+
+<div class="rule">
+<b>Why the third row is the one that breaks things.</b> <code>on_hold</code> is not mostly written by
+a person deciding to pause. It is written by <code>cancel</code>, whose <code>parkIssue</code> flag
+defaults to <code>true</code> (<code>packages/core/src/pipeline/runs-control.ts</code>), so every
+duplicate run stopped by a dispatcher parks its issue. Any reader that folds <code>on_hold</code> in
+with the two above therefore emits <em>one false "a human is needed" per cancellation</em>, at
+whatever rate the dispatcher happens to cancel. Measured 2026-09-07: 3 cancels on ISS-932/933/964
+produced 3 rows and 0 questions. ISS-970 was itself parked by that default 26 seconds after it was
+filed, and spent five hours in the bucket it was filed to empty.
+</div>
+
+<h2>One decision, four readers</h2>
+<div class="board"><pre class="mermaid">
+flowchart TD
+  S["issues.status<br/>(the kernel column — one enum, one writer:<br/>issues/apply-transition.ts)"]
+  S --> W{"who wrote it?"}
+  W -- "an agent parking a question" --> NI["needs_info"]
+  W -- "a person, or a gate needing a decision" --> WA["waiting"]
+  W -- "cancel(parkIssue: true) — the DEFAULT<br/>or an operator pausing on purpose" --> OH["on_hold"]
+
+  NI --> AX["KERNEL_TO_LABEL<br/>packages/contracts/src/issue-vocabulary.ts<br/><b>the only declaration of the claim</b>"]
+  WA --> AX
+  OH --> AX
+
+  AX --> L1["label needs_human"]
+  AX --> L2["label paused"]
+
+  L1 --> R1["issues board / rail / detail header<br/>web-v2 issues/derive.ts statusLabelFor<br/>⇒ &quot;Needs a human&quot;"]
+  L2 --> R1b["same three surfaces<br/>⇒ &quot;Paused&quot;"]
+
+  L1 --> R2["issues list, Blocked tab<br/>web-v2 issues/derive.ts filterToQueryParams<br/>asks statusesForLabels(needs_human, paused)"]
+  L2 --> R2
+
+  L1 --> R3["GET /me/attention → awaitingInput<br/>core me/attention-buckets.ts<br/>AWAITING_INPUT_STATUSES — a MIRROR, not an import"]
+  L2 -.->|"deliberately NOT a bucket:<br/>a pause nobody must answer<br/>is not attention"| R3
+
+  NI --> R4["notifications<br/>core notifications/notify-transitions.ts<br/>NOTIFY_ON_STATUS — its own list, see below"]
+  WA --> R4
+</pre></div>
+
+<h2>The one hop that is a copy, and what holds it</h2>
+<p><code>packages/core</code> may <strong>not</strong> value-import <code>@forge/contracts</code>:
+that package is absent from the production image, so a value import compiles green and then crashes
+at boot (<code>core/src/contracts-runtime-boundary.test.ts</code>, ISS-510). So
+<code>AWAITING_INPUT_STATUSES</code> is a hand-written mirror of the axis rather than a read of it,
+and the mirror is the hop that can drift in silence.</p>
+<div class="rule">
+What stands between that and drift: <code>packages/core/src/me/attention-parity.test.ts</code>
+compares the core tuple against <code>statusesForLabels('needs_human')</code> — a value import of
+contracts, which is sanctioned in a test because test files never reach <code>dist</code>. It is the
+same arrangement <code>core/src/pipeline/failure-causes-parity.test.ts</code> uses for the failure
+taxonomy. <b>Delete that test and the two sides can disagree with nothing failing</b>, which is the
+state ISS-970 found them in.
+</div>
+
+<h2>What happens when it goes wrong</h2>
+<table>
+<thead><tr><th>Break</th><th>What a reader sees</th><th>What fails</th></tr></thead>
+<tbody>
+<tr><td><code>on_hold</code> mapped back to <code>needs_human</code></td><td>every parked issue claims a person is needed; the dashboard shows an inbox of rows nobody must act on</td><td><code>contracts/src/issue-vocabulary.test.ts</code> — "reads a deliberate pause as paused"</td></tr>
+<tr><td><code>on_hold</code> added back to <code>AWAITING_INPUT_STATUSES</code></td><td><code>/me/attention</code> lists parks as questions; the rail badge counts them</td><td><code>core/src/me/attention-parity.test.ts</code>, and <code>core/tests/integration/attention-question-park-e2e.test.ts</code> against real Postgres</td></tr>
+<tr><td>the Blocked tab's tuple typed out again instead of asked for</td><td>nothing, until the axis next moves — then the tab and the row's own chip disagree on the same screen</td><td><code>web-v2 issues/derive.test.ts</code> — "blocked targets every parked status the label axis names"</td></tr>
+<tr><td>a label added to <code>AUTONOMOUS_LABELS</code> with no <code>LABEL_TO_KERNEL</code> entry</td><td>a blank cell on the board, which nobody reports as a bug</td><td><code>contracts/src/issue-vocabulary.test.ts</code> — the totality and round-trip cases</td></tr>
+</tbody>
+</table>
+
+<h2>Two readers this flow deliberately does not unify</h2>
+<ul>
+<li><code>notifications/notify-transitions.ts</code> keeps its own <code>NOTIFY_ON_STATUS</code>
+set, and it is <em>not</em> the awaiting-input set: <code>waiting</code> notifies and
+<code>needs_info</code> does not, which is the inversion <code>docs/proposals/autonomous-session-pooling.md</code>
+recorded. A notification is a push at a moment; a bucket is a list that must still be true tomorrow.
+Merging them would make one of the two wrong.</li>
+<li><code>projects/health-routes.ts#BLOCKED_STATUSES</code> counts <code>on_hold</code> and
+<code>needs_info</code> into a KPI named <em>blockers</em>. It claims nothing about a human and is
+addressed to nobody, so it is a different question and keeps a different list.</li>
+</ul>
+
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script>

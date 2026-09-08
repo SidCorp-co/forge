@@ -1,11 +1,13 @@
 "use client";
 
 // Attention / Inbox (ISS-307) — a cross-project list of items that need the
-// caller: issues to review, issues awaiting input (waiting/needs_info/on_hold),
-// @-mentions, failed jobs (incl. deploy), and offline runners. Each row links to
-// its source. Live via WS: cross-project events only arrive on subscribed rooms,
-// so we fan out a `useRoom` per project (the Ops-monitor pattern) — the
-// `['attention']` invalidations in `lib/ws/event-router.ts` then refetch.
+// caller: issues to review, issues awaiting input (waiting/needs_info — never
+// `on_hold`, a pause nobody must answer, ISS-970), @-mentions, failed jobs
+// (incl. deploy), and offline runners. Each row links to its source. Live via
+// WS: cross-project events only arrive on subscribed rooms, so we fan out a
+// `useRoom` per project (the Ops-monitor pattern) — the `['attention']`
+// invalidations in `lib/ws/event-router.ts` then refetch.
+
 import { type ReactNode, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatRelativeTime } from "@/lib/utils/format";

@@ -272,6 +272,13 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-workspace
       - run: pnpm --filter web-v2 lint
+      # `@forge/contracts` had a test file and no `test` script, so no job on this
+      # workflow ever ran `packages/contracts/src/*.test.ts` — `issue-vocabulary.test.ts`
+      # was 11 assertions that could not go red anywhere (found by ISS-970, which
+      # needed one of them to be load-bearing). It rides the `web` job because this
+      # job's path filter already fires on `packages/contracts/**` and web-v2 is the
+      # package that consumes the values.
+      - run: pnpm --filter @forge/contracts test
       - run: pnpm --filter web-v2 exec vitest run --passWithNoTests
       - run: pnpm --filter web-v2 build
         env:

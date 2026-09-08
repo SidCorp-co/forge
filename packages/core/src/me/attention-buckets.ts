@@ -35,7 +35,14 @@ import { agentChannelCondition } from '../issues/creator.js';
  *   needs the caller's action (`developed` awaiting review, `reopen` awaiting
  *   a fix). Self-clearing: driven by live `issues.status`.
  * - `awaitingInput`  — issues assigned to the caller blocked on a human
- *   (`waiting`, `needs_info`, `on_hold`). Self-clearing: live `issues.status`.
+ *   (`waiting`, `needs_info`). Self-clearing: live `issues.status`. `on_hold`
+ *   is NOT here and adding it back is the defect ISS-970 fixed: it is a pause
+ *   somebody CHOSE, not a question somebody is owed, and `cancel` parks with
+ *   `parkIssue: true` by default (`pipeline/runs-control.ts`) so every
+ *   duplicate run cancelled minted one row claiming a human was needed — 3
+ *   cancels on 2026-09-07, 3 rows, 0 questions. The reasoning is `unseenDrafts`
+ *   below, applied one bucket over: a list that always holds a few rows nobody
+ *   must act on teaches its reader to skip the ones they must.
  * - `mentions`       — unread `@mention` notifications for the caller.
  *   Self-clearing: driven by `notifications.read`.
  * - `failedJobs`     — jobs the caller triggered that failed in the trailing
@@ -91,7 +98,8 @@ import { agentChannelCondition } from '../issues/creator.js';
  *   row with no bookkeeping. Nothing here writes state.
  */
 export const NEEDS_REVIEW_STATUSES = ['developed', 'reopen'] as const;
-export const AWAITING_INPUT_STATUSES = ['waiting', 'needs_info', 'on_hold'] as const;
+// cm:edge contract -> packages/contracts/src/issue-vocabulary.ts#KERNEL_TO_LABEL — these are exactly the statuses that axis labels `needs_human`, hand-copied because core may not value-import contracts (boot crash; contracts-runtime-boundary.test.ts). Parity is asserted in me/attention-parity.test.ts; a status whose label moves must move here in the same change or one of the two surfaces lies.
+export const AWAITING_INPUT_STATUSES = ['waiting', 'needs_info'] as const;
 const FAILED_JOB_RESOLVED_ISSUE_STATUSES = ['closed', 'released'] as const;
 const PER_BUCKET = 5;
 const PENDING_SKILL_UPDATES_CAP = 20;

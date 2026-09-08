@@ -1728,6 +1728,20 @@
 
 ### Fixed
 
+- **An issue you paused on purpose no longer says a human is needed.** Three statuses used to share
+  one word on the dashboard: `needs_info`, where an agent asked you something; `waiting`, where the
+  work is blocked on a decision or a resource only you can supply; and `on_hold`, where somebody
+  deliberately pressed pause. Only the first two are a question. `on_hold` now reads **Paused** on
+  the board, in the rail and on the issue header, and it no longer appears in the Awaiting-input
+  list on your Attention inbox. This matters more than it sounds: stopping a duplicate pipeline run
+  parks its issue by default, so the inbox grew one "needs a human" row per cancellation and none of
+  them wanted anything — which teaches you to skim past the rows that do. The Blocked tab on the
+  issues list also gained `waiting`, a real question it had been leaving out while carrying pauses,
+  and `waiting` left the Active tab, so no status now sits in two tabs at once. Nothing about what
+  `on_hold` *means* changed, and no status was added: the three surfaces that each kept their own
+  list of "parked" statuses now read one shared map, held together by a test that fails when either
+  side is edited alone. Drawn in `docs/flows/human-routing-attention-claim.html`.
+
 - **Prose a model wrote is refused before core stores it when it carries a script the model's own
   input never used.** `memory/extraction.ts` and `memory/consolidation.ts` are the only two places
   this repo stores LLM-composed text — extracted facts and `knowledge_edges`, consolidated and
