@@ -67,16 +67,6 @@ function selectChainOnce(rows: unknown[]): void {
   }));
 }
 
-/**
- * `resolveProjectCap` (re-added) does ONE `db.select().from().where().limit()`
- * to read `projects.agent_config` before the picker/asserter runs its
- * `db.execute` SQL. Queue the project row this lookup should return: pass an
- * `agentConfig`-shaped object (e.g. `{ pipelineConfig: { maxConcurrentIssues: 3 } }`),
- * or `null` to simulate a missing project (→ DEFAULT cap). Each
- * `pickNextDispatchableJobForProject` / `assertDispatchable` call consumes
- * exactly one queued row, so it never leaks into later `dbSelect`-based tests.
- */
-
 // cm:why the cap read and the CASE row are queued ONLY when `job` is non-null, mirroring the asserter's short-circuit to not_found — queueing them unconditionally leaves two stubs unconsumed, and vitest carries a `mockResolvedValueOnce` queue across tests
 function mockAssertChain(opts: {
   job: { projectId: string } | null;

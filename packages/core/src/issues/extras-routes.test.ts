@@ -54,21 +54,9 @@ vi.mock('../jobs/enqueue.js', () => ({
   enqueueJob: (...args: unknown[]) => enqueueJobMock(...args),
 }));
 
-// Stub the WS server — extras-routes.ts imports helpers from
-// './transition.js' (publishIssueStatusChange / triggerTerminalDispatch)
-// which in turn touches `roomManager`. The real module pulls in pg-boss via
-// heartbeat-ws → dispatch-tick → dispatcher, which fails to load without
-// DATABASE_URL in the test env.
+// cm:why the real `ws/server.js` reaches pg-boss through heartbeat-ws, which throws at import without DATABASE_URL — extras-routes reaches it transitively via `./transition.js`, so the stub is what lets this suite stay hermetic
 vi.mock('../ws/server.js', () => ({
   roomManager: { publish: vi.fn(), subscribe: vi.fn(), unsubscribe: vi.fn() },
-}));
-
-// transition.ts imports `dispatchTickForProject` directly, which transitively
-// loads `queue/boss.ts` (pg-boss init). Mock the leaf so the module graph
-// initialises without a DATABASE_URL.
-const dispatchTick = vi.fn();
-vi.mock('../jobs/dispatch-tick.js', () => ({
-  dispatchTickForProject: (...args: unknown[]) => dispatchTick(...args),
 }));
 
 // ISS-101 — stub run lifecycle helpers so enrich/pipeline-step routes don't
@@ -121,7 +109,6 @@ beforeEach(() => {
   txInsert.mockClear();
   txInsertValues.mockClear();
   transactionMock.mockClear();
-  dispatchTick.mockClear();
 });
 
 function authVerified() {

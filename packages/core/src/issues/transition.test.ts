@@ -53,13 +53,6 @@ vi.mock('../ws/server.js', () => ({
   roomManager: { publish: (...args: unknown[]) => publish(...args) },
 }));
 
-// ISS-40 PR-E — terminal transitions now fire-and-forget a dispatch tick.
-// Stub the orchestrator so we don't drag in the dispatcher/pg-boss module
-// graph (which constructs PgBoss at import time and needs DATABASE_URL).
-vi.mock('../jobs/dispatch-tick.js', () => ({
-  dispatchTickForProject: vi.fn(async () => {}),
-}));
-
 // Org-level authz: stub the db-touching resolver; pure helpers
 // (assertProjectRole, projectRoleAtLeast) stay real.
 const projectAccess = vi.fn();

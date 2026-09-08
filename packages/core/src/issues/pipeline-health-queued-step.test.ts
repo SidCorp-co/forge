@@ -37,7 +37,6 @@ function baseInput(over: Partial<ClassifyInput> = {}): ClassifyInput {
     sessions: [],
     jobs: [],
     runnerPool: { total: 1 },
-    lastTickAt: null,
     now: NOW,
     ...over,
   };

@@ -1,0 +1,101 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flow · run-session-lifecycle — how a group of issues becomes one worktree, one pane, one row</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .warn { border-left-color:var(--bad); }
+  .board { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; overflow-x:auto; }
+</style>
+<main>
+
+
+<h1>run-session-lifecycle — how a group of issues becomes one worktree, one pane, one row</h1>
+<p class="sub">A <b>run session</b> is what replaced the <code>drive</code> job in ISS-933: a master
+decides some issues are one piece of work and opens ONE session over the group. No job row, no job
+token, one worktree. The order the four steps happen in is the whole design, so this flow is about
+the order and about what each refusal says.</p>
+
+<h2>The order, and why it is the deliverable</h2>
+<div class="board"><pre class="mermaid">
+flowchart TD
+  M["master decides: ISS-957 + ISS-963 are one piece of work"] --> C["forge-runner pool run --issues ISS-957,ISS-963 --agent grp-957-963"]
+  C --> D["daemon control socket · run_open"]
+  D --> L{"ledger, ONE transaction"}
+  L -- "an issue is held by a live run" --> X1["refused, NAMING the holder"]
+  L -- "the worktree path is held by a live run" --> X2["refused BEFORE git touches it"]
+  L -- "clear" --> R["runs + run_issues committed"]
+  R --> W["git worktree add"]
+  W --> S["POST /me/run-sessions — the WHOLE group in one call"]
+  S --> P["tmux pane, then pid stamped back"]
+  P --> B["the brief typed in: every issue named, the run id for the phase endpoints"]
+</pre></div>
+
+<div class="rule"><b>LEDGER, WORKTREE, SESSION, SPAWN — and reversing any pair breaks something
+different.</b> Recording first means a crash anywhere after it leaves a row recovery can act on;
+recording last leaves a live agent in a worktree nothing on the box knows about, which is the
+measured incident: pids 334254 and 335001 in one directory, 06:12&ndash;06:15Z. Opening the core
+session before the spawn is what lets the close loop read a missing session id as
+<em>never started</em> rather than as an unknown — reverse those two and a crash in the window
+leaves a live agent core cannot name.</div>
+
+<div class="rule warn"><b>Both refusals run inside the ledger transaction, before git.</b> A worktree
+path another live run holds is refused here rather than by <code>git worktree add</code> failing
+with <code>.worktrees/&lt;name&gt; already exists</code> — the failure that killed ISS-593's first
+job, arriving from a layer that cannot say which run it collided with.</div>
+
+<h2>What the ledger is, and what it refuses to become</h2>
+<table>
+<thead><tr><th>Column</th><th>Answers</th></tr></thead>
+<tbody>
+<tr><td><code>run_id</code>, <code>master_session_id</code>, <code>session_id</code></td><td>whose run this is, and the core session that beats for it</td></tr>
+<tr><td><code>worktree_path</code>, <code>pid</code>, <code>boot_id</code></td><td>where it is working and as what process, under which boot of this box</td></tr>
+<tr><td><code>incarnation</code>, <code>work</code></td><td>whether the PANE is live, and separately whether the WORK is runnable — a waiting run is not a dead one</td></tr>
+<tr><td><code>run_issues(run_id, issue_key, lease_returned_at)</code></td><td>membership, many-to-many, so a group of one is a group and a lease returns PER ISSUE</td></tr>
+</tbody>
+</table>
+
+<div class="rule"><b>It is a registry, not a queue.</b> A column named <code>cursor</code>,
+<code>last_event</code>, <code>offset</code>, <code>wake</code>, <code>processed</code> or
+<code>seq</code> fails the build — those names are how a record of what exists turns into a second
+dispatcher on the box, racing the one in core.</div>
+
+<h2>Two boxes, one issue</h2>
+<p>The ledger is per box, so it cannot see another box's run. What stops two boxes opening a run
+over the same issue is core: <code>devices/admissible.ts</code> excludes any issue named in a live
+run session's <code>pipeline_runs.metadata.runIssues</code>. Delete that clause and each ledger
+correctly reports no conflict while two agents share one issue.</p>
+
+<h2>What an operator sees when it goes wrong</h2>
+<table>
+<thead><tr><th>Refusal</th><th>What happened</th><th>What NOT to do</th></tr></thead>
+<tbody>
+<tr><td>issue <code>already belongs to live run &lt;id&gt;</code></td><td>Another live run on this box carries it.</td><td>Do not widen the filter to swallow it — the named run is the answer</td></tr>
+<tr><td>worktree <code>is already held by live run &lt;id&gt;</code></td><td>Refused before git could produce a worse message.</td><td>Do not fall back to another directory: a run in the wrong tree loses the diff</td></tr>
+<tr><td><code>no repo path on this box for &lt;slug&gt;</code></td><td>The project is served here with no checkout.</td><td>Bind it. An operator told this loses ten minutes; a silent substitution loses the work</td></tr>
+<tr><td><code>&lt;name&gt; has no pane pid</code></td><td>tmux started something this box cannot name.</td><td>Do not record a zero — an unstarted run must stay distinguishable from a dead one</td></tr>
+</tbody>
+</table>
+
+<h2>Do not</h2>
+<p>Add a second creation path that takes one issue — <code>create_run_group</code> is public and
+every scalar primitive under it is private, and a source test pins that. Mint a token for a run: it
+authenticates with the box's own credential and nothing else. Remember the pid from the spawn
+instead of reading it back from tmux — <code>ensure</code> adopts an existing session as readily as
+it creates one, so a pid captured only on creation is absent for every adoption, which is the daemon
+restart residency exists to survive.</p>
+
+<p><a href="index.html">&larr; all flows</a></p>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script>

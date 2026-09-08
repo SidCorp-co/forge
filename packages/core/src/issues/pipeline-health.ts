@@ -14,9 +14,6 @@
  * through `pipeline/hooks.ts` -> `ws/broadcast-subscribers.ts`) because the
  * payload is a derived snapshot recomputed at publish time — the same pattern
  * `issue.statusChanged` uses. Keep it direct.
- *
- * `lastTickAt` comes from the in-memory map below, so on multi-process deploys
- * clients on another process see stale liveness (closed by ISS-163's probe).
  */
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
@@ -51,33 +48,13 @@ export type {
 } from './pipeline-health-types.js';
 
 /**
- * Per-project in-memory dispatcher heartbeat. Set by `recordTickAt` from
- * `jobs/dispatch-tick.ts` at the top of each sweep; surfaced to clients via
- * `PipelineHealth.lastTickAt`. Multi-process caveat: each process keeps its
- * own map (no Redis/pg backing). ISS-163 (D2) closes the gap.
- */
-const lastTickAtByProject = new Map<string, Date>();
-
-export function recordTickAt(projectId: string, at: Date = new Date()): void {
-  lastTickAtByProject.set(projectId, at);
-}
-
-export function getLastTickAt(projectId: string): Date | null {
-  return lastTickAtByProject.get(projectId) ?? null;
-}
-
-export function resetLastTickAtForTest(): void {
-  lastTickAtByProject.clear();
-}
-
-/**
  * Pure classifier — given pre-fetched rows for a single issue, decide its
  * `PipelineHealth`. Kept separate from the SQL loader so unit tests can
  * exercise each L1..L4 branch without mocking drizzle. The loader composes
  * this for every requested issue id.
  */
 export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHealth {
-  const { issue, sessions, jobs: issueJobs, runnerPool, lastTickAt } = input;
+  const { issue, sessions, jobs: issueJobs, runnerPool } = input;
 
   const queuedJobs = issueJobs.filter((j) => j.status === 'queued');
   const activeJobs = issueJobs.filter((j) => j.status !== 'queued');
@@ -91,7 +68,6 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
       skill: skillFromSessionMetadata(activeSession.metadata),
     };
   }
-  if (lastTickAt) out.lastTickAt = lastTickAt.toISOString();
 
   if (issue.status === 'waiting' && issue.waitingKind) {
     out.waitingCause = { kind: issue.waitingKind };
@@ -117,7 +93,7 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
   if (!candidate) return out;
   const sinceIso = candidate.queuedAt.toISOString();
 
-  // cm:guard this arm belongs FIRST among the queued reasons, matching the CASE in dispatch-gates.ts — a paused or terminal parent run makes every later gate moot, and reporting `project_full` for it sends the reader after a slot that would change nothing
+  // cm:guard this arm belongs FIRST among the queued reasons, matching the CASE in queued-gates.ts — a paused or terminal parent run makes every later gate moot, and reporting `project_full` for it sends the reader after a slot that would change nothing
   if (candidate.pipelineRunStatus && candidate.pipelineRunStatus !== 'running') {
     out.waitingOn = {
       reason: 'run_not_running',
@@ -173,7 +149,6 @@ export async function hydratePipelineHealthForIssues(
   if (issueIds.length === 0) return map;
   const ids = [...issueIds];
 
-  // Q1 — issue rows.
   const issueRows = await db
     .select({
       id: issues.id,
@@ -220,7 +195,6 @@ export async function hydratePipelineHealthForIssues(
   const pausedRunsByIssue = await loadPausedRunsByIssue(projectId, ids);
 
   const runnerPool = await freshRunnerAvailability(projectId);
-  const lastTickAt = getLastTickAt(projectId);
 
   for (const issueId of ids) {
     const issueRow = issuesById.get(issueId);
@@ -236,7 +210,6 @@ export async function hydratePipelineHealthForIssues(
       sessions: sessionsByIssue.get(issueId) ?? [],
       jobs: jobsByIssue.get(issueId) ?? [],
       runnerPool,
-      lastTickAt,
       ...(pausedRun ? { pausedRun } : {}),
     });
     map.set(issueId, health);

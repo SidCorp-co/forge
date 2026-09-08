@@ -3331,6 +3331,30 @@
 
 ### Changed
 
+- **A paired box's agents now come from the box, not from core. Core mints no drive job, and the
+  box's own master decides what it runs.** An issue arriving at the entry status used to produce a
+  `pipeline_run` and a `drive` job pushed at whichever runner the picker chose. Core now publishes
+  only a wake, and a master agent already resident on the box reads the pool, groups the issues it
+  wants, and opens **one run session** — one worktree, one pane, one ledger row — for the group. The
+  manual **Run** button changed shape with it: it releases the issue and wakes the boxes, so an
+  operator who presses it and sees no job has not hit a bug, they have a project no box is bound to
+  serve. That case now reports itself instead of being counted as a rescue.
+
+  **What an operator sees when a close only half-lands.** A run closes on three observed marks — the
+  session went terminal, the worktree left disk, and each issue's lease came back — and every one of
+  them is set by reading the world back, never by an agent saying it is done. A run carrying three
+  issues that returned one lease reads as exactly that: partially closed, with the ledger naming the
+  two issues still out and the sweep retrying them, rather than a green close over work nobody
+  finished. Two independent triggers close a run whose master is gone: the box's own sweep, which is
+  fast but cannot answer for a box that lost power, and core's reaper on a heartbeat silent for ten
+  minutes, which can. Ten minutes is two of the *slowest* beat a rate-limited box makes, so
+  throttling never costs a healthy run its worktree.
+
+  Deleted in the same change: the push path, the per-project dispatch tick, `maxConcurrentIssues`
+  (migration 0206) and the supervision cluster that watched masters from core. The design document
+  this consumed, `docs/proposals/master-orchestration.html`, is retired; the two flows that replace
+  it are `docs/flows/run-session-lifecycle.html` and `run-session-close.html`. (ISS-933)
+
 - **Sixteen major dependency lines moved up at once, with the source migrated to each new API.**
   `@hono/node-server` 1→2, pg-boss 10→12, vitest + `@vitest/coverage-v8` 3→5, `@types/node` 20→26,
   cron-parser 4→5, zxcvbn-ts 3→4, nodemailer 9→10, testcontainers 11→12, `lucide-react` 0.564→1.41,

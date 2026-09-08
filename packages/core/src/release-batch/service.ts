@@ -2,10 +2,6 @@
 // release_batch job. finish: closes all claimed issues tested→closed. abort:
 // releases claims, cancels the run and every job under it, writes one comment
 // per issue, closes no issue.
-//
-// RUNNER-CAP NOTE: the batch job holds its runner's single slot (nothing else
-// deploys while a release is shipping). It does NOT count toward per-project
-// maxConcurrentIssues (dispatch-gates.ts running_ids filters issue_id IS NOT NULL).
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';

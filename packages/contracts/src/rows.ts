@@ -36,7 +36,6 @@ export interface PipelineHealth {
     details: Record<string, unknown>;
   };
   queuedAt?: string;
-  lastTickAt?: string;
   /** Only set when `stage === 'waiting'`. */
   waitingCause?: { kind: WaitingCause };
 }
@@ -154,7 +153,6 @@ export type Issue = typeof schema.issues.$inferSelect & {
   /** ISS-594 — search endpoint only, under `?withModules=1`: the issue's `kind='module'`
    *  attributions, primary first, `[]` when it has none. */
   modules?: ModuleAttribution[];
-  // ISS-164 — list + single + by-display endpoints always populate this.
   pipelineHealth: PipelineHealth;
 };
 

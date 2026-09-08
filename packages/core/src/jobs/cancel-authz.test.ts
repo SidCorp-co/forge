@@ -50,8 +50,6 @@ vi.mock('./resume-job.js', async (importOriginal) => ({
   resumeHeldJob: (...args: unknown[]) => resumeJobMock(...(args as [])),
 }));
 
-vi.mock('./dispatch-tick.js', () => ({ dispatchTickForProject: async () => {} }));
-
 const { jobLifecycleUserRoutes } = await import('./lifecycle-routes.js');
 const { errorHandler } = await import('../middleware/error.js');
 const { requestId } = await import('../middleware/request-id.js');

@@ -12,7 +12,7 @@ import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { insertInterventionEvent } from './intervention-event.js';
 
 /** Job statuses from which a single-job cancel is permitted. */
-// cm:guard cancellable, NOT slot-occupying — `held` belongs here (a human may always stop a step that will never run) but is deliberately excluded from the runner-cap CTEs in dispatch-gates.ts. Reusing this set for load accounting would count held jobs against the cap and re-create the wedge RFC 0002 removed.
+// cm:guard cancellable, NOT slot-occupying — `held` belongs here (a human may always stop a step that will never run) but is deliberately excluded from the runner-cap CTEs in queued-gates.ts. Reusing this set for load accounting would count held jobs against the cap and re-create the wedge RFC 0002 removed.
 export const CANCELLABLE_STATUSES = new Set(['queued', 'dispatched', 'running', 'held']);
 
 /**

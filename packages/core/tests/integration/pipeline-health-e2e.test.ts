@@ -25,8 +25,6 @@ type PipelineHealthModule = typeof import('../../src/issues/pipeline-health.js')
 
 type Mods = {
   hydratePipelineHealthForIssues: PipelineHealthModule['hydratePipelineHealthForIssues'];
-  recordTickAt: PipelineHealthModule['recordTickAt'];
-  resetLastTickAtForTest: PipelineHealthModule['resetLastTickAtForTest'];
 };
 
 describe('ISS-164 pipelineHealth E2E', () => {
@@ -56,24 +54,11 @@ describe('ISS-164 pipelineHealth E2E', () => {
 
   beforeEach(async () => {
     await truncateAll(harness.db);
-    mods.resetLastTickAtForTest();
   });
 
-  async function seedProject(opts?: { maxConcurrentIssues?: number }) {
+  async function seedProject() {
     const owner = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, owner.id);
-    if (opts?.maxConcurrentIssues !== undefined) {
-      const cap = opts.maxConcurrentIssues;
-      await harness.db.execute(sql`
-        UPDATE projects
-        SET agent_config = COALESCE(agent_config, '{}'::jsonb)
-                         || jsonb_build_object(
-                              'pipelineConfig',
-                              COALESCE(agent_config -> 'pipelineConfig', '{}'::jsonb)
-                                || jsonb_build_object('maxConcurrentIssues', ${cap}::int))
-        WHERE id = ${project.id}
-      `);
-    }
     await insertFreshRunner(project.id);
     return { owner, project };
   }
@@ -274,24 +259,21 @@ describe('ISS-164 pipelineHealth E2E', () => {
     expect(health?.waitingOn?.details.blockingJobId).toBe(dispatched);
   });
 
-  it('reports queuedAt + lastTickAt when queued + unblocked', async () => {
-    const { project } = await seedProject({ maxConcurrentIssues: 5 });
+  it('reports queuedAt when queued + unblocked', async () => {
+    const { project } = await seedProject();
     const issueId = await insertIssue(project.id);
     const queuedAt = new Date(Date.now() - 60_000);
     await insertJob(project.id, { issueId, status: 'queued', type: 'plan', queuedAt });
-    const tickAt = new Date();
-    mods.recordTickAt(project.id, tickAt);
 
     const map = await mods.hydratePipelineHealthForIssues(project.id, [issueId]);
     const health = map.get(issueId);
     expect(health?.waitingOn).toBeUndefined();
     expect(health?.queuedAt).toBe(queuedAt.toISOString());
-    expect(health?.lastTickAt).toBe(tickAt.toISOString());
   });
 
   // cm:guard these two are the end-to-end proof for the blind spots the unit tests cover in isolation — both used to report NO waitingOn, so the board rendered a permanently-stuck issue as one merely awaiting its turn (forge-dev ISS-576/ISS-652, paused 3 days unnoticed)
   it('reports run_not_running for a queued job under a paused run', async () => {
-    const { project } = await seedProject({ maxConcurrentIssues: 5 });
+    const { project } = await seedProject();
     const issueId = await insertIssue(project.id);
     const jobId = await insertJob(project.id, { issueId, status: 'queued', type: 'plan' });
     await harness.db.execute(sql`
@@ -307,7 +289,7 @@ describe('ISS-164 pipelineHealth E2E', () => {
 
   // cm:guard the ONLY end-to-end proof of ISS-853 — `loadPausedRunsByIssue` reads `pipeline_runs` by issue id, so it is the one loader with no job row to join through, and the unit suite mocks drizzle away entirely. Delete this and the SQL that closes the blind spot is exercised nowhere.
   it('reports the paused run for an issue with NO job at all (ISS-853)', async () => {
-    const { project } = await seedProject({ maxConcurrentIssues: 5 });
+    const { project } = await seedProject();
     const issueId = await insertIssue(project.id, { status: 'approved' });
     const runId = await getOrCreateRun(project.id, issueId);
     await harness.db.execute(sql`UPDATE pipeline_runs SET status = 'paused' WHERE id = ${runId}`);
@@ -321,7 +303,7 @@ describe('ISS-164 pipelineHealth E2E', () => {
   });
 
   it('reads a machine pause reason apart into its kind, detail and resumer', async () => {
-    const { project } = await seedProject({ maxConcurrentIssues: 5 });
+    const { project } = await seedProject();
     const issueId = await insertIssue(project.id, { status: 'in_progress' });
     const runId = await getOrCreateRun(project.id, issueId);
     await harness.db.execute(sql`
@@ -339,7 +321,7 @@ describe('ISS-164 pipelineHealth E2E', () => {
   });
 
   it('leaves pausedRun unset while the run is still running', async () => {
-    const { project } = await seedProject({ maxConcurrentIssues: 5 });
+    const { project } = await seedProject();
     const issueId = await insertIssue(project.id);
     await getOrCreateRun(project.id, issueId);
 
@@ -348,7 +330,7 @@ describe('ISS-164 pipelineHealth E2E', () => {
   });
 
   it('reports runner_stale when the project has no fresh runner', async () => {
-    const { project } = await seedProject({ maxConcurrentIssues: 5 });
+    const { project } = await seedProject();
     const issueId = await insertIssue(project.id);
     await insertJob(project.id, { issueId, status: 'queued', type: 'plan' });
     await harness.db.execute(
@@ -362,8 +344,7 @@ describe('ISS-164 pipelineHealth E2E', () => {
   });
 
   it('never reads jobs.gate_reason (live-join contract — preserved after D1 column drop)', async () => {
-    // Spy on db.execute to capture SQL strings. This codifies the contract
-    // that the loader classifies from the live join, not the persisted column.
+    // cm:guard the loader must classify from the live join, never from a persisted column — this spy reads the SQL back, so a cached-column shortcut fails here instead of reporting a stale health forever
     const dbModule = (await import('../../src/db/client.js')) as {
       db: { execute: (...args: unknown[]) => unknown };
     };

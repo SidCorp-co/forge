@@ -121,13 +121,6 @@ vi.mock('../lib/authz.js', async (importOriginal) => ({
   })),
 }));
 
-// ISS-40 PR-E — lifecycle routes now fire-and-forget a per-project tick on
-// complete/fail/cancel. Stub it so we don't pull in dispatcher.ts (which
-// constructs PgBoss at import time and needs DATABASE_URL).
-vi.mock('./dispatch-tick.js', () => ({
-  dispatchTickForProject: vi.fn(async () => {}),
-}));
-
 const verifiedUser = { id: 'u-1', emailVerifiedAt: new Date() };
 // Our selectLimit is shared — route handler will set its own mocks per test.
 
