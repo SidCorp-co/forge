@@ -1104,10 +1104,16 @@ mod tests {
         );
     }
 
+    /// This file's own text, with one line ending.
+    // cm:guard normalise BEFORE any structural split: a windows checkout hands `include_str!` CRLF, so `"\n}\n"` never matches, `split(..).next()` silently returns the whole rest of the file, and a scan then counts something else entirely while still compiling — three of these went red on runner-ci's windows job and none of them could on linux (2026-09-09).
+    fn source() -> String {
+        include_str!("control.rs").replace("\r\n", "\n")
+    }
+
     // cm:guard scans the source because the claim is an ORDER between three side effects, and every ordering compiles: the permit is asked for BEFORE the ledger is written, the park is written BEFORE the process is killed, and core is told last. Killing first leaves the run reading `live` behind a dead pid — the exact state the four columns exist to make impossible (ISS-964 criteria 7, 27).
     #[test]
     fn the_park_is_written_before_the_process_is_killed() {
-        let src = include_str!("control.rs");
+        let src = source();
         let body = src
             .split("async fn park(")
             .nth(1)
@@ -1125,7 +1131,7 @@ mod tests {
     // cm:guard scans the source rather than the types, because the claim is about what CANNOT be written: a variant that reintroduces `session_id` compiles, passes every behavioural test, and silently restores the weakness (ISS-964 criterion 31).
     #[test]
     fn no_frame_declares_a_session_and_every_frame_carries_a_token() {
-        let src = include_str!("control.rs");
+        let src = source();
         let body = src
             .split("enum Request {")
             .nth(1)
@@ -1156,7 +1162,7 @@ mod tests {
     // cm:guard scans the source because the claim is about which STRING is written, and both compile: the session comes from the token the daemon resolved, never from the frame. A `decision_id` a caller mints is fine — it is the dedupe key — but a session a caller names would let one master pad another's denominator (ISS-964 criteria 2, 30).
     #[test]
     fn a_decision_is_recorded_under_the_session_the_token_named() {
-        let src = include_str!("control.rs");
+        let src = source();
         let body = src
             .split("fn decide(")
             .nth(1)

@@ -1294,6 +1294,8 @@ mod tests {
 
     // cm:guard the falsifying half of the park branch: `Human` must leave `Exited` and the other two `Live`. Assert only the pair together — a version that parks everything `Live` holds a slot for an unbounded human wait, and one that parks everything `Exited` pays a transcript re-read for a wait measured in seconds (ISS-964 criteria 4, 5).
     #[test]
+    // cm:why unix-only because the contrast is the property: the bounded half calls `arm_bounded`, which needs a real FIFO, and on a platform selecting `doorbell_no_fifo.rs` there is no way to assert that a machine block KEEPS the process — so the pair cannot be split without losing what it holds.
+    #[cfg(unix)]
     fn a_human_block_releases_the_box_and_a_machine_block_keeps_it() {
         let mut led = Ledger::open_in_memory().unwrap();
         led.create_run_group(seed(&["ISS-1"])).unwrap();
