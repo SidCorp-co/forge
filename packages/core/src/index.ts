@@ -427,8 +427,6 @@ if (isEnabled('chatProvider')) {
   app.route('/api/chat', chatRoutes);
 }
 
-// ISS-22 (PM Agent Epic 6) — config / policies / decisions CRUD + escalation
-// respond endpoint. Mounted under /api/projects/:projectId/pm/*.
 if (isEnabled('pmAgent')) {
   app.route('/api/projects', pmRoutes);
 }
