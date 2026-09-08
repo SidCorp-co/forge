@@ -212,6 +212,13 @@ impl Ledger {
         Self::from_conn(conn)
     }
 
+    /// `~/.local/share/forge-runner/ledger.sqlite`.
+    pub fn default_path() -> Result<PathBuf> {
+        let dir = dirs_next::data_dir()
+            .ok_or_else(|| Error::Other("ledger: cannot resolve OS data dir".into()))?;
+        Ok(dir.join("forge-runner").join("ledger.sqlite"))
+    }
+
     /// An in-memory ledger, for tests that must not touch the box.
     pub fn open_in_memory() -> Result<Self> {
         Self::from_conn(Connection::open_in_memory().map_err(sql_err)?)
@@ -328,6 +335,21 @@ impl Ledger {
             ))
             .map_err(sql_err)?;
         let rows = stmt.query_map([], map_run).map_err(sql_err)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(sql_err)
+    }
+
+    /// Every run one master started, closed or not.
+    // cm:guard scoped to ONE master's session id, because the question "are my children done" is asked per master and two masters share this box's ledger. A query over every run would have one project's master held open by another's work, which is the whole-box coupling residency exists to avoid.
+    pub fn runs_for_master(&self, master_session_id: &str) -> Result<Vec<Run>> {
+        let mut stmt = self
+            .conn
+            .prepare(&format!(
+                "{SELECT_RUN} WHERE master_session_id = ?1 ORDER BY created_at"
+            ))
+            .map_err(sql_err)?;
+        let rows = stmt
+            .query_map(params![master_session_id], map_run)
+            .map_err(sql_err)?;
         rows.collect::<rusqlite::Result<Vec<_>>>().map_err(sql_err)
     }
 

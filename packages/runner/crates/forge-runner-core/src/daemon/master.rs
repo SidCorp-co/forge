@@ -24,7 +24,9 @@ use std::time::{Duration, Instant};
 
 use crate::config::Config;
 use crate::daemon::dispatch::resolve_repo;
+use crate::daemon::master_exit::{self, Verdict};
 use crate::daemon::terminal;
+use crate::runner::ledger::Ledger;
 use crate::runner::process::{mcp_tool_timeout_default, resolve_claude_bin};
 use crate::transport::{master as master_api, pool, runners, CoreClient};
 use tokio::sync::mpsc;
@@ -183,6 +185,8 @@ struct MasterState {
     last_growth: Instant,
     /// True between typing a pass prompt and seeing the pane answer it.
     prompted: bool,
+    /// When this project's pool last held anything at all.
+    last_work: Instant,
 }
 
 impl Masters {
@@ -200,6 +204,20 @@ impl Masters {
     fn remember(&self, project_id: &str, state: MasterState) {
         let mut reg = self.0.lock().expect("masters poisoned");
         reg.live.insert(project_id.to_string(), state);
+    }
+
+    /// This project's pool held something; the idle clock restarts.
+    fn note_work(&self, project_id: &str) {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        if let Some(m) = reg.live.get_mut(project_id) {
+            m.last_work = Instant::now();
+        }
+    }
+
+    /// How long this project has had nothing, or `None` if it has no master.
+    fn idle_for(&self, project_id: &str) -> Option<Duration> {
+        let reg = self.0.lock().expect("masters poisoned");
+        reg.live.get(project_id).map(|m| m.last_work.elapsed())
     }
 
     fn forget(&self, project_id: &str) -> Option<String> {
@@ -334,10 +352,18 @@ pub async fn run(
 ) {
     let mut delay = POLL_INTERVAL;
     let mut last_sweep = Instant::now();
+    // cm:guard a ledger that will not open is announced and the box keeps sweeping. It is the input to ONE decision — whether an idle master may leave — and a daemon that refused to dispatch over it would trade every project's work for a housekeeping question.
+    let mut ledger = match Ledger::default_path().and_then(|p| Ledger::open(&p)) {
+        Ok(l) => Some(l),
+        Err(e) => {
+            tracing::error!("[master] ledger unavailable ({e}) — no master will retire itself");
+            None
+        }
+    };
     loop {
         tokio::select! {
             _ = tokio::time::sleep(delay) => {
-                delay = sweep(&client, &cfg, &masters).await;
+                delay = sweep(&client, &cfg, &masters, &mut ledger).await;
                 last_sweep = Instant::now();
             }
             Some(w) = wake.recv() => {
@@ -346,7 +372,7 @@ pub async fn run(
                     tokio::time::sleep(WAKE_FLOOR - since).await;
                 }
                 tracing::info!("[master] wake ({}) — sweeping now", w.describe());
-                delay = sweep(&client, &cfg, &masters).await;
+                delay = sweep(&client, &cfg, &masters, &mut ledger).await;
                 last_sweep = Instant::now();
             }
             _ = cancel.changed() => { if *cancel.borrow() { break; } }
@@ -389,7 +415,12 @@ fn next_poll_delay(served: &[runners::MeRunner]) -> Duration {
 
 /// One look at every project this device serves.
 // cm:guard the project list comes from `/me/runners`, NEVER from `config.toml` bindings. Core is the source of truth for what a device serves and for where the checkout lives (`resolve_repo` reads the local binding only as a fallback), and the two disagree in practice: dev1 serves epodsystem-core with no local binding for it at all, so a sweep driven by the config file would leave that project's pool unread forever with nothing reporting why.
-async fn sweep(client: &CoreClient, cfg: &Config, masters: &Arc<Masters>) -> Duration {
+async fn sweep(
+    client: &CoreClient,
+    cfg: &Config,
+    masters: &Arc<Masters>,
+    ledger: &mut Option<Ledger>,
+) -> Duration {
     let served = match runners::list_me(client).await {
         Ok(rs) => rs,
         Err(e) => {
@@ -433,8 +464,14 @@ async fn sweep(client: &CoreClient, cfg: &Config, masters: &Arc<Masters>) -> Dur
         let backlog = view.backlog;
         // cm:guard an EMPTY pool starts no master, and that bound survives residency. A resident session is a `claude` process that lives until something ends it, and nothing counts it — `duplex_max_sessions` covers duplex pipeline jobs alone, so a box serving six projects would carry six permanent processes for however many of them never have work. A master that already exists is kept and still supervised; residency is for a project doing something, not for every row `/me/runners` returns.
         // cm:guard a declared backlog alone is reason enough to start a master, and this is why the emptiness test names BOTH lists. Gating on `items` only means a project whose entire content is a backlog never gets a master, so the promote path it opted into fires nowhere — the knob would be configurable, savable and dead.
-        if items.is_empty() && backlog.is_empty() && masters.get(&runner.project_id).is_none() {
-            continue;
+        if items.is_empty() && backlog.is_empty() {
+            if retire_if_idle(client, masters, ledger, &runner.project_id, &runner.slug).await
+                || masters.get(&runner.project_id).is_none()
+            {
+                continue;
+            }
+        } else {
+            masters.note_work(&runner.project_id);
         }
 
         let resolved = match resolve_repo(&served, cfg, &runner.project_id) {
@@ -643,6 +680,7 @@ fn remember(
             transcript,
             last_growth: Instant::now(),
             prompted: false,
+            last_work: Instant::now(),
         },
     );
 }
@@ -721,6 +759,52 @@ async fn supervise(client: &CoreClient, masters: &Arc<Masters>, project_id: &str
     }
 }
 
+/// Let an idle master go, if the ledger says its children are done.
+// cm:guard this is a RETIREMENT and never a death: it does not call `note_failed_master`, so a project whose master leaves cleanly three times does not trip the crashloop breaker and sit out a half-hour cooldown over three correct decisions (ISS-933 criterion 19).
+// cm:guard both halves are asked EVERY time, and the ledger read is not skipped when the pool is empty. An empty pool is the idle half already — reading the children is the half that is easy to drop, and dropping it is what abandons a run's close loop to core's ten-minute reaper.
+async fn retire_if_idle(
+    client: &CoreClient,
+    masters: &Arc<Masters>,
+    ledger: &mut Option<Ledger>,
+    project_id: &str,
+    slug: &str,
+) -> bool {
+    let (Some(led), Some(idle), Some((session_id, name, _))) = (
+        ledger.as_ref(),
+        masters.idle_for(project_id),
+        masters.get(project_id),
+    ) else {
+        return false;
+    };
+    let kids = match master_exit::children(led, &session_id) {
+        Ok(k) => k,
+        Err(e) => {
+            tracing::warn!("[master] {slug}: ledger unreadable ({e}) — keeping the master");
+            return false;
+        }
+    };
+    match master_exit::verdict(idle, &kids) {
+        Verdict::Stay(_) => false,
+        Verdict::Exit => {
+            tracing::info!(
+                "[master] {slug}: nothing for {}m and every child run closed — retiring {name}",
+                idle.as_secs() / 60
+            );
+            let _ = terminal::kill(&name).await;
+            match pool::release(client, None, &session_id).await {
+                Ok(n) if n > 0 => tracing::info!("[master] returned {n} hold(s) to the pool"),
+                Ok(_) => {}
+                Err(e) => tracing::warn!("[master] could not return holds for {session_id}: {e}"),
+            }
+            if let Err(e) = master_api::close(client, &session_id, "idle, children done").await {
+                tracing::warn!("[master] could not close session {session_id}: {e}");
+            }
+            masters.forget(project_id);
+            true
+        }
+    }
+}
+
 async fn end_master(
     client: &CoreClient,
     masters: &Arc<Masters>,
@@ -752,6 +836,25 @@ fn note_failed_master(masters: &Arc<Masters>, project_id: &str, slug: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const THIS_SOURCE: &str = include_str!("master.rs");
+
+    #[test]
+    fn the_retirement_path_asks_the_ledger_and_not_just_the_clock() {
+        let body = THIS_SOURCE
+            .split("async fn retire_if_idle(")
+            .nth(1)
+            .and_then(|r| r.split("\nasync fn ").next())
+            .unwrap_or_default();
+        assert!(
+            body.contains("master_exit::children("),
+            "the wiring must read the children out of the ledger — a caller that passed an empty slice would satisfy `verdict` and retire a master over live runs, which is criterion 19's failure arriving through the call site rather than the decision (ISS-933 criteria 19 and 20)"
+        );
+        assert!(
+            !body.contains("note_failed_master"),
+            "a clean retirement is not a death: counting it would trip the crashloop breaker after three correct decisions and idle the project for the half-hour cooldown (ISS-933 criterion 19)"
+        );
+    }
 
     fn served(entries: &[(&str, Option<u64>)]) -> Vec<runners::MeRunner> {
         entries

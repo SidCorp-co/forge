@@ -11,6 +11,7 @@ pub mod control;
 pub mod dispatch;
 pub mod inbox;
 pub mod master;
+pub mod master_exit;
 pub mod preflight;
 pub mod recovery;
 pub mod repo_lock;
