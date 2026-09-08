@@ -557,3 +557,50 @@ OPTIONAL for the same reason.
 `web-v2/src/features/attention/types.ts` as its mirror ("do NOT guess field names"); that file was
 updated in the same change, with a note that absent means not-applicable rather than zero, so the
 screen renders nothing instead of "0 claims".
+
+## S11b — the agents UI, and the surface it must NOT remove
+
+| # | Criterion | Test | RED (quoted) | Commit |
+|---|---|---|---|---|
+| 51 | the four states named as four | `agents/run-state.test.ts` — `the four states` | written as a table, not a screen test, because the claim is the derivation; the falsifying case is `distinguishes an answered park from one still waiting` | S11b |
+| 35, 51 | an unnamed combination is `unknown`, not a guess | `refuses to guess at a combination it does not know` | criterion 35 permits no reclamation on an unknown, and a screen that guessed would invite it | S11b |
+| 52 | three marks as three, the lease one a COUNT | `the three close-loop marks` + `runs-pane.test.tsx` — `names the state, who can end the wait, and the three marks` | asserts `leases 1/2` on the rendered row: a run over two issues can have returned one | S11b |
+| 53 | the cost is legible, and a zero is not shown | `agents/wait-cost.test.ts` | `says nothing at all for a row that carries no cost` — absent is not zero, so a non-awaiting row renders nothing rather than "0 claims" | S11b |
+| 54 | loading · error+retry · first-run empty · empty-SEARCH | `runs-pane.test.tsx` (4 cases) | mutation (the first-run branch deleted so both empties share one screen): `Unable to find an element with the text: /No runs on this project/i` | S11b |
+| 38, 51 | the answered park is visible as its own thing | `shows an answered park as owed a revival` | it renders on the `failure` tone deliberately — this run is not waiting on anybody, it is waiting on a revival nobody performed | S11b |
+
+**The Sessions pane STAYS, and that is the substantive decision of this stage.** The rebuild first
+replaced the old Sessions+Chat shell with the runs view alone — and that would have removed a working
+surface: a run session is one shape of work on a box, and pipeline jobs and chats, everything
+`agent_sessions` carries, appear in neither the ledger nor a runs list. `CLAUDE.md` names that failure
+directly, so the shell now carries two panes (Runs · Sessions) over one project and the guard on it
+says why. The chat pane is gone from this SCREEN and not from the product: it is the workspace-shell
+dock, reachable everywhere rather than here.
+
+**c49's import list checked out and then some.** The criterion names six importers plus the project
+page's `useQueueStats`; the tree has TWELVE files importing `features/sessions/*`, all of them for
+`types`, `hooks` or `grouping` — the preserved symbols. `components/sessions-screen` had exactly one
+importer, the old agents shell, and the new shell imports it still. Verified the way the criterion
+demands rather than by grep alone: `tsc --noEmit` clean and `pnpm --filter web-v2 build` compiled,
+since a dangling import in a client component can typecheck and still fail the build.
+
+The `[sessionId]` route was read and left as the thin param adapter it is — nothing in criteria 51-53
+applies to a single session's conversation view, and rewriting it would have been change for its own
+sake.
+
+### Priced / not claimable here
+
+- **No new prose headers.** Every one of the ten new files first carried a module-doc header, and
+  `codemap prose` refused all ten (CM001): the existing headers in that tree are frozen legacy, and a
+  new file gets annotations or nothing. Rewritten as `cm:edge` / `cm:why` where there was something no
+  tool can derive, deleted where there was not.
+- **`role="group"` became a `<fieldset>` with an `sr-only` legend**, paid rather than waived — the
+  lint budget for that file allowed zero of `a11y/useSemanticElements`.
+- **c50's deployed walk and c55's review park cannot be done from this box.** The UI half therefore
+  lands INCOMPLETE by design: the deploy window is the owner's (c61), and c55 says this half is parked
+  for human review with the rendered states to look at rather than self-closed. Stated here rather
+  than at the end so the record shows it was left, not missed.
+- **The runs list POLLS at 20s.** No WS event carries the run ledger — `event-router.ts` invalidates
+  `['agent-sessions']` and `['projects',id,'active-runners']` and nothing else — so a query key under
+  either prefix would have looked live and never refreshed. 20s sits under the box's own 30s snapshot
+  sweep. A `run-ledger.updated` frame would remove the poll; it is not in any criterion.
