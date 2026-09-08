@@ -47,7 +47,8 @@ async fn git(dir: &Path, args: &[&str]) -> Option<std::process::Output> {
 }
 
 /// True when the worktree holds something losing it would destroy.
-async fn holds_work(wt: &Path) -> bool {
+// cm:guard the ONE definition of "this tree still holds work", read by the reaper before it deletes and by `runner/terminate.rs` before it releases — so what `Abandon` calls preserved is exactly what this reader calls safe. A second copy would let one of them delete what the other was still protecting (ISS-964 criteria 33, 37).
+pub async fn holds_work(wt: &Path) -> bool {
     if let Some(out) = git(wt, &["status", "--porcelain", "--untracked-files=no"]).await {
         if !out.stdout.is_empty() {
             return true;

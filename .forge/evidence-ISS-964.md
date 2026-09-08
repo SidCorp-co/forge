@@ -257,3 +257,64 @@ The advertised set grew from 2 to 3, and the runner now requires all three. An o
 the original two grants **no permit** — which is the correct answer, not a regression: a box must
 not release its process to a core whose one-shot sweep will reap the park in three minutes. Since
 no producer calls `park_for_human` yet, no deployed box can be refused by this change today.
+
+## S9b part 1 — the external way out of every state (c32, c33)
+
+`runner/terminate.rs`. Two verbs, and which one applies is **derived** from
+`incarnation`, never passed: `Kill` where a process exists (`Live`/`Starting` in THIS boot),
+`Abandon` where none does (`Exited`). A caller that could choose would eventually choose `Abandon`
+over a live agent and leave it writing git into a tree the record says is free.
+
+**Vocabulary note.** The criteria say `incarnation='none'`; the ledger's enum is
+`live | starting | exited` and `declare_parked_human` writes `exited`. Code written against the
+criteria's word would match no run on any box, so the guard on `verb_for` records the mapping.
+
+**The four states** are `incarnation` × `work` (criterion 9's two axes): live×runnable,
+live×blocked, exited×blocked (parked), exited×runnable (answered, awaiting revival). The verb
+follows from the first axis alone.
+
+**The four resources** are never enumerated by the criteria, which reference them twice (c33, c37).
+The schema enumerates them, one closing column each — which is also criterion 37's one-writer-per-
+resource: the process (`pid`/`incarnation`), the worktree (`worktree_gone_at`), the core session
+(`session_terminal_at`), and the issue leases (`run_issues.lease_returned_at`, per issue). Three of
+the four are `close_loop::close`'s to set by reading the world back, so this verb stamps none of
+them — asserted by `the_verb_stamps_no_mark_of_its_own`. The fourth does not exist on the abandon
+path by definition.
+
+**The order is preserve → release → close → `end_run`, and `end_run` is last because it is what
+un-holds the tree.** `held_worktrees` is `ended_by IS NULL`, so writing it earlier lets a
+worktree-reap tick delete, inside that window, exactly the diff c33 says must survive — and every
+behavioural test would still pass, because none of them runs a reaper between two writes. Held by
+`the_release_is_written_before_the_run_is_ended`, which reads the source, because what is under
+test is the order of two statements and both orders produce the same final row.
+
+**A defect this found, in my own first design.** Handing every abandon to `salvage_wip` looked
+equivalent to probing first. It is not: `pick_target` answers `refused` when it finds dirt it
+cannot attribute, so a CLEAN park would have been refused because some stranger's worktree on the
+same box was dirty. The run's own tree is now probed with `worktree_reap::holds_work` — made `pub`
+so what `Abandon` calls preserved is exactly what the reaper calls safe — and salvage is called
+only when there is something to lose. Case:
+`a_clean_park_is_released_even_with_a_strangers_dirty_tree_on_the_box`.
+
+**A test that could not fail, caught by its own mutation.** The first refusal test branched on the
+outcome and accepted either answer; widening `preserved` to admit `refused` left it green. Rewritten
+to force a determinate failure (salvage handed a repo root that is not a git checkout) and assert
+the refusal hard. `committed_not_pushed` counts as preserved because the release is
+`git worktree remove`, which leaves the branch ref and its objects in the repo.
+
+- `T4` — salvage aimed at a branch no tree is on → 2 red, the refusal path firing end to end.
+- `T5` — `end_run` moved ahead of the release → the ordering test red, naming its own rule.
+- `T6` — a `Live` row from a foreign boot read as `Abandon` → `a_live_run_from_another_boot_admits_
+  neither_verb` red. Criterion 35 permits no reclamation from unknown; its pid names whatever the
+  kernel has since reused.
+- `T7` — `preserved` widened to admit `failed` → the refusal test red (it did NOT go red against the
+  first version of that test, which is how the untestable assertion was found).
+- `T8` — the `holds_work` probe removed → the clean-park case red.
+
+**No socket caller, deliberately, and it is the AC's own order:** criterion 31 puts the capability
+token on `daemon/control.rs` **before or with** `Ask`/`Abandon`/`Kill`, never after. So these land as
+verbs with no external door, exactly as S9's protections landed with no producer. Wiring them to a
+socket that still trusts a caller-declared `session_id` is what c31 forbids.
+
+- Gates: `cargo fmt --check`, `clippy --workspace --all-targets`, `cargo test --workspace` 430
+  (from 421).
