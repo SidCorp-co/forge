@@ -157,3 +157,147 @@ mod tests {
         }
     }
 }
+
+// cm:guard the replay of the incident this issue exists to prevent (ISS-933 criterion 11), and it runs against a REAL git repo, a REAL worktree and a REAL process because the failure it reproduces was two live agents in one directory — a mocked spawn cannot be in the wrong directory, so it cannot witness this. Linux-gated for `/proc/<pid>/cwd`, which is the only way to read where a process actually IS rather than where it was told to go.
+#[cfg(all(test, target_os = "linux"))]
+mod replay {
+    use super::*;
+    use crate::runner::ledger::Ledger;
+    use std::process::{Child, Command};
+    use std::sync::Mutex;
+
+    struct RealSpawner {
+        children: Mutex<Vec<Child>>,
+    }
+
+    #[async_trait::async_trait]
+    impl Spawner for RealSpawner {
+        async fn spawn(&self, _name: &str, cwd: &Path, _argv: &[String]) -> Result<u32> {
+            let child = Command::new("sleep")
+                .arg("30")
+                .current_dir(cwd)
+                .spawn()
+                .map_err(|e| Error::Other(format!("spawn: {e}")))?;
+            let pid = child.id();
+            self.children.lock().unwrap().push(child);
+            Ok(pid)
+        }
+    }
+
+    fn sh(dir: &Path, args: &[&str]) {
+        let out = Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .expect("git");
+        assert!(
+            out.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    fn repo() -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("forge-replay-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        sh(&dir, &["init", "-q", "-b", "main"]);
+        sh(&dir, &["config", "user.email", "t@t.invalid"]);
+        sh(&dir, &["config", "user.name", "t"]);
+        std::fs::write(dir.join("shared.ts"), "export const a = 1;\n").unwrap();
+        sh(&dir, &["add", "-A"]);
+        sh(&dir, &["commit", "-qm", "base"]);
+        dir
+    }
+
+    fn cwd_of(pid: u32) -> PathBuf {
+        std::fs::read_link(format!("/proc/{pid}/cwd")).expect("the process must still be alive")
+    }
+
+    #[tokio::test]
+    async fn the_measured_pair_is_carried_by_one_run_into_one_worktree() {
+        let dir = repo();
+        let repo_path = dir.to_string_lossy().to_string();
+        let mut led = Ledger::open_in_memory().unwrap();
+        let spawner = RealSpawner {
+            children: Mutex::new(Vec::new()),
+        };
+
+        let run = start(
+            &mut led,
+            RunRequest {
+                run_id: "run-replay".into(),
+                master_session_id: "master-1".into(),
+                boot_id: "boot-a".into(),
+                issue_keys: vec!["ISS-957".into(), "ISS-963".into()],
+                repo: repo_path.clone(),
+                branch: "grp-957-963".into(),
+                start_point: None,
+                argv: vec!["sleep".into()],
+            },
+            &spawner,
+        )
+        .await
+        .unwrap();
+
+        let issues = led.issues("run-replay").unwrap();
+        assert_eq!(issues.len(), 2, "one run must carry the whole group");
+
+        let first_pid = run.pid.expect("a started run records its pid");
+        let live_cwd = cwd_of(first_pid);
+        assert_eq!(
+            live_cwd.canonicalize().unwrap(),
+            run.worktree_path.canonicalize().unwrap(),
+            "the session must actually BE in the run's worktree"
+        );
+
+        let before = spawner.children.lock().unwrap().len();
+        let second = start(
+            &mut led,
+            RunRequest {
+                run_id: "run-second".into(),
+                master_session_id: "master-1".into(),
+                boot_id: "boot-a".into(),
+                issue_keys: vec!["ISS-963".into()],
+                repo: repo_path,
+                branch: "grp-957-963".into(),
+                start_point: None,
+                argv: vec!["sleep".into()],
+            },
+            &spawner,
+        )
+        .await;
+
+        let err = second
+            .expect_err("a second run over an issue the first already carries must be refused — this IS the incident: pids 334254 and 335001 in one cwd on 2026-09-08 (ISS-933 criterion 11)")
+            .to_string();
+        assert!(
+            err.contains("ISS-963") && err.contains("run-replay"),
+            "{err}"
+        );
+        assert_eq!(
+            spawner.children.lock().unwrap().len(),
+            before,
+            "the refusal must happen BEFORE anything is spawned — a second process in this worktree is exactly the state being prevented"
+        );
+        assert_eq!(
+            cwd_of(first_pid).canonicalize().unwrap(),
+            run.worktree_path.canonicalize().unwrap(),
+            "the first session must be untouched by the refused second"
+        );
+
+        eprintln!(
+            "replay evidence — run {} carries {:?}; sole pid {} with cwd {}; second creation refused, {} process(es) spawned in total",
+            run.run_id,
+            issues.iter().map(|m| m.issue_key.as_str()).collect::<Vec<_>>(),
+            first_pid,
+            live_cwd.display(),
+            spawner.children.lock().unwrap().len()
+        );
+
+        for mut c in spawner.children.into_inner().unwrap() {
+            let _ = c.kill();
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

@@ -452,11 +452,17 @@ mod tests {
         let mut second = seed(&["ISS-963"]);
         second.run_id = "run-2".into();
         second.worktree_path = PathBuf::from("/w/two");
-        let err = led.create_run_group(second).unwrap_err().to_string();
-        assert!(err.contains("ISS-963"), "{err}");
+        let err = led
+            .create_run_group(second)
+            .expect_err("an issue already carried by a live run must be REFUSED, never silently reassigned to a second run — two runs holding one issue is a state the ledger exists to make unwritable (ISS-933 criterion 9)")
+            .to_string();
+        assert!(
+            err.contains("ISS-963"),
+            "the refusal must name the issue: {err}"
+        );
         assert!(
             err.contains("run-1"),
-            "the refusal must name the run that holds it: {err}"
+            "the refusal must name the run that holds it, so the reader knows where the work already is: {err}"
         );
         assert!(led.run("run-2").unwrap().is_none());
     }
@@ -467,9 +473,18 @@ mod tests {
         led.create_run_group(seed(&["ISS-957"])).unwrap();
         let mut second = seed(&["ISS-963"]);
         second.run_id = "run-2".into();
-        let err = led.create_run_group(second).unwrap_err().to_string();
-        assert!(err.contains("/w/one"), "{err}");
-        assert!(err.contains("run-1"), "{err}");
+        let err = led
+            .create_run_group(second)
+            .expect_err("a worktree path a live run already holds must be REFUSED here, BEFORE `git worktree add` runs — that is what stops the `.worktrees/<name> already exists` failure which killed ISS-593's first job (ISS-933 criterion 12)")
+            .to_string();
+        assert!(
+            err.contains("/w/one"),
+            "the refusal must name the path: {err}"
+        );
+        assert!(
+            err.contains("run-1"),
+            "the refusal must name the run holding it: {err}"
+        );
     }
 
     #[test]
