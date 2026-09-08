@@ -402,18 +402,37 @@ impl Ledger {
         .map_err(sql_err)
     }
 
+    // cm:guard compared in RUST over the live rows, never as `worktree_path = ?1` in SQL, and the reason is the same divergence `HeldTrees` was fixed for: a run records `resolve_repo`'s answer, which prefers the path the SERVER serves, so one symlink or bind mount makes the same directory two strings. String equality here misses the refusal and `git worktree add` then puts a second agent in a tree a live run is working in (ISS-964 criterion 12).
+    // cm:guard the RAW spelling is still compared as well as the resolved one — a run whose tree has since been removed cannot be canonicalised, and it must keep holding its path.
     fn live_run_at_path(
         tx: &rusqlite::Transaction<'_>,
         path: &str,
         boot_id: &str,
     ) -> Result<Option<String>> {
-        tx.query_row(
-            "SELECT run_id FROM runs WHERE worktree_path = ?1 AND incarnation = 'live' AND boot_id = ?2 LIMIT 1",
-            params![path, boot_id],
-            |row| row.get::<_, String>(0),
-        )
-        .optional()
-        .map_err(sql_err)
+        let wanted = std::fs::canonicalize(path).ok();
+        let mut stmt = tx
+            .prepare(
+                "SELECT run_id, worktree_path FROM runs
+                  WHERE incarnation = 'live' AND boot_id = ?1",
+            )
+            .map_err(sql_err)?;
+        let rows = stmt
+            .query_map(params![boot_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(sql_err)?;
+        for row in rows {
+            let (run_id, held) = row.map_err(sql_err)?;
+            if held == path {
+                return Ok(Some(run_id));
+            }
+            if let (Some(w), Ok(h)) = (wanted.as_ref(), std::fs::canonicalize(&held)) {
+                if &h == w {
+                    return Ok(Some(run_id));
+                }
+            }
+        }
+        Ok(None)
     }
 
     /// Every worktree a run still holds, with the run that holds it.
@@ -990,6 +1009,38 @@ mod tests {
         assert_eq!(run.work, Work::Runnable);
         assert_eq!(run.incarnation, Incarnation::Live);
         assert_eq!(led.issues("run-1").unwrap().len(), 1);
+    }
+
+    // cm:guard the refusal must survive the two path spellings the fleet actually produces: the first run records what `resolve_repo` returned (the SERVER's path) and the second may resolve through `cfg.bindings`, so a string compare misses and `git worktree add` reuses a tree a live run is working in — two agents, one worktree (ISS-964 criterion 12).
+    #[test]
+    fn a_second_run_at_the_same_tree_by_another_name_is_refused() {
+        let real = std::env::temp_dir().join(format!("forge-ledger-path-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&real);
+        std::fs::create_dir_all(&real).unwrap();
+        let link = real.with_extension("served");
+        let _ = std::fs::remove_file(&link);
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        let mut led = Ledger::open_in_memory().unwrap();
+        let mut first = seed(&["ISS-964"]);
+        first.worktree_path = link.clone();
+        led.create_run_group(first).unwrap();
+
+        let mut second = seed(&["ISS-970"]);
+        second.run_id = "run-2".into();
+        second.worktree_path = real.clone();
+        let err = led
+            .create_run_group(second)
+            .expect_err("the same directory under a second spelling must be refused")
+            .to_string();
+        assert!(
+            err.contains("run-1"),
+            "the refusal must name the holder: {err}"
+        );
+        assert!(led.run("run-2").unwrap().is_none());
+
+        let _ = std::fs::remove_file(&link);
+        let _ = std::fs::remove_dir_all(&real);
     }
 
     #[test]

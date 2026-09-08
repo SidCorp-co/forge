@@ -82,12 +82,25 @@ fn older_than(p: &Path, age: Duration) -> bool {
 pub struct HeldTrees(std::collections::HashMap<PathBuf, String>);
 
 impl HeldTrees {
+    // cm:guard every hold is keyed under BOTH its written spelling and its resolved one, because the two sides of this comparison do not derive the path from the same source: a run's tree is `resolve_repo`'s repo path, which prefers what the SERVER serves (`daemon/dispatch.rs`), while the sweep enumerates `cfg.bindings`. On the fleet those differ — jobs run under `/home/forge/projects/<slug>` — so one symlink or bind mount makes the same directory two strings, the lookup miss, and the park eaten by the reaper that exists to spare it (ISS-964 criterion 25).
     pub fn from_ledger(ledger: &Ledger) -> Result<Self> {
-        Ok(Self(ledger.held_worktrees()?.into_iter().collect()))
+        let mut held = std::collections::HashMap::new();
+        for (path, run_id) in ledger.held_worktrees()? {
+            if let Ok(real) = path.canonicalize() {
+                held.insert(real, run_id.clone());
+            }
+            held.insert(path, run_id);
+        }
+        Ok(Self(held))
     }
 
+    // cm:guard the resolved spelling is tried FIRST and the written one is the fallback, never the reverse: a candidate the sweep is looking at always exists, so its `canonicalize` succeeds, while a ledger row whose tree is already gone can only ever be keyed by the raw path.
     fn holder(&self, path: &Path) -> Option<&str> {
-        self.0.get(path).map(String::as_str)
+        path.canonicalize()
+            .ok()
+            .and_then(|real| self.0.get(&real))
+            .or_else(|| self.0.get(path))
+            .map(String::as_str)
     }
 }
 
@@ -225,6 +238,40 @@ mod tests {
             vec!["run-held"],
             "{swept:?}"
         );
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    // cm:guard the two sides of the hold do NOT derive the path from one source: a run records `resolve_repo`'s answer, which prefers what the server serves, and the sweep enumerates `cfg.bindings`. This test spells the hold through a symlink to the very tree the sweep walks directly, which is the fleet's own shape (`/home/forge/projects/<slug>` vs the binding) — without canonicalisation on both sides the lookup misses and the park is deleted (ISS-964 criterion 25).
+    #[tokio::test]
+    async fn holds_a_park_the_ledger_recorded_under_a_different_spelling() {
+        let (repo, wt) = repo_with_worktree("spelling").await;
+        let link = repo.with_extension("served");
+        let _ = std::fs::remove_file(&link);
+        std::os::unix::fs::symlink(&repo, &link).unwrap();
+        let served = link.join(WORKTREE_ROOTS[0]).join("iss-spelling");
+        assert_ne!(served, wt, "the two spellings must differ as strings");
+
+        let swept = reap_repo(&repo, NOW, &led_holding(&served, true, false)).await;
+
+        assert!(swept.removed.is_empty(), "{swept:?}");
+        assert!(wt.exists());
+        let _ = std::fs::remove_file(&link);
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    // cm:guard the SAME divergence with the spellings swapped, and it needs its own case because the two halves of the fix cover one direction each: keying the ledger row under its resolved path covers a hold written through the symlink, and resolving the candidate covers a binding that IS the symlink. Either half alone leaves one of these two green and the other eating a park.
+    #[tokio::test]
+    async fn holds_a_park_when_the_sweep_is_the_one_walking_a_symlink() {
+        let (repo, wt) = repo_with_worktree("bound").await;
+        let link = repo.with_extension("bound-link");
+        let _ = std::fs::remove_file(&link);
+        std::os::unix::fs::symlink(&repo, &link).unwrap();
+
+        let swept = reap_repo(&link, NOW, &led_holding(&wt, true, false)).await;
+
+        assert!(swept.removed.is_empty(), "{swept:?}");
+        assert!(wt.exists());
+        let _ = std::fs::remove_file(&link);
         let _ = std::fs::remove_dir_all(&repo);
     }
 

@@ -139,16 +139,12 @@ function candidateRow(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   dbExecute.mockResolvedValue([]);
-  updateReturning.mockReset();
-  updateReturning.mockResolvedValue([]);
-  selectLimit.mockReset();
-  selectLimit.mockResolvedValue([]);
+  updateReturning.mockReset().mockResolvedValue([]);
+  selectLimit.mockReset().mockResolvedValue([]);
   sweepWhereArgs.length = 0;
   sweepSetArgs.length = 0;
-  finalizeFailedJobMock.mockClear();
-  finalizeFailedJobMock.mockResolvedValue({ scheduled: false });
-  requestJobKillMock.mockClear();
-  requestJobKillMock.mockResolvedValue('requested');
+  finalizeFailedJobMock.mockClear().mockResolvedValue({ scheduled: false });
+  requestJobKillMock.mockClear().mockResolvedValue('requested');
   resolveKillConfirmationResult = { confirmed: false, outcome: null };
   resolveKillConfirmationMock.mockClear();
   killGraceMsValue = 90_000;

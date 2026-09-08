@@ -39,6 +39,8 @@ let harness: TestDatabase;
 let projectId: string;
 let reapExpiredParks: typeof import('../../src/jobs/park-deadline.js').reapExpiredParks;
 let reapUnansweredParks: typeof import('../../src/jobs/park-deadline.js').reapUnansweredParks;
+let reapSessionLostJobs: typeof import('../../src/jobs/loop-monitor.js').reapSessionLostJobs;
+let reapOrphanedOneShotRuns: typeof import('../../src/pipeline/sweeper.js').reapOrphanedOneShotRuns;
 
 const MINUTES = 60_000;
 // cm:guard ISO strings, never Date objects — postgres-js has no column type to bind a Date against inside a raw `sql` template and throws ERR_INVALID_ARG_TYPE.
@@ -52,6 +54,8 @@ beforeAll(async () => {
   process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
   process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
   ({ reapExpiredParks, reapUnansweredParks } = await import('../../src/jobs/park-deadline.js'));
+  ({ reapSessionLostJobs } = await import('../../src/jobs/loop-monitor.js'));
+  ({ reapOrphanedOneShotRuns } = await import('../../src/pipeline/sweeper.js'));
 }, 60_000);
 
 afterAll(async () => {
@@ -253,5 +257,187 @@ describe('the asker deadline is what bounds a processless park', () => {
     await question(id, { blockerKind: 'machine', deadline: ago(30), askedMinutesAgo: 60 * 24 });
 
     expect(await deadlineSweep()).toBe(0);
+  });
+});
+
+/**
+ * Closing the record must free the resource, and with the right cause.
+ *
+ * `reapUnansweredParks` fails the session; the session-lost hop is what frees
+ * the job under it. That hop wrote one cause for every way a session can die,
+ * and `infra` derives `retry` — so before this, closing a park dispatched a
+ * fresh agent onto an issue whose question nobody had answered, which is
+ * criterion 26's failure reached through the other door.
+ */
+describe('the job a closed park was holding', () => {
+  async function jobUnder(sessionId: string): Promise<string> {
+    const id = randomUUID();
+    const actorId = (await createTestUser(harness.db)).id;
+    const [run] = await harness.db.execute<{ pipeline_run_id: string }>(
+      sql`SELECT pipeline_run_id FROM agent_sessions WHERE id = ${sessionId}`,
+    );
+    await harness.db.execute(sql`
+      INSERT INTO jobs (id, project_id, pipeline_run_id, agent_session_id, created_by,
+                        type, status, dispatched_at, queued_at)
+      VALUES (${id}, ${projectId}, ${run?.pipeline_run_id}, ${sessionId}, ${actorId},
+              'code', 'running', ${ago(60)}::timestamptz, ${ago(60)}::timestamptz)
+    `);
+    return id;
+  }
+
+  // cm:guard the runner is made to have ANSWERED the kill, because the cause is written at the terminal flip and phase 1 only publishes it over WS. The request must sit INSIDE the episode window (`killGraceMs() * 2`, 180s) and PAST the grace (90s) — age it further and `isKillEpisodeLive` reads the episode as expired, phase 1 simply opens a new one, and the job stays `running` with every assertion here reading as a missing reap.
+  async function runnerConfirmedTheKill(jobId: string): Promise<void> {
+    await harness.db.execute(sql`
+      UPDATE jobs SET kill_requested_at = now() - interval '120 seconds',
+                      kill_confirmed_at = now() - interval '110 seconds',
+                      kill_outcome = 'killed'
+       WHERE id = ${jobId}
+    `);
+  }
+
+  async function jobState(
+    id: string,
+  ): Promise<{ status: string; error: string | null; kind: string | null; action: string | null }> {
+    const rows = await harness.db.execute<{
+      status: string;
+      error: string | null;
+      failure_kind: string | null;
+      failure_action: string | null;
+    }>(sql`SELECT status, error, failure_kind, failure_action FROM jobs WHERE id = ${id}`);
+    const r = rows[0];
+    return {
+      status: r?.status ?? 'gone',
+      error: r?.error ?? null,
+      kind: r?.failure_kind ?? null,
+      action: r?.failure_action ?? null,
+    };
+  }
+
+  async function retriesOf(id: string): Promise<number> {
+    const rows = await harness.db.execute<{ n: number }>(
+      sql`SELECT COUNT(*)::int AS n FROM jobs WHERE retry_of = ${id}`,
+    );
+    return rows[0]?.n ?? 0;
+  }
+
+  async function expiredPark(): Promise<string> {
+    const sid = await parkedSession(60 * 24);
+    await question(sid, { blockerKind: 'human', deadline: ago(30), askedMinutesAgo: 60 * 24 });
+    return sid;
+  }
+
+  // cm:guard THE composition, and the half a unit test cannot reach: closing the record must actually free the job. A park closed in core with its job still `running` leaks the slot exactly as an unbounded park did, so criterion 34 buys nothing without this.
+  it('is failed once the clock closes the park', async () => {
+    const sid = await expiredPark();
+    const job = await jobUnder(sid);
+
+    expect(await deadlineSweep()).toBe(1);
+    await runnerConfirmedTheKill(job);
+    await reapSessionLostJobs(new Date(), { projectId });
+
+    expect((await jobState(job)).status).toBe('failed');
+  });
+
+  // cm:guard the business rule: no retry. `infra` derives `retry`, so before the cause split this dispatched a second agent onto a question still nobody had answered — the assertion is on the descendant COUNT because that is the harm, not on the kind that avoids it.
+  it('is not retried, because the question is still unanswered', async () => {
+    const sid = await expiredPark();
+    const job = await jobUnder(sid);
+
+    expect(await deadlineSweep()).toBe(1);
+    await runnerConfirmedTheKill(job);
+    await reapSessionLostJobs(new Date(), { projectId });
+
+    expect(await retriesOf(job)).toBe(0);
+    expect(await jobState(job)).toMatchObject({ error: 'park_unanswered', kind: 'code' });
+  });
+
+  // cm:guard the session keeps its OWN diagnosis. `park_unanswered` must be a `SYNTHETIC_REAP_ERRORS` member, or the lifecycle sync copies the job's cause back over it and the park's record is erased — measured as the same shape on epodsystem 2026-09-05, where 61 sessions read `session_lost` over a cause written 90 seconds earlier.
+  it('does not overwrite the reason the park clock wrote', async () => {
+    const sid = await expiredPark();
+    const job = await jobUnder(sid);
+
+    expect(await deadlineSweep()).toBe(1);
+    await runnerConfirmedTheKill(job);
+    await reapSessionLostJobs(new Date(), { projectId });
+
+    expect(await sessionState(sid)).toEqual({ status: 'failed', reason: 'park_unanswered' });
+  });
+
+  // cm:guard the ordinary silent death must keep its retry, AND the positive here is what makes the `toBe(0)` above mean anything: this harness can in fact produce a retry descendant, so a zero there is a suppressed retry rather than a lane that never retries. Delete this and the no-retry claim becomes an assertion that cannot fail.
+  it('is still retried when the session simply died', async () => {
+    const sid = await parkedSession(60);
+    const job = await jobUnder(sid);
+    await harness.db.execute(sql`
+      UPDATE agent_sessions SET status = 'failed', failure_reason = 'residency_expired'
+       WHERE id = ${sid}
+    `);
+    await runnerConfirmedTheKill(job);
+    await reapSessionLostJobs(new Date(), { projectId });
+
+    expect(await jobState(job)).toMatchObject({ error: 'session_lost', kind: 'infra' });
+    expect(await retriesOf(job)).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * The THIRD clock over a park, and the one nothing exempted.
+ *
+ * A run session carries no job and its `issue_id` is NULL, which a DB check
+ * constraint makes incompatible with `kind = 'issue'` — so `reapJoblessRuns`
+ * can never see one and `reapOrphanedOneShotRuns` is what owns the shape. That
+ * sweep judges liveness on `last_heartbeat_at`, and parking FREEZES that
+ * column, so a park that is alive and waiting is indistinguishable from a
+ * session that died three minutes ago.
+ */
+describe('the one-shot orphan sweep over a processless park', () => {
+  async function parkOnARunSession(): Promise<{ sessionId: string; runId: string }> {
+    const sessionId = await parkedSession(60 * 24);
+    await question(sessionId, { blockerKind: 'human', deadline: null });
+    const [row] = await harness.db.execute<{ pipeline_run_id: string }>(
+      sql`SELECT pipeline_run_id FROM agent_sessions WHERE id = ${sessionId}`,
+    );
+    return { sessionId, runId: row?.pipeline_run_id ?? '' };
+  }
+
+  async function runStatus(id: string): Promise<string> {
+    const [row] = await harness.db.execute<{ status: string }>(
+      sql`SELECT status FROM pipeline_runs WHERE id = ${id}`,
+    );
+    return row?.status ?? 'gone';
+  }
+
+  const sweep = (): Promise<unknown> => reapOrphanedOneShotRuns(new Date(), { projectId });
+
+  // cm:guard the park's deadline is NULL, so the wait is unbounded by design (criterion 8) and NOTHING may close it. This sweep reaching it would force-fail the session `heartbeat_timeout` — a cause that names a runner stall for a session whose runner deliberately left.
+  it('leaves a live park alone however long its heartbeat has been frozen', async () => {
+    const { sessionId, runId } = await parkOnARunSession();
+
+    await sweep();
+
+    expect((await sessionState(sessionId)).status).toBe('running');
+    expect(await runStatus(runId)).toBe('running');
+  });
+
+  // cm:guard the regression this exemption could cause: a run session whose agent really died, with no open human question, must still be reaped. Without this the exemption is a blanket amnesty for every jobless run rather than for the one shape that earns it.
+  it('still reaps a jobless run whose session died with no park open', async () => {
+    const sessionId = await parkedSession(60 * 24);
+    const [row] = await harness.db.execute<{ pipeline_run_id: string }>(
+      sql`SELECT pipeline_run_id FROM agent_sessions WHERE id = ${sessionId}`,
+    );
+
+    await sweep();
+
+    expect((await sessionState(sessionId)).reason).toBe('heartbeat_timeout');
+    expect(await runStatus(row?.pipeline_run_id ?? '')).toBe('failed');
+  });
+
+  // cm:guard a MACHINE park keeps its process, so the heartbeat premise is exactly right for it and this sweep must keep reaping it — the same discriminator as both park clocks, for the same reason.
+  it('still reaps a machine park, whose process is held rather than released', async () => {
+    const sessionId = await parkedSession(60 * 24);
+    await question(sessionId, { blockerKind: 'machine', deadline: null });
+
+    await sweep();
+
+    expect((await sessionState(sessionId)).reason).toBe('heartbeat_timeout');
   });
 });

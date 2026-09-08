@@ -66,11 +66,15 @@ pub fn arm_bounded(
     Ok((ear, incarnation))
 }
 
-/// The two protections the box cannot observe about core, and must be told.
+/// The protections the box cannot observe about core, and must be told.
 // cm:edge contract -> packages/core/src/questions/protections.ts — the names are that file's `PARK_PROTECTIONS`, verbatim. A rename on either side shuts the park on every box, silently, because a missing name is indistinguishable from an old core by design.
-pub const PROTECTIONS_FROM_CORE: [&str; 2] = ["park-exempt-residency", "answer-resume-park"];
+pub const PROTECTIONS_FROM_CORE: [&str; 3] = [
+    "park-exempt-residency",
+    "park-exempt-oneshot",
+    "answer-resume-park",
+];
 
-/// The third protection, which is this binary's own reaper.
+/// The last protection, which is this binary's own reaper.
 // cm:guard asserted from THIS build rather than read from core, and that split is deliberate: core cannot observe which runner is asking, so advertising this one would be core promising something it has no way to know. `the_ledger_reaper_this_permit_claims_is_in_this_build` is what keeps the claim honest.
 pub const PROTECTION_FROM_THIS_BUILD: &str = "worktree-reap-ledger";
 
@@ -197,11 +201,16 @@ mod tests {
         }
     }
 
-    // cm:guard the permit records THREE and the third is this build's own, so a reader of the granted set can see that the runner's reaper is counted rather than assumed away. Core never advertises it, by design.
+    // cm:guard the granted set is core's advertisement PLUS one, and the plus-one is this build's own reaper — asserted as a length relative to `PROTECTIONS_FROM_CORE` so adding a core-side protection cannot silently drop the runner's from the count. Core never advertises that one, by design.
     #[test]
-    fn a_granted_permit_counts_the_runners_own_reaper_as_the_third() {
+    fn a_granted_permit_counts_the_runners_own_reaper_as_the_last() {
         let p = permit();
-        assert_eq!(p.protections().len(), 3, "{:?}", p.protections());
+        assert_eq!(
+            p.protections().len(),
+            PROTECTIONS_FROM_CORE.len() + 1,
+            "{:?}",
+            p.protections()
+        );
         assert!(p
             .protections()
             .iter()

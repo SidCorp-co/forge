@@ -35,6 +35,7 @@ import { reapExpiredParks, reapUnansweredParks } from './park-deadline.js';
 import { LAST_PHASE_CTE, LAST_PROGRESS_AT } from './progress-signal.js';
 import { NOT_PARKED, RESIDENT_SESSION_JOIN, RESULT_GUARD } from './resident-session.js';
 import { NON_CLIENT_METADATA_TYPES, PIPELINE_METADATA_TYPES } from './session-kinds.js';
+import { type SessionLostCause, sessionLostCause } from './session-lost-cause.js';
 
 // cm:guard resolve `schedules/dispatch.js` at first USE, never as a static import — it pulls a prompt-builder chain and through it the env-validating embeddings module, which every consumer of the loop monitor would then load, breaking hermetic suites that do not stub env (ISS-584 B).
 type RedispatchFn = (
@@ -51,12 +52,7 @@ async function getRedispatchScheduleFn(): Promise<RedispatchFn> {
   return _redispatchScheduleFn;
 }
 
-// Hop thresholds. Clamped at MIN_TIMEOUT_MS so a low env override can't
-// slaughter healthy rows. Values + env names carried over from the demoted
-// sweepers so existing deploy configs keep working:
-//   - queue (claim hop):      PIPELINE_QUEUE_TIMEOUT_MS      (ISS-232: 2 min)
-//   - heartbeat hop:          PIPELINE_HEARTBEAT_TIMEOUT_MS  (3 min)
-//   - ack hop:                PIPELINE_NEVER_CLAIMED_MS      (ISS-378: 3 min)
+// cm:guard every hop threshold is FLOORED at MIN_TIMEOUT_MS and the floor is the rule: a low env override would otherwise reap healthy rows faster than a live agent can report. The env names are `getLoopThresholds`' own and must keep the values the demoted sweepers used (ISS-232, ISS-378) — a deploy already carries them, so renaming one silently restores the default on every box that set it.
 const QUEUE_TIMEOUT_MS_DEFAULT = 120_000;
 const HEARTBEAT_TIMEOUT_MS_DEFAULT = 3 * 60_000;
 const ACK_TIMEOUT_MS_DEFAULT = 3 * 60_000;
@@ -162,6 +158,7 @@ type KillGateCandidateRow = {
   kill_requested_at: Date | string | null;
   kill_confirmed_at: Date | string | null;
   kill_outcome: JobRow['killOutcome'];
+  failure_reason: string | null;
 };
 
 function toKillableRef(row: KillGateCandidateRow): KillableJobRef {
@@ -193,7 +190,7 @@ interface KillGateReapConfig {
   /** Passed to `finalizeFailedJob`'s `error` option (logging / classifier
    *  fallback only). Defaults to `error` when the hop has no longer text. */
   finalizeError?: string;
-  failureKind: 'infra' | 'timeout';
+  failureKind: SessionLostCause['failureKind'];
   failureReason: string;
   /** What tripped the hop — true on both the confirmed and unconfirmed
    *  branch, so the unconfirmed wedge extends it rather than replacing it. */
@@ -595,7 +592,7 @@ export async function reapSessionLostJobs(
   const projectClause = scope.projectId ? sql`AND j.project_id = ${scope.projectId}` : sql``;
   const candidates = await db.execute<KillGateCandidateRow>(sql`
     SELECT j.id, j.project_id, j.issue_id, j.device_id, j.runner_id,
-           j.kill_requested_at, j.kill_confirmed_at, j.kill_outcome
+           j.kill_requested_at, j.kill_confirmed_at, j.kill_outcome, s.failure_reason
     FROM jobs j
     JOIN agent_sessions s ON s.id = j.agent_session_id
     WHERE j.status IN ('dispatched', 'running')
@@ -607,17 +604,12 @@ export async function reapSessionLostJobs(
   const result: JobAxisReapResult = { reaped: 0, killRequested: 0, awaitingKill: 0 };
   for (const row of candidates) {
     try {
+      // cm:guard the cause comes from the SESSION's own `failure_reason`, never one literal for every way a session can die: `infra` derives `retry`, and retrying a job whose park went unanswered puts a second agent on a question still nobody has answered (ISS-964 criterion 26).
       const cfg: KillGateReapConfig = {
         hop: 'heartbeat',
         where: and(eq(jobs.id, row.id), inArray(jobs.status, ['dispatched', 'running'])),
         fromStatus: 'active',
-        error: 'session_lost',
-        failureKind: 'infra',
-        failureReason:
-          'agent session terminated without job completion (silent runner/agent death)',
-        wedgeReason: 'linked agent session terminated without the job reporting completion',
-        confirmedWedgeAction:
-          'The job was failed and routed to retry. If retries keep landing here, inspect the device runner logs for silent deaths.',
+        ...sessionLostCause(row.failure_reason),
       };
       const decision = await resolveKillGateDecision(row, cfg);
       if (decision.phase === 'kill_requested') result.killRequested++;

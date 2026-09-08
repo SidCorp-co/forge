@@ -106,9 +106,7 @@ export async function ensureAgentSessionForJob(
     const title = buildTitle(skillName, job.type, issueTitle);
 
     const metadata: Record<string, unknown> = {
-      // PM jobs surface under the `pm` metadata.type filter
-      // (see agent-sessions/routes.ts metadataType filter); pipeline jobs
-      // keep the historical `pipeline` value.
+      // cm:edge contract -> packages/core/src/agent-sessions/routes.ts — the two words `pm` and `pipeline` are what that file's `metadataType` filter matches, and nothing type-checks the pair. A third job type written through here as its own word disappears from every session list rather than failing.
       type: job.type === 'pm' ? 'pm' : 'pipeline',
       jobId: job.id,
       jobType: job.type,
@@ -189,7 +187,13 @@ export async function ensureAgentSessionForJob(
  * must not overwrite a session's own reason.
  */
 // cm:edge contract -> packages/core/src/jobs/lifecycle-routes.ts — the late-report reconcile reads the same set to decide a lost success is reconcilable rather than a conflict; a marker added to one half and not the other splits that judgement in two
-export const SYNTHETIC_REAP_ERRORS = new Set(['session_lost', 'dispatch_unclaimed', 'stale']);
+// cm:edge contract -> packages/core/src/jobs/session-lost-cause.ts — `park_unanswered` is written to `jobs.error` by the session-lost hop and MUST be a member here: it is the consequence of a death the question row already diagnosed, so without it the sync writes the job's cause back over the session's own `park_unanswered` (ISS-964 criterion 34).
+export const SYNTHETIC_REAP_ERRORS = new Set([
+  'session_lost',
+  'dispatch_unclaimed',
+  'stale',
+  'park_unanswered',
+]);
 
 /**
  * ISS-877 — the cause this session died of, asked of the SAME classifier the

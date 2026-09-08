@@ -155,5 +155,105 @@ reading the source behind each name.
 - `failure_reason` took ONE fixed member (`park_unanswered`, origin `user`, so it stays out of the
   real-failure rate); the per-park duration lives on the question's `ended_reason`. A dynamic
   `unanswered_2d` in the closed taxonomy would land every park in `unclassified`.
-- Gates: `pnpm verify` 20 ok / 0 red · core 5959 unit, 1292 integration · web-v2 906 + build ·
-  `cargo fmt --check`, `clippy --workspace --all-targets`, `test --workspace` (418) · `pnpm build` 4/4.
+- Gates as reported at the time: `pnpm verify` 20 ok / 0 red · core 5959 unit, 1292 integration ·
+  web-v2 906 + build · `cargo fmt --check`, `clippy --workspace --all-targets`,
+  `test --workspace` (418) · `pnpm build` 4/4.
+- **Correction — that verify line was wrong, and the commit shipped one red gate.** Re-run at
+  `86cfce659` in a detached worktree: **18 passed · 2 did not run · 1 red**, the red being
+  `form size-budget` on `loop-monitor.test.ts` (529 counted lines against a 527 baseline — the two
+  lines S9 added to `aggregates all hop results`, never paid). Core lint and lint-budget were green
+  there, which is how the reds in the next step's first run were identifiable as new. Paid in S9a
+  by folding four `mockReset(); mockResolvedValue()` pairs into chained calls, not by
+  `--update-baseline`. The lesson is the one the repo already states: read the gate's own summary
+  line, never a recollection of it.
+
+## S9a — three defects on the park path S9 left open (c24, c25, c26, c34)
+
+Found by reviewing S9's own claims rather than by a new requirement. All three are inside the
+ownership line and in reach, so all three are fixed here (`fix-it-now`, not filed).
+
+### 1 · The reaper compared two path spellings that do not come from one source
+
+`HeldTrees::holder` did string equality on `worktree_path`. The two sides derive it differently: a
+run records `resolve_repo`'s answer, which prefers what the **server** serves
+(`daemon/dispatch.rs`, server-first at the `repo_path` fallback), while the sweep enumerates
+`cfg.bindings`. On the fleet those differ — jobs run under `/home/forge/projects/<slug>` — so one
+symlink or bind mount makes the same directory two strings, the lookup miss, and the park deleted
+by the reaper that exists to spare it.
+
+Fixed by canonicalising **both** sides: `from_ledger` keys every hold under its written spelling
+AND its resolved one; `holder` resolves the candidate first and falls back to the raw path (a
+ledger row whose tree is already gone can only be keyed raw).
+
+- `X1` — drop the read-side resolve → `holds_a_park_when_the_sweep_is_the_one_walking_a_symlink` red.
+- `X2` — drop the write-side resolve → `holds_a_park_the_ledger_recorded_under_a_different_spelling`
+  red, its message showing the park's tree in `removed`.
+- Two tests because the two halves cover one direction each; either alone leaves one green.
+
+**Residual, named not fixed:** `Ledger::live_run_at_path` carries the same assumption
+(`worktree_path = ?1` string equality) and is what makes criterion 12 true — its failure mode is
+two agents on one worktree. It cannot be canonicalised in SQL; it needs a Rust-side compare over
+the live rows. In reach but not this step's subject, and changing the refusal that guards
+`git worktree add` wants its own measurement. Carried in the issue comment.
+
+### 2 · A job under a closed park was blamed on infra, and retried
+
+`reapSessionLostJobs` wrote ONE cause for every way a session can die: `session_lost` / `infra`.
+`deriveActionFromKind('infra')` is `retry`, so closing a park dispatched a fresh agent onto an
+issue whose question nobody had answered — criterion 26's failure through the other door. The
+session's own `failure_reason` is now the discriminator (`jobs/session-lost-cause.ts`), and
+`park_unanswered` joined `SYNTHETIC_REAP_ERRORS` so the lifecycle sync cannot write the job's cause
+back over the session's (the ISS-877 shape measured on epodsystem 2026-09-05).
+
+- `Y1` — park inherits `infra` → `never retries a job whose park went unanswered` red.
+- `Y2` — default flips to the park cause → 5 red, including all three silent-death reasons.
+- `Y3` — `park_unanswered` dropped from the marker set → the marker test red.
+- `Z1` — one cause for every death (the pre-fix code) → `is not retried…` red end to end.
+- The `toBe(0)` retry claim is discriminating: its paired positive
+  (`is still retried when the session simply died`) asserts `toBeGreaterThan(0)` and passes, so the
+  harness can produce a retry descendant and a zero is a suppressed retry rather than an inert lane.
+
+### 3 · A THIRD clock reaped a live park, and nothing had exempted it
+
+`reapOrphanedOneShotRuns` judges liveness on `last_heartbeat_at`, and parking freezes that column.
+A run session is exactly the shape that lands there — `issue_id` is NULL, and
+`pipeline_runs_issue_kind_chk` makes that incompatible with `kind='issue'`, so `reapJoblessRuns` can
+**never** see one. Measured: a live park with an unbounded deadline was force-failed
+`heartbeat_timeout` and its run closed, about three minutes after parking. That is the whole of the
+park undone, by the one sweep S9 had not looked at.
+
+Fixed by adding a park term to that sweep's liveness clause, through `parkedOnAHuman(sessionId)` —
+now the ONE writer of the predicate, shared by all three sweeps, because a fourth copy is how one
+of them keeps reaping what the other two spare. Advertised as a third core protection,
+`park-exempt-oneshot`, and required by the runner (`PROTECTIONS_FROM_CORE` is now 3).
+
+- `W5` — drop the park term → `leaves a live park alone however long its heartbeat has been frozen`
+  red, and `has the code behind park-exempt-oneshot in this build` red with it.
+- `W6` — widen the predicate to any open question → 4 red across both clocks, every one a
+  machine/master-or-peer park that must still be reaped.
+- Regressions held: a jobless run whose session really died still reaps `heartbeat_timeout`; a
+  machine park still reaps.
+
+### Priced
+
+- `size-budget` on `loop-monitor.test.ts` — paid by chaining four mock-reset pairs (−4 lines).
+- `CM013` on `agent-session-link.ts` — paid by converting the `pm`/`pipeline` metadata restatement
+  to the `cm:edge contract` it always was (the `metadataType` filter is the other half).
+- `organizeImports` on `loop-monitor.ts` and on `sweeper.ts` — paid by hand, not
+  `biome check --write`.
+- `CM001` + `CM013` on `sweeper.ts` — the new `cm:guard` landed above ISS-442's nine-line legacy
+  block, which made that block mine and stopped it being spared. Folded to one guard carrying the
+  rule (`shrinking the grace toward heartbeatMs restores the failure`) and the citation, dropping
+  the narrative. 60 of that file's 76 legacy prose comments are now cleaned.
+- `CM013` on `loop-monitor.ts` — raised by the commit hook, which is where that rule holds (it
+  needs a base revision, so `verify` does not raise it mid-edit). Paid by folding the hop-threshold
+  block: the floor rule and the ISS citations kept, the three-row env-name table deleted as a
+  second copy of `getLoopThresholds`' own literals.
+- No `--update-baseline`, no waiver, no skipped test.
+
+### Criterion 27 note
+
+The advertised set grew from 2 to 3, and the runner now requires all three. An old core advertising
+the original two grants **no permit** — which is the correct answer, not a regression: a box must
+not release its process to a core whose one-shot sweep will reap the park in three minutes. Since
+no producer calls `park_for_human` yet, no deployed box can be refused by this change today.

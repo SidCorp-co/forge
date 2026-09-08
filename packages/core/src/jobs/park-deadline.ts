@@ -14,7 +14,7 @@
 // activity when a session parks (agent-sessions/routes.ts deliberately does not
 // bump it on `awaiting_input`), so it already IS the park clock.
 
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { agentQuestions } from '../db/schema-questions.js';
@@ -38,13 +38,19 @@ const RESIDENCY_DEADLINE = sql`
 
 // cm:guard `blocker_kind = 'human'` is the whole discriminator and widening it to any open question is a BUG: `begin_question` is step one of BOTH arms of `runner/blocked.rs`, so a machine or master-or-peer park writes an open row too — and those keep their process, which is precisely the world residency's premise describes (ISS-964 criteria 5, 24).
 // cm:guard `agent_sessions.id` and `agent_questions` columns written LITERALLY for the same reason the deadline above is: drizzle renders a column reference inside a raw `sql` template unqualified, and an unqualified `id` here resolves against `agent_questions` first, which matches nothing and silently exempts NOTHING.
-const NOT_A_PROCESSLESS_PARK = sql`
-  NOT EXISTS (
+/**
+ * Whether the session at `sessionId` is parked on a person right now.
+ */
+// cm:guard the ONE writer of this predicate, taking the session-id expression so a caller with its own alias reuses the rule instead of restating it. Three sweeps ask this question — residency here, the deadline below, and `pipeline/sweeper.ts`' one-shot orphan hop — and a fourth copy is how one of them keeps reaping the park the other two spare (ISS-964 criteria 24, 34).
+export const parkedOnAHuman = (sessionId: SQL): SQL => sql`
+  EXISTS (
     SELECT 1 FROM agent_questions q
-     WHERE q.agent_session_id = agent_sessions.id
+     WHERE q.agent_session_id = ${sessionId}
        AND q.status = 'open'
        AND q.blocker_kind = 'human'
   )`;
+
+const NOT_A_PROCESSLESS_PARK = sql`NOT ${parkedOnAHuman(sql`agent_sessions.id`)}`;
 
 /**
  * Hop 3b — the residency deadline. A session parked past its runner's ceiling

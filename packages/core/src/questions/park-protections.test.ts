@@ -23,7 +23,11 @@ const src = (p: string): string => readFileSync(join(import.meta.dirname, '..', 
 const BEHIND: Record<(typeof PARK_PROTECTIONS)[number], { file: string; proof: RegExp }> = {
   'park-exempt-residency': {
     file: 'jobs/park-deadline.ts',
-    proof: /NOT EXISTS[\s\S]{0,200}blocker_kind = 'human'/,
+    proof: /NOT_A_PROCESSLESS_PARK = sql`NOT \$\{parkedOnAHuman/,
+  },
+  'park-exempt-oneshot': {
+    file: 'pipeline/sweeper.ts',
+    proof: /OR \$\{parkedOnAHuman\(sql`s\.id`\)\}/,
   },
   'answer-resume-park': {
     file: 'pipeline/answer-resume.ts',
