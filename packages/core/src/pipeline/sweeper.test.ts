@@ -266,7 +266,7 @@ describe('alarmZombieSessions — demoted to alarm-only (ISS-449)', () => {
     expect(pass3).toMatch(/COALESCE/i);
     expect(
       pass3,
-      "a run session is reaped by `devices/run-session-reaper.ts` and must be excluded here — two sweeps over one row is two writers on one fact, and the loser reports a release that already happened to somebody else (ISS-933 criterion 25a)",
+      'a run session is reaped by `devices/run-session-reaper.ts` and must be excluded here — two sweeps over one row is two writers on one fact, and the loser reports a release that already happened to somebody else (ISS-933 criterion 25a)',
     ).toMatch(/NOT\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*,\s*'run_session'\s*\)/);
     expect(pass3).toMatch(/claude_session_id\s+IS\s+NULL/i);
     expect(pass1).not.toMatch(/NOT\s+IN\s*\(\s*'pipeline'/);
@@ -361,9 +361,7 @@ describe('runPipelineSweep — per-pass fault isolation', () => {
     // The sweep still rejects (pgboss-health missed-tick contract preserved)…
     await expect(runPipelineSweep()).rejects.toThrow('loop boom');
 
-    // …but the one-shot reaper pass DID run despite the upstream throw — proven
-    // by its distinctive candidate SELECT reaching the db. This is the
-    // regression guard for the global schedule.run / interactive run leak.
+    // cm:guard every pass must have RUN before the tick surfaces a failure, so this asserts the one-shot reaper's own candidate SELECT reached the db despite the upstream throw. Assert only the rejection and one buggy pass can starve the reapers again, which leaked every global schedule.run and interactive run.
     const ranOneShotReaper = dbExecute.mock.calls.some((c) =>
       /r\.kind\s+IN\s*\(\s*'system'\s*,\s*'interactive'\s*\)/.test(sqlText(c[0])),
     );
