@@ -1541,6 +1541,13 @@
       "when": 1792540800000,
       "tag": "0221_comment_stage_and_agency",
       "breakpoints": true
+    },
+    {
+      "idx": 222,
+      "version": "7",
+      "when": 1792627200000,
+      "tag": "0222_whole_skin",
+      "breakpoints": true
     }
   ]
 }

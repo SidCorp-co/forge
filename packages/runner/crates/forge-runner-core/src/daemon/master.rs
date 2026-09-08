@@ -949,6 +949,7 @@ mod give_back_tests {
         let mut led = Ledger::open_in_memory().unwrap();
         led.create_run_group(NewRun {
             run_id: "run-1".into(),
+            project_id: "proj-1".into(),
             master_session_id: "master-1".into(),
             worktree_path: "/nonexistent/wt".into(),
             boot_id: BOOT.into(),

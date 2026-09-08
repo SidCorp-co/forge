@@ -67,6 +67,10 @@ const DRAIN_TIMEOUT_SECS: u64 = 30 * 60;
 const CHECKPOINT_BUDGET: std::time::Duration = std::time::Duration::from_secs(120);
 const DRAIN_POLL_SECS: u64 = 30;
 
+/// How often the box republishes its session registry.
+// cm:guard the read surface's freshness IS this number — a reader has no other clock on a box, so a period longer than a person's patience makes a live run look abandoned. Keep it comfortably under core's own staleness reads (ISS-934 criterion 3).
+const SESSION_LEDGER_INTERVAL: std::time::Duration = std::time::Duration::from_secs(20);
+
 /// Wait for in-flight work to finish, up to [`DRAIN_TIMEOUT_SECS`].
 ///
 /// Returns whether the daemon is idle NOW — the only condition under which a
@@ -190,6 +194,7 @@ pub async fn run(
 
     let (cancel_tx, cancel_rx) = watch::channel(false);
     let (frame_tx, mut frame_rx) = mpsc::channel::<Frame>(256);
+    let (ledger_tx, ledger_rx) = watch::channel::<Option<String>>(None);
 
     // WebSocket connect loop.
     {
@@ -206,7 +211,39 @@ pub async fn run(
             register_enabled: cfg.runner.register_enabled,
         };
         let cancel_rx = cancel_rx.clone();
-        tokio::spawn(async move { ws::connect(ws_cfg, frame_tx, cancel_rx).await });
+        tokio::spawn(async move { ws::connect(ws_cfg, frame_tx, ledger_rx, cancel_rx).await });
+    }
+
+    // The box's session registry, published on that same socket (ISS-934).
+    // cm:guard this task holds NO ledger handle between ticks. `rusqlite::Connection` is not `Sync`
+    // and a handle kept open here would sit on the SQLite file while a `run open` needs it; the
+    // daemon's own run path opens per call for exactly this reason.
+    // cm:guard it publishes on EVERY tick, unchanged or not. The value core stores carries the time
+    // the box said it, so a snapshot that stops arriving is how a reader learns the box is gone —
+    // suppressing an identical frame would make a silent box indistinguishable from a steady one.
+    {
+        let mut cancel_rx = cancel_rx.clone();
+        tokio::spawn(async move {
+            let boot_id = crate::runner::inflight::boot_identity().unwrap_or_default();
+            let mut tick = tokio::time::interval(SESSION_LEDGER_INTERVAL);
+            loop {
+                tokio::select! {
+                    _ = tick.tick() => {}
+                    _ = cancel_rx.changed() => { if *cancel_rx.borrow() { break; } else { continue; } }
+                }
+                let snapshot = crate::runner::ledger::Ledger::default_path()
+                    .and_then(|p| crate::runner::ledger::Ledger::open(&p))
+                    .and_then(|led| crate::transport::session_ledger::snapshot(&led));
+                match snapshot {
+                    Ok(runs) => {
+                        let _ = ledger_tx.send(Some(crate::transport::session_ledger::frame(
+                            &boot_id, &runs,
+                        )));
+                    }
+                    Err(e) => tracing::warn!("[ledger] snapshot unavailable: {e}"),
+                }
+            }
+        });
     }
 
     // In-flight work counter (pipeline jobs + chat turns). The update loop

@@ -49,6 +49,7 @@ import {
   devicePublicRoutes,
   deviceUserRoutes,
 } from './devices/routes.js';
+import { runLedgerRoutes } from './devices/run-ledger-routes.js';
 import { registerRunSessionReaper } from './devices/run-session-reaper.js';
 import { deviceSkillRoutes, deviceSkillStatusRoutes } from './devices/skills-routes.js';
 import { registerDeviceStaleDetector } from './devices/stale-detector.js';
@@ -304,14 +305,10 @@ app.route('/api/projects', projectHealthRoutes);
 app.route('/api/projects', opsHealthProjectRoutes);
 app.route('/api/me', opsHealthMeRoutes);
 app.route('/api/me', collaboratorsMeRoutes);
-// ISS-380 — project time-series metrics. The deep `/:id/metrics/*` path does
-// not collide with projectRoutes' `GET /:id`, but mount before it to mirror the
-// health-routes precedent and keep the static-before-param ordering intent.
+// cm:guard every deep `/:id/<segment>` module under this prefix mounts BEFORE `projectRoutes`, whose `GET /:id` would otherwise be reachable first. None of them collides today, and keeping the order is what stops the next one that would.
 app.route('/api/projects', projectMetricsRoutes);
-// Per-project git SSH deploy-key CRUD. Deep `/:projectId/git-credential` path
-// does not collide with projectRoutes' `GET /:id`; mount before it to keep the
-// static/deep-before-param ordering intent.
 app.route('/api/projects', gitCredentialRoutes);
+app.route('/api/projects', runLedgerRoutes);
 app.route('/api/projects', projectRoutes);
 app.route('/api/orgs', orgRoutes);
 // Org-scoped Private Keys pool (ISS-628) — a distinct route module mounted at

@@ -7,6 +7,7 @@ import { verifyDeviceCredential } from '../auth/device-credential.js';
 import { verifyUserToken } from '../auth/jwt.js';
 import { db } from '../db/client.js';
 import { devices, runners } from '../db/schema.js';
+import { handleRunnerSessions } from '../devices/run-ledger-ws.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { isPlatformAdmin } from '../middleware/require-admin.js';
 import {
@@ -66,8 +67,7 @@ interface ProtocolMatch {
 // cm:guard return the EXACT protocol string matched, not the token alone — a browser rejects an upgrade whose `Sec-WebSocket-Protocol` response header does not echo the subprotocol it offered, and the handler has nothing else to echo
 function parseProtocolToken(header: string | string[] | undefined): ProtocolMatch | undefined {
   if (!header) return undefined;
-  // Node's http parser collapses repeats into a single comma-joined string
-  // but some runtimes hand back an array; handle both.
+  // cm:why Node's http parser collapses repeated headers into one comma-joined string while other runtimes hand back an array; both shapes reach here.
   const raw = Array.isArray(header) ? header.join(',') : header;
   for (const part of raw.split(',')) {
     const proto = part.trim();
@@ -130,11 +130,7 @@ async function authenticate(req: IncomingMessage): Promise<AuthResult | null> {
     return user ? { principal: user } : null;
   }
 
-  // The legacy `?token=<jwt>` query path was removed in ISS-315 cleanup —
-  // it leaked the JWT into nginx access logs / Referer / browser history,
-  // and every live client (packages/dev subprotocol, web cookie) had
-  // already migrated off it. Anyone still passing the query is treated as
-  // unauthenticated.
+  // cm:guard a `?token=<jwt>` query is UNAUTHENTICATED and must stay so — the query string reaches nginx access logs, `Referer` and browser history, and every live client moved to the subprotocol or the cookie before it was removed (ISS-315).
   return null;
 }
 
@@ -241,9 +237,13 @@ export function attachWs(server: AnyServer): void {
       }
       if (!msg || typeof msg !== 'object') return;
       const { type, room } = msg as { type?: unknown; room?: unknown };
-      if (typeof room !== 'string' || room.length === 0) return;
 
-      if (type === 'subscribe') {
+      // cm:guard the room check belongs to the two arms that TAKE a room, never above the switch. It sat above it until ISS-934, so every `runner:*` frame — none of which carries a room — was dropped unread before reaching its handler, and nothing anywhere went red.
+      if (type === 'subscribe' || type === 'unsubscribe') {
+        if (typeof room !== 'string' || room.length === 0) return;
+      }
+
+      if (type === 'subscribe' && typeof room === 'string') {
         void (async () => {
           const allowed = await canSubscribe(ws.principal, room).catch(() => false);
           if (!allowed) {
@@ -262,20 +262,24 @@ export function attachWs(server: AnyServer): void {
           }
           roomManager.subscribe(ws, room);
         })();
-      } else if (type === 'unsubscribe') {
+      } else if (type === 'unsubscribe' && typeof room === 'string') {
         roomManager.unsubscribe(ws, room);
       } else if (
         type === 'runner:register' ||
         type === 'runner:unregister' ||
-        type === 'runner:update'
+        type === 'runner:update' ||
+        type === 'runner:sessions'
       ) {
         if (ws.principal.type !== 'device') return;
+        const socket = ws as unknown as import('ws').WebSocket;
         if (type === 'runner:register') {
-          void handleRunnerRegister(ws as unknown as import('ws').WebSocket, msg);
+          void handleRunnerRegister(socket, msg);
         } else if (type === 'runner:unregister') {
-          void handleRunnerUnregister(ws as unknown as import('ws').WebSocket, msg);
+          void handleRunnerUnregister(socket, msg);
+        } else if (type === 'runner:update') {
+          void handleRunnerUpdate(socket, msg);
         } else {
-          void handleRunnerUpdate(ws as unknown as import('ws').WebSocket, msg);
+          void handleRunnerSessions(socket, msg);
         }
       }
     });

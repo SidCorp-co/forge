@@ -68,6 +68,9 @@ enum Request {
         project_id: String,
         issue_keys: Vec<String>,
         agent: String,
+        // cm:guard the MASTER's own session id, and it is optional only so a runner one release behind still opens runs. It is what makes the run's parent readable off the box (ISS-934): it was hardcoded empty here until then, so `runs_for_master` and `master_exit::children` matched nothing in production and a reader outside the box could not say which master a pane belonged to.
+        #[serde(default)]
+        session_id: Option<String>,
         #[serde(default)]
         start_point: Option<String>,
     },
@@ -262,6 +265,7 @@ async fn serve_one(ctl: Arc<Control>, stream: UnixStream) {
             project_id,
             issue_keys,
             agent,
+            session_id,
             start_point,
         }) => {
             run_open(
@@ -269,6 +273,7 @@ async fn serve_one(ctl: Arc<Control>, stream: UnixStream) {
                 &project_id,
                 &issue_keys,
                 &agent,
+                session_id.as_deref(),
                 start_point.as_deref(),
             )
             .await
@@ -394,6 +399,7 @@ async fn run_open(
     project_id: &str,
     issue_keys: &[String],
     agent: &str,
+    master_session_id: Option<&str>,
     start_point: Option<&str>,
 ) -> ClaimReply {
     if !is_usable_branch_name(agent) {
@@ -418,7 +424,8 @@ async fn run_open(
     };
     let req = crate::runner::run_session::RunRequest {
         run_id: uuid::Uuid::new_v4().to_string(),
-        master_session_id: String::new(),
+        project_id: project_id.to_string(),
+        master_session_id: master_session_id.unwrap_or_default().to_string(),
         // cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/runner/inflight.rs — ONE boot identity for the box. A second source would have the ledger call a run from this boot foreign, or worse call a pre-reboot run current, and recovery then acts on a pid something else now owns.
         boot_id: crate::runner::inflight::boot_identity().unwrap_or_default(),
         issue_keys: issue_keys.to_vec(),
@@ -475,6 +482,7 @@ pub async fn request_run_open(
     _project_id: &str,
     _issue_keys: &[String],
     _agent: &str,
+    _master_session_id: Option<&str>,
     _start_point: Option<&str>,
 ) -> std::io::Result<ClaimReply> {
     Err(no_socket())
@@ -530,13 +538,14 @@ pub async fn request_run_open(
     project_id: &str,
     issue_keys: &[String],
     agent: &str,
+    master_session_id: Option<&str>,
     start_point: Option<&str>,
 ) -> std::io::Result<ClaimReply> {
     ask(
         path,
         serde_json::json!({
             "op": "run_open", "projectId": project_id, "issueKeys": issue_keys,
-            "agent": agent, "startPoint": start_point
+            "agent": agent, "sessionId": master_session_id, "startPoint": start_point
         }),
     )
     .await

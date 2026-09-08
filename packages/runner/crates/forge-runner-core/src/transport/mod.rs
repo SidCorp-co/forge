@@ -22,6 +22,7 @@ pub mod pool;
 pub mod provision;
 pub mod run_sessions;
 pub mod runners;
+pub mod session_ledger;
 pub mod skills;
 pub mod ws;
 

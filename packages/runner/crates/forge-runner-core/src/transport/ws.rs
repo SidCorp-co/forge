@@ -3,6 +3,8 @@
 //! Connects with `Authorization: Bearer <deviceToken>`, subscribes to the
 //! `device:<id>` room, optionally sends `runner:register` per project, then
 //! forwards every text frame (parsed to [`Frame`]) on `frame_tx`.
+//! Outbound, it carries whatever the latest value of `outbound` holds — one
+//! snapshot at a time, latest wins.
 //! Auto-reconnects with 1s→30s jittered backoff and a 25s ping / 15s pong
 //! liveness check. Stops when `cancel` flips to `true`.
 
@@ -36,9 +38,20 @@ pub struct WsConfig {
     pub register_enabled: bool,
 }
 
+/// What the box says about itself, latest-wins.
+///
+/// A `watch` and not an `mpsc` on purpose: the only outbound traffic is a whole
+/// snapshot of state that is already true, so a value queued behind a
+/// reconnect is worthless the moment a newer one exists. This is also what
+/// makes a reconnect free — the loop re-reads the current value on connect and
+/// nothing has to remember what it failed to send.
+// cm:edge protocol -> packages/runner/crates/forge-runner-core/src/transport/session_ledger.rs — the producer. Each value is ONE complete frame body, already serialized; this transport does not know what is in it.
+pub type Outbound = watch::Receiver<Option<String>>;
+
 pub async fn connect(
     cfg: WsConfig,
     frame_tx: mpsc::Sender<Frame>,
+    mut outbound: Outbound,
     mut cancel: watch::Receiver<bool>,
 ) {
     let mut retry_delay = 1u64;
@@ -104,6 +117,15 @@ pub async fn connect(
                     }
                 }
 
+                // cm:guard the current snapshot goes out on CONNECT, before the read loop, so a
+                // reconnect does not leave core reading a box's state from before the drop until
+                // the next tick (ISS-934 criterion 4).
+                outbound.mark_unchanged();
+                let current = outbound.borrow_and_update().clone();
+                if let Some(text) = current {
+                    let _ = write.send(Message::Text(text.into())).await;
+                }
+
                 let mut ping_interval = tokio::time::interval(PING_INTERVAL);
                 ping_interval.tick().await; // skip immediate tick
                 let mut awaiting_pong = false;
@@ -137,6 +159,12 @@ pub async fn connect(
                             Some(Err(_)) => break,
                             _ => {}
                         },
+                        _ = outbound.changed() => {
+                            let next = outbound.borrow_and_update().clone();
+                            if let Some(text) = next {
+                                if write.send(Message::Text(text.into())).await.is_err() { break; }
+                            }
+                        }
                         _ = ping_interval.tick() => {
                             if write.send(Message::Ping(vec![].into())).await.is_err() { break; }
                             awaiting_pong = true;
@@ -189,5 +217,98 @@ pub async fn connect(
             _ = cancel.changed() => { if *cancel.borrow() { break; } }
         }
         retry_delay = (retry_delay * 2).min(30);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::net::TcpListener;
+    use tokio_tungstenite::accept_async;
+
+    /// Accept one connection and hand back every text frame the client sent.
+    // cm:guard the read is bounded. A frame the client never sends is exactly what these tests are looking for, and an unbounded `next()` turns that finding into a hang the runner kills — a test that cannot go red has not been written.
+    async fn collect(listener: TcpListener, want: usize) -> Vec<String> {
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut ws = accept_async(stream).await.unwrap();
+        let mut out = Vec::new();
+        while out.len() < want {
+            let next = tokio::time::timeout(Duration::from_secs(3), ws.next()).await;
+            match next {
+                Ok(Some(Ok(Message::Text(t)))) => out.push(t.to_string()),
+                Ok(Some(Ok(_))) => {}
+                Err(_) => break,
+                _ => break,
+            }
+        }
+        out
+    }
+
+    fn cfg(port: u16) -> WsConfig {
+        WsConfig {
+            url: format!("ws://127.0.0.1:{port}"),
+            device_token: "tok".into(),
+            device_id: "dev-1".into(),
+            registrations: Vec::new(),
+            register_enabled: false,
+        }
+    }
+
+    // cm:guard the snapshot must go out on CONNECT and not merely when it next changes. A reconnect that waits for the tick leaves core answering from the box's state before the drop, and nothing distinguishes that stale answer from a fresh one (ISS-934 criterion 4).
+    #[tokio::test]
+    async fn a_snapshot_already_held_goes_out_as_soon_as_the_socket_opens() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(collect(listener, 2));
+
+        let (out_tx, out_rx) = watch::channel(Some("{\"type\":\"runner:sessions\"}".to_string()));
+        let (frame_tx, _frame_rx) = mpsc::channel(8);
+        let (cancel_tx, cancel_rx) = watch::channel(false);
+        let client = tokio::spawn(connect(cfg(port), frame_tx, out_rx, cancel_rx));
+
+        let frames = server.await.unwrap();
+        let _ = cancel_tx.send(true);
+        client.abort();
+        drop(out_tx);
+
+        assert_eq!(
+            frames.len(),
+            2,
+            "the subscribe and the snapshot both, within the read window: {frames:?}"
+        );
+        assert!(
+            frames[0].contains("\"type\":\"subscribe\""),
+            "the device room subscribe still comes first: {frames:?}"
+        );
+        assert!(
+            frames[1].contains("runner:sessions"),
+            "the current snapshot must follow the subscribe on the same connection: {frames:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_newer_snapshot_replaces_the_last_one_on_the_live_socket() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(collect(listener, 3));
+
+        let (out_tx, out_rx) = watch::channel(Some("first".to_string()));
+        let (frame_tx, _frame_rx) = mpsc::channel(8);
+        let (cancel_tx, cancel_rx) = watch::channel(false);
+        let client = tokio::spawn(connect(cfg(port), frame_tx, out_rx, cancel_rx));
+
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        out_tx.send(Some("second".to_string())).unwrap();
+
+        let frames = server.await.unwrap();
+        let _ = cancel_tx.send(true);
+        client.abort();
+
+        assert_eq!(
+            frames.len(),
+            3,
+            "subscribe, then both snapshots — a value published while the socket is up must reach it: {frames:?}"
+        );
+        assert_eq!(frames[2], "second");
     }
 }
