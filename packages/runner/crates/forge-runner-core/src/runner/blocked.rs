@@ -297,6 +297,8 @@ mod tests {
     }
 
     // cm:guard THE falsifying case for criterion 10. Swap the open and the declaration in `arm_bounded` and this goes red: the run reads `live × blocked` while its door was never opened, so the next ring lands in a gap nothing reads and the answer is lost with the run still claiming to wait for it.
+    // cm:why unix-only, and NOT because the arm is: the fixture is a real FIFO, so on a platform selecting `doorbell_no_fifo.rs` this would go green off the stub's refusal and prove nothing about the order it exists to hold.
+    #[cfg(unix)]
     #[test]
     fn a_door_that_cannot_open_leaves_the_run_runnable() {
         let d = dir();
@@ -330,6 +332,8 @@ mod tests {
     }
 
     // cm:guard the happy path asserts the THREE effects together, because any one alone passes against a broken order: the row says `live × blocked`, `waiting_on` names the question, and the door actually answers a ring. The last is the only one that proves the ear outlived the arm.
+    // cm:why unix-only, and NOT because the arm is: the fixture is a real FIFO, so on a platform selecting `doorbell_no_fifo.rs` this would go green off the stub's refusal and prove nothing about the order it exists to hold.
+    #[cfg(unix)]
     #[test]
     fn a_bounded_arm_declares_live_blocked_and_the_door_answers() {
         let d = dir();
@@ -368,6 +372,8 @@ mod tests {
     }
 
     // cm:guard the human branch opens NO door, and this asserts the absence rather than trusting the code path: an ear here would be closed by the exit a moment later, and every ring after that meets `ENXIO` while the ledger says a listener was armed.
+    // cm:why unix-only for the same reason: the ABSENCE of a door is asserted by ringing it, which needs a platform that has one.
+    #[cfg(unix)]
     #[test]
     fn the_human_park_exits_and_leaves_no_door_behind() {
         let d = dir();

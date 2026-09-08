@@ -243,6 +243,8 @@ mod tests {
     }
 
     // cm:guard the two sides of the hold do NOT derive the path from one source: a run records `resolve_repo`'s answer, which prefers what the server serves, and the sweep enumerates `cfg.bindings`. This test spells the hold through a symlink to the very tree the sweep walks directly, which is the fleet's own shape (`/home/forge/projects/<slug>` vs the binding) — without canonicalisation on both sides the lookup misses and the park is deleted (ISS-964 criterion 25).
+    // cm:why unix-only because the case IS a symlink: creating one on Windows needs Developer Mode or an elevated process, so the runner-ci windows job would fail on the fixture rather than on the property.
+    #[cfg(unix)]
     #[tokio::test]
     async fn holds_a_park_the_ledger_recorded_under_a_different_spelling() {
         let (repo, wt) = repo_with_worktree("spelling").await;
@@ -261,6 +263,8 @@ mod tests {
     }
 
     // cm:guard the SAME divergence with the spellings swapped, and it needs its own case because the two halves of the fix cover one direction each: keying the ledger row under its resolved path covers a hold written through the symlink, and resolving the candidate covers a binding that IS the symlink. Either half alone leaves one of these two green and the other eating a park.
+    // cm:why unix-only because the case IS a symlink: creating one on Windows needs Developer Mode or an elevated process, so the runner-ci windows job would fail on the fixture rather than on the property.
+    #[cfg(unix)]
     #[tokio::test]
     async fn holds_a_park_when_the_sweep_is_the_one_walking_a_symlink() {
         let (repo, wt) = repo_with_worktree("bound").await;

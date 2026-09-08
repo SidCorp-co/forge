@@ -1096,6 +1096,8 @@ mod tests {
     }
 
     // cm:guard the refusal must survive the two path spellings the fleet actually produces: the first run records what `resolve_repo` returned (the SERVER's path) and the second may resolve through `cfg.bindings`, so a string compare misses and `git worktree add` reuses a tree a live run is working in — two agents, one worktree (ISS-964 criterion 12).
+    // cm:why unix-only because the case IS a symlink: creating one on Windows needs Developer Mode or an elevated process, so the runner-ci windows job would fail on the fixture rather than on the property.
+    #[cfg(unix)]
     #[test]
     fn a_second_run_at_the_same_tree_by_another_name_is_refused() {
         let real = std::env::temp_dir().join(format!("forge-ledger-path-{}", std::process::id()));

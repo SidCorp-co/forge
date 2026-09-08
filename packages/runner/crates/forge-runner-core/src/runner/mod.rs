@@ -14,6 +14,8 @@ use crate::error::Result;
 pub mod blocked;
 pub mod claude_code;
 pub mod close_loop;
+// cm:edge contract -> packages/runner/crates/forge-runner-core/src/runner/doorbell_no_fifo.rs — the two files are one API and the stub is what keeps `ledger::declare_blocked_live` and `blocked::arm_bounded` free of `cfg`: a public item added to one must be added to the other, or the windows job of runner-ci fails on a signature only unix has.
+#[cfg_attr(not(unix), path = "doorbell_no_fifo.rs")]
 pub mod doorbell;
 pub mod inflight;
 pub mod ledger;
