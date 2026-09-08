@@ -198,6 +198,8 @@ function memoryHit(
   };
 }
 
+const OBHOD = 'обход';
+
 describe('runConsolidationForProject', () => {
   it('skips without an LLM call when there is no recent signal', async () => {
     queueSignal({ comments: [], statusChanges: [] });
@@ -223,7 +225,6 @@ describe('runConsolidationForProject', () => {
       archived: 1,
       summary: 'merged and cleaned',
     });
-    // create → knowledge row with dedup ON
     expect(indexMemoryMock).toHaveBeenCalledWith(
       expect.objectContaining({
         source: 'knowledge',
@@ -231,15 +232,34 @@ describe('runConsolidationForProject', () => {
       }),
       { nearDuplicateProbe: true },
     );
-    // update → same natural key re-embedded
     expect(indexMemoryMock).toHaveBeenCalledWith(
       expect.objectContaining({ source: 'note', sourceRef: 'n-1', text: 'merged cleaner note' }),
       undefined,
     );
-    // audit decision row
     expect(indexMemoryBestEffortMock).toHaveBeenCalledWith(
       expect.objectContaining({ source: 'decision' }),
     );
+  });
+
+  it('creates nothing and updates nothing in a script the prompt never showed it', async () => {
+    queueSignal();
+    llmResponds({
+      create: [
+        { content: `deploy branch is master ${OBHOD}`, category: 'correction' },
+        { content: 'deploy branch is master', category: 'correction' },
+      ],
+      update: [{ id: 'm-1', newContent: `merged cleaner note ${OBHOD}` }],
+      archive: [],
+      summary: 'one of each refused',
+    });
+
+    const result = await runConsolidationForProject(PROJECT_ID);
+
+    expect(result).toMatchObject({ created: 1, updated: 0, refused: 2 });
+    expect(indexMemoryMock).toHaveBeenCalledTimes(1);
+    expect(indexMemoryMock.mock.calls[0]?.[0]).toMatchObject({
+      text: 'deploy branch is master',
+    });
   });
 
   it('ignores archive/update ids that do not belong to the project memory set', async () => {
@@ -360,6 +380,23 @@ describe('reconcileForReleasedIssue', () => {
     expect(indexMemoryBestEffortMock).toHaveBeenCalledWith(
       expect.objectContaining({ source: 'decision', sourceRef: 'reconcile:ISS-708' }),
     );
+  });
+
+  it('archives nothing on evidence in a script the prompt never showed it', async () => {
+    queueIssueLookup();
+    queueIdempotency();
+    searchMemoriesMock.mockResolvedValueOnce([memoryHit('m-1')]);
+    llmResponds({
+      contradicted: [{ id: 'm-1', evidence: `IA restructured into 3 pipelines ${OBHOD}` }],
+      possiblyStale: [],
+      unaffected: [],
+    });
+
+    const result = await reconcileForReleasedIssue(PROJECT_ID, ISSUE_ID);
+
+    expect(result.contradicted).toBe(0);
+    expect(result.refused).toBe(1);
+    expect(runMemoryFeedbackMock).not.toHaveBeenCalled();
   });
 
   it('stamps POSSIBLY_STALE candidates with metadata.staleSince/supersededBy — no archive, no re-embed', async () => {

@@ -11,6 +11,7 @@ import { runMemoryFeedback } from './feedback-service.js';
 import { indexMemory, indexMemoryBestEffort, MAX_EMBED_CHARS } from './indexer.js';
 import { proposeKnowledgePromotions } from './knowledge-promotion.js';
 import { callFastModel, fastModelConfigured } from './llm.js';
+import { foreignScriptChars } from './script-guard.js';
 import { type MemoryHit, searchMemories } from './search.js';
 
 /**
@@ -104,17 +105,50 @@ export interface ConsolidationResult {
   created: number;
   updated: number;
   archived: number;
+  /** Items the model wrote in a script the prompt never showed it, dropped unstored (ISS-962). */
+  refused: number;
   summary: string;
   skipped?: 'disabled' | 'running' | 'no-signal' | 'llm-failed' | 'parse-failed';
 }
 
 const VALID_CATEGORIES = new Set(['preference', 'correction', 'convention', 'tool_pattern']);
 
+interface ScriptRefuser {
+  refuse(text: string, what: string): boolean;
+  readonly count: number;
+}
+
+/**
+ * The ISS-962 script check, bound to one run's prompt and its log name.
+ *
+ * Both writers here rewrite prose that is already stored rather than admitting
+ * new prose, so both compute the allowance the same way and share this.
+ */
+// cm:guard the `promptSource` handed in must be the WHOLE prompt, existing memories included — unlike `extraction.ts:refuseForeignScript`, which deliberately excludes them (ISS-962). Consolidation rewrites what is already stored, so narrowing it here would refuse a Russian-speaking team's own memory the moment it was consolidated; nothing NEW enters the store through these two paths, and extraction, where it does, is where the narrow source holds.
+function scriptRefuser(projectId: string, promptSource: string, logName: string): ScriptRefuser {
+  let refused = 0;
+  return {
+    refuse(text: string, what: string): boolean {
+      const chars = foreignScriptChars(text, promptSource);
+      if (chars.length === 0) return false;
+      refused++;
+      logger.warn(
+        { projectId, what, chars, text: text.slice(0, 60) },
+        `${logName}: refused output in a script its prompt never showed it`,
+      );
+      return true;
+    },
+    get count(): number {
+      return refused;
+    },
+  };
+}
+
 function emptyResult(
   skipped: NonNullable<ConsolidationResult['skipped']>,
   summary: string,
 ): ConsolidationResult {
-  return { created: 0, updated: 0, archived: 0, summary, skipped };
+  return { created: 0, updated: 0, archived: 0, refused: 0, summary, skipped };
 }
 
 export async function runConsolidationForProject(projectId: string): Promise<ConsolidationResult> {
@@ -128,6 +162,41 @@ export async function runConsolidationForProject(projectId: string): Promise<Con
   } finally {
     runningProjects.delete(projectId);
   }
+}
+
+async function applyCreates(
+  projectId: string,
+  items: ConsolidationActions['create'],
+  guard: ScriptRefuser,
+): Promise<number> {
+  let created = 0;
+  for (const item of (Array.isArray(items) ? items : []).slice(0, MAX_CREATES)) {
+    if (typeof item.content !== 'string' || item.content.trim().length < 5) continue;
+    if (guard.refuse(item.content, 'create')) continue;
+    const category = VALID_CATEGORIES.has(item.category as string)
+      ? (item.category as string)
+      : 'convention';
+    const refHash = crypto.createHash('sha1').update(item.content).digest('hex').slice(0, 12);
+    try {
+      await indexMemory(
+        {
+          projectId,
+          source: 'knowledge',
+          sourceRef: `consolidated:${refHash}`,
+          text: item.content.trim(),
+          metadata: { category, origin: 'consolidation' },
+        },
+        { nearDuplicateProbe: true },
+      );
+      created++;
+    } catch (err) {
+      logger.warn(
+        { err: (err as Error).message, projectId },
+        'memory.consolidation: create failed',
+      );
+    }
+  }
+  return created;
 }
 
 async function consolidate(projectId: string): Promise<ConsolidationResult> {
@@ -224,44 +293,25 @@ async function consolidate(projectId: string): Promise<ConsolidationResult> {
     return emptyResult('parse-failed', 'failed to parse LLM response');
   }
 
-  let created = 0;
-  for (const item of (Array.isArray(actions.create) ? actions.create : []).slice(0, MAX_CREATES)) {
-    if (typeof item.content !== 'string' || item.content.trim().length < 5) continue;
-    const category = VALID_CATEGORIES.has(item.category as string)
-      ? (item.category as string)
-      : 'convention';
-    const refHash = crypto.createHash('sha1').update(item.content).digest('hex').slice(0, 12);
-    try {
-      await indexMemory(
-        {
-          projectId,
-          source: 'knowledge',
-          sourceRef: `consolidated:${refHash}`,
-          text: item.content.trim(),
-          metadata: { category, origin: 'consolidation' },
-        },
-        { nearDuplicateProbe: true },
-      );
-      created++;
-    } catch (err) {
-      logger.warn(
-        { err: (err as Error).message, projectId },
-        'memory.consolidation: create failed',
-      );
-    }
-  }
+  const guard = scriptRefuser(
+    projectId,
+    `${memoriesStr}\n${commentsStr}\n${statusStr}\n${reopenStr}`,
+    'memory.consolidation',
+  );
+
+  const created = await applyCreates(projectId, actions.create, guard);
 
   let updated = 0;
   for (const item of (Array.isArray(actions.update) ? actions.update : []).slice(0, MAX_UPDATES)) {
     if (typeof item.id !== 'string' || typeof item.newContent !== 'string') continue;
+    if (guard.refuse(item.newContent, 'update')) continue;
     const row = byId.get(item.id);
     if (!row) {
       logger.debug({ projectId, id: item.id }, 'memory.consolidation: update for unknown id');
       continue;
     }
     try {
-      // Natural-key upsert re-embeds the merged content on the SAME row;
-      // metadata is preserved and tagged with the consolidation origin.
+      // cm:why the natural key (source, sourceRef) is reused so this is an upsert onto the SAME row rather than a second memory — passing a fresh ref would leave the pre-consolidation text stored beside its own replacement
       await indexMemory({
         projectId,
         source: row.source,
@@ -327,7 +377,7 @@ async function consolidate(projectId: string): Promise<ConsolidationResult> {
     );
   }
 
-  return { created, updated, archived, summary };
+  return { created, updated, archived, refused: guard.count, summary };
 }
 
 /** Sweep every project that actually has consolidatable memory rows. */
@@ -429,6 +479,8 @@ interface ReconcileActions {
 export interface ReconcileResult {
   contradicted: number;
   possiblyStale: number;
+  /** Evidence strings the model wrote in a script the prompt never showed it (ISS-962). */
+  refused: number;
   summary: string;
   skipped?:
     | 'disabled'
@@ -445,7 +497,7 @@ function emptyReconcileResult(
   skipped: NonNullable<ReconcileResult['skipped']>,
   summary: string,
 ): ReconcileResult {
-  return { contradicted: 0, possiblyStale: 0, summary, skipped };
+  return { contradicted: 0, possiblyStale: 0, refused: 0, summary, skipped };
 }
 
 /**
@@ -569,12 +621,19 @@ async function reconcile(projectId: string, issueId: string): Promise<ReconcileR
     return emptyReconcileResult('parse-failed', 'failed to parse LLM response');
   }
 
+  const guard = scriptRefuser(
+    projectId,
+    `${releaseText.slice(0, 4000)}\n${candidatesStr}`,
+    'memory.reconcile',
+  );
+
   let contradicted = 0;
   for (const item of (Array.isArray(actions.contradicted) ? actions.contradicted : []).slice(
     0,
     RECONCILE_MAX_CANDIDATES,
   )) {
     if (typeof item.id !== 'string' || typeof item.evidence !== 'string') continue;
+    if (guard.refuse(item.evidence, 'evidence')) continue;
     const candidate = byId.get(item.id);
     if (!candidate) continue;
     try {
@@ -633,7 +692,7 @@ async function reconcile(projectId: string, issueId: string): Promise<ReconcileR
     metadata: { cause: 'memory-reconcile', issueId, contradicted, possiblyStale },
   });
 
-  return { contradicted, possiblyStale, summary };
+  return { contradicted, possiblyStale, refused: guard.count, summary };
 }
 
 let reconcileTriggerRegistered = false;
