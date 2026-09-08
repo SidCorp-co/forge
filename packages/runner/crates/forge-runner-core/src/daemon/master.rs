@@ -26,6 +26,8 @@ use std::time::{Duration, Instant};
 use crate::config::Config;
 use crate::daemon::dispatch::resolve_repo;
 use crate::daemon::master_exit::{self, Verdict};
+use crate::daemon::recovery;
+use crate::daemon::recovery_ports::{CoreBeat, CoreRunState, PaneMasters};
 use crate::daemon::terminal;
 use crate::runner::ledger::Ledger;
 use crate::transport::{master as master_api, pool, runners, CoreClient};
@@ -353,7 +355,50 @@ async fn sweep(
 
         nudge_master(masters, &runner.project_id, &resolved.slug, &session).await;
     }
+
+    give_back_lost_runs(
+        &PaneMasters { masters },
+        &CoreRunState { client },
+        &CoreRunState { client },
+        &CoreBeat { client },
+        ledger,
+    )
+    .await;
     delay
+}
+
+/// Beat what this box still holds, and close the loop on what it does not.
+// cm:guard runs AFTER the per-project loop, and the order is the assertion. `ensure_master` re-registers every live master into `Masters` on each pass, and `PaneMasters` reads that map for the pane NAME — placed before the loop, a daemon restart would meet an empty map and read every live run on the box as orphaned (ISS-933 criterion 16).
+// cm:guard the beat rides in this same call and is not separable: core reaps a run session silent for ten minutes, so a sweep that reconciled without beating would take back every healthy run on the box (ISS-933 criteria 16 and 25a).
+async fn give_back_lost_runs(
+    live: &dyn recovery::MasterLiveness,
+    sessions: &dyn crate::runner::close_loop::SessionReader,
+    leases: &dyn crate::runner::close_loop::LeaseKeeper,
+    beat: &dyn recovery::Heartbeat,
+    ledger: &mut Option<Ledger>,
+) {
+    let Some(led) = ledger.as_mut() else { return };
+    // cm:guard no boot id means no reconcile, and that refusal is the safe direction. The boot is what separates "the master died within this boot" from "everything recorded before a reboot belongs to a stranger"; guessing one would close the loop over live runs on a box that simply cannot report its own boot (ISS-933 criterion 16).
+    let Some(boot_id) = crate::runner::inflight::boot_identity() else {
+        tracing::warn!("[master] this box reports no boot id — leaving unclosed runs alone");
+        return;
+    };
+    match recovery::reconcile(led, &boot_id, live, sessions, leases, beat).await {
+        Ok(done) => {
+            for r in done.iter().filter(|r| !r.state.is_closed()) {
+                // cm:guard say WHICH marks are missing, never "partially closed". A run holding two of three leases and one holding none are different operator problems, and a line that does not separate them is the report this whole loop exists to replace.
+                tracing::warn!(
+                    "[master] run {} is partially closed: session_terminal={} worktree_gone={} leases={}/{}",
+                    r.run_id,
+                    r.state.session_terminal,
+                    r.state.worktree_gone,
+                    r.state.leases_returned,
+                    r.state.leases_total
+                );
+            }
+        }
+        Err(e) => tracing::warn!("[master] reconcile failed: {e}"),
+    }
 }
 
 /// The master's own process, versioned with this binary.
@@ -783,6 +828,154 @@ mod tests {
         assert!(
             brief.trim_end().ends_with("this pane is the record."),
             "{brief}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod give_back_tests {
+    use super::*;
+    use crate::runner::close_loop::{LeaseKeeper, SessionReader};
+    use crate::runner::ledger::{Ledger, NewRun};
+    use std::sync::Mutex;
+
+    const THIS_SOURCE: &str = include_str!("master.rs");
+
+    type R<T> = crate::error::Result<T>;
+
+    struct Alive(bool);
+    #[async_trait::async_trait]
+    impl recovery::MasterLiveness for Alive {
+        async fn is_alive(&self, _id: &str) -> bool {
+            self.0
+        }
+    }
+
+    #[derive(Default)]
+    struct Beats(Mutex<Vec<String>>);
+    #[async_trait::async_trait]
+    impl recovery::Heartbeat for Beats {
+        async fn beat(&self, session_id: &str) -> R<()> {
+            self.0.lock().unwrap().push(session_id.to_string());
+            Ok(())
+        }
+    }
+
+    struct Terminal(bool);
+    #[async_trait::async_trait]
+    impl SessionReader for Terminal {
+        async fn is_terminal(&self, _id: &str) -> R<bool> {
+            Ok(self.0)
+        }
+    }
+
+    #[derive(Default)]
+    struct Leases(Mutex<Vec<String>>);
+    #[async_trait::async_trait]
+    impl LeaseKeeper for Leases {
+        async fn release(&self, issue_key: &str) -> R<()> {
+            self.0.lock().unwrap().push(issue_key.to_string());
+            Ok(())
+        }
+        async fn is_returned(&self, issue_key: &str) -> R<bool> {
+            Ok(self.0.lock().unwrap().iter().any(|k| k == issue_key))
+        }
+    }
+
+    fn a_ledger_holding_one_run() -> (Ledger, String) {
+        let mut led = Ledger::open_in_memory().unwrap();
+        let boot = crate::runner::inflight::boot_identity().unwrap_or_default();
+        led.create_run_group(NewRun {
+            run_id: "run-1".into(),
+            master_session_id: "master-1".into(),
+            worktree_path: "/nonexistent/wt".into(),
+            boot_id: boot.clone(),
+            issue_keys: vec!["ISS-1".into(), "ISS-2".into()],
+        })
+        .unwrap();
+        led.attach_session("run-1", "core-sess-1").unwrap();
+        (led, boot)
+    }
+
+    // cm:guard the discriminating assertion is the BEAT, not that a run was closed. Core reaps a run session silent for ten minutes, so a sweep that reconciled without beating would take every healthy run on this box back after ten minutes — a test that only watched the closing half would go green on exactly that build (ISS-933 criteria 16 and 25a).
+    #[tokio::test]
+    async fn a_sweep_beats_the_runs_this_box_still_holds() {
+        let (led, _) = a_ledger_holding_one_run();
+        let mut ledger = Some(led);
+        let beats = Beats::default();
+
+        give_back_lost_runs(
+            &Alive(true),
+            &Terminal(false),
+            &Leases::default(),
+            &beats,
+            &mut ledger,
+        )
+        .await;
+
+        assert_eq!(
+            beats.0.lock().unwrap().as_slice(),
+            ["core-sess-1"],
+            "a live run this box holds must be beaten every sweep, or core's ten-minute reaper takes its worktree back"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_dead_master_leaves_its_leases_returned_and_no_beat_sent() {
+        let (led, _) = a_ledger_holding_one_run();
+        let mut ledger = Some(led);
+        let beats = Beats::default();
+        let leases = Leases::default();
+
+        give_back_lost_runs(&Alive(false), &Terminal(true), &leases, &beats, &mut ledger).await;
+
+        assert!(
+            beats.0.lock().unwrap().is_empty(),
+            "beating for a master that is gone tells core this box still holds a run nobody is running"
+        );
+        let mut returned = leases.0.lock().unwrap().clone();
+        returned.sort();
+        assert_eq!(
+            returned,
+            ["ISS-1", "ISS-2"],
+            "every issue of the group comes back, per issue — a run carrying two that returned one is not closed"
+        );
+    }
+
+    /// The brace depth every statement of `sweep`'s own body sits at.
+    fn depth_of_call_in_sweep(needle: &str) -> Option<usize> {
+        let production = THIS_SOURCE.split("#[cfg(test)]").next().unwrap();
+        let sweep = production
+            .split("async fn sweep(")
+            .nth(1)
+            .expect("sweep is gone");
+        let body = &sweep[sweep.find('{')?..];
+        let mut depth = 0usize;
+        for (i, ch) in body.char_indices() {
+            match ch {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return None;
+                    }
+                }
+                _ => {}
+            }
+            if body[i..].starts_with(needle) {
+                return Some(depth);
+            }
+        }
+        None
+    }
+
+    // cm:guard depth 1 is the assertion and a mere `contains` is NOT enough: measured while writing this, `if false { give_back_lost_runs(...) }` passed a containment check, so the scan agreed with a build in which no run on the box is ever beaten. A call sitting under any condition is a call an operator cannot rely on.
+    #[test]
+    fn the_sweep_reconciles_unconditionally() {
+        assert_eq!(
+            depth_of_call_in_sweep("give_back_lost_runs("),
+            Some(1),
+            "the sweep must reconcile what this box holds on EVERY pass; behind a condition, or gone, nothing beats a run session and core reaps every healthy one after ten minutes"
         );
     }
 }

@@ -14,6 +14,7 @@ pub mod master;
 pub mod master_exit;
 pub mod preflight;
 pub mod recovery;
+pub mod recovery_ports;
 pub mod repo_lock;
 pub mod setup_agent;
 pub mod skill_pull;

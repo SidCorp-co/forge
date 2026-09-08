@@ -22,10 +22,18 @@ import {
 import { readDeviceLoad, readFleetLoad, readProjectLoad } from './load.js';
 import { closeMasterSession, ensureMasterSession } from './master-session.js';
 import { readPool } from './pool.js';
-import { openRunSession } from './run-session.js';
+import {
+  isIssueLeaseHeld,
+  openRunSession,
+  readRunSessionTerminal,
+  releaseIssueLease,
+} from './run-session.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
+
+const notFound = (what: string) =>
+  new HTTPException(404, { message: `${what} not found`, cause: { code: 'NOT_FOUND' } });
 
 // cm:guard `requireDevice`, never `requireAnyAuth`. Only the latter sets `userId = device.ownerId`, which would hand a master session its owner's whole account authority; these routes must stay scoped to the device's own bindings so `loadProjectAccess` fails closed.
 export const devicePoolRoutes = new Hono<{ Variables: DeviceVars }>();
@@ -88,6 +96,50 @@ devicePoolRoutes.post(
       name: body.name,
     });
     return c.json(session);
+  },
+);
+
+const sessionParamsSchema = z.object({ sessionId: z.string().uuid() });
+const leaseParamsSchema = z.object({ issueKey: z.string().min(1).max(64) });
+
+// cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/recovery_ports.rs — `CoreRunState` reads these back; the close loop sets a mark ONLY from what they answer, never from the ack of the write it just made (ISS-933 criterion 13).
+devicePoolRoutes.get(
+  '/me/run-sessions/:sessionId',
+  requireDevice(),
+  zValidator('param', sessionParamsSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { sessionId } = c.req.valid('param');
+    const terminal = await readRunSessionTerminal({ deviceId: c.get('device').id, sessionId });
+    if (terminal === null) throw notFound('run session');
+    return c.json({ sessionTerminal: terminal });
+  },
+);
+
+devicePoolRoutes.get(
+  '/me/issue-leases/:issueKey',
+  requireDevice(),
+  zValidator('param', leaseParamsSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { issueKey } = c.req.valid('param');
+    return c.json({ held: await isIssueLeaseHeld({ deviceId: c.get('device').id, issueKey }) });
+  },
+);
+
+// cm:guard answers 200 whether or not anything was held — the close loop retries every mark it still owes, so a second return of the same lease must be a no-op rather than a failure that parks the run.
+devicePoolRoutes.delete(
+  '/me/issue-leases/:issueKey',
+  requireDevice(),
+  zValidator('param', leaseParamsSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { issueKey } = c.req.valid('param');
+    await releaseIssueLease({ deviceId: c.get('device').id, issueKey });
+    return c.json({ ok: true });
   },
 );
 
