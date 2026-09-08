@@ -407,3 +407,31 @@ silently un-protecting every future park. Core's advertised three are untouched.
 writes as `parkedOnAHuman` (`jobs/park-deadline.ts`), carrying a `cm:edge contract` to it. It reads
 all three columns rather than `blocker_kind` alone, because a run that merely CRASHED while blocked
 on a human is also `Exited x Blocked` — the park is the conjunction, which is criterion 9's point.
+
+## S9b part 4 — c5, held by a test rather than by an argument
+
+Part 2 established that a run session holds no `duplex_max_sessions` permit and concluded criterion 5
+had "no true side on this path". The first half is right and the conclusion was wrong: the permit
+ceiling was never criterion 5's subject on this path. What a run session holds is its ISSUES, through
+`admissible.ts`' `runIssues` exclusion, and the load-bearing claim is that **a park keeps them** —
+which part 2 identified, called correct per criterion 8, and then left unasserted. A criterion retired
+by argument is a criterion nothing will notice the loss of.
+
+| # | Criterion | Test | RED (quoted) | Commit |
+|---|---|---|---|---|
+| 5 | a parked run still withholds its issues | `dead-master-both-axes-e2e` — `the issues a parked run is still carrying` | mutation (the exclusion narrowed to skip a run with an open human question — the realistic regression, since "a park releases the box" invites exactly that reading): `a parked run still holds its issues: the park is a promise to resume, so offering ISS-964 to another box now is two runs over one issue: expected [ { …(12) } ] to deeply equal []` | S9b |
+| 5 | and a closed run gives them back | same test, second assertion | the false side is what makes the first one a claim rather than a tautology: closed through `closeRun`, the issue is offered again | S9b |
+
+Its fixture closes the run through `closeRun` rather than an `UPDATE`, so the state it asserts against
+is one this system can actually reach — a hand-written terminal `pipeline_runs.status` skips the cascade
+the repo's own invariant requires.
+
+### The boot question, settled by grep
+
+`reparent_run` writes the parent and leaves `boot_id` alone, so a park that survived a reboot carries a
+new master and an old boot. That is only safe if nothing on the revival path predicates on the boot:
+`begin_revival`'s CAS is `incarnation = 'exited' AND work = 'runnable'` with no boot term, and it has no
+production caller yet (S10 owns that). `Ledger::liveness` does gate on the boot, returning `Unknown`
+rather than `Dead` for a foreign boot — correct for its own purpose (criterion 35) and not consulted by
+the CAS. So a re-parented park stays revivable. The state to watch for is preserved-and-unreachable,
+which is worse than closed because nothing reports it; S10's executor must not add a boot predicate.

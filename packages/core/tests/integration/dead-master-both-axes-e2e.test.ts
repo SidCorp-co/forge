@@ -37,6 +37,7 @@ let mods: {
   readAdmissibleIssues: typeof import('../../src/devices/admissible.js').readAdmissibleIssues;
   insertAndEnqueueJob: typeof import('../../src/pipeline/enqueue-helper.js').insertAndEnqueueJob;
   openOneShotRun: typeof import('../../src/pipeline/runs.js').openOneShotRun;
+  closeRun: typeof import('../../src/pipeline/runs.js').closeRun;
   RUN_SESSION_TIMEOUT_MS: typeof import('../../src/devices/run-session-reaper.js').RUN_SESSION_TIMEOUT_MS;
 };
 
@@ -61,6 +62,7 @@ beforeAll(async () => {
     readAdmissibleIssues: ad.readAdmissibleIssues,
     insertAndEnqueueJob: eh.insertAndEnqueueJob,
     openOneShotRun: runs.openOneShotRun,
+    closeRun: runs.closeRun,
     RUN_SESSION_TIMEOUT_MS: rr.RUN_SESSION_TIMEOUT_MS,
   };
 }, 60_000);
@@ -210,5 +212,42 @@ describe('a job minted while no master is alive', () => {
       seen.map((f) => (f as { event: string }).event),
       'a `smoke` mint has no issue behind it, so nothing else would wake the box — and the four kinds that survived the pool are exactly the ones with no issue for `forge next` to rank (ISS-933 criterion 27)',
     ).toContain('master.wake');
+  });
+});
+
+// cm:why criterion 5's "a human block releases the box" is about the PROCESS, and on this path that is the whole of it: `counts_against_session_cap` is set on the duplex pipeline-job path alone, so a run session holds no session permit parked or working and a test contrasting the two would pass with both sides zero. What a run session holds is its ISSUES, and a park must go on holding them — a park is a promise to resume (criterion 8).
+describe('the issues a parked run is still carrying', () => {
+  it('withholds them while the park stands, and gives them back only when the run closes', async () => {
+    const { user, project, device } = await aBoxServingAProject();
+    const issue = await anIssue(project.id, user.id, 964);
+    const run = await mods.openRunSession({
+      deviceId: device.id,
+      projectId: project.id,
+      issueKeys: [issue.key],
+      name: 'grp-964',
+    });
+
+    await harness.db.execute(sql`
+      INSERT INTO agent_questions
+        (id, project_id, agent_session_id, status, blocker_kind, steps, created_at, updated_at)
+      VALUES (gen_random_uuid(), ${project.id}, ${run.sessionId}, 'open', 'human',
+              '[]'::jsonb, now(), now())
+    `);
+    await harness.db.execute(sql`
+      UPDATE agent_sessions SET runtime_state = 'awaiting_input' WHERE id = ${run.sessionId}
+    `);
+
+    expect(
+      await mods.readAdmissibleIssues({ deviceId: device.id }),
+      'a parked run still holds its issues: the park is a promise to resume, so offering ISS-964 to another box now is two runs over one issue — the state this exclusion exists to prevent (ISS-964 criterion 5, ISS-933 criterion 7)',
+    ).toEqual([]);
+
+    // cm:guard closed through `closeRun`, never an UPDATE: a `pipeline_runs.status` written terminal by hand skips the cascade, so the fixture would assert against a state this system cannot reach.
+    await mods.closeRun(run.runId, 'completed');
+
+    expect(
+      (await mods.readAdmissibleIssues({ deviceId: device.id })).map((i) => i.issueKey),
+      'and the false side of the same claim: once the run is terminal the lease is gone, so the issue must be offered again — an exclusion that outlived its run would withhold work no box is doing',
+    ).toEqual([issue.key]);
   });
 });
