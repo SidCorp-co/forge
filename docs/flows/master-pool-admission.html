@@ -23,8 +23,8 @@
 <p class="sub">Two surfaces answer two different questions, and the whole design is that they never
 become one. The <b>pool</b> answers &ldquo;what may I claim right now&rdquo;; the <b>backlog</b>
 answers &ldquo;what exists that nobody has decided about yet&rdquo;. Owner:
-<code>packages/core/src/devices/</code> (<code>pool.ts</code>, <code>backlog.ts</code>,
-<code>promote.ts</code>, <code>pool-routes.ts</code>),
+<code>packages/core/src/devices/</code> (<code>pool.ts</code>, <code>admissible.ts</code>,
+<code>run-session.ts</code>, <code>pool-routes.ts</code>),
 <code>packages/core/src/pipeline/pipeline-config-schema.ts</code>,
 <code>packages/runner/crates/forge-runner-core/src/daemon/master.rs</code>.</p>
 
@@ -41,7 +41,7 @@ flowchart TD
   P --> A["devices/pool.ts:readPool<br/>queued jobs under a live run"]
   P --> B{"project declared<br/>poolBacklog.statuses?"}
   B -- "absent / empty" --> B0["backlog: [] — no second query at all"]
-  B -- "declared" --> B1["devices/backlog.ts:readBacklog<br/>issues AT those statuses"]
+  B -- "declared" --> B1["devices/admissible.ts:readAdmissibleIssues<br/>issues AT those statuses"]
   B1 --> B2["exclude any issue that already<br/>carries a job or an open run"]
   B2 --> B3["raw blocker facts, same shape readPool returns<br/>NO jobId field on any row"]
   A --> RESP["{ items: [...], backlog: [...] }<br/>siblings, never merged"]
@@ -58,42 +58,37 @@ which core refuses as <code>not_found</code> &mdash; and that refusal names the 
 mistake, so nothing in the transcript says why. An older runner that has never heard of the key
 ignores it and keeps parsing <code>items</code> unchanged.</div>
 
-<h2>Promotion &mdash; the only way a backlog row becomes work</h2>
-<p>Promote does not run anything. It moves the issue to the entry status and lets the dispatch every
-other caller already uses produce the run and the <code>drive</code> job, then hands back that job's
-id so the master claims it through the path it was already using. Every refusal is an ordinary
-outcome on HTTP 200.</p>
+<h2>Opening a run &mdash; the only way an admissible issue becomes work</h2>
+<p>Promotion is gone (ISS-933). A master no longer moves an issue to the entry status so core mints
+a <code>drive</code> job; it opens a <b>run session</b> over a GROUP of issues on its own box, and
+the ledger there is what refuses a second run over an issue or a worktree. Core learns about it
+after the fact.</p>
 
 <div class="board"><pre class="mermaid">
 flowchart TD
-  C["forge-runner pool promote &lt;issueId&gt;<br/>POST /me/pool/promote"] --> G1{"device bound to<br/>this project?"}
-  G1 -- no --> X1["200 { ok:false, reason:'not_found' }<br/>never borrows the owner's account authority"]
-  G1 -- yes --> G2{"poolBacklog declared?"}
-  G2 -- no --> X2["200 backlog_disabled"]
-  G2 -- yes --> G3{"issue AT an<br/>admitted status?"}
-  G3 -- no --> X3["200 not_in_backlog"]
-  G3 -- yes --> G4{"entry stage enabled<br/>AND mode != 'manual'?"}
-  G4 -- no --> X4["200 entry_gated<br/>ISSUE HAS NOT MOVED"]
-  G4 -- yes --> G5{"job or open run<br/>already for this issue?"}
-  G5 -- yes --> X5["200 issue_busy<br/>never a second drive job"]
-  G5 -- no --> T["applyStatusTransition → entry status<br/>device actor, agency:'agent'"]
-  T --> E["reEnqueueForIssue — synchronously<br/>the async outbox hook cannot hand back an id;<br/>the unique index makes the later hook a no-op"]
-  E --> Q{"queued drive job<br/>appeared?"}
-  Q -- yes --> OK["200 { ok:true, jobId }<br/>→ master claims it through /me/pool/claim"]
-  Q -- "no, and NO run was opened" --> RB["restore the prior status<br/>200 dispatch_failed — no orphan"]
-  Q -- "no, but a run WAS opened" --> LV["leave it at the entry status WITH its run<br/>200 dispatch_failed, detail says the reconciler owns it"]
+  C["forge-runner pool run --issues ISS-1,ISS-2 --agent grp"] --> D["daemon control socket<br/>run_open"]
+  D --> L1{"ledger: any issue<br/>held by a live run?"}
+  L1 -- yes --> X1["refused, NAMING the run that holds it"]
+  L1 -- no --> L2{"ledger: worktree path<br/>held by a live run?"}
+  L2 -- yes --> X2["refused BEFORE git worktree add"]
+  L2 -- no --> R["ledger row committed<br/>run + every issue, ONE transaction"]
+  R --> W["git worktree add"]
+  W --> S["POST /me/run-sessions<br/>the WHOLE group, in one call"]
+  S --> P["tmux pane, pid stamped back onto the ledger"]
 </pre></div>
 
-<div class="rule warn"><b>The entry gate is checked BEFORE anything moves.</b> That ordering is the
-invariant, not an optimisation: a gate read after the transition leaves an issue out of
-<code>draft</code> with no run and nothing explaining why. <code>manual</code> keeps meaning
-&ldquo;a human presses Run&rdquo; &mdash; admitting a status widens what a master may <em>see</em>,
-never what it may <em>decide</em>. Promotion must not be routed through the manual-run path, which
-bypasses that gate deliberately and for a different reason.</div>
+<div class="rule"><b>The ledger row is committed before anything can spawn.</b> That ordering is the
+deliverable, not an implementation detail: a crash anywhere after it leaves a row recovery can act
+on, where recording last leaves a live agent in a worktree nothing on the box knows about &mdash;
+measured as pids 334254 and 335001 in one directory.</div>
+
+<div class="rule warn"><b>The admission set is visibility, never dispatch.</b> Admitting a status
+widens what a master may <em>see</em>; it has never widened what core will start on its own, and
+after ISS-933 core starts no <code>drive</code> work at all.</div>
 
 <h2>Where a contradiction is refused &mdash; at the config write, not at dispatch</h2>
 <p><code>intakeGate</code> exists so a <em>human</em> approves every arriving issue by moving it out
-of <code>draft</code>. A master that may promote drafts is that human. Declaring both is therefore
+of <code>draft</code>. A master that may open runs over drafts is that human. Declaring both is therefore
 unrepresentable, and the rule lives in the schema so REST and MCP <code>forge_config</code> are both
 covered by one copy.</p>
 
@@ -126,24 +121,25 @@ did not break and leave them no edit that succeeds.</div>
 <table>
 <thead><tr><th>Reason</th><th>What actually happened</th><th>Retry helps?</th></tr></thead>
 <tbody>
-<tr><td><code>backlog_disabled</code></td><td>The project declared no <code>poolBacklog</code>.</td><td>No &mdash; a config change</td></tr>
-<tr><td><code>not_in_backlog</code></td><td>The issue is not at an admitted status (it may have moved since the read).</td><td>No</td></tr>
-<tr><td><code>entry_gated</code></td><td>The entry stage is disabled or <code>mode:'manual'</code>. The issue did not move.</td><td>No &mdash; a human presses Run</td></tr>
-<tr><td><code>issue_busy</code></td><td>A job or open run already exists &mdash; usually another master won the race.</td><td>No, and that is correct</td></tr>
-<tr><td><code>not_found</code></td><td>This device serves no such project.</td><td>No &mdash; a binding problem</td></tr>
-<tr><td><code>dispatch_failed</code></td><td>The transition landed and the enqueue did not. The <code>detail</code> says whether the status was restored or left with a run for the reconciler.</td><td>Read the detail first</td></tr>
+<tr><td><code>agent_name_unusable</code></td><td>The name cannot be a git branch and a directory under <code>.worktrees/</code>.</td><td>No &mdash; pick another word</td></tr>
+<tr><td><code>issues_required</code></td><td>A run carries at least one issue. A group of one is a group.</td><td>No</td></tr>
+<tr><td>issue <code>already belongs to live run &lt;id&gt;</code></td><td>The ledger holds that issue under another live run, and names it.</td><td>No &mdash; that run has it</td></tr>
+<tr><td>worktree <code>is already held by live run &lt;id&gt;</code></td><td>Refused BEFORE <code>git worktree add</code> could fail with <code>already exists</code>.</td><td>No &mdash; choose another name</td></tr>
+<tr><td><code>no repo path on this box for &lt;slug&gt;</code></td><td>The project is served but has no checkout here.</td><td>No &mdash; bind it, or set the runner's repo path</td></tr>
+<tr><td><code>ledger unavailable</code></td><td>The SQLite registry would not open.</td><td>Read the detail &mdash; a box problem</td></tr>
 </tbody>
 </table>
 
-<div class="rule">All six are HTTP 200 with <code>ok:false</code>, the way a refused claim already
-answers. An entry-gated project and a race lost to another master are both normal; a 4xx would make
-each look like a broken route and invite a retry loop against a rule that will refuse forever.</div>
+<div class="rule">Every refusal NAMES what it collided with, and none of them is a fallback. A run
+refused because another holds its worktree must not quietly get a different directory: an operator
+told <code>no repo path for &lt;slug&gt;</code> loses ten minutes, one whose run silently used
+another checkout loses the diff.</div>
 
 <h2>Read this before</h2>
 <p>Adding a status to the admissible set &mdash; it is <em>derived</em> as
 <code>issueStatuses</code> minus <code>AUTONOMOUS_DRIVER_STATUSES</code>, never hand-written,
-because a driver status already carries a run and a job and would offer a row that can never be
-promoted. Adding a cross-field rule to <code>pipelineConfig</code> &mdash; put it in the schema and
+because a driver status already carries a run and a job and would offer a row nothing could open a
+second run over. Adding a cross-field rule to <code>pipelineConfig</code> &mdash; put it in the schema and
 make sure the merged document is what gets validated, or it holds on one write and falls to two.
 Adding a key to the pool response &mdash; siblings only; a row with no job sitting in the array the
 master claims from invites a malformed claim. And adding a cap on how much a master may take: the

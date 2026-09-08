@@ -28,7 +28,6 @@ use crate::daemon::dispatch::resolve_repo;
 use crate::daemon::master_exit::{self, Verdict};
 use crate::daemon::terminal;
 use crate::runner::ledger::Ledger;
-use crate::runner::process::{mcp_tool_timeout_default, resolve_claude_bin};
 use crate::transport::{master as master_api, pool, runners, CoreClient};
 use tokio::sync::mpsc;
 
@@ -316,10 +315,13 @@ async fn sweep(
             }
         };
         let items = view.items;
-        let backlog = view.backlog;
+        // cm:guard read the admissible issues too, and never gate on `items` alone. The pool holds jobs for the four kinds that have no issue to rank; a project whose entire content is issues would otherwise get a master, a brief and never a single pass, leaving `pipelineConfig.poolBacklog` configurable, savable and dead (ISS-933 criterion 26).
+        // cm:guard an unreadable admissible read is EMPTY, not fatal. It is the newer of the two routes, so a box talking to an older core must still serve that core's pool rather than going quiet on every project at once.
+        let admissible = pool::admissible(client, Some(&runner.project_id))
+            .await
+            .unwrap_or_default();
         // cm:guard an EMPTY pool starts no master, and that bound survives residency. A resident session is a `claude` process that lives until something ends it, and nothing counts it — `duplex_max_sessions` covers duplex pipeline jobs alone, so a box serving six projects would carry six permanent processes for however many of them never have work. A master that already exists is kept and still supervised; residency is for a project doing something, not for every row `/me/runners` returns.
-        // cm:guard a declared backlog alone is reason enough to start a master, and this is why the emptiness test names BOTH lists. Gating on `items` only means a project whose entire content is a backlog never gets a master, so the promote path it opted into fires nowhere — the knob would be configurable, savable and dead.
-        if items.is_empty() && backlog.is_empty() {
+        if items.is_empty() && admissible.is_empty() {
             if retire_if_idle(client, masters, ledger, &runner.project_id, &runner.slug).await
                 || masters.get(&runner.project_id).is_none()
             {
@@ -345,8 +347,7 @@ async fn sweep(
             continue;
         };
 
-        // cm:guard a backlog-only project is nudged too. `items` alone was the test while a pool held nothing but jobs; a project that opted into `poolBacklog` and has only drafts would otherwise get a master, a brief and never a single pass — the knob configurable, savable and dead.
-        if items.is_empty() && backlog.is_empty() {
+        if items.is_empty() && admissible.is_empty() {
             continue;
         }
 
@@ -374,27 +375,6 @@ fn transcript_path(slug: &str) -> Option<std::path::PathBuf> {
     let dir = Config::path().ok()?.with_file_name("master").join(slug);
     std::fs::create_dir_all(&dir).ok()?;
     Some(dir.join("transcript.log"))
-}
-
-/// The argv a master's pane runs.
-// cm:guard `unset CLAUDECODE` through a shell rather than tmux's `-e`. A tmux session inherits the client environment and `-e` can only SET a variable, so the daemon's own `CLAUDECODE` would reach the pane and the master would believe it is nested inside another Claude session. `build_command` removes it for every other spawn on this box; this is the same removal on the one path that does not go through it.
-// cm:guard no `-p`. The whole change is that this process reads from a terminal instead of taking one prompt and exiting, so `-p` here would restore the per-pass process with a tmux session wrapped uselessly around it.
-fn master_argv() -> Vec<String> {
-    let bin = terminal::shell_quote(resolve_claude_bin());
-    vec![
-        "sh".into(),
-        "-c".into(),
-        format!("unset CLAUDECODE; exec {bin} --permission-mode bypassPermissions"),
-    ]
-}
-
-/// The environment a master's pane needs that a tmux session does not inherit.
-// cm:guard `MCP_TOOL_TIMEOUT` must be carried here explicitly. Every other spawn on this box gets it from `build_command`, which a tmux session does not go through — and Claude Code's own default is ~28h, so one hung MCP call would wedge a master's turn for the rest of the day with the silence ceiling reading it as a healthy pause it cannot distinguish. The operator's own value wins, exactly as it does on the other path.
-fn master_env() -> Vec<(String, String)> {
-    match mcp_tool_timeout_default(std::env::var_os("MCP_TOOL_TIMEOUT").as_deref()) {
-        Some(v) => vec![("MCP_TOOL_TIMEOUT".into(), v.into())],
-        None => Vec::new(),
-    }
 }
 
 /// Make sure this project has a live, registered master, and return its id.
@@ -452,8 +432,8 @@ async fn ensure_master(
     match terminal::ensure(
         &name,
         &resolved.repo_path,
-        &master_argv(),
-        &master_env(),
+        &terminal::pane_argv(),
+        &terminal::pane_env(),
         transcript.as_deref(),
     )
     .await
@@ -778,37 +758,6 @@ mod tests {
         );
         assert_eq!(masters.forget("p1"), Some("s1".into()));
         assert!(masters.get("p1").is_none());
-    }
-
-    // cm:guard `-p` must never come back, and neither may `CLAUDECODE`. The first would restore the per-pass process this change removed, with a tmux session wrapped uselessly around it; the second makes the master believe it is nested inside another Claude session, which changes its behaviour with nothing in any log naming why.
-    #[test]
-    fn the_master_runs_interactively_with_no_inherited_claudecode() {
-        let argv = master_argv();
-        assert_eq!(argv[0], "sh");
-        let line = &argv[2];
-        assert!(line.contains("unset CLAUDECODE"), "{line}");
-        assert!(
-            line.contains("--permission-mode bypassPermissions"),
-            "{line}"
-        );
-        assert!(
-            !line.contains(" -p "),
-            "a resident master takes no -p: {line}"
-        );
-    }
-
-    // cm:guard a tmux session inherits the client environment and `-e` can only SET, never unset — so every variable the master needs that `build_command` would have given it has to be listed here, and the ones it must NOT have are removed by the `sh` line instead. Dropping either half is silent: the master runs, and behaves differently.
-    #[test]
-    fn the_pane_carries_the_mcp_timeout_and_respects_an_operator_override() {
-        let env = master_env();
-        match std::env::var_os("MCP_TOOL_TIMEOUT") {
-            Some(v) if !v.is_empty() => assert!(env.is_empty(), "an operator value must win"),
-            _ => {
-                assert_eq!(env.len(), 1);
-                assert_eq!(env[0].0, "MCP_TOOL_TIMEOUT");
-                assert!(env[0].1.parse::<u64>().is_ok(), "{:?}", env[0].1);
-            }
-        }
     }
 
     // cm:guard the policy must arrive VERBATIM and this asserts exactly that. A master briefed with a summary of the owner's instruction is a master following the summariser, and the whole failure ISS-929 fixes is an instruction that reached the pane wrong or not at all.

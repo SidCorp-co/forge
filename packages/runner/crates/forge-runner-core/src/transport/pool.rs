@@ -51,13 +51,11 @@ pub struct PoolEntry {
     pub relations: Vec<PoolRelation>,
 }
 
-/// One issue a project has declared VISIBLE to its master without making it
-/// work: no job, no run, nothing claimable. Turning one into work is
-/// `promote`, and nothing else here can.
-// cm:guard there is no `job_id` on this type and there must never be one — the whole point of the sibling `backlog` key is that a row here cannot be handed to `pool claim`, and a field that made it look claimable would put that mistake one typo away.
+/// One issue a project has declared its master may open a run session over.
+// cm:guard there is no `job_id` on this type and there must never be one — an admissible issue is NOT a pool row, and a field that made it look claimable would put `pool claim <issueId>` one typo away, which core answers `not_found` in a message that names the job rather than the mistake.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct BacklogEntry {
+pub struct AdmissibleIssue {
     pub issue_id: String,
     #[serde(default)]
     pub issue_key: Option<String>,
@@ -79,19 +77,16 @@ pub struct BacklogEntry {
     pub relations: Vec<PoolRelation>,
 }
 
-/// What core answered: claimable work, and the declared backlog beside it.
-// cm:guard `backlog` carries `#[serde(default)]` so a core that predates ISS-917 (or a project with no `poolBacklog`) decodes to an empty vec rather than a parse error. Same rule as every other field here: a runner must survive talking to a core older OR newer than itself.
+/// What core answered: the jobs this box may claim.
+// cm:guard the pool is JOBS and since ISS-933 it carries no issues at all — `drive` reaches a box as a run session instead, and the four kinds left (`smoke`, `release_batch`, `reconcile`, `verify_skill`) have no issue for anything to rank. Issues arrive through `admissible` below, on their own read.
 #[derive(Debug, Deserialize)]
 struct PoolResponse {
     items: Vec<PoolEntry>,
-    #[serde(default)]
-    backlog: Vec<BacklogEntry>,
 }
 
-/// Claimable work and the declared backlog, as one read.
+/// Claimable work.
 pub struct PoolView {
     pub items: Vec<PoolEntry>,
-    pub backlog: Vec<BacklogEntry>,
 }
 
 pub async fn pool(client: &CoreClient, limit: u32, project_id: Option<&str>) -> Result<PoolView> {
@@ -106,35 +101,32 @@ pub async fn pool(client: &CoreClient, limit: u32, project_id: Option<&str>) -> 
         .map_err(|e| Error::Other(format!("pool decode: {e}")))?;
     Ok(PoolView {
         items: parsed.items,
-        backlog: parsed.backlog,
     })
 }
 
-/// The outcome of asking core to turn one backlog row into work.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PromoteOutcome {
-    pub ok: bool,
+// cm:guard `items` carries `#[serde(default)]` so a core that predates this route (or a project with no `poolBacklog`) decodes to an empty vec rather than a parse error. Same rule as every field above: a runner must survive talking to a core older OR newer than itself.
+#[derive(Debug, Deserialize)]
+struct AdmissibleResponse {
     #[serde(default)]
-    pub job_id: Option<String>,
-    #[serde(default)]
-    pub issue_key: Option<String>,
-    #[serde(default)]
-    pub reason: Option<String>,
-    #[serde(default)]
-    pub detail: Option<String>,
+    items: Vec<AdmissibleIssue>,
 }
 
-/// Move one backlog issue to the entry status so it becomes claimable.
-// cm:guard promote goes STRAIGHT TO CORE, unlike `claim`, and that difference is deliberate: it starts no process, takes no repo lock and touches no in-flight map, so routing it through the daemon would buy nothing and make a master on a box whose daemon is down unable to do a thing the box never needed to be up for.
-// cm:guard a refusal is `ok:false` on a 200 and must not be retried in a loop — `entry_gated` clears only when a human edits the project config, and `issue_busy` only when another master's work ends.
-pub async fn promote(client: &CoreClient, issue_id: &str) -> Result<PromoteOutcome> {
-    let url = client.url("/api/devices/me/pool/promote");
-    let body = serde_json::json!({ "issueId": issue_id });
-    let resp = post(client, &url, body).await?;
-    resp.json()
+/// The issues this box's master may open a run session over.
+// cm:edge contract -> packages/core/src/devices/pool-routes.ts — `GET /me/issues/admissible`, whose only input is `pipelineConfig.poolBacklog.statuses`. It is that config key's one remaining reader since ISS-933 deleted `pool promote`.
+pub async fn admissible(
+    client: &CoreClient,
+    project_id: Option<&str>,
+) -> Result<Vec<AdmissibleIssue>> {
+    let mut url = client.url("/api/devices/me/issues/admissible");
+    if let Some(p) = project_id {
+        url.push_str(&format!("?projectId={p}"));
+    }
+    let resp = get(client, &url).await?;
+    let parsed: AdmissibleResponse = resp
+        .json()
         .await
-        .map_err(|e| Error::Other(format!("promote decode: {e}")))
+        .map_err(|e| Error::Other(format!("admissible decode: {e}")))?;
+    Ok(parsed.items)
 }
 
 /// What core prepared for a claimed job: identity, prompt, and the settings the
@@ -380,16 +372,16 @@ mod tests {
         assert!(entry.relations.is_empty());
     }
 
-    // cm:guard the reason this test exists: a core that has never heard of ISS-917 sends no `backlog` key at all, and a fleet that could not decode that response would be every box failing every pool read at once, with the error inside serde.
+    // cm:guard a core that has never heard of this route answers 404 or an empty body, and a fleet that could not decode that would be every box failing every admissible read at once, with the error inside serde.
     #[test]
-    fn a_response_without_a_backlog_key_still_parses() {
-        let raw = serde_json::json!({ "items": [] });
-        let parsed: PoolResponse = serde_json::from_value(raw).unwrap();
-        assert!(parsed.backlog.is_empty());
+    fn a_response_without_an_items_key_still_parses() {
+        let raw = serde_json::json!({});
+        let parsed: AdmissibleResponse = serde_json::from_value(raw).unwrap();
+        assert!(parsed.items.is_empty());
     }
 
     #[test]
-    fn a_backlog_entry_keeps_its_status_and_carries_no_job() {
+    fn an_admissible_issue_keeps_its_status_and_carries_no_job() {
         let raw = serde_json::json!({
             "issueId": "i1", "issueKey": "ISS-917", "projectId": "p1",
             "status": "draft", "priority": "high", "ageMinutes": 12.0,
@@ -397,7 +389,7 @@ mod tests {
                             "blockerStatus": "closed", "blockerMergedAt": null,
                             "edgeValidUntil": null }]
         });
-        let e: BacklogEntry = serde_json::from_value(raw).unwrap();
+        let e: AdmissibleIssue = serde_json::from_value(raw).unwrap();
         assert_eq!(e.status, "draft");
         assert_eq!(e.issue_key.as_deref(), Some("ISS-917"));
         assert_eq!(e.relations.len(), 1);
@@ -405,15 +397,18 @@ mod tests {
     }
 
     #[test]
-    fn a_refused_promote_parses_as_a_named_reason() {
-        let raw = serde_json::json!({
-            "ok": false, "reason": "entry_gated",
-            "detail": "states.open is set to manual"
-        });
-        let out: PromoteOutcome = serde_json::from_value(raw).unwrap();
-        assert!(!out.ok);
-        assert_eq!(out.reason.as_deref(), Some("entry_gated"));
-        assert!(out.job_id.is_none());
+    fn the_pool_response_carries_no_issues_at_all() {
+        let source = include_str!("pool.rs");
+        let production = source.split("#[cfg(test)]").next().unwrap();
+        let resp = production
+            .split("struct PoolResponse {")
+            .nth(1)
+            .and_then(|r| r.split('}').next())
+            .unwrap_or_default();
+        assert!(
+            !resp.contains("backlog") && !resp.contains("Admissible"),
+            "the pool is JOBS: an issue in the array a master claims from is a malformed claim waiting to happen, and `pool promote` — the only thing that turned one into a job — is gone (ISS-933 criteria 22 and 26); PoolResponse was: {resp}"
+        );
     }
 
     #[test]

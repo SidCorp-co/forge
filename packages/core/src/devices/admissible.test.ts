@@ -9,7 +9,7 @@ const execute = vi.fn();
 
 vi.mock('../db/client.js', () => ({ db: { execute } }));
 
-const { readBacklog, readBacklogAdmissions } = await import('./backlog.js');
+const { readAdmissibleIssues, readAdmissions } = await import('./admissible.js');
 
 const DEVICE = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 const PROJECT = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -37,48 +37,48 @@ beforeEach(() => {
   execute.mockReset();
 });
 
-describe('readBacklogAdmissions', () => {
+describe('readAdmissions', () => {
   // cm:guard AC1 — a project that never declared a backlog must contribute NOTHING, which is every project on the fleet on the day this shipped.
   it('ignores a project with no poolBacklog', async () => {
     execute.mockResolvedValueOnce([projectRow({ enabled: true })]);
-    await expect(readBacklogAdmissions({ deviceId: DEVICE })).resolves.toEqual([]);
+    await expect(readAdmissions({ deviceId: DEVICE })).resolves.toEqual([]);
   });
 
   it('ignores a project whose poolBacklog admits nothing', async () => {
     execute.mockResolvedValueOnce([projectRow({ poolBacklog: { statuses: [] } })]);
-    await expect(readBacklogAdmissions({ deviceId: DEVICE })).resolves.toEqual([]);
+    await expect(readAdmissions({ deviceId: DEVICE })).resolves.toEqual([]);
   });
 
   it('ignores a project with no agent_config at all', async () => {
     execute.mockResolvedValueOnce([{ id: PROJECT, agent_config: null }]);
-    await expect(readBacklogAdmissions({ deviceId: DEVICE })).resolves.toEqual([]);
+    await expect(readAdmissions({ deviceId: DEVICE })).resolves.toEqual([]);
   });
 
   it('reads the declared statuses and the declared limit', async () => {
     execute.mockResolvedValueOnce([
       projectRow({ poolBacklog: { statuses: ['draft', 'on_hold'], limit: 7 } }),
     ]);
-    await expect(readBacklogAdmissions({ deviceId: DEVICE })).resolves.toEqual([
+    await expect(readAdmissions({ deviceId: DEVICE })).resolves.toEqual([
       { projectId: PROJECT, statuses: ['draft', 'on_hold'], limit: 7 },
     ]);
   });
 
   it('defaults the limit when the project declared none', async () => {
     execute.mockResolvedValueOnce([projectRow({ poolBacklog: { statuses: ['draft'] } })]);
-    const [a] = await readBacklogAdmissions({ deviceId: DEVICE });
+    const [a] = await readAdmissions({ deviceId: DEVICE });
     expect(a?.limit).toBe(20);
   });
 
   // cm:guard the SAFE direction. A stored config this build can no longer parse must read as NO backlog: a hand-read would keep offering rows `promoteFromBacklog` then refuses, and the master could not tell which of the two surfaces was wrong.
   it('reads a config the canonical schema rejects as no backlog at all', async () => {
     execute.mockResolvedValueOnce([projectRow({ poolBacklog: { statuses: ['open'] } })]);
-    await expect(readBacklogAdmissions({ deviceId: DEVICE })).resolves.toEqual([]);
+    await expect(readAdmissions({ deviceId: DEVICE })).resolves.toEqual([]);
   });
 
   // cm:guard the device principal must see only what its own bindings cover. Scoped through `runners` exactly as `readPool` is; a query that dropped the join would hand a paired box its owner's whole account.
   it('scopes the project read through this device runners binding', async () => {
     execute.mockResolvedValueOnce([]);
-    await readBacklogAdmissions({ deviceId: DEVICE });
+    await readAdmissions({ deviceId: DEVICE });
     const q = JSON.stringify(execute.mock.calls[0]?.[0]);
     expect(q).toContain('runners');
     expect(q).toContain(DEVICE);
@@ -86,16 +86,16 @@ describe('readBacklogAdmissions', () => {
 
   it('narrows to one project when the caller named one', async () => {
     execute.mockResolvedValueOnce([]);
-    await readBacklogAdmissions({ deviceId: DEVICE, projectId: PROJECT });
+    await readAdmissions({ deviceId: DEVICE, projectId: PROJECT });
     const q = JSON.stringify(execute.mock.calls[0]?.[0]);
     expect(q).toContain(PROJECT);
   });
 });
 
-describe('readBacklog', () => {
+describe('readAdmissibleIssues', () => {
   it('asks the database nothing when no project admits a status', async () => {
     execute.mockResolvedValueOnce([projectRow({ enabled: true })]);
-    await expect(readBacklog({ deviceId: DEVICE })).resolves.toEqual([]);
+    await expect(readAdmissibleIssues({ deviceId: DEVICE })).resolves.toEqual([]);
     expect(execute).toHaveBeenCalledTimes(1);
   });
 
@@ -103,7 +103,7 @@ describe('readBacklog', () => {
   it('returns rows carrying no job id', async () => {
     execute.mockResolvedValueOnce([projectRow({ poolBacklog: { statuses: ['draft'] } })]);
     execute.mockResolvedValueOnce([issueRow()]);
-    const [row] = await readBacklog({ deviceId: DEVICE });
+    const [row] = await readAdmissibleIssues({ deviceId: DEVICE });
     expect(row).toBeDefined();
     expect(row).not.toHaveProperty('jobId');
     expect(row?.issueKey).toBe('ISS-917');
@@ -125,7 +125,7 @@ describe('readBacklog', () => {
         ],
       }),
     ]);
-    const [row] = await readBacklog({ deviceId: DEVICE });
+    const [row] = await readAdmissibleIssues({ deviceId: DEVICE });
     expect(row?.relations).toEqual([
       {
         kind: 'blocks',
@@ -142,7 +142,7 @@ describe('readBacklog', () => {
   it('excludes issues that already carry a job or an open run, and nothing more', async () => {
     execute.mockResolvedValueOnce([projectRow({ poolBacklog: { statuses: ['draft'], limit: 3 } })]);
     execute.mockResolvedValueOnce([]);
-    await readBacklog({ deviceId: DEVICE });
+    await readAdmissibleIssues({ deviceId: DEVICE });
     const q = JSON.stringify(execute.mock.calls[1]?.[0]);
     expect(q).toContain('jobs');
     expect(q).toContain('pipeline_runs');
@@ -156,7 +156,7 @@ describe('readBacklog', () => {
   it('tolerates an issue with no iss_seq', async () => {
     execute.mockResolvedValueOnce([projectRow({ poolBacklog: { statuses: ['draft'] } })]);
     execute.mockResolvedValueOnce([issueRow({ iss_seq: null })]);
-    const [row] = await readBacklog({ deviceId: DEVICE });
+    const [row] = await readAdmissibleIssues({ deviceId: DEVICE });
     expect(row?.issueKey).toBeNull();
   });
 });

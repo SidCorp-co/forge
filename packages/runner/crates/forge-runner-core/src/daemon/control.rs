@@ -61,6 +61,16 @@ enum Request {
     /// Hand back a preparation that will never start.
     #[serde(rename_all = "camelCase")]
     Discard { job_id: String, session_id: String },
+    /// Open one run session over a GROUP of issues.
+    // cm:guard `issue_keys` is a list and there is no scalar sibling — a group of one takes the same path as a group of three, which is what `ledger::create_run_group` exists to enforce and what two sessions in one worktree came from (ISS-933 criterion 8).
+    #[serde(rename_all = "camelCase")]
+    RunOpen {
+        project_id: String,
+        issue_keys: Vec<String>,
+        agent: String,
+        #[serde(default)]
+        start_point: Option<String>,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -248,6 +258,21 @@ async fn serve_one(ctl: Arc<Control>, stream: UnixStream) {
         }) => prepare(&ctl, &job_id, &session_id, agent.as_deref()).await,
         Ok(Request::Start { job_id, session_id }) => start(&ctl, &job_id, &session_id).await,
         Ok(Request::Discard { job_id, session_id }) => discard(&ctl, &job_id, &session_id).await,
+        Ok(Request::RunOpen {
+            project_id,
+            issue_keys,
+            agent,
+            start_point,
+        }) => {
+            run_open(
+                &ctl,
+                &project_id,
+                &issue_keys,
+                &agent,
+                start_point.as_deref(),
+            )
+            .await
+        }
         Err(e) => ClaimReply::refused(format!("undecodable request: {e}")),
     };
     let mut out = serde_json::to_string(&reply).unwrap_or_else(|_| "{\"ok\":false}".into());
@@ -361,6 +386,66 @@ async fn discard(ctl: &Arc<Control>, job_id: &str, session_id: &str) -> ClaimRep
     }
 }
 
+/// Open one run session: ledger, worktree, core, pane — in that order.
+// cm:guard the daemon opens the ledger PER CALL rather than holding one. `rusqlite::Connection` is `Send` and not `Sync`, and a shared handle behind a lock would serialise every run open on this box against every other; SQLite's own file locking is what makes concurrent opens correct, and it is the thing designed for it.
+// cm:edge ordering -> packages/runner/crates/forge-runner-core/src/runner/run_session.rs — `start` owns the ordering and its refusals; everything here is the two ports and the reply.
+async fn run_open(
+    ctl: &Arc<Control>,
+    project_id: &str,
+    issue_keys: &[String],
+    agent: &str,
+    start_point: Option<&str>,
+) -> ClaimReply {
+    if !is_usable_branch_name(agent) {
+        return ClaimReply::refused("agent_name_unusable");
+    }
+    if issue_keys.is_empty() {
+        return ClaimReply::refused("issues_required");
+    }
+    // cm:guard resolve through the SAME `resolve_repo` the master loop uses, server list first. A run started in the wrong tree reads one repo and writes another, and every diff lands where nobody looks — the silent substitution this repo forbids.
+    let served = crate::transport::runners::list_me(&ctl.client)
+        .await
+        .unwrap_or_default();
+    let repo = match crate::daemon::dispatch::resolve_repo(&served, &ctl.cfg, project_id) {
+        Ok(r) => r.repo_path,
+        Err(slug) => return ClaimReply::refused(format!("no repo path on this box for {slug}")),
+    };
+    let mut ledger = match crate::runner::ledger::Ledger::default_path()
+        .and_then(|p| crate::runner::ledger::Ledger::open(&p))
+    {
+        Ok(l) => l,
+        Err(e) => return ClaimReply::refused(format!("ledger unavailable: {e}")),
+    };
+    let req = crate::runner::run_session::RunRequest {
+        run_id: uuid::Uuid::new_v4().to_string(),
+        master_session_id: String::new(),
+        // cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/runner/inflight.rs — ONE boot identity for the box. A second source would have the ledger call a run from this boot foreign, or worse call a pre-reboot run current, and recovery then acts on a pid something else now owns.
+        boot_id: crate::runner::inflight::boot_identity().unwrap_or_default(),
+        issue_keys: issue_keys.to_vec(),
+        repo: repo.to_string_lossy().to_string(),
+        branch: agent.to_string(),
+        start_point: start_point.map(str::to_string),
+        argv: crate::daemon::terminal::pane_argv(),
+    };
+    let spawner = crate::runner::run_ports::TmuxSpawner {
+        env: crate::daemon::terminal::pane_env(),
+    };
+    let core = crate::runner::run_ports::CoreRunSessions {
+        client: &ctl.client,
+        project_id: project_id.to_string(),
+    };
+    match crate::runner::run_session::start(&mut ledger, req, &spawner, &core).await {
+        Ok(run) => ClaimReply {
+            ok: true,
+            job_id: None,
+            agent_session_id: run.session_id,
+            issue_key: Some(issue_keys.join(",")),
+            reason: None,
+        },
+        Err(e) => ClaimReply::refused(e.to_string()),
+    }
+}
+
 /// Whether a master's agent name can be a git branch and a directory.
 // cm:guard this is deliberately NARROWER than git's own rules. A name that is merely legal to git — `HEAD`, a leading dash, a slash, a unicode homoglyph — still has to be a path component under `.worktrees/` and an argument on a command line, and the master is free to pick another word. Widening it to match `git check-ref-format` buys nothing and re-opens every one of those.
 fn is_usable_branch_name(name: &str) -> bool {
@@ -380,6 +465,17 @@ pub async fn request_prepare(
     _job_id: &str,
     _session_id: &str,
     _agent: &str,
+) -> std::io::Result<ClaimReply> {
+    Err(no_socket())
+}
+
+#[cfg(not(unix))]
+pub async fn request_run_open(
+    _path: &std::path::Path,
+    _project_id: &str,
+    _issue_keys: &[String],
+    _agent: &str,
+    _start_point: Option<&str>,
 ) -> std::io::Result<ClaimReply> {
     Err(no_socket())
 }
@@ -422,6 +518,25 @@ pub async fn request_prepare(
         path,
         serde_json::json!({
             "op": "prepare", "jobId": job_id, "sessionId": session_id, "agent": agent
+        }),
+    )
+    .await
+}
+
+/// Ask a running daemon to open one run session over a group of issues.
+#[cfg(unix)]
+pub async fn request_run_open(
+    path: &std::path::Path,
+    project_id: &str,
+    issue_keys: &[String],
+    agent: &str,
+    start_point: Option<&str>,
+) -> std::io::Result<ClaimReply> {
+    ask(
+        path,
+        serde_json::json!({
+            "op": "run_open", "projectId": project_id, "issueKeys": issue_keys,
+            "agent": agent, "startPoint": start_point
         }),
     )
     .await

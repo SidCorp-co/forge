@@ -80,8 +80,8 @@ describe('ISS-940 backlog rows carry the evidence fields (real Postgres)', () =>
   }
 
   async function rows() {
-    const { readBacklog } = await import('../../src/devices/backlog.js');
-    return readBacklog({ deviceId });
+    const { readAdmissibleIssues } = await import('../../src/devices/admissible.js');
+    return readAdmissibleIssues({ deviceId });
   }
 
   // cm:guard the two issues differ ONLY in the evidence columns — same status, same project, same age ordering. That is the whole claim: before this change a master saw one row shape for both, and the backlog's job/run exclusions cannot separate them because neither has a job.
