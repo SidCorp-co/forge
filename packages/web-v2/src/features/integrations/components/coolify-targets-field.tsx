@@ -15,6 +15,10 @@ import type { CoolifyApplication, CoolifyTargetInput } from "../types";
  * a bound target renders the name, domain and branch@sha Coolify reports for
  * it — a wrong binding is then visible without leaving Forge.
  */
+// cm:guard both spacers must keep `hidden` below `sm` — they exist only to align the Health URL row with the label/application row above, and at 375px they squeeze the URL input to 77px (measured on forge-beta, ISS-971), which is unusable for the one value it takes
+const ALIGN_LABEL_COL = "hidden w-40 shrink-0 sm:block";
+const ALIGN_BUTTON_COL = "hidden w-9 shrink-0 sm:block";
+
 export function CoolifyTargetsField({
   projectId,
   environment,
@@ -137,7 +141,7 @@ export function CoolifyTargetsField({
               />
             </div>
             <div className="flex items-end gap-2">
-              <div className="w-40 shrink-0" aria-hidden />
+              <div className={ALIGN_LABEL_COL} aria-hidden />
               <div className="flex-1">
                 {idx === 0 && (
                   <span className="fg-label mb-1 block text-subtle">
@@ -153,7 +157,7 @@ export function CoolifyTargetsField({
                   placeholder="https://api.example.com/health"
                 />
               </div>
-              <div className="w-9 shrink-0" aria-hidden />
+              <div className={ALIGN_BUTTON_COL} aria-hidden />
             </div>
             {identity && !identity.found && (
               <Badge tone="red">Coolify does not list this application</Badge>
