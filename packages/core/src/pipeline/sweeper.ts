@@ -32,6 +32,7 @@ import {
   runLoopMonitor,
 } from '../jobs/loop-monitor.js';
 import { recordPipelineSweeperTick } from '../jobs/pgboss-health.js';
+import { NON_CLIENT_METADATA_TYPES, PIPELINE_METADATA_TYPES } from '../jobs/session-kinds.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
@@ -61,11 +62,6 @@ import { emitPipelineWedge } from './wedge.js';
 
 export const PIPELINE_SWEEPER_QUEUE = 'pipeline-sweeper';
 
-const PIPELINE_METADATA_TYPES = sql`('pipeline','pm')`;
-// cm:guard a run session is reaped by `devices/run-session-reaper.ts` and by nothing else, so it is excluded from the arm below that would otherwise select it before it sets `claude_session_id`. Two sweeps over one row is two writers on one fact, and the loser reports a release that already happened to somebody else (ISS-933 criterion 25a).
-// cm:edge lockstep -> packages/core/src/devices/run-session.ts — `RUN_SESSION_TYPE` and this exclusion are one decision.
-const SELF_REAPED_METADATA_TYPES = sql`('pipeline','pm','run_session')`;
-
 /** Back-compat shim — thresholds are owned by the loop monitor now (single
  *  source: same env names, same clamps). */
 export function getZombieThresholds(): { queueMs: number; heartbeatMs: number } {
@@ -74,7 +70,7 @@ export function getZombieThresholds(): { queueMs: number; heartbeatMs: number } 
 }
 
 export interface ZombieSweepResult {
-  // Counts are ALARMED rows (loop misses), not reaps — see module header.
+  // cm:guard these count ALARMED rows, never reaped ones. Read as reaps they say the sweep fixed something it only reported, which is the difference between a wedge that cleared and one nobody has touched.
   queueTimedOut: number;
   heartbeatTimedOut: number;
   noClientAcked: number;
@@ -364,7 +360,7 @@ export async function alarmZombieSessions(
     FROM agent_sessions s
     WHERE s.status = 'running'
       AND s.claude_session_id IS NULL
-      AND COALESCE(s.metadata->>'type','') NOT IN ${SELF_REAPED_METADATA_TYPES}
+      AND COALESCE(s.metadata->>'type','') NOT IN ${NON_CLIENT_METADATA_TYPES}
       AND ((s.last_heartbeat_at IS NOT NULL AND s.last_heartbeat_at < ${heartbeatCutoffIso})
         OR (s.last_heartbeat_at IS NULL AND s.created_at < ${heartbeatCutoffIso}))
       ${projectClause}

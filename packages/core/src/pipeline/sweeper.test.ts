@@ -266,8 +266,8 @@ describe('alarmZombieSessions — demoted to alarm-only (ISS-449)', () => {
     expect(pass3).toMatch(/COALESCE/i);
     expect(
       pass3,
-      'a run session is reaped by `devices/run-session-reaper.ts` and must be excluded here — two sweeps over one row is two writers on one fact, and the loser reports a release that already happened to somebody else (ISS-933 criterion 25a)',
-    ).toMatch(/NOT\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*,\s*'run_session'\s*\)/);
+      'this arm and the no-client hop it alarms for are ONE predicate, and both must exclude every type that never reports a `claude_session_id`: a run session (reaped by `devices/run-session-reaper.ts` — two sweeps over one row is two writers on one fact) and a master (a tmux pane, which matches every term of this arm and survives only on the daemon re-registering it) (ISS-933 criteria 21 and 25a)',
+    ).toMatch(/NOT\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*,\s*'master'\s*,\s*'run_session'\s*\)/);
     expect(pass3).toMatch(/claude_session_id\s+IS\s+NULL/i);
     expect(pass1).not.toMatch(/NOT\s+IN\s*\(\s*'pipeline'/);
     expect(pass2).not.toMatch(/NOT\s+IN\s*\(\s*'pipeline'/);
@@ -358,7 +358,6 @@ describe('runPipelineSweep — per-pass fault isolation', () => {
   it('still runs the reapers when an upstream pass (loop monitor) throws, and re-throws to keep the missed-tick alarm', async () => {
     runLoopMonitorMock.mockRejectedValueOnce(new Error('loop boom'));
 
-    // The sweep still rejects (pgboss-health missed-tick contract preserved)…
     await expect(runPipelineSweep()).rejects.toThrow('loop boom');
 
     // cm:guard every pass must have RUN before the tick surfaces a failure, so this asserts the one-shot reaper's own candidate SELECT reached the db despite the upstream throw. Assert only the rejection and one buggy pass can starve the reapers again, which leaked every global schedule.run and interactive run.
@@ -367,9 +366,7 @@ describe('runPipelineSweep — per-pass fault isolation', () => {
     );
     expect(ranOneShotReaper).toBe(true);
 
-    // A failed tick must NOT record a clean heartbeat (so the alarm fires)…
     expect(recordTickMock).not.toHaveBeenCalled();
-    // …and the failing pass is captured individually for triage.
     expect(sentryCapture).toHaveBeenCalled();
   });
 });

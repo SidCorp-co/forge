@@ -253,7 +253,10 @@ describe('reapZombieSessions — claim/heartbeat hops (ISS-321 scoping preserved
     expect(pass1).toMatch(/->>\s*'type'\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*\)/);
     expect(pass2).toMatch(/->>\s*'type'\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*\)/);
     expect(pass3).toMatch(/COALESCE/i);
-    expect(pass3).toMatch(/NOT\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*\)/);
+    expect(
+      pass3,
+      "the no-client hop must exclude every session type that never reports a `claude_session_id`. A master is a tmux pane and matches this hop's every predicate; it survives only on the daemon re-registering it, and a rate-limited box stretches that to 5 minutes against a 3-minute heartbeat — core then fails a healthy master, mints it a second session row, and the pane goes on claiming under an id core calls dead (ISS-933 criterion 21)",
+    ).toMatch(/NOT\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*,\s*'master'\s*,\s*'run_session'\s*\)/);
     expect(pass3).toMatch(/IS\s+NULL/i);
     expect(pass1).not.toMatch(/NOT\s+IN\s*\(\s*'pipeline'/);
     expect(pass2).not.toMatch(/NOT\s+IN\s*\(\s*'pipeline'/);
