@@ -128,6 +128,9 @@ pub async fn connect(
 
                 let mut ping_interval = tokio::time::interval(PING_INTERVAL);
                 ping_interval.tick().await; // skip immediate tick
+
+                // cm:guard once the publisher is gone this arm is DISABLED, never merely ignored. A closed `watch` sender makes `changed()` return `Err` immediately and forever, so an arm left enabled resends the last snapshot in a tight loop for as long as the socket lives.
+                let mut publishing = true;
                 let mut awaiting_pong = false;
                 let mut pong_deadline = tokio::time::Instant::now() + PONG_TIMEOUT;
 
@@ -159,10 +162,14 @@ pub async fn connect(
                             Some(Err(_)) => break,
                             _ => {}
                         },
-                        _ = outbound.changed() => {
-                            let next = outbound.borrow_and_update().clone();
-                            if let Some(text) = next {
-                                if write.send(Message::Text(text.into())).await.is_err() { break; }
+                        res = outbound.changed(), if publishing => {
+                            if res.is_err() {
+                                publishing = false;
+                            } else {
+                                let next = outbound.borrow_and_update().clone();
+                                if let Some(text) = next {
+                                    if write.send(Message::Text(text.into())).await.is_err() { break; }
+                                }
                             }
                         }
                         _ = ping_interval.tick() => {
@@ -283,6 +290,32 @@ mod tests {
         assert!(
             frames[1].contains("runner:sessions"),
             "the current snapshot must follow the subscribe on the same connection: {frames:?}"
+        );
+    }
+
+    // cm:guard the publisher outliving nothing is the case that hangs a box: a closed sender makes `changed()` ready forever, and an enabled arm then floods the socket with the same frame.
+    #[tokio::test]
+    async fn a_publisher_that_goes_away_does_not_flood_the_socket() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(collect(listener, 8));
+
+        let (out_tx, out_rx) = watch::channel(Some("only".to_string()));
+        let (frame_tx, _frame_rx) = mpsc::channel(8);
+        let (cancel_tx, cancel_rx) = watch::channel(false);
+        let client = tokio::spawn(connect(cfg(port), frame_tx, out_rx, cancel_rx));
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        drop(out_tx);
+
+        let frames = server.await.unwrap();
+        let _ = cancel_tx.send(true);
+        client.abort();
+
+        assert_eq!(
+            frames.len(),
+            2,
+            "the subscribe and ONE snapshot; anything more is the dead publisher being resent: {frames:?}"
         );
     }
 

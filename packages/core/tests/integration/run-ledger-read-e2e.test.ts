@@ -25,112 +25,121 @@ import {
 
 type Apply = typeof import('../../src/devices/run-ledger.js').applyRunLedgerSnapshot;
 
-describe('run ledger read surface', () => {
-  let harness: TestDatabase;
-  let app: Hono;
-  let applySnapshot: Apply;
-  let signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
+let harness: TestDatabase;
+let app: Hono;
+let applySnapshot: Apply;
+let signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
 
-  beforeAll(async () => {
-    harness = await setupTestDatabase();
-    process.env.DATABASE_URL = harness.url;
-    process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
-    process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
-    process.env.SMTP_HOST ??= 'localhost';
-    process.env.SMTP_PORT ??= '1025';
-    process.env.SMTP_USER ??= 'test';
-    process.env.SMTP_PASS ??= 'test';
-    process.env.SMTP_FROM ??= 'test@example.com';
-    process.env.APP_BASE_URL ??= 'http://localhost:3000';
-    process.env.CORS_ORIGINS ??= 'http://localhost:3000';
-    process.env.NODE_ENV ??= 'test';
+beforeAll(async () => {
+  harness = await setupTestDatabase();
+  process.env.DATABASE_URL = harness.url;
+  process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
+  process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
+  process.env.SMTP_HOST ??= 'localhost';
+  process.env.SMTP_PORT ??= '1025';
+  process.env.SMTP_USER ??= 'test';
+  process.env.SMTP_PASS ??= 'test';
+  process.env.SMTP_FROM ??= 'test@example.com';
+  process.env.APP_BASE_URL ??= 'http://localhost:3000';
+  process.env.CORS_ORIGINS ??= 'http://localhost:3000';
+  process.env.NODE_ENV ??= 'test';
 
-    const { runLedgerRoutes } = await import('../../src/devices/run-ledger-routes.js');
-    applySnapshot = (await import('../../src/devices/run-ledger.js')).applyRunLedgerSnapshot;
-    const { errorHandler } = await import('../../src/middleware/error.js');
-    const { requestId } = await import('../../src/middleware/request-id.js');
-    signUserToken = (await import('../../src/auth/jwt.js')).signUserToken;
+  const { runLedgerRoutes } = await import('../../src/devices/run-ledger-routes.js');
+  applySnapshot = (await import('../../src/devices/run-ledger.js')).applyRunLedgerSnapshot;
+  const { errorHandler } = await import('../../src/middleware/error.js');
+  const { requestId } = await import('../../src/middleware/request-id.js');
+  signUserToken = (await import('../../src/auth/jwt.js')).signUserToken;
 
-    app = new Hono();
-    app.use('*', requestId());
-    app.route('/api/projects', runLedgerRoutes);
-    app.onError(errorHandler as unknown as Parameters<typeof app.onError>[0]);
-  }, 120_000);
+  app = new Hono();
+  app.use('*', requestId());
+  app.route('/api/projects', runLedgerRoutes);
+  app.onError(errorHandler as unknown as Parameters<typeof app.onError>[0]);
+}, 120_000);
 
-  afterAll(async () => {
-    if (harness) await harness.cleanup();
+afterAll(async () => {
+  if (harness) await harness.cleanup();
+});
+
+beforeEach(async () => {
+  await truncateAll(harness.db);
+});
+
+async function member(): Promise<{
+  userId: string;
+  token: string;
+  projectId: string;
+  deviceId: string;
+}> {
+  const user = await createTestUser(harness.db);
+  await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);
+  const project = await createTestProject(harness.db, user.id);
+  await createTestProjectMember(harness.db, {
+    userId: user.id,
+    projectId: project.id,
+    role: 'member',
   });
+  const device = await createTestDevice(harness.db, user.id);
+  await bind(device.id, project.id);
+  return {
+    userId: user.id,
+    token: await signUserToken(user.id),
+    projectId: project.id,
+    deviceId: device.id,
+  };
+}
 
-  beforeEach(async () => {
-    await truncateAll(harness.db);
+/** The runners row that makes this box a box of this project. */
+async function bind(deviceId: string, projectId: string): Promise<void> {
+  await harness.db.execute(sql`
+    INSERT INTO runners (id, project_id, type, device_id, name, status, last_seen_at)
+    VALUES (${randomUUID()}, ${projectId}, 'claude-code', ${deviceId}, 'box', 'online', now())
+  `);
+}
+
+/** A run session as core mints one, so the join has something to read. */
+async function seedSession(projectId: string, heartbeat: string): Promise<string> {
+  const runId = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, started_at)
+    VALUES (${runId}, ${projectId}, ${null}, 'system', 'running', now())
+  `);
+  const sessionId = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO agent_sessions
+      (id, project_id, pipeline_run_id, status, last_heartbeat_at, title, created_at, updated_at)
+    VALUES (${sessionId}, ${projectId}, ${runId}, 'running', ${heartbeat}, 'run: grp-1', now(), now())
+  `);
+  return sessionId;
+}
+
+function entry(projectId: string, over: Record<string, unknown> = {}) {
+  return {
+    runId: 'run-1',
+    projectId,
+    sessionId: null,
+    masterSessionId: null,
+    pid: 4242,
+    worktreePath: '/repo/.worktrees/grp-1',
+    bootId: 'boot-a',
+    incarnation: 'live',
+    work: 'runnable',
+    blockerKind: null,
+    waitingOn: null,
+    issues: [
+      { issueKey: 'ISS-934', leaseReturned: false },
+      { issueKey: 'ISS-933', leaseReturned: true },
+    ],
+    ...over,
+  } as Parameters<Apply>[0]['entries'][number];
+}
+
+async function read(projectId: string, token: string): Promise<Response> {
+  return app.request(`/api/projects/${projectId}/run-sessions`, {
+    headers: { Authorization: `Bearer ${token}` },
   });
+}
 
-  async function member(): Promise<{
-    userId: string;
-    token: string;
-    projectId: string;
-    deviceId: string;
-  }> {
-    const user = await createTestUser(harness.db);
-    await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);
-    const project = await createTestProject(harness.db, user.id);
-    await createTestProjectMember(harness.db, {
-      userId: user.id,
-      projectId: project.id,
-      role: 'member',
-    });
-    const device = await createTestDevice(harness.db, user.id);
-    return {
-      userId: user.id,
-      token: await signUserToken(user.id),
-      projectId: project.id,
-      deviceId: device.id,
-    };
-  }
-
-  /** A run session as core mints one, so the join has something to read. */
-  async function seedSession(projectId: string, heartbeat: string): Promise<string> {
-    const runId = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, started_at)
-      VALUES (${runId}, ${projectId}, ${null}, 'system', 'running', now())
-    `);
-    const sessionId = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO agent_sessions
-        (id, project_id, pipeline_run_id, status, last_heartbeat_at, title, created_at, updated_at)
-      VALUES (${sessionId}, ${projectId}, ${runId}, 'running', ${heartbeat}, 'run: grp-1', now(), now())
-    `);
-    return sessionId;
-  }
-
-  function entry(projectId: string, over: Record<string, unknown> = {}) {
-    return {
-      runId: 'run-1',
-      projectId,
-      sessionId: null,
-      masterSessionId: null,
-      pid: 4242,
-      worktreePath: '/repo/.worktrees/grp-1',
-      bootId: 'boot-a',
-      incarnation: 'live',
-      work: 'runnable',
-      blockerKind: null,
-      waitingOn: null,
-      issues: [
-        { issueKey: 'ISS-934', leaseReturned: false },
-        { issueKey: 'ISS-933', leaseReturned: true },
-      ],
-      ...over,
-    } as Parameters<Apply>[0]['entries'][number];
-  }
-
-  async function read(projectId: string, token: string): Promise<Response> {
-    return app.request(`/api/projects/${projectId}/run-sessions`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-  }
-
+describe('a member reading the fleet', () => {
   it('answers a member with the parent, the pid and the worktree the box reported', async () => {
     const m = await member();
     const masterSessionId = await seedSession(m.projectId, '2026-09-08T09:00:00Z');
@@ -170,7 +179,9 @@ describe('run ledger read surface', () => {
     expect(body.items[0]?.sessionStatus).toBe('running');
     expect(String(body.items[0]?.lastActivityAt)).toContain('2026-09-08T09:30:00');
   });
+});
 
+describe('what one box reported', () => {
   it('retires a run the newest snapshot from that device no longer names', async () => {
     const m = await member();
     await applySnapshot({
@@ -191,6 +202,7 @@ describe('run ledger read surface', () => {
   it('leaves another box alone when one box reports nothing', async () => {
     const m = await member();
     const other = await createTestDevice(harness.db, m.userId);
+    await bind(other.id, m.projectId);
     await applySnapshot({ deviceId: m.deviceId, entries: [entry(m.projectId)] });
     await applySnapshot({ deviceId: other.id, entries: [entry(m.projectId, { runId: 'run-9' })] });
     await applySnapshot({ deviceId: m.deviceId, entries: [] });
@@ -217,6 +229,7 @@ describe('run ledger read surface', () => {
   it('shows one project nothing of another project on the same box', async () => {
     const a = await member();
     const b = await member();
+    await bind(a.deviceId, b.projectId);
     await applySnapshot({
       deviceId: a.deviceId,
       entries: [entry(a.projectId), entry(b.projectId, { runId: 'run-b' })],
@@ -226,5 +239,22 @@ describe('run ledger read surface', () => {
       items: Array<{ runId: string }>;
     };
     expect(body.items.map((r) => r.runId)).toEqual(['run-1']);
+  });
+
+  // cm:guard every paired box in the fleet holds a valid device token, so the project on a snapshot entry is a CLAIM. Without this check any box could put a worktree path and a pid into any project's read surface (ISS-934).
+  it('drops a run naming a project this box is not bound to', async () => {
+    const a = await member();
+    const b = await member();
+    await applySnapshot({
+      deviceId: a.deviceId,
+      entries: [entry(a.projectId), entry(b.projectId, { runId: 'run-b' })],
+    });
+
+    const mine = (await (await read(a.projectId, a.token)).json()) as {
+      items: Array<{ runId: string }>;
+    };
+    expect(mine.items.map((r) => r.runId)).toEqual(['run-1']);
+    const theirs = (await (await read(b.projectId, b.token)).json()) as { count: number };
+    expect(theirs.count).toBe(0);
   });
 });
