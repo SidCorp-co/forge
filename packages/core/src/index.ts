@@ -81,7 +81,7 @@ import { attachmentRoutes, issueAttachmentRoutes } from './issues/attachment-rou
 import { issueDependencyRoutes } from './issues/dependency-routes.js';
 import { issueExtrasRoutes } from './issues/extras-routes.js';
 import { issueMergeRoutes } from './issues/merge-routes.js';
-import { bodyRoutes, issueProjectRoutes, issueRoutes } from './issues/routes.js';
+import { bodyProjectRoutes, bodyRoutes, issueProjectRoutes, issueRoutes } from './issues/routes.js';
 import { searchRoutes } from './issues/search.js';
 import { issueSteerRoutes } from './issues/steer-routes.js';
 import { transitionRoutes } from './issues/transition.js';
@@ -338,6 +338,7 @@ app.route('/api/projects', skillSmokeVerifyRoutes);
 app.route('/api/projects', reconcileRoutes);
 app.route('/api/invitations', invitationRoutes);
 app.route('/api/projects', issueProjectRoutes);
+app.route('/api/projects', bodyProjectRoutes);
 app.route('/api/projects', searchRoutes);
 app.route('/api/projects', labelProjectRoutes);
 app.route('/api/projects', moduleDiagramRoutes);
@@ -346,9 +347,7 @@ app.route('/api/projects', projectActivityRoutes);
 app.route('/api/projects', jobProjectRoutes);
 // cm:guard issueAttachmentRoutes MUST mount before issueExtrasRoutes — extras carries `use('*', requireAuth(), assertEmailVerified())`, which covers every /api/issues path, so registered first it answers 401 for the PAT/device callers the attachment routes exist to serve (ISS-719). Disjoint paths do NOT save you; only registration order does. See middleware/route-mount-order.test.ts.
 app.route('/api/issues', issueAttachmentRoutes);
-// issueExtrasRoutes mounts /pipeline-timing (static) and must register before
-// issueRoutes which has GET /:id with a z.uuid() validator that would
-// 400-reject the literal "pipeline-timing" segment.
+// cm:guard mount issueExtrasRoutes BEFORE issueRoutes — its `/pipeline-timing` is a STATIC segment and `issueRoutes`' `GET /:id` carries a `z.uuid()` validator, so the wrong order answers 400 on a real route instead of serving it. Same shape as the projectHealthRoutes guard above.
 app.route('/api/issues', issueExtrasRoutes);
 app.route('/api/issues', issueMergeRoutes);
 // Capability-authenticated attachment upload (presigned-URL pattern). On its own

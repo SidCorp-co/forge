@@ -154,19 +154,20 @@ export function BodyPolicySection({
 								key={stage}
 								className="flex flex-col gap-2 rounded border border-line p-3 sm:flex-row sm:items-center sm:justify-between"
 							>
-								<div className="min-w-0">
+								<div className="min-w-0 sm:flex-1">
 									<p className="fg-body-sm text-fg">
 										{statusLabel(stage as IssueStatus)}
 									</p>
-									<p className="fg-caption truncate text-muted">
+									<p className="fg-caption text-muted">
 										{row ? fractionLabel(row) : "no data"}
 									</p>
 									{row && requiredLabel(row) && (
-										<p className="fg-caption truncate text-muted">
+										<p className="fg-caption text-muted">
 											{requiredLabel(row)}
 										</p>
 									)}
 								</div>
+								<div className="sm:w-64 sm:shrink-0">
 								<NativeSelect
 									value={value}
 									disabled={!canEdit || components.isPending}
@@ -179,6 +180,7 @@ export function BodyPolicySection({
 										...roots.map((name) => ({ value: name, label: name })),
 									]}
 								/>
+								</div>
 							</div>
 						);
 					})}
