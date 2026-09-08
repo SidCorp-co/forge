@@ -100,6 +100,14 @@ enum Request {
         #[serde(default)]
         resume_id: Option<String>,
     },
+    /// Record a decision this session took instead of asking about it.
+    // cm:guard the counterpart of `Ask` and the reason it can be judged: tier 0 says a reversible write is TAKEN and recorded, so without this verb the only thing a box records is the questions it did ask and every master looks equally talkative (ISS-964 criteria 1, 2).
+    #[serde(rename_all = "camelCase")]
+    Decide {
+        token: String,
+        decision_id: String,
+        verb: String,
+    },
 }
 
 fn human_blocker() -> String {
@@ -114,7 +122,8 @@ impl Request {
             | Request::Discard { token, .. }
             | Request::Release { token, .. }
             | Request::RunOpen { token, .. }
-            | Request::Ask { token, .. } => token,
+            | Request::Ask { token, .. }
+            | Request::Decide { token, .. } => token,
         }
     }
 }
@@ -363,6 +372,33 @@ async fn serve_request(ctl: &Arc<Control>, req: Request, session_id: &str) -> Cl
             )
             .await
         }
+        Request::Decide {
+            decision_id, verb, ..
+        } => decide(&decision_id, &verb, session_id),
+    }
+}
+
+/// Record the decision under the session the TOKEN named.
+// cm:guard the ledger is the store and never a counter in this process: the master that took the decisions has exited by the time anybody reads the ratio, and a count that dies with it is no denominator (ISS-964 criterion 2).
+fn decide(decision_id: &str, verb: &str, session_id: &str) -> ClaimReply {
+    if verb.trim().is_empty() {
+        return ClaimReply::refused("verb_required");
+    }
+    let ledger = match crate::runner::ledger::Ledger::default_path()
+        .and_then(|p| crate::runner::ledger::Ledger::open(&p))
+    {
+        Ok(l) => l,
+        Err(e) => return ClaimReply::refused(format!("ledger unavailable: {e}")),
+    };
+    match ledger.record_decision(decision_id, session_id, verb) {
+        Ok(()) => ClaimReply {
+            ok: true,
+            job_id: None,
+            agent_session_id: Some(session_id.to_string()),
+            issue_key: Some(decision_id.to_string()),
+            reason: None,
+        },
+        Err(e) => ClaimReply::refused(e.to_string()),
     }
 }
 
@@ -780,6 +816,34 @@ pub async fn request_ask(
     .await
 }
 
+/// Tell a running daemon a decision was taken rather than asked about.
+// cm:guard the id is minted by the CALLER and the write is `INSERT OR IGNORE`, so a frame the master retries after a socket error counts once. A daemon-minted id would make every retry a second decision and inflate the denominator in the direction that flatters the master (ISS-964 criterion 2).
+#[cfg(unix)]
+pub async fn request_decide(
+    path: &std::path::Path,
+    token: &str,
+    decision_id: &str,
+    verb: &str,
+) -> std::io::Result<ClaimReply> {
+    ask(
+        path,
+        serde_json::json!({
+            "op": "decide", "token": token, "decisionId": decision_id, "verb": verb
+        }),
+    )
+    .await
+}
+
+#[cfg(not(unix))]
+pub async fn request_decide(
+    _path: &std::path::Path,
+    _token: &str,
+    _decision_id: &str,
+    _verb: &str,
+) -> std::io::Result<ClaimReply> {
+    Err(no_socket())
+}
+
 /// Ask a running daemon to hand work back.
 #[cfg(unix)]
 pub async fn request_release(
@@ -1076,6 +1140,31 @@ mod tests {
             body.matches("token: String").count(),
             variants,
             "every verb on this socket acts on a session, so every frame needs the capability — one variant without it is a way in for all of them (ISS-964 criterion 31)"
+        );
+    }
+    #[test]
+    fn a_decision_with_no_verb_is_refused_rather_than_counted() {
+        let reply = decide("dec-1", "   ", "master-1");
+        assert!(!reply.ok);
+        assert_eq!(
+            reply.reason.as_deref(),
+            Some("verb_required"),
+            "a blank row still increments the denominator, which is how a ratio is gamed without anybody lying (ISS-964 criterion 2)"
+        );
+    }
+
+    // cm:guard scans the source because the claim is about which STRING is written, and both compile: the session comes from the token the daemon resolved, never from the frame. A `decision_id` a caller mints is fine — it is the dedupe key — but a session a caller names would let one master pad another's denominator (ISS-964 criteria 2, 30).
+    #[test]
+    fn a_decision_is_recorded_under_the_session_the_token_named() {
+        let src = include_str!("control.rs");
+        let body = src
+            .split("fn decide(")
+            .nth(1)
+            .and_then(|s| s.split("\n}\n").next())
+            .expect("the decide handler must be findable");
+        assert!(
+            body.contains("record_decision(decision_id, session_id, verb)"),
+            "the recorded session must be the resolved one: {body}"
         );
     }
 }

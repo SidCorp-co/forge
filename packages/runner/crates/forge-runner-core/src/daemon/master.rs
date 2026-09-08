@@ -889,6 +889,19 @@ mod tests {
     }
 
     // cm:guard the policy must arrive VERBATIM and this asserts exactly that. A master briefed with a summary of the owner's instruction is a master following the summariser, and the whole failure ISS-929 fixes is an instruction that reached the pane wrong or not at all.
+    // cm:edge lockstep -> packages/runner/crates/forge-runner-core/assets/forge-master-skill.md — the verb and the instruction to use it ship in one binary and are useless apart: a `decide` nothing tells the master about is a denominator that stays zero, which reads as a master that asks about everything (ISS-964 criterion 2).
+    #[test]
+    fn the_brief_tells_the_master_to_record_what_it_decided_rather_than_asked() {
+        assert!(
+            MASTER_SKILL.contains("pool decide"),
+            "the brief must name the verb that records a decision; without it the ratio's denominator is zero for every master (ISS-964 criteria 1, 2)"
+        );
+        assert!(
+            MASTER_SKILL.contains("reversible"),
+            "tier 0 is the rule that a reversible write is TAKEN and recorded — the brief is where the master reads it"
+        );
+    }
+
     #[test]
     fn the_owner_policy_reaches_the_brief_verbatim() {
         let policy = "Budget: 5 sessions.\nDrafts are eligible work.\nGroup related issues.";

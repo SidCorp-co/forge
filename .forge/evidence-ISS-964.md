@@ -604,3 +604,30 @@ sake.
   `['agent-sessions']` and `['projects',id,'active-runners']` and nothing else — so a query key under
   either prefix would have looked live and never refreshed. 20s sits under the box's own 30s snapshot
   sweep. A `run-ledger.updated` frame would remove the poll; it is not in any criterion.
+
+## S12 — criterion 2 had no denominator, and the audit for criterion 60 is what found it
+
+The S1 plan comment promised *"every row in the 'take it' half that is exercised writes a
+`decisions` count on the run"* and nothing built it. Found by counting criterion rows in this file
+before writing the criterion-60 comment, not by a gate.
+
+| # | Criterion | Test | RED (quoted) | Commit |
+|---|---|---|---|---|
+| 2 | a decision taken instead of asked is recorded and countable | `ledger::a_decision_taken_instead_of_asked_is_recorded_and_countable` | `error[E0599]: no method named record_decision found for struct ledger::Ledger` | S12 |
+| 2 | the two counts are read side by side for one session | `the_two_counts_are_read_side_by_side_for_one_session` | mutation (`WHERE ?1 = ?1` for the session filter): `the counts belong to the session that took them, and another master's ratio is not this one's` | S12 |
+| 2 | a retried frame counts once | `a_decision_repeated_under_one_id_is_counted_once` | mutation (`INSERT` for `INSERT OR IGNORE`): `UNIQUE constraint failed: decisions.decision_id` | S12 |
+| 2 | the count outlives the master that took it | `a_decision_outlives_the_process_that_took_it` | same E0599 — nothing persisted it | S12 |
+| 2 | a blank verb is refused rather than counted | `control::a_decision_with_no_verb_is_refused_rather_than_counted` | mutation (`if false` over the check): `a blank row still increments the denominator, which is how a ratio is gamed without anybody lying` | S12 |
+| 2, 30 | the session is the token's, never the frame's | `control::a_decision_is_recorded_under_the_session_the_token_named` | source scan; `no_frame_declares_a_session_and_every_frame_carries_a_token` goes red at COMPILE time when `Decide` drops its token: `error[E0026]: variant control::Request::Decide does not have a field named token` | S12 |
+| 1, 2 | the brief tells the master to record it | `master::the_brief_tells_the_master_to_record_what_it_decided_rather_than_asked` | `the brief must name the verb that records a decision; without it the ratio's denominator is zero for every master` | S12 |
+
+### Priced
+
+The verb is reachable from the master's brief, which ships in this repo — so the denominator is
+real for the master lane. **A run session's writes are taken by `issue-flow`, which is
+forge-plugin's**, so that half of the inventory records nothing until the call site lands there.
+Declared, filed on that project, not fixed here: the forge-plugin carve-out is the one place this
+repo files instead of fixing.
+
+The verb is free text and the tier-0 inventory is NOT duplicated in Rust — a second copy would
+drift from the one on ISS-964 in silence.

@@ -209,6 +209,9 @@ const QUESTION_COLUMNS: &[&str] = &["question_id", "run_id", "round", "asked_at"
 #[cfg(test)]
 const RUN_ISSUE_COLUMNS: &[&str] = &["run_id", "issue_key", "lease_returned_at"];
 
+#[cfg(test)]
+const DECISION_COLUMNS: &[&str] = &["decision_id", "session_id", "verb", "decided_at"];
+
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS runs (
   run_id              TEXT PRIMARY KEY,
@@ -246,6 +249,12 @@ CREATE TABLE IF NOT EXISTS questions (
   run_id      TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
   round       INTEGER NOT NULL,
   asked_at    INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS decisions (
+  decision_id TEXT PRIMARY KEY,
+  session_id  TEXT NOT NULL,
+  verb        TEXT NOT NULL,
+  decided_at  INTEGER NOT NULL
 );
 ";
 
@@ -667,6 +676,43 @@ impl Ledger {
         Ok(())
     }
 
+    /// Record a decision taken instead of asked, and count it.
+    // cm:guard the DENOMINATOR, and it is the whole reason this table exists: a ledger that records only the questions asked can say how many there were and never whether that was many, so `this master asks too much` stays a feeling. Deleting either half of `asks_and_decisions` leaves a numerator with nothing under it (ISS-964 criterion 2).
+    // cm:why the verb is free text and the tier-0 inventory is NOT duplicated here — the inventory lives on ISS-964 and a second copy in Rust would drift from it in silence, which is worse than no copy.
+    pub fn record_decision(&self, decision_id: &str, session_id: &str, verb: &str) -> Result<()> {
+        self.conn
+            .execute(
+                "INSERT OR IGNORE INTO decisions (decision_id, session_id, verb, decided_at)
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![decision_id, session_id, verb, now()],
+            )
+            .map_err(sql_err)?;
+        Ok(())
+    }
+
+    /// `(asked, decided)` for one session — the ratio, in one read.
+    // cm:guard the asks are counted through `runs.master_session_id` rather than off the `questions` row, because a question belongs to a RUN and the session that asked it is the run's parent. Counting `questions` alone would credit a re-parented park to whichever master adopted it (ISS-964 criteria 2, 28).
+    pub fn asks_and_decisions(&self, session_id: &str) -> Result<(i64, i64)> {
+        let asked: i64 = self
+            .conn
+            .query_row(
+                "SELECT count(*) FROM questions q JOIN runs r ON r.run_id = q.run_id
+                 WHERE r.master_session_id = ?1",
+                params![session_id],
+                |r| r.get(0),
+            )
+            .map_err(sql_err)?;
+        let decided: i64 = self
+            .conn
+            .query_row(
+                "SELECT count(*) FROM decisions WHERE session_id = ?1",
+                params![session_id],
+                |r| r.get(0),
+            )
+            .map_err(sql_err)?;
+        Ok((asked, decided))
+    }
+
     /// Step THREE for a run that keeps its process: declare `live × blocked`.
     // cm:guard the `Listening` is a PRECONDITION expressed in the type, not a courtesy: a caller cannot declare this state without having opened the door first, which is criterion 10's ordering made unwritable rather than merely tested (ISS-964 criterion 10).
     // cm:guard `Human` and `Nobody` are REFUSED here by name. A human wait is unbounded and releases the process, so it cannot hold a read fd and must not claim `Live`; `Nobody` is a failure with a name that writes no question at all (ISS-964 criteria 4, 5, 6).
@@ -986,6 +1032,10 @@ mod tests {
             RUN_ISSUE_COLUMNS.iter().map(|s| (*s).to_string()).collect();
         declared_issues.sort();
         assert_eq!(columns(&led, "run_issues"), declared_issues);
+        let mut declared_decisions: Vec<String> =
+            DECISION_COLUMNS.iter().map(|s| (*s).to_string()).collect();
+        declared_decisions.sort();
+        assert_eq!(columns(&led, "decisions"), declared_decisions);
 
         for banned in ["cursor", "last_event", "offset", "wake", "processed", "seq"] {
             assert!(
@@ -1097,6 +1147,64 @@ mod tests {
             "the refusal must name the run that holds it, so the reader knows where the work already is: {err}"
         );
         assert!(led.run("run-2").unwrap().is_none());
+    }
+
+    #[test]
+    fn a_decision_taken_instead_of_asked_is_recorded_and_countable() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(seed(&["ISS-957"])).unwrap();
+        led.record_decision("dec-1", "master-1", "git push of the run's own branch")
+            .unwrap();
+        led.record_decision("dec-2", "master-1", "forge status transition")
+            .unwrap();
+        assert_eq!(
+            led.asks_and_decisions("master-1").unwrap(),
+            (0, 2),
+            "a design that records only asked questions leaves `this master asks too much` a feeling: the denominator is what makes it a ratio (ISS-964 criterion 2)"
+        );
+    }
+
+    #[test]
+    fn the_two_counts_are_read_side_by_side_for_one_session() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(seed(&["ISS-957"])).unwrap();
+        led.begin_question("q-1", "run-1", 1, "q-1").unwrap();
+        led.record_decision("dec-1", "master-1", "commit").unwrap();
+        assert_eq!(led.asks_and_decisions("master-1").unwrap(), (1, 1));
+        assert_eq!(
+            led.asks_and_decisions("master-2").unwrap(),
+            (0, 0),
+            "the counts belong to the session that took them, and another master's ratio is not this one's"
+        );
+    }
+
+    #[test]
+    fn a_decision_repeated_under_one_id_is_counted_once() {
+        let led = Ledger::open_in_memory().unwrap();
+        led.record_decision("dec-1", "master-1", "commit").unwrap();
+        led.record_decision("dec-1", "master-1", "commit").unwrap();
+        assert_eq!(
+            led.asks_and_decisions("master-1").unwrap().1,
+            1,
+            "the id is minted by the caller so a retried frame is free, exactly as a re-posted question is (ISS-964 criteria 2, 10)"
+        );
+    }
+
+    #[test]
+    fn a_decision_outlives_the_process_that_took_it() {
+        let dir = std::env::temp_dir().join(format!("forge-dec-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("ledger.sqlite");
+        {
+            let led = Ledger::open(&path).unwrap();
+            led.record_decision("dec-1", "master-1", "commit").unwrap();
+        }
+        let led = Ledger::open(&path).unwrap();
+        assert_eq!(
+            led.asks_and_decisions("master-1").unwrap().1,
+            1,
+            "a counter held in the process is no denominator: the master that took the decisions is gone by the time anybody reads the ratio"
+        );
     }
 
     #[test]

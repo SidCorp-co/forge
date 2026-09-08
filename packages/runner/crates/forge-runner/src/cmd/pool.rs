@@ -46,6 +46,8 @@ pub enum Command {
     Run(RunArgs),
     /// Park one of this session's runs on a question, releasing its process.
     Ask(AskArgs),
+    /// Record a decision taken instead of asked about.
+    Decide(DecideArgs),
 }
 
 #[derive(ClapArgs)]
@@ -103,6 +105,13 @@ pub struct AskArgs {
     /// Who can resolve this. Only `human` releases the box; the rest are refused here.
     #[arg(long, default_value = "human")]
     pub blocker_kind: String,
+}
+
+#[derive(ClapArgs)]
+pub struct DecideArgs {
+    /// What was decided, in a few words. Free text — the tier-0 inventory lives on ISS-964.
+    #[arg(long)]
+    pub verb: String,
 }
 
 #[derive(ClapArgs)]
@@ -259,6 +268,20 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
             let out = ask(
                 "ask",
                 control::request_ask(&sock, &token()?, &a.run_id, &a.prompt, &a.blocker_kind).await,
+                &sock,
+            )?;
+            report(&out)?;
+            if !out.ok {
+                std::process::exit(1);
+            }
+        }
+        // cm:guard the counterpart of `ask` and it goes to the same daemon for the same reason: the ledger is the store, and a count that lived in the master's pane would die with the pane before anybody read the ratio (ISS-964 criterion 2).
+        Command::Decide(a) => {
+            let sock = socket()?;
+            let id = uuid::Uuid::new_v4().to_string();
+            let out = ask(
+                "decide",
+                control::request_decide(&sock, &token()?, &id, &a.verb).await,
                 &sock,
             )?;
             report(&out)?;

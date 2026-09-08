@@ -230,6 +230,27 @@ the job. Two rules: never kill a process you cannot place in a worktree you
 named, and never kill your own session — check the pid you found is not yours.
 A wrong kill takes an agent that was working.
 
+## Deciding without asking
+
+**A write you can undo is taken, not asked about.** Editing a file in a run's
+worktree, committing, pushing the run's own `ISS-*` branch, opening a PR,
+commenting on an issue, moving its status — every one of those is reversible, so
+none of them is a question. The irreversible ones are: pushing to a shared
+branch, force-pushing, merging somebody else's PR, deploying, touching a live
+database, writing project config, and pushing a skill. Those are the only writes
+that may ever become a question.
+
+Record the ones you took:
+
+```
+forge-runner pool decide --verb "pushed the run's own branch"
+```
+
+It costs nothing and it is the only thing that makes *asked* a ratio rather than
+a tally. A pass that records nothing and asks twice is indistinguishable from a
+pass that decided forty things and asked twice — and the second is a master
+doing its job.
+
 ## Ending a pass
 
 Release anything you prepared and did not start. Then say what you decided and
