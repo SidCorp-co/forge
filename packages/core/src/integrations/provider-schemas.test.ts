@@ -160,3 +160,40 @@ describe('the release channel on every provider that can be the production bindi
     expect(parsed.targets).toBeUndefined();
   });
 });
+
+describe('a target label names one application', () => {
+  const target = (label: string, extra: Record<string, unknown> = {}) => ({
+    label,
+    resourceUuid: `uuid-${label}`,
+    ...extra,
+  });
+  const parse = (targets: unknown[]) =>
+    configSchemaForProvider('coolify').safeParse({
+      baseUrl: 'https://coolify.example.test',
+      targets,
+    });
+
+  it('refuses two targets that share a label, naming the label', () => {
+    const res = parse([target('api'), target('web'), target('api')]);
+    expect(res.success).toBe(false);
+    expect(res.error?.issues[0]?.message).toContain('both labelled "api"');
+  });
+
+  // cm:guard this is the case the refusal exists for: `coolify.confirm` carries only `targetLabel`, so a duplicate makes the health gate read the WRONG target's healthUrl and roll back that application instead (ISS-971)
+  it('refuses the duplicate even when the two rows differ in every other field', () => {
+    expect(
+      parse([
+        target('api', { healthUrl: 'https://a.example.test/health' }),
+        { label: 'api', resourceUuid: 'a-completely-different-uuid' },
+      ]).success,
+    ).toBe(false);
+  });
+
+  it('accepts labels that differ only in case — a label is matched exactly, not folded', () => {
+    expect(parse([target('api'), target('API')]).success).toBe(true);
+  });
+
+  it('accepts distinct labels', () => {
+    expect(parse([target('api'), target('web')]).success).toBe(true);
+  });
+});
