@@ -10,6 +10,7 @@ import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { runnerLimitReasons } from '../db/schema.js';
 import type { QuestionBlockerKind, QuestionOption } from '../db/schema-questions.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
@@ -40,6 +41,7 @@ import {
   startJobForMaster,
 } from './claim.js';
 import { readDeviceLoad, readFleetLoad, readProjectLoad } from './load.js';
+import { clearMasterLimit, recordMasterLimit } from './master-limit.js';
 import { closeMasterSession, ensureMasterSession } from './master-session.js';
 import { readPool } from './pool.js';
 import {
@@ -345,4 +347,50 @@ devicePoolRoutes.get('/me/questions/:questionId', requireDevice(), async (c) => 
   });
   if (!waiter) throw notFound('question');
   return c.json({ answer: await answerOf(questionId) });
+});
+
+const masterLimitSchema = z.object({
+  reason: z.enum(runnerLimitReasons),
+  resetsInSeconds: z
+    .number()
+    .int()
+    .min(0)
+    .max(7 * 24 * 60 * 60)
+    .nullish(),
+  detail: z.string().min(1).max(200),
+});
+
+// cm:guard the master reports a TYPED reason and core never classifies text here — see the guard on `recordMasterLimit` for why a raw-text door would let anyone who can write an issue body hard-exclude a box from dispatch.
+// cm:edge contract -> packages/core/src/db/schema.ts — `runnerLimitReasons` is the enum this door validates against and the column stores; a member added there that the runner is never taught to send is a cap the master can see and cannot report.
+devicePoolRoutes.post(
+  '/me/limit',
+  requireDevice(),
+  zValidator('json', masterLimitSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const body = c.req.valid('json');
+    const resetsInSeconds = body.resetsInSeconds ?? null;
+    // cm:guard refuse the pair by NAME instead of dropping one half: `auth` has no parseable reset by design, so a stamp that kept a reset would hand an auth-dead box a self-healing window and put it back in the candidate set the moment it lapsed.
+    if (body.reason === 'auth' && resetsInSeconds !== null) {
+      throw new HTTPException(400, {
+        message: "an 'auth' limit has no reset — report it without `resetsInSeconds`",
+        cause: { code: 'AUTH_LIMIT_HAS_NO_RESET' },
+      });
+    }
+    const stamped = await recordMasterLimit(c.get('device').id, {
+      reason: body.reason,
+      resetsInSeconds,
+      detail: body.detail,
+    });
+    if (!stamped) throw notFound('claude-code runner for this device');
+    return c.json({ runnerId: stamped.runnerId });
+  },
+);
+
+// cm:why the early exit is a DELETE on the same path rather than a `clear` flag on the POST: the two carry opposite evidence — one says the account failed, the other that it worked — and a single door taking both is how a caller ends up clearing a limit by omitting a field.
+devicePoolRoutes.delete('/me/limit', requireDevice(), async (c) => {
+  const cleared = await clearMasterLimit(c.get('device').id);
+  if (!cleared) throw notFound('claude-code runner for this device');
+  return c.json({ runnerId: cleared.runnerId });
 });

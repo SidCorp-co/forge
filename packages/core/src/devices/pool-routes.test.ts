@@ -29,6 +29,13 @@ vi.mock('./claim.js', () => ({
   releaseAllHeldBySession: vi.fn(),
   releaseJobFromMaster: vi.fn(),
 }));
+const recordMasterLimit = vi.fn(async (_d: string, _r: unknown) => ({ runnerId: 'r-1' }));
+const clearMasterLimit = vi.fn(async (_d: string) => ({ runnerId: 'r-1' }));
+vi.mock('./master-limit.js', () => ({
+  recordMasterLimit: (d: string, r: unknown) => recordMasterLimit(d, r),
+  clearMasterLimit: (d: string) => clearMasterLimit(d),
+}));
+
 vi.mock('./load.js', () => ({
   readDeviceLoad: vi.fn(),
   readFleetLoad: vi.fn(),
@@ -37,8 +44,12 @@ vi.mock('./load.js', () => ({
 
 const { devicePoolRoutes } = await import('./pool-routes.js');
 
+const { errorHandler } = await import('../middleware/error.js');
+
 const app = new Hono();
 app.route('/api/devices', devicePoolRoutes);
+// cm:why the real `onError` is mounted, not left to Hono's default: every refusal on these routes carries its reason in `cause.code`, and that code is the half a runner branches on. A bare app renders only the prose message, so a test without this asserts the sentence and lets the contract the caller actually reads go unchecked.
+app.onError(errorHandler as unknown as Parameters<typeof app.onError>[0]);
 
 const AUTH = { Authorization: 'Bearer good' };
 const ISSUE = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -150,5 +161,65 @@ describe('POST /me/run-sessions', () => {
     });
     expect(res.status).toBe(401);
     expect(openRunSession).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /me/limit', () => {
+  beforeEach(() => {
+    recordMasterLimit.mockReset().mockResolvedValue({ runnerId: 'r-1' });
+    clearMasterLimit.mockReset().mockResolvedValue({ runnerId: 'r-1' });
+  });
+
+  it('records a typed verdict and passes the reported reset through', async () => {
+    const res = await app.request('/api/devices/me/limit', {
+      method: 'POST',
+      headers: { ...AUTH, 'content-type': 'application/json' },
+      body: JSON.stringify({ reason: 'usage_limit', resetsInSeconds: 900, detail: 'capped' }),
+    });
+    expect(res.status).toBe(200);
+    expect(recordMasterLimit).toHaveBeenCalledWith('dev-1', {
+      reason: 'usage_limit',
+      resetsInSeconds: 900,
+      detail: 'capped',
+    });
+  });
+
+  // cm:guard an `auth` limit carries NO reset by design (schema: `rateLimitedUntil` is NULL for it, nothing parseable to wait for), so a report pairing the two is a contract break and must be refused BY NAME rather than silently dropping one half — a stamp that kept the reset would hand an auth-dead box a self-healing window it does not have, which is the shape that let dev1-ai013 take 421 jobs on an expired session.
+  it('refuses an auth report that carries a reset, by name', async () => {
+    const res = await app.request('/api/devices/me/limit', {
+      method: 'POST',
+      headers: { ...AUTH, 'content-type': 'application/json' },
+      body: JSON.stringify({ reason: 'auth', resetsInSeconds: 60, detail: 'x' }),
+    });
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(await res.json())).toContain('AUTH_LIMIT_HAS_NO_RESET');
+    expect(recordMasterLimit).not.toHaveBeenCalled();
+  });
+
+  it('refuses an unknown reason instead of stamping something the gates cannot read', async () => {
+    const res = await app.request('/api/devices/me/limit', {
+      method: 'POST',
+      headers: { ...AUTH, 'content-type': 'application/json' },
+      body: JSON.stringify({ reason: 'tired', detail: 'x' }),
+    });
+    expect(res.status).toBe(400);
+    expect(recordMasterLimit).not.toHaveBeenCalled();
+  });
+
+  // cm:guard a report the device owns no runner for is a 404, never a 200 — the master would read a 200 as "core knows I am capped" and stop reporting, so an answer that recorded nothing must not look like one that did.
+  it('answers 404 when the device owns no runner to stamp', async () => {
+    recordMasterLimit.mockResolvedValue(null as never);
+    const res = await app.request('/api/devices/me/limit', {
+      method: 'POST',
+      headers: { ...AUTH, 'content-type': 'application/json' },
+      body: JSON.stringify({ reason: 'usage_limit', detail: 'x' }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('clears the window on DELETE, which is the only early exit the master lane has', async () => {
+    const res = await app.request('/api/devices/me/limit', { method: 'DELETE', headers: AUTH });
+    expect(res.status).toBe(200);
+    expect(clearMasterLimit).toHaveBeenCalledWith('dev-1');
   });
 });
