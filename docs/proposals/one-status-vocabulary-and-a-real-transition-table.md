@@ -20,6 +20,10 @@ Four independent lists claim to describe one lifecycle, and no two agree:
 `STAGE_NAMES` is the closest thing to a decided answer and it already exists. The enum is what never
 caught up.
 
+**Decision, 2026-09-09 (owner).** The target set is the nine below: `released` is retired as a
+status and replaced by the release *button* plus a new in-flight status `releasing`; `reopen` stays.
+Rationale and the mechanism it fixes are in "The vocabulary" section.
+
 ### The transition table is advisory, and says so
 
 `core/src/pipeline/state-machine.ts` holds a `transitions` map covering all sixteen statuses. Its
@@ -61,29 +65,97 @@ being asked how many issues were unfinished.
 
 ## What to build
 
-### The vocabulary: four rungs, three parks, two ends
+### The vocabulary: the owner's set
 
-Nothing here is invented — each is a status already carrying rows and rules.
+Decided 2026-09-09 by the owner: **`released` goes, `reopen` stays**, the release *status* is
+replaced by a release **button**, and the batch gets a status of its own — an issue enters it when
+the release trigger fires and only reaches `closed` when the release finishes.
 
-| Kind | Status | Rule it already enforces |
+| Kind | Status | Rule it enforces |
 |---|---|---|
 | ingress | `draft` | filed, not admitted; only five exits |
 | rung | `open` | the ONE status that dispatches (`autonomousStepFor`) |
 | rung | `in_progress` | a session holds it |
-| rung | `released` | merged to base, running there, awaiting promotion — `RELEASE_GATE_STATUS`, derived from the project |
+| rung | `releasing` | **NEW** — a release was triggered over this issue and is running |
 | park | `needs_info` | a question a person owes an answer to; `answer-resume.ts` wakes it |
 | park | `on_hold` | a pause a person chose (ISS-970 — NOT a question) |
+| park | `reopen` | a person disagreed with a close; `isReopenEntry` counts the churn |
 | end | `closed` | stamps `merged_at` |
 | end | `dropped` | closes WITHOUT stamping |
 
-**Eight.** The kernel set and the render set become the same list, and
-`issue-vocabulary.ts`'s 16→8 fold stops being a translation layer.
+**Nine.** `reopen` keeps its counter where it already lives, so nothing has to be moved onto a new
+field.
 
-**Retire seven:** `confirmed` `clarified` `approved` `developed` `testing` `tested` `reopen`.
+**Retire eight.** Six are simply dead ladder — `confirmed` `clarified` `approved` `developed`
+`testing` `tested`. `released` is a different kind of retirement and is the substance of this
+section: its job moves to a button and a new status, not to nothing. And `waiting` is the eighth —
+it is absent from the set above because the driver's `waiting` is already rewritten to `needs_info`
+(`issues/autonomous-park.ts`, ISS-886), so the park it names is `needs_info`'s park.
 
-`reopen` deserves its own line: it holds 0 rows, but `isReopenEntry` counts churn through it and the
-`released`→board mapping depends on the autonomous rewrite landing it at `open`. Retiring it means
-moving that counter onto an explicit field, not deleting the measurement.
+**`waiting` costs more to retire than its 30 rows suggest**, and it is the one to plan rather than
+discover. It is the only status carrying a second column — `waitingKind` (`needs_decision` /
+`needs_resource`) — and that column has a refusal family around it:
+`WAITING_KIND_REQUIRED` (a `waiting` that does not say which kind) and
+`WAITING_KIND_NOT_APPLICABLE` (the kind sent to any other target). Both are named **by code** in
+`guides/registry.ts` and `prompt/facts/registry.ts`, which is text an agent reads. So retiring
+`waiting` retires the column, both refusals, `transition-reason.ts`'s requirement, and the two
+pieces of teaching material that name the codes — in one change, or the guide teaches a code the
+kernel no longer raises.
+
+Whether `needs_info` should inherit the kind is the open question here. Today `needs_info` stores
+no kind, so a question owed a *decision* and one owed a *resource* are the same row — and those are
+different things to whoever has to unblock it (sidpeak ISS-368 is parked `needs_resource` on a tmux
+name collision; ISS-389 `needs_decision` on a screen review). Folding `waiting` into `needs_info`
+without carrying the kind loses that distinction on 30 live rows.
+
+#### Why replacing `released` with a button is the right call, and what it fixes
+
+`released` today is not a step an issue takes. It is a **waiting room** an issue is parked in so a
+person can press something, and the code says so: `issues/release-gate-hold.ts` REWRITES an agent's
+`closed` back to `released` on any project declaring a gate, because "an autonomous agent may finish
+an issue, but it may not declare it shipped". The status exists to hold work still.
+
+A button models that directly. `POST /:projectId/release-batches` already IS the button
+(`release-batch/routes.ts`), with `finish` and `abort` beside it. What is missing is a status for
+the middle.
+
+**The gap this closes, measured.** During a batch, an issue keeps standing at `released` — the fact
+that a release is in flight lives only in the `issues.release_batch_run_id` column, claimed by a CAS
+`UPDATE`. So `released` means two different things at once: *waiting for someone to press it* and
+*being released right now*. Nothing in the status can tell them apart. 16 `release_batch` jobs have
+run — **4 failed and 2 cancelled** (pixelight and sidpeak, 2026-09-03 → 09-08), and each of those
+is precisely the case where the two meanings diverge and no reader can see which one they are
+looking at.
+
+`releasing` makes the in-flight state representable, and the column becomes what it should be — the
+identity of *which* batch, not the existence of one.
+
+#### What each half becomes
+
+| Concern | Today | After |
+|---|---|---|
+| "ready to ship, waiting on a person" | status `released` | **no status** — the issue stays at its last rung; readiness is derived (merged mark + gate declared), and the button is enabled or it is not |
+| "shipping right now" | invisible; a non-null column on a row still reading `released` | status **`releasing`** |
+| "shipped" | `closed`, written by `finish` | unchanged — `closed`, written by `finish` |
+| "release failed / aborted" | issue silently back at `released`, column cleared | **`releasing` → `reopen`**, carrying the abort reason |
+
+That last row is the second thing this fixes. `abortReleaseBatch` clears `release_batch_run_id` and
+leaves the issue exactly where it was, so a failed release is indistinguishable from one never
+attempted. Landing it on `reopen` — the status that already means *a close did not hold* — puts it
+in front of a person with its reason attached, and `isReopenEntry` counts it.
+
+#### The one thing to get right, or this is worse than today
+
+`release-gate-hold.ts` must not simply be deleted. It is what stops an agent declaring its own work
+shipped, and that guard was written from an incident: epodsystem ISS-141 self-closed with the
+reported bug still reproducing and a human reopened it five minutes later.
+
+With `released` gone, the rewrite target goes with it — so the refusal has to move, not vanish. An
+agent's `closed` on a gated project must be **refused by name** ("this project releases through a
+batch; your work is landed and the release is a person's to trigger") rather than rewritten to
+somewhere quieter. That is the loud-break rule, and it is a behaviour change for every autonomous
+project with a gate: today the agent's close succeeds and lands at `released`, after this it fails
+and the agent must stop instead.
 
 ### The transition table: make it refuse
 
@@ -94,25 +166,69 @@ to every row.
 This is the load-bearing half of the change. Without it the enum shrinks and the next logic switch
 strands rows again, for the same reason this one did.
 
+### What this proposal does not cover: the run axis
+
+This is the ISSUE axis only. A separate ruling (2026-09-09, owner) governs run lifetime — *a run
+must not outlive its parent; the parent waits for the child* — which is the ledger's
+`incarnation` × `work` × `blocker_kind`, not `issues.status`. The two meet at exactly one place:
+**the park set**.
+
+They are compatible as written, and the reason is structural rather than lucky. A question is a
+durable row that outlives the run that asked it (`agent_questions.agent_session_id` is nullable,
+the waiter is a separate row that cascades from the question, and `answerOf` is non-consuming and
+idempotent), so "the child ends leaving a resumable checkpoint" and "`needs_info` means a person
+owes an answer" are the same park seen from two axes. `needs_info` keeps its meaning with the run
+already gone.
+
+**The run ruling removes a cause of the stranding measured above, rather than changing what a
+status means.** Two of the five sidpeak `approved` rows are unmerged work whose run died — that is
+the orphan class, and the ruling deletes it structurally instead of sweeping for it. So this
+vocabulary work does not wait on the run axis, and the run axis does not wait on this.
+
+One measurement from the box's ledger belongs here because it bounds what either axis may claim:
+**`questions = 0` — nothing has ever parked in production.** There is no migration debt on park
+semantics, and equally the resume edge has never executed. The first real park is also the first
+test of it, so neither axis may call park/resume shipped until a park is planted and the resume is
+watched happening.
+
 ## Order, and why this order
 
-1. **Freeze the writes.** Refuse the seven retired statuses as transition *targets*
-   (`NON_TARGETABLE_STATUSES` already does this for `draft`, so the mechanism exists). Rows keep
-   holding them; nothing new arrives. **A loud refusal here is the point** — a caller naming
-   `approved` should be told the status is retired and what replaced it, never silently redirected.
-2. **Drain the 14 rows** (`approved` 10, `tested` 3, `developed` 1) with a one-shot migration that
-   re-parks each by what its record says, not by a blanket rule. The schema's own `cm:why` records
-   the precedent: `pass`, `staging` and `deploying` were removed exactly this way, and their absence
-   from the enum today is the proof it works.
-3. **Enforce the table.** `canTransitionFree` reads `transitions`; the advisory guard comes off; the
-   refusal names the legal exits from the source status.
-4. **Shrink the enum**, with the CHECK constraint, after 1–3 leave it unreachable.
-5. **Sweep the teaching material** — system-prompt generation, UI pickers, `docs/modules/
+1. **Add `releasing`** to the enum and make the batch write it: `createReleaseBatch` transitions
+   each claimed issue `→ releasing` in the same transaction as the CAS claim, `finish` goes
+   `releasing → closed`, `abort` goes `releasing → reopen` with the reason. This ships FIRST and on
+   its own: it is additive, breaks no caller, and until it exists there is nowhere for a released
+   issue to stand.
+2. **Move the gate refusal.** `release-gate-hold.ts` stops rewriting `closed → released` and starts
+   refusing an agent's close by name on a gated project. This is the behaviour change with teeth —
+   see the costs table.
+3. **Drain `released`.** 79 rows across 13 projects, and they are NOT uniform: each is either
+   genuinely awaiting a trigger (→ back to its last rung, readiness derived) or was mid-batch when
+   something died (→ `releasing`, or `reopen` if its batch is already terminal). Read the batch run,
+   not a blanket rule.
+3b. **Retire `released` as a target**, then drop it from the enum. `RELEASE_GATE_STATUS` becomes
+   `releasing`, and `STAGE_NAMES`' `released` entry goes — which means touching the 21 project
+   configs that still enable it.
+4. **Freeze the other six** (`confirmed` `clarified` `approved` `developed` `testing` `tested`) as
+   transition targets, loudly, then drain their 14 rows one record at a time, then drop them from
+   the enum with the CHECK.
+4b. **`waiting` last, and as its own step.** Decide the kind question first (does `needs_info`
+   inherit `waitingKind`?), because the answer decides whether the drain is a status rewrite or a
+   status rewrite plus a column migration. Then retire the status, the column, both
+   `WAITING_KIND_*` refusals, and the guide/fact text naming them by code — together. Its 30 rows
+   are readable through MCP only since `30e1ed0ad` (which added `waitingKind` to both MCP
+   projections); before that every MCP read of a park came back with no kind, so any drain written
+   against pre-`30e1ed0ad` reads was working blind.
+5. **Enforce the table.** `canTransitionFree` reads `transitions`; the advisory guard comes off; the
+   refusal names the legal exits from the source status. Nine statuses make this small enough to
+   read in one screen, which is the point.
+6. **Sweep the teaching material** — system-prompt generation, UI pickers, `docs/modules/
    lifecycle-pipeline/README.md`, and the cross-repo half in `forge-plugin`'s
    `plugin/skills/issue-flow/SKILL.md`, which the `cm:guard` on `AUTONOMOUS_DRIVER_STATUSES` names
    as the coupling no gate can hold.
 
-Step 1 before step 2 is the whole ordering: drain first and the writers refill it.
+Step 1 before step 2 and step 2 before step 3 is the whole ordering. Refuse the close before
+`releasing` exists and a gated project's agents have nowhere legal to end. Drain `released` before
+the rewrite stops and the rewrite refills it — the same trap as the six, for the same reason.
 
 ## Honest costs
 
@@ -122,6 +238,10 @@ Step 1 before step 2 is the whole ordering: drain first and the writers refill i
 | Step 2 cannot be blanket-mapped. Each of the 14 rows carries a `forge-record` or a dead lease, and re-parking one wrongly is what set sidpeak ISS-389 to `open` and nearly re-drove finished work | whoever writes the migration, one row at a time |
 | `reopen` retirement moves `isReopenEntry`'s churn counter onto a new field. Until it lands, reopen-rate metrics before and after are not comparable | anyone reading reopen metrics across the boundary |
 | The enum shrink is a migration on the largest table plus a CHECK. `SELECT *` consumers see no change, but any consumer with its own hardcoded union fails to parse a row it now cannot represent — the safe direction only if every one of them is found first | the migration, and every client union of the status enum |
+| `waiting`'s retirement is four couplings in one change: the status, the `waitingKind` column, two typed refusals, and the guide + fact text that name those refusal codes to agents. Miss the text and the guide teaches a code the kernel no longer raises | whoever ships step 4b, and every agent reading the stale guide until it lands |
 | The cross-repo half ships on `forge-plugin`'s clock. Between the two deploys, the skill's status table and the kernel's disagree — the exact shape that produced 4,806 wrong calls when the drive prompt and the guide diverged (`run_session.rs` `cm:guard`) | both repos, for the length of the gap |
-| 21 projects have `released` enabled in config, and 13 hold rows there. `released` STAYS — but this means the cleanup cannot be described to operators as "the ladder is gone" | whoever writes the operator-facing note |
+| The gate refusal in step 2 is a real behaviour change: today a gated project's agent closes and lands at `released`; after this its close FAILS and it must stop instead. Every autonomous project with a gate feels it on the first run, and the plugin's skill has to teach the new ending | every gated project's driver, from the deploy |
+| 21 projects have `released` enabled in config and 13 hold rows there, so step 3b edits 21 project configs — and `pipelineConfig.states` is a WHOLESALE replace (burned live 2026-06-22): a patch that omits a sibling key wipes it | whoever runs the config migration, GET-then-send per project |
+| `releasing` is a status a batch can die inside. A crashed release leaves rows there exactly as a dead run leaves a lease — so it needs a reaper of its own, or it becomes the next `approved`: a status with no machine exit. Nothing in this proposal builds one yet | whoever ships step 1, or the person who finds the stuck row |
+| Readiness stops being a status and becomes derived (merged mark + gate declared). Anything that today answers "what is ready to ship" by selecting `status = 'released'` — queries, the UI list, `readiness.ts` — has to compute it instead | every reader of the release queue |
 | Doing nothing has a price too, and it is the measured one: 433 rows on undriven statuses, five of them with no machine exit, found only because someone asked a counting question | the next person who asks |
