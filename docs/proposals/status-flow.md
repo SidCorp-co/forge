@@ -23,24 +23,37 @@ stateDiagram-v2
     releasing --> closed: release finished
     closed --> [*]
 
-    in_progress --> needs_info: asks a person
-    in_progress --> on_hold: a person pauses it
-    needs_info --> open: answered
-    on_hold --> open: resumed by hand
-
     releasing --> reopen: release aborted or failed
     closed --> reopen: a person disagrees
     reopen --> in_progress: work resumes
 
-    open --> dropped: not work after all
-    in_progress --> dropped: not work after all
+    open --> needs_info
+    in_progress --> needs_info
+    releasing --> needs_info
+    reopen --> needs_info
+    on_hold --> needs_info
+    needs_info --> open: answered
+
+    open --> on_hold
+    in_progress --> on_hold
+    releasing --> on_hold
+    reopen --> on_hold
+    needs_info --> on_hold
+    on_hold --> open: resumed by hand
+
+    open --> dropped
+    in_progress --> dropped
+    releasing --> dropped
+    needs_info --> dropped
+    on_hold --> dropped
+    reopen --> dropped
     dropped --> [*]
 ```
 
 Read the shape rather than the arrows: **one dispatch door** (`open`), **one
-worker** (`in_progress`), **one release middle** (`releasing`), **three parks**
-that each name who owes the next move, and **two ends** that differ only in
-whether `merged_at` is stamped.
+worker** (`in_progress`), **one release middle** (`releasing`), **two parks
+reachable from every rung**, one park a person routes (`reopen`), and **two ends**
+that differ only in whether `merged_at` is stamped.
 
 ## The table
 
@@ -51,13 +64,24 @@ whether `merged_at` is stamped.
 |---|---|---|
 | `draft` | `open` · `in_progress` · `dropped` | `DRAFT_EXIT_TARGETS`, already a real gate |
 | `open` | `in_progress` · `needs_info` · `on_hold` · `dropped` | new |
-| `in_progress` | `closed` · `releasing` · `needs_info` · `on_hold` · `dropped` | new |
-| `releasing` | `closed` · `reopen` | new — `finish` and `abort` are the only writers |
-| `needs_info` | `open` · `dropped` | `answer-resume.ts` writes the `open` edge today |
-| `on_hold` | `open` · `dropped` | new |
-| `reopen` | `in_progress` · `dropped` | new |
+| `in_progress` | `releasing` · `closed` · `needs_info` · `on_hold` · `dropped` | new |
+| `releasing` | `closed` · `reopen` · `needs_info` · `on_hold` | new — only `finish` and `abort` write the first two |
+| `needs_info` | `open` · `on_hold` · `dropped` | `answer-resume.ts` writes the `open` edge today |
+| `on_hold` | `open` · `needs_info` · `dropped` | new |
+| `reopen` | `in_progress` · `needs_info` · `on_hold` · `dropped` | new |
 | `closed` | `reopen` | already the only exit in the advisory map |
 | `dropped` | — | terminal with no exit, deliberately |
+
+**`needs_info` and `on_hold` are reachable from every rung and from each other.**
+Owner's decision, 2026-09-09 — and it is what the teaching text already tells
+agents: `prompt/facts/registry.ts:109` says *"From ANY state you may set
+`needs_info` … `on_hold` … the moment you hit that condition — don't force the
+ladder."* Only the table was narrower than the instruction.
+
+Two statuses are deliberately excluded from that rule: `draft` cannot park
+because it already is a resting place (`DRAFT_EXIT_TARGETS` is the existing
+gate and lists three exits), and `closed`/`dropped` are ends — a park after an
+end is a reopen, which is what `closed → reopen` already is.
 
 Three edges carry a payload the transition is refused without: `needs_info` and
 `on_hold` need an authored reason (`requiresAuthoredReason`), and
@@ -79,6 +103,13 @@ new work and races a fresh agent against the tree that already exists.
 
 **No `draft → releasing`, no `open → releasing`.** A release is over work that
 landed, so the only door into it is from `in_progress`.
+
+**A release in flight can still be parked.** `releasing → needs_info` and
+`releasing → on_hold` are legal under the owner's rule, and they are not a
+contradiction of "only `finish` and `abort` write out of `releasing`": those two
+own the *release outcome* edges (`closed`, `reopen`). A park is somebody stopping
+the release to ask or to wait, which is exactly what a person needs when a batch
+half-lands. What must not exist is an agent declaring its own release finished.
 
 ## The conflict this drawing exposes, and it needs a decision
 

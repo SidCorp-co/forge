@@ -3,393 +3,240 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Bộ trạng thái & transition — Forge</title>
+<title>Flow &amp; transition</title>
 <style>
   :root{
-    --bg:#f7f7f5; --panel:#fff; --ink:#16161a; --muted:#6b6b76; --line:#e2e2dc;
+    --bg:#f7f7f5; --panel:#fff; --ink:#16161a; --muted:#6b6b76; --line:#e3e3dd;
     --rung:#2563eb; --rung-bg:#eff4ff;
-    --park:#b45309; --park-bg:#fdf6ec;
-    --end:#15803d; --end-bg:#eef7f0;
-    --gone:#9ca3af; --gone-bg:#f2f2f0;
+    --park:#b45309; --park-bg:#fdf5ea;
+    --end:#15803d; --end-bg:#edf7f0;
+    --rel:#7c3aed; --rel-bg:#f4f0fe;
     --reop:#b91c1c; --reop-bg:#fdf0f0;
-    --rel:#7c3aed; --rel-bg:#f5f0fe;
+    --gate:#8a8a94; --gate-bg:#f1f1ef;
   }
-  @media (prefers-color-scheme:dark){
-    :root:not([data-theme="light"]){
-      --bg:#131316; --panel:#1b1b20; --ink:#ececf0; --muted:#9a9aa6; --line:#2c2c34;
-      --rung:#7ea6ff; --rung-bg:#182238;
-      --park:#e0a341; --park-bg:#2b2113;
-      --end:#5fc98a; --end-bg:#13251a;
-      --gone:#6e6e7a; --gone-bg:#222228;
-      --reop:#f08a8a; --reop-bg:#2b1616;
-      --rel:#b493f8; --rel-bg:#221a33;
-    }
-  }
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+    --bg:#131316; --panel:#1b1b20; --ink:#ececf0; --muted:#9a9aa6; --line:#2d2d35;
+    --rung:#7ea6ff; --rung-bg:#182238;
+    --park:#e0a341; --park-bg:#2b2113;
+    --end:#5fc98a; --end-bg:#13251a;
+    --rel:#b493f8; --rel-bg:#221a33;
+    --reop:#f08a8a; --reop-bg:#2b1616;
+    --gate:#75757f; --gate-bg:#222228;
+  }}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);
-    font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
-  .wrap{max-width:1120px;margin:0 auto;padding:40px 24px 80px}
-  h1{font-size:30px;line-height:1.2;margin:0 0 6px;letter-spacing:-.02em}
-  .sub{color:var(--muted);margin:0 0 4px}
-  .meta{color:var(--muted);font-size:13px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-  h2{font-size:19px;margin:44px 0 14px;letter-spacing:-.01em}
-  h3{font-size:15px;margin:26px 0 10px}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px 22px}
-  code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em}
+    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:1060px;margin:0 auto;padding:36px 22px 72px}
+  h1{font-size:25px;margin:0 0 22px;letter-spacing:-.02em;font-weight:650}
+  h2{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
+    margin:40px 0 12px;font-weight:650}
+  .n{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:600;font-size:.93em}
 
-  .legend{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px}
-  .legend button{font:inherit;font-size:13px;cursor:pointer;padding:5px 12px;border-radius:999px;
-    border:1px solid var(--line);background:var(--panel);color:var(--muted)}
+  .legend{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 12px}
+  .legend button{font:inherit;font-size:12.5px;cursor:pointer;padding:5px 12px;border-radius:999px;
+    border:1px solid var(--line);background:var(--panel);color:var(--muted);transition:.15s}
   .legend button[aria-pressed="true"]{color:var(--ink);border-color:currentColor}
   .legend button[data-l="spine"][aria-pressed="true"]{color:var(--rung)}
   .legend button[data-l="park"][aria-pressed="true"]{color:var(--park)}
-  .legend button[data-l="rel"][aria-pressed="true"]{color:var(--reop)}
-  .legend button[data-l="drop"][aria-pressed="true"]{color:var(--gone)}
+  .legend button[data-l="rel"][aria-pressed="true"]{color:var(--rel)}
+  .legend button[data-l="drop"][aria-pressed="true"]{color:var(--gate)}
 
-  .figure{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:8px;overflow-x:auto}
-  svg{display:block;min-width:940px;width:100%;height:auto}
+  .figure{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:6px;overflow-x:auto}
+  svg{display:block;min-width:900px;width:100%;height:auto}
   .lay{transition:opacity .18s}
-  .lay.off{opacity:.1}
-  .nlabel{font:600 13px ui-monospace,SFMono-Regular,Menlo,monospace}
-  .elabel{font:11px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:var(--muted)}
+  .lay.off{opacity:.08}
+  .nl{font:600 13px ui-monospace,SFMono-Regular,Menlo,monospace}
+  .el{font:11px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:var(--muted)}
+  .band{font:10.5px ui-monospace,Menlo,monospace;fill:var(--muted);letter-spacing:.08em}
 
-  .kinds{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-top:6px}
-  .k{border:1px solid var(--line);border-radius:12px;padding:14px 16px;background:var(--panel)}
-  .k h4{margin:0 0 4px;font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
-  .pill{display:inline-block;font-family:ui-monospace,Menlo,monospace;font-size:12.5px;font-weight:600;
-    padding:3px 9px;border-radius:7px;margin:3px 4px 3px 0}
-  .p-rung{color:var(--rung);background:var(--rung-bg)}
-  .p-park{color:var(--park);background:var(--park-bg)}
-  .p-end{color:var(--end);background:var(--end-bg)}
-  .p-rel{color:var(--rel);background:var(--rel-bg)}
-  .p-gone{color:var(--gone);background:var(--gone-bg);text-decoration:line-through}
-  .k p{margin:8px 0 0;font-size:13px;color:var(--muted)}
+  .mxw{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;overflow-x:auto}
+  table.mx{border-collapse:separate;border-spacing:3px;font-size:12px;min-width:700px;margin:0 auto}
+  table.mx th{padding:6px 8px;border:0;font-family:ui-monospace,Menlo,monospace;font-weight:600;color:var(--muted)}
+  table.mx th.rh{text-align:right;color:var(--ink)}
+  table.mx td{border:0;padding:0}
+  table.mx i{display:block;height:27px;line-height:27px;border-radius:6px;font-style:normal;
+    font-size:13px;text-align:center}
+  .y{background:var(--rung-bg);color:var(--rung);font-weight:700}
+  .y.p{background:var(--park-bg);color:var(--park)}
+  .y.v{background:var(--rel-bg);color:var(--rel)}
+  .y.r{background:var(--reop-bg);color:var(--reop)}
+  .x{background:transparent;color:var(--line)}
+  .s{background:var(--gate-bg);color:var(--gate)}
+  .key{display:flex;gap:18px;flex-wrap:wrap;margin:14px 0 0;font-size:12.5px;color:var(--muted)}
+  .key span{display:flex;align-items:center;gap:6px}
+  .sw{width:15px;height:15px;border-radius:4px;display:inline-block}
 
-  table{border-collapse:collapse;width:100%;font-size:13.5px}
-  th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);vertical-align:top}
-  th{font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:600}
-  .tw{overflow-x:auto;background:var(--panel);border:1px solid var(--line);border-radius:14px}
-
-  .mx{border-collapse:separate;border-spacing:3px;font-size:12px;min-width:660px}
-  .mx th{text-transform:none;letter-spacing:0;padding:6px 7px;border:0;font-family:ui-monospace,Menlo,monospace}
-  .mx th.rh{text-align:right;color:var(--ink);font-weight:600}
-  .mx td{border:0;padding:0;text-align:center}
-  .mx td i{display:block;height:26px;line-height:26px;border-radius:6px;font-style:normal;font-size:13px}
-  .yes{background:var(--rung-bg);color:var(--rung);font-weight:700}
-  .yes.pay{background:var(--park-bg);color:var(--park)}
-  .no{background:transparent;color:var(--line)}
-  .self{background:var(--gone-bg);color:var(--gone)}
-
-  .opt{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-  @media(max-width:760px){.opt{grid-template-columns:1fr}}
-  .opt .card{border-left:3px solid var(--line)}
-  .opt .card.lean{border-left-color:var(--rung)}
-  .tag{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--rung);font-weight:700}
-  .steps{counter-reset:s;list-style:none;padding:0;margin:0}
-  .steps li{counter-increment:s;position:relative;padding:12px 0 12px 46px;border-bottom:1px solid var(--line)}
-  .steps li:last-child{border-bottom:0}
-  .steps li::before{content:counter(s);position:absolute;left:0;top:11px;width:28px;height:28px;
-    border-radius:8px;background:var(--rung-bg);color:var(--rung);font-weight:700;font-size:13px;
-    display:grid;place-items:center}
-  .note{border-left:3px solid var(--park);background:var(--park-bg);padding:14px 18px;border-radius:0 10px 10px 0;margin:16px 0}
-  .note b{color:var(--park)}
-  .n{font-family:ui-monospace,Menlo,monospace;font-weight:600}
-  .dot{color:var(--park);font-weight:700}
-  footer{margin-top:52px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+  .rules{margin:12px 0 0;padding:0;list-style:none;font-size:13.5px;color:var(--muted)}
+  .rules li{padding:7px 0 7px 16px;position:relative}
+  .rules li::before{content:"";position:absolute;left:0;top:15px;width:6px;height:1.5px;background:var(--line)}
+  .rules b{color:var(--ink);font-weight:600}
 </style>
 </head>
 <body>
 <div class="wrap">
 
-<h1>Bộ trạng thái &amp; transition</h1>
-<p class="sub">Chín trạng thái. Mỗi cạnh là một luật có thứ gì đó chặn — hoặc được đặt tên là luật cần thêm.</p>
-<p class="meta">forge · đo 2026-09-09 trên DB của forge-beta và cây này · b41b310fd</p>
+<h1>Flow &amp; transition</h1>
 
-<h2>Chín trạng thái</h2>
-<div class="kinds">
-  <div class="k">
-    <h4>Cửa vào</h4>
-    <span class="pill p-gone" style="text-decoration:none;color:var(--ink);background:var(--gone-bg)">draft</span>
-    <p>Đã ghi nhận, chưa nhận việc. Chỉ ba cửa ra.</p>
-  </div>
-  <div class="k">
-    <h4>Bậc làm việc</h4>
-    <span class="pill p-rung">open</span><span class="pill p-rung">in_progress</span><span class="pill p-rel">releasing</span>
-    <p><span class="n">open</span> là cửa dispatch duy nhất. <span class="n">releasing</span> <b>mới</b> — khoảng giữa của batch.</p>
-  </div>
-  <div class="k">
-    <h4>Park — ai nợ bước tiếp</h4>
-    <span class="pill p-park">needs_info</span><span class="pill p-park">on_hold</span><span class="pill p-park">reopen</span>
-    <p>Người nợ câu trả lời · người tự chọn dừng · người không đồng ý.</p>
-  </div>
-  <div class="k">
-    <h4>Kết</h4>
-    <span class="pill p-end">closed</span><span class="pill p-end">dropped</span>
-    <p>Khác nhau đúng một điều: có dập <span class="n">merged_at</span> hay không.</p>
-  </div>
-</div>
-
-<h2>Flow</h2>
 <div class="legend">
   <button data-l="spine" aria-pressed="true">Đường chính</button>
   <button data-l="park" aria-pressed="true">Park</button>
-  <button data-l="rel" aria-pressed="true">Release &amp; reopen</button>
+  <button data-l="rel" aria-pressed="true">Release</button>
   <button data-l="drop" aria-pressed="true">Loại bỏ</button>
 </div>
+
 <div class="figure">
-<svg viewBox="0 0 1000 470" role="img" aria-label="Sơ đồ chuyển trạng thái của issue">
+<svg viewBox="0 0 1000 480" role="img" aria-label="Sơ đồ chuyển trạng thái">
   <defs>
-    <marker id="aB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--rung)"/></marker>
-    <marker id="aP" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--park)"/></marker>
-    <marker id="aR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--reop)"/></marker>
-    <marker id="aV" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--rel)"/></marker>
-    <marker id="aG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--gone)"/></marker>
+    <marker id="mB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--rung)"/></marker>
+    <marker id="mP" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--park)"/></marker>
+    <marker id="mV" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--rel)"/></marker>
+    <marker id="mR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--reop)"/></marker>
+    <marker id="mG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--gate)"/></marker>
   </defs>
 
-  <!-- LAYER: discard -->
-  <g class="lay" data-lay="drop" fill="none" stroke="var(--gone)" stroke-width="1.4" stroke-dasharray="4 4" marker-end="url(#aG)">
-    <path d="M84,262 C84,312 110,350 126,368"/>
-    <path d="M228,262 C222,300 210,340 194,368"/>
-    <path d="M400,262 C340,312 282,352 234,388"/>
+  <text class="band" x="26" y="52">PARK · vào được từ MỌI bậc</text>
+  <text class="band" x="26" y="196">LÀM VIỆC</text>
+  <text class="band" x="26" y="436">LOẠI BỎ</text>
+
+  <!-- discard -->
+  <g class="lay" data-lay="drop" fill="none" stroke="var(--gate)" stroke-width="1.3" stroke-dasharray="4 4" marker-end="url(#mG)">
+    <path d="M88,272 L88,392"/>
+    <path d="M243,272 C240,320 200,368 158,398"/>
+    <path d="M430,272 C420,326 300,382 190,404"/>
+    <path d="M370,128 C300,150 210,300 150,388"/>
+    <path d="M600,128 C520,160 300,320 194,394"/>
+    <path d="M740,338 C560,404 320,418 196,410"/>
   </g>
 
-  <!-- LAYER: spine -->
-  <g class="lay" data-lay="spine" fill="none" stroke="var(--rung)" stroke-width="2" marker-end="url(#aB)">
-    <path d="M137,240 L179,240"/>
-    <path d="M305,240 L377,240"/>
-    <path d="M110,262 C160,330 330,330 398,264"/>
-    <path d="M470,262 C524,322 762,322 838,266"/>
+  <!-- spine -->
+  <g class="lay" data-lay="spine" fill="none" stroke="var(--rung)" stroke-width="2.1" marker-end="url(#mB)">
+    <path d="M147,250 L188,250"/>
+    <path d="M310,250 L378,250"/>
+    <path d="M118,272 C170,330 330,332 400,272"/>
+    <path d="M482,272 C540,336 790,336 856,274"/>
   </g>
   <g class="lay" data-lay="spine">
-    <text class="elabel" x="252" y="345" text-anchor="middle">tự nhận tại chỗ</text>
-    <text class="elabel" x="654" y="338" text-anchor="middle">không có release gate</text>
+    <text class="el" x="264" y="352" text-anchor="middle">tự nhận tại chỗ</text>
+    <text class="el" x="672" y="352" text-anchor="middle">không có release gate</text>
   </g>
 
-  <!-- LAYER: release + reopen -->
-  <g class="lay" data-lay="rel" fill="none" stroke="var(--rel)" stroke-width="2" marker-end="url(#aV)">
-    <path d="M503,240 L581,240"/>
-    <path d="M707,240 L789,240"/>
-  </g>
-  <g class="lay" data-lay="rel" fill="none" stroke="var(--reop)" stroke-width="2" marker-end="url(#aR)">
-    <path d="M634,262 C628,312 658,350 688,366"/>
-    <path d="M880,262 C872,312 830,352 776,368"/>
-    <path d="M657,392 C556,430 458,404 438,266"/>
+  <!-- release -->
+  <g class="lay" data-lay="rel" fill="none" stroke="var(--rel)" stroke-width="2.1" marker-end="url(#mV)">
+    <path d="M512,250 L590,250"/>
+    <path d="M716,250 L798,250"/>
   </g>
   <g class="lay" data-lay="rel">
-    <text class="elabel" x="546" y="228" text-anchor="middle">bấm release</text>
-    <text class="elabel" x="748" y="228" text-anchor="middle">release xong</text>
-    <text class="elabel" x="612" y="330">abort / fail</text>
-    <text class="elabel" x="852" y="330" text-anchor="end">không đồng ý</text>
-    <text class="elabel" x="516" y="404" text-anchor="middle">làm lại</text>
+    <text class="el" x="551" y="238" text-anchor="middle">bấm release</text>
+    <text class="el" x="757" y="238" text-anchor="middle">release xong</text>
+  </g>
+  <g class="lay" data-lay="rel" fill="none" stroke="var(--reop)" stroke-width="2.1" marker-end="url(#mR)">
+    <path d="M648,272 C644,300 680,326 726,332"/>
+    <path d="M878,272 C876,304 840,328 800,334"/>
+    <path d="M726,338 C600,362 500,330 462,274"/>
+  </g>
+  <g class="lay" data-lay="rel">
+    <text class="el" x="640" y="316">abort / fail</text>
+    <text class="el" x="892" y="312" text-anchor="end">không đồng ý</text>
+    <text class="el" x="576" y="330" text-anchor="middle">làm lại</text>
   </g>
 
-  <!-- LAYER: parks -->
-  <g class="lay" data-lay="park" fill="none" stroke="var(--park)" stroke-width="2" marker-end="url(#aP)">
-    <path d="M424,218 C412,180 390,142 375,120"/>
-    <path d="M470,218 C500,180 540,142 557,120"/>
-    <path d="M313,86 C268,86 250,142 245,212"/>
-    <path d="M509,78 C418,28 300,26 257,210"/>
+  <!-- parks: from every rung -->
+  <g class="lay" data-lay="park" fill="none" stroke="var(--park)" stroke-width="1.7" marker-end="url(#mP)">
+    <path d="M228,228 C240,190 300,148 336,130"/>
+    <path d="M262,228 C300,180 480,140 566,128"/>
+    <path d="M420,228 C412,196 400,158 388,132"/>
+    <path d="M462,228 C500,192 540,152 566,130"/>
+    <path d="M620,228 C580,190 480,152 420,132"/>
+    <path d="M660,228 C650,190 630,152 612,130"/>
+    <path d="M700,332 C560,290 470,180 404,132"/>
+    <path d="M760,330 C700,280 660,180 622,132"/>
+  </g>
+  <g class="lay" data-lay="park" fill="none" stroke="var(--park)" stroke-width="1.9" marker-end="url(#mP)">
+    <path d="M336,108 C270,96 236,150 232,226"/>
+    <path d="M540,96 C420,54 290,80 250,224"/>
   </g>
   <g class="lay" data-lay="park">
-    <text class="elabel" x="300" y="168" text-anchor="end">hỏi người</text>
-    <text class="elabel" x="600" y="168">người tạm dừng</text>
-    <text class="elabel" x="196" y="152" text-anchor="middle">được trả lời</text>
+    <text class="el" x="188" y="150" text-anchor="middle">trả lời</text>
+    <text class="el" x="330" y="66" text-anchor="middle">gỡ tạm dừng</text>
   </g>
 
-  <!-- NODES -->
+  <!-- nodes -->
   <g>
-    <rect x="19" y="218" width="118" height="44" rx="10" fill="var(--gone-bg)" stroke="var(--gone)"/>
-    <text class="nlabel" x="78" y="245" text-anchor="middle" fill="var(--ink)">draft</text>
+    <rect x="29" y="228" width="118" height="44" rx="10" fill="var(--gate-bg)" stroke="var(--gate)"/>
+    <text class="nl" x="88" y="255" text-anchor="middle" fill="var(--ink)">draft</text>
 
-    <rect x="187" y="218" width="118" height="44" rx="10" fill="var(--rung-bg)" stroke="var(--rung)"/>
-    <text class="nlabel" x="246" y="245" text-anchor="middle" fill="var(--rung)">open</text>
+    <rect x="190" y="228" width="120" height="44" rx="10" fill="var(--rung-bg)" stroke="var(--rung)" stroke-width="1.6"/>
+    <text class="nl" x="250" y="255" text-anchor="middle" fill="var(--rung)">open</text>
 
-    <rect x="385" y="218" width="118" height="44" rx="10" fill="var(--rung-bg)" stroke="var(--rung)"/>
-    <text class="nlabel" x="444" y="245" text-anchor="middle" fill="var(--rung)">in_progress</text>
+    <rect x="380" y="228" width="132" height="44" rx="10" fill="var(--rung-bg)" stroke="var(--rung)" stroke-width="1.6"/>
+    <text class="nl" x="446" y="255" text-anchor="middle" fill="var(--rung)">in_progress</text>
 
-    <rect x="589" y="218" width="118" height="44" rx="10" fill="var(--rel-bg)" stroke="var(--rel)" stroke-dasharray="5 3"/>
-    <text class="nlabel" x="648" y="245" text-anchor="middle" fill="var(--rel)">releasing</text>
+    <rect x="590" y="228" width="126" height="44" rx="10" fill="var(--rel-bg)" stroke="var(--rel)" stroke-width="1.6" stroke-dasharray="6 3"/>
+    <text class="nl" x="653" y="255" text-anchor="middle" fill="var(--rel)">releasing</text>
 
-    <rect x="797" y="218" width="118" height="44" rx="10" fill="var(--end-bg)" stroke="var(--end)"/>
-    <text class="nlabel" x="856" y="245" text-anchor="middle" fill="var(--end)">closed</text>
+    <rect x="798" y="228" width="118" height="44" rx="10" fill="var(--end-bg)" stroke="var(--end)" stroke-width="1.6"/>
+    <text class="nl" x="857" y="255" text-anchor="middle" fill="var(--end)">closed</text>
 
-    <rect x="313" y="70" width="118" height="44" rx="10" fill="var(--park-bg)" stroke="var(--park)"/>
-    <text class="nlabel" x="372" y="97" text-anchor="middle" fill="var(--park)">needs_info</text>
+    <rect x="330" y="84" width="126" height="44" rx="10" fill="var(--park-bg)" stroke="var(--park)" stroke-width="1.6"/>
+    <text class="nl" x="393" y="111" text-anchor="middle" fill="var(--park)">needs_info</text>
 
-    <rect x="509" y="70" width="118" height="44" rx="10" fill="var(--park-bg)" stroke="var(--park)"/>
-    <text class="nlabel" x="568" y="97" text-anchor="middle" fill="var(--park)">on_hold</text>
+    <rect x="560" y="84" width="118" height="44" rx="10" fill="var(--park-bg)" stroke="var(--park)" stroke-width="1.6"/>
+    <text class="nl" x="619" y="111" text-anchor="middle" fill="var(--park)">on_hold</text>
 
-    <rect x="657" y="370" width="118" height="44" rx="10" fill="var(--reop-bg)" stroke="var(--reop)"/>
-    <text class="nlabel" x="716" y="397" text-anchor="middle" fill="var(--reop)">reopen</text>
+    <rect x="726" y="312" width="112" height="42" rx="10" fill="var(--reop-bg)" stroke="var(--reop)" stroke-width="1.6"/>
+    <text class="nl" x="782" y="338" text-anchor="middle" fill="var(--reop)">reopen</text>
 
-    <rect x="111" y="370" width="118" height="44" rx="10" fill="var(--end-bg)" stroke="var(--end)"/>
-    <text class="nlabel" x="170" y="397" text-anchor="middle" fill="var(--end)">dropped</text>
+    <rect x="137" y="390" width="118" height="44" rx="10" fill="var(--end-bg)" stroke="var(--end)" stroke-width="1.6"/>
+    <text class="nl" x="196" y="417" text-anchor="middle" fill="var(--end)">dropped</text>
   </g>
-  <text class="elabel" x="648" y="196" text-anchor="middle" fill="var(--rel)">mới · chỉ finish/abort ghi được</text>
+  <text class="el" x="653" y="204" text-anchor="middle" fill="var(--rel)">chỉ finish / abort ghi được</text>
 </svg>
 </div>
 
-<div class="note">
-<b>Đọc hình dạng, đừng đọc từng mũi tên.</b> Một cửa dispatch (<span class="n">open</span>), một chỗ làm
-(<span class="n">in_progress</span>), một khoảng giữa release (<span class="n">releasing</span>), ba park mỗi cái
-nói rõ ai nợ bước tiếp, hai kết chỉ khác nhau ở <span class="n">merged_at</span>.
-</div>
+<ul class="rules">
+  <li><b>needs_info</b> và <b>on_hold</b> vào được từ <b>mọi bậc</b> — <span class="n">open</span>,
+      <span class="n">in_progress</span>, <span class="n">releasing</span>, <span class="n">reopen</span>
+      — và từ cả hai park sang nhau. Ra thì về <span class="n">open</span>.</li>
+  <li><b>draft</b> không park được: nó đã là chỗ đỗ. Ba cửa ra duy nhất là
+      <span class="n">open</span>, <span class="n">in_progress</span>, <span class="n">dropped</span>.</li>
+  <li><b>releasing</b> chỉ <span class="n">finish</span> và <span class="n">abort</span> ghi ra được — nên nó là
+      khoảng giữa, không phải park thứ tư. Park được vào, nhưng agent không tự ra.</li>
+  <li><b>reopen → in_progress</b>, không phải <span class="n">→ open</span>: issue mở lại đã có branch và worktree.</li>
+  <li><b>dropped</b> là kết không cửa ra. <span class="n">closed</span> ra được đúng một chỗ: <span class="n">reopen</span>.</li>
+</ul>
 
 <h2>Bảng transition</h2>
-<p class="sub">Ô sáng = hợp lệ. Mọi ô trống = <b>bị từ chối</b> — đó là thay đổi: hôm nay <code>canTransitionFree</code>
-cho mọi hop non-draft sang bất kỳ status non-draft nào. <span class="dot">■</span> = cạnh bị từ chối nếu không có lý do viết tay.</p>
-<div class="tw" style="padding:14px">
+<div class="mxw">
 <table class="mx">
-<thead><tr><th class="rh">từ ↓ &nbsp; sang →</th>
+<thead><tr><th class="rh">từ ↓&nbsp;&nbsp;sang →</th>
 <th>draft</th><th>open</th><th>in_progress</th><th>releasing</th><th>needs_info</th><th>on_hold</th><th>reopen</th><th>closed</th><th>dropped</th></tr></thead>
 <tbody>
-<tr><th class="rh">draft</th><td><i class="self">·</i></td><td><i class="yes">→</i></td><td><i class="yes">→</i></td><td><i class="no">·</i></td><td><i class="no">·</i></td><td><i class="no">·</i></td><td><i class="no">·</i></td><td><i class="no">·</i></td><td><i class="yes">→</i></td></tr>
-<tr><th class="rh">open</th><td><i class="no">·</i></td><td><i class="self">·</i></td><td><i class="yes">→</i></td><td><i class="no">·</i></td><td><i class="yes pay">■</i></td><td><i class="yes pay">■</i></td><td><i class="no">·</i></td><td><i class="no">·</i></td><td><i class="yes">→</i></td></tr>
-<tr><th class="rh">in_progress</th><td><i class="no">·</i></td><td><i class="no">·</i></td><td><i class="self">·</i></td><td><i class="yes">→</i></td><td><i class="yes pay">■</i></td><td><i class="yes pay">■</i></td><td><i class="no">·</i></td><td><i class="yes">→</i></td><td><i class="yes">→</i></td></tr>
-<tr><th class="rh">releasing</th><td><i class="no">·</i></td><td><i class="no">·</i></td><td><i class="no">·</i></td><td><i class="self">·</i></td><td><i class="no">·</i></td><td><i class="no">·</i></td><td><i class="yes pay">■</i></td><td><i class="yes">→</i></td><td><i class="no">·</i></td></tr>
-<tr><th class="rh">needs_info</th><td><i class="no">·</i></td><td><i class="yes">→</i></td><td><i class="no">·</i></td><td><i class="no">·</i></td><td><i class="self">·</i></td><td><i class="no">·</i></td><td><i class="no">·</i></td><td><i class="no">·</i></td><td><i class="yes">→</i></td></tr>
-<tr><th class="rh">on_hold</th><td><i class="no">·</i></td><td><i class="yes">→</i></td><td><i class="no">·</i></td><td><i class="no">·</i></td><td><i class="no">·</i></td><td><i class="self">·</i></td><td><i class="no">·</i></td><td><i class="no">·</i></td><td><i class="yes">→</i></td></tr>
-<tr><th class="rh">reopen</th><td><i class="no">·</i></td><td><i class="no">·</i></td><td><i class="yes">→</i></td><td><i class="no">·</i></td><td><i class="no">·</i></td><td><i class="no">·</i></td><td><i class="self">·</i></td><td><i class="no">·</i></td><td><i class="yes">→</i></td></tr>
-<tr><th class="rh">closed</th><td><i class="no">·</i></td><td><i class="no">·</i></td><td><i class="no">·</i></td><td><i class="no">·</i></td><td><i class="no">·</i></td><td><i class="no">·</i></td><td><i class="yes">→</i></td><td><i class="self">·</i></td><td><i class="no">·</i></td></tr>
-<tr><th class="rh">dropped</th><td><i class="no">·</i></td><td><i class="no">·</i></td><td><i class="no">·</i></td><td><i class="no">·</i></td><td><i class="no">·</i></td><td><i class="no">·</i></td><td><i class="no">·</i></td><td><i class="no">·</i></td><td><i class="self">·</i></td></tr>
+<tr><th class="rh">draft</th>
+<td><i class="s">·</i></td><td><i class="y">→</i></td><td><i class="y">→</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="y">→</i></td></tr>
+<tr><th class="rh">open</th>
+<td><i class="x">·</i></td><td><i class="s">·</i></td><td><i class="y">→</i></td><td><i class="x">·</i></td><td><i class="y p">■</i></td><td><i class="y p">■</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="y">→</i></td></tr>
+<tr><th class="rh">in_progress</th>
+<td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="s">·</i></td><td><i class="y v">→</i></td><td><i class="y p">■</i></td><td><i class="y p">■</i></td><td><i class="x">·</i></td><td><i class="y">→</i></td><td><i class="y">→</i></td></tr>
+<tr><th class="rh">releasing</th>
+<td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="s">·</i></td><td><i class="y p">■</i></td><td><i class="y p">■</i></td><td><i class="y r">■</i></td><td><i class="y v">→</i></td><td><i class="x">·</i></td></tr>
+<tr><th class="rh">needs_info</th>
+<td><i class="x">·</i></td><td><i class="y">→</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="s">·</i></td><td><i class="y p">■</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="y">→</i></td></tr>
+<tr><th class="rh">on_hold</th>
+<td><i class="x">·</i></td><td><i class="y">→</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="y p">■</i></td><td><i class="s">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="y">→</i></td></tr>
+<tr><th class="rh">reopen</th>
+<td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="y">→</i></td><td><i class="x">·</i></td><td><i class="y p">■</i></td><td><i class="y p">■</i></td><td><i class="s">·</i></td><td><i class="x">·</i></td><td><i class="y">→</i></td></tr>
+<tr><th class="rh">closed</th>
+<td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="y r">→</i></td><td><i class="s">·</i></td><td><i class="x">·</i></td></tr>
+<tr><th class="rh">dropped</th>
+<td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="s">·</i></td></tr>
 </tbody></table>
+<div class="key">
+  <span><i class="sw" style="background:var(--rung-bg);border:1px solid var(--rung)"></i> hợp lệ</span>
+  <span><i class="sw" style="background:var(--park-bg);border:1px solid var(--park)"></i> ■ &nbsp;cần lý do viết tay</span>
+  <span><i class="sw" style="background:var(--reop-bg);border:1px solid var(--reop)"></i> reopen</span>
+  <span><i class="sw" style="background:transparent;border:1px solid var(--line)"></i> ô trống = <b style="color:var(--ink)">bị từ chối</b></span>
 </div>
-
-<h3>Bốn điều việc vẽ quyết định mà prose để mở</h3>
-<div class="tw"><table>
-<tr><td style="width:34%"><span class="n">in_progress → closed</span> giữ lại</td>
-<td>Đa số project không khai báo release gate (<code>resolveReleaseGate</code> trả <code>null</code>). Bắt chúng đi qua <span class="n">releasing</span> là phát minh một bước chúng không có.</td></tr>
-<tr><td>Chỉ <span class="n">finish</span> và <span class="n">abort</span> ra khỏi <span class="n">releasing</span></td>
-<td>Đó là điều làm nó thành <em>khoảng giữa</em> chứ không phải park thứ tư: agent không tự ra được, nên không ai tự tuyên bố release của mình đã xong.</td></tr>
-<tr><td><span class="n">reopen → in_progress</span>, không phải <span class="n">→ open</span></td>
-<td>Issue mở lại đã có branch, worktree và lịch sử. Đẩy về <span class="n">open</span> là chào pool như việc mới và cho agent mới đua với cây đã tồn tại.</td></tr>
-<tr><td>Không cửa nào vào <span class="n">releasing</span> ngoài <span class="n">in_progress</span></td>
-<td>Release là trên công việc đã land, nên chỉ có một đường vào.</td></tr>
-</table></div>
-
-<h2>Tám status bị bỏ</h2>
-<p class="sub">Số row đọc từ Postgres của forge-beta, không qua MCP.</p>
-<div class="tw"><table>
-<thead><tr><th>Status</th><th>Row</th><th>Project</th><th>Vì sao bỏ</th></tr></thead>
-<tbody>
-<tr><td><span class="pill p-gone">confirmed</span></td><td>0</td><td>0</td><td rowspan="4">Thang cũ. Không còn row nào ở mọi project, nhưng vẫn xuất hiện trong 33 file source, prompt và picker UI.</td></tr>
-<tr><td><span class="pill p-gone">clarified</span></td><td>0</td><td>0</td></tr>
-<tr><td><span class="pill p-gone">testing</span></td><td>0</td><td>0</td></tr>
-<tr><td><span class="pill p-gone">approved</span></td><td>10</td><td>5</td></tr>
-<tr><td><span class="pill p-gone">developed</span></td><td>1</td><td>1</td><td>Vẫn nhận write hôm nay.</td></tr>
-<tr><td><span class="pill p-gone">tested</span></td><td>3</td><td>3</td><td>Vẫn nhận write hôm nay.</td></tr>
-<tr><td><span class="pill p-gone">released</span></td><td>79</td><td>13</td><td><b>Thay bằng nút release + <span class="n">releasing</span>.</b> Hôm nay nó không phải một bước — nó là phòng chờ, và <code>release-gate-hold.ts</code> viết lại <span class="n">closed</span> của agent về đây vì agent “không được tự tuyên bố đã ship”.</td></tr>
-<tr><td><span class="pill p-gone">waiting</span></td><td>30</td><td>9</td><td>Driver đã bị rewrite sang <span class="n">needs_info</span>. Nhưng đây là status duy nhất có <b>cột thứ hai</b> (<span class="n">waitingKind</span>) và một họ refusal gọi thẳng bằng code trong guide + fact text.</td></tr>
-</tbody></table></div>
-
-<div class="note">
-<b>Vì sao thay <span class="n">released</span> bằng nút là đúng.</b> Trong lúc batch chạy, issue <em>vẫn đứng ở</em>
-<span class="n">released</span>; việc “đang release” chỉ nằm ở cột <span class="n">release_batch_run_id</span>. Nên một
-status mang hai nghĩa cùng lúc: <em>đang chờ ai bấm</em> và <em>đang release ngay lúc này</em>.
-<b>16 batch job đã chạy — 4 failed, 2 cancelled</b> (pixelight, sidpeak): đúng những ca hai nghĩa đó tách nhau
-và không ai đọc ra được mình đang xem cái nào. Hôm nay <code>abort</code> xoá cột và để issue nguyên chỗ, nên
-<b>release thất bại không phân biệt được với chưa từng release</b>.
 </div>
-
-<h2>Xung đột cần bạn quyết</h2>
-<p class="sub"><code>issues/autonomous-park.ts</code> đang viết lại <span class="n">reopen → open</span> cho
-<b>mọi actor</b> trên project autonomous — sinh ra từ ISS-141: issue ngồi ở <span class="n">reopen</span> hơn một
-tiếng, hiện lên như session đang sống trong khi reconciler đọc lại mỗi 60s và đếm một lần rescue mỗi lần.
-Giữ <span class="n">reopen</span> là mâu thuẫn với rewrite đang chạy.</p>
-<div class="opt">
-  <div class="card">
-    <p class="tag" style="color:var(--muted)">Cách 1</p>
-    <h3 style="margin-top:2px"><span class="n">reopen</span> thành dispatch được</h3>
-    <p>Driver nhận issue ở cả <span class="n">reopen</span> và <span class="n">open</span>. Wedge ISS-141 không
-    quay lại được, vì status đã có việc phía sau.</p>
-    <p style="color:var(--muted);font-size:13px"><b>Giá:</b> <code>autonomousStepFor</code> trả lời cho hai
-    status; mọi chỗ đọc “cái gì dispatch” phải đổi. Nhưng đây là cách làm
-    <span class="n">releasing → reopen</span> <b>tự lành</b>.</p>
-  </div>
-  <div class="card lean">
-    <p class="tag">Cách 2 · tôi nghiêng về</p>
-    <h3 style="margin-top:2px">Giữ rewrite, <span class="n">reopen</span> là park người tự chuyển</h3>
-    <p><span class="n">reopen</span> nghĩa là “người không đồng ý và người tự định tuyến”, không bao giờ là
-    “một bước từ chối nó”. Khớp với nghĩa mới trong bộ này, và không phải đổi gì ở phần dispatch.</p>
-    <p style="color:var(--muted);font-size:13px"><b>Giá:</b> release fail hoặc bất đồng phải chờ người, kể cả
-    khi fix hiển nhiên — fleet chậm hơn.</p>
-  </div>
-</div>
-<p class="sub" style="margin-top:14px">Code không trả lời được: cả hai đều nhất quán với mọi số đo. Và
-<b>không hoãn được qua bước 1</b> — <span class="n">releasing → reopen</span> là một trong hai cạnh ra của status
-mới, xây trước khi chốt là xây một cạnh mà đích có thể bị rewrite mất.</p>
-
-<h2>Thứ tự thi hành</h2>
-<ol class="steps">
-  <li><b>Thêm <span class="n">releasing</span></b> và cho batch ghi nó: <code>createReleaseBatch</code> chuyển mỗi
-  issue đã claim sang <span class="n">releasing</span> trong cùng transaction với CAS claim;
-  <code>finish</code> → <span class="n">closed</span>; <code>abort</code> → <span class="n">reopen</span> kèm lý do.
-  Đi trước và đi một mình: cộng thêm, không phá caller nào.
-  <br><span style="color:var(--muted);font-size:13px">Hai chỗ phải sửa cùng nhịp:
-  <code>TERMINAL_FOR_DISPATCH</code> phải chứa <span class="n">releasing</span> (không thì issue đang release vẫn
-  dispatch được), và <code>MASTER_WAKE_STATUSES</code> phải thức theo readiness derive chứ không theo
-  <span class="n">releasing</span>. Ba sweep orphan không cần gì — đã kiểm, 0 tham chiếu tới
-  <span class="n">released</span>.</span></li>
-  <li><b>Chuyển chỗ refusal của gate.</b> <code>release-gate-hold.ts</code> thôi viết lại
-  <span class="n">closed → released</span> và bắt đầu <b>từ chối có tên</b> close của agent trên project có gate.
-  Đây là thay đổi hành vi có răng.</li>
-  <li><b>Xả <span class="n">released</span></b> — 79 row, 13 project, và <b>không đồng nhất</b>: mỗi cái hoặc đang
-  thật sự chờ người bấm (→ về bậc cũ), hoặc đang giữa batch khi có gì đó chết (→ <span class="n">releasing</span>,
-  hoặc <span class="n">reopen</span> nếu batch đã terminal). Đọc batch run, không dùng luật đồng loạt.</li>
-  <li><b>Đóng băng sáu cái còn lại</b> làm đích transition, to tiếng; xả 14 row từng cái một; rồi bỏ khỏi enum kèm CHECK.</li>
-  <li><b><span class="n">waiting</span> cuối cùng, thành bước riêng.</b> Chốt câu hỏi kind trước
-  (<span class="n">needs_info</span> có thừa hưởng <span class="n">waitingKind</span> không?), vì câu trả lời quyết
-  định đây là rewrite status hay rewrite cộng migration cột. Rồi bỏ status, cột, hai refusal
-  <code>WAITING_KIND_*</code> và guide/fact text gọi chúng bằng code — <b>cùng một lúc</b>.</li>
-  <li><b>Bật bảng thành gate.</b> <code>canTransitionFree</code> đọc <code>transitions</code>; guard advisory tháo
-  đi; refusal nêu tên các cửa ra hợp lệ. Chín status làm cái này đủ nhỏ để đọc hết trong một màn hình.</li>
-  <li><b>Quét tài liệu dạy học</b> — sinh system prompt, picker UI, <code>docs/modules/lifecycle-pipeline/</code>,
-  và nửa cross-repo trong <code>forge-plugin</code>.</li>
-</ol>
-<p class="sub" style="margin-top:12px"><b>Bước 1 trước 2, bước 2 trước 3</b> là toàn bộ cái ordering. Từ chối close
-trước khi <span class="n">releasing</span> tồn tại thì agent trên project có gate không còn chỗ nào hợp lệ để kết.
-Xả <span class="n">released</span> trước khi rewrite dừng thì rewrite đổ lại vào — cùng cái bẫy với sáu cái kia.</p>
-
-<h2>Câu hỏi <span class="n">waitingKind</span>: 5 của 30, không phải 30</h2>
-<p class="sub">Đọc từ cột <span class="n">waiting_kind</span>: <b>24 needs_decision · 6 needs_resource</b>, không có null.
-24 cái không mất gì khi gộp — câu hỏi chờ quyết định <em>chính là</em> nghĩa của <span class="n">needs_info</span>.
-Sáu cái kia mới là vấn đề, và <b>năm</b> trong đó là phụ thuộc ngoài thật:</p>
-<div class="tw"><table>
-<thead><tr><th>Row</th><th>Đang chờ</th></tr></thead>
-<tbody>
-<tr><td class="n">sidboss ISS-95</td><td>một bản npm publish ở upstream (<code>@sidcorp/react-kit</code> vẫn 0.1.0 — đã kiểm, không đoán)</td></tr>
-<tr><td class="n">sid-desk ISS-64</td><td>một người; QA xong, 19/19 đã đi</td></tr>
-<tr><td class="n">sid-desk ISS-69</td><td>một người; 16/18 check live pass</td></tr>
-<tr><td class="n">sid-desk ISS-123</td><td>số row <code>chat_messages</code> trên prod, chưa đo — cần quyền prod</td></tr>
-<tr><td class="n">sid-desk ISS-132</td><td>credential push GitLab mà runner không có (<code>pre-receive</code> chặn)</td></tr>
-<tr><td class="n" style="color:var(--muted)">sidpeak ISS-368</td><td style="color:var(--muted)">tmux run-pane name collision — <b>đúng một cái là artifact cơ chế</b></td></tr>
-</tbody></table></div>
-<p class="sub" style="margin-top:12px"><span class="n">ISS-132</span> là ca rõ nhất cho việc giữ kind:
-<b>quyết định bao nhiêu cũng không sinh ra được một credential push.</b> Gộp nó vào
-<span class="n">needs_info</span> là xếp nó cạnh “ai đó nên xem cái màn hình này”.</p>
-
-<h2>Vì sao phải làm</h2>
-<div class="tw"><table>
-<thead><tr><th>Bốn danh sách cùng tự nhận mô tả một lifecycle</th><th>Ở đâu</th><th>Số</th></tr></thead>
-<tbody>
-<tr><td>enum kernel</td><td class="n">db/schema.ts#issueStatuses</td><td><b>16</b></td></tr>
-<tr><td>driver thật sự viết</td><td class="n">pipeline/autonomous-mode.ts</td><td><b>5</b></td></tr>
-<tr><td>project được phép cấu hình</td><td class="n">pipeline-config-schema.ts#STAGE_NAMES</td><td><b>4</b></td></tr>
-<tr><td>người đọc được thấy</td><td class="n">contracts/issue-vocabulary.ts</td><td><b>8</b></td></tr>
-</tbody></table></div>
-<p class="sub" style="margin-top:14px">Và bảng transition <b>không chặn gì</b>. <code>state-machine.ts</code> có map
-đủ 16 status, nhưng <code>cm:guard</code> đầu tiên của chính nó viết: <em>“ADVISORY, NOT A GATE. Nothing enforces
-this map.”</em> Map đó vẫn được đọc để sinh system prompt và gợi ý next-state trên UI — nên thang đã nghỉ vẫn
-đang tự dạy lại chính nó cho agent và người dùng. <b>433 row đứng ở status kernel không lái</b>; 5 issue
-<span class="n">approved</span> của sidpeak không có đường ra bằng máy nào cả, ba trong đó là
-<span style="color:var(--reop);font-weight:600">critical</span> và đã merge.</p>
-
-<footer>
-Nguồn: <span class="n">docs/proposals/one-status-vocabulary-and-a-real-transition-table.md</span> ·
-<span class="n">docs/proposals/status-flow.md</span> · số đo 2026-09-09 từ Postgres read-only của forge-beta và
-cây tại <span class="n">b41b310fd</span>. Trục run (vòng đời master, park/resume) là phán quyết riêng — hai trục
-gặp nhau đúng một chỗ: bộ park.
-</footer>
 
 </div>
 <script>
@@ -397,9 +244,7 @@ gặp nhau đúng một chỗ: bộ park.
     b.addEventListener('click', () => {
       const on = b.getAttribute('aria-pressed') === 'true';
       b.setAttribute('aria-pressed', String(!on));
-      for (const g of document.querySelectorAll('[data-lay="' + b.dataset.l + '"]')) {
-        g.classList.toggle('off', on);
-      }
+      for (const g of document.querySelectorAll('[data-lay="' + b.dataset.l + '"]')) g.classList.toggle('off', on);
     });
   }
 </script>
