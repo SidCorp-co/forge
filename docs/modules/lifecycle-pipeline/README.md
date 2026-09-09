@@ -114,6 +114,15 @@ reachable from every rung, one park a person routes (`reopen`), two ends differi
   batch needs. What must not exist is an agent declaring its own release finished.
 - **`reopen → in_progress`, never `→ open`** — a reopened issue has a branch and a worktree, and
   offering it to the pool races a fresh agent against the tree that already exists.
+- **`reopen` is a park a person routes, and the autonomous rewrite of it is retired.**
+  `issues/autonomous-park.ts` rewrites `reopen → open` for every actor because the staged pipeline
+  read `reopen` as "a step rejected this"; this vocabulary reads it as "a person disagreed with a
+  close", which is not a step at all. Measured 2026-09-10: the reconciler's every-60s wedge pass
+  reads `AUTONOMOUS_INFLIGHT_STATUSES`, which resolves to `['in_progress']` and never sees
+  `reopen`; `notify-transitions.ts` already classes it in `PROBLEM_STATUSES`; `attention-buckets.ts`
+  puts it in `NEEDS_REVIEW_STATUSES`. Two readers already treat it as a human's business and the
+  third does not read it, so the ISS-141 wedge cannot return through this door. Cost: a failed
+  release parks at `reopen` and does not self-heal.
 - **`released` is retired as a status**, replaced by the release button
   (`POST /:projectId/release-batches`) plus `releasing` for the middle. Today an issue keeps
   standing at `released` during a batch while the in-flight fact lives only in

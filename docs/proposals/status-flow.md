@@ -111,35 +111,57 @@ own the *release outcome* edges (`closed`, `reopen`). A park is somebody stoppin
 the release to ask or to wait, which is exactly what a person needs when a batch
 half-lands. What must not exist is an agent declaring its own release finished.
 
-## The conflict this drawing exposes, and it needs a decision
+## The `reopen` conflict, and why it dissolves
 
 `issues/autonomous-park.ts` rewrites **`reopen` → `open` for every actor** on an
-autonomous project, and it was written from an incident: epodsystem ISS-141 sat at
-`reopen` for over an hour, rendering as a live session while the reconciler
-re-read it every 60s and counted a rescue each time. The reason given is that the
-autonomous driver has no steps, so `reopen` names a step that does not exist.
+autonomous project. It was written from an incident: epodsystem ISS-141 sat at
+`reopen` for over an hour on 2026-08-24, rendering as a live session while the
+reconciler re-read it every 60s and counted a rescue each time.
 
-Keeping `reopen` therefore contradicts a live rewrite. Two ways out, and this is
-the owner's call:
+The reason it gives is a statement about MEANING, and the nine-status set
+changes that meaning:
 
-| Option | Consequence |
+> The staged pipeline reads `reopen` as "a step rejected this; route it back to
+> whichever step owns the fix" … The autonomous driver has no steps, so an issue
+> an agent lands on `reopen` is queued for a driver that will never look at it.
+
+Under this vocabulary `reopen` does not name a step. It names **a person
+disagreed with a close**, and a person routes what follows. So the premise the
+rewrite rests on — *"`reopen` names a step and this mode has none"* — is no
+longer true of the status, and neither of the two options an earlier draft of
+this file offered is needed.
+
+**Three things measured 2026-09-10 say the wedge cannot return through this
+door:**
+
+| Reader | What it does with `reopen` today |
 |---|---|
-| `reopen` becomes dispatchable — the driver is handed an issue at `reopen` as well as `open` | `autonomousStepFor` answers for two statuses. The ISS-141 wedge cannot return, because the status now has work behind it. Costs a second entry door and every reader of "what dispatches" changes. |
-| the rewrite stays, and `reopen` is a park a person moves by hand | `reopen` means "a person disagreed and a person routes it", never "a step rejected it". The ISS-141 shape is impossible for a different reason — nothing automated reads it. Costs: an abort or a disagreement waits for a human even when the fix is obvious. |
+| `pipeline/reconciler.ts:183` | selects `AUTONOMOUS_INFLIGHT_STATUSES`, which resolves to **`['in_progress']`** — `reopen` is not a driver status, so the every-60s pass that counted ISS-141's rescues does not read it at all |
+| `notifications/notify-transitions.ts:41` | already classes `reopen` in `PROBLEM_STATUSES` — "a person is needed", carrying an auto-resolve key. **The same reading this vocabulary gives it** |
+| `me/attention-buckets.ts:100` | `NEEDS_REVIEW_STATUSES = ['developed', 'reopen']` — surfaced to a human, not to a dispatcher |
 
-I lean to the second, because it matches what `reopen` now means under this
-vocabulary — a person's disagreement, not a step's rejection — and because it needs
-no change to what dispatches. But the first is what makes `releasing → reopen`
-self-healing, and a failed release that waits for a person is a slower fleet.
+And `reopen` holds **0 rows across 28 projects**, so nothing is stranded by the
+change either way.
 
-Not answerable from the code: both are consistent with every measurement.
+**So: retire the rewrite, keep `reopen` as a park a person routes.** What made
+ISS-141 a wedge was a status with no work behind it *that something automated
+kept reading as live*. The reconciler no longer reads it, and two other readers
+already treat it as a human's business. The rewrite is now the only thing
+asserting the old meaning.
+
+One consequence to carry, and it is the cost: `releasing → reopen` on a failed
+release waits for a person. It does not self-heal. That is the correct trade for
+a release that half-landed — a failed release re-driven automatically is how a
+half-landed batch becomes two half-landed batches — but it means a fleet with
+nobody watching leaves aborted releases parked.
 
 ## Honest costs
 
 | Cost | Borne by |
 |---|---|
 | Enforcing the table breaks every caller that today takes a shortcut, and there is no inventory of those — `canTransitionFree` has permitted anything since it was written, so the shortcuts are unknown until they fail | every agent and operator, at the first refused hop |
-| The `reopen` decision above cannot be deferred past step 1: `releasing → reopen` is one of the two edges out of the new status, and building it before the rewrite question is settled means shipping an edge whose target may be rewritten out from under it | whoever ships `releasing` |
+| Retiring the `reopen` rewrite removes a net that was written from a real wedge. Three readers now say the wedge cannot return through it, but all three are readings of today's code — a future reader that starts polling `reopen` re-creates ISS-141, and nothing gates that | whoever adds the next reader of `issues.status` |
+| `releasing → reopen` does not self-heal: a failed release parks for a person and stays there. On a fleet nobody is watching, aborted releases accumulate at `reopen` | whoever is not watching |
 | `in_progress → closed` and `in_progress → releasing` both being legal means the gate decides which one a run may take, and that is derived per project (`resolveReleaseGate`). A reader of the table alone cannot tell which applies to a given project | anyone reading this table without reading the gate |
 | Three parks means three "who owes the next move" answers to keep distinct. `needs_info` is comment-wakeable, `on_hold` is manual by design (its `cm:guard` says rewriting it would undo an operator's cancel), `reopen` is undecided above. A reader who conflates them re-creates the ISS-970 defect — a "needs a human" badge on every paused issue | every surface that renders a park |
 | The drawing is the ninth status' first drawing. `releasing` has no rows, no reaper, and no crashed-batch story — an issue can die inside it exactly as a run dies holding a lease | whoever finds the first stuck `releasing` row |
