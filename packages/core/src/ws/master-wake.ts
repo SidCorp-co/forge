@@ -32,6 +32,7 @@ import { roomManager } from './server.js';
  */
 // cm:guard this is a HINT and never the only trigger. `ws/rooms.ts:publish` is fire-and-forget — it returns 0 for a room with no subscriber and skips any socket not OPEN, with no buffer, no queue and no replay — so a wake published while a box's websocket is down is gone with nothing recording that it happened. The 30s sweep in `daemon/master.rs` is what makes a lost wake cost latency instead of costing the work, and the reconnect catch-up read on the runner side covers the same hole from the other end. Deleting either one turns a dropped frame into work that sits forever with nothing reporting why.
 // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/mod.rs — the `master.wake` arm on the device room. The event NAME and the `projectId` field are the whole contract; a runner that predates this ignores an unknown event and keeps polling, which is why this can ship before the fleet is on a build that reads it.
+// cm:guard `releasing` is deliberately ABSENT while `released` is present, and the asymmetry IS the rule: `released` is an issue waiting for a person to trigger its release, which a master may see, while `releasing` is a batch already running — waking a master for one hands it a row `TERMINAL_FOR_DISPATCH` refuses, so every in-flight batch would nudge a box for nothing.
 export const MASTER_WAKE_STATUSES: readonly IssueStatus[] = ['open', 'draft', 'released'] as const;
 
 export function isMasterWakeStatus(status: IssueStatus): boolean {

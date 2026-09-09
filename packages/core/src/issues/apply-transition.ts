@@ -39,7 +39,13 @@ import { postTransitionReasonComment, requiresAuthoredReason } from './transitio
  * The two mechanisms are not interchangeable, and the difference is the whole
  * reason `dropped` exists — see `RUN_CLOSING_STATUSES` below.
  */
-export const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>(['released', 'closed', 'dropped']);
+// cm:guard `releasing` belongs here for the same reason `released` does — a release is running over this issue, so offering it to a dispatcher races a second agent against the batch it is executing under. It is the half `released` alone could not express: one status meant both "waiting for a person to press it" and "a batch is running", so the in-flight fact lived only in `issues.release_batch_run_id` where no dispatch gate read it.
+export const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>([
+  'released',
+  'releasing',
+  'closed',
+  'dropped',
+]);
 
 /**
  * Statuses that close the issue's open `pipeline_run`. Only `closed`:

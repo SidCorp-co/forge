@@ -44,10 +44,13 @@ export function autonomousStepFor(
   return { type: AUTONOMOUS_JOB_TYPE, skillName: AUTONOMOUS_SKILL_NAME };
 }
 
+// cm:guard `releasing` is NOT a driver status, so pure subtraction would offer a mid-release issue as backlog — a master could promote one and race a second agent against the batch executing over it. `TERMINAL_FOR_DISPATCH` refuses the promote, so the row could only ever be a menu entry that fails, which reads as a bug in the promote path rather than in the menu (the same reason the subtraction exists at all).
+const TERMINAL_FOR_BACKLOG: readonly IssueStatus[] = ['releasing'] as const;
+
 // cm:guard DERIVED by subtraction, never written out by hand. A status the driver already owns carries a run and a job by the time it holds it, so a backlog row at one of those names offers a master work it can never promote — `promoteFromBacklog` would refuse it as `issue_busy` every time, and a menu of statuses that cannot be used reads as a bug in the promote path rather than in this list.
 // cm:edge lockstep -> packages/core/src/pipeline/pipeline-config-schema.ts — `poolBacklog.statuses` is `z.enum` of exactly this array, so a status added to AUTONOMOUS_DRIVER_STATUSES leaves the admissible set through this filter and a config already holding it stops parsing (which reads as `poolBacklog` absent, i.e. no backlog — the safe direction)
 export const BACKLOG_ADMISSIBLE_STATUSES: readonly IssueStatus[] = issueStatuses.filter(
-  (s) => !AUTONOMOUS_DRIVER_STATUSES.includes(s),
+  (s) => !AUTONOMOUS_DRIVER_STATUSES.includes(s) && !TERMINAL_FOR_BACKLOG.includes(s),
 );
 
 // cm:guard this name reaches the agent ONLY as text in the drive prompt — nothing in core or the runner resolves it. Since 2026-09-02 the skill is delivered by the `forge` Claude Code plugin (github.com/SidCorp-co/forge-plugin), installed on a device when a bound project designates it in `pipelineConfig.plugins` AND that box has `[plugins] enabled = true`; a project missing either dispatches a driver that is told to use a skill it does not have. `skill_registrations` never resolves this name and must not start to.

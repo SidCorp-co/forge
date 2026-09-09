@@ -152,9 +152,7 @@ vi.mock('../../ws/server.js', () => ({
   roomManager: { publish: vi.fn() },
 }));
 
-// Keep the real create-path helpers (decode/persist) but stub the read-side
-// attachment join so get/transition/update/etc. don't need a programmed query
-// chain. The real join is its own concern (tested via the helper).
+// cm:guard stub the read-side joins, never the generic `db.select` queue: every case here stages its rows with a fixed sequence of `selectLimit.mockResolvedValueOnce`, so a query added to or removed from a code path shifts every later row by one and the failure surfaces in a DIFFERENT test than the one that changed — retiring one `projects` read on the `reopen` path failed 25 cases, none of them about reopen (2026-09-10).
 const listIssueAttachmentsMock = vi.fn(async (..._args: unknown[]) => [] as unknown[]);
 vi.mock('../../issues/attachment-service.js', async (importActual) => {
   const actual = await importActual<typeof import('../../issues/attachment-service.js')>();
@@ -1300,9 +1298,7 @@ describe('forge_issues tool', () => {
     const testedRow = { ...baseIssueRow, status: 'tested' as const };
     selectLimit.mockResolvedValueOnce([testedRow]);
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
-    // cm:why the third read is the project's pipeline mode: a `reopen` on an autonomous project is rewritten to `open` before the write (issues/autonomous-park.ts), and an empty agentConfig is the staged answer that leaves this transition alone
-    selectLimit.mockResolvedValueOnce([{ agentConfig: {} }]);
-    // cm:why two project reads, in this order: the autonomous-park rewrite reads first and the ISS-959 criteria read follows, so swapping them hands the park resolver a config it did not ask for
+    // cm:why ONE project read, not two: `reopen` stopped being rewritten by `issues/autonomous-park.ts` on 2026-09-10, so the park resolver's read is gone and only the ISS-959 criteria read remains. Queueing the extra row left it unconsumed, and a `mockResolvedValueOnce` nobody reads answers the NEXT test's first lookup — 25 cases in this file failed that way, none of them about reopen.
     selectLimit.mockResolvedValueOnce([{ agentConfig: {} }]);
     updateReturning.mockResolvedValueOnce([
       { id: ISSUE_ID, reopenCount: 1, updatedAt: new Date() },

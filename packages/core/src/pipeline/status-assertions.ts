@@ -50,6 +50,8 @@ export const STATUS_ASSERTIONS: Record<IssueStatus, StatusAssertion> = {
   testing: { gate: 'qa', nextActor: 'human' },
   tested: { gate: 'release', nextActor: 'human' },
   released: { gate: 'release', nextActor: 'human' },
+  // cm:guard `nextActor: 'human'` and NOT 'agent', although a batch is running: the lockstep rule above binds 'agent' to the statuses `autonomousStepFor` dispatches at, and that is `open` alone. The release batch is not a claimable step, and claiming otherwise would send a master at a row `TERMINAL_FOR_DISPATCH` refuses.
+  releasing: { gate: 'release', nextActor: 'human' },
   reopen: { gate: 'build', nextActor: 'human' },
   waiting: { gate: 'paused', nextActor: 'human' },
   on_hold: { gate: 'paused', nextActor: 'human' },

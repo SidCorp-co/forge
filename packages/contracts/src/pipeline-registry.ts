@@ -22,6 +22,7 @@ export const REGISTRY_ISSUE_STATUSES = [
 	"testing",
 	"tested",
 	"released",
+	"releasing",
 	"closed",
 	"reopen",
 	"on_hold",

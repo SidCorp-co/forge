@@ -50,6 +50,10 @@ export async function markMergedIfLeavingBase(
   if (args.fromStatus !== BASE_MERGE_STATE || args.toStatus === BASE_MERGE_STATE) {
     return { stamped: false };
   }
+  // cm:guard `released -> releasing` is the release STARTING, not the issue leaving the base branch, so it must not stamp. Without this the claim itself marks every issue shipped, and an abort then leaves `merged_at` set on work that never released — which unblocks every `blocks` dependent as if it had. The stamp belongs to `releasing -> closed`, where `finish` has read the deploy back.
+  if (args.toStatus === 'releasing') {
+    return { stamped: false };
+  }
   const updated =
     (await tx
       .update(issues)

@@ -1,26 +1,26 @@
-// ISS-141, ISS-886 — the two statuses the autonomous driver cannot be left on.
+// ISS-886 — the one status the autonomous driver cannot be left on.
 //
-// The staged pipeline reads `reopen` as "a step rejected this; route it back to
-// whichever step owns the fix", and `waiting` as "a human owes this issue
-// something". The autonomous driver has no steps: `autonomousStepFor` answers
-// for `open` and nothing else, and `answer-resume.ts` restarts `needs_info` and
-// nothing else. So an issue an agent lands on either status is queued for a
-// driver that will never look at it.
-//
-// Both were measured, not predicted. `reopen` rendered as a live session while
-// the reconciler re-read it every 60s and counted a rescue each time —
-// epodsystem ISS-141 sat there over an hour on 2026-08-24. `waiting` took 27
-// parks no comment could ever wake.
+// `waiting` means "a human owes this issue something", and on this mode that is
+// what `needs_info` IS: `answer-resume.ts` restarts `needs_info` and nothing
+// else, so an agent's `waiting` is a park no comment could ever wake. It took 27
+// of them before the rewrite existed.
 //
 // So the status is rewritten at write time rather than detected afterwards —
 // the shape of `issues/intake-gate.ts`, for the same reason: a park no
 // dispatcher will ever pick up must not be representable.
+//
+// `reopen` was rewritten here too until 2026-09-10 and is NOT any more. That
+// rewrite rested on a claim about meaning — the staged pipeline read `reopen` as
+// "a step rejected this, route it back to the step that owns the fix", and this
+// mode has no steps — and the nine-status vocabulary changed exactly that: it
+// means a person disagreed with a close, which is not a step and is nobody's to
+// route but theirs. The ISS-141 wedge it was written from (an hour at `reopen`
+// rendering as live while the reconciler counted a rescue every 60s) cannot
+// return through this door: `reconciler.ts` selects AUTONOMOUS_INFLIGHT_STATUSES,
+// which is `['in_progress']` and never reads it.
 
 import type { IssueStatus } from '../db/schema.js';
-import {
-  AUTONOMOUS_ENTRY_STATUS,
-  AUTONOMOUS_QUESTION_STATUS,
-} from '../pipeline/autonomous-mode.js';
+import { AUTONOMOUS_QUESTION_STATUS } from '../pipeline/autonomous-mode.js';
 import { isAutonomousProject } from '../pipeline/autonomous-project.js';
 import type { ActorAgency } from './actor-agency.js';
 
@@ -41,13 +41,13 @@ export async function resolveAutonomousParkTarget(
 ): Promise<IssueStatus> {
   if (!isRewritablePark(input)) return input.requested;
   if (!(await isAutonomousProject(input.projectId))) return input.requested;
-  return input.requested === 'reopen' ? AUTONOMOUS_ENTRY_STATUS : AUTONOMOUS_QUESTION_STATUS;
+  return AUTONOMOUS_QUESTION_STATUS;
 }
 
-// cm:guard `waiting` is rewritten for a DEVICE actor only while `reopen` is rewritten for every actor, and the asymmetry is the point: a person parking work has chosen to stop it and owns their own resume, so waking them by comment would take that pause away, whereas an agent writing `waiting` is asking a human for something, which on this mode is what `needs_info` IS. `reopen` has no such reading — it names a step, and this mode has none.
+// cm:guard `waiting` is rewritten for a DEVICE actor ONLY: a person parking work has chosen to stop it and owns their own resume, so waking them by comment would take that pause away, whereas an agent writing `waiting` is asking a human for something, which on this mode is what `needs_info` IS.
+// cm:guard `reopen` is NOT rewritten (2026-09-10). Two readers already treat it as a person's business — `notify-transitions.ts` has it in PROBLEM_STATUSES, `attention-buckets.ts` in NEEDS_REVIEW_STATUSES — and the wedge pass does not read it at all. Restoring the rewrite would send `releasing → reopen` (an aborted release) to `open`, which offers a half-released issue to the pool as fresh work.
 // cm:guard `on_hold` is deliberately absent. Its only device-actor writer is the ISS-411 operator cancel, which a human initiated, so rewriting it to a comment-wakeable status would undo the authoritative cancel — and it has been manual-resume in staged mode too, so it is not a hazard this mode introduced.
 function isRewritablePark(input: AutonomousParkInput): boolean {
-  if (input.requested === 'reopen') return true;
   if (input.requested !== 'waiting') return false;
   return input.agency === 'agent';
 }

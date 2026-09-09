@@ -162,6 +162,36 @@ describe('release batch finish E2E', () => {
       }
     });
 
+    // cm:guard the claim and the STATUS move together, and this asserts the status because the column alone was the whole defect: before `releasing` existed an issue stood at the gate status for the length of its batch, so `released` meant both "waiting for a person to press it" and "being released right now" and no reader could separate them.
+    it('marks every claimed issue `releasing`, so a batch in flight is readable from the status', async () => {
+      const a = await insertIssue();
+      const b = await insertIssue();
+
+      const { runId } = await claim([a, b]);
+
+      for (const id of [a, b]) {
+        const after = await stored(id);
+        expect(after.status).toBe('releasing');
+        expect(after.claim).toBe(runId);
+      }
+    });
+
+    // cm:guard an aborted release must be DISTINGUISHABLE from one never attempted. The abort used to clear the claim and leave the status alone, so a failed release and an untouched issue read identically; `reopen` is where a person decides, and it does not self-heal on purpose.
+    it('lands an aborted batch on `reopen` with the reason, not back where it started', async () => {
+      const { abortReleaseBatch } = await import('../../src/release-batch/service.js');
+      const a = await insertIssue();
+      const { runId } = await claim([a]);
+      expect((await stored(a)).status).toBe('releasing');
+
+      const touched = await abortReleaseBatch(runId, 'deploy never reported', ownerId);
+
+      expect(touched).toEqual([a]);
+      const after = await stored(a);
+      expect(after.status).toBe('reopen');
+      expect(after.claim).toBeNull();
+      expect(after.mergedAt).toBeNull();
+    });
+
     it('releases the claim on every issue it touched', async () => {
       const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
       const a = await insertIssue();
@@ -196,7 +226,8 @@ describe('release batch finish E2E', () => {
       expect(err).toBeInstanceOf(ReleaseNotVerifiedError);
       for (const id of [a, b]) {
         const after = await stored(id);
-        expect(after.status).toBe('released');
+        // cm:guard `releasing` and NOT the gate status: a refused verification leaves the batch IN FLIGHT — the claim is still held and `finish` may be retried — so the status must keep saying so. Asserting the gate status here would pass equally if the claim had been silently rolled back.
+        expect(after.status).toBe('releasing');
         expect(after.mergedAt).toBeNull();
         expect(after.claim).toBe(runId);
       }
@@ -235,9 +266,12 @@ describe('release batch finish E2E', () => {
       expect(released.sort()).toEqual([a, b].sort());
       for (const id of [a, b]) {
         const after = await stored(id);
-        expect(after.status).toBe('released');
+        // cm:guard `reopen`, not the gate status: this assertion read `released` until the release lane gained `releasing`, and asserting the gate status here is what made a failed release indistinguishable from one never attempted. Nothing may close — that is what the `mergedAt` check below is for.
+        expect(after.status).toBe('reopen');
         expect(after.claim).toBeNull();
-        expect(await commentCount(id)).toBe(1);
+        expect(after.mergedAt).toBeNull();
+        // cm:guard TWO comments, and both are load-bearing: the abort's own explanation, and the reason `requiresAuthoredReason` posts before the `reopen` write commits. A test asserting one would be satisfied by an abort that moved the status with no reason on the record — the unexplained park the reason rule exists to refuse.
+        expect(await commentCount(id)).toBe(2);
       }
     });
 

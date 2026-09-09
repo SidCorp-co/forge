@@ -342,6 +342,7 @@ describe('db/schema — issues', () => {
       'testing',
       'tested',
       'released',
+      'releasing',
       'closed',
       'reopen',
       'on_hold',
@@ -430,7 +431,7 @@ describe('db/schema — comments', () => {
     );
     expect(byCol.get('issue_id')?.onDelete).toBe('cascade');
     expect(byCol.get('author_id')?.onDelete).toBe('restrict');
-    // ISS-519 — agent-author marker FK; de-marks rather than blocks on device delete.
+    // cm:guard `set null` and never `restrict`: this column is the marker for who was at the keyboard, so a device deleted out from under an old comment must de-mark it rather than refuse the delete and hold the registry row hostage (ISS-519).
     expect(byCol.get('author_device_id')?.onDelete).toBe('set null');
     expect(byCol.get('parent_id')?.onDelete).toBe('cascade');
   });

@@ -89,8 +89,18 @@ describe('state machine', () => {
     }
   });
 
-  it('released can only move to closed or on_hold', () => {
-    expect([...transitions.released].sort()).toEqual(['closed', 'on_hold']);
+  it('released exits to the close, the release starting, or a pause', () => {
+    expect([...transitions.released].sort()).toEqual(['closed', 'on_hold', 'releasing']);
+  });
+
+  // cm:guard the OUTCOME exits are `finish`'s (`closed`) and `abort`'s (`reopen`) and nothing else may take them — an agent that could leave `releasing` on its own would be declaring its own release finished, which `issues/release-gate-hold.ts` exists to refuse. The two parks are a person stopping to ask, which a half-landed batch needs.
+  it('releasing exits only to the two release outcomes and the two parks', () => {
+    expect([...transitions.releasing].sort()).toEqual([
+      'closed',
+      'needs_info',
+      'on_hold',
+      'reopen',
+    ]);
   });
 
   it('isReopenEntry counts every entry into reopen, not just from closed (ISS-781)', () => {
@@ -112,7 +122,6 @@ describe('state machine', () => {
 
   describe('canTransitionFree (permissive runtime guard)', () => {
     it('allows any non-draft target from any runtime state', () => {
-      // Transitions the strict matrix would reject are now permitted.
       expect(canTransitionFree('open', 'released')).toBe(true);
       expect(canTransitionFree('approved', 'needs_info')).toBe(true);
       expect(canTransitionFree('developed', 'reopen')).toBe(true);
@@ -128,12 +137,10 @@ describe('state machine', () => {
     it('restricts a draft source to promotion, discard, direct-ship and taking it up in place', () => {
       expect(canTransitionFree('draft', 'open')).toBe(true);
       expect(canTransitionFree('draft', 'closed')).toBe(true);
-      // ISS-431 — direct-ship: work done outside the pipeline enters at the
-      // review gate instead of bypassing it (or re-running triage via open).
+      // cm:why ISS-431 — direct-ship: work built outside the pipeline enters AT the review gate, where walking through `open` instead would re-triage it and dispatch an agent onto finished work
       expect(canTransitionFree('draft', 'developed')).toBe(true);
       // cm:why ISS-940 — the rung a session already building the branch takes; promoting instead dispatches a second agent onto the worktree it is in
       expect(canTransitionFree('draft', 'in_progress')).toBe(true);
-      // Early/mid pipeline stages stay sealed off from unaccepted proposals.
       expect(canTransitionFree('draft', 'approved')).toBe(false);
       expect(canTransitionFree('draft', 'testing')).toBe(false);
       expect(canTransitionFree('draft', 'released')).toBe(false);

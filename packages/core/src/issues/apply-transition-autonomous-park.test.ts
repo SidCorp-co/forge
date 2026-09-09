@@ -93,9 +93,10 @@ beforeEach(() => {
 });
 
 describe('reopen on an autonomous project', () => {
-  it('writes `open`, the one status the driver dispatches, instead of `reopen`', async () => {
+  // cm:guard `reopen` SURVIVES on an autonomous project, and this case is the inverse of the one it replaces (which asserted the rewrite to `open`). The rewrite rested on `reopen` naming a step this mode does not have; the nine-status vocabulary makes it name a person's disagreement, which is theirs to route. Rewriting it now would send an aborted release — `releasing → reopen` — to `open`, offering a half-released issue to the pool as fresh work.
+  it('leaves `reopen` at `reopen`, because it names a person and not a step', async () => {
     projectRow('yes');
-    queueUpdate('open');
+    queueUpdate('reopen');
 
     const result = await transitionIssueStatus(
       { id: ISSUE_ID, projectId: PROJECT_ID, status: 'closed', reopenCount: 0 },
@@ -104,15 +105,15 @@ describe('reopen on an autonomous project', () => {
       REOPEN_OPTS,
     );
 
-    expect(updateSet.mock.calls[0]?.[0]).toMatchObject({ status: 'open' });
-    expect(result.status).toBe('open');
-    expect(setCurrentStepMock).toHaveBeenCalledWith(ISSUE_ID, 'open');
-    expect(publishMock.mock.calls[0]?.[1]).toMatchObject({ data: { to: 'open' } });
+    expect(updateSet.mock.calls[0]?.[0]).toMatchObject({ status: 'reopen' });
+    expect(result.status).toBe('reopen');
+    expect(setCurrentStepMock).toHaveBeenCalledWith(ISSUE_ID, 'reopen');
+    expect(publishMock.mock.calls[0]?.[1]).toMatchObject({ data: { to: 'reopen' } });
   });
 
-  it('still demands and posts the reopen reason, against `reopen` and not the rewritten target', async () => {
+  it('still demands and posts the reopen reason', async () => {
     projectRow('yes');
-    queueUpdate('open');
+    queueUpdate('reopen');
 
     await transitionIssueStatus(
       { id: ISSUE_ID, projectId: PROJECT_ID, status: 'closed', reopenCount: 0 },
@@ -140,10 +141,10 @@ describe('reopen on an autonomous project', () => {
     expect(updateSet).not.toHaveBeenCalled();
   });
 
-  // cm:guard the counter is the whole quality signal a reopen carries — an issue reopened four times is a pipeline failing at something, and a rewrite that lands on `open` without incrementing makes that indistinguishable from four fresh issues
+  // cm:guard the counter is the whole quality signal a reopen carries — an issue reopened four times is a pipeline failing at something, and a transition that lands without incrementing makes that indistinguishable from four fresh issues
   it('still increments the reopen counter', async () => {
     projectRow('yes');
-    queueUpdate('open');
+    queueUpdate('reopen');
 
     await transitionIssueStatus(
       { id: ISSUE_ID, projectId: PROJECT_ID, status: 'closed', reopenCount: 0 },

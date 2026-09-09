@@ -52,9 +52,11 @@ describe("toAutonomousLabel", () => {
 		expect(toAutonomousLabel("tested")).toBe("awaiting_release");
 	});
 
-	// cm:guard ISS-141 — `reopen` rendered as `running` while no session existed and none would start; a reopened issue must read as queued work, because that is what the autonomous rewrite makes it
-	it("reads reopen as queued work rather than as a live session", () => {
-		expect(toAutonomousLabel("reopen")).toBe("open");
+	// cm:guard neither `running` nor `open`: ISS-141 rendered `reopen` as `running` with no session alive and none starting, and `open` is the label that promises a dispatcher. Nothing dispatches at `reopen` since the `reopen → open` rewrite was retired 2026-09-10 — a person routes it — so it owns a label and the third assertion holds it out of the bucket `needs_human` feeds.
+	it("reads reopen as a close somebody disputed, not as a session or a queue", () => {
+		expect(toAutonomousLabel("reopen")).toBe("reopened");
+		expect(toAutonomousLabel("reopen")).not.toBe("open");
+		expect(statusesForLabels("needs_human")).not.toContain("reopen");
 	});
 });
 

@@ -23,6 +23,19 @@
 
 ### Added
 
+- **A release you trigger now has a status of its own while it runs.** An issue whose release batch
+  is executing sits at `releasing` instead of standing at `released` looking like it is still waiting
+  for someone to press the button. Nothing offers it to a master, nothing dispatches over it, and the
+  board reads *Running* rather than *Awaiting release* — so a person cannot trigger a release that is
+  already in flight. When the batch finishes the issue closes; when it aborts, the issue lands at
+  `reopen` with the reason attached and waits for a person, and `merged_at` is not stamped on the way
+  in, so a half-landed batch never reads as shipped.
+- **A reopened issue reads as reopened.** `reopen` renders as its own label instead of borrowing
+  `open`, which promised a dispatcher that no longer comes: an agent's `reopen` is no longer rewritten
+  to `open` on an autonomous project, because a person disagreed with a close and a person routes what
+  follows.
+
+
 - **An agent that needs your decision now asks you and gets out of the way.** When a run hits
   something only a person can settle, it writes the question down, releases the machine it was
   holding, and stops — keeping its branch, its working copy and its place in the work so it can pick

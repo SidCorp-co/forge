@@ -192,6 +192,23 @@ export async function createReleaseBatch(
     throw new ClaimConflictError(issueIds.filter((id) => !claimed.some((r) => r.id === id)));
   }
 
+  // cm:guard the status moves with the CLAIM, so "a release is running over this issue" is readable from `status` and not only from a column join. Before this the issue stood at the gate status for the whole batch and `releasing` did not exist, so one status meant both "waiting to be pressed" and "being released now" — 16 batch runs, 4 failed and 2 cancelled, are the cases where those diverge.
+  // cm:guard `viaReleasePath` is required here for the same reason `finish` needs it: `release-gate-hold.ts` rewrites any other actor's move off the gate status back to it, so a claim without it would be undone by the hold on the next read.
+  for (const id of claimed.map((r) => r.id)) {
+    try {
+      await transitionIssueStatus(
+        { id, projectId, status: gateStatus, reopenCount: 0 },
+        'releasing',
+        { type: 'user', id: userId },
+        { viaReleasePath: true },
+      );
+    } catch (err) {
+      if (!(err instanceof TransitionError && err.code === 'NO_OP')) {
+        logger.warn({ err, issueId: id, runId: run.id }, 'release-batch: could not mark releasing');
+      }
+    }
+  }
+
   const issueRows = await db
     .select({ id: issues.id, issSeq: issues.issSeq, title: issues.title })
     .from(issues)
@@ -401,22 +418,36 @@ export async function abortReleaseBatch(
   reason: string,
   actorUserId: string,
 ): Promise<string[]> {
-  const released = await db.execute<{ id: string }>(sql`
+  const released = await db.execute<{ id: string; project_id: string }>(sql`
     UPDATE issues SET release_batch_run_id = NULL, updated_at = now()
     WHERE release_batch_run_id = ${runId}
-    RETURNING id
+    RETURNING id, project_id
   `);
 
   const releasedIds = released.map((r) => r.id);
-  for (const issueId of releasedIds) {
+  for (const row of released) {
+    const issueId = row.id;
     try {
       await db.insert(comments).values({
         issueId,
         authorId: actorUserId,
-        body: `Batch release aborted: ${reason}. Issue remains at its current status and can be re-selected for a future batch release.`,
+        body: `Batch release aborted: ${reason}. The issue is at \`reopen\` — a person decides whether it goes back to work or into another batch.`,
       });
     } catch (err) {
       logger.warn({ err, issueId, runId }, 'release-batch: failed to write abort comment');
+    }
+    // cm:guard an aborted release lands on `reopen` and does NOT self-heal, which is the trade this takes deliberately: a half-landed batch re-driven automatically becomes two half-landed batches. Before this the abort cleared the column and left the status untouched, so a failed release was indistinguishable from one never attempted.
+    try {
+      await transitionIssueStatus(
+        { id: issueId, projectId: row.project_id, status: 'releasing', reopenCount: 0 },
+        'reopen',
+        { type: 'user', id: actorUserId },
+        { transitionReason: `batch release aborted: ${reason}`, viaReleasePath: true },
+      );
+    } catch (err) {
+      if (!(err instanceof TransitionError && err.code === 'NO_OP')) {
+        logger.warn({ err, issueId, runId }, 'release-batch: could not reopen after abort');
+      }
     }
   }
 

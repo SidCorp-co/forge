@@ -51,6 +51,7 @@ export const STATUS_LABELS: Record<IssueStatus, string> = {
 	testing: "Testing",
 	tested: "Tested",
 	released: "Released",
+	releasing: "Releasing",
 	closed: "Closed",
 	reopen: "Reopened",
 	on_hold: "On hold",
@@ -68,6 +69,7 @@ export const AUTONOMOUS_STATUS_LABELS: Record<AutonomousLabel, string> = {
 	open: "Open",
 	running: "Running",
 	needs_human: "Needs a human",
+	reopened: "Reopened",
 	paused: "Paused",
 	awaiting_release: "Awaiting release",
 	done: "Done",
@@ -124,6 +126,7 @@ export const STATUS_TO_STAGE: Record<IssueStatus, StageKey> = {
 	testing: "test",
 	tested: "test",
 	released: "release",
+	releasing: "release",
 	closed: "release",
 	on_hold: "code",
 	// cm:guard `dropped` has no stage — the work never happened, so pinning it to one draws a progress tracker for an issue that made none
@@ -155,6 +158,9 @@ export function statusToRun(
 	if (agentStatus === "queued") return "queued";
 	if (agentStatus === "failed") return "failed";
 	switch (status) {
+		// cm:guard `releasing` is NOT done: the batch is executing, and rendering it beside `closed` would tell a reader the release finished while it is still in flight.
+		case "releasing":
+			return "running";
 		case "released":
 		case "closed":
 			return "done";
@@ -202,6 +208,9 @@ export function statusToChip(
 			return "passed";
 		case "released":
 			return "shipped";
+		// cm:guard distinct from `shipped`: `released` is waiting for a person to press the button, `releasing` is the button already pressed. Collapsing the two is the ambiguity this status was added to remove.
+		case "releasing":
+			return "review";
 		case "closed":
 		// cm:guard `dropped` must not fall through to the `queued` default — a terminal issue rendered as queued reads as work still waiting, which is the exact misreading the status was added to stop. It shares `archived` with `closed` because the difference between them is that dependents stay blocked, and that is not a colour.
 		case "dropped":

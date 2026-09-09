@@ -17,26 +17,19 @@ export const DRAFT_EXIT_TARGETS: readonly IssueStatus[] = [
 // cm:guard ADVISORY, NOT A GATE. Nothing enforces this map. `canTransitionFree` below is the only runtime check and it permits ANY non-draft from → ANY non-draft to; reading a missing pair here as "illegal" has produced wrong conclusions and pointless multi-hop workarounds. Consumers are system-prompt generation, UI next-state suggestions and the soft-skip resolver.
 export const transitions: Record<IssueStatus, readonly IssueStatus[]> = {
   open: ['confirmed', 'needs_info', 'on_hold'],
-  // Clarify-on-happy-path: confirmed dispatches clarify, which exits to
-  // `clarified` (reproduced / UX-validated) where plan picks up, or bounces
-  // to needs_info when it cannot reproduce.
   confirmed: ['clarified', 'needs_info', 'on_hold'],
   clarified: ['waiting', 'approved', 'needs_info', 'on_hold'],
   waiting: ['approved', 'clarified', 'on_hold'],
   approved: ['in_progress', 'on_hold'],
-  // Review exits straight to `testing` (the former `developed → deploying →
-  // testing` hop is retired — `deploying` was removed from the lifecycle).
   in_progress: ['developed', 'testing', 'reopen', 'on_hold'],
   developed: ['testing', 'reopen', 'on_hold'],
   testing: ['tested', 'reopen', 'on_hold'],
-  // `tested` is the SINGLE production approval GATE: QA passed, a human advances
-  // it to `released`. The former `pass`/`staging`/`deploying` happy-path states
-  // were retired entirely (unify gate model) — migrations drained any stranded
-  // issue onto `tested`/`testing`, so they no longer exist in the lifecycle.
-
+  // cm:guard the rows for `confirmed`, `clarified`, `waiting`, `approved`, `developed`, `testing`, `tested` and `released` describe a pipeline that no longer runs and are kept only until their rows are drained — docs/flows/issue-status-lifecycle.html is the flow, this map is not. Do not extend them.
   // cm:guard do not repoint STAGE_FORWARD's tested entry to 'closed' — projects with tested disabled would skip released entirely; the batch-release tested->closed exit stays advisory-only here
   tested: ['released', 'closed', 'reopen', 'on_hold'],
-  released: ['closed', 'on_hold'],
+  released: ['closed', 'releasing', 'on_hold'],
+  // cm:guard the two OUTCOME exits are `finish`'s and `abort`'s alone; the parks are a person stopping to ask. Nothing else may leave, which is what stops an agent declaring its own release finished (issues/release-gate-hold.ts).
+  releasing: ['closed', 'reopen', 'needs_info', 'on_hold'],
   closed: ['reopen'],
   reopen: ['developed', 'testing', 'in_progress', 'on_hold'],
   on_hold: issueStatuses.filter((s) => s !== 'on_hold' && s !== 'draft'),

@@ -531,10 +531,7 @@ export const jobTypes = [
   'code',
   'review',
   'test',
-  // Canonical staging-deploy step (status `pass` → deploy to the staging/preview
-  // env, advance to `staging`). jobType `staging` keeps the forge-${jobType}
-  // convention (skill `forge-staging`, which already exists). `staging` the
-  // ISSUE STATUS stays a no-step approval gate — distinct enum from this jobType.
+  // cm:guard a jobType that survives its ISSUE STATUS: `staging` and `pass` are retired from the issue lifecycle (docs/flows/issue-status-lifecycle.html), and this member stays only because historical `jobs` rows hold it and a client must still render one. Nothing dispatches it.
   'staging',
   'release',
   'fix',
@@ -965,6 +962,8 @@ export const issueStatuses = [
   'testing',
   'tested',
   'released',
+  // cm:why ISS-897's release lane had no status for the MIDDLE: an issue stood at `released` while its batch ran and the in-flight fact lived only in `release_batch_run_id`, so one status read as both "waiting to be pressed" and "being released now" — 16 batch jobs, 4 failed and 2 cancelled, are where those diverge. Only `finish` and `abort` write out of it.
+  'releasing',
   'closed',
   'reopen',
   'on_hold',
