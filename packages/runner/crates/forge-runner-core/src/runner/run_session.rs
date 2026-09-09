@@ -21,6 +21,9 @@ use crate::runner::ledger::{Ledger, NewRun, Run};
 #[async_trait::async_trait]
 pub trait Spawner: Send + Sync {
     async fn spawn(&self, session_name: &str, cwd: &Path, argv: &[String]) -> Result<u32>;
+    /// Whether a session of this name is ALREADY on the box.
+    // cm:guard the spawner owns the pane namespace, so it is the only thing that can answer this — and `start` asks BEFORE it writes, because a refusal any later leaves a row with no pid that no sweep can classify (ISS-964 criterion 35: `pid: None` is `Unknown`, never `Dead`).
+    async fn name_taken(&self, session_name: &str) -> bool;
 }
 
 /// How core is told a run session exists. Returns the session id core minted.
@@ -76,7 +79,7 @@ already in the journal."
 }
 
 /// Create the worktree, record the run, then start it — in that order.
-// cm:guard the four steps are ordered LEDGER, WORKTREE, SESSION, SPAWN and the order is the deliverable, not an implementation detail. Recording first means a crash anywhere after it leaves a row a recovery can act on; recording last means a live process nothing knows about. The ledger's own refusals also run inside step one, which is what makes criterion 12 true — a worktree path another live run holds is refused BEFORE `git worktree add` can produce the `.worktrees/<name> already exists` failure that killed ISS-593's first job.
+// cm:guard the four steps are ordered LEDGER, WORKTREE, SESSION, SPAWN and the order is the deliverable, not an implementation detail. Recording first means a crash anywhere after it leaves a row a recovery can act on; recording last means a live process nothing knows about. The ledger's own refusals also run inside step one, which is what makes criterion 12 true — a worktree path another live run holds is refused BEFORE `git worktree add` can produce the `.worktrees/<name> already exists` failure that killed ISS-593's first job, and the pane-name refusal is that same shape on the name axis. Computing the session NAME above step one reorders no write — it is a pure function of the branch, and it has to be readable before the first write to be refusable before it.
 // cm:guard SESSION strictly before SPAWN, and that ordering is what lets the close loop read a missing session id as "never started" rather than as an unknown. Reverse the two and a crash in the window leaves a live agent core cannot name, which is neither closable locally nor reapable centrally.
 pub async fn start(
     ledger: &mut Ledger,
@@ -84,6 +87,15 @@ pub async fn start(
     spawner: &dyn Spawner,
     core: &dyn CoreSessions,
 ) -> Result<Run> {
+    // cm:guard a run pane is named after its BRANCH, which is unique per project, while tmux names are unique per BOX — so two projects each carrying an `ISS-368` resolve to one name (measured forge-vm 2026-09-09: sidpeak and pixelight). `terminal::ensure` adopts a pane that already exists and reports it did, and the caller then reads that pane's pid back as this run's: an agent working in another project's worktree, no error anywhere. The refusal belongs HERE, beside the ledger's own, because a refusal after step one leaves a row with no pid that no sweep can classify.
+    let name =
+        crate::daemon::terminal::session_name(crate::daemon::terminal::RUN_PREFIX, &req.branch);
+    if spawner.name_taken(&name).await {
+        return Err(Error::Other(format!(
+            "run_session: terminal session {name} is already on this box — a run pane is named after its branch and two projects can carry the same issue key, so adopting it would run this group in another project's worktree"
+        )));
+    }
+
     let worktree_path = crate::workspace::worktree::path(&req.repo, &req.branch);
     let issue_keys = req.issue_keys.clone();
     let run = ledger.create_run_group(NewRun {
@@ -99,8 +111,6 @@ pub async fn start(
         crate::workspace::worktree::create(&req.repo, &req.branch, req.start_point.as_deref())
             .await?;
 
-    let name =
-        crate::daemon::terminal::session_name(crate::daemon::terminal::RUN_PREFIX, &req.branch);
     let (session_id, pipeline_run_id) = core.open(&run.run_id, &issue_keys, &name).await?;
     ledger.attach_session(&run.run_id, &session_id)?;
 
@@ -154,6 +164,22 @@ mod tests {
         async fn spawn(&self, _: &str, _: &Path, _: &[String]) -> Result<u32> {
             Err(Error::Other("tmux refused".into()))
         }
+        async fn name_taken(&self, _: &str) -> bool {
+            false
+        }
+    }
+
+    struct Taken(Mutex<Vec<String>>);
+
+    #[async_trait::async_trait]
+    impl Spawner for Taken {
+        async fn spawn(&self, name: &str, _: &Path, _: &[String]) -> Result<u32> {
+            self.0.lock().unwrap().push(name.to_string());
+            Ok(4242)
+        }
+        async fn name_taken(&self, _: &str) -> bool {
+            true
+        }
     }
 
     fn req() -> RunRequest {
@@ -187,6 +213,43 @@ mod tests {
         assert!(
             core.0.lock().unwrap().is_empty(),
             "a run whose worktree never came into being must not have been announced to core — a session core believes in over a tree that does not exist is a run nothing local can ever close (ISS-933 criterion 16)"
+        );
+    }
+
+    // cm:guard the assertion is WHERE it refused, not that it refused: a refusal after step one leaves a ledger row with no pid, a worktree, and a core session — a half-open run `reconcile` reads as `Unknown` and beats forever, which is a worse defect than the collision it was fixing.
+    #[tokio::test]
+    async fn a_pane_name_the_box_already_holds_is_refused_before_anything_is_written() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        let r = req();
+        let run_id = r.run_id.clone();
+        let branch = r.branch.clone();
+        let repo = r.repo.clone();
+        let core = Core(Mutex::new(Vec::new()));
+        let spawner = Taken(Mutex::new(Vec::new()));
+
+        let err = start(&mut led, r, &spawner, &core)
+            .await
+            .expect_err("a pane name already on the box must be refused: two projects can each carry an ISS-368, tmux names are per box, and `ensure` adopts silently")
+            .to_string();
+        assert!(
+            err.contains(&session_name(RUN_PREFIX, &branch)),
+            "the refusal must NAME the session it collided with, or an operator cannot tell which project holds it; error was: {err}"
+        );
+        assert!(
+            led.run(&run_id).unwrap().is_none(),
+            "no ledger row: a refused run that leaves one behind leaves a row with no pid, which `Ledger::liveness` answers `Unknown` for and no sweep can ever close"
+        );
+        assert!(
+            core.0.lock().unwrap().is_empty(),
+            "core must not have been told a run exists that was never started"
+        );
+        assert!(
+            spawner.0.lock().unwrap().is_empty(),
+            "nothing may be spawned: attaching to the other project's pane IS the defect"
+        );
+        assert!(
+            !crate::workspace::worktree::path(&repo, &branch).exists(),
+            "no worktree: the refusal runs before git is touched"
         );
     }
 
@@ -315,6 +378,9 @@ mod replay {
             let pid = child.id();
             self.children.lock().unwrap().push(child);
             Ok(pid)
+        }
+        async fn name_taken(&self, _: &str) -> bool {
+            false
         }
     }
 

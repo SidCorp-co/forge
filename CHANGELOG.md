@@ -1813,6 +1813,29 @@
 
 ### Fixed
 
+- **A run whose own agent died no longer reports itself as alive forever, holding the issues it was
+  given.** A box tells the control plane which runs it still holds, and it decided that by asking
+  whether the *supervising* agent was still there — never whether the run itself was. Registering a
+  supervisor re-finds an existing registration rather than minting a new one, so its identity
+  survives being killed and restarted; after any such restart the box went on vouching for every run
+  whose own pane had died in the same moment. Nothing else closes those: the central sweep only
+  reaps a run that has gone silent, and this one was not silent. Each of them kept holding the
+  issues it had claimed, so a project could read as having nothing to run while showing nothing
+  running. Measured on forge-vm 2026-09-09: **19 of 22 open runs were dead and still reporting, 24
+  issues held across 5 projects**. The box now asks the operating system about the run's own process
+  and gives back the ones that are gone, while a run merely waiting on a person — which has no
+  process by design — is still preserved, tested in both directions.
+
+- **Two issues with the same number in different projects can no longer end up in one working
+  copy.** A run's terminal is named after its branch, which is unique per project, while terminal
+  names are unique per *box* — so a second project's `ISS-368` resolved to the first one's terminal.
+  The spawn helper would silently attach to the existing one and report its process as the new
+  run's, putting an agent to work in another project's checkout with no error anywhere. The name is
+  now checked before anything is recorded, created or started, and a collision is refused by name,
+  the same way a working copy another live run holds already was. Two same-numbered issues still
+  cannot run on one box concurrently; the second is now told so instead of quietly joining the
+  first.
+
 - **A run session no longer starts, reports itself healthy, and does nothing.** The brief that tells
   a run pane which issues it carries was pasted the instant the pane was spawned, and Claude Code
   draws its composer a second or two after startup — a paste that lands first goes to the terminal as

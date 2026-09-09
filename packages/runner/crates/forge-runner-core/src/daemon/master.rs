@@ -27,7 +27,7 @@ use crate::config::Config;
 use crate::daemon::dispatch::resolve_repo;
 use crate::daemon::master_exit::{self, Verdict};
 use crate::daemon::recovery;
-use crate::daemon::recovery_ports::{CoreBeat, CoreRunState, PaneMasters};
+use crate::daemon::recovery_ports::{CoreBeat, CoreRunState, PaneMasters, SignalProbe};
 use crate::daemon::session_tokens;
 use crate::daemon::terminal;
 use crate::runner::ledger::Ledger;
@@ -421,6 +421,7 @@ async fn sweep(
             .unwrap_or_default()
             .as_str(),
         &PaneMasters { masters },
+        &SignalProbe,
         &CoreRunState { client },
         &CoreRunState { client },
         &CoreBeat { client },
@@ -436,6 +437,7 @@ async fn sweep(
 async fn give_back_lost_runs(
     boot_id: &str,
     live: &dyn recovery::MasterLiveness,
+    procs: &dyn recovery::ProcessLiveness,
     sessions: &dyn crate::runner::close_loop::SessionReader,
     leases: &dyn crate::runner::close_loop::LeaseKeeper,
     beat: &dyn recovery::Heartbeat,
@@ -447,7 +449,7 @@ async fn give_back_lost_runs(
         tracing::warn!("[master] this box reports no boot id — leaving unclosed runs alone");
         return;
     }
-    match recovery::reconcile(led, boot_id, live, sessions, leases, beat).await {
+    match recovery::reconcile(led, boot_id, live, procs, sessions, leases, beat).await {
         Ok(done) => {
             for r in done.iter().filter(|r| !r.state.is_closed()) {
                 // cm:guard say WHICH marks are missing, never "partially closed". A run holding two of three leases and one holding none are different operator problems, and a line that does not separate them is the report this whole loop exists to replace.
@@ -959,6 +961,14 @@ mod give_back_tests {
         }
     }
 
+    struct NoPids;
+    #[async_trait::async_trait]
+    impl recovery::ProcessLiveness for NoPids {
+        async fn is_gone(&self, _pid: u32) -> bool {
+            false
+        }
+    }
+
     struct Terminal(bool);
     #[async_trait::async_trait]
     impl SessionReader for Terminal {
@@ -1006,6 +1016,7 @@ mod give_back_tests {
         give_back_lost_runs(
             BOOT,
             &Alive(true),
+            &NoPids,
             &Terminal(false),
             &Leases::default(),
             &beats,
@@ -1029,6 +1040,7 @@ mod give_back_tests {
         give_back_lost_runs(
             BOOT,
             &Alive(false),
+            &NoPids,
             &Terminal(true),
             &leases,
             &beats,
@@ -1059,6 +1071,7 @@ mod give_back_tests {
         give_back_lost_runs(
             "",
             &Alive(false),
+            &NoPids,
             &Terminal(true),
             &leases,
             &beats,

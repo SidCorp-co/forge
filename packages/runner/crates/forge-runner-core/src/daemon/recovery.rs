@@ -9,7 +9,7 @@
 
 use crate::error::Result;
 use crate::runner::close_loop::{self, CloseState, LeaseKeeper, SessionReader};
-use crate::runner::ledger::Ledger;
+use crate::runner::ledger::{Ledger, Liveness};
 
 /// Whether the master that started a run is still there to finish it.
 #[async_trait::async_trait]
@@ -18,6 +18,13 @@ pub trait MasterLiveness: Send + Sync {
     /// The master now serving this project, if one is up.
     // cm:guard asked ONLY for a park, and the reason is the asymmetry below: a live run whose master died is genuinely orphaned and must be closed, while a park is a question already put to a human and has to outlive the process that asked it. Re-parenting a live run would hand a new master a pane it never spawned and cannot address (ISS-964 criterion 28).
     async fn live_master_for_project(&self, project_id: &str) -> Option<String>;
+}
+
+/// Whether a pid this box recorded is gone from THIS boot's process table.
+// cm:guard only a positive refutation may answer true: "cannot tell" and "not permitted to ask" are both false, because `Ledger::liveness` turns a true into `Dead` and a `Dead` run has its worktree released and its leases returned. An EPERM from a process another user owns says it EXISTS (ISS-964 criterion 35).
+#[async_trait::async_trait]
+pub trait ProcessLiveness: Send + Sync {
+    async fn is_gone(&self, pid: u32) -> bool;
 }
 
 /// Telling core this box still holds a run.
@@ -41,6 +48,7 @@ pub async fn reconcile(
     ledger: &mut Ledger,
     boot_id: &str,
     masters: &dyn MasterLiveness,
+    procs: &dyn ProcessLiveness,
     sessions: &dyn SessionReader,
     leases: &dyn LeaseKeeper,
     core: &dyn Heartbeat,
@@ -63,7 +71,14 @@ pub async fn reconcile(
             continue;
         }
         // cm:guard a DIFFERENT boot short-circuits the liveness question rather than answering it — a pid or a pane name recorded before a reboot may belong to something else entirely by now, so asking whether it is alive is asking about a stranger. Keying on the boot ALONE, though, never fires for a master that died within this one, which is the failure recovery exists to repair (ISS-933 criterion 16).
-        let orphaned = run.boot_id != boot_id || !masters.is_alive(&run.master_session_id).await;
+        // cm:guard the run's OWN process is a term here beside its master's, and it is the one that fires for the failure neither other term can see: `POST /me/master-session` re-FINDS an existing session, so a master id survives killing and respawning that pane, `is_alive` then answers true over runs whose panes died in the same restart, and the box beats dead runs forever — core's reaper never fires and every lease they hold stays held by derivation. Measured forge-vm 2026-09-09: 19 of 22 unclosed runs dead-pid and beating, 24 leases over 5 projects, pool empty.
+        let pid_refuted = match run.pid {
+            Some(pid) => procs.is_gone(pid).await,
+            None => false,
+        };
+        let orphaned = run.boot_id != boot_id
+            || matches!(Ledger::liveness(&run, boot_id, pid_refuted), Liveness::Dead)
+            || !masters.is_alive(&run.master_session_id).await;
         if !orphaned {
             if let Some(id) = run.session_id.as_deref() {
                 let _ = core.beat(id).await;
@@ -131,6 +146,18 @@ mod tests {
         }
     }
 
+    struct Gone(HashSet<u32>);
+    #[async_trait::async_trait]
+    impl ProcessLiveness for Gone {
+        async fn is_gone(&self, pid: u32) -> bool {
+            self.0.contains(&pid)
+        }
+    }
+
+    fn nothing_refuted() -> Gone {
+        Gone(HashSet::new())
+    }
+
     #[derive(Default)]
     struct Beats(Mutex<Vec<String>>);
     #[async_trait::async_trait]
@@ -167,6 +194,7 @@ mod tests {
             &mut led,
             "boot-a",
             &Masters(HashSet::new()),
+            &nothing_refuted(),
             &Sessions,
             &Leases(Mutex::new(HashSet::new())),
             &Beats::default(),
@@ -192,6 +220,7 @@ mod tests {
             &mut led,
             "boot-new",
             &Masters(HashSet::from(["master-old".to_string()])),
+            &nothing_refuted(),
             &Sessions,
             &Leases(Mutex::new(HashSet::new())),
             &Beats::default(),
@@ -213,6 +242,7 @@ mod tests {
             &mut led,
             "boot-a",
             &Masters(HashSet::from(["master-live".to_string()])),
+            &nothing_refuted(),
             &Sessions,
             &Leases(Mutex::new(HashSet::new())),
             &Beats::default(),
@@ -234,6 +264,7 @@ mod tests {
             &mut led,
             "boot-a",
             &Masters(HashSet::new()),
+            &nothing_refuted(),
             &Sessions,
             &leases,
             &Beats::default(),
@@ -244,6 +275,7 @@ mod tests {
             &mut led,
             "boot-a",
             &Masters(HashSet::new()),
+            &nothing_refuted(),
             &Sessions,
             &leases,
             &Beats::default(),
@@ -264,6 +296,7 @@ mod tests {
             &mut led,
             "boot-a",
             &Masters(HashSet::from(["master-live".to_string()])),
+            &nothing_refuted(),
             &Sessions,
             &Leases(Mutex::new(HashSet::new())),
             &beats,
@@ -305,6 +338,7 @@ mod tests {
             &mut led,
             "boot-a",
             &Masters(HashSet::new()),
+            &nothing_refuted(),
             &Sessions,
             &Leases(Mutex::new(HashSet::new())),
             &Beats::default(),
@@ -328,6 +362,7 @@ mod tests {
             &mut led,
             "boot-after",
             &Masters(HashSet::new()),
+            &nothing_refuted(),
             &Sessions,
             &Leases(Mutex::new(HashSet::new())),
             &Beats::default(),
@@ -345,6 +380,7 @@ mod tests {
             &mut led,
             "boot-a",
             &Respawned("master-new"),
+            &nothing_refuted(),
             &Sessions,
             &Leases(Mutex::new(HashSet::new())),
             &Beats::default(),
@@ -367,6 +403,7 @@ mod tests {
             &mut led,
             "boot-a",
             &Masters(HashSet::new()),
+            &nothing_refuted(),
             &Sessions,
             &Leases(Mutex::new(HashSet::new())),
             &beats,
@@ -377,6 +414,143 @@ mod tests {
             beats.0.lock().unwrap().as_slice(),
             ["core-sess-1"],
             "a park the box is preserving must go on asserting that the box holds it"
+        );
+    }
+
+    fn with_pid(run_id: &str, master: &str, boot: &str, pid: u32) -> Ledger {
+        let led = seeded(run_id, master, boot, &["ISS-957"]);
+        led.attach_pid(run_id, pid).unwrap();
+        led
+    }
+
+    // cm:guard the master here is LIVE and the boot MATCHES, so this run is invisible to both of the other two terms — the row is the whole reason the pid term exists (forge-vm 2026-09-09: 19 of 22, 24 leases, 5 projects).
+    #[tokio::test]
+    async fn a_run_whose_own_process_is_gone_is_closed_under_a_master_that_lives() {
+        let mut led = with_pid("run-1", "master-live", "boot-a", 4242);
+        let beats = Beats::default();
+        let done = reconcile(
+            &mut led,
+            "boot-a",
+            &Masters(HashSet::from(["master-live".to_string()])),
+            &Gone(HashSet::from([4242])),
+            &Sessions,
+            &Leases(Mutex::new(HashSet::new())),
+            &beats,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            done.len(),
+            1,
+            "a run whose pane died while its master lived is closed by nothing else on this box, and it goes on beating — core's reaper never fires and every lease it holds stays held by derivation, which is a pool that reads empty with nothing running"
+        );
+        assert!(done[0].state.is_closed());
+        assert!(
+            beats.0.lock().unwrap().is_empty(),
+            "a run being given back must not also be asserted as held in the same sweep"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_run_whose_process_answers_is_beaten_and_left_alone() {
+        let mut led = with_pid("run-1", "master-live", "boot-a", 4242);
+        let beats = Beats::default();
+        let done = reconcile(
+            &mut led,
+            "boot-a",
+            &Masters(HashSet::from(["master-live".to_string()])),
+            &nothing_refuted(),
+            &Sessions,
+            &Leases(Mutex::new(HashSet::new())),
+            &beats,
+        )
+        .await
+        .unwrap();
+        assert!(
+            done.is_empty(),
+            "a pid the kernel still answers for is a live agent, and closing its loop takes the worktree out from under it mid-write; recovered {done:?}"
+        );
+        assert_eq!(beats.0.lock().unwrap().as_slice(), ["core-sess-1"]);
+    }
+
+    // cm:guard `pid: None` is the mid-start window — the row exists, the pane does not yet — and it must read as UNKNOWN, never dead. `run_session::start` writes the ledger first on purpose, so a sweep landing in that window would close the loop over a run about to spawn (ISS-964 criterion 35).
+    #[tokio::test]
+    async fn a_run_that_has_not_recorded_a_pid_yet_is_left_to_finish_starting() {
+        let mut led = seeded("run-1", "master-live", "boot-a", &["ISS-957"]);
+        let done = reconcile(
+            &mut led,
+            "boot-a",
+            &Masters(HashSet::from(["master-live".to_string()])),
+            &Gone(HashSet::from([0, 1])),
+            &Sessions,
+            &Leases(Mutex::new(HashSet::new())),
+            &Beats::default(),
+        )
+        .await
+        .unwrap();
+        assert!(
+            done.is_empty(),
+            "a run with no pid has not started, not died — the ledger row is written BEFORE anything spawns, so this window is a normal one; recovered {done:?}"
+        );
+    }
+
+    // cm:guard EVERY park is `Dead` to `Ledger::liveness` — `is_parked_on_human` requires `Incarnation::Exited` and liveness answers `Dead` for `(Exited, _)` — so the exemption holds ONLY because the park branch returns before the orphan terms are read. This test is what stops the two being reordered (ISS-964 criterion 28).
+    #[tokio::test]
+    async fn a_park_is_not_closed_by_the_pid_term_that_every_park_satisfies() {
+        let mut led = parked("run-1", "master-live", "boot-a");
+        led.attach_pid("run-1", 4242).unwrap();
+        let beats = Beats::default();
+        let done = reconcile(
+            &mut led,
+            "boot-a",
+            &Masters(HashSet::from(["master-live".to_string()])),
+            &Gone(HashSet::from([4242])),
+            &Sessions,
+            &Leases(Mutex::new(HashSet::new())),
+            &beats,
+        )
+        .await
+        .unwrap();
+        assert!(
+            done.is_empty(),
+            "a park releases its process by design, so a liveness term that reaped it would destroy every question a human has been asked; recovered {done:?}"
+        );
+        assert_eq!(beats.0.lock().unwrap().as_slice(), ["core-sess-1"]);
+        assert!(led.run("run-1").unwrap().unwrap().ended_by.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_live_pid_does_not_save_a_run_from_a_dead_master_or_a_foreign_boot() {
+        let mut led = with_pid("run-1", "master-dead", "boot-a", 4242);
+        let done = reconcile(
+            &mut led,
+            "boot-a",
+            &Masters(HashSet::new()),
+            &nothing_refuted(),
+            &Sessions,
+            &Leases(Mutex::new(HashSet::new())),
+            &Beats::default(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(done.len(), 1, "the master term must still fire on its own");
+
+        let mut old = with_pid("run-2", "master-live", "boot-old", 4243);
+        let done = reconcile(
+            &mut old,
+            "boot-new",
+            &Masters(HashSet::from(["master-live".to_string()])),
+            &nothing_refuted(),
+            &Sessions,
+            &Leases(Mutex::new(HashSet::new())),
+            &Beats::default(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            done.len(),
+            1,
+            "the boot term must still fire on its own: a pid recorded before a reboot names whatever the kernel has since handed it to, so an answer of `alive` about it is an answer about a stranger"
         );
     }
 }

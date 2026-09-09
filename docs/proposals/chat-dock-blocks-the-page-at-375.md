@@ -38,3 +38,12 @@ the page behind it should be inert and hidden, not visible and dead to the touch
 
 The second matches the desktop behaviour and needs no new state; the first is fewer lines. Whoever
 takes it should also decide what the dock does to page scroll at that width, which was not measured.
+
+## Honest costs
+
+| Cost | Borne by |
+|---|---|
+| Nothing here is fixed. This file records a defect on a live page and hands it on — an operator on a 375px screen keeps a dead page behind an open dock until someone takes it | every mobile user of `/projects/*/agents`, until the work is scheduled |
+| Neither shape is chosen, so whoever takes it re-does the measuring for the one they pick — page scroll at that width was not measured at all | whoever takes the fix |
+| The sheet shape makes the page behind `inert`, which means anything that was mid-interaction there stops accepting input the moment the dock opens; the pane shape reflows the page at a width nothing has been laid out for | either fix, in different places |
+| `features/session` is untouched by design. ISS-964 was required to keep the dock rather than rewrite it, so the collision outlived a change that ran straight through it | the next issue that touches this module |

@@ -1,5 +1,5 @@
 /*
- * The production halves of `reconcile`'s four ports.
+ * The production halves of `reconcile`'s five ports.
  *
  * Each one answers by reading something back — a tmux pane, a core row, a
  * membership list. None of them answers from the response to the write that
@@ -8,7 +8,7 @@
  */
 
 use crate::daemon::master::Masters;
-use crate::daemon::recovery::{Heartbeat, MasterLiveness};
+use crate::daemon::recovery::{Heartbeat, MasterLiveness, ProcessLiveness};
 use crate::daemon::terminal;
 use crate::error::Result;
 use crate::runner::close_loop::{LeaseKeeper, SessionReader};
@@ -33,6 +33,31 @@ impl MasterLiveness for PaneMasters<'_> {
     async fn live_master_for_project(&self, project_id: &str) -> Option<String> {
         let (session_id, name) = self.masters.live_for_project(project_id)?;
         terminal::pane_pid(&name).await.map(|_| session_id)
+    }
+}
+
+/// Whether a recorded pid is gone, asked of the kernel with signal 0.
+// cm:guard ONLY `ESRCH` refutes a pid. Every other errno — `EPERM` above all, which says the process is there and owned by somebody else — answers false, because `reconcile` turns a true into a closed loop: worktree released, leases returned, a live agent's tree taken out from under it (ISS-964 criterion 35).
+pub struct SignalProbe;
+
+#[async_trait::async_trait]
+impl ProcessLiveness for SignalProbe {
+    #[cfg(unix)]
+    async fn is_gone(&self, pid: u32) -> bool {
+        use nix::errno::Errno;
+        use nix::sys::signal::kill;
+        use nix::unistd::Pid;
+
+        let Ok(raw) = i32::try_from(pid) else {
+            return false;
+        };
+        matches!(kill(Pid::from_raw(raw), None), Err(Errno::ESRCH))
+    }
+
+    // cm:guard a box that cannot ask refutes NOTHING, which leaves `reconcile` exactly as it was before this port existed: the master test alone. Answering true here would close the loop over every run on a Windows box on the first sweep.
+    #[cfg(not(unix))]
+    async fn is_gone(&self, _pid: u32) -> bool {
+        false
     }
 }
 
