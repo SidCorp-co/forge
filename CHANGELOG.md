@@ -30,6 +30,12 @@
   already in flight. When the batch finishes the issue closes; when it aborts, the issue lands at
   `reopen` with the reason attached and waits for a person, and `merged_at` is not stamped on the way
   in, so a half-landed batch never reads as shipped.
+- **A release that dies half-way hands its issues back instead of parking them nowhere.** If a
+  batch stops without either finishing or aborting — its job failed, someone cancelled the run, the
+  box went away, or a second batch was already in flight — every issue it was holding lands at
+  `reopen` with the reason on it and a comment saying so. Previously the batch let go of the issues
+  and said nothing about them, which was harmless while they stood at the release gate and would now
+  leave them mid-release with nothing able to move them.
 - **A reopened issue reads as reopened.** `reopen` renders as its own label instead of borrowing
   `open`, which promised a dispatcher that no longer comes: an agent's `reopen` is no longer rewritten
   to `open` on an autonomous project, because a person disagreed with a close and a person routes what

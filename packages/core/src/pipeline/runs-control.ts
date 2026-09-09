@@ -27,7 +27,13 @@ import { cascadeCancelChildJobs, type JobRow, requestKillsForCascade } from './r
  * a finished issue). Everything else is "actionable" and would be re-picked by
  * the orchestrator the moment the run dies, so cancel parks it at `on_hold`.
  */
-const CANCEL_PARK_SKIP_STATUSES = new Set<IssueStatus>(['on_hold', 'closed', 'released']);
+// cm:guard `releasing` is skipped for a STRONGER reason than the terminal two: a batch is executing over the issue right now, and parking it at `on_hold` takes it off the status `finish` and `abort` transition FROM, so the release completes against a row neither outcome can find.
+const CANCEL_PARK_SKIP_STATUSES = new Set<IssueStatus>([
+  'on_hold',
+  'closed',
+  'released',
+  'releasing',
+]);
 
 export type PipelineRunRow = typeof pipelineRuns.$inferSelect;
 

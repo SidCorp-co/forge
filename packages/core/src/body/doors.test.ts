@@ -44,8 +44,7 @@ const KERNEL_AUTHORED = [
   'memory/knowledge-promotion.ts',
   'pipeline/autonomous-rescue-comment.ts',
   'pm/routes.ts',
-  'release-batch/claim-subscriber.ts',
-  'release-batch/service.ts',
+  'release-batch/releasing-recovery.ts',
   'webhooks/github-adapter.ts',
 ];
 

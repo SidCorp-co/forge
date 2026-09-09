@@ -1,11 +1,14 @@
-// create: opens a system run, atomically claims N gate-status issues, enqueues one
-// release_batch job. finish: closes all claimed issues tested→closed. abort:
-// releases claims, cancels the run and every job under it, writes one comment
-// per issue, closes no issue.
+// create: opens a system run, atomically claims N gate-status issues, moves each
+// to `releasing`, enqueues one release_batch job. finish: closes every claimed
+// issue. abort: cancels the run and every job under it and closes no issue.
+//
+// finish and abort are the only writers that leave `releasing`. Both hand the
+// claim release to `releasing-recovery.ts`, which is also what a batch that
+// died without either outcome goes through.
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { comments, type IssueStatus, issues, pipelineRuns } from '../db/schema.js';
+import { type IssueStatus, issues, pipelineRuns } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
 import { issuesMissingReleaseRecord } from '../issues/release-record-required.js';
@@ -18,6 +21,7 @@ import { resolveReleaseChannel, resolveReleaseDeviceIds, resolveReleasePlan } fr
 import { RELEASE_GATE_STATUS, resolveReleaseGate } from './gate.js';
 import { ReleaseBranchesUndeclaredError, releaseBranches } from './plan.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
+import { recoverStrandedReleasing } from './releasing-recovery.js';
 import { readLiveCommit, verifyDeployed } from './verify.js';
 
 export { ReleaseBranchesUndeclaredError };
@@ -247,10 +251,11 @@ export async function createReleaseBatch(
     jobId = result.jobId;
   } catch (err) {
     if (err instanceof ActiveJobConflictError) {
-      await db.execute(sql`
-        UPDATE issues SET release_batch_run_id = NULL, updated_at = now()
-        WHERE release_batch_run_id = ${run.id}
-      `);
+      // cm:guard the claims were taken AND every issue was already moved to `releasing` above, so a bare clear here leaves the whole roster mid-release under a run that never got a job — recover them before the run closes, while the claim column can still find them.
+      await recoverStrandedReleasing(run.id, {
+        reason: 'another batch was already in flight, so this one never started',
+        actorUserId: userId,
+      });
       await closeRunIfOneShot(run.id, 'cancelled');
       throw new BatchInFlightError(err.existingJobId);
     }
@@ -405,10 +410,12 @@ export async function finishReleaseBatch(
     }
   }
 
-  await db.execute(sql`
-    UPDATE issues SET release_batch_run_id = NULL, updated_at = now()
-    WHERE release_batch_run_id = ${runId}
-  `);
+  // cm:guard clearing the claims is not enough on its own: an issue this loop could NOT close is still at `releasing`, and the column being cleared is what makes it unreachable afterwards. The recovery lands those at `reopen` with the reason, and touches nothing it already closed.
+  await recoverStrandedReleasing(runId, {
+    reason: 'the release finished but this issue could not be closed',
+    actorUserId: actor.type === 'user' ? actor.id : undefined,
+    comment: true,
+  });
 
   return { closed, failed };
 }
@@ -418,38 +425,12 @@ export async function abortReleaseBatch(
   reason: string,
   actorUserId: string,
 ): Promise<string[]> {
-  const released = await db.execute<{ id: string; project_id: string }>(sql`
-    UPDATE issues SET release_batch_run_id = NULL, updated_at = now()
-    WHERE release_batch_run_id = ${runId}
-    RETURNING id, project_id
-  `);
-
-  const releasedIds = released.map((r) => r.id);
-  for (const row of released) {
-    const issueId = row.id;
-    try {
-      await db.insert(comments).values({
-        issueId,
-        authorId: actorUserId,
-        body: `Batch release aborted: ${reason}. The issue is at \`reopen\` — a person decides whether it goes back to work or into another batch.`,
-      });
-    } catch (err) {
-      logger.warn({ err, issueId, runId }, 'release-batch: failed to write abort comment');
-    }
-    // cm:guard an aborted release lands on `reopen` and does NOT self-heal, which is the trade this takes deliberately: a half-landed batch re-driven automatically becomes two half-landed batches. Before this the abort cleared the column and left the status untouched, so a failed release was indistinguishable from one never attempted.
-    try {
-      await transitionIssueStatus(
-        { id: issueId, projectId: row.project_id, status: 'releasing', reopenCount: 0 },
-        'reopen',
-        { type: 'user', id: actorUserId },
-        { transitionReason: `batch release aborted: ${reason}`, viaReleasePath: true },
-      );
-    } catch (err) {
-      if (!(err instanceof TransitionError && err.code === 'NO_OP')) {
-        logger.warn({ err, issueId, runId }, 'release-batch: could not reopen after abort');
-      }
-    }
-  }
+  // cm:guard an aborted release lands on `reopen` and does NOT self-heal, which is the trade this takes deliberately: a half-landed batch re-driven automatically becomes two half-landed batches. Before this the abort cleared the column and left the status untouched, so a failed release was indistinguishable from one never attempted. It goes through the shared recovery so an abort and a batch that merely died reach the same place by the same writer.
+  const { released: releasedIds } = await recoverStrandedReleasing(runId, {
+    reason: `batch release aborted: ${reason}`,
+    actorUserId,
+    comment: true,
+  });
 
   // cm:guard abort is "nothing under this run executes any further", not just "no claims" — batch ee39c4ae (2026-09-03) was aborted while its retry job kept running, shipped 20 commits to production, then `finish` found no claims and closed 0 of 12; the run must go terminal here so the cascade cancels queued retries and kills the live session
   await closeRunIfOneShot(runId, 'cancelled');

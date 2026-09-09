@@ -8,35 +8,29 @@
  * refusal, so what it does with a claim is the last thing standing between an
  * issue and a `closed` nobody wrote anything about.
  *
- * These cases go through `createReleaseBatch` rather than writing the claim by
- * hand: the claim is a CAS `UPDATE` in that function, and a test that re-issues
- * it proves its own SQL, not the batch's.
+ * The seeding lives in `tests/helpers/release-batch-fixture.ts`, shared with
+ * the recovery suite next door.
  *
  * Integration rather than unit because `check-flow-coverage.mjs` counts only
  * this suite as authoritative, and because the sibling rule's first version
  * passed the mocked suite and was falsified here.
  */
 
-import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
-  createTestDevice,
   createTestProject,
   createTestUser,
   setupTestDatabase,
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
-
-const RELEASE_LABEL = 'release-box';
-const SKIP_NOTE = { section: 'Skip', userFacing: '-' };
+import { releaseBatchFixture } from '../helpers/release-batch-fixture.js';
 
 describe('release batch finish E2E', () => {
   let harness: TestDatabase;
   let projectId: string;
   let ownerId: string;
-  let seq = 0;
 
   beforeAll(async () => {
     harness = await setupTestDatabase();
@@ -57,84 +51,12 @@ describe('release batch finish E2E', () => {
     projectId = (await createTestProject(harness.db, owner.id)).id;
   });
 
-  // cm:edge contract -> packages/core/src/release-batch/gate.ts — `resolveProductionDeclaration` reads exactly a production branch distinct from the base plus an active `prod` binding; seed one half and every case here dies on NO_RELEASE_GATE before reaching what it asserts
-  async function declareProduction(config: Record<string, unknown> = {}): Promise<void> {
-    const connectionId = randomUUID();
-    await harness.db.execute(sql`
-      UPDATE projects SET base_branch = 'main', production_branch = 'production'
-      WHERE id = ${projectId}
-    `);
-    await harness.db.execute(sql`
-      INSERT INTO integration_connections (id, owner_type, owner_id, provider, active)
-      VALUES (${connectionId}, 'user', ${ownerId}, 'coolify', true)
-    `);
-    await harness.db.execute(sql`
-      INSERT INTO integration_bindings (connection_id, project_id, provider, environment, active, config)
-      VALUES (
-        ${connectionId}, ${projectId}, 'coolify', 'prod', true,
-        ${JSON.stringify({ releaseRunnerLabel: RELEASE_LABEL, ...config })}::jsonb
-      )
-    `);
-  }
-
-  // cm:guard the box must carry the LABEL and be claim-capable, which are two different gates: `resolveReleaseDeviceIds` matches on `runners.labels`, and `onlineCapableDeviceIds` then asks whether anyone in that set is alive and above the version floor. Seed the label without the liveness and the batch refuses NO_RUNNER_ONLINE, which reads nothing like the pool being empty.
-  async function seedReleaseRunner(): Promise<void> {
-    const device = await createTestDevice(harness.db, ownerId, { status: 'online' });
-    await harness.db.execute(sql`
-      INSERT INTO runners (id, project_id, type, device_id, name, status, last_seen_at, labels)
-      VALUES (
-        ${randomUUID()}, ${projectId}, 'claude-code', ${device.id}, 'release-runner',
-        'online', now(), ${JSON.stringify([RELEASE_LABEL])}::jsonb
-      )
-    `);
-  }
-
-  async function insertIssue(status = 'released', note: unknown = SKIP_NOTE): Promise<string> {
-    const id = randomUUID();
-    seq += 1;
-    await harness.db.execute(sql`
-      INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, release_notes)
-      VALUES (
-        ${id}, ${projectId}, ${seq}, ${`issue ${seq}`}, ${status}, ${ownerId},
-        ${note === null ? null : JSON.stringify(note)}::jsonb
-      )
-    `);
-    return id;
-  }
-
-  async function stored(id: string): Promise<{
-    status: string;
-    mergedAt: unknown;
-    claim: unknown;
-  }> {
-    const rows = await harness.db.execute(sql`
-      SELECT status, merged_at, release_batch_run_id FROM issues WHERE id = ${id}
-    `);
-    return {
-      status: String(rows[0]?.status),
-      mergedAt: rows[0]?.merged_at ?? null,
-      claim: rows[0]?.release_batch_run_id ?? null,
-    };
-  }
-
-  async function runStatus(runId: string): Promise<string> {
-    const rows = await harness.db.execute(sql`
-      SELECT status FROM pipeline_runs WHERE id = ${runId}
-    `);
-    return String(rows[0]?.status);
-  }
-
-  async function commentCount(issueId: string): Promise<number> {
-    const rows = await harness.db.execute(sql`
-      SELECT count(*)::int AS n FROM comments WHERE issue_id = ${issueId}
-    `);
-    return Number(rows[0]?.n ?? 0);
-  }
-
-  async function claim(ids: string[]) {
-    const { createReleaseBatch } = await import('../../src/release-batch/service.js');
-    return createReleaseBatch({ projectId, issueIds: ids, userId: ownerId });
-  }
+  const fx = releaseBatchFixture(
+    () => harness,
+    () => ({ projectId, ownerId }),
+  );
+  const { declareProduction, seedReleaseRunner, insertIssue, stored } = fx;
+  const { runStatus, commentCount, claim } = fx;
 
   const actor = () => ({ type: 'user', id: ownerId }) as const;
 
