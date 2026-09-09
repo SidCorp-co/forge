@@ -1813,6 +1813,21 @@
 
 ### Fixed
 
+- **A box no longer restarts itself through work it is doing.** When a runner picks up its own
+  update it is supposed to wait for in-flight work to finish before restarting. It waited on a
+  counter that agent runs never touched — the counter tracks pipeline jobs and chat turns, and a
+  run session is a terminal and a working copy with no job row at all — so the wait ended
+  instantly and the restart took the terminal server, and every session on the box with it.
+  Measured on forge-vm 2026-09-09 at 23:07:53: the wait reported the box idle **0.7 milliseconds**
+  after the new binary landed, while 26 sessions were running, and **22 sessions across 5 projects
+  ended as unreachable**. The wait now also counts the box's own record of what it is running, so a
+  full box defers its restart to the next quiet window instead of ending the work. A session parked
+  on a person's answer still does not hold it back — that wait has no time limit and would pin the
+  box on an old build forever. The ceiling on how long a restart will wait was also raised from 30
+  minutes to two hours, measured rather than guessed: of 879 sessions that completed since
+  2026-09-01, half finish inside a minute but a tenth run longer than 45 minutes, so the old
+  ceiling gave up on a tenth of all work by construction.
+
 - **A run whose own agent died no longer reports itself as alive forever, holding the issues it was
   given.** A box tells the control plane which runs it still holds, and it decided that by asking
   whether the *supervising* agent was still there — never whether the run itself was. Registering a

@@ -62,7 +62,8 @@ impl Drop for InflightGuard {
 /// can't pin a runner on a stale binary forever. The binary is already swapped
 /// on disk by `apply()`, so giving up this cycle just defers the restart to the
 /// next idle window or the next 6h tick.
-const DRAIN_TIMEOUT_SECS: u64 = 30 * 60;
+// cm:guard sized off MEASURED session length, not taste: 879 completed sessions since 2026-09-01 run p50 under a minute, p90 45 minutes, max 35 hours. At the old 30 minutes a tenth of all work was longer than the ceiling, so the update either waited out the drain and gave up, or — before the ledger was counted below — read idle and restarted through it. Two hours clears p90 with room and still refuses to be pinned by the 35-hour tail, which `recovery::reconcile` and core's reaper own instead.
+const DRAIN_TIMEOUT_SECS: u64 = 2 * 3600;
 /// Per-session ceiling on the checkpoint turn a restart asks for.
 // cm:guard bounded, and a session that overruns is closed anyway. The daemon is exiting either way, and holding it open for an agent that will not answer leaves a `setsid`-detached child on the worktree the relaunched daemon is about to hand to a second agent.
 const CHECKPOINT_BUDGET: std::time::Duration = std::time::Duration::from_secs(120);
@@ -71,6 +72,60 @@ const DRAIN_POLL_SECS: u64 = 30;
 /// How often the box republishes its session registry.
 // cm:guard the read surface's freshness IS this number — a reader has no other clock on a box, so a period longer than a person's patience makes a live run look abandoned. Keep it comfortably under core's own staleness reads (ISS-934 criterion 3).
 const SESSION_LEDGER_INTERVAL: std::time::Duration = std::time::Duration::from_secs(20);
+
+/// Run sessions this box is still running, counted from the LEDGER.
+///
+/// `InflightGuard` cannot see them: a run session is a pane and a worktree with
+/// no `jobs` row, and `control.rs` opens one without entering the counter at
+/// all. So the counter reads zero while the box is at capacity.
+// cm:guard the ledger is the ONLY source that knows a run session exists, and this call is what stops `drain_to_idle` reporting idle over a full box. Measured forge-vm 2026-09-09 23:07:53Z: the update drain answered idle 0.7ms after `apply()` while 26 panes were live, and systemd's `KillMode=control-group` took the tmux server with the daemon — 22 sessions across 5 projects ended `runner_unreachable`.
+// cm:guard a PARK is not in-flight and must not be counted: it holds no process by design (ISS-964), so counting it would defer every restart until a human answered — the failure the ceiling above exists to prevent, arriving from the other side.
+// cm:guard an unreadable ledger answers ZERO, never a guess. This runs on the restart path: a positive number no reader can justify would pin the box on a stale binary with nothing reporting why, and the sweep that owns closing dead runs is `recovery::reconcile`, not this counter.
+fn live_run_sessions() -> usize {
+    let Ok(led) = crate::runner::ledger::Ledger::default_path()
+        .and_then(|p| crate::runner::ledger::Ledger::open(&p))
+    else {
+        return 0;
+    };
+    let Ok(runs) = led.unclosed_runs() else {
+        return 0;
+    };
+    let boot = crate::runner::inflight::boot_identity().unwrap_or_default();
+    count_live_runs(&runs, &boot, pid_alive)
+}
+
+/// The predicate half, with the ledger and the process table passed in.
+// cm:guard split from `live_run_sessions` so the RULE is testable without a box: the I/O half resolves a path this process does not choose, and a rule reachable only through it is a rule no test can plant a counter-example for.
+fn count_live_runs(
+    runs: &[crate::runner::ledger::Run],
+    this_boot: &str,
+    alive: impl Fn(u32) -> bool,
+) -> usize {
+    runs.iter()
+        .filter(|r| !r.is_parked_on_human())
+        .filter(|r| r.boot_id == this_boot)
+        .filter(|r| r.pid.is_some_and(&alive))
+        .count()
+}
+
+/// Whether a pid is still on this box. Only a positive refutation counts as gone.
+// cm:guard `EPERM` means the process EXISTS and belongs to somebody else, so only `ESRCH` may read as dead — the same rule `recovery_ports.rs::SignalProbe` states, and for the opposite consequence: there a wrong `dead` releases a live worktree, here a wrong `dead` restarts over a live agent.
+#[cfg(unix)]
+fn pid_alive(pid: u32) -> bool {
+    use nix::errno::Errno;
+    use nix::sys::signal::kill;
+    use nix::unistd::Pid;
+
+    let Ok(raw) = i32::try_from(pid) else {
+        return false;
+    };
+    !matches!(kill(Pid::from_raw(raw), None), Err(Errno::ESRCH))
+}
+
+#[cfg(not(unix))]
+fn pid_alive(_pid: u32) -> bool {
+    false
+}
 
 /// Wait for in-flight work to finish, up to [`DRAIN_TIMEOUT_SECS`].
 ///
@@ -90,7 +145,7 @@ where
 {
     let mut waited = 0u64;
     loop {
-        let busy = inflight.load(Ordering::Acquire);
+        let busy = inflight.load(Ordering::Acquire) + live_run_sessions();
         if busy == 0 {
             let closed = close_parked().await;
             if closed > 0 {
@@ -748,6 +803,93 @@ mod tests {
             seen.fetch_add(1, Ordering::AcqRel);
             std::future::ready(closed)
         })
+    }
+
+    use crate::runner::ledger::{Ledger, NewRun};
+
+    fn seeded_run(led: &mut Ledger, run_id: &str, boot: &str, pid: Option<u32>) {
+        led.create_run_group(NewRun {
+            run_id: run_id.into(),
+            project_id: "proj-1".into(),
+            master_session_id: "master-1".into(),
+            worktree_path: std::path::PathBuf::from(format!("/tmp/forge-drain-absent-{run_id}")),
+            boot_id: boot.into(),
+            issue_keys: vec![format!("ISS-{run_id}")],
+        })
+        .unwrap();
+        if let Some(p) = pid {
+            led.attach_pid(run_id, p).unwrap();
+        }
+    }
+
+    // cm:guard THE regression, and it is measured rather than imagined: forge-vm 2026-09-09 23:07:53Z answered idle 0.7ms into an update drain with 26 panes live, because a run session is a pane and a worktree with no `jobs` row and `control.rs` opens one without entering `InflightGuard`. 22 sessions across 5 projects ended `runner_unreachable` when systemd took the tmux server with the daemon.
+    #[test]
+    fn a_box_full_of_run_sessions_is_not_idle() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        seeded_run(&mut led, "run-1", "boot-a", Some(4242));
+        seeded_run(&mut led, "run-2", "boot-a", Some(4243));
+        let runs = led.unclosed_runs().unwrap();
+        assert_eq!(
+            count_live_runs(&runs, "boot-a", |_| true),
+            2,
+            "a run session holds no `InflightGuard`, so the ledger is the only thing that can report the box is busy — reading zero here is what restarts through live work"
+        );
+    }
+
+    // cm:guard a park holds NO process by design (ISS-964), so counting it would defer every restart until a human answered — the ceiling's own failure arriving from the other side.
+    #[test]
+    fn a_park_does_not_hold_the_restart() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        seeded_run(&mut led, "run-1", "boot-a", Some(4242));
+        led.begin_question("q-1", "run-1", 1, "q-1").unwrap();
+        led.declare_parked_human("run-1", Some("resume-1"), None)
+            .unwrap();
+        let runs = led.unclosed_runs().unwrap();
+        assert_eq!(
+            count_live_runs(&runs, "boot-a", |_| true),
+            0,
+            "a park releases its process and waits on a person; holding the restart for it pins the box on a stale binary indefinitely"
+        );
+    }
+
+    // cm:guard a row from ANOTHER boot names a pid the kernel has since reused, so asking whether it is alive is asking about a stranger — and answering `busy` there would pin the box forever on rows nothing can ever close.
+    #[test]
+    fn a_row_from_a_previous_boot_holds_nothing() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        seeded_run(&mut led, "run-1", "boot-old", Some(4242));
+        let runs = led.unclosed_runs().unwrap();
+        assert_eq!(count_live_runs(&runs, "boot-new", |_| true), 0);
+    }
+
+    // cm:guard a dead pid is a run `recovery::reconcile` will close, NOT work to wait for. Counting it would make the 19-of-22 dead-pid state measured on forge-vm 2026-09-09 into a permanent block on every update.
+    #[test]
+    fn a_dead_pid_is_not_work() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        seeded_run(&mut led, "run-1", "boot-a", Some(4242));
+        seeded_run(&mut led, "run-2", "boot-a", Some(4243));
+        let runs = led.unclosed_runs().unwrap();
+        assert_eq!(
+            count_live_runs(&runs, "boot-a", |pid| pid == 4243),
+            1,
+            "only the pid the process table still answers for is work in flight"
+        );
+    }
+
+    // cm:guard `pid: None` is the mid-start window — the ledger row is written BEFORE anything spawns — and it must not hold the restart, because a run that never spawned has nothing to lose and a row that never gains a pid would block forever.
+    #[test]
+    fn a_run_that_never_spawned_holds_nothing() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        seeded_run(&mut led, "run-1", "boot-a", None);
+        let runs = led.unclosed_runs().unwrap();
+        assert_eq!(count_live_runs(&runs, "boot-a", |_| true), 0);
+    }
+
+    #[test]
+    fn the_drain_ceiling_clears_the_measured_ninetieth_percentile() {
+        assert!(
+            DRAIN_TIMEOUT_SECS >= 45 * 60,
+            "879 completed sessions since 2026-09-01 run p90 at 45 minutes; a ceiling under that gives up on a tenth of all work by construction"
+        );
     }
 
     #[tokio::test(start_paused = true)]
