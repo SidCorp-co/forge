@@ -1105,7 +1105,7 @@ mod tests {
     }
 
     /// This file's own text, with one line ending.
-    // cm:guard normalise BEFORE any structural split: a windows checkout hands `include_str!` CRLF, so `"\n}\n"` never matches, `split(..).next()` silently returns the whole rest of the file, and a scan then counts something else entirely while still compiling — three of these went red on runner-ci's windows job and none of them could on linux (2026-09-09).
+    // cm:guard normalise BEFORE any structural split: a windows checkout hands `include_str!` CRLF, so `"\n}\n"` never matches, `split(..).next()` silently returns the whole rest of the file, and a scan then counts something else entirely while still compiling — three of these went red on the windows leg of ci.yml's `runner` matrix and none of them could on linux (2026-09-09).
     fn source() -> String {
         include_str!("control.rs").replace("\r\n", "\n")
     }

@@ -3,7 +3,6 @@ import type {
 	PipelineRunListItem,
 	StepDurationRow,
 } from "@/features/pipeline/types";
-import type { DeviceRow } from "@/features/runners/types";
 import type { QueueStats } from "@/features/sessions/types";
 import { describe, expect, it } from "vitest";
 import {
@@ -193,12 +192,13 @@ describe("projectAttention", () => {
 });
 
 describe("runnersSummary", () => {
-	const devices = [
-		{ id: "d1", name: "mac", platform: "macos", status: "online" },
-		{ id: "d2", name: "lin", platform: "linux", status: "online" },
-		{ id: "d3", name: "old", platform: "windows", status: "revoked" },
-		{ id: "d4", name: "off", platform: "linux", status: "offline" },
-	] as DeviceRow[];
+	// cm:why the spine is the project's runners, so these fixtures carry no owner at all — the field the old defect keyed on is gone from the input
+	const runners = [
+		{ runnerId: "r1", deviceId: "d1", deviceName: "mac", platform: "macos", deviceStatus: "online", runnerStatus: "online" },
+		{ runnerId: "r2", deviceId: "d2", deviceName: "lin", platform: "linux", deviceStatus: "online", runnerStatus: "online" },
+		{ runnerId: "r3", deviceId: "d3", deviceName: "old", platform: "windows", deviceStatus: "revoked", runnerStatus: "online" },
+		{ runnerId: "r4", deviceId: "d4", deviceName: "off", platform: "linux", deviceStatus: "offline", runnerStatus: "offline" },
+	] as Parameters<typeof runnersSummary>[0];
 	const queue: QueueStats = {
 		devices: [
 			{ deviceId: "d1", queued: 0, running: 2 },
@@ -206,48 +206,83 @@ describe("runnersSummary", () => {
 		],
 	};
 
+	it("counts a runner the viewer does not own", () => {
+		const s = runnersSummary(
+			[
+				{
+					runnerId: "r9",
+					deviceId: "dx",
+					deviceName: "forge-vm",
+					platform: "linux",
+					deviceStatus: "online",
+					runnerStatus: "online",
+				},
+			] as Parameters<typeof runnersSummary>[0],
+			undefined,
+		);
+		expect(s.total).toBe(1);
+		expect(s.onlineCount).toBe(1);
+		expect(s.lines[0]?.name).toBe("forge-vm");
+	});
+
+	it("drops a retired runner and never counts a draining one as online", () => {
+		const s = runnersSummary(
+			[
+				{
+					runnerId: "gone",
+					deviceId: "d9",
+					deviceName: "ubuntu6",
+					platform: "linux",
+					deviceStatus: "online",
+					runnerStatus: "disabled",
+				},
+				{
+					runnerId: "drain",
+					deviceId: "d8",
+					deviceName: "dev1 · CLI runner",
+					platform: "linux",
+					deviceStatus: "online",
+					runnerStatus: "draining",
+				},
+			] as Parameters<typeof runnersSummary>[0],
+			undefined,
+		);
+		expect(s.lines.map((l) => l.id)).toEqual(["drain"]);
+		expect(s.total).toBe(1);
+		expect(s.onlineCount).toBe(0);
+		expect(s.lines[0]?.draining).toBe(true);
+	});
+
 	it("joins queue counters, drops revoked, derives busy/online", () => {
-		const s = runnersSummary(devices, queue);
+		const s = runnersSummary(runners, queue);
 		expect(s.total).toBe(3); // revoked dropped
 		expect(s.onlineCount).toBe(2);
 		expect(s.busyCount).toBe(1); // d1 running>0
-		expect(s.lines.find((l) => l.id === "d1")?.busy).toBe(true);
-		expect(s.lines.find((l) => l.id === "d2")?.busy).toBe(false);
-		// No project runners passed → no limit on any line.
+		expect(s.lines.find((l) => l.id === "r1")?.busy).toBe(true);
+		expect(s.lines.find((l) => l.id === "r2")?.busy).toBe(false);
 		expect(s.lines.every((l) => l.limit === null)).toBe(true);
 	});
 
-	it("joins a project runner's limit onto its device line by deviceId", () => {
+	it("reads a runner's limit off its own row", () => {
 		const now = Date.parse("2026-06-22T08:00:00.000Z");
-		const projectRunners = [
+		const withLimits = [
 			{
-				runnerId: "r1",
-				deviceId: "d1",
+				...(runners as unknown as Record<string, unknown>[])[0],
 				limitReason: "usage_limit",
 				rateLimitedUntil: "2026-06-22T08:42:00.000Z",
 				limitDetail: "out of extra usage",
 			},
-			{
-				runnerId: "r2",
-				deviceId: "d2",
-				limitReason: null,
-				rateLimitedUntil: null,
-				limitDetail: null,
-			},
-		] as Parameters<typeof runnersSummary>[2];
-		const s = runnersSummary(devices, queue, projectRunners, now);
-		const d1 = s.lines.find((l) => l.id === "d1");
-		expect(d1?.limit?.reason).toBe("usage_limit");
-		expect(d1?.limit?.resetText).toBe("resets in 42m");
-		expect(s.lines.find((l) => l.id === "d2")?.limit).toBeNull();
+			{ ...(runners as unknown as Record<string, unknown>[])[1], limitReason: null },
+		] as Parameters<typeof runnersSummary>[0];
+		const s = runnersSummary(withLimits, queue, now);
+		const r1 = s.lines.find((l) => l.id === "r1");
+		expect(r1?.limit?.reason).toBe("usage_limit");
+		expect(r1?.limit?.resetText).toBe("resets in 42m");
+		expect(s.lines.find((l) => l.id === "r2")?.limit).toBeNull();
 	});
 
-	it("sources busy + active issue/stage from the live snapshot (bridged runnerId→deviceId)", () => {
+	it("sources busy + active issue/stage from the live snapshot, keyed by runnerId", () => {
 		const now = Date.parse("2026-06-22T08:00:00.000Z");
-		const projectRunners = [
-			{ runnerId: "r1", deviceId: "d1" },
-			{ runnerId: "r2", deviceId: "d2" },
-		] as Parameters<typeof runnersSummary>[2];
 		const active = [
 			{
 				runnerId: "r1",
@@ -263,32 +298,23 @@ describe("runnersSummary", () => {
 					issueTitle: "Add export",
 				},
 			},
-			{
-				runnerId: "r2",
-				name: "lin",
-				status: "online",
-				lastSeenAt: null,
-				current: null,
-			},
-		] as Parameters<typeof runnersSummary>[4];
-		const s = runnersSummary(devices, queue, projectRunners, now, active);
-		const d1 = s.lines.find((l) => l.id === "d1");
-		const d2 = s.lines.find((l) => l.id === "d2");
-		// d1 busy comes from the live job, NOT the queue counter (which says 2).
-		expect(d1?.busy).toBe(true);
-		expect(d1?.activeIssueRef).toBe("ISS-417");
-		expect(d1?.activeStage).toBe("code");
-		// d2 idle per the snapshot, overriding any queue running count.
-		expect(d2?.busy).toBe(false);
-		expect(d2?.activeIssueRef).toBeNull();
+			{ runnerId: "r2", name: "lin", status: "online", lastSeenAt: null, current: null },
+		] as Parameters<typeof runnersSummary>[3];
+		const s = runnersSummary(runners, queue, now, active);
+		const r1 = s.lines.find((l) => l.id === "r1");
+		const r2 = s.lines.find((l) => l.id === "r2");
+		expect(r1?.busy).toBe(true);
+		expect(r1?.activeIssueRef).toBe("ISS-417");
+		expect(r1?.activeStage).toBe("code");
+		expect(r2?.busy).toBe(false);
+		expect(r2?.activeIssueRef).toBeNull();
 		expect(s.busyCount).toBe(1);
 	});
 
 	it("falls back to queue counters for busy when no active snapshot is passed", () => {
-		const s = runnersSummary(devices, queue);
-		// d1 has running=2 in the queue and no snapshot → busy via fallback.
-		expect(s.lines.find((l) => l.id === "d1")?.busy).toBe(true);
-		expect(s.lines.find((l) => l.id === "d1")?.activeIssueRef).toBeNull();
+		const s = runnersSummary(runners, queue);
+		expect(s.lines.find((l) => l.id === "r1")?.busy).toBe(true);
+		expect(s.lines.find((l) => l.id === "r1")?.activeIssueRef).toBeNull();
 	});
 });
 

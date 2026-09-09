@@ -44,9 +44,7 @@ const updateReturning = vi.fn();
 const updateWhere = vi.fn(() => ({ returning: updateReturning }));
 const updateSet = vi.fn((_set?: unknown) => ({ where: updateWhere }));
 
-// txUpdateWhere supports BOTH a direct await (manual-hold / activity write
-// flows) AND `.returning(...)` (the ISS-196 status-UPDATE that flows through
-// withActorContext into `tx.update(issues)...returning(...)`).
+// cm:guard this thenable must keep BOTH shapes — a direct await (the manual-hold and activity writes) and `.returning(...)` (the ISS-196 status UPDATE through withActorContext); drop either and the tests fail on a chain shape instead of on the behaviour they assert
 const txUpdateWhere = vi.fn(() => {
   const thenable: PromiseLike<unknown> & { returning: typeof updateReturning } = {
     returning: updateReturning,
@@ -326,6 +324,23 @@ describe('forge_issues tool', () => {
     }
   });
 
+  it('list carries the park kind so a triage read can tell a decision from a resource', async () => {
+    const tool = forgeIssuesTool({
+      principal: fakePrincipal,
+      projectSlug: PROJECT_SLUG,
+    });
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    selectLimit.mockResolvedValueOnce([
+      { ...baseIssueRow, status: 'waiting' as const, waitingKind: 'needs_resource' as const },
+    ]);
+
+    const result = (await tool.handler({ action: 'list' })) as {
+      issues: Array<Record<string, unknown>>;
+    };
+    expect(result.issues[0]?.waitingKind).toBe('needs_resource');
+  });
+
   // ISS-562 — SQL-level projection: assert db.select() is called with a
   // light-column projection map, NOT bare (no args). A returned-row assertion
   // won't catch this because the unit-test mock bypasses drizzle column
@@ -349,6 +364,7 @@ describe('forge_issues tool', () => {
       'issSeq',
       'title',
       'status',
+      'waitingKind',
       'priority',
       'category',
       'complexity',
@@ -533,6 +549,24 @@ describe('forge_issues tool', () => {
     expect(result.documentId).toBe(ISSUE_ID);
     expect(result.issueId).toBe('ISS-1');
     expect(result.status).toBe('open');
+  });
+
+  it('get reports which kind of answer a `waiting` park is asking for', async () => {
+    const tool = forgeIssuesTool({
+      principal: fakePrincipal,
+      projectSlug: PROJECT_SLUG,
+    });
+    selectLimit.mockResolvedValueOnce([
+      { ...baseIssueRow, status: 'waiting' as const, waitingKind: 'needs_decision' as const },
+    ]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+
+    const result = (await tool.handler({ action: 'get', documentId: ISSUE_ID })) as {
+      status: string;
+      waitingKind: string | null;
+    };
+    expect(result.status).toBe('waiting');
+    expect(result.waitingKind).toBe('needs_decision');
   });
 
   it('get attaches the issue attachments[] from the join', async () => {
