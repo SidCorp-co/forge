@@ -102,11 +102,30 @@ discover. It is the only status carrying a second column — `waitingKind` (`nee
 pieces of teaching material that name the codes — in one change, or the guide teaches a code the
 kernel no longer raises.
 
-Whether `needs_info` should inherit the kind is the open question here. Today `needs_info` stores
-no kind, so a question owed a *decision* and one owed a *resource* are the same row — and those are
-different things to whoever has to unblock it (sidpeak ISS-368 is parked `needs_resource` on a tmux
-name collision; ISS-389 `needs_decision` on a screen review). Folding `waiting` into `needs_info`
-without carrying the kind loses that distinction on 30 live rows.
+Whether `needs_info` should inherit the kind is the open question here, and the count decides how
+much it is worth. Read from `waiting_kind` in Postgres (not through MCP, which returned no kind for
+every row before `30e1ed0ad`): **24 `needs_decision`, 6 `needs_resource`, none null.**
+
+The 24 lose nothing by folding — a question owed a decision *is* what `needs_info` means. The six
+are the whole question, and five of them are real external dependencies, read one row at a time:
+
+| Row | Waiting on |
+|---|---|
+| sidboss ISS-95 | an upstream npm publish (`@sidcorp/react-kit` still 0.1.0, checked not assumed) |
+| sid-desk ISS-64 | a person; QA done, 19/19 walked |
+| sid-desk ISS-69 | a person; 16 of 18 live checks passed |
+| sid-desk ISS-123 | production `chat_messages` row count, unmeasured — needs prod access |
+| sid-desk ISS-132 | a GitLab push credential the runner does not have (`pre-receive` rejects) |
+| sidpeak ISS-368 | a tmux run-pane name collision — **the one mechanism artifact** |
+
+So the honest figure is **5 of 30 carry a resource distinction that survives the run-axis change**.
+ISS-132 is the sharpest case for keeping it: no amount of deciding produces a push credential, and
+folding it into `needs_info` files it next to "somebody should look at this screen".
+
+One of the six is also a warning about blanket drains. ISS-368's park comment names its cause as
+"pixelight's run is live right now" — true when written, and the spawn refusal shipped in
+`runner-v0.12.4` since, so the *stated* cause no longer holds even though the tmux namespace
+collision does. That row needs re-parking or closing on its own evidence, not a status rewrite.
 
 #### Why replacing `released` with a button is the right call, and what it fixes
 
@@ -198,6 +217,13 @@ watched happening.
    `releasing → closed`, `abort` goes `releasing → reopen` with the reason. This ships FIRST and on
    its own: it is additive, breaks no caller, and until it exists there is nowhere for a released
    issue to stand.
+   Two sites must move in the SAME change or the new status is worse than the old union:
+   `issues/apply-transition.ts#TERMINAL_FOR_DISPATCH` must include `releasing` (or an issue
+   mid-release is dispatchable), and `ws/master-wake.ts#MASTER_WAKE_STATUSES` must wake a master on
+   the derived *readiness* condition and NOT on `releasing` (or every in-flight batch wakes a
+   master with nothing to claim). The three orphan sweeps need nothing: `runs-cascade.ts`,
+   `loop-monitor.ts` and `runs-concluded.ts` hold zero references to `released` — they key on
+   run/job terminality, verified 2026-09-09.
 2. **Move the gate refusal.** `release-gate-hold.ts` stops rewriting `closed → released` and starts
    refusing an agent's close by name on a gated project. This is the behaviour change with teeth —
    see the costs table.
@@ -242,6 +268,7 @@ the rewrite stops and the rewrite refills it — the same trap as the six, for t
 | The cross-repo half ships on `forge-plugin`'s clock. Between the two deploys, the skill's status table and the kernel's disagree — the exact shape that produced 4,806 wrong calls when the drive prompt and the guide diverged (`run_session.rs` `cm:guard`) | both repos, for the length of the gap |
 | The gate refusal in step 2 is a real behaviour change: today a gated project's agent closes and lands at `released`; after this its close FAILS and it must stop instead. Every autonomous project with a gate feels it on the first run, and the plugin's skill has to teach the new ending | every gated project's driver, from the deploy |
 | 21 projects have `released` enabled in config and 13 hold rows there, so step 3b edits 21 project configs — and `pipelineConfig.states` is a WHOLESALE replace (burned live 2026-06-22): a patch that omits a sibling key wipes it | whoever runs the config migration, GET-then-send per project |
+| Folding `waiting` costs 5 rows their resource distinction, not 30 — but those 5 are the ones where the distinction is load-bearing (a missing credential, an unpublished package, unmeasured prod data). Whichever way the owner rules, 5 rows need re-parking by hand | whoever ships step 4b |
 | `releasing` is a status a batch can die inside. A crashed release leaves rows there exactly as a dead run leaves a lease — so it needs a reaper of its own, or it becomes the next `approved`: a status with no machine exit. Nothing in this proposal builds one yet | whoever ships step 1, or the person who finds the stuck row |
 | Readiness stops being a status and becomes derived (merged mark + gate declared). Anything that today answers "what is ready to ship" by selecting `status = 'released'` — queries, the UI list, `readiness.ts` — has to compute it instead | every reader of the release queue |
 | Doing nothing has a price too, and it is the measured one: 433 rows on undriven statuses, five of them with no machine exit, found only because someone asked a counting question | the next person who asks |
