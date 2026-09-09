@@ -114,6 +114,34 @@ aborts the deploy naming the row, rather than being cleaned away so the `ALTER` 
 This is the one place effort is NOT the tiebreaker in reverse: a smaller change that preserves a
 silent fallback is not the cheaper option, it is the one whose bill arrives later and unlabelled.
 
+**Wrong input is refused by name, not absorbed.** A caller who broke the contract gets told what
+was wrong, where, and what shape is valid — the refusal IS the deliverable, and a special path
+built to make one caller's mistake return something is a second live path nobody documented. Do
+not widen a schema to accept the malformed value, do not guess the intent behind it, and do not
+carry a compatibility branch for a shape that was never legal. The way out is the interface, not
+the exception — the message, the guide, the example carried in the error itself.
+
+Three things wear that same face, and only the first is the caller's:
+
+- **A real contract break** → refuse by name, above.
+- **A silence** → OURS, whoever typed the input. A journal entry drizzle cannot use is skipped
+  *silently, forever* and the container serves new code on an old schema (ISS-807); a call that
+  returns `200` and does nothing is a defect on our side of the line. Fix it to fail loudly, and
+  plant the malformed input to watch it go red before the fix counts for anything.
+- **An affordance defect** → the wrong use IS the natural reading of the interface. A `patch` that
+  replaces a nested map wholesale wipes every key the caller did not resend — the
+  `wholesale-config-clobber` red flag exists because no message saves an interface whose name
+  promises the other semantics. One reader misreading buys a clearer error; the same affordance
+  biting twice buys a redesign, and "we will document it better" is how that redesign gets
+  deferred a third time.
+
+Which of the three you may absorb follows `VISION: kernel-hard-policy-soft`. Kernel input — job,
+session, run, state, transition, evidence, retry, escalation — has zero tolerance: a
+representable-looking wrong value there is how state starts lying. Policy input may normalize, but
+an unreported normalization is a guess, and a guess is the silent substitution again under a
+friendlier name. A wrong use already load-bearing in the field is a priced amnesty —
+`cm:hack ISS-<n> until:<condition>` — never a quiet accommodation.
+
 ### There is no "already red"
 
 **A defect you have seen may not leave your hands labelled "not mine".** In reach and inside the
