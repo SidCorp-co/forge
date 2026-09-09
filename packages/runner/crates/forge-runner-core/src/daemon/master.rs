@@ -581,14 +581,13 @@ async fn ensure_master(
     );
     remember(masters, project_id, &session);
 
-    // cm:guard the standing brief is typed ONCE, into a pane that has just started, and the sleep is not decoration: Claude Code draws its composer after a startup that takes a second or two, and a paste that lands before it is dropped on the floor with no error anywhere. The next sweep would then prompt a master that was never briefed.
-    tokio::time::sleep(Duration::from_secs(5)).await;
+    // cm:guard the standing brief is typed ONCE, into a pane that has just started, and the wait inside `brief_new_pane` is not decoration — the next sweep would otherwise prompt a master that was never briefed.
     let brief = standing_prompt(
         &resolved.slug,
         resolved.base_branch.as_deref(),
         resolved.master_policy.as_deref(),
     );
-    if let Err(e) = terminal::send_line(&name, &brief).await {
+    if let Err(e) = terminal::brief_new_pane(&name, &brief).await {
         tracing::warn!("[master] {}: could not brief {name}: {e}", resolved.slug);
     }
     true

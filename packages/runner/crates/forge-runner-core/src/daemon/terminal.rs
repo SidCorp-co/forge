@@ -12,6 +12,7 @@
 
 use std::process::Stdio;
 use std::sync::OnceLock;
+use std::time::Duration;
 
 use tokio::process::Command;
 
@@ -177,6 +178,21 @@ async fn pipe_pane(name: &str, path: &std::path::Path) {
 // cm:guard tmux hands this string to a shell, so a path with a space or a quote in it is a command injection and not merely a broken log. `$XDG_CONFIG_HOME` is operator-set and dev1 runs several runners that differ only by it.
 pub fn shell_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
+}
+
+/// How long a freshly spawned pane needs before a paste reaches its composer.
+// cm:guard a paste that lands before Claude Code has drawn its composer is dropped on the floor with NO error anywhere — the text goes to the terminal as raw output and the Enter submits nothing, so the pane sits alive, briefed on screen, and having run no turn at all. Measured on forge-vm 2026-09-09: 4 of 4 sidpeak runs and 6 of 16 overall spent $0.00 for six hours, while the beat kept them out of core's reaper forever.
+pub const PANE_BRIEF_DELAY: Duration = Duration::from_secs(5);
+
+/// Brief a pane that has just been spawned, after giving its TUI time to draw.
+// cm:guard EVERY freshly spawned pane is briefed through here, master and run alike — the run path pasted immediately and lost the race under load while the master path slept, which is exactly the drift `SESSION_PREFIXES` exists to prevent. A caller that reaches for `send_line` on a pane it just created has reintroduced the bug.
+// cm:guard the liveness check comes BEFORE the wait, not after: it makes an absent session fail at once instead of costing five seconds, which is what keeps this callable from a test that has no tmux.
+pub async fn brief_new_pane(name: &str, text: &str) -> Result<()> {
+    if !alive(name).await {
+        return Err(Error::Other(format!("no session named {name}")));
+    }
+    tokio::time::sleep(PANE_BRIEF_DELAY).await;
+    send_line(name, text).await
 }
 
 /// Type `text` into the session and submit it.

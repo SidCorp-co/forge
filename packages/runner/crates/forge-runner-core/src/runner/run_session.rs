@@ -109,8 +109,9 @@ pub async fn start(
 
     // cm:guard the brief is sent AFTER the pid is on the ledger. A pane briefed before its run is
     // fully recorded is an agent working on a row recovery has not finished writing.
+    // cm:guard through `brief_new_pane`, never `send_line` — this pane was created microseconds ago and a paste that beats its composer is discarded silently. It cost 6 of 16 runs on forge-vm 2026-09-09, all four of sidpeak's, each alive and beating at $0.00 for six hours.
     if let Err(e) =
-        crate::daemon::terminal::send_line(&name, &brief(&issue_keys, &pipeline_run_id)).await
+        crate::daemon::terminal::brief_new_pane(&name, &brief(&issue_keys, &pipeline_run_id)).await
     {
         tracing::warn!("run_session: {name} started but could not be briefed: {e}");
     }
@@ -196,6 +197,24 @@ mod tests {
         assert_ne!(RUN_PREFIX, MASTER_PREFIX);
     }
 
+    // cm:guard the assertion is that this path reaches for `brief_new_pane` and NOT `send_line` — the two differ only by a wait, so a build that regressed to the bare send would spawn, paste into a composer that is not drawn, and produce a pane that beats forever having run no turn (measured 2026-09-09: 6 of 16 runs on forge-vm, sidpeak 4 of 4).
+    #[test]
+    fn a_freshly_spawned_run_pane_is_briefed_through_the_waiting_primitive() {
+        let start = THIS_SOURCE
+            .split("pub async fn start(")
+            .nth(1)
+            .expect("start must exist");
+        let body = start.split("\n#[cfg(test)]").next().unwrap_or(start);
+        assert!(
+            body.contains("terminal::brief_new_pane("),
+            "the run path must brief through the primitive that waits for the composer"
+        );
+        assert!(
+            !body.contains("terminal::send_line("),
+            "a bare `send_line` on a pane spawned microseconds ago is the dropped-brief bug"
+        );
+    }
+
     #[test]
     fn there_is_one_spawn_primitive_and_runs_reuse_it() {
         let ensures = TERMINAL_SOURCE
@@ -210,6 +229,7 @@ mod tests {
             "pub async fn alive",
             "pub async fn kill",
             "pub async fn send_line",
+            "pub async fn brief_new_pane",
         ] {
             assert_eq!(
                 TERMINAL_SOURCE

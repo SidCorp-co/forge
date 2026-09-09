@@ -1813,6 +1813,20 @@
 
 ### Fixed
 
+- **A run session no longer starts, reports itself healthy, and does nothing.** The brief that tells
+  a run pane which issues it carries was pasted the instant the pane was spawned, and Claude Code
+  draws its composer a second or two after startup — a paste that lands first goes to the terminal as
+  raw text and the Enter that follows submits nothing. There is no error on any path: the pane is
+  alive, the brief is on screen, and no turn has run. The master path already slept five seconds for
+  exactly this reason and said so in a `cm:guard`; the run path, added later, pasted immediately. Both
+  now go through one `terminal::brief_new_pane`, and a test fails the run path if it reaches for the
+  bare send again. Measured on forge-vm 2026-09-09 under sixteen concurrent panes: 6 of 16 runs had
+  spent **$0.00** after six hours, including all four of sidpeak's, which is why that project looked
+  idle while its master claimed correctly and its runs beat on schedule. It is a race, not a
+  certainty — the ten panes on a small repo won it and every pane on a multi-gigabyte worktree lost —
+  so a blind wait is a floor rather than a proof, and a pane that has run no turn after a couple of
+  minutes is still worth checking for.
+
 - **A machine no longer spends an agent pass every 30 seconds to be told the same thing.** The
   daemon nudged each project's resident master on every sweep whenever anything sat in its pool,
   and one nudge is one full agent pass. When nothing was claimable — every runner on the box
