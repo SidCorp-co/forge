@@ -1,0 +1,215 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flow · issue-status-lifecycle — nine statuses, and which hops are legal</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52;
+          --new:#5b3a8e; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .warn { border-left-color:var(--bad); }
+  .plan { border-left-color:var(--new); }
+  .board { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; overflow-x:auto; }
+  .mx { border-collapse:separate; border-spacing:2px; font-size:12px; }
+  .mx th { padding:4px 6px; border:0; font:600 12px ui-monospace,Menlo,monospace; color:var(--mut); text-transform:none; letter-spacing:0; }
+  .mx th.rh { text-align:right; color:var(--fg); }
+  .mx td { border:0; padding:0; }
+  .mx i { display:block; height:24px; line-height:24px; border-radius:3px; font-style:normal; text-align:center; font-size:13px; }
+  .y { background:#e6efe9; color:var(--acc); font-weight:700; }
+  .y.p { background:#f6ecef; color:var(--bad); }
+  .x { background:transparent; color:var(--line); }
+  .s { background:#f0ece6; color:var(--mut); }
+  .gone { color:var(--mut); text-decoration:line-through; }
+</style>
+<main>
+
+<h1>issue-status-lifecycle — nine statuses, and which hops are legal</h1>
+<p class="sub">What an issue may be, and where it may go from there. Decided by the owner
+2026-09-09 and 2026-09-10, replacing a sixteen-status enum whose retired ladder still held rows.
+The table below is the target: every hop absent from it is refused. <b>Today it is not</b> —
+<code>canTransitionFree</code> permits any non-<code>draft</code> hop to any non-<code>draft</code>
+status, which is the gap this flow exists to close.</p>
+
+<h2>The flow</h2>
+<div class="board"><pre class="mermaid">
+stateDiagram-v2
+    direction LR
+    [*] --> draft: filed
+    draft --> open: promoted
+    draft --> in_progress: taken up in place
+    draft --> dropped: not work
+    open --> in_progress: a run claims it
+    in_progress --> closed: landed, no release gate
+    in_progress --> releasing: release triggered
+    releasing --> closed: release finished
+    closed --> [*]
+    releasing --> reopen: release aborted or failed
+    closed --> reopen: a person disagrees
+    reopen --> in_progress: work resumes
+    open --> needs_info
+    in_progress --> needs_info
+    releasing --> needs_info
+    reopen --> needs_info
+    on_hold --> needs_info
+    needs_info --> open: answered
+    open --> on_hold
+    in_progress --> on_hold
+    releasing --> on_hold
+    reopen --> on_hold
+    needs_info --> on_hold
+    on_hold --> open: resumed by hand
+    open --> dropped
+    in_progress --> dropped
+    releasing --> dropped
+    needs_info --> dropped
+    on_hold --> dropped
+    reopen --> dropped
+    dropped --> [*]
+</pre></div>
+
+<p>One dispatch door (<code>open</code>), one worker (<code>in_progress</code>), one release middle
+(<code>releasing</code>), two parks reachable from every rung, one park a person routes
+(<code>reopen</code>), and two ends differing only in whether <code>merged_at</code> is stamped.</p>
+
+<h2>What each status claims</h2>
+<table>
+<thead><tr><th>Status</th><th>Claims</th><th>Who owes the next move</th></tr></thead>
+<tbody>
+<tr><td><code>draft</code></td><td>filed, not admitted — the ingress state</td><td>whoever triages it</td></tr>
+<tr><td><code>open</code></td><td>claimable. <b>The only status that dispatches</b> — <code>autonomousStepFor</code> answers for this and nothing else</td><td>a master, by claiming</td></tr>
+<tr><td><code>in_progress</code></td><td>a session holds it</td><td>the run</td></tr>
+<tr><td><code>releasing</code></td><td><b>new</b> — a release was triggered over this issue and is running</td><td>the release batch</td></tr>
+<tr><td><code>needs_info</code></td><td>a question a person owes an answer to. <code>answer-resume.ts</code> restarts it</td><td>a person, by answering</td></tr>
+<tr><td><code>on_hold</code></td><td>a pause a person chose — <b>not</b> a question</td><td>the person who paused it</td></tr>
+<tr><td><code>reopen</code></td><td>a person disagreed with a close</td><td>a person, by routing it</td></tr>
+<tr><td><code>closed</code></td><td>done, and <code>merged_at</code> is stamped</td><td>nobody</td></tr>
+<tr><td><code>dropped</code></td><td>closed <b>without</b> stamping — it was not work</td><td>nobody</td></tr>
+</tbody></table>
+
+<h2>The transition matrix</h2>
+<p class="sub">Lit = legal. <b>Every blank cell is a refusal</b> once the table is the gate.
+<span style="color:var(--bad)">■</span> = the hop is refused without an authored reason.</p>
+<div class="board">
+<table class="mx">
+<thead><tr><th class="rh">from ↓&nbsp;&nbsp;to →</th>
+<th>draft</th><th>open</th><th>in_prog</th><th>releasing</th><th>needs_info</th><th>on_hold</th><th>reopen</th><th>closed</th><th>dropped</th></tr></thead>
+<tbody>
+<tr><th class="rh">draft</th><td><i class="s">·</i></td><td><i class="y">→</i></td><td><i class="y">→</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="y">→</i></td></tr>
+<tr><th class="rh">open</th><td><i class="x">·</i></td><td><i class="s">·</i></td><td><i class="y">→</i></td><td><i class="x">·</i></td><td><i class="y p">■</i></td><td><i class="y p">■</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="y">→</i></td></tr>
+<tr><th class="rh">in_progress</th><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="s">·</i></td><td><i class="y">→</i></td><td><i class="y p">■</i></td><td><i class="y p">■</i></td><td><i class="x">·</i></td><td><i class="y">→</i></td><td><i class="y">→</i></td></tr>
+<tr><th class="rh">releasing</th><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="s">·</i></td><td><i class="y p">■</i></td><td><i class="y p">■</i></td><td><i class="y p">■</i></td><td><i class="y">→</i></td><td><i class="x">·</i></td></tr>
+<tr><th class="rh">needs_info</th><td><i class="x">·</i></td><td><i class="y">→</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="s">·</i></td><td><i class="y p">■</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="y">→</i></td></tr>
+<tr><th class="rh">on_hold</th><td><i class="x">·</i></td><td><i class="y">→</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="y p">■</i></td><td><i class="s">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="y">→</i></td></tr>
+<tr><th class="rh">reopen</th><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="y">→</i></td><td><i class="x">·</i></td><td><i class="y p">■</i></td><td><i class="y p">■</i></td><td><i class="s">·</i></td><td><i class="x">·</i></td><td><i class="y">→</i></td></tr>
+<tr><th class="rh">closed</th><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="y">→</i></td><td><i class="s">·</i></td><td><i class="x">·</i></td></tr>
+<tr><th class="rh">dropped</th><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="s">·</i></td></tr>
+</tbody></table>
+</div>
+
+<div class="rule"><b>Both parks are enterable from every rung, and from each other.</b> This is what
+<code>prompt/facts/registry.ts</code> already tells agents — <i>&ldquo;From ANY state you may set
+<code>needs_info</code> &hellip; <code>on_hold</code> &hellip; don't force the ladder&rdquo;</i> — so
+the instruction was right and the map was the narrow half. Two exclusions, each with a reason:
+<code>draft</code> cannot park because it already is a resting place
+(<code>DRAFT_EXIT_TARGETS</code> is the one existing real gate), and <code>closed</code>/
+<code>dropped</code> cannot park because a park after an end is a reopen, which
+<code>closed → reopen</code> already is.</div>
+
+<h2>Where it goes wrong</h2>
+
+<div class="rule warn"><b>Nothing refuses a hop today.</b>
+<code>pipeline/state-machine.ts:transitions</code> holds a map over all sixteen statuses and its own
+first guard says <i>&ldquo;ADVISORY, NOT A GATE. Nothing enforces this map&rdquo;</i>. The one runtime
+check is <code>canTransitionFree</code>, which refuses exactly two things: <code>draft</code> as a
+target, and a <code>draft</code> leaving to anything outside <code>DRAFT_EXIT_TARGETS</code>. So
+<code>releasing → open</code> or <code>closed → in_progress</code> are permitted, and the map that
+would call them illegal is read by prompt generation and the UI's next-state picker — a retired
+ladder teaching itself to agents and operators.</div>
+
+<div class="rule warn"><b>A status whose meaning left and whose rows stayed has no way out.</b>
+Measured 2026-09-09: <b>433 rows sit on statuses the kernel does not drive</b>. Sidpeak holds five
+issues at <code>approved</code> while that project's config has no <code>approved</code> entry at
+all — no pool offers it, no stage accepts it, so those five cannot move by machine. Three are
+<code>critical</code> and already merged. Four more enum members (<code>confirmed</code>,
+<code>clarified</code>, <code>testing</code>, <code>reopen</code>) hold zero rows anywhere while
+still appearing in 33 source files.</div>
+
+<div class="rule warn"><b>One status means two different things during a release.</b> While a batch
+runs, the issue keeps standing at <code>released</code> and the in-flight fact lives only in
+<code>issues.release_batch_run_id</code>. So <code>released</code> reads as both <i>waiting for a
+person to press it</i> and <i>being released right now</i>, and no reader can tell which. 16
+<code>release_batch</code> jobs have run — <b>4 failed and 2 cancelled</b> — which are exactly the
+cases where the two meanings diverge. And <code>abortReleaseBatch</code> clears the column and
+leaves the status untouched, so a failed release is indistinguishable from one never attempted.</div>
+
+<h2>Retired, and what replaces each</h2>
+<table>
+<thead><tr><th>Status</th><th>Rows</th><th>Replaced by</th></tr></thead>
+<tbody>
+<tr><td><code class="gone">confirmed</code> <code class="gone">clarified</code> <code class="gone">testing</code></td><td>0</td><td>nothing — dead ladder, no rows anywhere</td></tr>
+<tr><td><code class="gone">approved</code></td><td>10 · 5 projects</td><td>nothing. It was a gate in a pipeline that no longer runs</td></tr>
+<tr><td><code class="gone">developed</code></td><td>1</td><td><code>in_progress</code> until it lands</td></tr>
+<tr><td><code class="gone">tested</code></td><td>3</td><td><code>in_progress</code>; judging is a step inside the run, not a status</td></tr>
+<tr><td><code class="gone">released</code></td><td>79 · 13 projects</td><td><b>the release button</b> (<code>POST /:projectId/release-batches</code>, which already exists) plus <code>releasing</code> for the middle. Readiness becomes derived — merged mark plus a declared gate — rather than a status an issue is parked in</td></tr>
+<tr><td><code class="gone">waiting</code></td><td>30 · 9 projects</td><td><code>needs_info</code>. The driver's <code>waiting</code> is already rewritten there (<code>autonomous-park.ts</code>, ISS-886)</td></tr>
+</tbody></table>
+
+<div class="rule plan"><b><code>waiting</code> costs more than its 30 rows.</b> It is the only status
+carrying a second column — <code>waitingKind</code> — with a refusal family around it
+(<code>WAITING_KIND_REQUIRED</code>, <code>WAITING_KIND_NOT_APPLICABLE</code>) named <b>by code</b> in
+<code>guides/registry.ts</code> and <code>prompt/facts/registry.ts</code>, which is text an agent
+reads. Read from Postgres rather than MCP (which returned no kind for every row before
+<code>30e1ed0ad</code>): <b>24 <code>needs_decision</code>, 6 <code>needs_resource</code></b>. The 24
+lose nothing — a question owed a decision <i>is</i> <code>needs_info</code>. Of the six, five are
+real external dependencies: an unpublished npm package, two people, unmeasured production data, and
+a GitLab push credential the runner does not have. <b>No amount of deciding produces a push
+credential</b>, so whether <code>needs_info</code> inherits the kind is the open question, and five
+rows need re-parking by hand either way.</div>
+
+<h2>Why <code>reopen</code> stays, and its rewrite goes</h2>
+<p><code>issues/autonomous-park.ts</code> rewrites <code>reopen → open</code> for every actor on an
+autonomous project. It was written from an incident — epodsystem ISS-141 sat at <code>reopen</code>
+for over an hour on 2026-08-24, rendering as a live session while the reconciler re-read it every
+60s and counted a rescue each time — and its stated reason is a claim about <b>meaning</b>: the
+staged pipeline read <code>reopen</code> as <i>&ldquo;a step rejected this&rdquo;</i>, and the
+autonomous driver has no steps.</p>
+<p>This vocabulary changes that meaning. <code>reopen</code> names <b>a person disagreed with a
+close</b>, and a person routes what follows — not a step. Three readers measured 2026-09-10 say the
+wedge cannot return through this door:</p>
+<table>
+<thead><tr><th>Reader</th><th>What it does with <code>reopen</code></th></tr></thead>
+<tbody>
+<tr><td><code>pipeline/reconciler.ts:183</code></td><td>selects <code>AUTONOMOUS_INFLIGHT_STATUSES</code>, which resolves to <b><code>['in_progress']</code></b> — the every-60s pass that counted ISS-141's rescues does not read <code>reopen</code> at all</td></tr>
+<tr><td><code>notifications/notify-transitions.ts:41</code></td><td>already classes it in <code>PROBLEM_STATUSES</code> — &ldquo;a person is needed&rdquo;, with an auto-resolve key. The same reading this vocabulary gives it</td></tr>
+<tr><td><code>me/attention-buckets.ts:100</code></td><td><code>NEEDS_REVIEW_STATUSES = ['developed', 'reopen']</code> — surfaced to a human, never to a dispatcher</td></tr>
+</tbody></table>
+<p>Two already agree and the third does not read it, so the rewrite is now the only thing asserting
+the old meaning. It holds 0 rows across 28 projects, so nothing is stranded either way.
+<b>Cost:</b> <code>releasing → reopen</code> does not self-heal — a failed release parks for a
+person and stays there. That is the right trade for a half-landed batch, but a fleet nobody watches
+accumulates aborted releases at <code>reopen</code>.</p>
+
+<h2>Do not</h2>
+<p>Force a project with no release gate through <code>releasing</code> —
+<code>resolveReleaseGate</code> returns <code>null</code> for most projects, and inventing a release
+step they do not have is what <code>in_progress → closed</code> exists to avoid. Let anything but
+<code>finish</code> and <code>abort</code> write out of <code>releasing</code>: they own the outcome
+edges, and an agent that could leave it would be declaring its own release finished — the guard
+<code>release-gate-hold.ts</code> was written from, after epodsystem ISS-141 self-closed with the
+reported bug still reproducing. Send <code>reopen</code> to <code>open</code>: a reopened issue has
+a branch and a worktree, and offering it to the pool races a fresh agent against the tree that
+already exists. Drain the retired statuses before their writers are refused — the writers refill
+them, which is why the order is freeze, then drain, then enforce.</p>
+
+<p><a href="index.html">&larr; all flows</a></p>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script>

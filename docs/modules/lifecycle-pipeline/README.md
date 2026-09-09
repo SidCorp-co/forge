@@ -129,7 +129,7 @@ reachable from every rung, one park a person routes (`reopen`), two ends differi
   `issues.release_batch_run_id`, so one status means both "waiting for a person to press it" and
   "being released right now".
 
-Drawing: `docs/proposals/status-flow.html` · edge-by-edge rationale and the open `reopen` question:
+Drawing: `docs/flows/issue-status-lifecycle.html` · edge-by-edge rationale and the removal order:
 `docs/proposals/status-flow.md`.
 
 ## Guards
