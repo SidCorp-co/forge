@@ -50,7 +50,7 @@ export const STATUS_LABELS: Record<IssueStatus, string> = {
 	developed: "Developed",
 	testing: "Testing",
 	tested: "Tested",
-	awaiting_release: "Released",
+	awaiting_release: "Awaiting release",
 	releasing: "Releasing",
 	closed: "Closed",
 	reopen: "Reopened",
@@ -465,7 +465,7 @@ const TEMPLATE_KIND: Record<string, CommentKind> = {
 	"forge-qa-report": "qa",
 	"forge-outcome": "outcome",
 	"forge-blocked": "blocked",
-	"forge-close": "awaiting_release",
+	"forge-close": "released",
 };
 
 const REVIEW_VERDICT_KIND: Record<string, CommentKind> = {
@@ -502,7 +502,7 @@ function prefixKind(body: string): CommentKind {
 	)
 		return "qa";
 	if (/released|release note|published release|shipped/.test(b))
-		return "awaiting_release";
+		return "released";
 	if (
 		/forge-code|plan implemented|implementation complete|code complete|pushed .* branch/.test(
 			b,
@@ -1127,7 +1127,7 @@ export const COMMENT_KIND_META: Record<
 	fix: { label: "Fix", tone: "accent" },
 	approved: { label: "Approved", tone: "green" },
 	qa: { label: "QA", tone: "amber" },
-	awaiting_release: { label: "Released", tone: "green" },
+	released: { label: "Released", tone: "green" },
 	outcome: { label: "Outcome", tone: "accent" },
 	blocked: { label: "Blocked", tone: "red" },
 	comment: { label: "Comment", tone: "neutral" },

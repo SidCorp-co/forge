@@ -88,7 +88,7 @@ describe('dispatchDriveManual', () => {
   // cm:guard a human's Run OFFERS the issue and mints nothing. Minting here would be the second live path this wave removes: core's job and the box's run session both claiming one issue, with the ledger able to see only one of them (ISS-933 criterion 4).
   it('releases the issue and wakes the boxes, minting nothing', async () => {
     await expect(dispatchDriveManual({ ...BASE, status: 'open' })).resolves.toEqual({
-      awaiting_release: true,
+      released: true,
     });
 
     expect(insertAndEnqueueJob).not.toHaveBeenCalled();

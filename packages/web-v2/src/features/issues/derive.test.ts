@@ -570,7 +570,7 @@ describe("deriveCommentKind", () => {
 		["Verdict: APPROVE", "approved"],
 		["forge-fix applied the patch", "fix"],
 		["## QA Test Report\nall green", "qa"],
-		["Released v1.2.0 to prod", "awaiting_release"],
+		["Released v1.2.0 to prod", "released"],
 		["forge-code complete; pushed ISS-1 branch", "code"],
 		["Plan written and ready for review", "plan"],
 		["Just a normal note here", "comment"],
@@ -592,7 +592,7 @@ describe("deriveCommentKind", () => {
 		["forge-qa-report", "qa"],
 		["forge-outcome", "outcome"],
 		["forge-blocked", "blocked"],
-		["forge-close", "awaiting_release"],
+		["forge-close", "released"],
 	];
 	it.each(templates)("reads %s off the template alone", (template, kind) => {
 		expect(deriveCommentKind({ body: "<p>nothing to match</p>", template })).toEqual(

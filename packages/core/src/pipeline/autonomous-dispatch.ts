@@ -79,7 +79,7 @@ export async function dispatchDriveManual(args: {
   status: IssueStatus;
   actor: Actor;
   projectCreatedBy: string | null;
-}): Promise<{ awaiting_release: true }> {
+}): Promise<{ released: true }> {
   if (!autonomousStepFor(args.status)) {
     throw new Error(
       `AUTONOMOUS_NOT_AT_ENTRY: the driver is handed an issue at \`${AUTONOMOUS_ENTRY_STATUS}\`, this one is at \`${args.status}\``,
@@ -102,5 +102,5 @@ export async function dispatchDriveManual(args: {
     { projectId: args.projectId, issueId: args.issueId },
     'autonomous-dispatch: released by hand — offered to this project masters',
   );
-  return { awaiting_release: true };
+  return { released: true };
 }

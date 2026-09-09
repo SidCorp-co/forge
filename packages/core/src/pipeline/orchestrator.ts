@@ -63,7 +63,7 @@ export async function triggerPipelineStepManual(args: {
   status: IssueStatus;
   actor: Actor;
   reason: Record<string, unknown>;
-}): Promise<{ awaiting_release: true }> {
+}): Promise<{ released: true }> {
   const { projectCreatedBy } = await loadPipelineConfig(args.projectId);
   return dispatchDriveManual({ ...args, projectCreatedBy });
 }

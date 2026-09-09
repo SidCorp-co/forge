@@ -86,7 +86,7 @@ export interface OneShotRunReapResult {
 }
 
 export interface IssueRunReapResult {
-  // issue runs closed because their backing issue already reached a terminal status.
+  // cm:why the count of issue runs closed because their backing issue already reached a terminal status — a run left open under a terminal issue is the forward half of the orphan invariant (pipeline/runs-cascade.ts).
   reaped: number;
 }
 
@@ -105,7 +105,7 @@ export interface ClosedUnmergedAlarmResult {
 }
 
 export interface StaleReleaseBatchClaimsResult {
-  awaiting_release: number;
+  released: number;
 }
 
 export interface SweepResult {
@@ -770,10 +770,10 @@ export async function reapStaleReleaseBatchClaims(): Promise<StaleReleaseBatchCl
     if (count > 0) {
       logger.info({ count }, 'pipeline-sweeper: stale release-batch claims cleared');
     }
-    return { awaiting_release: count };
+    return { released: count };
   } catch (err) {
     logger.error({ err }, 'pipeline-sweeper: stale release-batch claim reap failed (skipped)');
-    return { awaiting_release: 0 };
+    return { released: 0 };
   }
 }
 
