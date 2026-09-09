@@ -29,7 +29,7 @@ import { useBodyAdoption, useUpdatePipelineConfig } from "../hooks";
 import type { PipelineConfig, PipelineStateConfig, StageAdoption } from "../types";
 
 // cm:edge contract -> packages/core/src/pipeline/pipeline-config-schema.ts#STAGE_NAMES — the same four names core keys `states` by, and a stage drawn here that core does not accept saves as a zod refusal naming a path rather than a stage
-const STAGES = ["open", "in_progress", "needs_info", "released"] as const;
+const STAGES = ["open", "in_progress", "needs_info", "awaiting_release"] as const;
 
 const WINDOW_DAYS = 14;
 

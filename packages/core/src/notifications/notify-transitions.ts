@@ -48,7 +48,7 @@ const HEALTHY_STATUSES: ReadonlySet<IssueStatus> = new Set<IssueStatus>([
   'developed',
   'testing',
   'tested',
-  'released',
+  'awaiting_release',
   'closed',
 ]);
 
@@ -152,10 +152,7 @@ function bodyForStatus(to: IssueStatus, reason?: string): string {
  */
 export function registerTransitionNotifications(bus: HooksBus): void {
   bus.on('transition', async (p) => {
-    // Auto-resolve (ISS-510): reaching a healthy status clears any outstanding
-    // `reopen`/`waiting` problem notification for this issue. Runs for ANY such
-    // transition (even ones not in NOTIFY_ON_STATUS, e.g. `developed`), is
-    // best-effort (never throws), and is idempotent (only unread rows match).
+    // cm:guard auto-resolve runs for ANY transition into a healthy status, including ones absent from `NOTIFY_ON_STATUS` — narrowing it to the notifying set leaves a `reopen`/`waiting` alarm standing after the issue recovered through a status nobody notifies on (ISS-510).
     if (HEALTHY_STATUSES.has(p.to)) {
       await resolveNotifications(statusResolutionKey(p.issueId));
     }

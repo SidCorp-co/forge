@@ -90,7 +90,7 @@ describe('state machine', () => {
   });
 
   it('released exits to the close, the release starting, or a pause', () => {
-    expect([...transitions.released].sort()).toEqual(['closed', 'on_hold', 'releasing']);
+    expect([...transitions.awaiting_release].sort()).toEqual(['closed', 'on_hold', 'releasing']);
   });
 
   // cm:guard the OUTCOME exits are `finish`'s (`closed`) and `abort`'s (`reopen`) and nothing else may take them — an agent that could leave `releasing` on its own would be declaring its own release finished, which `issues/release-gate-hold.ts` exists to refuse. The two parks are a person stopping to ask, which a half-landed batch needs.
@@ -122,7 +122,7 @@ describe('state machine', () => {
 
   describe('canTransitionFree (permissive runtime guard)', () => {
     it('allows any non-draft target from any runtime state', () => {
-      expect(canTransitionFree('open', 'released')).toBe(true);
+      expect(canTransitionFree('open', 'awaiting_release')).toBe(true);
       expect(canTransitionFree('approved', 'needs_info')).toBe(true);
       expect(canTransitionFree('developed', 'reopen')).toBe(true);
       expect(canTransitionFree('tested', 'on_hold')).toBe(true);
@@ -143,7 +143,7 @@ describe('state machine', () => {
       expect(canTransitionFree('draft', 'in_progress')).toBe(true);
       expect(canTransitionFree('draft', 'approved')).toBe(false);
       expect(canTransitionFree('draft', 'testing')).toBe(false);
-      expect(canTransitionFree('draft', 'released')).toBe(false);
+      expect(canTransitionFree('draft', 'awaiting_release')).toBe(false);
     });
 
     // cm:guard spell the five out LITERALLY on both sides — comparing the computed set against DRAFT_EXIT_TARGETS is tautological, since canTransitionFree reads that same constant, and dropping a member from it passes. Verified 2026-08-27: removing 'dropped' left the tautological form green. The refusal in apply-transition.ts renders this list verbatim, so a silent divergence there is a message that lies about the rule.

@@ -164,7 +164,7 @@ export function IssueDetailScreen({
   const issueDisplayId = issue?.displayId;
   const issueTitle = issue?.title;
 
-  // Track this issue as recently-viewed (surfaces in the ⌘K Recent group).
+  // cm:edge contract -> packages/web-v2/src/features/shell/commands.ts — the ⌘K Recent group reads what this records; dropping the call empties that group with nothing failing.
   useEffect(() => {
     if (!issueDisplayId || !issueTitle) return;
     pushRecent({
@@ -263,7 +263,7 @@ export function IssueDetailScreen({
   // Header action set (ISS-360) — wired to EXISTING transition / nav endpoints
   // only (no fabricated APIs). The contextual primary button depends on where
   // the issue sits in its lifecycle; the rest live in the ⋯ menu.
-  const isTerminal = issue.status === "released" || issue.status === "closed";
+  const isTerminal = issue.status === "awaiting_release" || issue.status === "closed";
   const isParked = issue.status === "on_hold";
   const isRunActive =
     issue.agentStatus === "running" ||

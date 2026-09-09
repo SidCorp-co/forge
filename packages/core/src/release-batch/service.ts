@@ -426,7 +426,7 @@ export async function abortReleaseBatch(
   actorUserId: string,
 ): Promise<string[]> {
   // cm:guard an aborted release lands on `reopen` and does NOT self-heal, which is the trade this takes deliberately: a half-landed batch re-driven automatically becomes two half-landed batches. Before this the abort cleared the column and left the status untouched, so a failed release was indistinguishable from one never attempted. It goes through the shared recovery so an abort and a batch that merely died reach the same place by the same writer.
-  const { released: releasedIds } = await recoverStrandedReleasing(runId, {
+  const { claimsCleared } = await recoverStrandedReleasing(runId, {
     reason: `batch release aborted: ${reason}`,
     actorUserId,
     comment: true,
@@ -435,7 +435,7 @@ export async function abortReleaseBatch(
   // cm:guard abort is "nothing under this run executes any further", not just "no claims" — batch ee39c4ae (2026-09-03) was aborted while its retry job kept running, shipped 20 commits to production, then `finish` found no claims and closed 0 of 12; the run must go terminal here so the cascade cancels queued retries and kills the live session
   await closeRunIfOneShot(runId, 'cancelled');
 
-  return releasedIds;
+  return claimsCleared;
 }
 
 // cm:edge naming -> packages/core/src/release-batch/queries.ts — every caller imports the batch surface from this module; the read-only half lives next door for the size budget, and re-exporting keeps that a file layout rather than an API change

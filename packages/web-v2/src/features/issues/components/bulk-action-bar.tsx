@@ -20,7 +20,7 @@ import { ISSUE_PRIORITIES, type IssueRow } from "../types";
 import { BatchReleaseDialog, type BatchReleaseIssue } from "./batch-release-dialog";
 
 // cm:edge naming -> packages/core/src/release-batch/gate.ts — must match RELEASE_GATE_STATUS, the one status resolveReleaseGate returns
-const BATCH_RELEASE_GATE = "released" as const;
+const BATCH_RELEASE_GATE = "awaiting_release" as const;
 
 function canBatchRelease(rows: IssueRow[]): { enabled: boolean; reason?: string } {
   if (rows.length === 0) return { enabled: false };

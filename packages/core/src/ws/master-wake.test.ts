@@ -68,8 +68,8 @@ beforeEach(() => {
 describe('master.wake — which statuses wake a box', () => {
   // cm:guard the driver's mid-run statuses must NOT be in this set — `in_progress` and `needs_info` are an issue a master already handed to a run, so waking every box on each of them turns one issue's lifecycle into a burst of pool reads that can find nothing new by construction.
   it('wakes on the three arrival statuses and on nothing else', () => {
-    expect([...MASTER_WAKE_STATUSES].sort()).toEqual(['draft', 'open', 'released']);
-    for (const s of ['open', 'draft', 'released'] as const) {
+    expect([...MASTER_WAKE_STATUSES].sort()).toEqual(['awaiting_release', 'draft', 'open']);
+    for (const s of ['open', 'draft', 'awaiting_release'] as const) {
       expect(isMasterWakeStatus(s)).toBe(true);
     }
     for (const s of ['in_progress', 'needs_info', 'closed', 'dropped'] as const) {
@@ -118,7 +118,7 @@ describe('master.wake — who it reaches', () => {
     servedBy(['dev-a', 'dev-b']);
     publish.mockReturnValue(0);
     await expect(
-      wakeMastersForProject({ projectId: 'p1', issueId: 'i1', status: 'released' }),
+      wakeMastersForProject({ projectId: 'p1', issueId: 'i1', status: 'awaiting_release' }),
     ).resolves.toEqual({ boxes: 2, delivered: 0 });
   });
 

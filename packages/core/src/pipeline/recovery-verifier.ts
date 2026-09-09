@@ -47,12 +47,11 @@ export const JOB_TYPE_EXPECTED_EXIT_STATUS: Record<JobType, readonly IssueStatus
   plan: ['approved'],
   code: ['developed'],
   review: ['testing', 'reopen'],
-  test: ['released', 'reopen', 'tested'],
-  // `staging` jobType is retired (no status maps to it); kept only so the
-  // Record<JobType> stays exhaustive for back-compat with historical rows.
+  test: ['awaiting_release', 'reopen', 'tested'],
+  // cm:guard the `staging` entry exists only to keep `Record<JobType>` exhaustive for historical `jobs` rows — no status maps to it and nothing dispatches it. Same shape as `staging` in `db/schema.ts#jobTypes`: a jobType outliving its issue status.
   staging: ['reopen'],
   fix: ['developed'],
-  release: ['released', 'closed'],
+  release: ['awaiting_release', 'closed'],
   custom: [],
   pm: [],
   // cm:guard EMPTY on purpose — the autonomous driver owns the issue's whole walk, so there is no single status its one job is expected to land on; listing one here would make the recovery verifier call a still-working session unadvanced
@@ -67,7 +66,7 @@ export const JOB_TYPE_EXPECTED_EXIT_STATUS: Record<JobType, readonly IssueStatus
 
 /** Statuses the issue has nothing left to do on; any failed job lands here as
  * `advanced` — the retry no longer matters. */
-const TERMINAL_STATUSES: ReadonlySet<IssueStatus> = new Set(['released', 'closed']);
+const TERMINAL_STATUSES: ReadonlySet<IssueStatus> = new Set(['awaiting_release', 'closed']);
 
 /**
  * Entry status for a given job type (i.e. the issue.status whose pipeline
@@ -83,7 +82,7 @@ export const JOB_TYPE_ENTRY_STATUS: Partial<Record<JobType, IssueStatus>> = {
   review: 'developed',
   test: 'testing',
   fix: 'reopen',
-  release: 'released',
+  release: 'awaiting_release',
 };
 
 /**

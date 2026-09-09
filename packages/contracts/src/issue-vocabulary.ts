@@ -13,8 +13,9 @@
 // only when some kernel status already enforces its rule — `running` is not a
 // new state, it is what `in_progress` has always meant. The one status the
 // kernel gained for this vocabulary is `dropped`, because closing-without-
-// stamping is a rule nothing else enforced; the gate needed no status of its
-// own because the release path already parks on `released`.
+// stamping is a rule nothing else enforced. `awaiting_release` needed no new
+// status either: the kernel status was RENAMED to this label in migration 0228,
+// because `released` was the past tense of an action that had not happened.
 //
 // Design: docs/proposals/agent-driven-pipeline.md
 
@@ -43,8 +44,8 @@ export const LABEL_TO_KERNEL: Record<AutonomousLabel, KernelIssueStatus> = {
 	running: "in_progress",
 	needs_human: "needs_info",
 	paused: "on_hold",
-	// cm:edge contract -> packages/core/src/release-batch/gate.ts — the gate resolver returns `released` as the park status, and that is the ONLY reason this label writes there; a resolver that parks elsewhere leaves the board naming a status the release path never reads
-	awaiting_release: "released",
+	// cm:guard an IDENTITY since migration 0228, and it must stay one: this label and the kernel status are now the same word, so a rename on either side that is not made on the other re-opens the gap where the board said "awaiting release" and the column said "released"
+	awaiting_release: "awaiting_release",
 	reopened: "reopen",
 	done: "closed",
 	dropped: "dropped",
@@ -61,8 +62,8 @@ const KERNEL_TO_LABEL: Record<KernelIssueStatus, AutonomousLabel> = {
 	developed: "running",
 	testing: "running",
 	tested: "awaiting_release",
-	released: "awaiting_release",
-	// cm:guard reads as `running`, not `awaiting_release`: a batch is executing, so a board showing it as "awaiting" would invite a person to trigger a release already in flight. `released` is the waiting one and keeps that label.
+	awaiting_release: "awaiting_release",
+	// cm:guard reads as `running`, not `awaiting_release`: a batch is executing, so a board showing it as "awaiting" would invite a person to trigger a release already in flight. `awaiting_release` is the waiting rung and keeps that label.
 	releasing: "running",
 	// cm:guard a label of its OWN, not `open`: nothing dispatches at `reopen` since the `reopen → open` rewrite was retired 2026-09-10, so rendering it as `open` puts a row on the board that no dispatcher will ever pick up — how epodsystem ISS-141 sat for an hour looking like it was running. It is not `needs_human` either: that label is what `AWAITING_INPUT_STATUSES` copies (me/attention-buckets.ts) and `reopen` is already in that module's `NEEDS_REVIEW_STATUSES`, so folding it in double-counts one issue into two attention buckets.
 	reopen: "reopened",

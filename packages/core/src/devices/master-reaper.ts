@@ -111,7 +111,7 @@ export async function releaseHoldsForSession(sessionId: string): Promise<number>
 
   if (rows.length > 0) {
     logger.info(
-      { masterSessionId: sessionId, released: rows.length },
+      { masterSessionId: sessionId, awaiting_release: rows.length },
       'master-reaper: master disconnected, holds returned to the pool',
     );
   }

@@ -42,7 +42,7 @@ const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
 // cm:edge naming -> packages/core/src/projects/health-routes.ts — mirrors NON_OPEN_STATUSES there; keep the excluded-status set aligned
-const NON_OPEN_STATUSES = new Set(['released', 'closed', 'draft']);
+const NON_OPEN_STATUSES = new Set(['awaiting_release', 'closed', 'draft']);
 
 const windows = ['24h', '7d', '30d'] as const;
 type Window = (typeof windows)[number];
@@ -202,12 +202,13 @@ async function bucketedLeadTime(
   return { num: toBucketMap(rows, 'num'), den: toBucketMap(rows, 'den') };
 }
 
+// cm:guard reads BOTH `released` and `awaiting_release` because `activity_log` is HISTORY: 4,488 rows were written while the rung was called `released` (renamed 2026-09-10, migration 0228) and no migration rewrites them — a payload records what the status was called when it happened. Drop either spelling and the figure silently loses one side of that date.
 async function bucketedResolved(spec: WindowSpec, baseStart: SQL): Promise<Map<string, number>> {
   const rows = (await db.execute(sql`
     SELECT ${utcDateTrunc(spec.unit, sql`created_at`)} AS bucket, count(*)::int AS n
     FROM activity_log
     WHERE action = 'issue.statusChanged'
-      AND payload ->> 'to' IN ('closed', 'released')
+      AND payload ->> 'to' IN ('closed', 'released', 'awaiting_release')
       AND created_at >= ${baseStart}
     GROUP BY 1
   `)) as unknown as Array<{ bucket: unknown; n: number }>;
@@ -231,7 +232,7 @@ async function bucketedResolvedWithInterventionLabel(
     INNER JOIN issue_labels il ON il.issue_id = al.issue_id
     INNER JOIN labels l ON l.id = il.label_id
     WHERE al.action = 'issue.statusChanged'
-      AND al.payload ->> 'to' IN ('closed', 'released')
+      AND al.payload ->> 'to' IN ('closed', 'released', 'awaiting_release')
       AND l.name IN (${laneList})
       AND al.created_at >= ${baseStart}
     GROUP BY 1

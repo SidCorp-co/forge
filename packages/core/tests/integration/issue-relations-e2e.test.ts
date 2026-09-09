@@ -137,7 +137,7 @@ describe('ISS-868 issue relations read', () => {
   });
 
   it('stops gating once the blocker has merged, the way L2 does', async () => {
-    const blocker = await insertIssue(601, 'released');
+    const blocker = await insertIssue(601, 'awaiting_release');
     const dependent = await insertIssue(602);
     await insertEdge(blocker, dependent, 'blocks');
     await harness.db.execute(sql`UPDATE issues SET merged_at = now() WHERE id = ${blocker}`);

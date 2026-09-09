@@ -94,8 +94,14 @@ describe('ISS-817 computeProjectProgress shipped-evidence', () => {
 
     await insertIssue(project.id, owner.id, 'closed-bare', 'closed', null);
 
-    const i3 = await insertIssue(project.id, owner.id, 'released', 'released', CLOSED_AT);
-    await logTransition(i3, owner.id, 'released', CLOSED_AT);
+    const i3 = await insertIssue(
+      project.id,
+      owner.id,
+      'awaiting_release',
+      'awaiting_release',
+      CLOSED_AT,
+    );
+    await logTransition(i3, owner.id, 'awaiting_release', CLOSED_AT);
 
     await insertIssue(project.id, owner.id, 'in-flight', 'in_progress', null);
 

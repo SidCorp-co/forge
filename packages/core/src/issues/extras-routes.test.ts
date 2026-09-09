@@ -59,10 +59,7 @@ vi.mock('../ws/server.js', () => ({
   roomManager: { publish: vi.fn(), subscribe: vi.fn(), unsubscribe: vi.fn() },
 }));
 
-// ISS-101 — stub run lifecycle helpers so enrich/pipeline-step routes don't
-// need to model the extra pipeline_runs SELECT/INSERT in the db mock.
-// Default-on handoff prefetch — stub to no-op so tests don't have to wire
-// real UUIDs into the pipeline_run mock.
+// cm:why the run-lifecycle helpers are stubbed so the enrich/pipeline-step routes do not need the extra `pipeline_runs` SELECT/INSERT modelled in the db mock (ISS-101).
 
 vi.mock('../pipeline/runs.js', () => ({
   openIssueRun: vi.fn(async () => ({ id: 'run-1', startedAt: new Date() })),
@@ -208,7 +205,7 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
     const res = await post();
 
     expect(res.status).toBe(202);
-    expect(await res.json()).toEqual({ issueId: ISSUE_ID, status: 'released' });
+    expect(await res.json()).toEqual({ issueId: ISSUE_ID, status: 'awaiting_release' });
     expect(enqueueJobMock).not.toHaveBeenCalled();
     expect(wakeMastersForProject).toHaveBeenCalledTimes(1);
   });

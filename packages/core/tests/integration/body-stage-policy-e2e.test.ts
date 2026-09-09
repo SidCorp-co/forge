@@ -327,7 +327,7 @@ describe('GET /api/projects/:id/body-adoption', () => {
       'open',
       'in_progress',
       'needs_info',
-      'released',
+      'awaiting_release',
     ]);
     expect(body.stages[0]?.byComponent).toEqual({ 'forge-outcome': 1 });
   });

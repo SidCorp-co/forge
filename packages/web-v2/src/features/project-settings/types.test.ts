@@ -91,7 +91,7 @@ describe("knownToolIds", () => {
       knownToolIds({
         states: {
           open: { disallowedTools: ["CronCreate", "Workflow"] },
-          released: { disallowedTools: ["CronCreate"], allowedTools: ["Bash"] },
+          awaiting_release: { disallowedTools: ["CronCreate"], allowedTools: ["Bash"] },
         },
       }),
     ).toEqual(["Bash", "CronCreate", "Workflow"]);
@@ -132,7 +132,7 @@ describe("withStagePatch", () => {
     enabled: true,
     states: {
       open: { disallowedTools: ["CronCreate"], sessionKnob: "keep" },
-      released: { mode: "manual" },
+      awaiting_release: { mode: "manual" },
     },
     topLevelKnob: "keep",
   };
@@ -142,7 +142,7 @@ describe("withStagePatch", () => {
     const states = next.states as Record<string, Record<string, unknown>>;
     expect(states.open.disallowedTools).toEqual(["Workflow"]);
     expect(states.open.sessionKnob).toBe("keep");
-    expect(states.released).toEqual({ mode: "manual" });
+    expect(states.awaiting_release).toEqual({ mode: "manual" });
     expect(next.topLevelKnob).toBe("keep");
     expect(next.enabled).toBe(true);
   });

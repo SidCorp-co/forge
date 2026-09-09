@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-// recovery-verifier.ts imports db/client transitively; stub it so the pure
-// `classifyVerdict` test doesn't need DATABASE_URL.
+// cm:why `db/client` is stubbed because `recovery-verifier.ts` imports it transitively, and the pure `classifyVerdict` cases must not need a DATABASE_URL to run.
 vi.mock('../db/client.js', () => ({
   db: { select: vi.fn() },
 }));
@@ -50,7 +49,7 @@ describe('classifyVerdict (pure)', () => {
   });
 
   it('code job, issue at released → advanced (terminal status)', () => {
-    expect(classifyVerdict('released', 'code')).toBe('advanced');
+    expect(classifyVerdict('awaiting_release', 'code')).toBe('advanced');
   });
 
   it('code job, issue at developed → advanced', () => {

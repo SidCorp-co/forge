@@ -112,7 +112,7 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
     'targets succeed). When issueId is combined with integrationId, integrationId is a HARD scope ' +
     'filter — ONLY that binding dispatches, even if other bindings (e.g. prod) exist on the run. ' +
     'When issueId is given WITHOUT integrationId, prod-environment bindings are dispatched ONLY when ' +
-    'the issue has reached the release stage (status released/closed) — every pre-release call ' +
+    'the issue has reached the release stage (status awaiting_release/closed) — every pre-release call ' +
     '(code/fix/testing) is staging-only and NEVER touches a prod binding, regardless of ' +
     'pipelineConfig.autoProdDeploy (that flag only bypasses the gate for the release-triggered ' +
     'auto-subscriber, not for this tool pre-release). With pipelineRunId (no issueId) — ISS-764 ' +
@@ -261,7 +261,7 @@ async function dispatchAction(
         const result = await fetchCoolifyDeploymentLogs(row.pair, deploymentUuid, input.lines);
         return { integrationId: row.id, ...result };
       } catch (err) {
-        // Surface a clear message; NEVER echo the raw Coolify body (may leak).
+        // cm:guard NEVER echo the raw Coolify body to the caller — it is a third party's response and has carried tokens and internal hostnames; the message names what failed and nothing the provider said.
         if (err instanceof CoolifyApiError) {
           return {
             integrationId: row.id,

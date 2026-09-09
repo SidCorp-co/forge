@@ -26,8 +26,8 @@ export const transitions: Record<IssueStatus, readonly IssueStatus[]> = {
   testing: ['tested', 'reopen', 'on_hold'],
   // cm:guard the rows for `confirmed`, `clarified`, `waiting`, `approved`, `developed`, `testing`, `tested` and `released` describe a pipeline that no longer runs and are kept only until their rows are drained — docs/flows/issue-status-lifecycle.html is the flow, this map is not. Do not extend them.
   // cm:guard do not repoint STAGE_FORWARD's tested entry to 'closed' — projects with tested disabled would skip released entirely; the batch-release tested->closed exit stays advisory-only here
-  tested: ['released', 'closed', 'reopen', 'on_hold'],
-  released: ['closed', 'releasing', 'on_hold'],
+  tested: ['awaiting_release', 'closed', 'reopen', 'on_hold'],
+  awaiting_release: ['closed', 'releasing', 'on_hold'],
   // cm:guard the two OUTCOME exits are `finish`'s and `abort`'s alone; the parks are a person stopping to ask. Nothing else may leave, which is what stops an agent declaring its own release finished (issues/release-gate-hold.ts).
   releasing: ['closed', 'reopen', 'needs_info', 'on_hold'],
   closed: ['reopen'],

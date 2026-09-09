@@ -26,10 +26,10 @@ export function registerReleaseBatchClaimSubscriber(bus: HooksBus): void {
     void recoverStrandedReleasing(p.runId, {
       reason: `The release batch run ended ${p.toStatus} without finishing or aborting`,
     })
-      .then(({ released, recovered }) => {
-        if (released.length > 0) {
+      .then(({ claimsCleared, recovered }) => {
+        if (claimsCleared.length > 0) {
           logger.info(
-            { runId: p.runId, count: released.length, recovered: recovered.length },
+            { runId: p.runId, count: claimsCleared.length, recovered: recovered.length },
             'release-batch: claims released on run close',
           );
         }

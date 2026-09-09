@@ -26,7 +26,7 @@ type DrizzleTx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
 // cm:guard do NOT re-introduce `pipelineConfig.mergeStates` as a reader here. Migration 0195 deleted the key from every project and `pipelineConfigSchema` strips it from any save, so the resolver this replaced could only return this constant — at the cost of a `projects` SELECT inside every status transition's transaction (ISS-863).
 /** The status an issue leaves to have its merge stamped. */
-export const BASE_MERGE_STATE: IssueStatus = 'released';
+export const BASE_MERGE_STATE: IssueStatus = 'awaiting_release';
 
 /**
  * Stamp `merged_at = now()` when an issue transitions OUT of

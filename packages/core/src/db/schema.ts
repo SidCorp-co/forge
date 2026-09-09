@@ -436,7 +436,6 @@ export const personalAccessTokens = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     tokenHash: text('token_hash').notNull(),
-    // `forge_pat_<env>_<4 hex>` — 18 chars, indexed for fast lookup.
     tokenPrefix: varchar('token_prefix', { length: 18 }).notNull(),
     scopes: text('scopes').array().notNull().default(sql`ARRAY['read','write']::text[]`),
     // cm:guard NULL is the WIDER grant, not the narrower one: it inherits the user's project memberships, so a non-null array is a strict allowlist and emptying it back to NULL re-opens every project the owner can reach.
@@ -961,7 +960,7 @@ export const issueStatuses = [
   'developed',
   'testing',
   'tested',
-  'released',
+  'awaiting_release',
   // cm:why ISS-897's release lane had no status for the MIDDLE: an issue stood at `released` while its batch ran and the in-flight fact lived only in `release_batch_run_id`, so one status read as both "waiting to be pressed" and "being released now" — 16 batch jobs, 4 failed and 2 cancelled, are where those diverge. Only `finish` and `abort` write out of it.
   'releasing',
   'closed',

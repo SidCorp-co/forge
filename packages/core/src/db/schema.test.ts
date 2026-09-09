@@ -341,7 +341,7 @@ describe('db/schema — issues', () => {
       'developed',
       'testing',
       'tested',
-      'released',
+      'awaiting_release',
       'releasing',
       'closed',
       'reopen',

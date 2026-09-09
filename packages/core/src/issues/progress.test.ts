@@ -29,8 +29,8 @@ const REMAINING: IssueStatus[] = ['draft', 'waiting', 'needs_info', 'on_hold'];
 
 describe('bucketOf', () => {
   it('released always counts as shipped, regardless of hasShippedEvidence', () => {
-    expect(bucketOf('released', false)).toBe('shipped');
-    expect(bucketOf('released', true)).toBe('shipped');
+    expect(bucketOf('awaiting_release', false)).toBe('shipped');
+    expect(bucketOf('awaiting_release', true)).toBe('shipped');
   });
 
   it('closed WITH evidence of leaving the base merge state counts as shipped', () => {
@@ -65,7 +65,8 @@ describe('bucketOf', () => {
 
   it('everything else (non-terminal, non-released) lands in in_flight', () => {
     const inFlightStatuses = issueStatuses.filter(
-      (s) => !REMAINING.includes(s) && s !== 'closed' && s !== 'released' && s !== 'dropped',
+      (s) =>
+        !REMAINING.includes(s) && s !== 'closed' && s !== 'awaiting_release' && s !== 'dropped',
     );
     for (const status of inFlightStatuses) {
       expect(bucketOf(status, false)).toBe('in_flight');
@@ -137,7 +138,7 @@ describe('computeProjectProgress', () => {
   it('released counts as shipped alongside a genuinely-shipped closed issue', async () => {
     const db = fakeDb([
       { status: 'closed', has_shipped_evidence: true, count: 2 },
-      { status: 'released', has_shipped_evidence: true, count: 5 },
+      { status: 'awaiting_release', has_shipped_evidence: true, count: 5 },
     ]);
     const progress = await computeProjectProgress('p1', db as never);
     expect(progress?.shipped).toBe(7);

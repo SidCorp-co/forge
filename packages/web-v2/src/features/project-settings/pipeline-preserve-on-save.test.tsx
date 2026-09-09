@@ -33,7 +33,7 @@ vi.mock("./hooks", async () => {
   };
 });
 
-const JOB_STAGES = ["open", "in_progress", "needs_info", "released"];
+const JOB_STAGES = ["open", "in_progress", "needs_info", "awaiting_release"];
 vi.mock("@/features/skills/hooks", () => ({
   useSkills: () => ({ data: [], isLoading: false }),
   useSkillRegistrations: () => ({
@@ -79,7 +79,7 @@ const STORED: PipelineConfig = {
       disallowedTools: DENYLIST_FULL,
       futureStageKnob: "stage-round-trips",
     },
-    released: { enabled: true, mode: "manual", disallowedTools: DENYLIST_FULL },
+    awaiting_release: { enabled: true, mode: "manual", disallowedTools: DENYLIST_FULL },
   },
   someFutureKnob: "round-trips",
 };
@@ -116,7 +116,7 @@ describe("Pipeline tab · preserve-on-save (ISS-813, ISS-767 pattern)", () => {
     expect(sent.someFutureKnob).toBe("round-trips");
   });
 
-  // cm:guard the entry gate is the OTHER control on this tab, and it is the one that WRITES INTO `states` — so it is where a wholesale stage write would drop `disallowedTools` and nothing else would notice. `released` has no such control: it carries no dispatch gate, and its handling lives in ReleaseSection. It stays in STORED so the case above still proves an untouched stage round-trips whole.
+  // cm:guard the entry gate is the OTHER control on this tab, and it is the one that WRITES INTO `states` — so it is where a wholesale stage write would drop `disallowedTools` and nothing else would notice. `awaiting_release` has no such control: it carries no dispatch gate, and its handling lives in ReleaseSection. It stays in STORED so the case above still proves an untouched stage round-trips whole.
   it("closing the entry gate writes both knobs and preserves the rest of that stage", () => {
     renderTab();
     fireEvent.click(screen.getByRole("switch", { name: "Start queued issues automatically" }));
@@ -127,7 +127,7 @@ describe("Pipeline tab · preserve-on-save (ISS-813, ISS-767 pattern)", () => {
     expect(open.enabled).toBe(false);
     expect(open.mode).toBe("manual");
     expect(open.disallowedTools).toEqual(DENYLIST_FULL);
-    expect((sent.states as Record<string, Record<string, unknown>>).released.disallowedTools).toEqual(
+    expect((sent.states as Record<string, Record<string, unknown>>).awaiting_release.disallowedTools).toEqual(
       DENYLIST_FULL,
     );
   });
@@ -143,7 +143,7 @@ describe("Pipeline tab · preserve-on-save (ISS-813, ISS-767 pattern)", () => {
     const states = sent.states as Record<string, Record<string, unknown>>;
     expect(states.open.disallowedTools).toEqual(DENYLIST_FULL);
     expect(states.needs_info.futureStageKnob).toBe("stage-round-trips");
-    expect(states.released.mode).toBe("manual");
+    expect(states.awaiting_release.mode).toBe("manual");
     expect(sent.someFutureKnob).toBe("round-trips");
     expect(states.in_progress.enabled).toBe(true);
     expect(states.in_progress.mode).toBe("auto");

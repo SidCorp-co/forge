@@ -45,15 +45,11 @@ function emailInitials(email: string): string {
 
 const MEMBER_AVATAR_CAP = 5;
 
-// "Open" = every issue status EXCEPT the terminal `released`/`closed` and the
-// not-yet-active `draft`. Defining it by exclusion (rather than a positive
-// allow-list) keeps it in lockstep with the web-v2 status donut (derive.ts) so
-// the donut center equals this KPI by construction, and guarantees the
-// genuinely-open statuses the old allow-list dropped — `clarified`, `on_hold`,
-// `needs_info` — are counted. ISS-528.
-const NON_OPEN_STATUSES = new Set(['released', 'closed', 'draft']);
+// cm:edge contract -> packages/web-v2/src/features/project-dashboard/derive.ts — "open" is defined by EXCLUSION here and there, so the donut centre equals this KPI by construction. A positive allow-list drops the genuinely-open statuses nobody remembers to add: `clarified`, `on_hold` and `needs_info` were all missing from the one this replaced (ISS-528).
+const NON_OPEN_STATUSES = new Set(['awaiting_release', 'closed', 'draft']);
 const BLOCKED_STATUSES = ['on_hold', 'needs_info'] as const;
 
+// cm:guard reads BOTH `released` and `awaiting_release` because `activity_log` is HISTORY: 4,488 rows were written while the rung was called `released` (renamed 2026-09-10, migration 0228) and no migration rewrites them — a payload records what the status was called when it happened. Drop either spelling and the figure silently loses one side of that date.
 export const projectHealthRoutes = new Hono<{ Variables: AuthVars }>();
 projectHealthRoutes.use('/health', requireAuth(), assertEmailVerified());
 
@@ -116,11 +112,7 @@ projectHealthRoutes.get('/health', async (c) => {
     return true;
   });
 
-  // Throughput proxy = closed-or-released transitions in last 7 days.
-  // The cutoff is computed in SQL (`now() - interval '7 days'`) rather than as
-  // a JS Date binding because postgres-js refuses to serialize Date instances
-  // through parameterized queries — it throws `ERR_INVALID_ARG_TYPE` from
-  // Buffer.byteLength at Bind time. See ISS-267.
+  // cm:guard the 7-day cutoff is computed in SQL (`now() - interval '7 days'`) and never bound as a JS Date: postgres-js refuses to serialize a Date through a parameterized query and throws `ERR_INVALID_ARG_TYPE` from Buffer.byteLength at Bind time (ISS-267).
   const throughputRows = await db
     .select({
       projectId: issues.projectId,
@@ -132,21 +124,13 @@ projectHealthRoutes.get('/health', async (c) => {
       and(
         inArray(issues.projectId, projectIds),
         eq(activityLog.action, 'issue.statusChanged'),
-        sql`${activityLog.payload} ->> 'to' IN ('closed','released')`,
+        sql`${activityLog.payload} ->> 'to' IN ('closed','released','awaiting_release')`,
         sql`${activityLog.createdAt} >= now() - interval '7 days'`,
       ),
     )
     .groupBy(issues.projectId);
 
-  // Avg cycle time (days) = mean(resolved_at - work_start) over issues that
-  // transitioned to closed/released in the same trailing-7d window as
-  // throughput. Was hardcoded 0 (ISS-308 B1: surfaced as a misleading "0d").
-  // ISS-380 (AC #3): work_start is now the FIRST transition into
-  // in_progress/approved (true cycle time), not issues.createdAt (which was
-  // lead time from creation and overstated the number). Falls back to
-  // issues.createdAt for issues that predate those transitions via COALESCE.
-  // Same SQL-side `now() - interval` cutoff as throughput (postgres-js can't
-  // bind a JS Date — see the throughput note above).
+  // cm:guard `work_start` is the FIRST transition into `in_progress`/`approved`, never `issues.createdAt` — reading creation time measures LEAD time and overstates cycle time by however long the issue sat in the backlog (ISS-380). The COALESCE onto `createdAt` is only for rows that predate those transitions.
   const cycleRows = await db
     .select({
       projectId: issues.projectId,
@@ -163,7 +147,7 @@ projectHealthRoutes.get('/health', async (c) => {
       and(
         inArray(issues.projectId, projectIds),
         eq(activityLog.action, 'issue.statusChanged'),
-        sql`${activityLog.payload} ->> 'to' IN ('closed','released')`,
+        sql`${activityLog.payload} ->> 'to' IN ('closed','released','awaiting_release')`,
         sql`${activityLog.createdAt} >= now() - interval '7 days'`,
       ),
     )

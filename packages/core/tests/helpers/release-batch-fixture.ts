@@ -69,7 +69,10 @@ export function releaseBatchFixture(
     `);
   }
 
-  async function insertIssue(status = 'released', note: unknown = SKIP_NOTE): Promise<string> {
+  async function insertIssue(
+    status = 'awaiting_release',
+    note: unknown = SKIP_NOTE,
+  ): Promise<string> {
     const { projectId, ownerId } = ids();
     const id = randomUUID();
     seq += 1;

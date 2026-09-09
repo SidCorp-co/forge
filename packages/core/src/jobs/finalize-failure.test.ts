@@ -43,7 +43,6 @@ vi.mock('../skills/reconcile-service.js', () => ({
   failReconcileRunForFailedJob: (...args: unknown[]) => failReconcileRunMock(...args),
 }));
 
-// db.select().from().innerJoin().where().limit() → issue+owner row.
 const issueRowMock = vi.fn<() => unknown[]>(() => [
   { id: 'i1', projectId: 'p1', status: 'in_progress', reopenCount: 0, projectCreatedBy: 'owner1' },
 ]);
@@ -107,7 +106,7 @@ const JOB_TYPE_ENTRY_STATUS: Record<string, string> = {
   review: 'developed',
   test: 'testing',
   fix: 'reopen',
-  release: 'released',
+  release: 'awaiting_release',
 };
 const JOB_TYPE_INFLIGHT_STATUS: Record<string, string> = {
   code: 'in_progress',
@@ -118,7 +117,7 @@ const JOB_TYPE_EXPECTED_EXIT_STATUS: Record<string, string[]> = {
   fix: ['developed'],
   plan: ['approved'],
   review: ['testing', 'reopen'],
-  test: ['released', 'reopen', 'tested'],
+  test: ['awaiting_release', 'reopen', 'tested'],
 };
 // ISS-702 — real classifyVerdict semantics, mirrored here so this suite stays
 // a pure unit test of finalize-failure.ts without importing recovery-verifier.js.
@@ -131,7 +130,7 @@ function classifyVerdict(
   if (JOB_TYPE_INFLIGHT_STATUS[jobType] === currentStatus) return 'pending';
   const exits = JOB_TYPE_EXPECTED_EXIT_STATUS[jobType] ?? [];
   if (exits.includes(currentStatus)) return 'advanced';
-  if (currentStatus === 'released' || currentStatus === 'closed') return 'advanced';
+  if (currentStatus === 'awaiting_release' || currentStatus === 'closed') return 'advanced';
   if (!entry) return 'pending';
   return 'reverted';
 }

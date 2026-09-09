@@ -58,13 +58,15 @@ describe('updatePipelineConfig — STAGE_POOL_UNKNOWN_RUNNER (per-state runner p
     await expect(
       updatePipelineConfig({
         projectId: PROJECT,
-        patch: { states: { released: { deviceIds: [DEVICE_OK, DEVICE_MISSING] } } } as never,
+        patch: {
+          states: { awaiting_release: { deviceIds: [DEVICE_OK, DEVICE_MISSING] } },
+        } as never,
       }),
     ).rejects.toMatchObject({
       name: 'PipelineConfigError',
       code: 'STAGE_POOL_UNKNOWN_RUNNER',
       details: {
-        stagesWithUnknownDevices: [{ stage: 'released', deviceIds: [DEVICE_MISSING] }],
+        stagesWithUnknownDevices: [{ stage: 'awaiting_release', deviceIds: [DEVICE_MISSING] }],
       },
     });
   });
@@ -73,14 +75,18 @@ describe('updatePipelineConfig — STAGE_POOL_UNKNOWN_RUNNER (per-state runner p
     pushSelect([{ agentConfig: { pipelineConfig: {} } }]);
     pushSelect([{ deviceId: DEVICE_OK }]);
     pushSelect([
-      { agentConfig: { pipelineConfig: { states: { released: { deviceIds: [DEVICE_OK] } } } } },
+      {
+        agentConfig: {
+          pipelineConfig: { states: { awaiting_release: { deviceIds: [DEVICE_OK] } } },
+        },
+      },
     ]);
 
     const result = await updatePipelineConfig({
       projectId: PROJECT,
-      patch: { states: { released: { deviceIds: [DEVICE_OK] } } } as never,
+      patch: { states: { awaiting_release: { deviceIds: [DEVICE_OK] } } } as never,
     });
-    expect(result.pipelineConfig.states?.released?.deviceIds).toEqual([DEVICE_OK]);
+    expect(result.pipelineConfig.states?.awaiting_release?.deviceIds).toEqual([DEVICE_OK]);
   });
 });
 

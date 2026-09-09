@@ -41,7 +41,7 @@ import { postTransitionReasonComment, requiresAuthoredReason } from './transitio
  */
 // cm:guard `releasing` belongs here for the same reason `released` does — a release is running over this issue, so offering it to a dispatcher races a second agent against the batch it is executing under. It is the half `released` alone could not express: one status meant both "waiting for a person to press it" and "a batch is running", so the in-flight fact lived only in `issues.release_batch_run_id` where no dispatch gate read it.
 export const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>([
-  'released',
+  'awaiting_release',
   'releasing',
   'closed',
   'dropped',

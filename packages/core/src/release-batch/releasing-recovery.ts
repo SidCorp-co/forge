@@ -5,7 +5,7 @@
 // cancelling the run, `reapOrphanedOneShotRuns`, a claim that lost its job to
 // `ActiveJobConflictError` — clears `issues.release_batch_run_id` and says
 // nothing about the status, which was harmless while the issue stood at the
-// `released` gate and strands it the moment the middle status exists.
+// `awaiting_release` gate and strands it the moment the middle status exists.
 //
 // So this is the third writer, and it is the only one a machine may use: an
 // issue whose batch is gone without an outcome lands at `reopen` with the
@@ -21,7 +21,7 @@ import { logger } from '../logger.js';
 
 export interface RecoverStrandedReleasingResult {
   /** Issues whose claim was cleared, whatever their status. */
-  released: string[];
+  claimsCleared: string[];
   /** Issues that were still at `releasing` and were moved to `reopen`. */
   recovered: string[];
 }
@@ -116,5 +116,5 @@ export async function recoverStrandedReleasing(
     );
   }
 
-  return { released: claimed.map((r) => r.id), recovered };
+  return { claimsCleared: claimed.map((r) => r.id), recovered };
 }

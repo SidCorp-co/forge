@@ -95,7 +95,7 @@ export interface IdleChatCloseResult {
 }
 
 export interface StallDetectResult {
-  // pipeline_wedge notifications emitted for never-clearing dependency deadlocks.
+  // cm:why the count of `pipeline_wedge` notifications emitted this tick — a dependency deadlock that never clears is reported here rather than retried, because no sweep can resolve it.
   detected: number;
 }
 
@@ -105,7 +105,7 @@ export interface ClosedUnmergedAlarmResult {
 }
 
 export interface StaleReleaseBatchClaimsResult {
-  released: number;
+  awaiting_release: number;
 }
 
 export interface SweepResult {
@@ -770,10 +770,10 @@ export async function reapStaleReleaseBatchClaims(): Promise<StaleReleaseBatchCl
     if (count > 0) {
       logger.info({ count }, 'pipeline-sweeper: stale release-batch claims cleared');
     }
-    return { released: count };
+    return { awaiting_release: count };
   } catch (err) {
     logger.error({ err }, 'pipeline-sweeper: stale release-batch claim reap failed (skipped)');
-    return { released: 0 };
+    return { awaiting_release: 0 };
   }
 }
 

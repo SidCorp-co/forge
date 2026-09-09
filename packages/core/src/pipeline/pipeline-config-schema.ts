@@ -19,7 +19,7 @@ import {
  */
 // cm:guard the staged ladder (`confirmed` `clarified` `approved` `developed` `testing` `tested`) was removed here by ISS-897, and this schema STRIPS unknown keys — so re-adding one of those names does not just widen a union, it un-deletes a stage the settings surface no longer shows and the orchestrator no longer walks. A key here must be a status this lane actually reaches.
 // cm:edge contract -> packages/core/src/pipeline/autonomous-mode.ts — the same four statuses AUTONOMOUS_DRIVER_STATUSES names minus the terminals; a stage name that is not a driver status is config for a state no issue on this lane is ever in
-export const STAGE_NAMES = ['open', 'in_progress', 'needs_info', 'released'] as const;
+export const STAGE_NAMES = ['open', 'in_progress', 'needs_info', 'awaiting_release'] as const;
 
 export type StageName = (typeof STAGE_NAMES)[number];
 
@@ -265,14 +265,7 @@ export const pipelineConfigSchema = z
       })
       .strict()
       .optional(),
-    // Project-default MCP servers seeded into EVERY job's temp `--mcp-config`
-    // (forge-runner --strict-mcp-config makes Claude ignore the runner box's
-    // own MCP config, so the project must declare the secret-free servers it
-    // wants — playwright, etc.). Same shape as the per-state `mcpServers`; the
-    // dispatcher uses this as the BASE, with per-state mcpServers merged on top
-    // and integration servers (postman/epodsystem) on top of that. Values may
-    // use the catalog shorthand (`name: true`) or a raw custom spec object —
-    // see `pipeline/mcp-catalog.ts` `expandMcpServers`.
+    // cm:guard these are seeded into EVERY job's temp `--mcp-config` and the runner passes `--strict-mcp-config`, so the box's own MCP config is ignored: a server this project does not declare does not exist for any job, and anything declared here must be secret-free because the file is written per job on a shared box.
     mcpServers: z.record(z.string(), z.unknown()).optional(),
     // When true, a `prod`-environment Coolify deploy auto-dispatches on release
     // exactly like `staging` — skipping the human "Confirm production deploy"

@@ -159,7 +159,6 @@ describe('registerCiFixPatternLearner', () => {
       to: 'developed',
       reopenCount: 0,
     } as never);
-    // queueMicrotask flush
     await new Promise((r) => setImmediate(r));
     expect(indexMemoryMock).not.toHaveBeenCalled();
   });
@@ -172,7 +171,7 @@ describe('registerCiFixPatternLearner', () => {
       projectId: 'proj-1',
       actor: { type: 'user', id: 'u-1' },
       from: 'developed',
-      to: 'released',
+      to: 'awaiting_release',
       reopenCount: 2,
     } as never);
     await new Promise((r) => setImmediate(r));

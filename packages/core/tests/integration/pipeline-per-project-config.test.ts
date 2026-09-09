@@ -93,7 +93,7 @@ async function seedProject(
     ['developed', 'forge-review'],
     ['testing', 'forge-test'],
     ['reopen', 'forge-fix'],
-    ['released', 'forge-release'],
+    ['awaiting_release', 'forge-release'],
   ];
   for (const [stage, skillName] of stagePairs) {
     const skillId = skillIdByName.get(skillName);
@@ -155,10 +155,7 @@ async function jobsFor(issueId: string): Promise<JobSnapshot[]> {
  * `to` already. The orchestrator catches pg-boss errors so the test does not
  * need a running queue.
  */
-// Forward order of the happy-path lifecycle, used so `drive` can tell whether
-// the orchestrator's eager soft-skip already carried the issue to OR PAST a
-// target stage (and the explicit drive should be a no-op rather than a
-// backward transition).
+// cm:guard this list is the happy-path lifecycle FORWARD, and `drive` reads it to tell whether the eager soft-skip already carried the issue to or PAST the target stage — reorder it and an explicit drive reads a forward hop as a backward one and re-runs finished work.
 const PIPELINE_ORDER: import('../../src/db/schema.js').IssueStatus[] = [
   'open',
   'confirmed',
@@ -168,7 +165,7 @@ const PIPELINE_ORDER: import('../../src/db/schema.js').IssueStatus[] = [
   'developed',
   'testing',
   'tested',
-  'released',
+  'awaiting_release',
   'closed',
 ];
 const orderOf = (s: import('../../src/db/schema.js').IssueStatus): number => {
@@ -291,7 +288,7 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
     let issue = await insertOpenIssue(project.id, owner.id);
 
     await emitIssueCreated(issue, owner.id);
-    for (const to of ['in_progress', 'released', 'closed'] as const) {
+    for (const to of ['in_progress', 'awaiting_release', 'closed'] as const) {
       issue = await drive(issue, to, owner.id);
     }
 

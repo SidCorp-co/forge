@@ -123,11 +123,17 @@ reachable from every rung, one park a person routes (`reopen`), two ends differi
   puts it in `NEEDS_REVIEW_STATUSES`. Two readers already treat it as a human's business and the
   third does not read it, so the ISS-141 wedge cannot return through this door. Cost: a failed
   release parks at `reopen` and does not self-heal.
-- **`released` is retired as a status**, replaced by the release button
-  (`POST /:projectId/release-batches`) plus `releasing` for the middle. Today an issue keeps
-  standing at `released` during a batch while the in-flight fact lives only in
-  `issues.release_batch_run_id`, so one status means both "waiting for a person to press it" and
-  "being released right now".
+- **`released` is renamed to `awaiting_release`** (migration 0228), and the *trigger* half of what
+  it used to do becomes the release button (`POST /:projectId/release-batches`) plus `releasing`
+  for the middle (0227). The old name was the past tense of an action that had not happened: the
+  lane had no button, so moving an issue to `released` WAS how a release started, and an issue kept
+  standing there during the batch while the in-flight fact lived only in
+  `issues.release_batch_run_id` — one status meaning both "waiting for a person to press it" and
+  "being released right now". The board has rendered this rung as `awaiting_release` since ISS-970;
+  only the kernel status disagreed. Renaming it also moved `states.released` on 29 project configs
+  in the same transaction: `pipelineConfig.states` is a `partialRecord(z.enum(STAGE_NAMES))`, zod
+  answers `invalid_key` rather than stripping, and a config that fails to parse reads as `null` —
+  no dispatch, in silence.
 
 Drawing: `docs/flows/issue-status-lifecycle.html` · edge-by-edge rationale and the removal order:
 `docs/proposals/status-flow.md`.

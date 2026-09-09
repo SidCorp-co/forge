@@ -375,7 +375,7 @@ describe('reconcileForReleasedIssue', () => {
         evidence: expect.stringContaining('superseded by ISS-708'),
       }),
     );
-    // Archive path reuses runMemoryFeedback — no direct db.update for contradicted rows.
+    // cm:guard the archive path reuses `runMemoryFeedback` and must never grow a direct `db.update` for contradicted rows — a second writer of that column is how the two disagree about what archived means.
     expect(updateSetMock).not.toHaveBeenCalled();
     expect(indexMemoryBestEffortMock).toHaveBeenCalledWith(
       expect.objectContaining({ source: 'decision', sourceRef: 'reconcile:ISS-708' }),
@@ -473,7 +473,7 @@ describe('registerMemoryReconcileTrigger', () => {
       issueId: 'issue-1',
       projectId: PROJECT_ID,
       actor: { type: 'user', id: 'u-1' },
-      from: 'released',
+      from: 'awaiting_release',
       to: 'closed',
       reopenCount: 0,
     });
@@ -494,7 +494,7 @@ describe('registerMemoryReconcileTrigger', () => {
       issueId: 'issue-2',
       projectId: PROJECT_ID,
       actor: { type: 'user', id: 'u-1' },
-      from: 'released',
+      from: 'awaiting_release',
       to: 'archived-elsewhere',
       reopenCount: 0,
     });

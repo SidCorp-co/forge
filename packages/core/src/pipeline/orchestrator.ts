@@ -43,9 +43,7 @@ async function loadPipelineConfig(
   // cm:guard an archived project reads as `cfg: null`, the same path a missing or invalid config takes, so nothing NEW is dispatched while in-flight work finishes untouched (ISS-353).
   if (row.archivedAt != null) return { cfg: null, projectCreatedBy: row.createdBy ?? null };
   const ac = (row.agentConfig as { pipelineConfig?: unknown } | null) ?? {};
-  // Parse through the canonical schema so the typed read path stays in
-  // lockstep with what was validated on write. Bad data → cfg=null (caller
-  // falls through to "no auto pipeline" behavior, same as missing row).
+  // cm:guard bad data must resolve to `cfg = null`, never to a partial config: `isAutonomous(null)` is false and the caller falls through to no-auto-pipeline, the safe direction. It is also the SILENT direction — a config that stops parsing stops the project dispatching with nothing reporting it, which is why a status rename must migrate its `states` keys in the same transaction (migration 0228).
   const parsed = pipelineConfigSchema.safeParse(ac.pipelineConfig ?? {});
   return {
     cfg: parsed.success ? parsed.data : null,
@@ -65,7 +63,7 @@ export async function triggerPipelineStepManual(args: {
   status: IssueStatus;
   actor: Actor;
   reason: Record<string, unknown>;
-}): Promise<{ released: true }> {
+}): Promise<{ awaiting_release: true }> {
   const { projectCreatedBy } = await loadPipelineConfig(args.projectId);
   return dispatchDriveManual({ ...args, projectCreatedBy });
 }

@@ -430,7 +430,7 @@ export const PIPELINE_STATUS_ROWS: ReadonlyArray<{ status: string; label: string
 	{ status: "open", label: "Queued" },
 	{ status: "in_progress", label: "Running" },
 	{ status: "needs_info", label: "Needs a human" },
-	{ status: "released", label: "Awaiting release" },
+	{ status: "awaiting_release", label: "Awaiting release" },
 ];
 
 const PIPELINE_STATUS_LABELS: Record<string, string> = Object.fromEntries(

@@ -242,7 +242,7 @@ describe('ISS-949 · what the aggregation reads', () => {
 describe('ISS-949 · open, closed and recent activity', () => {
   it('counts released, closed and dropped as closed and every other status as open', async () => {
     const alpha = await createModule('alpha');
-    for (const status of ['released', 'closed', 'dropped']) {
+    for (const status of ['awaiting_release', 'closed', 'dropped']) {
       await attach(await insertIssue(status), alpha);
     }
     for (const status of ['open', 'in_progress', 'draft', 'on_hold']) {

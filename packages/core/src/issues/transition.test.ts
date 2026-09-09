@@ -53,8 +53,7 @@ vi.mock('../ws/server.js', () => ({
   roomManager: { publish: (...args: unknown[]) => publish(...args) },
 }));
 
-// Org-level authz: stub the db-touching resolver; pure helpers
-// (assertProjectRole, projectRoleAtLeast) stay real.
+// cm:guard stub ONLY the db-touching org resolver — `assertProjectRole` and `projectRoleAtLeast` stay real, or the authz assertions here pass against a stub instead of the rule they name.
 const projectAccess = vi.fn();
 vi.mock('../lib/authz.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/authz.js')>()),
@@ -258,7 +257,7 @@ describe('POST /api/issues/:id/transition', () => {
     const token = await signUserToken(USER_ID);
     queueAuthAndIssue({ status: 'tested', issSeq: 7 });
     updateReturning.mockResolvedValueOnce([
-      { id: ISSUE_ID, status: 'released', reopenCount: 0, updatedAt: new Date() },
+      { id: ISSUE_ID, status: 'awaiting_release', reopenCount: 0, updatedAt: new Date() },
     ]);
     dependentsAwait.mockResolvedValueOnce([
       {
@@ -268,7 +267,7 @@ describe('POST /api/issues/:id/transition', () => {
         toIssSeq: 12,
       },
     ]);
-    const res = await req({ toStatus: 'released' }, token);
+    const res = await req({ toStatus: 'awaiting_release' }, token);
     expect(res.status).toBe(200);
     const cascadeCalls = publish.mock.calls.filter(
       (c) => (c[1] as { event: string }).event === 'issue.unblockCascade',
@@ -291,10 +290,10 @@ describe('POST /api/issues/:id/transition', () => {
     const token = await signUserToken(USER_ID);
     queueAuthAndIssue({ status: 'tested' });
     updateReturning.mockResolvedValueOnce([
-      { id: ISSUE_ID, status: 'released', reopenCount: 0, updatedAt: new Date() },
+      { id: ISSUE_ID, status: 'awaiting_release', reopenCount: 0, updatedAt: new Date() },
     ]);
     dependentsAwait.mockResolvedValueOnce([]);
-    const res = await req({ toStatus: 'released' }, token);
+    const res = await req({ toStatus: 'awaiting_release' }, token);
     expect(res.status).toBe(200);
     const cascadeCalls = publish.mock.calls.filter(
       (c) => (c[1] as { event: string }).event === 'issue.unblockCascade',

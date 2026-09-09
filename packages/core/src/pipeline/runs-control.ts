@@ -31,7 +31,7 @@ import { cascadeCancelChildJobs, type JobRow, requestKillsForCascade } from './r
 const CANCEL_PARK_SKIP_STATUSES = new Set<IssueStatus>([
   'on_hold',
   'closed',
-  'released',
+  'awaiting_release',
   'releasing',
 ]);
 

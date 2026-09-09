@@ -77,7 +77,7 @@ describe('markMergedIfLeavingBase', () => {
     const { tx, updateCall } = buildMockTx({ returningRows: [{ id: 'iss-1' }] });
     const result = await markMergedIfLeavingBase(tx, {
       issueId: 'iss-1',
-      fromStatus: 'released',
+      fromStatus: 'awaiting_release',
       toStatus: 'closed',
     });
     expect(result.stamped).toBe(true);
@@ -88,7 +88,7 @@ describe('markMergedIfLeavingBase', () => {
     const { tx } = buildMockTx({ returningRows: [] });
     const result = await markMergedIfLeavingBase(tx, {
       issueId: 'iss-1',
-      fromStatus: 'released',
+      fromStatus: 'awaiting_release',
       toStatus: 'reopen',
     });
     expect(result.stamped).toBe(false);
@@ -97,7 +97,7 @@ describe('markMergedIfLeavingBase', () => {
 
 describe('markMergedOnClose', () => {
   it('no-ops for every non-closed target status', async () => {
-    for (const toStatus of ['released', 'waiting', 'reopen', 'on_hold'] as const) {
+    for (const toStatus of ['awaiting_release', 'waiting', 'reopen', 'on_hold'] as const) {
       const { tx, updateCall } = buildMockTx();
       const result = await markMergedOnClose(tx, { issueId: 'iss-1', toStatus });
       expect(result.stamped).toBe(false);

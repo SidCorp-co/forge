@@ -218,7 +218,7 @@ export async function dispatchCoolifyDeployDirect(args: {
   integrationId: string;
 }): Promise<DispatchOutcome> {
   const { projectId, integrationId } = args;
-  // `integrationId` here is a binding id (the MCP tool passes binding ids).
+  // cm:guard `integrationId` here is a BINDING id, not a connection id — the MCP tool passes binding ids and both id spaces are uuids, so a mix-up resolves to some other project's deploy target rather than failing.
   const pairs = await listActiveBindingsForProjectProvider(projectId, 'coolify');
   const pair = pairs.find((p) => p.binding.id === integrationId);
   if (!pair) {
@@ -437,7 +437,7 @@ export async function isIssueAtReleaseStage(issueId: string): Promise<boolean> {
     .from(issues)
     .where(eq(issues.id, issueId))
     .limit(1);
-  return row?.status === 'released' || row?.status === 'closed';
+  return row?.status === 'awaiting_release' || row?.status === 'closed';
 }
 
 /**

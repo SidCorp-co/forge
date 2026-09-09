@@ -103,7 +103,6 @@ describe('chat mcp-adapter', () => {
     const { execute } = buildToolset(boundCtx, [
       { factory: () => withProjectId, allowedActions: ['list'] },
     ]);
-    // Model passes a bogus projectId — the adapter must overwrite it.
     await execute('forge_issues', '{"action":"list","projectId":"Some Project Name"}');
     expect(received).toEqual({ action: 'list', projectId: 'bound-proj-uuid' });
   });
@@ -190,7 +189,14 @@ describe('chat mcp-adapter', () => {
       },
     ]);
     // Every registry status dispatches a job on transition — all must bounce.
-    for (const status of ['open', 'approved', 'released', 'testing', 'in_progress', 'tested']) {
+    for (const status of [
+      'open',
+      'approved',
+      'awaiting_release',
+      'testing',
+      'in_progress',
+      'tested',
+    ]) {
       const out = await execute(
         'forge_issues',
         `{"action":"update","data":{"status":"${status}"}}`,

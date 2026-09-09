@@ -27,7 +27,8 @@ export const METRICS = [
   // ISS-381 (Part 2) — backed by the new collection tables:
   'pass_rate', // issue_step_contexts.verdict, step='test'
   'approve_rate', // issue_step_contexts.verdict, step='review'
-  'queue_depth', // queue_snapshots (sweeper-written)
+  // cm:edge sideeffect -> packages/core/src/pipeline/sweeper.ts — `queue_depth` reads `queue_snapshots`, which only the sweeper writes; a stalled sweeper reads as a flat queue rather than as missing data.
+  'queue_depth',
   'runner_uptime', // runner_events (status-change audit)
 ] as const;
 export type Metric = (typeof METRICS)[number];
@@ -131,6 +132,7 @@ export interface TimeseriesResult {
   series: TimeseriesPoint[];
 }
 
+// cm:guard reads BOTH `released` and `awaiting_release` because `activity_log` is HISTORY: 4,488 rows were written while the rung was called `released` (renamed 2026-09-10, migration 0228) and no migration rewrites them — a payload records what the status was called when it happened. Drop either spelling and the figure silently loses one side of that date.
 /**
  * Run the aggregation for one metric and return a dense, chart-ready series.
  * Read-only; every query is bounded by the `days` window (capped 1..90 by the
@@ -184,7 +186,7 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
         JOIN issues i ON i.id = al.issue_id
         WHERE i.project_id = ${projectId}
           AND al.action = 'issue.statusChanged'
-          AND al.payload ->> 'to' IN ('closed', 'released')
+          AND al.payload ->> 'to' IN ('closed', 'released', 'awaiting_release')
           AND al.created_at >= ${cutoff}
         GROUP BY 1
         ORDER BY 1
@@ -212,7 +214,7 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
           JOIN issues i ON i.id = al.issue_id
           WHERE i.project_id = ${projectId}
             AND al.action = 'issue.statusChanged'
-            AND al.payload ->> 'to' IN ('closed', 'released')
+            AND al.payload ->> 'to' IN ('closed', 'released', 'awaiting_release')
             AND al.created_at >= ${cutoff}
           GROUP BY al.issue_id
         ),

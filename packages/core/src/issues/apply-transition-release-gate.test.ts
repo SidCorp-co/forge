@@ -121,18 +121,18 @@ beforeEach(() => {
 describe('an agent closing on a project that declared a release gate', () => {
   it('lands at the gate instead of `closed`', async () => {
     gated();
-    queueUpdate('released');
+    queueUpdate('awaiting_release');
 
     const result = await transitionIssueStatus(AT_WORK, 'closed', AGENT);
 
-    expect(updateSet.mock.calls[0]?.[0]).toMatchObject({ status: 'released' });
-    expect(result.status).toBe('released');
+    expect(updateSet.mock.calls[0]?.[0]).toMatchObject({ status: 'awaiting_release' });
+    expect(result.status).toBe('awaiting_release');
   });
 
   // cm:guard the merge stamp must survive the hold or the gate stops a false "shipped" by stalling every dependent instead — `merged_at` means "on the base branch", which a held issue is
   it('still stamps `merged_at`, because the branch did land', async () => {
     gated();
-    queueUpdate('released');
+    queueUpdate('awaiting_release');
 
     const result = await transitionIssueStatus(AT_WORK, 'closed', AGENT);
 
@@ -145,7 +145,7 @@ describe('an agent closing on a project that declared a release gate', () => {
 
   it('closes the run, because the session is over even though the issue is not', async () => {
     gated();
-    queueUpdate('released');
+    queueUpdate('awaiting_release');
 
     await transitionIssueStatus(AT_WORK, 'closed', AGENT);
 
@@ -154,7 +154,7 @@ describe('an agent closing on a project that declared a release gate', () => {
 
   it('says on the issue that it is merged and not shipped', async () => {
     gated();
-    queueUpdate('released');
+    queueUpdate('awaiting_release');
 
     await transitionIssueStatus(AT_WORK, 'closed', AGENT);
 

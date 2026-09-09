@@ -7,9 +7,7 @@ vi.mock('../config/env.js', () => ({
   env: { JWT_SECRET: TEST_SECRET, NODE_ENV: 'test' },
 }));
 
-// Chain for `db.select(...).from(...).where(...)` — awaitable directly so the
-// batch endpoint's `inArray` lookup resolves to a row array. Also has `.limit`
-// for the email-verified middleware path.
+// cm:guard the chain must stay awaitable AND carry `.limit` — the batch route's `inArray` lookup awaits it directly while the email-verified middleware calls `.limit`, so a mock modelling only one of the two fails inside the middleware, several frames from the assertion.
 const selectAwait = vi.fn();
 const selectWhere = vi.fn(() => {
   const limit = vi.fn(() => selectAwait());
@@ -449,10 +447,10 @@ describe('PATCH /api/issues/batch', () => {
       orgRole: null,
     });
     updateReturning.mockResolvedValueOnce([
-      { id: ISS1, status: 'released', reopenCount: 0, updatedAt: new Date() },
+      { id: ISS1, status: 'awaiting_release', reopenCount: 0, updatedAt: new Date() },
     ]);
     updateReturning.mockResolvedValueOnce([
-      { id: ISS2, status: 'released', reopenCount: 0, updatedAt: new Date() },
+      { id: ISS2, status: 'awaiting_release', reopenCount: 0, updatedAt: new Date() },
     ]);
     // The fan-out dependents query returns rows in PROJECT_A (same project,
     // so deduped by parentProjectIds) AND in PROJECT_B (cross-project blocking
@@ -467,7 +465,7 @@ describe('PATCH /api/issues/batch', () => {
       headers: await headers(),
       body: JSON.stringify({
         ids: [ISS1, ISS2],
-        data: { status: 'released' },
+        data: { status: 'awaiting_release' },
       }),
     });
     expect(res.status).toBe(200);

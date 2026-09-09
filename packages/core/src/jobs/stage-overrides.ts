@@ -144,7 +144,7 @@ export const DEFAULT_STAGE_MODELS: Record<string, string> = {
   open: 'sonnet',
   in_progress: 'sonnet',
   needs_info: 'sonnet',
-  released: 'sonnet',
+  awaiting_release: 'sonnet',
 };
 
 /**
@@ -182,9 +182,7 @@ async function loadStageMap(projectId: string): Promise<Record<string, StageConf
     if (!states || typeof states !== 'object') return null;
     return states as Record<string, StageConfig>;
   } catch (err) {
-    // Per-state overrides are best-effort; a DB hiccup should NOT crash a
-    // dispatch — but operators need to see the degradation. Log and proceed
-    // with defaults (no per-state overrides applied this dispatch).
+    // cm:guard a DB hiccup here must NOT crash a dispatch — log the degradation and proceed with defaults, because per-state overrides are a refinement and losing them costs a less-tuned run while throwing costs the run entirely.
     logger.warn(
       { err, projectId },
       'stage-overrides: failed to load pipelineConfig.states, dispatching with defaults',

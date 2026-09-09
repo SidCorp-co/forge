@@ -1,10 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// ISS-669 — `released` must NOT close the issue's open pipeline_run (the
-// release step needs to run inside it); only `closed` closes the run. This
-// unit-tests `transitionIssueStatus` directly against a minimal db mock,
-// asserting `closeOpenRunForIssue` fires exactly on the statuses in
-// `RUN_CLOSING_STATUSES`.
+// cm:guard ISS-669 — `awaiting_release` must NOT close the issue's open pipeline_run, because the release step runs inside it; only the statuses in `RUN_CLOSING_STATUSES` close a run, and these cases assert `closeOpenRunForIssue` fires on exactly those and no others.
 
 const updateReturning = vi.fn();
 const updateWhere = vi.fn(() => ({ returning: updateReturning }));
@@ -62,22 +58,22 @@ beforeEach(() => {
 
 describe('transitionIssueStatus — run-closing decoupled from terminal-for-dispatch (ISS-669)', () => {
   it('entering `released` does NOT close the open run but still reports terminal:true', async () => {
-    queueUpdate('released');
+    queueUpdate('awaiting_release');
     const result = await transitionIssueStatus(
       { id: ISSUE_ID, projectId: PROJECT_ID, status: 'tested', reopenCount: 0 },
-      'released',
+      'awaiting_release',
       { type: 'user', id: ACTOR_ID },
     );
 
     expect(result.terminal).toBe(true);
     expect(closeOpenRunForIssueMock).not.toHaveBeenCalled();
-    expect(setCurrentStepForOpenIssueRunMock).toHaveBeenCalledWith(ISSUE_ID, 'released');
+    expect(setCurrentStepForOpenIssueRunMock).toHaveBeenCalledWith(ISSUE_ID, 'awaiting_release');
   });
 
   it('entering `closed` DOES close the open run', async () => {
     queueUpdate('closed');
     const result = await transitionIssueStatus(
-      { id: ISSUE_ID, projectId: PROJECT_ID, status: 'released', reopenCount: 0 },
+      { id: ISSUE_ID, projectId: PROJECT_ID, status: 'awaiting_release', reopenCount: 0 },
       'closed',
       { type: 'user', id: ACTOR_ID },
     );
@@ -87,12 +83,12 @@ describe('transitionIssueStatus — run-closing decoupled from terminal-for-disp
   });
 
   it('TERMINAL_FOR_DISPATCH still includes both released and closed (Layer-2 unblock unaffected)', () => {
-    expect(TERMINAL_FOR_DISPATCH.has('released')).toBe(true);
+    expect(TERMINAL_FOR_DISPATCH.has('awaiting_release')).toBe(true);
     expect(TERMINAL_FOR_DISPATCH.has('closed')).toBe(true);
   });
 
   it('RUN_CLOSING_STATUSES contains only closed', () => {
     expect(RUN_CLOSING_STATUSES.has('closed')).toBe(true);
-    expect(RUN_CLOSING_STATUSES.has('released')).toBe(false);
+    expect(RUN_CLOSING_STATUSES.has('awaiting_release')).toBe(false);
   });
 });

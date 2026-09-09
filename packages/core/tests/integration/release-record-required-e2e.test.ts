@@ -120,13 +120,13 @@ describe('release record required E2E', () => {
   // cm:guard `released -> closed` is the canonical close, and it is the case the first version of the rule got wrong: with a `merged_at IS NULL` condition the check read NULL here — the stamp lands later in the same transaction — and refused the path it meant to exempt. Both halves are asserted so that condition cannot come back green.
   it('refuses from `released` too, and lets it through once a note exists', async () => {
     const { applyStatusTransition } = await import('../../src/issues/apply-transition.js');
-    const bare = await insertIssue('released');
-    const noted = await insertIssue('released', SKIP_NOTE);
+    const bare = await insertIssue('awaiting_release');
+    const noted = await insertIssue('awaiting_release', SKIP_NOTE);
 
     await expect(applyStatusTransition(await load(bare), 'closed', device())).rejects.toThrow(
       'RELEASE_RECORD_REQUIRED',
     );
-    expect((await stored(bare)).status).toBe('released');
+    expect((await stored(bare)).status).toBe('awaiting_release');
 
     await applyStatusTransition(await load(noted), 'closed', device());
     const after = await stored(noted);
@@ -146,12 +146,12 @@ describe('release record required E2E', () => {
   // cm:guard `skip` is the wide flag every internal transition carries — the park rewrites, any future sweep — so exempting on it would let an unrecorded issue reach `closed` from any of them. Widening this to `skip` was tried and the integration suite falsified it.
   it('refuses a bare `skip`, which is what the orchestrator auto-skip chain carries', async () => {
     const { applyStatusTransition } = await import('../../src/issues/apply-transition.js');
-    const id = await insertIssue('released');
+    const id = await insertIssue('awaiting_release');
 
     await expect(
       applyStatusTransition(await load(id), 'closed', device(), { skip: true }),
     ).rejects.toThrow('RELEASE_RECORD_REQUIRED');
-    expect(await stored(id)).toEqual({ status: 'released', mergedAt: null });
+    expect(await stored(id)).toEqual({ status: 'awaiting_release', mergedAt: null });
   });
 
   it('leaves `dropped` alone, which is terminal without claiming a ship', async () => {
@@ -184,8 +184,8 @@ describe('release record required E2E', () => {
 
     it('refuses the whole batch when any issue has no release note, and claims nothing', async () => {
       const { ReleaseRecordMissingError } = await import('../../src/release-batch/service.js');
-      const noted = await insertIssue('released', SKIP_NOTE);
-      const bare = await insertIssue('released');
+      const noted = await insertIssue('awaiting_release', SKIP_NOTE);
+      const bare = await insertIssue('awaiting_release');
 
       const err = await claim([noted, bare]).catch((e: unknown) => e);
 
@@ -193,13 +193,13 @@ describe('release record required E2E', () => {
       expect((err as { issueIds: string[] }).issueIds).toEqual([bare]);
       expect(await claimedRunId(noted)).toBeNull();
       expect(await claimedRunId(bare)).toBeNull();
-      expect((await stored(bare)).status).toBe('released');
+      expect((await stored(bare)).status).toBe('awaiting_release');
     });
 
     // cm:guard the refusal must come from the NOTE, not from something else failing first — a fully-noted batch has to get PAST this preflight, or the case above would pass just as well against a preflight that refused everything
     it('lets a fully-noted batch past this preflight', async () => {
-      const a = await insertIssue('released', SKIP_NOTE);
-      const b = await insertIssue('released', SKIP_NOTE);
+      const a = await insertIssue('awaiting_release', SKIP_NOTE);
+      const b = await insertIssue('awaiting_release', SKIP_NOTE);
 
       const err = await claim([a, b]).catch((e: unknown) => e);
 

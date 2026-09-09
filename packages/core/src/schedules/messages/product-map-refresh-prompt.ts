@@ -57,7 +57,7 @@ Call \`forge_knowledge action=list projectId=${projectId}\`. Note each entry's s
 If the project has NO product-map entries yet (no overview/scenario/workflow), BOOTSTRAP the core set instead of refreshing: a \`product-overview\` mindmap + one \`scenario\` per major user journey found in shipped issues + \`workflow\` state-diagrams for obvious entity lifecycles.
 
 ## STEP 2 — Load issues shipped since the map was last touched
-Call \`forge_issues action=list projectId=${projectId} status=closed\` (and \`status=released\` if used). Focus on issues whose \`mergedAt\`/\`updatedAt\` is NEWER than the \`updatedAt\` of the entries they relate to. For each: title, acceptanceCriteria keywords, the user-facing capability/route it touches.
+Call \`forge_issues action=list projectId=${projectId} status=closed\` (and \`status=awaiting_release\` if used). Focus on issues whose \`mergedAt\`/\`updatedAt\` is NEWER than the \`updatedAt\` of the entries they relate to. For each: title, acceptanceCriteria keywords, the user-facing capability/route it touches.
 
 ## STEP 3 — Diff and refresh
 For each existing entry, decide: UNCHANGED (skip) · CHANGED (a newer shipped issue alters/extends the journey → refresh the diagram + append the issue id to \`metadata.relatedIssueIds\`) · or a NEW user journey with no covering scenario (add one, cap ${MAX_NEW_ENTRIES_PER_RUN} new entries/run).
@@ -73,7 +73,7 @@ For each existing entry, decide: UNCHANGED (skip) · CHANGED (a newer shipped is
 ### Verification gate (NON-NEGOTIABLE — same as forge-product-map)
 - Every node maps to a real issue id, an acceptance-criterion phrase, or a user-facing route (e.g. \`/projects/:slug/library\`).
 - NO \`file:line\`, function names, module/source-code identifiers as nodes — replace with the user-facing action.
-- \`confidence: "verified"\` when a shipped (closed/released) issue backs the node; \`"inferred"\` otherwise. NEVER downgrade an existing verified entry to inferred.
+- \`confidence: "verified"\` when a shipped (closed/awaiting_release) issue backs the node; \`"inferred"\` otherwise. NEVER downgrade an existing verified entry to inferred.
 - Store backing issue ids in \`metadata.relatedIssueIds\`. No \`click\` directives, no HTML labels in Mermaid (securityLevel:strict).
 
 ## STEP 4 — Apply (${mode})

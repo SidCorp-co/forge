@@ -138,7 +138,7 @@ describe('an agent close', () => {
     issueRow(null);
 
     await expect(
-      transitionIssueStatus({ ...AT_WORK, status: 'released' }, 'closed', AGENT),
+      transitionIssueStatus({ ...AT_WORK, status: 'awaiting_release' }, 'closed', AGENT),
     ).rejects.toThrow('RELEASE_RECORD_REQUIRED');
   });
 

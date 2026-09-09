@@ -125,10 +125,9 @@ describe('forge facts registry', () => {
   it('status-ladder is project-resolved from ctx.ladder', () => {
     const resolved = renderFact('status-ladder', {
       projectId: 'p',
-      ladder: ['open', 'confirmed', 'developed', 'testing', 'released'],
+      ladder: ['open', 'confirmed', 'developed', 'testing', 'awaiting_release'],
     });
-    expect(resolved).toContain('open → confirmed → developed → testing → released');
-    // Falls back to the default ladder when none is supplied.
+    expect(resolved).toContain('open → confirmed → developed → testing → awaiting_release');
     expect(renderFact('status-ladder')).toContain('open → confirmed → clarified');
   });
 

@@ -73,7 +73,7 @@ describe("statusToStage", () => {
 		expect(statusToStage("in_progress")).toBe("code");
 		expect(statusToStage("developed")).toBe("review");
 		expect(statusToStage("testing")).toBe("test");
-		expect(statusToStage("released")).toBe("release");
+		expect(statusToStage("awaiting_release")).toBe("release");
 	});
 });
 
@@ -84,7 +84,7 @@ describe("statusToRun", () => {
 		expect(statusToRun("developed", "failed")).toBe("failed");
 	});
 	it("falls back to a status-derived run state with no agent", () => {
-		expect(statusToRun("released")).toBe("done");
+		expect(statusToRun("awaiting_release")).toBe("done");
 		expect(statusToRun("developed")).toBe("review");
 		expect(statusToRun("on_hold")).toBe("blocked");
 		expect(statusToRun("in_progress")).toBe("running");
@@ -105,7 +105,7 @@ describe("statusToChip", () => {
 	});
 	it("splits the terminal/gate tail into distinct keys (ISS-511)", () => {
 		expect(statusToChip("tested")).toBe("passed");
-		expect(statusToChip("released")).toBe("shipped");
+		expect(statusToChip("awaiting_release")).toBe("shipped");
 		expect(statusToChip("closed")).toBe("archived");
 	});
 	// cm:guard ISS-917 AC13 — the bucket is LOSSY on purpose and five statuses share `queued`, so anything rendering a chip must pass `statusLabelFor` as its label. A bare chip told a reader the pipeline had a draft "Queued" when nothing was working it, which is the confusion the pool backlog exists to make legible.
@@ -443,7 +443,7 @@ describe("filterToQueryParams", () => {
 	});
 	it("done targets shipped work (released + closed)", () => {
 		expect(filterToQueryParams("done")).toEqual({
-			status: ["released", "closed"],
+			status: ["awaiting_release", "closed"],
 		});
 	});
 });
@@ -570,7 +570,7 @@ describe("deriveCommentKind", () => {
 		["Verdict: APPROVE", "approved"],
 		["forge-fix applied the patch", "fix"],
 		["## QA Test Report\nall green", "qa"],
-		["Released v1.2.0 to prod", "released"],
+		["Released v1.2.0 to prod", "awaiting_release"],
 		["forge-code complete; pushed ISS-1 branch", "code"],
 		["Plan written and ready for review", "plan"],
 		["Just a normal note here", "comment"],
@@ -592,7 +592,7 @@ describe("deriveCommentKind", () => {
 		["forge-qa-report", "qa"],
 		["forge-outcome", "outcome"],
 		["forge-blocked", "blocked"],
-		["forge-close", "released"],
+		["forge-close", "awaiting_release"],
 	];
 	it.each(templates)("reads %s off the template alone", (template, kind) => {
 		expect(deriveCommentKind({ body: "<p>nothing to match</p>", template })).toEqual(
@@ -886,7 +886,7 @@ describe("deriveBlockerState", () => {
 		const b = deriveBlockerState(
 			blockerIssue({ status: "in_progress" }),
 			undefined,
-			incomingBlocks({ fromStatus: "released" }),
+			incomingBlocks({ fromStatus: "awaiting_release" }),
 		);
 		expect(b).toBeNull();
 	});

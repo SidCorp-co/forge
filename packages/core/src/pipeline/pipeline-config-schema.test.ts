@@ -68,7 +68,7 @@ describe('pipelineConfigPatchSchema', () => {
       autoFix: true,
       autoRelease: true,
       sessionGroups: { build: ['open'] },
-      mergeStates: { baseBranch: 'released', productionBranch: 'released' },
+      mergeStates: { baseBranch: 'awaiting_release', productionBranch: 'awaiting_release' },
       mode: 'staged',
       states: { open: { enabled: true, sessionGroup: 'build', skipComplexities: ['xs'] } },
     };
@@ -139,12 +139,12 @@ describe('stageConfigSchema per-state overrides', () => {
   it('accepts systemPrompt append/replace + extras', () => {
     const parsed = pipelineConfigSchema.parse({
       states: {
-        released: {
+        awaiting_release: {
           systemPrompt: { mode: 'replace', extras: 'CUSTOM RULES' },
         },
       },
     });
-    expect(parsed.states?.released?.systemPrompt).toEqual({
+    expect(parsed.states?.awaiting_release?.systemPrompt).toEqual({
       mode: 'replace',
       extras: 'CUSTOM RULES',
     });
@@ -153,7 +153,7 @@ describe('stageConfigSchema per-state overrides', () => {
   it('rejects unknown systemPrompt mode', () => {
     expect(() =>
       pipelineConfigSchema.parse({
-        states: { released: { systemPrompt: { mode: 'merge' } } },
+        states: { awaiting_release: { systemPrompt: { mode: 'merge' } } },
       }),
     ).toThrow();
   });
@@ -161,7 +161,7 @@ describe('stageConfigSchema per-state overrides', () => {
   it('caps systemPrompt.extras at 32_000 chars', () => {
     expect(() =>
       pipelineConfigSchema.parse({
-        states: { released: { systemPrompt: { extras: 'x'.repeat(32_001) } } },
+        states: { awaiting_release: { systemPrompt: { extras: 'x'.repeat(32_001) } } },
       }),
     ).toThrow();
   });
@@ -170,7 +170,7 @@ describe('stageConfigSchema per-state overrides', () => {
     for (const extras of ['', '   ', null] as const) {
       expect(() =>
         pipelineConfigSchema.parse({
-          states: { released: { systemPrompt: { mode: 'replace', extras } } },
+          states: { awaiting_release: { systemPrompt: { mode: 'replace', extras } } },
         }),
       ).toThrow();
     }
@@ -179,7 +179,7 @@ describe('stageConfigSchema per-state overrides', () => {
   it('accepts replace mode when extras has real content', () => {
     expect(() =>
       pipelineConfigSchema.parse({
-        states: { released: { systemPrompt: { mode: 'replace', extras: 'ONLY THIS' } } },
+        states: { awaiting_release: { systemPrompt: { mode: 'replace', extras: 'ONLY THIS' } } },
       }),
     ).not.toThrow();
   });
@@ -187,7 +187,7 @@ describe('stageConfigSchema per-state overrides', () => {
   it('accepts append mode with empty extras (no-op but valid)', () => {
     expect(() =>
       pipelineConfigSchema.parse({
-        states: { released: { systemPrompt: { mode: 'append', extras: '' } } },
+        states: { awaiting_release: { systemPrompt: { mode: 'append', extras: '' } } },
       }),
     ).not.toThrow();
   });
@@ -343,15 +343,18 @@ describe('mcpServers validation (ISS-623 W1)', () => {
 
   it('rejects an unknown true-sentinel name per-state', () => {
     expect(() =>
-      pipelineConfigSchema.parse({ states: { released: { mcpServers: { shp: true } } } }),
+      pipelineConfigSchema.parse({ states: { awaiting_release: { mcpServers: { shp: true } } } }),
     ).toThrow(/mcpServers entry.*shp.*not a known catalog server/);
   });
 
   it('accepts a known true-sentinel name per-state', () => {
     const parsed = pipelineConfigSchema.parse({
-      states: { released: { mcpServers: { playwright: true, epodsystem: true } } },
+      states: { awaiting_release: { mcpServers: { playwright: true, epodsystem: true } } },
     });
-    expect(parsed.states?.released?.mcpServers).toEqual({ playwright: true, epodsystem: true });
+    expect(parsed.states?.awaiting_release?.mcpServers).toEqual({
+      playwright: true,
+      epodsystem: true,
+    });
   });
 });
 
@@ -368,7 +371,7 @@ describe('defaultStatesConfig (ISS-581)', () => {
     ];
     expect(config.open?.disallowedTools).toEqual(expect.arrayContaining(EXPECTED));
     expect(config.needs_info?.disallowedTools).toEqual(expect.arrayContaining(EXPECTED));
-    expect(config.released?.disallowedTools).toEqual(expect.arrayContaining(EXPECTED));
+    expect(config.awaiting_release?.disallowedTools).toEqual(expect.arrayContaining(EXPECTED));
     expect(config.in_progress?.disallowedTools).toEqual(expect.arrayContaining(EXPECTED));
   });
 });

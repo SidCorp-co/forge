@@ -102,7 +102,7 @@ describe('resolveStageOverrides', () => {
 
   it('applies the default policy model when the stage status is missing from the config (ISS-535)', async () => {
     limitResults.push([
-      { agentConfig: { pipelineConfig: { states: { released: { model: 'haiku' } } } } },
+      { agentConfig: { pipelineConfig: { states: { awaiting_release: { model: 'haiku' } } } } },
     ]);
     const r = await resolveStageOverrides('p-1', { stageStatus: 'in_progress' });
     expect(r.model).toBe('sonnet');
@@ -150,13 +150,13 @@ describe('resolveDefaultModel (ISS-535)', () => {
       open: 'sonnet',
       in_progress: 'sonnet',
       needs_info: 'sonnet',
-      released: 'sonnet',
+      awaiting_release: 'sonnet',
     });
   });
 
   it('returns the tier for a known status and null otherwise', () => {
     expect(resolveDefaultModel('open')).toBe('sonnet');
-    expect(resolveDefaultModel('released')).toBe('sonnet');
+    expect(resolveDefaultModel('awaiting_release')).toBe('sonnet');
     expect(resolveDefaultModel('approved')).toBeNull();
     expect(resolveDefaultModel('staging')).toBeNull();
     expect(resolveDefaultModel('bogus')).toBeNull();
@@ -206,7 +206,6 @@ describe('applySkillMaintenanceCarveout (ISS-637)', () => {
     for (const tool of SKILL_MAINTENANCE_TOOLS) {
       expect(overrides.disallowedTools).not.toContain(tool);
     }
-    // destructive ops + unrelated tools stay denied
     expect(overrides.disallowedTools).toEqual(
       expect.arrayContaining([
         'mcp__forge__forge_skills_create',

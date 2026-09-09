@@ -374,7 +374,7 @@ issueExtrasRoutes.post(
         reason: { manual: true },
       });
       // cm:guard `released`, not `queued`, and no `jobId` — since ISS-933 core mints nothing for an autonomous issue. Answering `queued` with a fabricated id would tell the UI work started that no box has yet decided to take.
-      return c.json({ issueId: issue.id, status: 'released' }, 202);
+      return c.json({ issueId: issue.id, status: 'awaiting_release' }, 202);
     } catch (err) {
       if (err instanceof ActiveJobConflictError) {
         throw new HTTPException(409, {
@@ -514,7 +514,6 @@ issueExtrasRoutes.get(
     const access = await loadProjectAccess(issue.projectId, userId);
     if (!access.role) throw forbidden('not a project member');
 
-    // DISTINCT agent-session ids that worked this issue (via its jobs).
     const sessionIdSubquery = sql`(
       SELECT DISTINCT ${jobs.agentSessionId}
       FROM ${jobs}

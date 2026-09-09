@@ -1,10 +1,4 @@
-// web-v2 feature module: skills registry. Shapes verified against
-// `packages/core/src/skills/{crud-routes,routes}.ts` for ISS-299:
-//  - GET  /api/skills?projectId&scope          → SkillRow[]
-//  - POST /api/skills/sync-status {projectId}   → SkillSyncStatus[]
-//  - GET  /api/projects/:id/skill-registrations → { registrations: SkillRegistration[] }
-//  - POST /api/projects/:id/skills/:sid/register {stage}
-//  - DELETE /api/projects/:id/skills/registrations/:stage
+// cm:edge contract -> packages/core/src/skills/crud-routes.ts — these shapes are hand-verified against that router and its sibling `routes.ts`; nothing type-checks the pair, so a field renamed there reads as `undefined` here.
 export type SkillScope = "global" | "project";
 
 /** Runtime context a skill targets — mirrors core `skillTargets`. */
@@ -35,7 +29,7 @@ export const REGISTERABLE_STAGES = [
   "developed",
   "testing",
   "reopen",
-  "released",
+  "awaiting_release",
 ] as const;
 export type RegisterableStage = (typeof REGISTERABLE_STAGES)[number];
 
@@ -51,7 +45,7 @@ export const STAGE_LABELS: Record<RegisterableStage, string> = {
   developed: "Review",
   testing: "Test",
   reopen: "Fix",
-  released: "Release",
+  awaiting_release: "Release",
 };
 
 /**

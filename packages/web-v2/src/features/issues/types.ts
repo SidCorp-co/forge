@@ -467,7 +467,7 @@ export type CommentKind =
   | "fix"
   | "approved"
   | "qa"
-  | "released"
+  | "awaiting_release"
   | "outcome"
   | "blocked"
   | "comment";

@@ -49,7 +49,7 @@ const FORGE_DEV_SHAPED: PipelineConfig = {
       mcpServers: { playwright: true },
     },
     needs_info: { disallowedTools: DENYLIST_FULL },
-    released: {
+    awaiting_release: {
       disallowedTools: DENYLIST_FULL.filter((t) => t !== "mcp__forge__forge_uploads"),
     },
   },
@@ -120,7 +120,7 @@ describe("StagePermissionsSection · read", () => {
 describe("StagePermissionsSection · edit", () => {
   it("offers every ladder stage, including ones with no override yet", () => {
     renderEditable({ states: {} });
-    for (const status of ["open", "in_progress", "needs_info", "released"]) {
+    for (const status of ["open", "in_progress", "needs_info", "awaiting_release"]) {
       expect(screen.getByText(status)).toBeInTheDocument();
     }
   });
@@ -140,7 +140,7 @@ describe("StagePermissionsSection · edit", () => {
 
   it("adding a typed tool id sends it appended to that stage's denylist", () => {
     renderEditable();
-    expandRow("released");
+    expandRow("awaiting_release");
     const field = screen.getByLabelText("Add a tool id to Denied tools");
     fireEvent.change(field, { target: { value: "mcp__forge__forge_memory_write" } });
     fireEvent.keyDown(field, { key: "Enter" });
@@ -148,7 +148,7 @@ describe("StagePermissionsSection · edit", () => {
 
     const sent = mutate.mock.calls[0]?.[0] as PipelineConfig;
     const states = sent.states as Record<string, Record<string, unknown>>;
-    expect(states.released.disallowedTools).toContain("mcp__forge__forge_memory_write");
+    expect(states.awaiting_release.disallowedTools).toContain("mcp__forge__forge_memory_write");
   });
 
   it("toggling a per-stage MCP server sends it under that stage only", () => {

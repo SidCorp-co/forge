@@ -1,6 +1,4 @@
-// web-v2 feature module: pipeline — PURE derivations (no React, no fetching).
-// Status → stage / chip / tracker-state mappings, run/issue overlays, and the
-// money/duration formatters used across the kanban, run detail, and ops views.
+// cm:guard PURE derivations only — no React, no fetching. This module holds the status→stage/chip/tracker mappings and the money/duration formatters used by the kanban, run detail and ops views, so one import with a side effect reaches all three at once.
 import { deriveQueuedStep, hasLiveAgentSession, queuedChipStatus } from "@/features/issues/waiting";
 import { type StageKey, STAGES } from "@/design/stages";
 import type { StatusKey } from "@/design/status";
@@ -34,7 +32,7 @@ export const STATUS_TO_STAGE: Record<string, StageKey> = {
   developed: "review",
   testing: "test",
   tested: "test",
-  released: "release",
+  awaiting_release: "release",
   closed: "release",
 };
 
@@ -106,7 +104,7 @@ export function issueStatusToStatusKey(status: string): StatusKey {
       return "review";
     case "tested":
       return "passed";
-    case "released":
+    case "awaiting_release":
     case "closed":
       return "done";
     case "waiting":

@@ -229,7 +229,7 @@ devicePoolRoutes.post(
     const { jobId, sessionId } = c.req.valid('json');
     if (jobId) {
       const released = await releaseJobFromMaster({ jobId, sessionId });
-      return c.json({ released: released ? 1 : 0 });
+      return c.json({ awaiting_release: released ? 1 : 0 });
     }
     const released = await releaseAllHeldBySession(sessionId);
     return c.json({ released });

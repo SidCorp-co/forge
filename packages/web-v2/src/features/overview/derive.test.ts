@@ -79,7 +79,7 @@ describe('groupWorkBuckets', () => {
       in_progress: 4,
       testing: 2,
       needs_info: 1,
-      released: 1,
+      awaiting_release: 1,
       on_hold: 1,
       closed: 50, // excluded from the in-flight view
       draft: 9, // excluded
@@ -88,7 +88,7 @@ describe('groupWorkBuckets', () => {
     expect(by.queued).toBe(6); // open + confirmed + approved (neutral)
     expect(by.progress).toBe(6); // in_progress + testing (active)
     expect(by.attention).toBe(1); // needs_info (a human must act)
-    expect(by.ready).toBe(1); // released (success)
+    expect(by.ready).toBe(1); // cm:why `ready` is the awaiting_release bucket — work that succeeded and is waiting on a person to release it
     expect(by.blocked).toBe(1); // on_hold (calm ink, NOT red)
     // total counts only the bucketed (in-flight) statuses — not closed/draft.
     expect(total).toBe(15);

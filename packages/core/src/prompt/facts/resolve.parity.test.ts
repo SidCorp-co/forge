@@ -28,7 +28,6 @@ const _FIXTURE_FACTS_CONFIG: Record<string, { alwaysInject?: boolean }> = {
   'contracts-rule': { alwaysInject: true },
 };
 
-// agentConfig path: selectAlwaysInjectFacts + Object.keys(projectFacts)
 const alwaysInjectFromConfig = [{ key: 'contracts-rule', text: FIXTURE_FACTS['contracts-rule'] }];
 const onDemandKeysFromConfig = ['build-test-commands', 'deploy-guide'];
 
@@ -48,7 +47,15 @@ const projectResolver = (key: string): string | undefined => {
 };
 
 const BASE_INPUTS = {
-  ladder: ['open', 'confirmed', 'approved', 'developed', 'testing', 'released', 'closed'] as const,
+  ladder: [
+    'open',
+    'confirmed',
+    'approved',
+    'developed',
+    'testing',
+    'awaiting_release',
+    'closed',
+  ] as const,
   branches: { baseBranch: 'main', productionBranch: 'main' },
   project: projectResolver,
 } as unknown as Parameters<typeof import('./resolve.js').renderStageFactsText>[0];

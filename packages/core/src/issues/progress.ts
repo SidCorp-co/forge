@@ -41,7 +41,8 @@ const REMAINING_STATUSES = new Set<IssueStatus>(['draft', 'waiting', 'needs_info
 
 // cm:guard the ONLY place issue statuses are bucketed into a progress figure — a second counter (chat self-count, a bespoke report) re-opens ISS-671's 54-issue incident
 export function bucketOf(status: IssueStatus, hasShippedEvidence: boolean): ProgressBucket {
-  if (status === 'released' || (status === 'closed' && hasShippedEvidence)) return 'shipped';
+  if (status === 'awaiting_release' || (status === 'closed' && hasShippedEvidence))
+    return 'shipped';
   // cm:guard `dropped` is terminal and shipped nothing BY DEFINITION — falling through to the `in_flight` default would count every dropped issue as work still in progress, forever, which is the shape of the ISS-671 incident this function exists to prevent
   if (status === 'closed' || status === 'dropped') return 'closed_unshipped';
   if (REMAINING_STATUSES.has(status)) return 'remaining';

@@ -114,8 +114,7 @@ describe('pipeline/run-pause', () => {
     updateReturning.mockResolvedValueOnce([{ ...RUN, status: 'running' }]);
     const row = await resumeRun({ runId: 'run-1' });
     expect(row?.status).toBe('running');
-    // metadata SET always present on resume — it strips the pauseReason key
-    // so a stale machine reason can never re-match a later operator pause.
+    // cm:guard resume must ALWAYS emit the metadata SET that strips `pauseReason` — leaving the key behind lets a stale machine reason re-match a later operator pause, which is how a human's hold gets cleared by a sweep answering a different pause.
     const setArg = updateSet.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(setArg.metadata).toBeDefined();
     expect(hookEmit).toHaveBeenCalledWith(
@@ -212,7 +211,7 @@ describe('pauseResumesItself (ISS-879)', () => {
   // cm:guard NO kind may answer true here while `MACHINE_RESUMED_PAUSE_KINDS` is empty. `missing_skill` answered true until ISS-895 deleted `missing-skill-resume.ts` with the staged lane; a surface told "it resumes on its own" about a pause nothing resumes is the aged-hold failure repeated on the run axis, so this asserts the retired kind now answers false alongside the ones that always did.
   it('is false for every kind while no kind has a resume path in this build', () => {
     expect(pauseResumesItself('missing_skill:open')).toBe(false);
-    expect(pauseResumesItself('stage_stalled:released')).toBe(false);
+    expect(pauseResumesItself('stage_stalled:awaiting_release')).toBe(false);
     expect(pauseResumesItself('reopen_cap:3')).toBe(false);
   });
 
@@ -230,7 +229,7 @@ describe('pauseResumesItself (ISS-879)', () => {
       ...HUMAN_RESUMED_PAUSE_KINDS,
     ]);
     expect([...LIVE_PAUSE_REASON_KINDS].sort()).toEqual(['stage_stalled']);
-    expect(isLivePauseReason('stage_stalled:released')).toBe(true);
+    expect(isLivePauseReason('stage_stalled:awaiting_release')).toBe(true);
     expect(isLivePauseReason('missing_skill:open')).toBe(false);
   });
 });
@@ -243,9 +242,9 @@ describe('describePause — ISS-853, the one reader of a pauseReason for display
   });
 
   it('splits a live kind into its kind and its detail, and hands it to a person', () => {
-    expect(describePause('stage_stalled:released')).toEqual({
+    expect(describePause('stage_stalled:awaiting_release')).toEqual({
       kind: 'stage_stalled',
-      detail: 'released',
+      detail: 'awaiting_release',
       resumer: 'operator',
     });
   });

@@ -58,8 +58,7 @@ vi.mock('../integrations/deliveries.js', () => ({
   findDeliveryByRequestId: (id: string, req: string) => findDeliverySpy(id, req),
 }));
 
-// Coolify integration resolution now goes through the binding→connection store
-// helper; pipelineRuns reads/writes still use the db stub above.
+// cm:guard Coolify integration resolution goes through the binding→connection store helper and is mocked there, while `pipeline_runs` reads and writes still go through the db stub above — mixing the two is how a case proves the stub instead of the resolver.
 const listBindingsSpy = vi.fn();
 vi.mock('../integrations/store.js', () => ({
   listActiveBindingsForProjectProvider: (...a: unknown[]) => listBindingsSpy(...(a as [])),
@@ -353,7 +352,7 @@ describe('tryDispatchCoolifyRelease — integrationId hard filter + allowProd', 
 
 describe('isIssueAtReleaseStage', () => {
   it('returns true for released', async () => {
-    selectQueue.push([{ status: 'released' }]);
+    selectQueue.push([{ status: 'awaiting_release' }]);
     await expect(isIssueAtReleaseStage(ISSUE_ID)).resolves.toBe(true);
   });
 

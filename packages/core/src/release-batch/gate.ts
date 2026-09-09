@@ -8,7 +8,7 @@
 // (an active `prod` binding) AND a branch that is not the one the driver
 // already merged into.
 //
-// The answer is `'released'` or nothing. There is no third state and no
+// The answer is `'awaiting_release'` or nothing. There is no third state and no
 // per-project status name: `released` means merged to the base branch, run and
 // verified on staging, waiting for production — and a project with nothing to
 // release does not get a button for it.
@@ -19,7 +19,7 @@ import { type IssueStatus, projects } from '../db/schema.js';
 import { effectiveConfig, listActiveBindingsForEnvironment } from '../integrations/store.js';
 
 /** The one status an issue waits at for production. */
-export const RELEASE_GATE_STATUS: IssueStatus = 'released';
+export const RELEASE_GATE_STATUS: IssueStatus = 'awaiting_release';
 
 export interface ProductionDeclaration {
   hasProduction: boolean;

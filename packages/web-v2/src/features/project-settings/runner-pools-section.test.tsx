@@ -66,13 +66,13 @@ vi.mock("@/features/runners/hooks", () => ({
   }),
 }));
 
-// cm:guard `released` is here to prove point 1: the editor does NOT surface it as a row, so a save that rebuilt `states` from the rows it renders would silently drop it.
+// cm:guard `awaiting_release` is here to prove point 1: the editor does NOT surface it as a row, so a save that rebuilt `states` from the rows it renders would silently drop it.
 const STORED: PipelineConfig = {
   enabled: true,
   states: {
     open: { enabled: true, mode: "auto", disallowedTools: ["CronCreate"] },
     in_progress: { enabled: true, mode: "auto", deviceIds: [CX] },
-    released: { enabled: false, mode: "manual" },
+    awaiting_release: { enabled: false, mode: "manual" },
   },
 };
 
@@ -108,7 +108,7 @@ describe("RunnerPoolsSection", () => {
       deviceIds: [CLI],
     });
     expect(sent.states?.in_progress).toEqual({ enabled: true, mode: "auto", deviceIds: [CX] });
-    expect(sent.states?.released).toEqual({ enabled: false, mode: "manual" });
+    expect(sent.states?.awaiting_release).toEqual({ enabled: false, mode: "manual" });
     expect(sent.enabled).toBe(true);
   });
 

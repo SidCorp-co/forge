@@ -35,7 +35,7 @@ export type StatusBucketKey = "active" | "attention" | "queued" | "blocked" | "r
  * were bucketed into "Done" and dominated the chart (~96% noise on projects with
  * many closed issues), contradicting the KPI.
  */
-const NON_OPEN_STATUSES = new Set(["released", "closed", "draft"]);
+const NON_OPEN_STATUSES = new Set(["awaiting_release", "closed", "draft"]);
 
 /**
  * Display buckets for the status donut, in legend order. ISS-509: buckets are
@@ -86,8 +86,7 @@ export interface StatusDonutData {
 
 export function statusDonut(dist: Record<string, number> | undefined): StatusDonutData {
   const d = dist ?? {};
-  // OPEN-only total: terminal released/closed + draft are excluded so the donut
-  // center equals the "Open issues" KPI (ISS-528).
+  // cm:edge contract -> packages/core/src/projects/health-routes.ts — the donut centre must equal that route's "Open issues" KPI, so terminal `awaiting_release`/`closed` and not-yet-active `draft` are excluded from the total on both sides (ISS-528).
   let total = 0;
   for (const [status, count] of Object.entries(d)) {
     if (!NON_OPEN_STATUSES.has(status)) total += count;

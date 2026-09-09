@@ -50,7 +50,7 @@ export const STATUS_LABELS: Record<IssueStatus, string> = {
 	developed: "Developed",
 	testing: "Testing",
 	tested: "Tested",
-	released: "Released",
+	awaiting_release: "Released",
 	releasing: "Releasing",
 	closed: "Closed",
 	reopen: "Reopened",
@@ -125,7 +125,7 @@ export const STATUS_TO_STAGE: Record<IssueStatus, StageKey> = {
 	developed: "review",
 	testing: "test",
 	tested: "test",
-	released: "release",
+	awaiting_release: "release",
 	releasing: "release",
 	closed: "release",
 	on_hold: "code",
@@ -161,7 +161,7 @@ export function statusToRun(
 		// cm:guard `releasing` is NOT done: the batch is executing, and rendering it beside `closed` would tell a reader the release finished while it is still in flight.
 		case "releasing":
 			return "running";
-		case "released":
+		case "awaiting_release":
 		case "closed":
 			return "done";
 		case "developed":
@@ -206,7 +206,7 @@ export function statusToChip(
 			return "review";
 		case "tested":
 			return "passed";
-		case "released":
+		case "awaiting_release":
 			return "shipped";
 		// cm:guard distinct from `shipped`: `released` is waiting for a person to press the button, `releasing` is the button already pressed. Collapsing the two is the ambiguity this status was added to remove.
 		case "releasing":
@@ -362,7 +362,7 @@ export function filterToQueryParams(filter: IssueFilter): {
 		case "blocked":
 			return { status: statusesForLabels("needs_human", "paused") };
 		case "done":
-			return { status: ["released", "closed"] };
+			return { status: ["awaiting_release", "closed"] };
 		default:
 			return {};
 	}
@@ -465,7 +465,7 @@ const TEMPLATE_KIND: Record<string, CommentKind> = {
 	"forge-qa-report": "qa",
 	"forge-outcome": "outcome",
 	"forge-blocked": "blocked",
-	"forge-close": "released",
+	"forge-close": "awaiting_release",
 };
 
 const REVIEW_VERDICT_KIND: Record<string, CommentKind> = {
@@ -502,7 +502,7 @@ function prefixKind(body: string): CommentKind {
 	)
 		return "qa";
 	if (/released|release note|published release|shipped/.test(b))
-		return "released";
+		return "awaiting_release";
 	if (
 		/forge-code|plan implemented|implementation complete|code complete|pushed .* branch/.test(
 			b,
@@ -635,7 +635,7 @@ export interface BlockerState {
 }
 
 const TERMINAL_STATUSES: ReadonlySet<IssueStatus> = new Set([
-	"released",
+	"awaiting_release",
 	"closed",
 ]);
 
@@ -1127,7 +1127,7 @@ export const COMMENT_KIND_META: Record<
 	fix: { label: "Fix", tone: "accent" },
 	approved: { label: "Approved", tone: "green" },
 	qa: { label: "QA", tone: "amber" },
-	released: { label: "Released", tone: "green" },
+	awaiting_release: { label: "Released", tone: "green" },
 	outcome: { label: "Outcome", tone: "accent" },
 	blocked: { label: "Blocked", tone: "red" },
 	comment: { label: "Comment", tone: "neutral" },

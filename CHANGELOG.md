@@ -23,6 +23,12 @@
 
 ### Added
 
+- **The status for "merged, waiting to be released" is now called `awaiting_release`.** It was
+  called `released` — the past tense of an action that had not happened, so every reader had to know
+  that "released" meant "not released". The board has shown this rung as *Awaiting release* all
+  along; only the underlying status disagreed. It carried a second job too: with no release button,
+  moving an issue to `released` was how a release *started*. That job now belongs to the RELEASE
+  button and to `releasing`, so the rung can just be a place where work waits.
 - **A release you trigger now has a status of its own while it runs.** An issue whose release batch
   is executing sits at `releasing` instead of standing at `released` looking like it is still waiting
   for someone to press the button. Nothing offers it to a master, nothing dispatches over it, and the

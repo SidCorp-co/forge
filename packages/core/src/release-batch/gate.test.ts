@@ -40,7 +40,7 @@ describe('resolveReleaseGate', () => {
   it('gives the gate to a project with a prod binding AND a distinct production branch', async () => {
     selectLimit.mockResolvedValue(project('dev', 'master'));
     listBindings.mockResolvedValue(prodBinding());
-    await expect(resolveReleaseGate(PROJECT_ID)).resolves.toBe('released');
+    await expect(resolveReleaseGate(PROJECT_ID)).resolves.toBe('awaiting_release');
   });
 
   // cm:guard the AND is the whole rule, and each half is here because a live project fails on exactly that half. forge-dev carries two active prod bindings (sentry, epodsystem) on a trunk repo — they are observability, not a release target, and it deliberately has no gate. epodsystem-core promotes dev->master with no binding at all — it has nowhere to send a release and rule 3 puts the release runner ON that binding, so a gate there could never pick a box.
@@ -85,7 +85,7 @@ describe('resolveReleaseGate', () => {
   it('gives the gate to a trunk-based project whose prod binding names its release box', async () => {
     selectLimit.mockResolvedValue(project('main', 'main'));
     listBindings.mockResolvedValue(prodBinding('epodsystem', { releaseRunnerLabel: 'epod-prod' }));
-    await expect(resolveReleaseGate(PROJECT_ID)).resolves.toBe('released');
+    await expect(resolveReleaseGate(PROJECT_ID)).resolves.toBe('awaiting_release');
   });
 
   // cm:guard this is the regression the OR must not cause. forge-dev's own epodsystem prod binding is the storefront MCP credential and carries no release box; if provider identity or mere presence granted the gate, every agent close in this repo would be rewritten to `released`.

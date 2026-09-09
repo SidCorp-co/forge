@@ -48,6 +48,7 @@ async function loadVisibleProjectIdsScoped(userId: string, scopedTo?: string): P
   return ids.includes(scopedTo) ? [scopedTo] : [];
 }
 
+// cm:guard reads BOTH `released` and `awaiting_release` because `activity_log` is HISTORY: 4,488 rows were written while the rung was called `released` (renamed 2026-09-10, migration 0228) and no migration rewrites them — a payload records what the status was called when it happened. Drop either spelling and the figure silently loses one side of that date.
 export const pipelineAnalyticsRoutes = new Hono<{ Variables: AuthVars }>();
 pipelineAnalyticsRoutes.use('*', requireAuth(), assertEmailVerified());
 
@@ -79,7 +80,7 @@ pipelineAnalyticsRoutes.get(
       .innerJoin(issues, eq(issues.id, activityLog.issueId))
       .where(
         sql`${activityLog.action} = 'issue.statusChanged'
-          AND ${activityLog.payload} ->> 'to' IN ('closed','released')
+          AND ${activityLog.payload} ->> 'to' IN ('closed','released','awaiting_release')
           AND ${activityLog.createdAt} >= now() - (${days}::int * interval '1 day')
           AND ${issues.projectId} IN ${projectIds}`,
       )

@@ -60,7 +60,7 @@ const STAGE_LABELS: Record<string, string> = {
   developed: 'Auto review',
   testing: 'Auto test',
   reopen: 'Auto fix',
-  released: 'Auto release',
+  awaiting_release: 'Auto release',
 };
 
 function stageLabel(status: string): string {

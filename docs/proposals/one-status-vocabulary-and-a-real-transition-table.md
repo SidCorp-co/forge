@@ -20,9 +20,32 @@ Four independent lists claim to describe one lifecycle, and no two agree:
 `STAGE_NAMES` is the closest thing to a decided answer and it already exists. The enum is what never
 caught up.
 
-**Decision, 2026-09-09 (owner).** The target set is the nine below: `released` is retired as a
-status and replaced by the release *button* plus a new in-flight status `releasing`; `reopen` stays.
-Rationale and the mechanism it fixes are in "The vocabulary" section.
+**Decision, 2026-09-09 (owner), amended 2026-09-10.** The target set is **ten**: the nine below
+plus `awaiting_release`. `reopen` stays.
+
+The amendment is the substance of the whole release half. On 2026-09-09 the ruling was read as
+*`released` is retired*, and steps 2, 3 and 3b below were written for that. The owner corrected it
+on 2026-09-10: **`released` was doing two jobs, and only one of them is being removed.** It was the
+gate where merged work waits for production — that rung is real and stays — AND it was the trigger
+that started a release, because the old lane had no button. Splitting them gives each an honest
+name:
+
+| Job | Old | New |
+|---|---|---|
+| where merged work waits | status `released` | status **`awaiting_release`** (migration 0228 — a rename, not a new rung) |
+| starting a release | moving an issue to `released` | the **RELEASE button** (`POST /:projectId/release-batches`) |
+| a release in flight | invisible; a column on a row still reading `released` | status **`releasing`** (migration 0227) |
+
+`released` was the past tense of an action that had not happened, and every reader had to know that
+"released" meant "not released". `AUTONOMOUS_LABELS` has rendered this rung as `awaiting_release`
+since ISS-970 — only the kernel status disagreed, and now it does not.
+
+**What the amendment cancels: steps 2, 3 and 3b.** There is nothing to drain, no readiness to
+derive, and no gate refusal to move. `release-gate-hold.ts` keeps rewriting an agent's `closed` to
+the gate, which is how work reaches the gate at all — and, measured on the way to the amendment,
+that rewrite is also what stamps `merged_at` (`markMergedOnClose` keys on `requestedStatus`, not on
+the stored status), closes the run and fans out to dependents. Refusing the close would have taken
+all three away and left the issue at `in_progress` unmerged, invisible to any release roster.
 
 ### The transition table is advisory, and says so
 
@@ -47,7 +70,7 @@ vocabulary that still appears in prompts, UI pickers and 33 non-test source file
 | Status | Rows | Projects | Still written since Sep 1? |
 |---|---|---|---|
 | `draft` | 275 | 20 | yes — the ingress state, legitimately alive |
-| `released` | 79 | 13 | yes — **load-bearing**, `RELEASE_GATE_STATUS` |
+| `released` → `awaiting_release` | 80 | 13 | yes — **load-bearing**, `RELEASE_GATE_STATUS`. Renamed in 0228, not drained |
 | `on_hold` | 35 | 10 | yes — renders as `paused`, a pause a person chose |
 | `waiting` | 30 | 9 | yes — but the driver's `waiting` is rewritten to `needs_info` |
 | `approved` | 10 | 5 | yes, last write 2026-09-09 |
@@ -67,9 +90,12 @@ being asked how many issues were unfinished.
 
 ### The vocabulary: the owner's set
 
-Decided 2026-09-09 by the owner: **`released` goes, `reopen` stays**, the release *status* is
-replaced by a release **button**, and the batch gets a status of its own — an issue enters it when
-the release trigger fires and only reaches `closed` when the release finishes.
+Decided 2026-09-09 by the owner and amended 2026-09-10: **the release *trigger* goes, `reopen`
+stays**, the trigger is replaced by a release **button**, the batch gets a status of its own
+(`releasing` — entered when the trigger fires, reaching `closed` only when the release finishes),
+and the waiting rung keeps existing under an honest name (`awaiting_release`). See the amendment at
+the top: the first reading of this ruling retired the rung along with the trigger, which is one job
+too many.
 
 | Kind | Status | Rule it enforces |
 |---|---|---|
@@ -86,9 +112,10 @@ the release trigger fires and only reaches `closed` when the release finishes.
 **Nine.** `reopen` keeps its counter where it already lives, so nothing has to be moved onto a new
 field.
 
-**Retire eight.** Six are simply dead ladder — `confirmed` `clarified` `approved` `developed`
-`testing` `tested`. `released` is a different kind of retirement and is the substance of this
-section: its job moves to a button and a new status, not to nothing. And `waiting` is the eighth —
+**Retire seven, rename one.** Six are simply dead ladder — `confirmed` `clarified` `approved`
+`developed` `testing` `tested`. `released` is not retired at all: it is RENAMED to
+`awaiting_release`, and only its second job — being the trigger — moves to a button and to
+`releasing`. And `waiting` is the seventh retirement —
 it is absent from the set above because the driver's `waiting` is already rewritten to `needs_info`
 (`issues/autonomous-park.ts`, ISS-886), so the park it names is `needs_info`'s park.
 
@@ -127,12 +154,15 @@ One of the six is also a warning about blanket drains. ISS-368's park comment na
 `runner-v0.12.4` since, so the *stated* cause no longer holds even though the tmux namespace
 collision does. That row needs re-parking or closing on its own evidence, not a status rewrite.
 
-#### Why replacing `released` with a button is the right call, and what it fixes
+#### Why the trigger becomes a button, and what that fixes
 
-`released` today is not a step an issue takes. It is a **waiting room** an issue is parked in so a
+`released` was never a step an issue takes. It is a **waiting room** an issue is parked in so a
 person can press something, and the code says so: `issues/release-gate-hold.ts` REWRITES an agent's
-`closed` back to `released` on any project declaring a gate, because "an autonomous agent may finish
-an issue, but it may not declare it shipped". The status exists to hold work still.
+`closed` back to the gate on any project declaring a gate, because "an autonomous agent may finish
+an issue, but it may not declare it shipped". The status exists to hold work still — which is
+exactly why the rung survives and only its name changes. What could not survive is the same status
+*also* being the trigger: a rung an issue rests on and an action a person takes are not the same
+kind of thing, and one identifier cannot be both.
 
 A button models that directly. `POST /:projectId/release-batches` already IS the button
 (`release-batch/routes.ts`), with `finish` and `abort` beside it. What is missing is a status for
@@ -153,7 +183,7 @@ identity of *which* batch, not the existence of one.
 
 | Concern | Today | After |
 |---|---|---|
-| "ready to ship, waiting on a person" | status `released` | **no status** — the issue stays at its last rung; readiness is derived (merged mark + gate declared), and the button is enabled or it is not |
+| "ready to ship, waiting on a person" | status `released` — a name in the past tense for a thing that had not happened | status **`awaiting_release`** — the same rung, told the truth (migration 0228) |
 | "shipping right now" | invisible; a non-null column on a row still reading `released` | status **`releasing`** |
 | "shipped" | `closed`, written by `finish` | unchanged — `closed`, written by `finish` |
 | "release failed / aborted" | issue silently back at `released`, column cleared | **`releasing` → `reopen`**, carrying the abort reason |
@@ -169,12 +199,18 @@ in front of a person with its reason attached, and `isReopenEntry` counts it.
 shipped, and that guard was written from an incident: epodsystem ISS-141 self-closed with the
 reported bug still reproducing and a human reopened it five minutes later.
 
-With `released` gone, the rewrite target goes with it — so the refusal has to move, not vanish. An
-agent's `closed` on a gated project must be **refused by name** ("this project releases through a
-batch; your work is landed and the release is a person's to trigger") rather than rewritten to
-somewhere quieter. That is the loud-break rule, and it is a behaviour change for every autonomous
-project with a gate: today the agent's close succeeds and lands at `released`, after this it fails
-and the agent must stop instead.
+**Superseded by the 2026-09-10 amendment.** This section argued that with `released` gone the
+rewrite target goes with it, so the refusal had to move: an agent's `closed` on a gated project
+refused by name rather than rewritten. The rung is not gone, so the rewrite keeps its target and
+nothing moves.
+
+Worth keeping is what the investigation turned up, because it would have made the refusal a
+regression rather than a loud break: `markMergedOnClose` keys on **`requestedStatus`**, not on the
+stored status, so a held close already stamps `merged_at`, and `apply-transition.ts` then closes the
+run and reports `terminal: true` on the strength of that stamp. The hold gives an agent's close its
+full effect except the status. A bare refusal would have removed all three at once and left the
+issue at `in_progress` with no merge stamp — dependents still blocked, the run still open, and
+nothing on any release roster.
 
 ### The transition table: make it refuse
 
@@ -224,16 +260,28 @@ watched happening.
    master with nothing to claim). The three orphan sweeps need nothing: `runs-cascade.ts`,
    `loop-monitor.ts` and `runs-concluded.ts` hold zero references to `released` — they key on
    run/job terminality, verified 2026-09-09.
-2. **Move the gate refusal.** `release-gate-hold.ts` stops rewriting `closed → released` and starts
-   refusing an agent's close by name on a gated project. This is the behaviour change with teeth —
-   see the costs table.
-3. **Drain `released`.** 79 rows across 13 projects, and they are NOT uniform: each is either
-   genuinely awaiting a trigger (→ back to its last rung, readiness derived) or was mid-batch when
-   something died (→ `releasing`, or `reopen` if its batch is already terminal). Read the batch run,
-   not a blanket rule.
-3b. **Retire `released` as a target**, then drop it from the enum. `RELEASE_GATE_STATUS` becomes
-   `releasing`, and `STAGE_NAMES`' `released` entry goes — which means touching the 21 project
-   configs that still enable it.
+2. ~~**Move the gate refusal.**~~ **CANCELLED by the 2026-09-10 amendment.** `released` is not
+   retired, so there is no rewrite to remove. Shipped instead: `awaiting_release` (migration 0228)
+   — the enum member, `RELEASE_GATE_STATUS`, `BASE_MERGE_STATE`, `STAGE_NAMES`, the 80 issue rows,
+   the `states.released` key on 29 project configs and the `poolBacklog.statuses` element on 1, all
+   in one transaction. The config keys are the load-bearing half: `states` is a
+   `partialRecord(z.enum(STAGE_NAMES))`, zod 4 answers `invalid_key` rather than stripping, and
+   `orchestrator.ts` reads a failed parse as `cfg = null` — `isAutonomous` false, no dispatch, in
+   silence, on 29 projects.
+   Four SQL readers of `activity_log.payload->>'to'` now accept BOTH spellings and say why: 4,488
+   rows were written while the rung was called `released` and no migration rewrites history.
+3. ~~**Drain `released`.**~~ **CANCELLED — nothing to drain.** The 80 rows are the gate's legitimate
+   queue and they keep standing on it under the new name. Measured 2026-09-10, 0 of the 80 were
+   claimed by a batch, so none was mid-release; 73 carry `merged_at` and 7 do not (those 7 predate
+   the gate).
+3b. ~~**Retire `released` as a target.**~~ **CANCELLED.** Superseded by the rename.
+   *What the measurement did surface, and it is not a status problem:* **79 of the 80 sit at a gate
+   their project cannot open.** 38 rows on 6 projects have no active `prod` binding, so
+   `resolveReleaseGate` returns `null` and the button is not even offered; 41 rows have a binding
+   but no `releaseRunnerLabel`, which `createReleaseBatch` refuses by name; and 28 rows carry no
+   `release_notes`, which `issuesMissingReleaseRecord` refuses. Only `pixelight` (1 row) can
+   release today. Every one of those is a project declaration a person must make — none of it is
+   fixed by code.
 4. **Freeze the other six** (`confirmed` `clarified` `approved` `developed` `testing` `tested`) as
    transition targets, loudly, then drain their 14 rows one record at a time, then drop them from
    the enum with the CHECK.
@@ -245,16 +293,16 @@ watched happening.
    projections); before that every MCP read of a park came back with no kind, so any drain written
    against pre-`30e1ed0ad` reads was working blind.
 5. **Enforce the table.** `canTransitionFree` reads `transitions`; the advisory guard comes off; the
-   refusal names the legal exits from the source status. Nine statuses make this small enough to
+   refusal names the legal exits from the source status. Ten statuses make this small enough to
    read in one screen, which is the point.
 6. **Sweep the teaching material** — system-prompt generation, UI pickers, `docs/modules/
    lifecycle-pipeline/README.md`, and the cross-repo half in `forge-plugin`'s
    `plugin/skills/issue-flow/SKILL.md`, which the `cm:guard` on `AUTONOMOUS_DRIVER_STATUSES` names
    as the coupling no gate can hold.
 
-Step 1 before step 2 and step 2 before step 3 is the whole ordering. Refuse the close before
-`releasing` exists and a gated project's agents have nowhere legal to end. Drain `released` before
-the rewrite stops and the rewrite refills it — the same trap as the six, for the same reason.
+Step 1 before step 2 remains: the middle status has to exist before anything writes it. Steps 3
+and 4 keep their own ordering rule — **freeze a status's writers, then drain its rows, then enforce**
+— because a drain that runs while the writers are live is refilled behind you.
 
 ## Honest costs
 
@@ -266,9 +314,10 @@ the rewrite stops and the rewrite refills it — the same trap as the six, for t
 | The enum shrink is a migration on the largest table plus a CHECK. `SELECT *` consumers see no change, but any consumer with its own hardcoded union fails to parse a row it now cannot represent — the safe direction only if every one of them is found first | the migration, and every client union of the status enum |
 | `waiting`'s retirement is four couplings in one change: the status, the `waitingKind` column, two typed refusals, and the guide + fact text that name those refusal codes to agents. Miss the text and the guide teaches a code the kernel no longer raises | whoever ships step 4b, and every agent reading the stale guide until it lands |
 | The cross-repo half ships on `forge-plugin`'s clock. Between the two deploys, the skill's status table and the kernel's disagree — the exact shape that produced 4,806 wrong calls when the drive prompt and the guide diverged (`run_session.rs` `cm:guard`) | both repos, for the length of the gap |
-| The gate refusal in step 2 is a real behaviour change: today a gated project's agent closes and lands at `released`; after this its close FAILS and it must stop instead. Every autonomous project with a gate feels it on the first run, and the plugin's skill has to teach the new ending | every gated project's driver, from the deploy |
-| 21 projects have `released` enabled in config and 13 hold rows there, so step 3b edits 21 project configs — and `pipelineConfig.states` is a WHOLESALE replace (burned live 2026-06-22): a patch that omits a sibling key wipes it | whoever runs the config migration, GET-then-send per project |
+| ~~The gate refusal in step 2 is a real behaviour change~~ — **not incurred.** The amendment keeps the rewrite, so no driver's ending changes and the plugin's skill needs no second half for this. What the investigation found on the way: the rewrite is also what stamps `merged_at`, closes the run and fans out to dependents, so refusing the close would have cost all three | nobody, as it turned out |
+| 29 project configs hold a `states.released` key. Paid in SQL, not through the API: a `jsonb_set` + `#-` key rename touches that one key and sidesteps the wholesale-replace hazard entirely (`pipelineConfig.states` patches REPLACE the map — burned live 2026-06-22). It had to be in the same transaction as the enum change, or 29 projects stop dispatching in silence | migration 0228, one statement |
 | Folding `waiting` costs 5 rows their resource distinction, not 30 — but those 5 are the ones where the distinction is load-bearing (a missing credential, an unpublished package, unmeasured prod data). Whichever way the owner rules, 5 rows need re-parking by hand | whoever ships step 4b |
 | `releasing` is a status a batch can die inside. A crashed release leaves rows there exactly as a dead run leaves a lease — so it needs a reaper of its own, or it becomes the next `approved`: a status with no machine exit. Nothing in this proposal builds one yet | whoever ships step 1, or the person who finds the stuck row |
-| Readiness stops being a status and becomes derived (merged mark + gate declared). Anything that today answers "what is ready to ship" by selecting `status = 'released'` — queries, the UI list, `readiness.ts` — has to compute it instead | every reader of the release queue |
+| ~~Readiness stops being a status and becomes derived~~ — **not incurred.** Readiness stays a status; it just has an honest name. `loadReleaseRoster`, the preflight and the CAS claim keep keying on it | nobody |
+| History keeps the old spelling forever: `comments.stage` (13 rows), `activity_log.payload` (4,488) and 7 `pipeline_runs.metadata.gateStatus` rows still say `released`, because a record says what a thing was called when it happened. Four SQL readers carry both spellings and a `cm:guard` saying why; drop either and a metric silently loses one side of 2026-09-10 | every reader of a cross-boundary metric |
 | Doing nothing has a price too, and it is the measured one: 433 rows on undriven statuses, five of them with no machine exit, found only because someone asked a counting question | the next person who asks |

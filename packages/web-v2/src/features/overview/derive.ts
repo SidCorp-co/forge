@@ -1,10 +1,4 @@
-// web-v2 feature module: overview — pure derivation helpers for the workspace
-// dashboard. All functions are pure (no React, no I/O) so the dashboard's
-// aggregation logic — status bucketing, spotlight ranking, workspace KPIs — is
-// unit-testable in `derive.test.ts` without rendering anything.
-//
-// Everything here re-composes data already fetched by the existing
-// `useProjectsConsole` / `useProjectHealth` hooks. No new data sources.
+// cm:guard every function here stays PURE — no React, no I/O — because the dashboard's aggregation (status bucketing, spotlight ranking, workspace KPIs) is tested without rendering anything, and one impure helper takes the whole module out of that reach.
 import { TONE_META, type SemanticTone } from '@/design/status';
 import type { ProjectConsoleItem, ProjectHealthRow, WorkspaceTotals } from '@/features/projects/types';
 import { isAttention } from '@/features/projects/derive';
@@ -51,7 +45,7 @@ const BUCKET_DEFS: ReadonlyArray<Omit<WorkBucket, 'count' | 'color'> & { tone: S
   { key: 'queued', label: 'Queued', tone: 'neutral', statuses: ['open', 'confirmed', 'clarified', 'approved'] },
   { key: 'progress', label: 'In progress', tone: 'active', statuses: ['in_progress', 'reopen', 'developed', 'testing'] },
   { key: 'attention', label: 'Needs attention', tone: 'attention', statuses: ['waiting', 'needs_info'] },
-  { key: 'ready', label: 'Ready to ship', tone: 'success', statuses: ['tested', 'released'] },
+  { key: 'ready', label: 'Ready to ship', tone: 'success', statuses: ['tested', 'awaiting_release'] },
   { key: 'blocked', label: 'On hold', tone: 'blocked', statuses: ['on_hold'] },
 ];
 

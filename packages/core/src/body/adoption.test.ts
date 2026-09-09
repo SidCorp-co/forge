@@ -43,7 +43,7 @@ describe('readBodyAdoption', () => {
       'open',
       'in_progress',
       'needs_info',
-      'released',
+      'awaiting_release',
     ]);
     expect(report.windowDays).toBe(ADOPTION_DEFAULT_WINDOW_DAYS);
   });
@@ -52,13 +52,13 @@ describe('readBodyAdoption', () => {
     groupedRows.mockResolvedValueOnce([
       { stage: 'open', format: 'html', template: 'forge-outcome', n: 3 },
       { stage: 'open', format: 'markdown', template: null, n: 7 },
-      { stage: 'released', format: 'html', template: 'forge-close', n: 1 },
+      { stage: 'awaiting_release', format: 'html', template: 'forge-close', n: 1 },
     ]);
     const report = await readBodyAdoption('proj-1');
     const open = report.stages.find((s) => s.stage === 'open');
     expect(open?.total).toBe(10);
     expect(open?.byComponent).toEqual({ 'forge-outcome': 3 });
-    expect(report.stages.find((s) => s.stage === 'released')?.byComponent).toEqual({
+    expect(report.stages.find((s) => s.stage === 'awaiting_release')?.byComponent).toEqual({
       'forge-close': 1,
     });
   });

@@ -30,7 +30,7 @@ function makeInputs(overrides?: Partial<Inputs>): Inputs {
     'build-commands': GUIDE_TEXT,
   };
   return {
-    ladder: ['open', 'confirmed', 'approved', 'developed', 'testing', 'released', 'closed'],
+    ladder: ['open', 'confirmed', 'approved', 'developed', 'testing', 'awaiting_release', 'closed'],
     branches: { baseBranch: null, productionBranch: null },
     noProgressRounds: 5,
     project: (key: string) => values[key],
@@ -53,7 +53,9 @@ describe('renderStageFactsText', () => {
 
   it('renders the project-resolved ladder', () => {
     const text = renderStageFactsText(makeInputs(), 'p-1', 'code');
-    expect(text).toContain('open → confirmed → approved → developed → testing → released → closed');
+    expect(text).toContain(
+      'open → confirmed → approved → developed → testing → awaiting_release → closed',
+    );
   });
 
   it('lists projectFacts as a fetch-on-demand index, never inlining guide bodies', () => {
@@ -191,7 +193,6 @@ describe('renderStageFactsText — always-inject tier (ISS-521)', () => {
     );
     // Never silently dropped — the full rule is present…
     expect(text).toContain(big);
-    // …and the overflow is logged.
     expect(warnSpy).toHaveBeenCalledTimes(1);
     const [meta] = warnSpy.mock.calls[0] as [{ totalChars: number; maxChars: number }];
     expect(meta.totalChars).toBe(7000);

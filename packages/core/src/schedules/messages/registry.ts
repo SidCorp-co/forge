@@ -78,11 +78,7 @@ export interface ImprovementMessage {
   standing?: boolean;
 }
 
-// ── Strategy inputs (retired one-shot templates) ──────────────────────────────
-// These patterns were previously separate scheduled templates. They are now
-// STRATEGY_INPUTS absorbed by the standing steward — applied by the steward
-// when it observes the matching signal, not run on their own schedule.
-// Preserved here as reference data so the steward prompt can inline them.
+// cm:guard STRATEGY_INPUTS are applied by the standing steward when it observes the matching signal — they are NOT schedules and must not be given a cron, or the same guidance arrives twice from two owners.
 export const RETIRED_STRATEGY_INPUTS = {
   MERGED_AT_ON_PASS: {
     key: 'merged-at-on-pass',
@@ -98,7 +94,7 @@ export const RETIRED_STRATEGY_INPUTS = {
     appliesWhen:
       'The project uses blocks issue relations AND the base-merge ' +
       'state is a manual gate (a pipeline status the system does not ' +
-      'auto-advance, such as "released" or "tested"), meaning merged_at is ' +
+      'auto-advance, such as "awaiting_release" or "tested"), meaning merged_at is ' +
       'not stamped automatically on status transition.',
     appliesToSkills: ['forge-test'],
   },
@@ -114,8 +110,8 @@ export const RETIRED_STRATEGY_INPUTS = {
       '(3) If rebase succeeds without conflict, push the rebased ISS-* ' +
       'branch then retry the base-branch merge. ' +
       '(4) If rebase itself conflicts or the retry merge conflicts, ' +
-      'transition released → reopen and post the standard conflict comment ' +
-      'so forge-fix can resolve it. Never leave the issue at released after ' +
+      'transition awaiting_release → reopen and post the standard conflict comment ' +
+      'so forge-fix can resolve it. Never leave the issue at awaiting_release after ' +
       'a conflict — silent waiting blocks the release indefinitely.',
     appliesWhen:
       'The project is 2-branch: baseBranch and productionBranch are ' +

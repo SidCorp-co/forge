@@ -48,7 +48,7 @@ describe("toAutonomousLabel", () => {
 
 	// cm:guard ISS-897 moved the release park from `tested` to `released`, and BOTH must read as awaiting_release: the migration moved 74 live issues, and any row written before it — or by a client still on the old literal — is at `tested` and must not render as a running session nobody is running.
 	it("reads either release park as its own label, not as running", () => {
-		expect(toAutonomousLabel("released")).toBe("awaiting_release");
+		expect(toAutonomousLabel("awaiting_release")).toBe("awaiting_release");
 		expect(toAutonomousLabel("tested")).toBe("awaiting_release");
 	});
 
@@ -81,7 +81,7 @@ describe("renderStatus", () => {
 	it("labels every status without asking the project", () => {
 		expect(renderStatus("in_progress")).toBe("running");
 		expect(renderStatus("needs_info")).toBe("needs_human");
-		expect(renderStatus("released")).toBe("awaiting_release");
+		expect(renderStatus("awaiting_release")).toBe("awaiting_release");
 	});
 });
 

@@ -100,7 +100,7 @@ import { agentChannelCondition } from '../issues/creator.js';
 export const NEEDS_REVIEW_STATUSES = ['developed', 'reopen'] as const;
 // cm:edge contract -> packages/contracts/src/issue-vocabulary.ts#KERNEL_TO_LABEL — these are exactly the statuses that axis labels `needs_human`, hand-copied because core may not value-import contracts (boot crash; contracts-runtime-boundary.test.ts). Parity is asserted in me/attention-parity.test.ts; a status whose label moves must move here in the same change or one of the two surfaces lies.
 export const AWAITING_INPUT_STATUSES = ['waiting', 'needs_info'] as const;
-const FAILED_JOB_RESOLVED_ISSUE_STATUSES = ['closed', 'released'] as const;
+const FAILED_JOB_RESOLVED_ISSUE_STATUSES = ['closed', 'awaiting_release'] as const;
 const PER_BUCKET = 5;
 const PENDING_SKILL_UPDATES_CAP = 20;
 

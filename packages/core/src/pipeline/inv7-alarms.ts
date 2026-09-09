@@ -324,7 +324,7 @@ export async function alarmRejectionStreaks(): Promise<Inv7AlarmResult> {
     WHERE v.decision = 'request_changes'
       AND (la.at IS NULL OR v.started_at > la.at)
       AND pr.status = 'running'
-      AND i.status NOT IN ('closed', 'released', 'draft')
+      AND i.status NOT IN ('closed', 'awaiting_release', 'draft')
     GROUP BY v.run_id, i.project_id, i.id, i.iss_seq, i.title, p.id
     HAVING count(*) >= COALESCE(
              (p.agent_config -> 'pipelineConfig' -> 'reopenPolicy' ->> 'noProgressRounds')::int,

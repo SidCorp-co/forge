@@ -91,7 +91,7 @@ const REPORT: BodyAdoptionReport = {
 			fractionRequired: null,
 		},
 		{
-			stage: "released",
+			stage: "awaiting_release",
 			total: 0,
 			byComponent: {},
 			requireComponent: null,
