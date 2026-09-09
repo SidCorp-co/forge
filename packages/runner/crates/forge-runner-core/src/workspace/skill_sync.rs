@@ -105,7 +105,7 @@ fn publish_dir_atomically(staged: &Path, dest: &Path) -> Result<()> {
 }
 
 /// `std::fs::rename`, on a platform where a reader can refuse it.
-// cm:guard every rename in `publish_dir_atomically` MUST go through this, not `std::fs::rename` — Windows fails a DIRECTORY rename with ERROR_ACCESS_DENIED while any file beneath it is open, so a reader holding `SKILL.md` breaks the publish whose entire purpose is to be invisible to readers. Measured on runner-ci's windows-latest leg: `dest_copy_atomic_no_torn_read` panicked on exactly this (`Os { code: 5, PermissionDenied }`) on 536b6285 (2026-08-24) and 4a0be7db (2026-08-26); runner-release re-runs that leg, so an intermittent red there stops a binary shipping.
+// cm:guard every rename in `publish_dir_atomically` MUST go through this, not `std::fs::rename` — Windows fails a DIRECTORY rename with ERROR_ACCESS_DENIED while any file beneath it is open, so a reader holding `SKILL.md` breaks the publish whose entire purpose is to be invisible to readers. Measured on the windows-latest leg of ci.yml's `runner` matrix: `dest_copy_atomic_no_torn_read` panicked on exactly this (`Os { code: 5, PermissionDenied }`) on 536b6285 (2026-08-24) and 4a0be7db (2026-08-26); runner-release re-runs that leg, so an intermittent red there stops a binary shipping.
 #[cfg(not(windows))]
 fn rename_settling(from: &Path, to: &Path) -> std::io::Result<()> {
     std::fs::rename(from, to)

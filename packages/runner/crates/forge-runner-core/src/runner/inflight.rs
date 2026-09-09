@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 const BOOT_ID_PATH: &str = "/proc/sys/kernel/random/boot_id";
 
 /// How long a SIGTERM'd group gets before SIGKILL. Mirrors `graceful_kill`.
-// cm:why cfg-gated with the signalling path that reads them: `cargo clippy` on the windows-latest leg of runner-ci warns on an unused const, and the runner-release workflow re-runs that same leg, where a warning is one more line of noise over the failure that actually stops a binary shipping
+// cm:why cfg-gated with the signalling path that reads them: `cargo clippy` on the windows-latest leg of ci.yml's `runner` matrix warns on an unused const, and the runner-release workflow re-runs that same gate, where a warning is one more line of noise over the failure that actually stops a binary shipping
 #[cfg(unix)]
 const TERM_GRACE: Duration = Duration::from_secs(5);
 #[cfg(unix)]

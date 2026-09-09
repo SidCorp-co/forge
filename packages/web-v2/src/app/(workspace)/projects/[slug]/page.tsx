@@ -36,7 +36,7 @@ import { useAttention } from "@/features/attention/hooks";
 import { useProjectRuns, useStepDurations } from "@/features/pipeline/hooks";
 import { useProjectHealth, useProjects } from "@/features/projects/hooks";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
-import { useActiveRunners, useDevices, useProjectRunners } from "@/features/runners/hooks";
+import { useActiveRunners, useProjectRunners } from "@/features/runners/hooks";
 import { useSchedules } from "@/features/schedules/hooks";
 import { useQueueStats } from "@/features/sessions/hooks";
 import { formatApiError } from "@/lib/api/error";
@@ -62,11 +62,6 @@ export default function ProjectOverviewPage() {
   const attentionQ = useAttention();
   const runsQ = useProjectRuns(projectId);
   const durationsQ = useStepDurations({ days: 7, projectId });
-  // ISS-477: pass the project's orgId so the Runners card shows this org's
-  // shared runner pool, not the caller's ENTIRE device fleet across every org
-  // they belong to (omitting orgId — as this call used to — returns the full
-  // owner-scoped list, which leaked other projects' devices onto this page).
-  const devicesQ = useDevices(project?.orgId ?? null);
   const queueQ = useQueueStats(projectId);
   const projectRunnersQ = useProjectRunners(projectId ?? null);
   const activeRunnersQ = useActiveRunners(projectId ?? null);
@@ -127,9 +122,8 @@ export default function ProjectOverviewPage() {
   const runsAwaitingRelease = awaitingReleaseRuns(runItems);
   const inFlight = activeSpend(runItems);
   const runners = runnersSummary(
-    devicesQ.data,
-    queueQ.data,
     projectRunnersQ.data,
+    queueQ.data,
     anyLimited ? tick : now,
     activeRunnersQ.data?.runners,
   );

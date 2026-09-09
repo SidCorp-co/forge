@@ -337,15 +337,27 @@ jobs:
       # skip is only honest because this step exists and ci-parity proves it does.
       - run: node scripts/check-flow-coverage.mjs --all --require-sources
 
-  # Merge gate for the Rust runner. Mirrors the runner-ci gates on ubuntu only
-  # (runner-ci keeps the 3-OS matrix for platform visibility, but as a separate
-  # path-triggered workflow it CANNOT be a required check — a PR not touching
-  # the runner would never run it and the required check would pend forever).
-  # This job lives inside CI so `ci-passed` can gate on it via paths-filter.
+  # Merge gate for the Rust runner. It lives inside CI so `ci-passed` can gate
+  # on it via paths-filter: a path-triggered workflow of its own CANNOT be a
+  # required check — a PR not touching the runner would never run it and the
+  # required check would pend forever.
+  # The runner ships a binary for three platforms, so the gate runs on three.
+  # This job used to be ubuntu-only while a 3-OS matrix lived in its own
+  # `runner-ci.yml` — and GitHub `needs:` cannot cross workflow files, so that
+  # matrix was in NO gate: on 2026-09-09 `build (windows-latest)` went red on
+  # PR #336 while `ci-passed` went green and the merge went through. Two
+  # windows-only classes reached `main` that way, neither able to fail on linux
+  # (a `cfg(unix)`-only dep used unconditionally, and a source scan splitting on
+  # `"\n}\n"` that under CRLF silently measured the whole file instead).
+  # Keep every leg in ONE job so `needs: runner` covers all three.
   runner:
     needs: changes
     if: needs.changes.outputs.runner == 'true'
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -354,8 +366,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: packages/runner
-      - name: Lockfile sync + fmt + clippy + test (same gates as runner-ci)
+      - name: Lockfile sync + fmt + clippy + test
         working-directory: packages/runner
+        shell: bash
         run: |
           cargo metadata --locked --format-version=1 >/dev/null
           cargo fmt --check

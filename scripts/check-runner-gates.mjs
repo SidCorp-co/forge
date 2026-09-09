@@ -4,7 +4,7 @@
 //
 // That gap was real and it cost a release: 0.7.6 was written, verified 13/13,
 // pushed and tagged — and `cargo fmt --check` failed on the new file, which took
-// down runner-ci AND runner-release, so no GitHub Release was cut and the install
+// down the `runner` gate AND runner-release, so no GitHub Release was cut and the install
 // channel had nothing to serve. `CI_COVERAGE` had declared the step honestly as
 // "cargo, runner-only" the whole time; declaring a hole does not close it.
 //

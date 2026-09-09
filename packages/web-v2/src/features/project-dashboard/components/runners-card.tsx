@@ -1,9 +1,7 @@
 "use client";
 
-// Compact runners card (ISS-379, AC#5). `N/M online` + one line per runner
-// (device · platform · busy/idle). NO utilization% (not stored — deferred to
-// ISS-378) and deliberately NOT the rich ISS-378 fleet strip: it links out to
-// the Agents / Runners screens for detail.
+// cm:why no utilization% and deliberately not the rich fleet strip — utilization is not stored (ISS-378) and the detail belongs on the two screens this card links out to
+// cm:edge contract -> packages/web-v2/src/features/project-dashboard/derive.ts — `runnersSummary` decides WHOSE runners these are; its guard is the one that keeps this card from claiming a project has none
 import { useRouter } from "next/navigation";
 import { Badge, Card, CardContent, HealthDot, Icon } from "@/design";
 import type { RunnersSummary } from "../derive";
@@ -25,16 +23,14 @@ export function RunnersCard({ summary, slug }: { summary: RunnersSummary; slug: 
           {onlineCount}/{total} online
         </span>
       </div>
-      {/* ISS-528: runners are org-shared infra (ISS-477); there is no
-          project→runner assignment model, so the list is labelled org-wide
-          rather than implying it is exclusive to this project. The per-runner
-          busy/idle below IS already scoped to this project via /queue-stats. */}
       <p className="fg-caption border-b border-line-subtle px-5 py-2 text-subtle">
-        Org runners available to this project
+        Runners bound to this project
       </p>
       <CardContent className="flex-1">
         {total === 0 ? (
-          <p className="fg-body-sm py-6 text-center text-muted">No runners paired yet.</p>
+          <p className="fg-body-sm py-6 text-center text-muted">
+            No runners bound to this project yet.
+          </p>
         ) : (
           <ul className="flex flex-col gap-1.5">
             {lines.map((r) => (
@@ -63,10 +59,10 @@ export function RunnersCard({ summary, slug }: { summary: RunnersSummary; slug: 
                   </span>
                 ) : (
                   <span
-                    className="fg-caption w-12 flex-none text-right font-semibold"
+                    className="fg-caption min-w-12 flex-none text-right font-semibold"
                     style={{ color: r.busy ? "var(--cobalt-700)" : "var(--fg-subtle)" }}
                   >
-                    {r.online ? (r.busy ? "busy" : "idle") : "offline"}
+                    {r.draining ? "draining" : r.online ? (r.busy ? "busy" : "idle") : "offline"}
                   </span>
                 )}
               </li>

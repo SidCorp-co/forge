@@ -288,6 +288,9 @@ export function serialize(row: IssueRow): Record<string, unknown> {
       ? bodySlots(row.description ?? '', row.descriptionFormat)
       : null,
     status: row.status,
+    // cm:guard emit it on BOTH projections or the kind is unreadable through MCP: core never derives it (see the `waitingKind` input guard), and an absent key reads as `null` to a caller — a park asking for a DECISION and one asking for a RESOURCE then look identical, which is what a `waiting` read looked like until 2026-09-09
+    // cm:edge lockstep -> packages/core/src/issues/list-service.ts — `IssueListRow`, its `projection` and `serializeListRow` carry the same field; adding it to one surface only leaves the triage list unable to say what any park wants
+    waitingKind: row.waitingKind,
     priority: row.priority,
     category: row.category,
     complexity: row.complexity,
@@ -319,12 +322,11 @@ function serializeListRow(row: IssueListRow): Record<string, unknown> {
   return {
     documentId: row.id,
     issueId: `ISS-${row.issSeq}`,
-    // ISS-532: char-strip only (NOT framed) — the browse-list projection exists
-    // to stay under the MCP token cap (ISS-428); a full DATA banner per title
-    // across many rows would defeat that. Invisible/bidi smuggling is still
-    // neutralized.
+    // cm:why char-stripped and NOT framed, unlike `serialize` — a full DATA banner per title across many rows would defeat the token cap this projection exists for (ISS-428, ISS-532); invisible/bidi smuggling is still neutralized
     title: sanitizeUntrusted(row.title),
     status: row.status,
+    // cm:edge lockstep -> packages/core/src/mcp/tools/forge-issues.ts — `serialize` carries the same field; see the guard there
+    waitingKind: row.waitingKind,
     priority: row.priority,
     category: row.category,
     complexity: row.complexity,

@@ -1,6 +1,6 @@
 import { and, desc, eq, exists, gte, inArray, lt, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, issueLabels, issues } from '../db/schema.js';
+import { type IssueStatus, issueLabels, issues, type WaitingKind } from '../db/schema.js';
 import { resolveLabelIdsTolerant, resolveModuleIdsTolerant } from './label-service.js';
 import {
   buildIssueSearchCondition,
@@ -32,6 +32,8 @@ export type IssueListRow = {
   issSeq: number;
   title: string;
   status: IssueStatus;
+  /** Which answer a `waiting` park wants — `null` on every other status. */
+  waitingKind: WaitingKind | null;
   priority: string;
   category: string | null;
   complexity: string | null;
@@ -86,6 +88,7 @@ export async function listIssueRows(
     issSeq: issues.issSeq,
     title: issues.title,
     status: issues.status,
+    waitingKind: issues.waitingKind,
     priority: issues.priority,
     category: issues.category,
     complexity: issues.complexity,

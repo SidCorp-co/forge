@@ -1836,6 +1836,25 @@
   cannot run on one box concurrently; the second is now told so instead of quietly joining the
   first.
 
+- **A project's dashboard no longer says it has no runners while one is running its work.** The
+  Runners card counted the boxes *you* had paired, not the boxes bound to the project, so a runner
+  somebody else set up was invisible: a project with an online machine executing an issue read
+  "No runners paired yet · 0/0 online". It was not an empty list but a false claim, and the same
+  page's Sessions tab showed the machine busy at the same moment, because that surface had always
+  asked the project. The card now asks the project too, so who paired a box no longer decides
+  whether you can see it.
+
+- **A parked issue now says what it is waiting for.** An issue held for a person carries which kind
+  of answer it needs — a decision or a resource — and the API that agents and the board read never
+  returned that field, so every park read back as "waiting" with no hint of what would end it. The
+  value was being stored correctly the whole time; nothing could see it.
+
+- **A Windows-only break can no longer merge green.** The Rust runner's three-platform check lived
+  in a workflow of its own, and GitHub cannot make one workflow gate another — so the merge gate was
+  measuring Linux alone. On 2026-09-09 the Windows leg went red while the gate went green and the
+  merge went through. The three platforms now run inside the gate itself, and the duplicate workflow
+  is gone rather than left beside it.
+
 - **A run session no longer starts, reports itself healthy, and does nothing.** The brief that tells
   a run pane which issues it carries was pasted the instant the pane was spawned, and Claude Code
   draws its composer a second or two after startup — a paste that lands first goes to the terminal as

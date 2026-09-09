@@ -170,7 +170,8 @@ const CHECKS = [
     scanned: /^Files:\s+(\d+)/m,
     needs: ['deps', 'observability-build'],
   },
-  // cm:guard this check exists because `pnpm verify` was 13/13 green while the `runner` job in ci.yml was red: 0.7.6 shipped with an unformatted file, which failed runner-ci AND runner-release, so no GitHub Release was cut and the install channel had nothing to serve (2026-08-18). CI_COVERAGE had declared the hole honestly the whole time — a declared hole is still a hole.
+  // cm:guard this check exists because `pnpm verify` was 13/13 green while the `runner` job in ci.yml was red: 0.7.6 shipped with an unformatted file, which failed that job AND runner-release, so no GitHub Release was cut and the install channel had nothing to serve (2026-08-18). CI_COVERAGE had declared the hole honestly the whole time — a declared hole is still a hole.
+  // cm:guard this runs ONE platform and the gate runs three, so a green here is no claim about windows or macos — the `runner` job in ci.yml is the only thing that makes that claim (2026-09-09).
   // cm:edge lockstep -> scripts/check-runner-gates.mjs — that script runs the four cargo commands; its own edge points back at the ci.yml step they mirror
   {
     axis: 'runner',
@@ -230,8 +231,8 @@ const CI_COVERAGE = {
   'TEST_DB_MODE=container pnpm --filter @forge/core test:integration:coverage':
     'pnpm --filter @forge/core test:integration',
   'node scripts/check-flow-coverage.mjs --all --require-sources': 'verify, minus --require-sources',
-  'Lockfile sync + fmt + clippy + test (same gates as runner-ci)':
-    'verify, via scripts/check-runner-gates.mjs when packages/runner changed',
+  'Lockfile sync + fmt + clippy + test':
+    'verify, via scripts/check-runner-gates.mjs when packages/runner changed — on THIS box only, while CI runs the same step on all three platforms',
   'Check Markdown links': 'docs job, gaurav-nelson/github-action-markdown-link-check',
   'Require every CI job to have passed or been skipped': 'the ci-passed gate itself',
 };

@@ -13,7 +13,6 @@ import type { PipelineRunListItem, StepDurationRow } from "@/features/pipeline/t
 import type { ProjectHealthRow } from "@/features/projects/types";
 import {
   type ActiveRunner,
-  type DeviceRow,
   type ProjectRunner,
   type RunnerLimitDisplay,
   runnerLimitDisplay,
@@ -308,8 +307,10 @@ export function projectAttention(
 export interface RunnerLine {
   id: string;
   name: string;
-  platform: DeviceRow["platform"];
+  platform: NonNullable<ProjectRunner["platform"]>;
   online: boolean;
+  /** Accepting no new work while it finishes what it has — listed, never counted online. */
+  draining: boolean;
   busy: boolean;
   running: number;
   queued: number;
@@ -329,17 +330,18 @@ export interface RunnersSummary {
 }
 
 /**
- * Compact runner summary: the caller's devices joined with per-device queue
- * counters and the live active-runner snapshot. When `active` is supplied,
- * `busy` and the `activeIssueRef`/`activeStage` line detail are sourced from
- * the runner's ACTUAL in-flight job (via `projectRunners` to bridge
- * runnerId→deviceId); otherwise `busy` falls back to the queue running-count.
+ * Compact runner summary — every runner the PROJECT has, joined with per-device
+ * queue counters and the live active-runner snapshot. When `active` is supplied,
+ * `busy` and the `activeIssueRef`/`activeStage` detail come from the runner's
+ * ACTUAL in-flight job; otherwise `busy` falls back to the queue running-count.
  * No utilization% (not stored — deferred to ISS-378); revoked devices dropped.
  */
+// cm:guard the spine is the PROJECT's runner rows, never the caller's `/me/devices`: a device belongs to whoever paired it, so keying on the viewer's own fleet made every runner somebody else paired vanish and the card state "No runners paired yet · 0/0 online" over a project with an online box — a false claim rather than an empty list, measured on forge-dev 2026-09-09 (VISION: state-never-lies).
+// cm:why `active` needs no runnerId→deviceId bridge any more — the snapshot and the spine are keyed alike, and the queue counters are the only thing still looked up by `deviceId`.
+// cm:guard `online` reads the RUNNER's status as well as the device's, because the endpoint filters neither: a retired runner keeps its row (retire sets `disabled`, it does not delete) and a draining one keeps heartbeating on an online device, so counting the device alone reports capacity the pool will not offer work to. Measured on getcontent/sidpeak/dodgeprint-api 2026-09-09, each carrying a `draining` row beside a live one.
 export function runnersSummary(
-  devices: DeviceRow[] | undefined,
+  projectRunners: ProjectRunner[] | undefined,
   queue: QueueStats | undefined,
-  projectRunners?: ProjectRunner[] | undefined,
   now: number = Date.now(),
   active?: ActiveRunner[] | undefined,
 ): RunnersSummary {
@@ -347,43 +349,27 @@ export function runnersSummary(
   for (const d of queue?.devices ?? []) {
     if (d.deviceId) byDevice.set(d.deviceId, { queued: d.queued, running: d.running });
   }
-  // Limit state lives on the project-scoped runner row, not the device; join by
-  // deviceId so the org-wide device list can surface a per-project limit.
-  const limitByDevice = new Map<string, RunnerLimitDisplay>();
-  for (const r of projectRunners ?? []) {
-    if (!r.deviceId) continue;
-    const limit = runnerLimitDisplay(r, now);
-    if (limit) limitByDevice.set(r.deviceId, limit);
-  }
-  // Bridge the active snapshot (keyed by runnerId) to deviceId via the project
-  // runner rows, so the device-keyed lines below can show the live job.
-  const deviceByRunner = new Map<string, string>();
-  for (const r of projectRunners ?? []) {
-    if (r.deviceId) deviceByRunner.set(r.runnerId, r.deviceId);
-  }
-  const activeByDevice = new Map<string, ActiveRunner>();
-  for (const a of active ?? []) {
-    const deviceId = deviceByRunner.get(a.runnerId);
-    if (deviceId) activeByDevice.set(deviceId, a);
-  }
-  const lines: RunnerLine[] = (devices ?? [])
-    .filter((d) => d.status !== "revoked")
-    .map((d) => {
-      const q = byDevice.get(d.id) ?? { queued: 0, running: 0 };
-      const online = d.status === "online";
-      const act = activeByDevice.get(d.id);
-      // Prefer the real in-flight job for `busy`; fall back to queue counters
-      // when no active snapshot was passed (keeps callers that omit it working).
+  const activeByRunner = new Map<string, ActiveRunner>();
+  for (const a of active ?? []) activeByRunner.set(a.runnerId, a);
+
+  const lines: RunnerLine[] = (projectRunners ?? [])
+    .filter((r) => r.deviceStatus !== "revoked" && r.runnerStatus !== "disabled")
+    .map((r) => {
+      const q = (r.deviceId ? byDevice.get(r.deviceId) : undefined) ?? { queued: 0, running: 0 };
+      const draining = r.runnerStatus === "draining";
+      const online = r.deviceStatus === "online" && !draining;
+      const act = activeByRunner.get(r.runnerId);
       const busy = act ? !!act.current : online && q.running > 0;
       return {
-        id: d.id,
-        name: d.name,
-        platform: d.platform,
+        id: r.runnerId,
+        name: r.deviceName ?? act?.name ?? "unnamed runner",
+        platform: r.platform ?? "linux",
         online,
+        draining,
         busy,
         running: q.running,
         queued: q.queued,
-        limit: limitByDevice.get(d.id) ?? null,
+        limit: runnerLimitDisplay(r, now),
         activeIssueRef: act?.current?.issueRef ?? null,
         activeStage: act?.current?.stage ?? null,
       };
