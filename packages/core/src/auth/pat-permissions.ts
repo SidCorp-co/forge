@@ -4,14 +4,18 @@
  * Two decisions kept apart. **What a permission means** is here: a named group
  * of REST route prefixes, declared in code so an operator picks from the menu
  * and cannot extend it — a route group an operator can invent is a fence
- * nobody proved. **Which permissions a token holds** is data on the token row,
- * and belongs to the phase that adds it; nothing in this module is consulted
- * by a request yet.
+ * nobody proved. **Which permissions a token holds** is data on the token row
+ * (`personal_access_tokens.permissions`), read into the principal by
+ * `middleware/require-pat.ts` and asked of this module on every request.
  *
  * `middleware/pat-rest-surface.ts` derives `PAT_ALLOWED_PREFIXES` from
  * {@link PAT_PERMISSION_RESOURCES}, so this declaration is the allowlist and
  * the prefix array is its union. `scripts/check-pat-surface.mjs` reads the same
  * declaration and proves every route under it reaches the project fence.
+ *
+ * Since ISS-973 the menu has a consumer: {@link patGrantCovers} answers a
+ * request against the names one token was granted, and the union above is
+ * what a token granted nothing still reaches.
  */
 
 import type { scopeForMethod } from '../middleware/pat-rest-surface.js';
@@ -23,7 +27,7 @@ import type { scopeForMethod } from '../middleware/pat-rest-surface.js';
  * the two levels of a resource cannot drift apart about what they cover.
  */
 // cm:guard an ALLOWLIST, and it must stay one — a forgotten entry costs a caller a 403 they will report, while a forgotten entry on a deny-list is a silent leak nobody reports. Never invert this to "everything except", however much shorter that list looks: the routes that would need excluding are exactly the ones (`/api/pat`, `/api/orgs`, `/api/admin`, `/api/me`) where being wrong once ends the fence for good.
-// cm:guard adding a prefix here WIDENS what every PAT may reach, because a token holding no grants reads as holding every group. A new entry owes the same proof the rest have: `scripts/check-pat-surface.mjs` must stay green, which means every route under it funnels through `effectiveProjectRole`.
+// cm:guard adding a prefix here WIDENS what every PAT may reach, because an ABSENT or EMPTY grant array reads as holding every group (ISS-973) and 25 of production's 26 human tokens were minted before the column existed. A new entry owes the same proof the rest have: `scripts/check-pat-surface.mjs` must stay green, which means every route under it funnels through `effectiveProjectRole`.
 // cm:edge lockstep -> packages/core/src/auth/pat-permissions.test.ts — the union of these prefixes is frozen there as a 16-entry literal. Editing this map without editing that literal is a deliberate reachability change presenting as a refactor, and the test is what makes the two indistinguishable impossible.
 export const PAT_PERMISSION_RESOURCES = {
   issues: ['/api/issues', '/api/comments', '/api/attachments', '/api/labels'],
@@ -89,4 +93,46 @@ export const PAT_PERMISSION_NAMES = Object.freeze(
 /** Every prefix any permission covers, sorted, deduplicated. */
 export function patPermissionPrefixes(): readonly string[] {
   return Object.freeze([...new Set(Object.values(PAT_PERMISSION_RESOURCES).flat())].sort());
+}
+
+function prefixMatches(prefix: string, path: string): boolean {
+  return path === prefix || path.startsWith(`${prefix}/`);
+}
+
+/** The resource whose prefixes cover this path, or null when the menu does not. */
+export function patResourceForPath(path: string): PatPermissionResource | null {
+  for (const resource of Object.keys(PAT_PERMISSION_RESOURCES) as PatPermissionResource[]) {
+    if (PAT_PERMISSION_RESOURCES[resource].some((p) => prefixMatches(p, path))) return resource;
+  }
+  return null;
+}
+
+/**
+ * The permission a request would have to hold, or null where no group covers
+ * the path at all — which is the surface refusal, a different answer from
+ * "covered, but not by this token".
+ */
+export function patPermissionWanted(path: string, level: PatPermissionLevel): PatPermission | null {
+  const resource = patResourceForPath(path);
+  return resource ? `${resource}:${level}` : null;
+}
+
+/**
+ * Does a token granted `granted` reach this path with this level?
+ *
+ * The grant is a narrowing, so its ABSENCE is the whole menu — and absence has
+ * two shapes, a `NULL` column and an empty array, because the migration writes
+ * neither and a caller may send either.
+ */
+// cm:guard absent AND empty both mean EVERY group, never no group. 26 active human tokens on production the day this shipped, 25 of them immortal, every one unmigrated the instant the column landed — reading an ungranted token as permissionless locks out every live integration on deploy (ISS-972's rule, ISS-973's implementation). The two shapes are one `?? []` away from being confused, so they are tested apart.
+// cm:guard a NON-EMPTY array that names nothing this menu still declares covers NO path, which is the opposite direction to the rule above and is deliberate: a token somebody narrowed to `foo:read` after `foo` left the menu must reach nothing, never everything. Only absence is the full menu.
+export function patGrantCovers(
+  granted: readonly string[] | null | undefined,
+  path: string,
+  level: PatPermissionLevel,
+): boolean {
+  const resource = patResourceForPath(path);
+  if (resource === null) return false;
+  if (granted === null || granted === undefined || granted.length === 0) return true;
+  return granted.includes(`${resource}:${level}` satisfies PatPermission);
 }

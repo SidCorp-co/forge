@@ -42,6 +42,12 @@ export type PatPrincipal = {
   // cm:guard non-null is BOTH the slug-omitted default and the auth fence (ISS-497), and the second of those is why a null here is not a widening to be tidied away: null means user-level, which is a token whose reach is its owner's projects. Reading it as "no project set, so no restriction" inverts the fence.
   boundProjectId: string | null;
   /**
+   * The permission names this token was granted, or absent where it was
+   * granted none — which is every group, not no group.
+   */
+  // cm:guard absent, `null` and `[]` are ONE answer here — the whole menu (ISS-973) — so do not normalize between them and do not read any of them as "holds nothing". Optional precisely because that default is the safe direction: a builder that forgets the field produces the same reach as an unmigrated row, where a required field forgotten in the other direction would lock a live integration out. `patGrantCovers` is the only reader.
+  permissions?: readonly string[] | null;
+  /**
    * The paired box this token was issued to, or `null` for a token a person
    * holds. It is what `requireDevice` and `/ws` resolve a device from now that
    * a device is a registry row rather than a credential (ISS-932).
@@ -260,6 +266,7 @@ export async function authenticatePat(
     tokenId: row.id,
     scopes: row.scopes,
     projectIds: row.projectIds ?? null,
+    permissions: row.permissions ?? null,
     boundProjectId: row.boundProjectId ?? null,
     deviceId: row.deviceId ?? null,
   };

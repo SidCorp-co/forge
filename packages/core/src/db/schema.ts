@@ -440,8 +440,7 @@ export const personalAccessTokens = pgTable(
     scopes: text('scopes').array().notNull().default(sql`ARRAY['read','write']::text[]`),
     // cm:guard NULL is the WIDER grant, not the narrower one: it inherits the user's project memberships, so a non-null array is a strict allowlist and emptying it back to NULL re-opens every project the owner can reach.
     projectIds: uuid('project_ids').array(),
-    // ISS-497 — project-level token: NULL = user-level (today's behavior, zero backfill);
-    // set = bound to exactly this project (slug-omitted default AND auth fence).
+    // cm:guard NULL is user-level — the token reaches its owner's projects — and non-null binds it to exactly this one, serving as BOTH the slug-omitted default and the auth fence (ISS-497). Reading NULL as "no project set, so unrestricted" inverts the fence; it is the wider grant, not the absent one.
     boundProjectId: uuid('bound_project_id').references(() => projects.id, { onDelete: 'cascade' }),
     // cm:guard the box this token was issued to, and it is what replaced the device credential (ISS-932): a `devices` row is a registry entry now, not a species of token, so `requireDevice` and `/ws` resolve the box from HERE. Non-null is the whole authority to speak as a device — a token without it is a valid credential on the wrong plane and those surfaces refuse it by name rather than reading `userId` and carrying on.
     deviceId: uuid('device_id').references(() => devices.id, { onDelete: 'cascade' }),
@@ -450,6 +449,8 @@ export const personalAccessTokens = pgTable(
     lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
     lastUsedIp: text('last_used_ip'),
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    // cm:guard NULL and `{}` BOTH mean every group, never no group — 26 active human tokens on production the day ISS-973 shipped, 25 of them immortal, and the migration writes no value into any of them, so reading an ungranted row as permissionless locks out every live integration on deploy. Narrowing is opt-in and a non-empty array is the only narrowing; the predicate is `auth/pat-permissions.ts:patGrantCovers`.
+    permissions: text('permissions').array(),
     // cm:why null is not "unlimited" but "take the operator's default" (`RULES.patRead` / `RULES.patWrite`); a number here is the ceiling of EACH class, not of the two together, because the three credentials that set one are single-session tokens whose 600 was sized as 6x that session's measured peak and that intent is per axis (ISS-961).
     rateLimitMax: integer('rate_limit_max'),
   },

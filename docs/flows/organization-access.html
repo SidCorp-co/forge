@@ -45,6 +45,23 @@ remedy. Neither falls back to the other, and neither reads the token's owner as 
 box &mdash; the <code>device.ownerId</code> fiction, where a machine borrowed a person's whole
 account, is what this shape exists to remove.</p>
 
+<p>On the REST data plane a PAT passes <b>three</b> gates, not one, and they answer different
+questions. <code>patSurfaceCovers</code> asks about the <em>route</em> &mdash; is this path in the
+union of the permission menu at all &mdash; and its refusal is the same for every token that
+exists. <code>scopeForMethod</code> asks about the <em>method</em>. <code>patGrantCovers</code>
+(ISS-973) asks about the <em>credential</em>: is this path in a group this token was granted. The
+last one is the only gate whose answer differs between two valid tokens, and it is the reason the
+first is no longer called <code>patAllowedFor</code> &mdash; a name promising &ldquo;allowed&rdquo;
+on a predicate that reads nothing off the principal is how the third gate gets skipped by someone
+who believes it already ran.</p>
+
+<p>The direction of the grant default is the whole risk. A token granted nothing reaches
+<em>every</em> group, and &ldquo;nothing&rdquo; has three shapes that must stay one answer: a
+<code>NULL</code> column, an empty array, and a principal built without the field. The migration
+writes no values, so on the day the column landed all 26 active human tokens were in the first of
+those shapes; reading any of them as permissionless would have locked every live integration out
+at once. Narrowing is opt-in, and a non-empty array is the only narrowing there is.</p>
+
 <div class="board"><pre class="mermaid">
 flowchart TD
   A["Authorization: Bearer &lt;t&gt;<br/>parseBearerHeader"] --> B{absent?}
@@ -69,12 +86,17 @@ flowchart TD
   S1 -- yes --> S2{"devices row live?"}
   S2 -- "missing or revoked" --> M2
   S2 -- yes --> S3["principal = the DEVICE, userId LEFT UNSET<br/>so loadProjectAccess fails closed"]
-  S -- "REST data plane" --> P4{"patAllowedFor(path)?"}
+  S -- "REST data plane" --> P4{"patSurfaceCovers(path)?<br/>a question about the ROUTE"}
   S -- "/mcp" --> P5
   P4 -- no --> X6["403 PAT_NOT_PERMITTED<br/>the route resolves no project,<br/>so there is nothing to fence on"]
   P4 -- yes --> P5{"scope for method?<br/>GET/HEAD -&gt; read, else write"}
   P5 -- no --> X7["403 INSUFFICIENT_SCOPE"]
-  P5 -- yes --> P6["withPatScope(projectIds, tokenId)<br/>every query below runs inside it"]
+  P5 -- yes --> P7{"patGrantCovers(row.permissions, path, level)?<br/>a question about the TOKEN"}
+  P7 -- "granted nothing<br/>(NULL, absent or [])" --> P6
+  P7 -- "holds the group" --> P6
+  P7 -- "holds other groups" --> X8["403 PAT_PERMISSION_REQUIRED<br/>names the permission the path wanted<br/>and the ones the token holds"]
+  P7 -- "holds only names the menu<br/>no longer declares" --> X8
+  P6["withPatScope(projectIds, tokenId)<br/>every query below runs inside it"]
 </pre></div>
 
 <h2>Two questions, and the answer to one is not the answer to the other</h2>
@@ -96,6 +118,14 @@ writer keeps them in step. Both are now persisted beside each other:
 <table>
 <thead><tr><th>Symptom</th><th>What actually happened</th></tr></thead>
 <tbody>
+<tr><td><code>403 PAT_PERMISSION_REQUIRED</code> on a route another token reaches fine</td>
+  <td>The route is on the surface; this <em>token</em> was granted a narrower set of
+    groups than the one covering it (ISS-973). The refusal names both halves — the permission the
+    path wanted, and what the token holds — because a grant set is invisible from the caller's
+    side and a bare &ldquo;no&rdquo; makes narrowing a token something nobody does twice. Absence
+    of a grant is <b>every</b> group, never none, so a token that has never been granted anything
+    cannot produce this code: every row the migration did not write reads as the full menu, which
+    is why the column landing did not take 26 live integrations down with it.</td></tr>
 <tr><td><code>403 PAT_NOT_PERMITTED</code> on a route that plainly exists</td>
     <td>The path belongs to no resource in <code>PAT_PERMISSION_RESOURCES</code>, so it is not in
     the <code>PAT_ALLOWED_PREFIXES</code> union. That is a statement about the ROUTE,

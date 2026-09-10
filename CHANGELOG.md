@@ -10,6 +10,26 @@
 
 ### Security
 
+- **A personal access token now reaches only the permission groups it was granted.**
+  Phase 1 built the menu and nothing consulted it: every PAT reached the same 16 prefixes, because
+  `patAllowedFor` tested the path against the union of the whole menu and never against anything
+  the token itself carried. `personal_access_tokens.permissions` now holds the names a token was
+  granted, `POST /api/pat` accepts them as an array validated against the menu (so an operator
+  picks from it and cannot invent a group), `GET /api/pat` reports them back, and a rotation
+  carries them onto the new row. A request outside the token's groups is refused
+  `403 PAT_PERMISSION_REQUIRED`, naming both the permission the path wanted and the ones the token
+  holds — a grant set is invisible from the caller's side, and a bare refusal makes narrowing a
+  token something nobody does twice. **A token granted nothing reaches every group, not none**, and
+  "nothing" has three shapes held to one answer: a `NULL` column, an empty array, and a principal
+  built without the field. The migration writes no values, so every token that existed before it
+  ran — 26 active human tokens, 25 of them immortal — keeps exactly the reach it had; reading an
+  ungranted token as permissionless would have locked every live integration out on deploy. The
+  opposite direction is deliberate: a *non-empty* grant naming only groups the menu no longer
+  declares reaches nothing rather than everything. `patAllowedFor` is renamed `patSurfaceCovers`,
+  because it answers the route's question and never the token's, and the scope word keeps its own
+  job — `read`/`write` still gates the method, independently, and both gates must pass. Second of
+  the seven phases ISS-972 carries.
+
 - **Every REST route a personal access token can reach is now proven to be fenced, by a gate.**
   `PAT_ALLOWED_PREFIXES` decides which paths a PAT may reach, and its guard admits a prefix only
   where a project-scoped token can be *fenced* on it — but the list is per-prefix while the property

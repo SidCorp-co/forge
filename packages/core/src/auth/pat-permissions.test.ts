@@ -23,7 +23,10 @@ import {
   PAT_PERMISSION_LEVELS,
   PAT_PERMISSION_NAMES,
   PAT_PERMISSION_RESOURCES,
+  patGrantCovers,
   patPermissionPrefixes,
+  patPermissionWanted,
+  patResourceForPath,
 } from './pat-permissions.js';
 
 // cm:guard the reachable set as it stood at 896ca541a, before the menu existed. Editing this list is how a reachability change is DECLARED — never how a red test is quieted. A prefix added to `PAT_PERMISSION_RESOURCES` and mirrored here in the same commit is a decision someone made; one mirrored here to make this test green again is the silent widening this exists to stop.
@@ -139,4 +142,93 @@ describe('the prefixes that must belong to no permission', () => {
       expect(claiming, `${prefix} is claimed by ${claiming.join(', ')}`).toHaveLength(0);
     },
   );
+});
+
+/**
+ * ISS-973 phase 2 — the menu's consumer.
+ *
+ * These are the menu-level properties: every name it declares is a name the
+ * predicate honours, and every prefix it covers has exactly one resource to
+ * answer for it. The request-level behaviour is
+ * `middleware/pat-grant-fence.test.ts`.
+ */
+describe('the grant predicate honours the whole menu', () => {
+  it.each([...PAT_PERMISSION_NAMES])('%s admits its own prefixes and no others', (name) => {
+    const group = PAT_PERMISSION_GROUPS[name];
+    for (const prefix of group.prefixes) {
+      expect(patGrantCovers([name], prefix, group.level), `${name} on ${prefix}`).toBe(true);
+    }
+    const foreign = patPermissionPrefixes().filter((p) => !group.prefixes.includes(p));
+    for (const prefix of foreign) {
+      expect(patGrantCovers([name], prefix, group.level), `${name} leaked onto ${prefix}`).toBe(
+        false,
+      );
+    }
+  });
+
+  it.each([...PAT_PERMISSION_NAMES])('%s does not admit the other level', (name) => {
+    const group = PAT_PERMISSION_GROUPS[name];
+    const other = PAT_PERMISSION_LEVELS.find((l) => l !== group.level);
+    expect(other, 'the menu has exactly two levels').toBeDefined();
+    for (const prefix of group.prefixes) {
+      expect(patGrantCovers([name], prefix, other as typeof group.level)).toBe(false);
+    }
+  });
+});
+
+// cm:guard the three shapes are asserted APART rather than folded into one `?? []`, because they arrive by different routes — a column the migration never wrote, a caller who sent `[]`, a principal built without the field — and one misplaced `??` makes exactly one of them permissionless while the others keep working (ISS-973).
+describe('an absent grant is every group, in each of its three shapes', () => {
+  it.each([
+    ['null', null],
+    ['undefined', undefined],
+    ['an empty array', []],
+  ] as const)('%s covers every prefix on the menu', (_label, granted) => {
+    for (const prefix of patPermissionPrefixes()) {
+      for (const level of PAT_PERMISSION_LEVELS) {
+        expect(patGrantCovers(granted, prefix, level), `${prefix} ${level}`).toBe(true);
+      }
+    }
+  });
+
+  it.each([
+    ['null', null],
+    ['undefined', undefined],
+    ['an empty array', []],
+  ] as const)('%s still covers nothing off the menu', (_label, granted) => {
+    for (const prefix of ['/api/pat', '/api/admin', '/api/uploads', '/api/agent-sessions']) {
+      expect(patGrantCovers(granted, prefix, 'read'), prefix).toBe(false);
+    }
+  });
+});
+
+describe('a non-empty grant naming nothing the menu declares reaches nothing', () => {
+  it('is the opposite direction to an absent grant, and deliberately so', () => {
+    for (const prefix of patPermissionPrefixes()) {
+      expect(patGrantCovers(['retired:read'], prefix, 'read'), prefix).toBe(false);
+    }
+  });
+});
+
+describe('the path a refusal names', () => {
+  it('names one permission per covered prefix, at the level asked for', () => {
+    for (const [resource, prefixes] of Object.entries(PAT_PERMISSION_RESOURCES)) {
+      for (const prefix of prefixes) {
+        expect(patPermissionWanted(prefix, 'read')).toBe(`${resource}:read`);
+        expect(patPermissionWanted(`${prefix}/deep/path`, 'write')).toBe(`${resource}:write`);
+      }
+    }
+  });
+
+  it('names nothing for a path off the menu, which is the surface refusal instead', () => {
+    for (const prefix of ['/api/pat', '/api/admin', '/api/uploads', '/api/agent-sessions']) {
+      expect(patPermissionWanted(prefix, 'read'), prefix).toBeNull();
+      expect(patResourceForPath(prefix), prefix).toBeNull();
+    }
+  });
+
+  it('does not treat a prefix as covering a longer sibling name', () => {
+    expect(patResourceForPath('/api/issues-archive')).toBeNull();
+    expect(patResourceForPath('/api/issues')).toBe('issues');
+    expect(patResourceForPath('/api/issues/abc')).toBe('issues');
+  });
 });
