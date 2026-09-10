@@ -320,6 +320,8 @@ draft ──▶ open ──▶ in_progress ──▶ awaiting_release ──▶ 
 
 \`needs_info\` and \`on_hold\` are enterable from **every** rung and from each other. \`draft\` cannot park (it already is a resting place) and \`closed\`/\`dropped\` cannot: a park after an end is a reopen, and \`closed → reopen\` already is that hop — on a staged project and on an autonomous one alike, where a person is its only writer.
 
+**Leaving a park returns to the rung it left**, which is \`open\`, \`in_progress\` or \`awaiting_release\` — not always \`open\`. A park taken at \`awaiting_release\` is work already merged and waiting for production; sending it to \`open\` dispatches a fresh agent onto shipped work and loses its place at the gate. Today \`pipeline/answer-resume.ts\` does send an answered \`needs_info\` to \`open\` unconditionally, because nothing records where the park came from — so if you are the one answering a park on a gated issue, set the rung yourself rather than relying on the resume.
+
 **Only \`finish\` and \`abort\` may write out of \`releasing\`.** An agent that could leave it would be declaring its own release finished. A batch that dies without either outcome hands its issues to \`reopen\` with the reason attached.
 
 **Seven retired statuses, and the trap is that six of them still WORK.**

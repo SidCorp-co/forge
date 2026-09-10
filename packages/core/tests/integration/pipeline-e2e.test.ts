@@ -11,14 +11,7 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-// Phase 2.3-F6 pipeline E2E.
-//
-// Exercises the bus → subscribers → activity_log path against real Postgres,
-// plus the search endpoint's filter combinators (status, q, label EXISTS
-// subquery). Uses dynamic imports inside beforeAll so that
-// `process.env.DATABASE_URL` is set to the harness URL BEFORE any src module
-// loads `config/env.ts` and binds `db/client.ts` to a different URL —
-// otherwise subscribers would write to the wrong database/schema.
+// cm:guard the src imports MUST stay dynamic and inside `beforeAll`: `process.env.DATABASE_URL` has to be set to the harness URL before any src module loads `config/env.ts`, which binds `db/client.ts` once. Hoist one of them to a top-level import and the subscribers write to whatever database that binding found first — a different schema, silently, with every assertion here still passing.
 
 type PipelineMods = {
   HooksBus: typeof import('../../src/pipeline/hooks.js').HooksBus;
@@ -190,7 +183,8 @@ describe('F6 pipeline E2E', () => {
       const bus = new mods.HooksBus();
       mods.registerActivitySubscribers(bus);
 
-      const steps = ['open→confirmed', 'confirmed→clarified', 'clarified→approved'] as const;
+      // cm:guard the LIVE chain, not the staged ladder: this read `open→confirmed→clarified→approved` until 2026-09-10, and a fixture that walks retired rungs keeps them looking legal to whoever reads this suite for the shape of a transition.
+      const steps = ['open→in_progress', 'in_progress→awaiting_release'] as const;
       for (const step of steps) {
         const [from, to] = step.split('→') as [
           Parameters<typeof mods.canTransition>[0],

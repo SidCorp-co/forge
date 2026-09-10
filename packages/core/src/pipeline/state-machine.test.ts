@@ -54,10 +54,23 @@ describe('state machine', () => {
     expect([...transitions.dropped]).toEqual([]);
   });
 
-  it('on_hold can resume to any non-on_hold, non-draft status', () => {
-    // cm:why ISS-236 — `draft` is excluded from the resume list because nothing may be demoted INTO draft, not because on_hold is special
-    const resumable = issueStatuses.filter((s) => s !== 'on_hold' && s !== 'draft');
-    expect([...transitions.on_hold]).toEqual(resumable);
+  // cm:guard a park resumes onto the LIVE rungs and must include `awaiting_release`: an issue merged and waiting for production, parked and then resumed, must not be forced through `open` — that dispatches a fresh agent onto shipped work and loses its place at the gate. It must NOT offer a retired rung: this row used to be `issueStatuses.filter(...)`, which offered all seven of them and is how a resume put work back on a status nothing dispatches at.
+  it('a park resumes onto a live rung, never a retired one', () => {
+    for (const live of ['open', 'in_progress', 'awaiting_release'] as const) {
+      expect(transitions.on_hold, `on_hold → ${live}`).toContain(live);
+      expect(transitions.needs_info, `needs_info → ${live}`).toContain(live);
+    }
+    for (const retired of [
+      'confirmed',
+      'clarified',
+      'approved',
+      'developed',
+      'testing',
+      'tested',
+    ] as const) {
+      expect(transitions.on_hold, `on_hold → ${retired}`).not.toContain(retired);
+      expect(transitions.needs_info, `needs_info → ${retired}`).not.toContain(retired);
+    }
   });
 
   it('suggests every legal draft exit and no other (ISS-236, ISS-940)', () => {
@@ -89,8 +102,14 @@ describe('state machine', () => {
     }
   });
 
-  it('released exits to the close, the release starting, or a pause', () => {
-    expect([...transitions.awaiting_release].sort()).toEqual(['closed', 'on_hold', 'releasing']);
+  // cm:guard `awaiting_release` does NOT exit to `closed`: the release path closes from `releasing`, where `finish` has read the deploy back. A direct close from the gate is a shipped claim nobody verified — the whole reason the gate exists (release-gate-hold.ts, after epodsystem ISS-141 self-closed with the bug still reproducing).
+  it('awaiting_release exits to the release starting, the parks, or a discard', () => {
+    expect([...transitions.awaiting_release].sort()).toEqual([
+      'dropped',
+      'needs_info',
+      'on_hold',
+      'releasing',
+    ]);
   });
 
   // cm:guard the OUTCOME exits are `finish`'s (`closed`) and `abort`'s (`reopen`) and nothing else may take them — an agent that could leave `releasing` on its own would be declaring its own release finished, which `issues/release-gate-hold.ts` exists to refuse. The two parks are a person stopping to ask, which a half-landed batch needs.

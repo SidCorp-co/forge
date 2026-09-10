@@ -14,30 +14,33 @@ export const DRAFT_EXIT_TARGETS: readonly IssueStatus[] = [
   'in_progress',
 ];
 
-// cm:guard ADVISORY, NOT A GATE. Nothing enforces this map. `canTransitionFree` below is the only runtime check and it permits ANY non-draft from → ANY non-draft to; reading a missing pair here as "illegal" has produced wrong conclusions and pointless multi-hop workarounds. Consumers are system-prompt generation, UI next-state suggestions and the soft-skip resolver.
+// cm:guard ADVISORY, NOT A GATE — and read by NOTHING outside this file today. `canTransitionFree` below is the only runtime check and it permits ANY non-draft from → ANY non-draft to, so reading a missing pair here as "illegal" has produced wrong conclusions and pointless multi-hop workarounds. The consumers this guard used to name are gone: the soft-skip resolver was deleted by ISS-897 and nothing imports `transitions`, `canTransition` or `getAllowedTransitions`. It is kept because step 5 of the removal order makes it the gate — which is the one change that turns every row here from advice into a refusal, so a row that is merely stale becomes a rule.
 export const transitions: Record<IssueStatus, readonly IssueStatus[]> = {
-  open: ['confirmed', 'needs_info', 'on_hold'],
-  confirmed: ['clarified', 'needs_info', 'on_hold'],
-  clarified: ['waiting', 'approved', 'needs_info', 'on_hold'],
-  waiting: ['approved', 'clarified', 'on_hold'],
-  approved: ['in_progress', 'on_hold'],
-  in_progress: ['developed', 'testing', 'reopen', 'on_hold'],
-  developed: ['testing', 'reopen', 'on_hold'],
-  testing: ['tested', 'reopen', 'on_hold'],
-  // cm:guard the rows for `confirmed`, `clarified`, `waiting`, `approved`, `developed`, `testing`, `tested` and `released` describe a pipeline that no longer runs and are kept only until their rows are drained — docs/flows/issue-status-lifecycle.html is the flow, this map is not. Do not extend them.
-  // cm:guard do not repoint STAGE_FORWARD's tested entry to 'closed' — projects with tested disabled would skip released entirely; the batch-release tested->closed exit stays advisory-only here
-  tested: ['awaiting_release', 'closed', 'reopen', 'on_hold'],
-  awaiting_release: ['closed', 'releasing', 'on_hold'],
+  open: ['in_progress', 'needs_info', 'on_hold', 'dropped'],
+  in_progress: ['awaiting_release', 'closed', 'needs_info', 'on_hold', 'dropped'],
+  awaiting_release: ['releasing', 'needs_info', 'on_hold', 'dropped'],
   // cm:guard the two OUTCOME exits are `finish`'s and `abort`'s alone; the parks are a person stopping to ask. Nothing else may leave, which is what stops an agent declaring its own release finished (issues/release-gate-hold.ts).
   releasing: ['closed', 'reopen', 'needs_info', 'on_hold'],
   closed: ['reopen'],
-  reopen: ['developed', 'testing', 'in_progress', 'on_hold'],
-  on_hold: issueStatuses.filter((s) => s !== 'on_hold' && s !== 'draft'),
-  needs_info: ['open', 'confirmed', 'on_hold'],
+  reopen: ['in_progress', 'needs_info', 'on_hold', 'dropped'],
+
+  // cm:guard a park must be able to put the issue back on the rung it LEFT, which is why these two rows are wider than one exit each. `awaiting_release` is the case that matters: an issue merged and waiting for production, parked and then answered, must not be forced through `open` — that dispatches a fresh agent onto shipped work (the ISS-940 shape) and loses its place at the gate. `pipeline/answer-resume.ts` does exactly that today, unconditionally, because nothing records the rung a park left; it is safe only while this map is advisory, and step 5 of the removal order cannot land before that is fixed.
+  needs_info: ['open', 'in_progress', 'awaiting_release', 'on_hold', 'dropped'],
+  on_hold: ['open', 'in_progress', 'awaiting_release', 'needs_info', 'dropped'],
+
   // cm:guard this row is the ADVISORY twin of `DRAFT_EXIT_TARGETS` and must list the same statuses — it is what the UI offers as next states, and offering three of the five legal exits is how a person concludes the other two are refused (ISS-940)
   draft: [...DRAFT_EXIT_TARGETS],
   // cm:guard terminal with NO exit, unlike `closed → reopen`: reopening a dropped issue would leave `merged_at` NULL on an issue that then ships, so re-filing is the correct move and this map must not offer a shortcut past it
   dropped: [],
+
+  // cm:guard the seven rows below are RETIRED statuses, kept only until their 61 rows are drained, and their exits are deliberately DRAIN ROUTES onto live rungs rather than the old ladder hops — the whole point of listing them is to get an issue off them. Do not extend them, and do not add a hop BETWEEN two of them. docs/flows/issue-status-lifecycle.html is the flow; this map is not.
+  confirmed: ['in_progress', 'needs_info', 'on_hold', 'dropped'],
+  clarified: ['in_progress', 'needs_info', 'on_hold', 'dropped'],
+  approved: ['in_progress', 'needs_info', 'on_hold', 'dropped'],
+  waiting: ['open', 'in_progress', 'needs_info', 'on_hold', 'dropped'],
+  developed: ['awaiting_release', 'closed', 'needs_info', 'on_hold', 'dropped'],
+  testing: ['awaiting_release', 'closed', 'needs_info', 'on_hold', 'dropped'],
+  tested: ['awaiting_release', 'closed', 'needs_info', 'on_hold', 'dropped'],
 };
 
 export function getAllowedTransitions(from: IssueStatus): readonly IssueStatus[] {
