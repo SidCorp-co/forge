@@ -100,6 +100,16 @@ enum Request {
         #[serde(default)]
         resume_id: Option<String>,
     },
+    /// What this session's own hooks say it is doing (turn boundaries).
+    // cm:guard the ONLY verb on this socket that reports rather than acts, and it stays a report: it takes no run id, claims nothing and releases nothing, so a pane whose hooks are noisy or forged can move no work. What it can do is describe itself, which is exactly the authority a session should have over its own state.
+    // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/agent_activity.rs — `event` is a Claude Code hook event NAME and that module owns the closed set; an unknown one is refused by name rather than recorded as something adjacent.
+    #[serde(rename_all = "camelCase")]
+    AgentEvent {
+        token: String,
+        event: String,
+        #[serde(default)]
+        at_ms: Option<i64>,
+    },
     /// Record a decision this session took instead of asking about it.
     // cm:guard the counterpart of `Ask` and the reason it can be judged: tier 0 says a reversible write is TAKEN and recorded, so without this verb the only thing a box records is the questions it did ask and every master looks equally talkative (ISS-964 criteria 1, 2).
     #[serde(rename_all = "camelCase")]
@@ -123,7 +133,8 @@ impl Request {
             | Request::Release { token, .. }
             | Request::RunOpen { token, .. }
             | Request::Ask { token, .. }
-            | Request::Decide { token, .. } => token,
+            | Request::Decide { token, .. }
+            | Request::AgentEvent { token, .. } => token,
         }
     }
 }
@@ -164,6 +175,8 @@ pub struct Control {
     pub prepared: Preparations,
     /// Which session is on the other end of a frame.
     pub tokens: SessionTokens,
+    /// What each session's hooks have reported about itself.
+    pub activity: Arc<crate::daemon::agent_activity::Activities>,
 }
 
 /// How long a preparation may sit before this daemon hands it back.
@@ -320,9 +333,41 @@ async fn serve_one(ctl: Arc<Control>, stream: UnixStream) {
     let _ = reader.get_mut().write_all(out.as_bytes()).await;
 }
 
+/// Record one hook report and answer with the state it produced.
+// cm:guard synchronous and allocation-light on purpose: this runs on EVERY tool call of every pane on the box, and the hook that calls it is in the agent's critical path. A handler that awaited core here would put this daemon's network latency between an agent and its next tool.
+// cm:guard an unknown event NAME is refused rather than recorded as adjacent — a Claude Code release that renames an event must show up as a named refusal in the log, not as a pane that quietly stops reporting turn boundaries while every reader keeps trusting the last one.
+#[cfg(unix)]
+fn agent_event(
+    ctl: &Arc<Control>,
+    event: &str,
+    at_ms: Option<i64>,
+    session_id: &str,
+) -> ClaimReply {
+    let Some(parsed) = crate::daemon::agent_activity::Event::from_wire(event) else {
+        return ClaimReply::refused(format!("unknown_event: {event}"));
+    };
+    let at = at_ms.unwrap_or_else(crate::daemon::agent_activity::now_ms);
+    let after = ctl.activity.record(session_id, parsed, at);
+    // cm:guard a permission wait is the ONE state that leaves this box at WARN, because it is the only one nothing on the box can clear: a turn that runs ends, a turn that fails ends, and a question put to a human ends when a human answers it. Measured forge-vm 2026-09-10: one run pane sat on a dangerous-command prompt for hours while every liveness reader called it healthy, because the pane emitted no boundary anything here could hear.
+    match after.doing() {
+        crate::daemon::agent_activity::Doing::AwaitingPermission => tracing::warn!(
+            "[control] session {session_id} is stopped on a question only a human can answer"
+        ),
+        doing => tracing::debug!("[control] session {session_id} reports {event} -> {doing:?}"),
+    }
+    ClaimReply {
+        ok: true,
+        job_id: None,
+        agent_session_id: Some(session_id.to_string()),
+        issue_key: None,
+        reason: Some(format!("{:?}", after.doing())),
+    }
+}
+
 #[cfg(unix)]
 async fn serve_request(ctl: &Arc<Control>, req: Request, session_id: &str) -> ClaimReply {
     match req {
+        Request::AgentEvent { event, at_ms, .. } => agent_event(ctl, &event, at_ms, session_id),
         Request::Prepare { job_id, agent, .. } => {
             prepare(ctl, &job_id, session_id, agent.as_deref()).await
         }
@@ -710,6 +755,15 @@ pub async fn request_prepare(
 }
 
 #[cfg(not(unix))]
+pub async fn request_agent_event(
+    _path: &std::path::Path,
+    _token: &str,
+    _event: &str,
+) -> std::io::Result<ClaimReply> {
+    Err(no_socket())
+}
+
+#[cfg(not(unix))]
 pub async fn request_run_open(
     _path: &std::path::Path,
     _token: &str,
@@ -772,6 +826,20 @@ pub async fn request_prepare(
         serde_json::json!({
             "op": "prepare", "jobId": job_id, "token": token, "agent": agent
         }),
+    )
+    .await
+}
+
+/// Tell a running daemon what this session's hooks just reported.
+#[cfg(unix)]
+pub async fn request_agent_event(
+    path: &std::path::Path,
+    token: &str,
+    event: &str,
+) -> std::io::Result<ClaimReply> {
+    ask(
+        path,
+        serde_json::json!({ "op": "agent_event", "token": token, "event": event }),
     )
     .await
 }
@@ -996,6 +1064,36 @@ mod tests {
     }
 
     // cm:guard the frame is decoded from a LITERAL string here rather than built from `Request`, because the whole claim is about a field the struct no longer has: a planted `sessionId` must reach serde and be dropped, and a round-trip through the Rust type could not plant it (ISS-964 criterion 30).
+    // cm:guard the frame is the one the CLI actually sends, byte for byte: the enum's `rename_all` renames VARIANTS and not fields, so without the field-level rename `atMs` decodes as absent and — worse in this direction — a typo in the op name makes every hook report on the box an "undecodable request" that nothing on either side is watching for.
+    #[test]
+    fn a_hook_frame_from_the_cli_decodes_with_its_event_and_optional_timestamp() {
+        let frame = r#"{"op":"agent_event","token":"t1","event":"Stop","atMs":1700}"#;
+        let req: Request = serde_json::from_str(frame).expect("the hook frame must decode");
+        let Request::AgentEvent {
+            token,
+            event,
+            at_ms,
+        } = &req
+        else {
+            panic!("decoded as {req:?}");
+        };
+        assert_eq!(
+            (token.as_str(), event.as_str(), *at_ms),
+            ("t1", "Stop", Some(1700))
+        );
+        assert_eq!(req.token(), "t1", "the token is what resolves the session");
+    }
+
+    #[test]
+    fn a_hook_frame_without_a_timestamp_still_decodes() {
+        let frame = r#"{"op":"agent_event","token":"t1","event":"UserPromptSubmit"}"#;
+        let req: Request = serde_json::from_str(frame).expect("must decode");
+        let Request::AgentEvent { at_ms, .. } = &req else {
+            panic!("decoded as {req:?}");
+        };
+        assert!(at_ms.is_none(), "the daemon stamps it instead");
+    }
+
     #[test]
     fn a_frame_naming_another_session_is_served_as_the_token_owner() {
         let dir = std::env::temp_dir().join(format!("ct-{}", uuid::Uuid::new_v4()));

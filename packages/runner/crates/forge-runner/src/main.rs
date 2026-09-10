@@ -41,6 +41,8 @@ enum Command {
     /// git credential helper: hand git a GitHub App token for one repository.
     #[command(name = "git-credential")]
     GitCredential(cmd::git_credential::Args),
+    /// Report a Claude Code hook event from inside a pane this daemon spawned.
+    Hook(cmd::hook::Args),
     /// Install/uninstall the OS service (systemd/launchd).
     Service(cmd::service::Args),
     /// List runners registered for this device.
@@ -79,6 +81,11 @@ async fn main() -> anyhow::Result<()> {
         Command::Config(a) => cmd::config::run(ctx, a).await,
         Command::Doctor(a) => cmd::doctor::run(ctx, a).await,
         Command::GitCredential(a) => cmd::git_credential::run(ctx, a).await,
+        // cm:guard takes no `ctx` and discards the outcome, and both are the point: this verb runs on every tool call of every pane, holds no credential and reaches nothing but the local socket. A `?` here would put a hook's exit code in the agent's critical path.
+        Command::Hook(a) => {
+            cmd::hook::run(a).await;
+            Ok(())
+        }
         Command::Service(a) => cmd::service::run(ctx, a).await,
         Command::Runners(a) => cmd::runners::run(ctx, a).await,
         Command::Pool(a) => cmd::pool::run(ctx, a).await,

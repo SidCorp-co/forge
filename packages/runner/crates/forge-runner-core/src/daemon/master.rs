@@ -570,6 +570,22 @@ fn install_skill(repo: &std::path::Path) -> std::io::Result<()> {
     std::fs::write(dir.join("SKILL.md"), MASTER_SKILL)
 }
 
+/// Register the daemon's hooks for the session about to start, and say so.
+// cm:guard the exe is read from `current_exe` and never hardcoded, because the hook command has to name a binary that will still be there: this box runs `forge-runner` out of `~/.local/bin`, an update replaces it in place, and a command naming anything else is a hook that fires into nothing.
+fn install_hooks_logged(repo: &std::path::Path, slug: &str) {
+    let Ok(exe) = std::env::current_exe() else {
+        tracing::warn!("[master] {slug}: cannot name this binary — starting without hooks, so this session reports no turn boundaries");
+        return;
+    };
+    match crate::daemon::hook_install::install(repo, &exe) {
+        Ok(path) => tracing::info!("[master] {slug}: hooks registered in {}", path.display()),
+        Err(e) => tracing::warn!(
+            "[master] {slug}: could not register hooks in {}: {e} — starting anyway, blind to this session's turn boundaries",
+            repo.display()
+        ),
+    }
+}
+
 /// Where a project's master keeps what only it can say.
 // cm:guard per PROJECT, never one file for the box. Masters on two projects run at the same time by design, and a single log would interleave two sessions into a transcript that reads as one confused master.
 // cm:guard APPEND, and the filename says so. This used to be `last-pass.log`, truncated on every spawn — measured 2026-09-05, the master's account of why it claimed ISS-917 was gone three minutes later, overwritten by the ISS-918 pass. B5 is that fix: a pane piped with `>>` into one file per project, so the judgement layer this design calls its entire value outlives the pass that produced it.
@@ -626,6 +642,10 @@ async fn ensure_master(
         );
         return false;
     }
+
+    // cm:guard hooks are installed but a failure does NOT stop the master, and the asymmetry with the skill above is deliberate: a master with no skill improvises the whole process, while a master with no hooks is exactly what every box ran before this channel existed — blind, and working. Trading the pass for the telemetry would be the wrong way round.
+    // cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/runner/run_session.rs — a RUN pane installs the same hooks into its own worktree, and the two spawn paths are the only places this can happen: settings are read once at startup, so a path that spawns without installing produces a session that reports nothing for its whole life and cannot be repaired in flight.
+    install_hooks_logged(&resolved.repo_path, &resolved.slug);
 
     // cm:guard the pane is the ONE session this runner opens on a TTY, and a TTY is the only place Claude Code shows the workspace-trust prompt. An unanswered prompt is a session that ends without doing anything and takes the breaker above with it, so the stamp belongs immediately before the spawn — `workspace::provision` covers a fresh box, this covers every box provisioned before it shipped (ISS-928, forge-vm 2026-09-06).
     crate::workspace::trust::pre_trust_logged(&resolved.repo_path, &resolved.slug);

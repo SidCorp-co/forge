@@ -23,6 +23,20 @@
 
 ### Added
 
+- **A session now tells the box what it is doing, instead of the box guessing from its screen.**
+  Every agent Forge starts registers its own Claude Code hooks, so the runner learns when a turn
+  began, when it ended (including when it ended on a model error), when a child agent is still
+  working under a finished parent, and when the agent has stopped on a question only a person can
+  answer. Until now the only thing the box could observe was that it had typed something into a
+  terminal: a pane emits no turn boundary, so "the message was delivered" could never mean "the
+  agent read it". Measured on the maintainer's box the day this shipped: 16 sessions were holding an
+  instruction that had been pasted into their prompt and never submitted — all 16 recorded as
+  delivered — and one more had been stopped on a dangerous-command confirmation for hours while
+  every liveness check called it healthy. That last case is now a warning naming the session the
+  moment it happens. Hooks are merged into the session's own settings, so anything already
+  configured there keeps working, and a session whose hooks cannot be installed still starts — it is
+  simply as blind as every session was before.
+
 - **Agents are no longer told to walk a pipeline that was retired.** The default forward chain every
   agent reads was still `open → confirmed → clarified → approved → developed → testing → tested →
   …`, and agents followed it: 153 status changes across four projects in three hours, each landing on

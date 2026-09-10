@@ -111,6 +111,19 @@ pub async fn start(
         crate::workspace::worktree::create(&req.repo, &req.branch, req.start_point.as_deref())
             .await?;
 
+    // cm:guard installed into the WORKTREE and before the spawn below, because that is the directory this pane will run in and Claude Code reads its settings once, at startup. Installed after the spawn, or into the repo root, the session reports nothing for its whole life.
+    // cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/daemon/master.rs — `install_hooks_logged` is the master pane's half of this, and both are needed: they are the only two places a pane is created, and a pane spawned without hooks cannot be given them afterwards.
+    // cm:guard a failure here does NOT abort the run, and that is the same trade the master path takes: an unhooked pane is what every box had before this channel, while a run refused for a settings file is work not done.
+    match std::env::current_exe()
+        .map_err(|e| crate::error::Error::Other(format!("cannot name this binary: {e}")))
+        .and_then(|exe| crate::daemon::hook_install::install(&created, &exe))
+    {
+        Ok(path) => tracing::info!("run_session: {name} hooks registered in {}", path.display()),
+        Err(e) => tracing::warn!(
+            "run_session: {name} starting without hooks ({e}) — it will report no turn boundaries"
+        ),
+    }
+
     let (session_id, pipeline_run_id) = core.open(&run.run_id, &issue_keys, &name).await?;
     ledger.attach_session(&run.run_id, &session_id)?;
 

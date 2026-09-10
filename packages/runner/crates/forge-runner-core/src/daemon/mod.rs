@@ -6,9 +6,11 @@
 //! chat (`agent:start` / `agent:send` / `agent:abort`) is handled out-of-band
 //! by `chat`, off the jobs path and under its own concurrency budget (ISS-321).
 
+pub mod agent_activity;
 pub mod chat;
 pub mod control;
 pub mod dispatch;
+pub mod hook_install;
 pub mod inbox;
 pub mod master;
 pub mod master_exit;
@@ -587,6 +589,8 @@ pub async fn run(
     // cm:guard ONE registry, shared by the master loop and the inbox arm. The loop is what learns a session's pane name and the inbox is what needs it, so two registries would leave every `session.send` to a master acked `gone` while the master sat there alive.
     let masters = Arc::new(master::Masters::new());
 
+    // cm:guard ONE map, shared by the socket that records and every reader that acts on it. A second instance would give the control socket somewhere to write that no liveness reader ever looks at, which is the shape of the bug this whole channel exists to close.
+    let activity = Arc::new(agent_activity::Activities::new());
     // cm:guard both loops start, or the box does neither half of its own work: the control socket is the ONLY way a master turns a decision into a running job, and the pool poll is the only thing that notices work exists now that core pushes nothing. A daemon that starts one without the other looks healthy and never runs anything.
     {
         // cm:guard refuse to serve the socket with no token map rather than serving it unauthenticated. Every verb on this socket acts on a session by capability, and a daemon that could not resolve the map would either refuse every frame or, worse, be tempted back to the declared id (ISS-964 criterion 29).
@@ -604,6 +608,7 @@ pub async fn run(
             inflight: inflight.clone(),
             prepared: prepared.clone(),
             tokens: session_tokens::SessionTokens::at(tokens_path),
+            activity: activity.clone(),
         });
         // cm:guard the preparation reaper starts with the socket, always. `prepare` can park a hold, and the only process that knows it happened is this one — a daemon serving the split without this loop leaves a master free to take ten jobs, start two and strand eight until core's three-minute reaper notices each of them.
         {
