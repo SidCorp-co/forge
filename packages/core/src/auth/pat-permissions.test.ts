@@ -232,3 +232,28 @@ describe('the path a refusal names', () => {
     expect(patResourceForPath('/api/issues/abc')).toBe('issues');
   });
 });
+
+/**
+ * The granularity the menu actually has, pinned so it is a decision rather
+ * than a surprise. Measured live on forge-beta at b32bdc2d while walking
+ * ISS-973's criteria; the reasoning and the shape of a fix are in
+ * `docs/proposals/pat-permission-granularity-is-mount-shaped.md`.
+ */
+describe('a permission is as coarse as its mount', () => {
+  it('attributes a project-scoped sub-route to projects, not to its subject', () => {
+    expect(patResourceForPath('/api/projects/p1/issues')).toBe('projects');
+    expect(patResourceForPath('/api/projects/p1/schedules')).toBe('projects');
+    expect(patResourceForPath('/api/projects/p1/knowledge')).toBe('projects');
+  });
+
+  it('so issues:read does not reach the project-scoped issue list, and projects:read does', () => {
+    expect(patGrantCovers(['issues:read'], '/api/projects/p1/issues', 'read')).toBe(false);
+    expect(patGrantCovers(['projects:read'], '/api/projects/p1/issues', 'read')).toBe(true);
+  });
+
+  it('and issues:read still reaches the flat mounts it names', () => {
+    for (const prefix of PAT_PERMISSION_RESOURCES.issues) {
+      expect(patGrantCovers(['issues:read'], prefix, 'read'), prefix).toBe(true);
+    }
+  });
+});

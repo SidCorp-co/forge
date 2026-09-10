@@ -118,6 +118,15 @@ writer keeps them in step. Both are now persisted beside each other:
 <table>
 <thead><tr><th>Symptom</th><th>What actually happened</th></tr></thead>
 <tbody>
+<tr><td><code>403 PAT_PERMISSION_REQUIRED</code> wanting <code>projects:read</code> on a route
+    that plainly reads issues</td>
+  <td>A permission is as coarse as its <em>mount</em>. <code>/api/projects</code> is one prefix and
+    the router under it serves issues, schedules, knowledge, members and jobs, so
+    <code>/api/projects/&lt;id&gt;/issues</code> attributes to <code>projects</code> and not to
+    <code>issues</code> &mdash; which makes <code>projects:read</code> a near-universal read grant
+    and <code>issues:read</code> cover only the four flat mounts. Measured live at
+    <code>b32bdc2d</code>; pinned as a test rather than left to be rediscovered, with the shape of a
+    fix in <code>docs/proposals/pat-permission-granularity-is-mount-shaped.md</code>.</td></tr>
 <tr><td><code>403 PAT_PERMISSION_REQUIRED</code> on a route another token reaches fine</td>
   <td>The route is on the surface; this <em>token</em> was granted a narrower set of
     groups than the one covering it (ISS-973). The refusal names both halves — the permission the
