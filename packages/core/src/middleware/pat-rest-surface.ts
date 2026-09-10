@@ -11,11 +11,22 @@
  * declares the permission menu, one resource to the prefixes it covers, and
  * {@link PAT_ALLOWED_PREFIXES} is its union — so widening what a token may
  * reach means editing a named permission, not this file.
+ *
+ * Three questions, not one, and {@link beginPatRequest} asks them in order:
+ * is the path on the surface at all, does the token's scope word admit the
+ * method, and is the path in a group this token was granted (ISS-973). The
+ * first is about the route, the last about the credential, and the union
+ * answers only the first.
  */
 
 import type { Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { patPermissionPrefixes } from '../auth/pat-permissions.js';
+import {
+  type PatPermissionLevel,
+  patGrantCovers,
+  patPermissionPrefixes,
+  patPermissionWanted,
+} from '../auth/pat-permissions.js';
 import { type PatScope, runWithPatScope } from '../auth/pat-scope.js';
 import { patEffectiveProjectIds } from '../mcp/tools/project-scope.js';
 import { authenticatePat, type PatPrincipal } from './require-pat.js';
@@ -31,12 +42,15 @@ import { authenticatePat, type PatPrincipal } from './require-pat.js';
 export const PAT_ALLOWED_PREFIXES: readonly string[] = patPermissionPrefixes();
 
 /**
+ * Is this path on the PAT surface at all — for ANY token, however granted?
+ *
  * `/api/pat` must never be reachable: a scoped token that can mint an
  * unscoped one has no scope. Called out by name because it is the one entry
  * whose absence collapses everything else, and it is absent by belonging to no
  * permission — `auth/pat-permissions.ts` is where that decision is priced.
  */
-export function patAllowedFor(path: string): boolean {
+// cm:guard this answers the ROUTE's question and never the token's, which is why it was renamed off `patAllowedFor` in ISS-973 — a name promising "allowed" on a predicate that reads nothing off the principal is how the grant check gets skipped by someone who believes it already ran. The token's half is `patGrantCovers`, and `beginPatRequest` is the only place both are asked.
+export function patSurfaceCovers(path: string): boolean {
   return PAT_ALLOWED_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`));
 }
 
@@ -54,7 +68,7 @@ export function patAllowedFor(path: string): boolean {
  * Measured with `X-RateLimit-Remaining` on 2026-09-07: 9 per read request,
  * 3 per write (ISS-961).
  */
-// cm:guard the memo is keyed on the TOKEN, not merely present, so a request that somehow carries two credentials re-verifies rather than inheriting the first one's principal. Every check `beginPatRequest` performs — the allowlist, the method's scope — reads `c.req.path` and `c.req.method`, which cannot change within one request, so replaying the answer is sound; a check added here that reads anything else is not memoizable and must invalidate this.
+// cm:guard the memo is keyed on the TOKEN, not merely present, so a request that somehow carries two credentials re-verifies rather than inheriting the first one's principal. Every check `beginPatRequest` performs — the surface, the method's scope, the grant (ISS-973) — reads `c.req.path`, `c.req.method` or the token row itself, none of which can change within one request, so replaying the answer is sound; a check added here that reads anything else is not memoizable and must invalidate this.
 const PAT_REQUEST_VAR = 'patRequestResolution';
 
 type PatRequestResolution = {
@@ -98,7 +112,7 @@ export async function beginPatRequest(
     });
   }
   // cm:guard verify the token BEFORE consulting the allowlist. Reversed, an unauthenticated caller reads the shape of the PAT surface off the status code — 403 where a route is allowlisted, 401 where it is not — which is a map of the fence handed out for free to anyone who can spell a path.
-  if (!patAllowedFor(c.req.path)) {
+  if (!patSurfaceCovers(c.req.path)) {
     throw new HTTPException(403, {
       message:
         'this route is not reachable with a personal access token — it resolves no project, ' +
@@ -112,6 +126,7 @@ export async function beginPatRequest(
       cause: { code: 'INSUFFICIENT_SCOPE' },
     });
   }
+  assertGranted(principal, c.req.path, scopeForMethod(c.req.method));
   const resolution: PatRequestResolution = {
     token,
     principal,
@@ -119,6 +134,24 @@ export async function beginPatRequest(
   };
   c.set(PAT_REQUEST_VAR, resolution);
   return { principal: resolution.principal, scope: resolution.scope };
+}
+
+/**
+ * The grant check, last of the three, so no refusal that existed before
+ * ISS-973 changed its code or its message.
+ */
+// cm:guard the refusal NAMES the permission the path wanted and the ones the token holds, because the alternative an operator has is guessing which of fourteen names to add to a token they cannot see the reach of. A grant set is invisible from the caller's side; a 403 that only says "no" makes narrowing a token something nobody does twice.
+function assertGranted(principal: PatPrincipal, path: string, level: PatPermissionLevel): void {
+  if (patGrantCovers(principal.permissions, path, level)) return;
+  const wanted = patPermissionWanted(path, level);
+  const held = principal.permissions ?? [];
+  throw new HTTPException(403, {
+    message:
+      `this token was not granted '${wanted}', which is the permission ` +
+      `${path} needs for a ${level} request. It holds: ${held.join(', ')}. ` +
+      'Mint a token that includes it, or use one granted nothing, which reaches the whole menu.',
+    cause: { code: 'PAT_PERMISSION_REQUIRED', details: { wanted, held } },
+  });
 }
 
 /** Run `next()` inside the request's PAT scope. */

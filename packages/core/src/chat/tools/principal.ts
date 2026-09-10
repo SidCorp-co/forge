@@ -23,6 +23,8 @@ export function buildChatToolContext(opts: {
 }): McpContext {
   const principal: McpPrincipal = {
     kind: 'pat',
+    // cm:edge contract -> packages/core/src/middleware/pat-rest-surface.ts — null is the whole menu, and it is right here because this principal never crosses `beginPatRequest`: the chat surface synthesizes it after its own auth, so there is no granted token behind it to narrow by.
+    permissions: null,
     // cm:guard `agent`, not `human` — the PAT shape here is a carrier for the user's identity, not a claim that a person is typing. Flipping it hands every chat write the human exemption from the ISS-812 fabrication guard.
     agency: 'agent',
     // cm:guard `null`, and it may never become a device id. Chat runs in core's own process on behalf of a signed-in person, so it speaks for no box; a value here would let a synthetic principal through `requireDevice`-shaped checks that exist to gate a paired machine.

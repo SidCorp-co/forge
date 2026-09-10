@@ -48,7 +48,7 @@ let agentBoundToA: string;
 let listScopedToA: string;
 let unscoped: string;
 let readOnlyBoundToA: string;
-let patAllowedFor: (path: string) => boolean;
+let patSurfaceCovers: (path: string) => boolean;
 let resetRateLimitStore: () => void;
 
 beforeAll(async () => {
@@ -110,7 +110,7 @@ beforeAll(async () => {
   ).plaintext;
 
   ({ app } = await import('../../src/index.js'));
-  ({ patAllowedFor } = await import('../../src/middleware/pat-rest-surface.js'));
+  ({ patSurfaceCovers } = await import('../../src/middleware/pat-rest-surface.js'));
   ({ __resetRateLimitStore: resetRateLimitStore } = await import(
     '../../src/middleware/rate-limit.js'
   ));
@@ -269,7 +269,7 @@ describe('PAT fence — the surface a token may reach', () => {
       if (route.method !== 'GET') continue;
       if (!route.path.startsWith('/api/')) continue;
       if (route.path.includes('*')) continue;
-      if (!patAllowedFor(route.path)) continue;
+      if (!patSurfaceCovers(route.path)) continue;
       if (!route.path.includes(':')) continue;
       attempts.push(foreignise(route.path));
       // cm:guard a single-param route is probed with BOTH a project id and an issue id, because which entity the id names decides which lookup the handler takes to a project — an issue-shaped route handed a project id 404s on the lookup and would score clean without ever reaching the fence.
@@ -309,7 +309,7 @@ describe('PAT fence — the surface a token may reach', () => {
       if (route.method !== 'GET' && route.method !== 'ALL') continue;
       if (!route.path.startsWith('/api/')) continue;
       if (route.path.includes('*')) continue;
-      if (patAllowedFor(route.path)) continue;
+      if (patSurfaceCovers(route.path)) continue;
       paths.add(
         route.path.replace(/:[A-Za-z0-9_]+/g, (m) =>
           /project/i.test(m) ? projectB : '00000000-0000-4000-8000-000000000000',
@@ -351,7 +351,7 @@ describe('PAT fence — the surface a token may reach', () => {
       if (!(WRITE_METHODS as readonly string[]).includes(route.method)) continue;
       if (!route.path.startsWith('/api/')) continue;
       if (route.path.includes('*')) continue;
-      if (patAllowedFor(route.path)) continue;
+      if (patSurfaceCovers(route.path)) continue;
       probes.push(`${route.method} ${foreignise(route.path)}`);
     }
     expect(probes.length).toBeGreaterThan(20);
@@ -384,7 +384,7 @@ describe('PAT fence — the surface a token may reach', () => {
       if (!(WRITE_METHODS as readonly string[]).includes(route.method)) continue;
       if (!route.path.startsWith('/api/')) continue;
       if (route.path.includes('*')) continue;
-      if (!patAllowedFor(route.path)) continue;
+      if (!patSurfaceCovers(route.path)) continue;
       if (!route.path.includes(':')) continue;
       probes.push(`${route.method} ${foreignise(route.path)}`);
     }

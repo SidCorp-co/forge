@@ -41,6 +41,11 @@ export interface MintPatInput {
   projectIds?: string[] | null | undefined;
   // cm:edge contract -> packages/core/src/pat/routes.ts — mutual exclusion with `projectIds` is enforced at the REST layer ONLY, so a direct caller of `mintPat` can set both and no type says otherwise. `devices/credential.ts` is such a caller: it sets `projectIds: []` and leaves `boundProjectId` for the agent the box pairs as.
   boundProjectId?: string | null | undefined;
+  /**
+   * The permission names granted, or omitted for every group. See
+   * `auth/pat-permissions.ts`.
+   */
+  permissions?: readonly string[] | null | undefined;
   /** The paired box this token is issued to — see `devices/credential.ts`. */
   deviceId?: string | null | undefined;
   expiresAt?: Date | null | undefined;
@@ -88,6 +93,7 @@ export async function mintPat(input: MintPatInput): Promise<MintedPat> {
       scopes: input.scopes ?? ['read', 'write'],
       projectIds: input.projectIds ?? null,
       boundProjectId: input.boundProjectId ?? null,
+      permissions: input.permissions ? [...input.permissions] : null,
       deviceId: input.deviceId ?? null,
       expiresAt: input.expiresAt ?? null,
       rateLimitMax: input.rateLimitMax ?? null,
@@ -241,8 +247,7 @@ export async function rotatePat(input: RotatePatInput): Promise<MintedPat | null
     .limit(1);
   if (!existing) return null;
 
-  // Hash outside the tx — argon2id is slow and we don't want to hold a
-  // row-level lock for ~100ms.
+  // cm:why hashed OUTSIDE the transaction because argon2id at these parameters costs ~100ms, and holding a row-level lock on the token being rotated for that long serializes every concurrent rotation behind it.
   const plaintext = generatePatPlaintext(patEnvForNodeEnv(env.NODE_ENV));
   const tokenPrefix = plaintext.slice(0, PAT_PREFIX_LEN);
   const tokenHash = await hashPatPlaintext(plaintext);
@@ -263,6 +268,8 @@ export async function rotatePat(input: RotatePatInput): Promise<MintedPat | null
         tokenPrefix,
         scopes: existing.scopes,
         projectIds: existing.projectIds,
+        // cm:guard carried over, and the direction of the mistake is what makes this load-bearing: dropping it turns a token narrowed to one group back into the whole menu, silently, because absence IS the full menu (ISS-973). A rotation is a new secret for the same grant, never a re-grant.
+        permissions: existing.permissions,
         boundProjectId: existing.boundProjectId,
         // cm:guard carried over for the same reason the project binding is: `device_id` is part of the token's IDENTITY, not of its secret. Dropping it on rotate silently demotes a paired box's credential to an ordinary PAT, and the box then 401s on every `requireDevice` route with nothing in the rotate path to say why.
         deviceId: existing.deviceId,

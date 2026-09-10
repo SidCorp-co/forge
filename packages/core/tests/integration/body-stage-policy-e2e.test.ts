@@ -35,7 +35,7 @@ let schema: typeof import('../../src/db/schema.js');
 let signUserToken: typeof import('../../src/auth/jwt.js')['signUserToken'];
 let bodyProjectRoutes: typeof import('../../src/body/routes.js')['bodyProjectRoutes'];
 // cm:guard every core import in this file is DYNAMIC and happens after the env vars in `beforeAll` are set — `middleware/pat-rest-surface.js` reaches `db/client.ts` at module load, so a static import of it fails the whole suite on `Invalid environment` before a single case runs.
-let patAllowedFor: typeof import('../../src/middleware/pat-rest-surface.js')['patAllowedFor'];
+let patSurfaceCovers: typeof import('../../src/middleware/pat-rest-surface.js')['patSurfaceCovers'];
 let errorHandler: typeof import('../../src/middleware/error.js')['errorHandler'];
 // biome-ignore lint/suspicious/noExplicitAny: test-only mount
 let app: any;
@@ -55,7 +55,7 @@ beforeAll(async () => {
   ({ insertComment, updateCommentBody } = await import('../../src/comments/service.js'));
   ({ signUserToken } = await import('../../src/auth/jwt.js'));
   ({ bodyProjectRoutes } = await import('../../src/body/routes.js'));
-  ({ patAllowedFor } = await import('../../src/middleware/pat-rest-surface.js'));
+  ({ patSurfaceCovers } = await import('../../src/middleware/pat-rest-surface.js'));
   ({ errorHandler } = await import('../../src/middleware/error.js'));
   app = new Hono();
   app.onError(errorHandler);
@@ -356,7 +356,7 @@ describe('GET /api/projects/:id/body-adoption', () => {
 
   // cm:guard the project comes off the PATH, and this is the case that says so. Mounted on a fan-out path with `?projectId=`, `middleware/pat-rest-surface.ts` resolves no project and answers 403 PAT_NOT_PERMITTED to EVERY personal access token — measured live on forge-beta 2026-09-08, before this route moved.
   it('sits under a prefix a personal access token may reach', async () => {
-    expect(patAllowedFor(`/api/projects/${projectId}/body-adoption`)).toBe(true);
+    expect(patSurfaceCovers(`/api/projects/${projectId}/body-adoption`)).toBe(true);
   });
 });
 
