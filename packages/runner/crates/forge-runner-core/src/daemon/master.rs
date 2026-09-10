@@ -30,7 +30,9 @@ use crate::daemon::recovery;
 use crate::daemon::recovery_ports::{CoreBeat, CoreRunState, PaneMasters, SignalProbe};
 use crate::daemon::session_tokens;
 use crate::daemon::terminal;
+use crate::runner::close_loop;
 use crate::runner::ledger::Ledger;
+use crate::runner::terminate;
 use crate::transport::{master as master_api, pool, runners, CoreClient};
 use tokio::sync::mpsc;
 
@@ -421,7 +423,12 @@ async fn sweep(
             .unwrap_or_default()
             .as_str(),
         &PaneMasters { masters },
-        &SignalProbe,
+        &Reclaim {
+            served: &served,
+            cfg,
+            procs: &SignalProbe,
+            killer: &terminate::SystemProcesses,
+        },
         &CoreRunState { client },
         &CoreRunState { client },
         &CoreBeat { client },
@@ -431,15 +438,90 @@ async fn sweep(
     delay
 }
 
+/// What a sweep needs to take a run back: who this box serves (so a project's
+/// repo can be resolved), and the two separate process questions.
+// cm:guard `procs` and `killer` are DIFFERENT ports and merging them would be a category error with teeth: one answers "is this pid gone" where only a positive refutation may say yes, the other signals a process group. A single port would let a box that cannot ask about a pid still kill one.
+struct Reclaim<'a> {
+    served: &'a [runners::MeRunner],
+    cfg: &'a Config,
+    procs: &'a dyn recovery::ProcessLiveness,
+    killer: &'a dyn terminate::ProcessGroup,
+}
+
+/// Give back the worktree a dead run still holds, so its close loop can finish.
+// cm:why the deadlock this breaks, and why nothing already in the loop breaks it: `end_run` is reached only through `close.is_closed()`, that needs `worktree_gone`, that mark is set only by observing the tree gone, and the sole remover — the reap — refuses every tree whose run is `ended_by IS NULL`. Nothing lowers that for a session that ended outside `terminate`, so the run keeps its checkout and its leases forever (forge-vm 2026-09-10: 24 runs, 24 trees, the pool empty under them).
+// cm:guard the release lives HERE rather than in `recovery` because it needs the project's repo path, and `resolve_repo` is the one reader of that: a repo derived from the worktree path instead would answer differently across a symlink or a bind mount than every other caller on this box, and the fleet's checkouts are bind-mounted.
+async fn release_held_tree(
+    led: &mut Ledger,
+    r: &recovery::Recovered,
+    boot_id: &str,
+    world: &Reclaim<'_>,
+    sessions: &dyn close_loop::SessionReader,
+    leases: &dyn close_loop::LeaseKeeper,
+) -> bool {
+    let Some(project) = r.project_id.as_deref() else {
+        tracing::warn!(
+            "[master] run {} is owed its worktree back but names no project, so no repo can be resolved for it",
+            r.run_id
+        );
+        return false;
+    };
+    // cm:guard refuse by NAME and reclaim nothing when the repo is unknown, exactly as the dispatch half does. Releasing a tree through some other repo runs `git worktree remove` against a checkout that never owned it.
+    let resolved = match resolve_repo(world.served, world.cfg, project) {
+        Ok(v) => v,
+        Err(slug) => {
+            tracing::warn!(
+                "[master] run {} holds a worktree but {slug} has no repo path on this box — bind it or set the runner's repo_path; the tree stays until it does",
+                r.run_id
+            );
+            return false;
+        }
+    };
+    match terminate::force_terminal(
+        led,
+        &r.run_id,
+        terminate::Forcing {
+            this_boot: boot_id,
+            repo_root: &resolved.repo_path,
+            base_branch: resolved.base_branch.as_deref(),
+            by: "recovery",
+            reason: "the run's process is gone and core's session row is terminal",
+        },
+        terminate::Ports {
+            procs: world.killer,
+            sessions,
+            leases,
+        },
+    )
+    .await
+    {
+        Ok(forced) => {
+            tracing::info!(
+                "[master] run {} reclaimed by {:?}: diff {:?}, close {:?}",
+                r.run_id,
+                forced.verb,
+                forced.salvage.as_ref().map(|s| s.outcome),
+                forced.close
+            );
+            forced.close.is_closed()
+        }
+        // cm:guard a refused release leaves the run exactly as it was and says so — `force_terminal` aborts before touching the tree when the diff could not be preserved, and an operator who reads "reclaimed" over that has lost the diff and does not know it yet.
+        Err(e) => {
+            tracing::warn!("[master] run {} could not be released: {e}", r.run_id);
+            false
+        }
+    }
+}
+
 /// Beat what this box still holds, and close the loop on what it does not.
 // cm:guard runs AFTER the per-project loop, and the order is the assertion. `ensure_master` re-registers every live master into `Masters` on each pass, and `PaneMasters` reads that map for the pane NAME — placed before the loop, a daemon restart would meet an empty map and read every live run on the box as orphaned (ISS-933 criterion 16).
 // cm:guard the beat rides in this same call and is not separable: core reaps a run session silent for ten minutes, so a sweep that reconciled without beating would take back every healthy run on the box (ISS-933 criteria 16 and 25a).
 async fn give_back_lost_runs(
     boot_id: &str,
     live: &dyn recovery::MasterLiveness,
-    procs: &dyn recovery::ProcessLiveness,
-    sessions: &dyn crate::runner::close_loop::SessionReader,
-    leases: &dyn crate::runner::close_loop::LeaseKeeper,
+    world: &Reclaim<'_>,
+    sessions: &dyn close_loop::SessionReader,
+    leases: &dyn close_loop::LeaseKeeper,
     beat: &dyn recovery::Heartbeat,
     ledger: &mut Option<Ledger>,
 ) {
@@ -449,9 +531,18 @@ async fn give_back_lost_runs(
         tracing::warn!("[master] this box reports no boot id — leaving unclosed runs alone");
         return;
     }
-    match recovery::reconcile(led, boot_id, live, procs, sessions, leases, beat).await {
+    match recovery::reconcile(led, boot_id, live, world.procs, sessions, leases, beat).await {
         Ok(done) => {
-            for r in done.iter().filter(|r| !r.state.is_closed()) {
+            for r in done {
+                // cm:guard the release is attempted BEFORE the report and its result decides whether one is printed, because a run recovery just reclaimed is not a run an operator has anything to do about. Report first and every reclaimed run also files a complaint about the state it was reclaimed out of.
+                if r.owed_release
+                    && release_held_tree(led, &r, boot_id, world, sessions, leases).await
+                {
+                    continue;
+                }
+                if r.state.is_closed() {
+                    continue;
+                }
                 // cm:guard say WHICH marks are missing, never "partially closed". A run holding two of three leases and one holding none are different operator problems, and a line that does not separate them is the report this whole loop exists to replace.
                 tracing::warn!(
                     "[master] run {} is partially closed: session_terminal={} worktree_gone={} leases={}/{}",
@@ -969,6 +1060,15 @@ mod give_back_tests {
         }
     }
 
+    /// No pid in these tests is ever refuted, so nothing may reach a kill.
+    struct NoKill;
+    #[async_trait::async_trait]
+    impl terminate::ProcessGroup for NoKill {
+        async fn kill(&self, _pid: u32) -> crate::runner::inflight::Reaped {
+            unreachable!("a run no test refutes must never be killed")
+        }
+    }
+
     struct Terminal(bool);
     #[async_trait::async_trait]
     impl SessionReader for Terminal {
@@ -1016,7 +1116,12 @@ mod give_back_tests {
         give_back_lost_runs(
             BOOT,
             &Alive(true),
-            &NoPids,
+            &Reclaim {
+                served: &[],
+                cfg: &Config::default(),
+                procs: &NoPids,
+                killer: &NoKill,
+            },
             &Terminal(false),
             &Leases::default(),
             &beats,
@@ -1040,7 +1145,12 @@ mod give_back_tests {
         give_back_lost_runs(
             BOOT,
             &Alive(false),
-            &NoPids,
+            &Reclaim {
+                served: &[],
+                cfg: &Config::default(),
+                procs: &NoPids,
+                killer: &NoKill,
+            },
             &Terminal(true),
             &leases,
             &beats,
@@ -1071,7 +1181,12 @@ mod give_back_tests {
         give_back_lost_runs(
             "",
             &Alive(false),
-            &NoPids,
+            &Reclaim {
+                served: &[],
+                cfg: &Config::default(),
+                procs: &NoPids,
+                killer: &NoKill,
+            },
             &Terminal(true),
             &leases,
             &beats,
@@ -1083,6 +1198,205 @@ mod give_back_tests {
             leases.0.lock().unwrap().is_empty() && beats.0.lock().unwrap().is_empty(),
             "an unreadable boot id must leave every run alone — an empty one matches nothing recorded, so reconciling on it gives back the leases of runs that are still live"
         );
+    }
+
+    struct GonePid(u32);
+    #[async_trait::async_trait]
+    impl recovery::ProcessLiveness for GonePid {
+        async fn is_gone(&self, pid: u32) -> bool {
+            pid == self.0
+        }
+    }
+
+    struct CountedKill(std::sync::atomic::AtomicUsize);
+    #[async_trait::async_trait]
+    impl terminate::ProcessGroup for CountedKill {
+        async fn kill(&self, _pid: u32) -> crate::runner::inflight::Reaped {
+            self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            crate::runner::inflight::Reaped::NotFound
+        }
+    }
+
+    async fn git(dir: &std::path::Path, args: &[&str]) {
+        tokio::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .await
+            .unwrap();
+    }
+
+    /// A real repo with a real `git worktree` on a branch — the only way to
+    /// watch a checkout actually leave the disk.
+    async fn a_repo_with_a_live_worktree() -> (std::path::PathBuf, std::path::PathBuf) {
+        let repo = std::env::temp_dir().join(format!(
+            "forge-master-reclaim-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&repo);
+        std::fs::create_dir_all(&repo).unwrap();
+        git(&repo, &["init", "-b", "main"]).await;
+        git(&repo, &["config", "user.email", "t@t"]).await;
+        git(&repo, &["config", "user.name", "t"]).await;
+        std::fs::write(repo.join("f.txt"), "one").unwrap();
+        git(&repo, &["add", "."]).await;
+        git(&repo, &["commit", "-m", "init"]).await;
+        // A bare remote so `@{u}` resolves: `holds_work` counts a branch with no
+        // upstream as holding work, because commits that were never pushed exist
+        // nowhere else — and a tree holding work is refused, not released.
+        let remote = repo.with_extension("remote.git");
+        let _ = std::fs::remove_dir_all(&remote);
+        std::fs::create_dir_all(&remote).unwrap();
+        git(&remote, &["init", "--bare", "-b", "main"]).await;
+        git(
+            &repo,
+            &["remote", "add", "origin", &remote.to_string_lossy()],
+        )
+        .await;
+        git(&repo, &["push", "-u", "origin", "main"]).await;
+        let wt = crate::workspace::worktree::create(&repo.to_string_lossy(), "ISS-957", None)
+            .await
+            .unwrap();
+        git(&wt, &["push", "-u", "origin", "ISS-957"]).await;
+        (repo, wt)
+    }
+
+    // cm:guard the assertions are the CHECKOUT off the disk and `ended_by` written, never that a warning changed: the deadlock this closes is invisible to every mark-level assertion, because all three marks are exactly what a stuck run already has. `close_loop::close` alone leaves this run untouched forever — it observes, and the tree is still there to observe (forge-vm 2026-09-10: 24 runs, 24 trees, every lease held under them).
+    #[tokio::test]
+    async fn a_dead_runs_worktree_is_given_back_and_its_run_ended() {
+        let (repo, wt) = a_repo_with_a_live_worktree().await;
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(NewRun {
+            run_id: "run-1".into(),
+            project_id: "proj-1".into(),
+            master_session_id: "master-dead".into(),
+            worktree_path: wt.clone(),
+            boot_id: BOOT.into(),
+            issue_keys: vec!["ISS-957".into()],
+        })
+        .unwrap();
+        led.attach_session("run-1", "core-sess-1").unwrap();
+        led.attach_pid("run-1", 424_246).unwrap();
+
+        let mut cfg = Config::default();
+        cfg.bindings.insert(
+            "proj-1".into(),
+            crate::config::Binding {
+                repo_path: repo.clone(),
+                branch: None,
+                project_id: Some("proj-1".into()),
+            },
+        );
+        let killed = CountedKill(std::sync::atomic::AtomicUsize::new(0));
+        let leases = Leases::default();
+        let mut ledger = Some(led);
+
+        give_back_lost_runs(
+            BOOT,
+            &Alive(false),
+            &Reclaim {
+                served: &[],
+                cfg: &cfg,
+                procs: &GonePid(424_246),
+                killer: &killed,
+            },
+            &Terminal(true),
+            &leases,
+            &Beats::default(),
+            &mut ledger,
+        )
+        .await;
+
+        assert!(
+            !wt.exists(),
+            "the checkout must actually leave the disk: while it is there the `worktree_gone` mark cannot be observed, so `end_run` is never reached and the reap refuses the tree because the run is `ended_by IS NULL` — the cycle has no other exit"
+        );
+        let run = ledger.as_ref().unwrap().run("run-1").unwrap().unwrap();
+        assert_eq!(
+            run.ended_by.as_deref(),
+            Some("recovery"),
+            "a released tree that leaves the run open re-enters the same deadlock on the next sweep, now with the diff already gone"
+        );
+        assert_eq!(
+            leases.0.lock().unwrap().as_slice(),
+            ["ISS-957"],
+            "the lease is what another box needs back — a reclaimed worktree whose issue stays leased frees disk and no work"
+        );
+        let _ = std::fs::remove_dir_all(&repo);
+        let _ = std::fs::remove_dir_all(repo.with_extension("remote.git"));
+    }
+
+    // cm:guard the DIFF is asserted on the remote, not merely that the tree went away: `force_terminal` aborts before touching a worktree whose work could not be preserved, so a build that released this one anyway would pass every assertion about disk and `ended_by` while having thrown away an agent's uncommitted work. Every stuck run measured on forge-vm 2026-09-10 was carrying one.
+    #[tokio::test]
+    async fn a_dead_run_carrying_uncommitted_work_has_it_preserved_before_the_tree_goes() {
+        let (repo, wt) = a_repo_with_a_live_worktree().await;
+        std::fs::write(wt.join("f.txt"), "the agent got this far").unwrap();
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(NewRun {
+            run_id: "run-1".into(),
+            project_id: "proj-1".into(),
+            master_session_id: "master-dead".into(),
+            worktree_path: wt.clone(),
+            boot_id: BOOT.into(),
+            issue_keys: vec!["ISS-957".into()],
+        })
+        .unwrap();
+        led.attach_session("run-1", "core-sess-1").unwrap();
+        led.attach_pid("run-1", 424_247).unwrap();
+
+        let mut cfg = Config::default();
+        cfg.bindings.insert(
+            "proj-1".into(),
+            crate::config::Binding {
+                repo_path: repo.clone(),
+                branch: None,
+                project_id: Some("proj-1".into()),
+            },
+        );
+        let mut ledger = Some(led);
+
+        give_back_lost_runs(
+            BOOT,
+            &Alive(false),
+            &Reclaim {
+                served: &[],
+                cfg: &cfg,
+                procs: &GonePid(424_247),
+                killer: &CountedKill(std::sync::atomic::AtomicUsize::new(0)),
+            },
+            &Terminal(true),
+            &Leases::default(),
+            &Beats::default(),
+            &mut ledger,
+        )
+        .await;
+
+        let log = tokio::process::Command::new("git")
+            .args(["log", "--oneline", "origin/ISS-957", "-2"])
+            .current_dir(&repo)
+            .output()
+            .await
+            .unwrap();
+        let landed = String::from_utf8_lossy(&log.stdout);
+        assert!(
+            landed.lines().count() >= 2,
+            "the agent's work must be on the remote before the checkout is released, got:\n{landed}"
+        );
+        assert!(
+            !wt.exists()
+                && ledger
+                    .as_ref()
+                    .unwrap()
+                    .run("run-1")
+                    .unwrap()
+                    .unwrap()
+                    .ended_by
+                    .is_some(),
+            "with the diff preserved there is nothing left to hold the tree or the run"
+        );
+        let _ = std::fs::remove_dir_all(&repo);
+        let _ = std::fs::remove_dir_all(repo.with_extension("remote.git"));
     }
 
     /// The brace depth every statement of `sweep`'s own body sits at.

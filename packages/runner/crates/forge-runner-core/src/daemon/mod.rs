@@ -886,10 +886,12 @@ mod tests {
 
     #[test]
     fn the_drain_ceiling_clears_the_measured_ninetieth_percentile() {
-        assert!(
-            DRAIN_TIMEOUT_SECS >= 45 * 60,
-            "879 completed sessions since 2026-09-01 run p90 at 45 minutes; a ceiling under that gives up on a tenth of all work by construction"
-        );
+        const {
+            assert!(
+                DRAIN_TIMEOUT_SECS >= 45 * 60,
+                "879 completed sessions since 2026-09-01 run p90 at 45 minutes; a ceiling under that gives up on a tenth of all work by construction"
+            )
+        };
     }
 
     #[tokio::test(start_paused = true)]

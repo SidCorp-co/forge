@@ -38,7 +38,11 @@ pub trait Heartbeat: Send + Sync {
 #[derive(Debug, Clone)]
 pub struct Recovered {
     pub run_id: String,
+    pub project_id: Option<String>,
     pub state: CloseState,
+    /// This run's own close loop cannot advance without someone taking its
+    /// worktree back first, and nothing else on the box will.
+    pub owed_release: bool,
 }
 
 /// One pass over what this box holds: beat what lives, close what does not.
@@ -86,9 +90,16 @@ pub async fn reconcile(
             continue;
         }
         let state = close_loop::close(ledger, &run.run_id, sessions, leases).await?;
+        // cm:why the deadlock this term exists to break: `end_run` is reached only through `close.is_closed()`, that needs the `worktree_gone` mark, the mark is set only by OBSERVING the tree gone, and the sole remover — the reap — refuses every tree whose run is `ended_by IS NULL`. A run whose session ends outside `terminate` therefore holds its checkout and its leases forever. Measured forge-vm 2026-09-10: 24 runs, 24 trees, every mark in that cycle true and nothing on the box able to advance one of them.
+        // cm:guard all four terms are load-bearing and none may be dropped for the others: `pid_refuted` is a POSITIVE refutation of the run's own process (unknown and not-permitted both answer false), the boot must be THIS one because a pid recorded before a reboot names a stranger, `session_terminal` is core's row rather than this box's opinion, and a tree already gone is owed nothing. Weaken any one and recovery deletes the checkout of a run still writing into it.
+        // cm:edge protocol -> packages/runner/crates/forge-runner-core/src/runner/terminate.rs — this only NAMES the runs owed a release; performing it is `force_terminal`'s (preserve → remove → close → `end_run`, in that order), and it belongs to the caller because resolving a project's repo path is `resolve_repo`'s alone.
+        let owed_release =
+            pid_refuted && run.boot_id == boot_id && state.session_terminal && !state.worktree_gone;
         out.push(Recovered {
             run_id: run.run_id,
+            project_id: run.project_id,
             state,
+            owed_release,
         });
     }
     Ok(out)
@@ -185,6 +196,123 @@ mod tests {
         .unwrap();
         led.attach_session(run_id, "core-sess-1").unwrap();
         led
+    }
+
+    /// A ledger whose run points at a worktree that is REALLY on the disk, and
+    /// whose pid is recorded — the shape every stuck run on the fleet has.
+    fn seeded_holding_a_tree(pid: u32, boot: &str) -> (Ledger, PathBuf) {
+        let wt = std::env::temp_dir().join(format!(
+            "forge-recovery-held-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::create_dir_all(&wt).unwrap();
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(NewRun {
+            run_id: "run-1".into(),
+            project_id: "proj-1".into(),
+            master_session_id: "master-dead".into(),
+            worktree_path: wt.clone(),
+            boot_id: boot.into(),
+            issue_keys: vec!["ISS-957".into()],
+        })
+        .unwrap();
+        led.attach_session("run-1", "core-sess-1").unwrap();
+        led.attach_pid("run-1", pid).unwrap();
+        (led, wt)
+    }
+
+    async fn reconcile_held(
+        pid: u32,
+        refuted: &[u32],
+        boot: &str,
+        this_boot: &str,
+    ) -> Vec<Recovered> {
+        let (mut led, wt) = seeded_holding_a_tree(pid, boot);
+        let done = reconcile(
+            &mut led,
+            this_boot,
+            &Masters(HashSet::new()),
+            &Gone(refuted.iter().copied().collect()),
+            &Sessions,
+            &Leases(Mutex::new(HashSet::new())),
+            &Beats::default(),
+        )
+        .await
+        .unwrap();
+        let _ = std::fs::remove_dir_all(&wt);
+        done
+    }
+
+    // cm:guard the run here is one NOTHING else on the box can advance, and that is the whole point: its tree is on the disk, so `worktree_gone` cannot be observed; without the mark `is_closed` is false, so `end_run` is never called; and `held_worktrees` is `ended_by IS NULL`, so the reap refuses the tree forever. The assertion is that recovery NAMES it, because a sweep that merely logged this state is what left 24 runs and 24 trees held on forge-vm (2026-09-10).
+    #[tokio::test]
+    async fn a_dead_run_still_holding_its_tree_is_owed_a_release() {
+        let done = reconcile_held(424_242, &[424_242], "boot-a", "boot-a").await;
+        assert_eq!(done.len(), 1);
+        assert!(
+            !done[0].state.is_closed() && done[0].state.session_terminal,
+            "the state under test is terminal-but-holding, got {:?}",
+            done[0].state
+        );
+        assert!(
+            done[0].owed_release,
+            "a run whose own pid is refuted, whose session core calls terminal, and whose worktree is still on the disk is in the one state that cannot resolve itself"
+        );
+        assert_eq!(
+            done[0].project_id.as_deref(),
+            Some("proj-1"),
+            "the release needs the project to resolve a repo path"
+        );
+    }
+
+    // cm:guard the pid answering is the ONLY difference from the test above, and it must be enough on its own: everything downstream of `owed_release` kills a process group and removes a checkout, so a build that owed a release here would delete the tree an agent is writing into.
+    #[tokio::test]
+    async fn a_run_whose_own_pid_still_answers_is_owed_no_release() {
+        let done = reconcile_held(424_243, &[], "boot-a", "boot-a").await;
+        assert_eq!(
+            done.len(),
+            1,
+            "a dead master still leaves the run to recovery"
+        );
+        assert!(
+            !done[0].owed_release,
+            "an unrefuted pid may not license a kill and a worktree removal — `is_gone` answers false for both 'alive' and 'cannot tell'"
+        );
+    }
+
+    // cm:guard a pid recorded under a DIFFERENT boot names a stranger, so it may not be killed however the liveness port answers. `terminate::verb_for` refuses this row by name; owing a release for it would send it there for nothing every sweep.
+    #[tokio::test]
+    async fn a_run_from_a_previous_boot_is_owed_no_release() {
+        let done = reconcile_held(424_244, &[424_244], "boot-old", "boot-new").await;
+        assert_eq!(done.len(), 1);
+        assert!(
+            !done[0].owed_release,
+            "the pid is from another boot — reclaiming on it is reclaiming on a claim nobody checked"
+        );
+    }
+
+    // cm:guard a park holds its tree deliberately and must never be owed a release; it is answered before either orphan premise and emits no `Recovered` at all (ISS-964 criterion 28).
+    #[tokio::test]
+    async fn a_park_is_never_owed_a_release() {
+        let (mut led, wt) = seeded_holding_a_tree(424_245, "boot-a");
+        led.declare_parked_human("run-1", Some("resume-1"), None)
+            .unwrap();
+        let done = reconcile(
+            &mut led,
+            "boot-a",
+            &Masters(HashSet::new()),
+            &Gone(HashSet::from([424_245])),
+            &Sessions,
+            &Leases(Mutex::new(HashSet::new())),
+            &Beats::default(),
+        )
+        .await
+        .unwrap();
+        let _ = std::fs::remove_dir_all(&wt);
+        assert!(
+            done.is_empty(),
+            "a park satisfies both orphan premises by design — recovery must not even report it, let alone owe its tree back"
+        );
     }
 
     #[tokio::test]

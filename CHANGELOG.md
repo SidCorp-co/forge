@@ -1845,6 +1845,18 @@
 
 ### Fixed
 
+- **A run whose agent died without shutting down no longer holds its checkout and its issue
+  forever.** Recovery could see everything it needed — the process gone, the session terminal — and
+  still had no way to act on it: a run only reaches terminal after its worktree is observed off the
+  disk, the only thing that removes a worktree is the reaper, and the reaper refuses every tree
+  whose run has not reached terminal. Nothing on the box could break that circle, so a box that
+  restarted under running work accumulated dead runs that each held a checkout and kept their
+  issues leased, until the pool had nothing left to offer and no master could pick anything up.
+  Recovery now hands the tree back itself, pushing whatever the agent had got to before releasing
+  anything, and refuses to release a tree whose work could not be preserved. Measured on the
+  maintainer's box the day this shipped: 24 dead runs, 24 held checkouts, every issue under them
+  unclaimable. A run whose own process still answers, a run recorded before the last reboot, and a
+  run parked on a human question are all left exactly as they were.
 - **A box no longer restarts itself through work it is doing.** When a runner picks up its own
   update it is supposed to wait for in-flight work to finish before restarting. It waited on a
   counter that agent runs never touched — the counter tracks pipeline jobs and chat turns, and a
