@@ -99,6 +99,7 @@ function prefixMatches(prefix: string, path: string): boolean {
   return path === prefix || path.startsWith(`${prefix}/`);
 }
 
+// cm:guard attribution is MOUNT-shaped, not subject-shaped, and the first match wins over a longer one only because `check-pat-surface.mjs` refuses a prefix two resources claim. So `/api/projects/<id>/issues` resolves to `projects`, NOT `issues` — measured live on forge-beta at b32bdc2d — which makes `projects:read` a near-universal read grant and `issues:read` cover only the four flat mounts. Declared, not accidental: `docs/proposals/pat-permission-granularity-is-mount-shaped.md` carries the measurement and the shape a fix takes.
 /** The resource whose prefixes cover this path, or null when the menu does not. */
 export function patResourceForPath(path: string): PatPermissionResource | null {
   for (const resource of Object.keys(PAT_PERMISSION_RESOURCES) as PatPermissionResource[]) {
