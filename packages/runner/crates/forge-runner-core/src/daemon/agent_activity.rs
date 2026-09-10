@@ -148,6 +148,11 @@ impl Activities {
         a.last_event = event;
         a.last_event_at = at;
         a.sequence += 1;
+        // cm:guard the child-only boundary is CARRIED only while the events that follow it are the child's own, and any other event strips it. Establishing it without this exit is the same unbounded claim `PreCompact` is refused for: a child killed, crashed, or whose hook was dropped never sends `SubagentStop`, and the pane is then `Working` for the rest of its life with nothing on the box able to say why.
+        let child_only = a.turn_started_at.is_none() && a.subagents > 0;
+        if child_only && !matches!(event, Event::SubagentStarted | Event::SubagentStopped) {
+            a.subagents = 0;
+        }
         match event {
             Event::PromptSubmitted => {
                 a.turn_started_at = Some(at);
@@ -235,6 +240,52 @@ mod tests {
         );
         assert_eq!(
             a.record("s1", Event::SubagentStopped, 30).doing(),
+            Doing::Idle
+        );
+    }
+
+    // cm:guard the boundary needs an EXIT and this is the test for it: it is carried only while the events that follow are the child's own, so a lead that starts working again strips a child claim nothing has closed. Without this half a child that dies without its `SubagentStop` — killed, crashed, or its hook dropped — pins the pane `Working` for the rest of its life, which is exactly the failure `PreCompact` is refused for.
+    #[test]
+    fn a_child_only_boundary_does_not_outlive_the_leads_next_turn() {
+        let a = acts();
+        a.record("s1", Event::PromptSubmitted, 10);
+        a.record("s1", Event::SubagentStarted, 11);
+        assert_eq!(a.record("s1", Event::Stopped, 20).doing(), Doing::Working);
+        // The child's `SubagentStop` never comes. The lead speaking again is
+        // what proves the claim stale.
+        a.record("s1", Event::PromptSubmitted, 30);
+        assert_eq!(
+            a.record("s1", Event::Stopped, 40).doing(),
+            Doing::Idle,
+            "a child claim no event ever closed must not survive the lead's next boundary"
+        );
+    }
+
+    // cm:guard the same exit, on the arm that has no second turn to strip it: a hand `/compact` after the lead stopped over a child is a non-child event and must clear the claim too.
+    #[test]
+    fn a_compact_after_a_child_only_boundary_clears_it() {
+        let a = acts();
+        a.record("s1", Event::PromptSubmitted, 10);
+        a.record("s1", Event::SubagentStarted, 11);
+        a.record("s1", Event::Stopped, 20);
+        assert_eq!(a.record("s1", Event::Compacted, 30).doing(), Doing::Idle);
+    }
+
+    // cm:guard and the boundary must still HOLD across the child's own events, or the fix above has simply deleted the term it is fixing.
+    #[test]
+    fn the_boundary_holds_across_a_second_childs_start_and_stop() {
+        let a = acts();
+        a.record("s1", Event::PromptSubmitted, 10);
+        a.record("s1", Event::SubagentStarted, 11);
+        a.record("s1", Event::SubagentStarted, 12);
+        a.record("s1", Event::Stopped, 20);
+        assert_eq!(
+            a.record("s1", Event::SubagentStopped, 30).doing(),
+            Doing::Working,
+            "one child of two finishing leaves the other working"
+        );
+        assert_eq!(
+            a.record("s1", Event::SubagentStopped, 40).doing(),
             Doing::Idle
         );
     }
