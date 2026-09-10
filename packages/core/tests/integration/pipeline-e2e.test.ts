@@ -31,9 +31,7 @@ describe('F6 pipeline E2E', () => {
 
   beforeAll(async () => {
     harness = await setupTestDatabase();
-    // MUST set DATABASE_URL (with the harness's search_path pin) BEFORE any
-    // src import loads env.ts, or the app's db client binds to the base URL
-    // and writes land in the wrong schema.
+    // cm:guard ORDERING — DATABASE_URL carries the harness's search_path pin and must be set BEFORE any `src` import loads env.ts, which reads it once at module scope: bind late and the app's db client points at the base URL, so every write in this suite lands in the wrong schema and the assertions read an empty one.
     process.env.DATABASE_URL = harness.url;
     process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
     process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
@@ -184,12 +182,10 @@ describe('F6 pipeline E2E', () => {
       mods.registerActivitySubscribers(bus);
 
       // cm:guard the LIVE chain, not the staged ladder: this read `open→confirmed→clarified→approved` until 2026-09-10, and a fixture that walks retired rungs keeps them looking legal to whoever reads this suite for the shape of a transition.
-      const steps = ['open→in_progress', 'in_progress→awaiting_release'] as const;
-      for (const step of steps) {
-        const [from, to] = step.split('→') as [
-          Parameters<typeof mods.canTransition>[0],
-          Parameters<typeof mods.canTransition>[1],
-        ];
+      type S = Parameters<typeof mods.canTransition>[0];
+      const chain = ['open', 'in_progress', 'developed', 'testing', 'awaiting_release'] as S[];
+      for (let i = 1; i < chain.length; i += 1) {
+        const [from, to] = [chain[i - 1] as S, chain[i] as S];
         expect(mods.canTransition(from, to)).toBe(true);
         await bus.emit('transition', {
           issueId,
@@ -202,7 +198,7 @@ describe('F6 pipeline E2E', () => {
       }
 
       const rows = await activityRows(issueId);
-      expect(rows).toHaveLength(steps.length);
+      expect(rows).toHaveLength(chain.length - 1);
       for (const r of rows) expect(r.action).toBe('issue.statusChanged');
     });
 
@@ -319,7 +315,6 @@ describe('F6 pipeline E2E', () => {
       await insertIssue(project.id, user.id, { title: 'C' });
       await attachLabel(a, bugLabel);
       await attachLabel(b, otherLabel);
-      // C has no labels
 
       const res = await authedGet(
         `/api/projects/${project.id}/issues/search?label=${bugLabel}`,

@@ -17,30 +17,49 @@ export const DRAFT_EXIT_TARGETS: readonly IssueStatus[] = [
 // cm:guard ADVISORY, NOT A GATE — and read by NOTHING outside this file today. `canTransitionFree` below is the only runtime check and it permits ANY non-draft from → ANY non-draft to, so reading a missing pair here as "illegal" has produced wrong conclusions and pointless multi-hop workarounds. The consumers this guard used to name are gone: the soft-skip resolver was deleted by ISS-897 and nothing imports `transitions`, `canTransition` or `getAllowedTransitions`. It is kept because step 5 of the removal order makes it the gate — which is the one change that turns every row here from advice into a refusal, so a row that is merely stale becomes a rule.
 export const transitions: Record<IssueStatus, readonly IssueStatus[]> = {
   open: ['in_progress', 'needs_info', 'on_hold', 'dropped'],
-  in_progress: ['awaiting_release', 'closed', 'needs_info', 'on_hold', 'dropped'],
+  // cm:guard `closed` stays reachable from `in_progress` for a project with NO release gate — `resolveAgentCloseTarget` only rewrites an agent's close when `resolveReleaseGate` answers, so on a gateless project the agent closes from whatever rung it is standing on. Remove this and that close has nowhere legal to land.
+  in_progress: ['developed', 'closed', 'needs_info', 'on_hold', 'dropped'],
+  // cm:guard `developed` and `testing` are the review and QA rungs, and they are NOT in `AUTONOMOUS_DRIVER_STATUSES` on purpose: that list is subtracted to build `BACKLOG_ADMISSIBLE_STATUSES`, so adding them would take them OFF the backlog menu — and sidpeak declares both in `poolBacklog.statuses` precisely so a master can pick up work sitting there. Leaving them admissible is what makes a dead session at either rung recoverable by the next master rather than stranded.
+  developed: ['testing', 'reopen', 'needs_info', 'on_hold', 'dropped'],
+  testing: ['awaiting_release', 'closed', 'reopen', 'needs_info', 'on_hold', 'dropped'],
   awaiting_release: ['releasing', 'needs_info', 'on_hold', 'dropped'],
   // cm:guard the two OUTCOME exits are `finish`'s and `abort`'s alone; the parks are a person stopping to ask. Nothing else may leave, which is what stops an agent declaring its own release finished (issues/release-gate-hold.ts).
   releasing: ['closed', 'reopen', 'needs_info', 'on_hold'],
   closed: ['reopen'],
-  reopen: ['in_progress', 'needs_info', 'on_hold', 'dropped'],
+  // cm:guard `developed` is a legal reopen target because a failed check sends the work back to the rung that owes the proof, not to the start — the plugin's own `FALLS_TO` maps `wrong-test` there (forge-plugin `flow/route.mjs`). `isReopenEntry` counts these as real rejections and excludes only `in_progress → reopen`, the system's mechanical recovery.
+  reopen: ['in_progress', 'developed', 'needs_info', 'on_hold', 'dropped'],
 
-  // cm:guard a park must be able to put the issue back on the rung it LEFT, which is why these two rows are wider than one exit each. `awaiting_release` is the case that matters: an issue merged and waiting for production, parked and then answered, must not be forced through `open` — that dispatches a fresh agent onto shipped work (the ISS-940 shape) and loses its place at the gate. `pipeline/answer-resume.ts` does exactly that today, unconditionally, because nothing records the rung a park left; it is safe only while this map is advisory, and step 5 of the removal order cannot land before that is fixed.
-  needs_info: ['open', 'in_progress', 'awaiting_release', 'on_hold', 'dropped'],
-  on_hold: ['open', 'in_progress', 'awaiting_release', 'needs_info', 'dropped'],
+  // cm:guard a park must be able to put the issue back on the rung it LEFT, which is why these two rows list every live rung rather than one exit each. `awaiting_release` is the case that matters: an issue merged and waiting for production, parked and then answered, must not be forced through `open` — that dispatches a fresh agent onto shipped work (the ISS-940 shape) and loses its place at the gate. `pipeline/answer-resume.ts` does exactly that today, unconditionally, because nothing records the rung a park left; it is safe only while this map is advisory, and step 5 of the removal order cannot land before that is fixed.
+  needs_info: [
+    'open',
+    'in_progress',
+    'developed',
+    'testing',
+    'awaiting_release',
+    'on_hold',
+    'dropped',
+  ],
+  on_hold: [
+    'open',
+    'in_progress',
+    'developed',
+    'testing',
+    'awaiting_release',
+    'needs_info',
+    'dropped',
+  ],
 
   // cm:guard this row is the ADVISORY twin of `DRAFT_EXIT_TARGETS` and must list the same statuses — it is what the UI offers as next states, and offering three of the five legal exits is how a person concludes the other two are refused (ISS-940)
   draft: [...DRAFT_EXIT_TARGETS],
   // cm:guard terminal with NO exit, unlike `closed → reopen`: reopening a dropped issue would leave `merged_at` NULL on an issue that then ships, so re-filing is the correct move and this map must not offer a shortcut past it
   dropped: [],
 
-  // cm:guard the seven rows below are RETIRED statuses, kept only until their 61 rows are drained, and their exits are deliberately DRAIN ROUTES onto live rungs rather than the old ladder hops — the whole point of listing them is to get an issue off them. Do not extend them, and do not add a hop BETWEEN two of them. docs/flows/issue-status-lifecycle.html is the flow; this map is not.
+  // cm:guard the five rows below are RETIRED statuses, kept only until their rows are drained, and their exits are deliberately DRAIN ROUTES onto live rungs rather than the old ladder hops — the whole point of listing them is to get an issue off them. Do not extend them, and do not add a hop BETWEEN two of them. `tested` is the one to watch: it holds the most rows, it is what forge-plugin writes today where this flow says `testing`, and sidpeak names it in `poolBacklog.statuses`, so dropping it from the enum has to move that config in the same change.
   confirmed: ['in_progress', 'needs_info', 'on_hold', 'dropped'],
   clarified: ['in_progress', 'needs_info', 'on_hold', 'dropped'],
   approved: ['in_progress', 'needs_info', 'on_hold', 'dropped'],
   waiting: ['open', 'in_progress', 'needs_info', 'on_hold', 'dropped'],
-  developed: ['awaiting_release', 'closed', 'needs_info', 'on_hold', 'dropped'],
-  testing: ['awaiting_release', 'closed', 'needs_info', 'on_hold', 'dropped'],
-  tested: ['awaiting_release', 'closed', 'needs_info', 'on_hold', 'dropped'],
+  tested: ['awaiting_release', 'closed', 'reopen', 'needs_info', 'on_hold', 'dropped'],
 };
 
 export function getAllowedTransitions(from: IssueStatus): readonly IssueStatus[] {

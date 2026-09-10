@@ -48,7 +48,7 @@ export function autonomousStepFor(
 const TERMINAL_FOR_BACKLOG: readonly IssueStatus[] = ['releasing'] as const;
 
 // cm:guard DERIVED by subtraction, never written out by hand. A status the driver already owns carries a run and a job by the time it holds it, so a backlog row at one of those names offers a master work it can never promote — `promoteFromBacklog` would refuse it as `issue_busy` every time, and a menu of statuses that cannot be used reads as a bug in the promote path rather than in this list.
-// cm:edge lockstep -> packages/core/src/pipeline/pipeline-config-schema.ts — `poolBacklog.statuses` is `z.enum` of exactly this array, so a status added to AUTONOMOUS_DRIVER_STATUSES leaves the admissible set through this filter and a config already holding it stops parsing (which reads as `poolBacklog` absent, i.e. no backlog — the safe direction)
+// cm:edge lockstep -> packages/core/src/pipeline/pipeline-config-schema.ts — `poolBacklog.statuses` is `z.enum` of exactly this array, so a status added to AUTONOMOUS_DRIVER_STATUSES leaves the admissible set through this filter and every config already naming it STOPS PARSING — the whole `pipelineConfig`, not just the backlog. Measured 2026-09-10: `invalid_value @ poolBacklog.statuses.1` ⇒ `cfg = null` ⇒ `isAutonomous` false ⇒ that project dispatches nothing, silently (the ISS-897 shape). Adding a status here means editing every config that names it, in the same change; sidpeak names `developed`, `testing` and `tested` today.
 export const BACKLOG_ADMISSIBLE_STATUSES: readonly IssueStatus[] = issueStatuses.filter(
   (s) => !AUTONOMOUS_DRIVER_STATUSES.includes(s) && !TERMINAL_FOR_BACKLOG.includes(s),
 );

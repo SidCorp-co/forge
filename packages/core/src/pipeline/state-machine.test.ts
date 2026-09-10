@@ -54,20 +54,19 @@ describe('state machine', () => {
     expect([...transitions.dropped]).toEqual([]);
   });
 
-  // cm:guard a park resumes onto the LIVE rungs and must include `awaiting_release`: an issue merged and waiting for production, parked and then resumed, must not be forced through `open` — that dispatches a fresh agent onto shipped work and loses its place at the gate. It must NOT offer a retired rung: this row used to be `issueStatuses.filter(...)`, which offered all seven of them and is how a resume put work back on a status nothing dispatches at.
+  // cm:guard a park resumes onto the LIVE rungs and must include `awaiting_release`: an issue merged and waiting for production, parked and then resumed, must not be forced through `open` — that dispatches a fresh agent onto shipped work and loses its place at the gate. It must NOT offer a retired rung: this row used to be `issueStatuses.filter(...)`, which offered every retired one and is how a resume put work back on a status nothing dispatches at. `developed` and `testing` are LIVE rungs since 2026-09-10 and belong in the first list, not the second.
   it('a park resumes onto a live rung, never a retired one', () => {
-    for (const live of ['open', 'in_progress', 'awaiting_release'] as const) {
+    for (const live of [
+      'open',
+      'in_progress',
+      'developed',
+      'testing',
+      'awaiting_release',
+    ] as const) {
       expect(transitions.on_hold, `on_hold → ${live}`).toContain(live);
       expect(transitions.needs_info, `needs_info → ${live}`).toContain(live);
     }
-    for (const retired of [
-      'confirmed',
-      'clarified',
-      'approved',
-      'developed',
-      'testing',
-      'tested',
-    ] as const) {
+    for (const retired of ['confirmed', 'clarified', 'approved', 'waiting', 'tested'] as const) {
       expect(transitions.on_hold, `on_hold → ${retired}`).not.toContain(retired);
       expect(transitions.needs_info, `needs_info → ${retired}`).not.toContain(retired);
     }

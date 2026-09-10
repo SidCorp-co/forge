@@ -42,7 +42,6 @@ describe('forge facts registry', () => {
     // cm:guard the project-resolved ladder section must OVERRIDE the inline default chain, and the prompt has to say so in those words — two chains stated with no precedence between them is how an agent picks the wrong one, and the inline default is the copy that went stale (F1).
     expect(text).toContain('### Status ladder');
     expect(text).toContain('OVERRIDES the default');
-    // Step check-in is the mandated first action (forge_step_start tool).
     expect(text).toContain('forge_step_start');
     expect(renderFact('mcp-tool-reference')).toContain('forge_step_start');
   });
@@ -128,12 +127,16 @@ describe('forge facts registry', () => {
     });
     expect(resolved).toContain('open → confirmed → developed → testing → awaiting_release');
     // cm:guard the DEFAULT must be the four-rung chain, not the staged ladder: while `CANONICAL_LADDER` named the retired six, agents walked them — 153 hops over 4 projects in 3 hours, 45 issues left on a status no job dispatches at (2026-09-10)
-    expect(renderFact('status-ladder')).toContain('open → in_progress → awaiting_release → closed');
+    expect(renderFact('status-ladder')).toContain(
+      'open → in_progress → developed → testing → awaiting_release → closed',
+    );
     // cm:why scoped to the LADDER line and not the whole body: the retired six legitimately appear in the body's never-write warning, so a whole-body `not.toContain` would fail on the very text that stops them being written
     const ladderLine = (renderFact('status-ladder') ?? '')
       .split('\n')
       .find((l) => l.startsWith('`open'));
-    expect(ladderLine).toBe('`open → in_progress → awaiting_release → closed`');
+    expect(ladderLine).toBe(
+      '`open → in_progress → developed → testing → awaiting_release → closed`',
+    );
   });
 
   it('handoff fact renders the per-stage payload keys', () => {

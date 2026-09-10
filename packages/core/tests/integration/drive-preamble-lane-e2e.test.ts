@@ -119,7 +119,7 @@ describe('the assembled preamble forks on the lane', () => {
 
     expect(code).toContain('## Pipeline Rules');
     // cm:guard the staged preamble's forward chain is FOUR rungs since 2026-09-10 — it read `open → confirmed` while the retired ladder was still being taught, which is what agents then walked (153 hops, 4 projects, 3 hours, 45 issues stranded)
-    expect(code).toContain('open → in_progress → awaiting_release → closed');
+    expect(code).toContain('open → in_progress → developed → testing → awaiting_release → closed');
     expect(code).toContain('`waiting`');
     expect(code).toContain('forge_step_start');
   });
