@@ -191,6 +191,7 @@ jobs:
       # project's own `projectFacts`: those live in the database, and "node and nothing else" is
       # precisely why they are out of reach here rather than merely unwritten.
       - run: node scripts/check-injected-doc-modes.mjs
+      - run: node scripts/check-pat-surface.mjs
 
   archmap:
     runs-on: ubuntu-latest

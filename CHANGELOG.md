@@ -10,6 +10,20 @@
 
 ### Security
 
+- **Every REST route a personal access token can reach is now proven to be fenced, by a gate.**
+  `PAT_ALLOWED_PREFIXES` decides which paths a PAT may reach, and its guard admits a prefix only
+  where a project-scoped token can be *fenced* on it — but the list is per-prefix while the property
+  it claims is per-route, and nothing checked the routes. One unfenced handler under an admitted
+  prefix is a token reading another project's data with every line around it looking correct.
+  `scripts/check-pat-surface.mjs` now walks every route under every allowlisted prefix and passes it
+  only where the handler reaches the fence (`effectiveProjectRole`, `loadProjectAccess`,
+  `assertProjectAccess`, `resolveProjectIdFromSlug`) — resolving the transitive intra-core import
+  graph and each router file's own helper fixpoint, so a file-local `assertMember()` counts and a
+  service layer two hops away counts, while a module that merely sits in the same import graph does
+  not. It reports `16 allowlisted prefix(es) · 67 router file(s) · 202 route(s) · 0 unfenced`, and
+  refuses to pass vacuously: zero routes checked exits 2, an unparseable route path is a finding,
+  and a stale exemption is a finding. Registered on `verify`'s `knowledge` axis and as a CI step.
+
 - **Six vulnerable transitive dependencies pinned to patched versions, closing 19 Dependabot alerts
   (12 high).** `fast-uri` (→3.1.7), `undici` (→7.29.1), `qs` (→6.16.0), `protobufjs` (→7.6.6),
   `brace-expansion` (→2.1.4) and `nanoid` (→3.3.18) each resolved below the first-patched version of
