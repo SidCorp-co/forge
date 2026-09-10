@@ -109,6 +109,13 @@ enum Request {
         event: String,
         #[serde(default)]
         at_ms: Option<i64>,
+        /// The child this event is about: `agent_id`, or `teammate_name` on `TeammateIdle`.
+        // cm:guard OPTIONAL and never defaulted to anything: measured against claude 2.1.257, a child event carries `agent_id` and a lead event carries none, so an absent field is the discriminator rather than a gap to fill.
+        #[serde(default)]
+        agent_id: Option<String>,
+        /// Claude Code's own `session_id` — which conversation these claims belong to.
+        #[serde(default)]
+        conversation_id: Option<String>,
     },
     /// Record a decision this session took instead of asking about it.
     // cm:guard the counterpart of `Ask` and the reason it can be judged: tier 0 says a reversible write is TAKEN and recorded, so without this verb the only thing a box records is the questions it did ask and every master looks equally talkative (ISS-964 criteria 1, 2).
@@ -341,13 +348,22 @@ fn agent_event(
     ctl: &Arc<Control>,
     event: &str,
     at_ms: Option<i64>,
+    agent_id: Option<&str>,
+    conversation_id: Option<&str>,
     session_id: &str,
 ) -> ClaimReply {
     let Some(parsed) = crate::daemon::agent_activity::Event::from_wire(event) else {
         return ClaimReply::refused(format!("unknown_event: {event}"));
     };
-    let at = at_ms.unwrap_or_else(crate::daemon::agent_activity::now_ms);
-    let after = ctl.activity.record(session_id, parsed, at);
+    let after = ctl.activity.record(
+        session_id,
+        crate::daemon::agent_activity::Report {
+            event: parsed,
+            at: at_ms.unwrap_or_else(crate::daemon::agent_activity::now_ms),
+            subject: agent_id,
+            conversation: conversation_id,
+        },
+    );
     // cm:guard a permission wait is the ONE state that leaves this box at WARN, because it is the only one nothing on the box can clear: a turn that runs ends, a turn that fails ends, and a question put to a human ends when a human answers it. Measured forge-vm 2026-09-10: one run pane sat on a dangerous-command prompt for hours while every liveness reader called it healthy, because the pane emitted no boundary anything here could hear.
     match after.doing() {
         crate::daemon::agent_activity::Doing::AwaitingPermission => tracing::warn!(
@@ -367,7 +383,20 @@ fn agent_event(
 #[cfg(unix)]
 async fn serve_request(ctl: &Arc<Control>, req: Request, session_id: &str) -> ClaimReply {
     match req {
-        Request::AgentEvent { event, at_ms, .. } => agent_event(ctl, &event, at_ms, session_id),
+        Request::AgentEvent {
+            event,
+            at_ms,
+            agent_id,
+            conversation_id,
+            ..
+        } => agent_event(
+            ctl,
+            &event,
+            at_ms,
+            agent_id.as_deref(),
+            conversation_id.as_deref(),
+            session_id,
+        ),
         Request::Prepare { job_id, agent, .. } => {
             prepare(ctl, &job_id, session_id, agent.as_deref()).await
         }
@@ -759,6 +788,8 @@ pub async fn request_agent_event(
     _path: &std::path::Path,
     _token: &str,
     _event: &str,
+    _agent_id: Option<&str>,
+    _conversation_id: Option<&str>,
 ) -> std::io::Result<ClaimReply> {
     Err(no_socket())
 }
@@ -836,10 +867,15 @@ pub async fn request_agent_event(
     path: &std::path::Path,
     token: &str,
     event: &str,
+    agent_id: Option<&str>,
+    conversation_id: Option<&str>,
 ) -> std::io::Result<ClaimReply> {
     ask(
         path,
-        serde_json::json!({ "op": "agent_event", "token": token, "event": event }),
+        serde_json::json!({
+            "op": "agent_event", "token": token, "event": event,
+            "agentId": agent_id, "conversationId": conversation_id
+        }),
     )
     .await
 }
@@ -1073,6 +1109,7 @@ mod tests {
             token,
             event,
             at_ms,
+            ..
         } = &req
         else {
             panic!("decoded as {req:?}");

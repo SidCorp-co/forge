@@ -91,6 +91,18 @@ impl Event {
     ];
 }
 
+/// One report from a session's hook, with everything the frame carried.
+// cm:guard `subject` and `conversation` are OPTIONS and a missing one may never be guessed. Measured against claude 2.1.257: a child event carries `agent_id` and a LEAD event carries none, so absence is the lead/child discriminator itself — inventing an id for an unattributable event would let a child event own the lead's turn.
+#[derive(Debug, Clone, Copy)]
+pub struct Report<'a> {
+    pub event: Event,
+    pub at: i64,
+    /// `agent_id` for a child event; `teammate_name` on `TeammateIdle`. None for a lead event.
+    pub subject: Option<&'a str>,
+    /// Claude Code's own `session_id` — the conversation, not Forge's session.
+    pub conversation: Option<&'a str>,
+}
+
 /// What a session is doing, as the session itself last reported.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Doing {
@@ -109,8 +121,11 @@ pub struct Activity {
     pub last_event_at: i64,
     /// When the running turn began. `None` once it has ended.
     pub turn_started_at: Option<i64>,
-    /// Children outstanding. A lead's `Stop` over any of these is not idle.
-    pub subagents: u32,
+    /// The children currently holding this pane working, BY ID.
+    // cm:guard a set of ids and not a count, because the two failures a count cannot survive are both routine: the same `SubagentStart` seen twice would gate twice, and a `SubagentStop` for a child this process never saw would cancel a DIFFERENT child's claim. An id makes both idempotent, and it is the only way a log line can ever name which child is holding a pane.
+    pub children: std::collections::BTreeSet<String>,
+    /// The conversation these claims belong to (Claude Code's `session_id`).
+    pub conversation: Option<String>,
     awaiting_permission: bool,
     /// Bumped by every accepted event, so a caller can prove a NEW turn began
     /// rather than reading a turn that was already running as its own.
@@ -123,7 +138,7 @@ impl Activity {
             return Doing::AwaitingPermission;
         }
         // cm:guard a lead `Stop` while a child is outstanding is NOT idle, and this is the case that cost Orca a named rule (`attachClaudeChildOnlyBoundary`): a run whose reviewer subagent is still working emits the lead's Stop first, and a reader without this term calls the pane finished and reclaims a worktree being written.
-        if self.turn_started_at.is_some() || self.subagents > 0 {
+        if self.turn_started_at.is_some() || !self.children.is_empty() {
             return Doing::Working;
         }
         Doing::Idle
@@ -141,28 +156,39 @@ impl Activities {
     }
 
     /// Record what a session reported, and return its state after it.
-    pub fn record(&self, session_id: &str, event: Event, at: i64) -> Activity {
+    pub fn record(&self, session_id: &str, r: Report<'_>) -> Activity {
+        let (event, at) = (r.event, r.at);
         let mut map = self.0.lock().expect("activities poisoned");
         let a = map.entry(session_id.to_string()).or_insert(Activity {
             last_event: event,
             last_event_at: at,
             turn_started_at: None,
-            subagents: 0,
+            children: std::collections::BTreeSet::new(),
+            conversation: None,
             awaiting_permission: false,
             sequence: 0,
         });
+        // cm:guard a DIFFERENT conversation voids every claim before the event is applied, and this is the backstop for the exits no hook reports: `/clear`, a relaunch and a resume all leave the pane alive with a new `session_id` and emit nothing terminating, so claims from the old conversation would otherwise gate the pane forever. Scoped to claims ABOUT the conversation — this module holds no evidence about OS processes, which is the thing such a void must never take with it.
+        if let Some(seen) = r.conversation {
+            if a.conversation.as_deref().is_some_and(|had| had != seen) {
+                a.turn_started_at = None;
+                a.children.clear();
+                a.awaiting_permission = false;
+            }
+            a.conversation = Some(seen.to_string());
+        }
         a.last_event = event;
         a.last_event_at = at;
         a.sequence += 1;
         // cm:guard the child-only boundary is CARRIED only while the events that follow it are the child's own, and any other event strips it. Establishing it without this exit is the same unbounded claim `PreCompact` is refused for: a child killed, crashed, or whose hook was dropped never sends `SubagentStop`, and the pane is then `Working` for the rest of its life with nothing on the box able to say why.
-        let child_only = a.turn_started_at.is_none() && a.subagents > 0;
+        let child_only = a.turn_started_at.is_none() && !a.children.is_empty();
         if child_only
             && !matches!(
                 event,
                 Event::SubagentStarted | Event::SubagentStopped | Event::TeammateWentIdle
             )
         {
-            a.subagents = 0;
+            a.children.clear();
         }
         match event {
             Event::PromptSubmitted => {
@@ -175,11 +201,17 @@ impl Activities {
                 a.turn_started_at = None;
                 a.awaiting_permission = false;
             }
-            Event::SubagentStarted => a.subagents += 1,
-            // cm:guard saturating, because a `SubagentStop` whose `SubagentStart` this process never saw is the NORMAL case after a daemon restart — an underflow here would wrap to four billion children and pin the pane `Working` forever.
-            // cm:guard a teammate going idle takes the SAME arm as a child finishing, and the difference between them is deliberately not modelled: a turn-based teammate fires this at every turn end while staying alive, so a reader that treated it as existence would keep the pane working across every boundary, and one that treated it as departure would be wrong only about a fact nothing here asks.
+            // cm:guard a child event with NO subject changes nothing — it is unattributable, and the rule is void nothing rather than guess. Gating on an id-less child event would let one child's start hold the pane after a different child's stop, and an id-less stop would cancel a claim it cannot name.
+            Event::SubagentStarted => {
+                if let Some(id) = r.subject {
+                    a.children.insert(id.to_string());
+                }
+            }
+            // cm:guard a teammate going idle takes the SAME arm as a child finishing, and the difference between them is deliberately not modelled: a turn-based teammate fires this at every turn end while staying alive, so a reader that treated it as existence would keep the pane working across every boundary, and one that treats it as departure is wrong only about a fact nothing here asks. On that event the subject is `teammate_name`, not `agent_id` — the frame carries whichever the payload had.
             Event::SubagentStopped | Event::TeammateWentIdle => {
-                a.subagents = a.subagents.saturating_sub(1)
+                if let Some(id) = r.subject {
+                    a.children.remove(id);
+                }
             }
         }
         a.clone()
@@ -212,6 +244,26 @@ mod tests {
         Activities::new()
     }
 
+    /// A lead event: no subject, which is what claude actually sends.
+    fn lead(event: Event, at: i64) -> Report<'static> {
+        Report {
+            event,
+            at,
+            subject: None,
+            conversation: None,
+        }
+    }
+
+    /// A child event, naming the child.
+    fn child(event: Event, at: i64, id: &str) -> Report<'_> {
+        Report {
+            event,
+            at,
+            subject: Some(id),
+            conversation: None,
+        }
+    }
+
     #[test]
     fn a_session_that_never_reported_is_not_idle_but_unknown() {
         assert!(
@@ -224,19 +276,22 @@ mod tests {
     fn a_submitted_prompt_starts_a_turn_and_a_stop_ends_it() {
         let a = acts();
         assert_eq!(
-            a.record("s1", Event::PromptSubmitted, 10).doing(),
+            a.record("s1", lead(Event::PromptSubmitted, 10)).doing(),
             Doing::Working
         );
-        assert_eq!(a.record("s1", Event::Stopped, 20).doing(), Doing::Idle);
+        assert_eq!(
+            a.record("s1", lead(Event::Stopped, 20)).doing(),
+            Doing::Idle
+        );
     }
 
     // cm:guard the error path is a turn END, and this is the test that fails if anyone treats `StopFailure` as a state of its own: Claude Code emits it INSTEAD of `Stop`, so a reader that only knows `Stop` leaves the pane `Working` forever after one model error.
     #[test]
     fn a_model_error_ends_the_turn_as_surely_as_a_stop() {
         let a = acts();
-        a.record("s1", Event::PromptSubmitted, 10);
+        a.record("s1", lead(Event::PromptSubmitted, 10));
         assert_eq!(
-            a.record("s1", Event::StoppedFailed, 20).doing(),
+            a.record("s1", lead(Event::StoppedFailed, 20)).doing(),
             Doing::Idle
         );
     }
@@ -245,15 +300,16 @@ mod tests {
     #[test]
     fn a_leads_stop_over_a_live_child_is_still_working() {
         let a = acts();
-        a.record("s1", Event::PromptSubmitted, 10);
-        a.record("s1", Event::SubagentStarted, 11);
+        a.record("s1", lead(Event::PromptSubmitted, 10));
+        a.record("s1", child(Event::SubagentStarted, 11, "c1"));
         assert_eq!(
-            a.record("s1", Event::Stopped, 20).doing(),
+            a.record("s1", lead(Event::Stopped, 20)).doing(),
             Doing::Working,
             "the child outlives the lead's boundary"
         );
         assert_eq!(
-            a.record("s1", Event::SubagentStopped, 30).doing(),
+            a.record("s1", child(Event::SubagentStopped, 30, "c1"))
+                .doing(),
             Doing::Idle
         );
     }
@@ -262,14 +318,17 @@ mod tests {
     #[test]
     fn a_child_only_boundary_does_not_outlive_the_leads_next_turn() {
         let a = acts();
-        a.record("s1", Event::PromptSubmitted, 10);
-        a.record("s1", Event::SubagentStarted, 11);
-        assert_eq!(a.record("s1", Event::Stopped, 20).doing(), Doing::Working);
+        a.record("s1", lead(Event::PromptSubmitted, 10));
+        a.record("s1", child(Event::SubagentStarted, 11, "c1"));
+        assert_eq!(
+            a.record("s1", lead(Event::Stopped, 20)).doing(),
+            Doing::Working
+        );
         // The child's `SubagentStop` never comes. The lead speaking again is
         // what proves the claim stale.
-        a.record("s1", Event::PromptSubmitted, 30);
+        a.record("s1", lead(Event::PromptSubmitted, 30));
         assert_eq!(
-            a.record("s1", Event::Stopped, 40).doing(),
+            a.record("s1", lead(Event::Stopped, 40)).doing(),
             Doing::Idle,
             "a child claim no event ever closed must not survive the lead's next boundary"
         );
@@ -279,46 +338,157 @@ mod tests {
     #[test]
     fn a_compact_after_a_child_only_boundary_clears_it() {
         let a = acts();
-        a.record("s1", Event::PromptSubmitted, 10);
-        a.record("s1", Event::SubagentStarted, 11);
-        a.record("s1", Event::Stopped, 20);
-        assert_eq!(a.record("s1", Event::Compacted, 30).doing(), Doing::Idle);
+        a.record("s1", lead(Event::PromptSubmitted, 10));
+        a.record("s1", child(Event::SubagentStarted, 11, "c1"));
+        a.record("s1", lead(Event::Stopped, 20));
+        assert_eq!(
+            a.record("s1", lead(Event::Compacted, 30)).doing(),
+            Doing::Idle
+        );
     }
 
     // cm:guard and the boundary must still HOLD across the child's own events, or the fix above has simply deleted the term it is fixing.
     #[test]
     fn the_boundary_holds_across_a_second_childs_start_and_stop() {
         let a = acts();
-        a.record("s1", Event::PromptSubmitted, 10);
-        a.record("s1", Event::SubagentStarted, 11);
-        a.record("s1", Event::SubagentStarted, 12);
-        a.record("s1", Event::Stopped, 20);
+        a.record("s1", lead(Event::PromptSubmitted, 10));
+        a.record("s1", child(Event::SubagentStarted, 11, "c1"));
+        a.record("s1", child(Event::SubagentStarted, 12, "c2"));
+        a.record("s1", lead(Event::Stopped, 20));
         assert_eq!(
-            a.record("s1", Event::SubagentStopped, 30).doing(),
+            a.record("s1", child(Event::SubagentStopped, 30, "c1"))
+                .doing(),
             Doing::Working,
             "one child of two finishing leaves the other working"
         );
         assert_eq!(
-            a.record("s1", Event::SubagentStopped, 40).doing(),
+            a.record("s1", child(Event::SubagentStopped, 40, "c2"))
+                .doing(),
             Doing::Idle
         );
+    }
+
+    // cm:guard the failure a COUNT could not survive, and the reason this is a set: the same child's stop arriving twice — a retried hook, a duplicated delivery — would have cancelled a second child's claim and idled a pane with live work in it.
+    #[test]
+    fn one_childs_stop_seen_twice_does_not_cancel_another_childs_claim() {
+        let a = acts();
+        a.record("s1", child(Event::SubagentStarted, 10, "c1"));
+        a.record("s1", child(Event::SubagentStarted, 11, "c2"));
+        a.record("s1", child(Event::SubagentStopped, 20, "c1"));
+        assert_eq!(
+            a.record("s1", child(Event::SubagentStopped, 21, "c1"))
+                .doing(),
+            Doing::Working,
+            "c2 is still working"
+        );
+    }
+
+    // cm:guard the other half of the same property: one child's start seen twice must not need two stops.
+    #[test]
+    fn one_childs_start_seen_twice_needs_only_one_stop() {
+        let a = acts();
+        a.record("s1", child(Event::SubagentStarted, 10, "c1"));
+        a.record("s1", child(Event::SubagentStarted, 11, "c1"));
+        assert_eq!(
+            a.record("s1", child(Event::SubagentStopped, 20, "c1"))
+                .doing(),
+            Doing::Idle
+        );
+    }
+
+    // cm:guard an unattributable child event must VOID NOTHING. A stop with no id cannot name the claim it would cancel, and a start with no id would gate a pane no event can ever ungate.
+    #[test]
+    fn a_child_event_that_names_no_child_changes_nothing() {
+        let a = acts();
+        a.record("s1", child(Event::SubagentStarted, 10, "c1"));
+        assert_eq!(
+            a.record("s1", lead(Event::SubagentStopped, 20)).doing(),
+            Doing::Working,
+            "an id-less stop may not cancel a claim it cannot name"
+        );
+        let before = a.get("s1").unwrap().children.clone();
+        a.record("s1", lead(Event::SubagentStarted, 30));
+        assert_eq!(
+            a.get("s1").unwrap().children,
+            before,
+            "an id-less start may not gate a pane nothing can ungate"
+        );
+    }
+
+    // cm:guard the backstop for every exit that reports NOTHING: `/clear`, a relaunch and a resume leave the pane alive under a new conversation and emit no terminating hook, so claims from the old one would gate it forever.
+    #[test]
+    fn a_new_conversation_voids_the_claims_of_the_old_one() {
+        let a = acts();
+        // cm:guard the turn is left RUNNING on purpose, so the child-only strip
+        // cannot fire and take the credit: with `turn_started_at` set, the only
+        // thing that can clear this child is the conversation changing. The
+        // first version of this test asserted the same outcome with the turn
+        // ended, and stayed green with the whole backstop deleted.
+        a.record(
+            "s1",
+            Report {
+                event: Event::PromptSubmitted,
+                at: 10,
+                subject: None,
+                conversation: Some("conv-a"),
+            },
+        );
+        a.record(
+            "s1",
+            Report {
+                event: Event::SubagentStarted,
+                at: 11,
+                subject: Some("c1"),
+                conversation: Some("conv-a"),
+            },
+        );
+        assert_eq!(a.get("s1").unwrap().children.len(), 1);
+        let after = a.record(
+            "s1",
+            Report {
+                event: Event::PromptSubmitted,
+                at: 20,
+                subject: None,
+                conversation: Some("conv-b"),
+            },
+        );
+        assert!(
+            after.children.is_empty(),
+            "a child of the previous conversation cannot hold this one working, got {:?}",
+            after.children
+        );
+    }
+
+    #[test]
+    fn the_same_conversation_voids_nothing() {
+        let a = acts();
+        let r = |event, at| Report {
+            event,
+            at,
+            subject: Some("c1"),
+            conversation: Some("conv-a"),
+        };
+        a.record("s1", r(Event::SubagentStarted, 10));
+        a.record("s1", r(Event::TeammateWentIdle, 11));
+        a.record("s1", r(Event::SubagentStarted, 12));
+        assert_eq!(a.get("s1").unwrap().doing(), Doing::Working);
     }
 
     // cm:guard a `SubagentStop` with no matching start is the normal case for every pane that predates this daemon, so the counter MUST saturate: an underflow pins the pane `Working` for the rest of its life and nothing on the box could explain why.
     #[test]
     fn a_childs_end_this_process_never_saw_the_start_of_does_not_wrap() {
         let a = acts();
-        let after = a.record("s1", Event::SubagentStopped, 10);
-        assert_eq!(after.subagents, 0);
+        let after = a.record("s1", child(Event::SubagentStopped, 10, "c1"));
+        assert!(after.children.is_empty());
         assert_eq!(after.doing(), Doing::Idle);
     }
 
     #[test]
     fn a_permission_question_outranks_a_running_turn_and_survives_until_the_next_boundary() {
         let a = acts();
-        a.record("s1", Event::PromptSubmitted, 10);
+        a.record("s1", lead(Event::PromptSubmitted, 10));
         assert_eq!(
-            a.record("s1", Event::PermissionRequested, 11).doing(),
+            a.record("s1", lead(Event::PermissionRequested, 11)).doing(),
             Doing::AwaitingPermission,
             "a pane stopped on a question is not working, however recently its turn began"
         );
@@ -327,23 +497,29 @@ mod tests {
             Doing::AwaitingPermission,
             "nothing but the agent's own next boundary may clear it"
         );
-        assert_eq!(a.record("s1", Event::Stopped, 20).doing(), Doing::Idle);
+        assert_eq!(
+            a.record("s1", lead(Event::Stopped, 20)).doing(),
+            Doing::Idle
+        );
     }
 
     // cm:guard a manual `/compact` ends at an idle prompt and emits no `Stop`, so this event is the only thing that can end that turn. Without it the pane stays `Working` forever and every liveness reader believes it.
     #[test]
     fn a_hand_compacted_pane_does_not_stay_working_forever() {
         let a = acts();
-        a.record("s1", Event::PromptSubmitted, 10);
-        assert_eq!(a.record("s1", Event::Compacted, 20).doing(), Doing::Idle);
+        a.record("s1", lead(Event::PromptSubmitted, 10));
+        assert_eq!(
+            a.record("s1", lead(Event::Compacted, 20)).doing(),
+            Doing::Idle
+        );
     }
 
     // cm:guard the sequence is what lets a caller prove a NEW turn started: an agent already working when a prompt is pasted cannot show a `→Working` edge, so without a counter the only proof left is a screen read.
     #[test]
     fn every_event_moves_the_sequence_so_a_new_turn_is_provable_under_an_old_one() {
         let a = acts();
-        let first = a.record("s1", Event::PromptSubmitted, 10).sequence;
-        let second = a.record("s1", Event::PromptSubmitted, 20).sequence;
+        let first = a.record("s1", lead(Event::PromptSubmitted, 10)).sequence;
+        let second = a.record("s1", lead(Event::PromptSubmitted, 20)).sequence;
         assert!(second > first, "{second} must exceed {first}");
     }
 
@@ -351,12 +527,13 @@ mod tests {
     #[test]
     fn a_teammate_going_idle_stops_gating_the_pane() {
         let a = acts();
-        a.record("s1", Event::PromptSubmitted, 10);
-        a.record("s1", Event::SubagentStarted, 11);
-        a.record("s1", Event::Stopped, 20);
+        a.record("s1", lead(Event::PromptSubmitted, 10));
+        a.record("s1", child(Event::SubagentStarted, 11, "c1"));
+        a.record("s1", lead(Event::Stopped, 20));
         assert_eq!(a.get("s1").unwrap().doing(), Doing::Working);
         assert_eq!(
-            a.record("s1", Event::TeammateWentIdle, 30).doing(),
+            a.record("s1", child(Event::TeammateWentIdle, 30, "c1"))
+                .doing(),
             Doing::Idle,
             "an idle child does not hold a pane working"
         );
@@ -366,10 +543,11 @@ mod tests {
     #[test]
     fn a_teammate_that_resumes_gates_the_pane_again() {
         let a = acts();
-        a.record("s1", Event::SubagentStarted, 10);
-        a.record("s1", Event::TeammateWentIdle, 11);
+        a.record("s1", child(Event::SubagentStarted, 10, "c1"));
+        a.record("s1", child(Event::TeammateWentIdle, 11, "c1"));
         assert_eq!(
-            a.record("s1", Event::SubagentStarted, 12).doing(),
+            a.record("s1", child(Event::SubagentStarted, 12, "c1"))
+                .doing(),
             Doing::Working
         );
     }
@@ -378,12 +556,13 @@ mod tests {
     #[test]
     fn a_teammates_idle_does_not_strip_another_childs_claim() {
         let a = acts();
-        a.record("s1", Event::PromptSubmitted, 10);
-        a.record("s1", Event::SubagentStarted, 11);
-        a.record("s1", Event::SubagentStarted, 12);
-        a.record("s1", Event::Stopped, 20);
+        a.record("s1", lead(Event::PromptSubmitted, 10));
+        a.record("s1", child(Event::SubagentStarted, 11, "c1"));
+        a.record("s1", child(Event::SubagentStarted, 12, "c2"));
+        a.record("s1", lead(Event::Stopped, 20));
         assert_eq!(
-            a.record("s1", Event::TeammateWentIdle, 30).doing(),
+            a.record("s1", child(Event::TeammateWentIdle, 30, "c1"))
+                .doing(),
             Doing::Working,
             "one of two children going idle leaves the other gating"
         );
@@ -392,8 +571,8 @@ mod tests {
     #[test]
     fn two_sessions_do_not_share_a_turn() {
         let a = acts();
-        a.record("s1", Event::PromptSubmitted, 10);
-        a.record("s2", Event::Stopped, 11);
+        a.record("s1", lead(Event::PromptSubmitted, 10));
+        a.record("s2", lead(Event::Stopped, 11));
         assert_eq!(a.get("s1").unwrap().doing(), Doing::Working);
         assert_eq!(a.get("s2").unwrap().doing(), Doing::Idle);
     }
