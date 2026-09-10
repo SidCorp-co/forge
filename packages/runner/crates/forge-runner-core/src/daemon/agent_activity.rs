@@ -40,6 +40,9 @@ pub enum Event {
     SubagentStarted,
     /// A child agent finished.
     SubagentStopped,
+    /// A turn-based teammate went idle. Alive and resumable, not gone.
+    // cm:guard mapped to "no longer gating" and NOT to "gone", which is the same answer here for the only question this module asks: an idle child does not hold a pane working (Orca's #8825 idle-squat rule). Verified in claude 2.1.257: `TeammateIdle` is its own hook event beside `Stop`, and the payload names the teammate (`teammate_name`) rather than carrying an id — so a roster keyed on a child id is not available to build even if this needed one.
+    TeammateWentIdle,
     /// A manual `/compact` finished.
     // cm:guard a manual compact ends at an idle prompt and emits NO `Stop`, so without this event a pane that was compacted by hand stays `Working` for the rest of its life.
     Compacted,
@@ -56,6 +59,7 @@ impl Event {
             "PermissionRequest" => Self::PermissionRequested,
             "SubagentStart" => Self::SubagentStarted,
             "SubagentStop" => Self::SubagentStopped,
+            "TeammateIdle" => Self::TeammateWentIdle,
             "PostCompact" => Self::Compacted,
             _ => return None,
         })
@@ -69,18 +73,20 @@ impl Event {
             Self::PermissionRequested => "PermissionRequest",
             Self::SubagentStarted => "SubagentStart",
             Self::SubagentStopped => "SubagentStop",
+            Self::TeammateWentIdle => "TeammateIdle",
             Self::Compacted => "PostCompact",
         }
     }
 
     /// Every event this daemon registers, in the order it registers them.
-    pub const ALL: [Event; 7] = [
+    pub const ALL: [Event; 8] = [
         Event::PromptSubmitted,
         Event::Stopped,
         Event::StoppedFailed,
         Event::PermissionRequested,
         Event::SubagentStarted,
         Event::SubagentStopped,
+        Event::TeammateWentIdle,
         Event::Compacted,
     ];
 }
@@ -150,7 +156,12 @@ impl Activities {
         a.sequence += 1;
         // cm:guard the child-only boundary is CARRIED only while the events that follow it are the child's own, and any other event strips it. Establishing it without this exit is the same unbounded claim `PreCompact` is refused for: a child killed, crashed, or whose hook was dropped never sends `SubagentStop`, and the pane is then `Working` for the rest of its life with nothing on the box able to say why.
         let child_only = a.turn_started_at.is_none() && a.subagents > 0;
-        if child_only && !matches!(event, Event::SubagentStarted | Event::SubagentStopped) {
+        if child_only
+            && !matches!(
+                event,
+                Event::SubagentStarted | Event::SubagentStopped | Event::TeammateWentIdle
+            )
+        {
             a.subagents = 0;
         }
         match event {
@@ -166,7 +177,10 @@ impl Activities {
             }
             Event::SubagentStarted => a.subagents += 1,
             // cm:guard saturating, because a `SubagentStop` whose `SubagentStart` this process never saw is the NORMAL case after a daemon restart — an underflow here would wrap to four billion children and pin the pane `Working` forever.
-            Event::SubagentStopped => a.subagents = a.subagents.saturating_sub(1),
+            // cm:guard a teammate going idle takes the SAME arm as a child finishing, and the difference between them is deliberately not modelled: a turn-based teammate fires this at every turn end while staying alive, so a reader that treated it as existence would keep the pane working across every boundary, and one that treated it as departure would be wrong only about a fact nothing here asks.
+            Event::SubagentStopped | Event::TeammateWentIdle => {
+                a.subagents = a.subagents.saturating_sub(1)
+            }
         }
         a.clone()
     }
@@ -331,6 +345,48 @@ mod tests {
         let first = a.record("s1", Event::PromptSubmitted, 10).sequence;
         let second = a.record("s1", Event::PromptSubmitted, 20).sequence;
         assert!(second > first, "{second} must exceed {first}");
+    }
+
+    // cm:guard a turn-based teammate fires `TeammateIdle` at EVERY turn end while staying alive and resumable, so this is the event that ends the gate — not `SubagentStop`, which such a child may never send at all. Without it the counter never comes down and the pane is `Working` until the lead happens to speak again.
+    #[test]
+    fn a_teammate_going_idle_stops_gating_the_pane() {
+        let a = acts();
+        a.record("s1", Event::PromptSubmitted, 10);
+        a.record("s1", Event::SubagentStarted, 11);
+        a.record("s1", Event::Stopped, 20);
+        assert_eq!(a.get("s1").unwrap().doing(), Doing::Working);
+        assert_eq!(
+            a.record("s1", Event::TeammateWentIdle, 30).doing(),
+            Doing::Idle,
+            "an idle child does not hold a pane working"
+        );
+    }
+
+    // cm:guard idle is not gone: the same teammate resuming must gate again, which is why this event may not be read as a departure either.
+    #[test]
+    fn a_teammate_that_resumes_gates_the_pane_again() {
+        let a = acts();
+        a.record("s1", Event::SubagentStarted, 10);
+        a.record("s1", Event::TeammateWentIdle, 11);
+        assert_eq!(
+            a.record("s1", Event::SubagentStarted, 12).doing(),
+            Doing::Working
+        );
+    }
+
+    // cm:guard `TeammateIdle` is CHILD-scoped and must not strip the boundary the way a lead event does, or a teammate going idle would clear a second child that is still working.
+    #[test]
+    fn a_teammates_idle_does_not_strip_another_childs_claim() {
+        let a = acts();
+        a.record("s1", Event::PromptSubmitted, 10);
+        a.record("s1", Event::SubagentStarted, 11);
+        a.record("s1", Event::SubagentStarted, 12);
+        a.record("s1", Event::Stopped, 20);
+        assert_eq!(
+            a.record("s1", Event::TeammateWentIdle, 30).doing(),
+            Doing::Working,
+            "one of two children going idle leaves the other gating"
+        );
     }
 
     #[test]
