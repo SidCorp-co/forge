@@ -121,8 +121,8 @@ export function patPermissionWanted(path: string, level: PatPermissionLevel): Pa
  * Does a token granted `granted` reach this path with this level?
  *
  * The grant is a narrowing, so its ABSENCE is the whole menu — and absence has
- * two shapes, a `NULL` column and an empty array, because the migration writes
- * neither and a caller may send either.
+ * three shapes held to one answer: a `NULL` column the migration never wrote,
+ * an empty array a caller sent, and a principal built without the field.
  */
 // cm:guard absent AND empty both mean EVERY group, never no group. 26 active human tokens on production the day this shipped, 25 of them immortal, every one unmigrated the instant the column landed — reading an ungranted token as permissionless locks out every live integration on deploy (ISS-972's rule, ISS-973's implementation). The two shapes are one `?? []` away from being confused, so they are tested apart.
 // cm:guard a NON-EMPTY array that names nothing this menu still declares covers NO path, which is the opposite direction to the rule above and is deliberate: a token somebody narrowed to `foo:read` after `foo` left the menu must reach nothing, never everything. Only absence is the full menu.
