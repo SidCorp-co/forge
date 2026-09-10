@@ -25,7 +25,7 @@ flowchart LR
 | Projects and their kind | `core/src/projects/`, `schema.ts:projects`, `schema.ts:projectKinds` |
 | Role resolution across the two scopes | `core/src/lib/authz.ts:effectiveProjectRole` |
 | Dual-principal auth (user vs device) | `core/src/auth/`, `core/src/security/` |
-| Which routes a PAT may reach, and which projects | `core/src/middleware/pat-rest-surface.ts:PAT_ALLOWED_PREFIXES`, `core/src/auth/pat-scope.ts` |
+| Which routes a PAT may reach, and which projects | `core/src/auth/pat-permissions.ts:PAT_PERMISSION_RESOURCES` (the declaration), `core/src/middleware/pat-rest-surface.ts:PAT_ALLOWED_PREFIXES` (its union), `core/src/auth/pat-scope.ts` |
 | Personal access tokens, scoped | `core/src/pat/`, `schema.ts:personalAccessTokens` |
 | Org-scoped SSH key pool | `schema.ts:workspaceSshKeys`, web `features/resources/` |
 | UI | web `features/orgs/`, `projects/`, `project-settings/`, `settings/` |
