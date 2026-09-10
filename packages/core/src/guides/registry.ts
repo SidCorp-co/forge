@@ -261,7 +261,7 @@ Same discipline, shorter. Lead with the outcome, put the trace underneath. A com
     title: 'Pipeline & issue lifecycle',
     summary:
       'What belongs in a description, the four exits from draft (including the direct-ship route and the discard that does not stamp `merged_at`), what the state machine actually enforces vs merely recommends, status-last discipline, why leaving a park is as free as entering it, the two authored kinds of `waiting`, and who owns which derived fields.',
-    version: 7,
+    version: 8,
     body: `## Pipeline & issue lifecycle
 
 ### An issue is a unit of WORK — draft vs open
@@ -275,25 +275,66 @@ But \`draft\` is not a notepad either. Apply the test before you create anything
 | You have | Set | Why |
 |---|---|---|
 | Finished the work entirely by hand; the pipeline has nothing left to do | \`closed\` | See the \`merged_at\` warning below before you do this |
-| Written AND pushed the \`ISS-*\` branch yourself; the next act is somebody else's | \`developed\` **+ \`sessionContext.branch\`** | Places the work at the REVIEW gate. Walking \`open\` instead re-runs the whole thing over already-finished work |
-| Started it, still building, branch not pushed | \`in_progress\` | Says a session holds this. Dispatches nothing — promoting instead is what races an agent into the worktree you are in |
-| Not started it; you want the pipeline to do the whole thing | \`open\` | Full ladder from triage |
+| Written AND pushed the \`ISS-*\` branch yourself | \`in_progress\` **+ \`sessionContext.branch\`** | The branch is what says the code exists; the status only says a session holds the issue. Walking \`open\` instead re-runs the whole thing over already-finished work. (This was \`developed\` until 2026-09-10 — that rung is retired, and there is no separate review gate any more: review happens inside the session that built it.) |
+| Started it, still building, branch not pushed | \`in_progress\` | Same rung. Dispatches nothing — promoting instead is what races an agent into the worktree you are in |
+| Not started it; you want the pipeline to do the whole thing | \`open\` | The one status that dispatches; the driver takes it from there |
 | Decided against it; the work will not happen | \`dropped\` | Terminal, and does NOT stamp \`merged_at\` — this is the discard \`closed\` should not be used for |
 | Looked at it, not doing it now | leave \`draft\` | Costs nothing, dispatches nothing |
 
-Two of the five are easy to mix up. The \`developed\` route is the one people miss: it is the direct-ship path, where you did the coding and the pipeline still gates it. And \`dropped\` is the one people reach for \`closed\` instead of.
+Two are easy to mix up. \`in_progress\` is the one people miss: it is the direct-ship path, and it is the same rung whether the branch is pushed or not — \`sessionContext.branch\` carries that, not the status. And \`dropped\` is the one people reach for \`closed\` instead of.
 
 ### A status says WHERE the work is, never WHAT exists
 Every status answers one question — which gate the work sits at, and whose move is next. That is the whole of what it claims, it is declared per status in \`pipeline/status-assertions.ts\`, and there is no field in that declaration in which a status could claim anything else. So do not read a rung as a promise that code was written, pushed or merged, and never refuse a rung because you cannot make such a promise true.
 
 The evidence questions are answered by three row fields instead, and you read them directly: \`merged_at\` (it landed), \`sessionContext.branch\` (a branch exists), and the implementation handoff's \`commitSha\`. \`merged_at\` is caller-asserted rather than verified — any hop out of the base merge state stamps it — so it is evidence of a claim, which is what an evidence field is.
 
-This is why \`developed\` is the right rung for work you built and pushed and cannot merge yourself: it places the work at the review gate and says nothing about a merge. Four runs on 2026-09-06 reached that identical state and recorded four different statuses because the promise was undefined (ISS-940). One more consequence worth knowing: on this lane \`open\` is the ONLY status a job is dispatched at, so every other live status is already waiting on a person — reaching one is not how you ask for work to continue.
+This is why work you built and pushed but cannot merge yourself stays at \`in_progress\` with \`sessionContext.branch\` set: the branch field says the code exists, and the rung says only that a session holds the issue. Four runs on 2026-09-06 reached that identical state and recorded four different statuses because the promise was undefined (ISS-940). One more consequence worth knowing: on this lane \`open\` is the ONLY status a job is dispatched at, so every other live status is already waiting on a person — reaching one is not how you ask for work to continue.
 
 **Closing is not free, and \`dropped\` is why you rarely need it.** \`closed\` auto-stamps \`merged_at\`, and \`merged_at\` is exactly what releases every \`blocks\` dependent waiting on this issue — so closing something you ABANDONED silently unblocks work that should still be blocked. \`dropped\` is terminal without the stamp (dependents are freed by edge expiry instead), so use it for anything discarded and keep \`closed\` for work that actually landed. If you have already closed an abandoned issue, call \`forge_issues\` \`unmark\` to clear the stamp.
 
+### The status set, and it is closed
+
+Ten statuses. Drawing, with the full transition matrix: \`docs/flows/issue-status-lifecycle.html\`.
+
+\`\`\`
+                                  ┌─────────────── needs_info ──┐   (from ANY rung)
+                                  │                             │
+draft ──▶ open ──▶ in_progress ──▶ awaiting_release ──▶ releasing ──▶ closed
+  │                    │                                  │            │
+  └──▶ dropped         └──▶ closed (no gate)               └──▶ reopen ─┘
+                                  └─────────────── on_hold ─────┘   (from ANY rung)
+\`\`\`
+
+| Status | Claims | Whose move is next |
+|---|---|---|
+| \`draft\` | filed, not admitted | whoever triages it |
+| \`open\` | claimable. **The only status that dispatches** | a master, by claiming |
+| \`in_progress\` | a session holds it | the run |
+| \`awaiting_release\` | merged to the base branch, waiting for production | a person, by pressing RELEASE |
+| \`releasing\` | a release was triggered and is running | the release batch |
+| \`needs_info\` | a question a person owes an answer to | a person, by answering |
+| \`on_hold\` | a pause a person chose — **not** a question | the person who paused it |
+| \`reopen\` | a person disagreed with a close | a person, by routing it |
+| \`closed\` | done, and \`merged_at\` is stamped | nobody |
+| \`dropped\` | closed **without** stamping — it was not work | nobody |
+
+\`needs_info\` and \`on_hold\` are enterable from **every** rung and from each other. \`draft\` cannot park (it already is a resting place) and \`closed\`/\`dropped\` cannot: a park after an end is a reopen, and \`closed → reopen\` already is that hop — on a staged project and on an autonomous one alike, where a person is its only writer.
+
+**Only \`finish\` and \`abort\` may write out of \`releasing\`.** An agent that could leave it would be declaring its own release finished. A batch that dies without either outcome hands its issues to \`reopen\` with the reason attached.
+
+**Seven retired statuses, and the trap is that six of them still WORK.**
+
+| Retired | What happens if you write it |
+|---|---|
+| \`deploying\` \`pass\` \`staging\` | gone from the enum — \`forge_issues.update\` **refuses** them, so you find out at once |
+| \`confirmed\` \`clarified\` \`approved\` \`developed\` \`testing\` \`tested\` | still in the enum for rows that already hold them, so the write **SUCCEEDS silently**. Nothing dispatches at any of them, so the issue is stranded until a person moves it by hand |
+| \`released\` | renamed to \`awaiting_release\` (migration 0228). The old name is refused. It was the past tense of an action that had not happened, and it doubled as the release *trigger* because there was no button; the button and \`releasing\` took that job |
+| \`waiting\` | still written, still being retired. An agent's \`waiting\` is rewritten to \`needs_info\` on an autonomous project |
+
+Measured 2026-09-10: while the default chain in the prompt still named the six, agents walked them — **153 hops across 4 projects in 3 hours**, leaving **45 issues** standing on a status no job dispatches at. That is the whole reason the chain is now four rungs.
+
 ### What is actually enforced, and what is only advice
-The runtime gate is permissive: **any status may move to any status, except that nothing may move INTO \`draft\`**, and \`draft\` itself may only leave to \`open\`, \`in_progress\`, \`developed\`, \`closed\` or \`dropped\`. One content rule sits beside it: **an agent may not write \`closed\` while \`releaseNotes\` is null**, because \`closed\` is what every reader takes as shipped and a shipped issue with nothing written for it is the record lying. One exemption, and it is narrow: a HUMAN close, because an operator making the claim deliberately owns it. The batch release is not a second — it is refused earlier instead, at the claim, with \`RELEASE_RECORD_MISSING\`. What this guarantees is that a note exists ON THE ISSUE before an automated close; it does not guarantee a line reached \`CHANGELOG.md\`, which is a git artifact core never reads. \`dropped\` is legal, and it is a dead end by **convention, not by the gate**: the \`transitions\` map offers it no exit because reopening a dropped issue would carry \`merged_at\` NULL into an issue that then ships, so re-filing is the correct move. The recommended discard for non-work is still \`closed\` + \`unmark\`, per **Closing is not free** above.
+The runtime gate is permissive: **any status may move to any status, except that nothing may move INTO \`draft\`**, and \`draft\` itself may only leave to \`open\`, \`in_progress\`, \`closed\` or \`dropped\` (\`developed\` is still accepted by the gate and must not be used — see the status table below). One content rule sits beside it: **an agent may not write \`closed\` while \`releaseNotes\` is null**, because \`closed\` is what every reader takes as shipped and a shipped issue with nothing written for it is the record lying. One exemption, and it is narrow: a HUMAN close, because an operator making the claim deliberately owns it. The batch release is not a second — it is refused earlier instead, at the claim, with \`RELEASE_RECORD_MISSING\`. What this guarantees is that a note exists ON THE ISSUE before an automated close; it does not guarantee a line reached \`CHANGELOG.md\`, which is a git artifact core never reads. \`dropped\` is legal, and it is a dead end by **convention, not by the gate**: the \`transitions\` map offers it no exit because reopening a dropped issue would carry \`merged_at\` NULL into an issue that then ships, so re-filing is the correct move. The recommended discard for non-work is still \`closed\` + \`unmark\`, per **Closing is not free** above.
 
 The status ladder you see in prompts, in the UI's next-state suggestions, and in the \`transitions\` map in the source is the **recommended happy path**, not a constraint. Do not infer that a hop is illegal because it is not listed there, and do not build multi-hop detours to reach a status you could have set directly. If a transition is genuinely refused you will get a typed error naming the reason (\`TRANSITION_REASON_REQUIRED\` on a park with no rationale, \`WAITING_KIND_REQUIRED\` on a \`waiting\` that does not say which kind, \`RELEASE_RECORD_REQUIRED\` on a close with no \`releaseNotes\` — set the field and close again, \`{ section: 'Skip', userFacing: '-' }\` is a complete answer, \`ILLEGAL_TRANSITION\` on either half of the rule above — \`draft\` as a target, or a \`draft\` leaving to anything else) — reason from that error, never from the shape of the ladder.
 

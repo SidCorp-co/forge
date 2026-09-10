@@ -23,6 +23,13 @@
 
 ### Added
 
+- **Agents are no longer told to walk a pipeline that was retired.** The default forward chain every
+  agent reads was still `open → confirmed → clarified → approved → developed → testing → tested →
+  …`, and agents followed it: 153 status changes across four projects in three hours, each landing on
+  a rung where no work is dispatched. 45 issues were sitting on one of those rungs, waiting for a
+  person who did not know they were waiting. The chain is now the four rungs that actually run, and
+  the six retired names are called out by name — they still exist for the issues already on them, so
+  writing one succeeds silently, which is exactly why the warning had to be explicit.
 - **The status for "merged, waiting to be released" is now called `awaiting_release`.** It was
   called `released` — the past tense of an action that had not happened, so every reader had to know
   that "released" meant "not released". The board has shown this rung as *Awaiting release* all

@@ -39,8 +39,7 @@ describe('forge facts registry', () => {
     expect(text.startsWith('## Pipeline Rules')).toBe(true);
     expect(text).toContain('Status LAST');
     expect(text).toContain('The system never writes `waiting` by itself');
-    // The project-resolved ladder section takes precedence over the inline
-    // default chain — guards against the two drifting silently (F1).
+    // cm:guard the project-resolved ladder section must OVERRIDE the inline default chain, and the prompt has to say so in those words — two chains stated with no precedence between them is how an agent picks the wrong one, and the inline default is the copy that went stale (F1).
     expect(text).toContain('### Status ladder');
     expect(text).toContain('OVERRIDES the default');
     // Step check-in is the mandated first action (forge_step_start tool).
@@ -128,7 +127,13 @@ describe('forge facts registry', () => {
       ladder: ['open', 'confirmed', 'developed', 'testing', 'awaiting_release'],
     });
     expect(resolved).toContain('open → confirmed → developed → testing → awaiting_release');
-    expect(renderFact('status-ladder')).toContain('open → confirmed → clarified');
+    // cm:guard the DEFAULT must be the four-rung chain, not the staged ladder: while `CANONICAL_LADDER` named the retired six, agents walked them — 153 hops over 4 projects in 3 hours, 45 issues left on a status no job dispatches at (2026-09-10)
+    expect(renderFact('status-ladder')).toContain('open → in_progress → awaiting_release → closed');
+    // cm:why scoped to the LADDER line and not the whole body: the retired six legitimately appear in the body's never-write warning, so a whole-body `not.toContain` would fail on the very text that stops them being written
+    const ladderLine = (renderFact('status-ladder') ?? '')
+      .split('\n')
+      .find((l) => l.startsWith('`open'));
+    expect(ladderLine).toBe('`open → in_progress → awaiting_release → closed`');
   });
 
   it('handoff fact renders the per-stage payload keys', () => {
@@ -303,10 +308,12 @@ describe('status-ladder fact — authoritative over a stale exit status in a for
     expect(body).toMatch(/authoritative set of statuses/);
   });
 
-  // cm:guard naming `deploying` explicitly is the point — a generic "check the enum" loses to a concrete numbered step the agent is already executing, which is how this failed six times.
-  it('names `deploying` and says what to do instead', () => {
+  // cm:guard naming the retired statuses explicitly is the point — a generic "check the enum" loses to a concrete numbered step the agent is already executing, which is how this failed six times. And the two SHAPES of stale must both be named: `deploying` is refused so the agent learns at once, while `approved` and its five siblings are still in the enum and the write SUCCEEDS in silence, which is the one that strands an issue.
+  it('names both shapes of retired status and says what to do instead', () => {
     expect(body).toContain('deploying');
-    expect(body).toMatch(/retired platform-wide/);
+    expect(body).toMatch(/REFUSES them/);
+    expect(body).toContain('approved');
+    expect(body).toMatch(/SUCCEEDS and nothing warns you/);
     expect(body).toMatch(/advance to the ladder's next rung instead/);
   });
 
