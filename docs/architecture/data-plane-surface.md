@@ -13,7 +13,9 @@ true whoever calls the route. Two tools stay on MCP by design, three sit behind 
 deliberate and permanent, two are open questions, and one has no route at all.
 
 Verified 2026-09-06 against `registered-tools.ts`, the mounts in `index.ts`, and
-`PAT_ALLOWED_PREFIXES` in `middleware/pat-rest-surface.ts`. Where a route is listed, it was checked
+`PAT_ALLOWED_PREFIXES` in `middleware/pat-rest-surface.ts`, which since ISS-972 phase 1 is the
+union of `PAT_PERMISSION_RESOURCES` in `auth/pat-permissions.ts` — that map is the declaration, and
+the union is derived from it. Where a route is covered, it was checked
 to call the same service as the tool — not merely to carry a similar name.
 
 ```mermaid
@@ -22,15 +24,15 @@ flowchart LR
   P["forge · the plugin CLI<br/>the agent's surface"] -->|"3.35.141+"| CLI
   P -->|"3.35.140 · what the fleet runs"| MCP["/mcp"]
   MC["Claude's MCP client<br/>job:/session: PAT"] --> MCP
-  CLI --> F{"PAT allowlist<br/>16 prefixes"}
+  CLI --> F{"PAT allowlist<br/>union of 7 resources<br/>= 16 prefixes"}
   F -->|on it| R["REST · the data plane"]
   F -->|not on it| X["403 PAT_NOT_PERMITTED"]
   MCP --> R
 ```
 
-The fence is an allowlist, not a deny-list: **a new REST route is 403 to every PAT until its prefix
-is added.** That is deliberate — a forgotten entry costs a caller an error they report, where a
-forgotten deny-list entry is a silent leak nobody reports.
+The fence is an allowlist, not a deny-list: **a new REST route is 403 to every PAT until some
+resource covers its prefix.** That is deliberate — a forgotten entry costs a caller an error they
+report, where a forgotten deny-list entry is a silent leak nobody reports.
 
 **The allowlist only governs routes that authenticate.** A router mounted with no auth middleware
 never reaches `beginPatRequest`, so the fence never runs and the prefix is irrelevant — `/api/guides`
@@ -95,7 +97,7 @@ re-checked.
 
 ## Fenced on purpose — do not "fix" these by adding a prefix
 
-`PAT_ALLOWED_PREFIXES` names four prefixes as the ones *"where being wrong once ends the fence for
+`PAT_PERMISSION_RESOURCES` names four prefixes as the ones *"where being wrong once ends the fence for
 good"*: `/api/pat`, `/api/orgs`, `/api/admin`, `/api/me`. None of them resolves a project, so a
 project-scoped token there is an account-scoped credential wearing a project-scoped label.
 
@@ -106,7 +108,8 @@ project-scoped token there is an account-scoped credential wearing a project-sco
 | — | `/api/pat` | a scoped token that can mint an unscoped one has no scope. This is the entry whose absence collapses every other one |
 | — | `/api/admin/mcp-audit/tools` | per-tool `mcp_audit_log` counts, which span every project on the instance — the `ops-health` shape. The MCP deletion rule is written against these numbers and an agent still cannot read them: that is `ISS-946`'s recorded answer, not an omission, and a project-scoped twin is refused by name because a tool idle here and busy next door would read *clear*. See [agent-surface.md](agent-surface.md) |
 
-Two more are fenced for the same reason even though their prefix IS allowlisted:
+Two more fan-outs are fenced the same way, by belonging to no resource — and each has a
+project-scoped twin under `/api/projects`, which IS covered, so the reachable half is the twin:
 
 - **`/api/me/ops-health`** fans out across every project the caller can see. The per-project twin
   (`/api/projects/:id/ops-health`) is the one a PAT reaches.

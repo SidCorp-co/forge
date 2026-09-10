@@ -20,9 +20,27 @@
   `assertProjectAccess`, `resolveProjectIdFromSlug`) — resolving the transitive intra-core import
   graph and each router file's own helper fixpoint, so a file-local `assertMember()` counts and a
   service layer two hops away counts, while a module that merely sits in the same import graph does
-  not. It reports `16 allowlisted prefix(es) · 67 router file(s) · 202 route(s) · 0 unfenced`, and
-  refuses to pass vacuously: zero routes checked exits 2, an unparseable route path is a finding,
-  and a stale exemption is a finding. Registered on `verify`'s `knowledge` axis and as a CI step.
+  not. It reports `7 resource(s) · 14 permission group(s) · 16 covered prefix(es) · 67 router
+  file(s) · 202 route(s) · 0 finding(s)`, and refuses to pass vacuously: zero routes checked exits
+  2, an unparseable route path is a finding, a partially parsed declaration exits 2 rather than
+  walking the part it understood, and a stale exemption is a finding. Registered on `verify`'s
+  `knowledge` axis and as a CI step.
+
+- **Which routes a personal access token may reach is now declared as named permissions.**
+  `PAT_PERMISSION_RESOURCES` in `packages/core/src/auth/pat-permissions.ts` maps a resource
+  (`issues`, `tasks`, `pipeline`, `knowledge`, `skills`, `schedules`, `projects`) to the `/api/...`
+  prefixes it covers, and the menu is those seven crossed with the two levels the method test
+  already answers — `issues:read`, `issues:write`, and so on, 14 permissions. `PAT_ALLOWED_PREFIXES`
+  is now that map's union rather than a hand-kept list, so widening what a token may reach means
+  editing a named permission instead of an array, and the menu is code an operator picks from
+  rather than configuration an operator can extend: a route group somebody can invent is a fence
+  nobody proved. **Nothing a caller can observe changed** — the union is the same 16 prefixes, held
+  to that by a test that freezes them as a literal, and no request consults a permission yet. A
+  group's level is the value `scopeForMethod` returns rather than a list of verbs, so every method
+  is classed by exactly one level and the two levels of a resource cover it between them by
+  construction; an enumerated verb list would instead have narrowed reachability for the first
+  method nobody thought of, silently, because the path test is method-blind. First of the seven
+  phases ISS-972 carries; a token starts carrying its own grants in the next one.
 
 - **Six vulnerable transitive dependencies pinned to patched versions, closing 19 Dependabot alerts
   (12 high).** `fast-uri` (→3.1.7), `undici` (→7.29.1), `qs` (→6.16.0), `protobufjs` (→7.6.6),

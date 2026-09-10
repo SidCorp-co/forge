@@ -23,6 +23,7 @@
 <p class="sub">One <code>Authorization: Bearer</code> header, from the byte that decides which
 verifier runs to the project ids the request is fenced to — and every place the answer is refused.
 Owner: <code>packages/core/src/middleware/{bearer,auth,require-any-auth,require-device,require-pat,pat-rest-surface}.ts</code>,
+<code>packages/core/src/auth/pat-permissions.ts</code>,
 <code>packages/core/src/auth/{pat,pat-format,device-credential,agent-account}.ts</code>, <code>packages/core/src/lib/authz.ts</code>.</p>
 
 <h2>The token decides the verifier, and the verifier decides who you are</h2>
@@ -96,7 +97,8 @@ writer keeps them in step. Both are now persisted beside each other:
 <thead><tr><th>Symptom</th><th>What actually happened</th></tr></thead>
 <tbody>
 <tr><td><code>403 PAT_NOT_PERMITTED</code> on a route that plainly exists</td>
-    <td>The path is not on <code>PAT_ALLOWED_PREFIXES</code>. That is a statement about the ROUTE,
+    <td>The path belongs to no resource in <code>PAT_PERMISSION_RESOURCES</code>, so it is not in
+    the <code>PAT_ALLOWED_PREFIXES</code> union. That is a statement about the ROUTE,
     not the token: a route resolving no project has nothing for the fence to bite on, so a
     project-scoped token there would be an account-scoped credential wearing a project label.
     <code>/api/me/collaborators</code> and <code>/api/me/ops-health</code> are permanently in this
@@ -164,11 +166,15 @@ writer keeps them in step. Both are now persisted beside each other:
 </table>
 
 <h2>Read this before</h2>
-<p>Adding a prefix to <code>PAT_ALLOWED_PREFIXES</code> — every entry must be reachable by a PAT
-<em>today</em>, which is what forces the grant to be made by someone looking at the route, and
+<p>Widening what a PAT may reach. <code>PAT_ALLOWED_PREFIXES</code> is now a computed union and
+not an editable list: the declaration is <code>PAT_PERMISSION_RESOURCES</code> in
+<code>packages/core/src/auth/pat-permissions.ts</code>, one named resource to the prefixes it
+covers, and a prefix reaches the union only by belonging to a resource (ISS-972 phase 1). Every
+entry must still be reachable by a PAT <em>today</em>, which is what forces the grant to be made
+by someone looking at the route, and
 <code>/api/pat</code> and <code>/api/orgs</code> being absent is the whole reason an agent cannot
 mint another agent. <code>requireUserOrDevice</code> now HAS a PAT branch (ISS-932) and it resolves
-a device without setting <code>userId</code>; that list is the only thing keeping a token off
+a device without setting <code>userId</code>; that declaration is the only thing keeping a token off
 <code>GET /api/agent-sessions</code>, which with no <code>projectId</code> returns every session of
 every visible project with <code>messages[]</code> attached. And minting a
 new species of machine token — it belongs in <code>MACHINE_TOKEN_NAME_PREFIXES</code> and nowhere

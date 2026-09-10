@@ -270,7 +270,7 @@ question.
 
 **`ISS-946` offered three roads and the fence closed the one that would have been convenient.** A
 cross-project aggregate inside `PAT_ALLOWED_PREFIXES` was not rejected as risky, it is excluded by
-what the fence *is*: `pat-rest-surface.ts` admits a prefix only when the route resolves a project
+what the fence *is*: a resource in `auth/pat-permissions.ts` may cover a prefix only when the route resolves a project
 for the scope to bite on, and a tool's callers span every project on the instance. That is the
 `/api/me/ops-health` shape exactly. **And a project-scoped twin is worse than no route at all** —
 a tool at zero calls in this project and four hundred in the next would read CLEAR, which is not a
