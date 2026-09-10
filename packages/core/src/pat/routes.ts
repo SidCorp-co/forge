@@ -10,7 +10,9 @@
  *                                   optional `permissions` array narrows the
  *                                   token to named groups of the menu in
  *                                   `auth/pat-permissions.ts`, and omitting it
- *                                   grants every group
+ *                                   grants every group. Narrows the REST
+ *                                   surface only — `/mcp` does not consult it
+ *                                   (ISS-972 phase list)
  *   GET    /api/pat              — list (no plaintext, no hash)
  *   DELETE /api/pat/:id          — revoke (idempotent)
  *   GET    /api/pat/:id/audit    — recent uses (last N rows of mcp_audit_log)

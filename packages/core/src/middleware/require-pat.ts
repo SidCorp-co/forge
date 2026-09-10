@@ -279,6 +279,7 @@ const DEVICE_TOKEN_REFUSAL =
   'forge-runner. A runner box seeing this needs a newer forge-runner binary; the device ' +
   'token still authenticates /ws and the device REST routes.';
 
+// cm:guard `/mcp` does NOT consult `permissions`, and that is a scope line rather than an oversight: ISS-972 put the MCP surface's own permission model outside ISS-973, so today a token narrowed to `issues:read` is narrowed on REST and unnarrowed here. Anyone adding the grant check to this middleware owes the menu an MCP-side mapping first — `/mcp` has tools, not `/api/...` paths, so `patGrantCovers` has nothing to match on and would refuse everything.
 export const requirePat = (): MiddlewareHandler<{ Variables: PrincipalVars }> => {
   return async (c, next) => {
     const parsed = parseBearerHeader(c);
