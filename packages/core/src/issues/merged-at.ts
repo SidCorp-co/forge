@@ -50,8 +50,8 @@ export async function markMergedIfLeavingBase(
   if (args.fromStatus !== BASE_MERGE_STATE || args.toStatus === BASE_MERGE_STATE) {
     return { stamped: false };
   }
-  // cm:guard `released -> releasing` is the release STARTING, not the issue leaving the base branch, so it must not stamp. Without this the claim itself marks every issue shipped, and an abort then leaves `merged_at` set on work that never released — which unblocks every `blocks` dependent as if it had. The stamp belongs to `releasing -> closed`, where `finish` has read the deploy back.
-  if (args.toStatus === 'releasing') {
+  // cm:guard TWO exits out of the gate are not ships and must not stamp. `awaiting_release -> releasing` is the release STARTING: stamp there and the claim itself marks every issue shipped, so an abort leaves `merged_at` set on work that never released. `awaiting_release -> dropped` is the release ABANDONED: `dropped` exists precisely to end an issue without the stamp, so stamping there contradicts the one thing that distinguishes it from `closed` (measured 2026-09-10 on forge-plugin ISS-1077 — dropped from the gate, `merged_at` set, nothing shipped). Either way the stamp belongs to `releasing -> closed`, where `finish` has read the deploy back, and both would otherwise unblock every `blocks` dependent as if the work had landed.
+  if (args.toStatus === 'releasing' || args.toStatus === 'dropped') {
     return { stamped: false };
   }
   const updated =

@@ -84,6 +84,20 @@ describe('markMergedIfLeavingBase', () => {
     expect(updateCall).toHaveBeenCalledOnce();
   });
 
+  it.each(['releasing', 'dropped'] as const)(
+    'refuses to stamp on awaiting_release -> %s: neither is a ship',
+    async (toStatus) => {
+      const { tx, updateCall } = buildMockTx({ returningRows: [{ id: 'iss-1' }] });
+      const result = await markMergedIfLeavingBase(tx, {
+        issueId: 'iss-1',
+        fromStatus: 'awaiting_release',
+        toStatus,
+      });
+      expect(result.stamped).toBe(false);
+      expect(updateCall).not.toHaveBeenCalled();
+    },
+  );
+
   it('reports stamped=false when WHERE merged_at IS NULL matches no row (idempotent re-run)', async () => {
     const { tx } = buildMockTx({ returningRows: [] });
     const result = await markMergedIfLeavingBase(tx, {

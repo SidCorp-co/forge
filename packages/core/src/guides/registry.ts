@@ -290,7 +290,9 @@ The evidence questions are answered by three row fields instead, and you read th
 
 This is why work you built and pushed but cannot merge yourself stays at \`in_progress\` with \`sessionContext.branch\` set: the branch field says the code exists, and the rung says only that a session holds the issue. Four runs on 2026-09-06 reached that identical state and recorded four different statuses because the promise was undefined (ISS-940). One more consequence worth knowing: on this lane \`open\` is the ONLY status a job is dispatched at, so every other live status is already waiting on a person — reaching one is not how you ask for work to continue.
 
-**Closing is not free, and \`dropped\` is why you rarely need it.** \`closed\` auto-stamps \`merged_at\`, and \`merged_at\` is exactly what releases every \`blocks\` dependent waiting on this issue — so closing something you ABANDONED silently unblocks work that should still be blocked. \`dropped\` is terminal without the stamp (dependents are freed by edge expiry instead), so use it for anything discarded and keep \`closed\` for work that actually landed. If you have already closed an abandoned issue, call \`forge_issues\` \`unmark\` to clear the stamp.
+**Closing is not free, and \`dropped\` is why you rarely need it.** \`closed\` auto-stamps \`merged_at\`, and \`merged_at\` is exactly what releases every \`blocks\` dependent waiting on this issue — so closing something you ABANDONED silently unblocks work that should still be blocked. \`dropped\` is terminal without the stamp, so use it for anything discarded and keep \`closed\` for work that actually landed. If you have already closed an abandoned issue, call \`forge_issues\` \`unmark\` to clear the stamp.
+
+Two things about that stamp are worth knowing before you rely on either status, because both surprised this repo on 2026-09-10. First, **\`dropped\` does not free dependents — it only declines to claim they were freed.** A \`blocks\` edge onto a dropped issue stays live and holds its dependent against an issue that can never land, since \`dropped\` has no exit; retract the edge yourself (re-send the relation with \`validUntil\` in the past, then VERIFY it, or \`DELETE /api/issues/:id/dependencies/:edgeId\`) in the same pass as the drop. Second, the stamp keys on **leaving** \`awaiting_release\`, not on the target, so a drop from that one rung used to stamp anyway — the same rung, and only that rung. Fixed, and the two exits that are not ships (\`releasing\` and \`dropped\`) are now both excluded by name in \`issues/merged-at.ts\`; from any other status \`dropped\` never stamped.
 
 ### The status set, and it is closed
 
@@ -318,7 +320,7 @@ draft ─▶ open ─▶ in_progress ─▶ developed ─▶ testing ─▶ awai
 | \`on_hold\` | a pause a person chose — **not** a question | the person who paused it |
 | \`reopen\` | a person disagreed with a close | a person, by routing it |
 | \`closed\` | done, and \`merged_at\` is stamped | nobody |
-| \`dropped\` | closed **without** stamping — it was not work | nobody |
+| \`dropped\` | ended **without** stamping \`merged_at\` — it was not work | nobody |
 
 \`needs_info\` and \`on_hold\` are enterable from **every** rung and from each other. \`draft\` cannot park (it already is a resting place) and \`closed\`/\`dropped\` cannot: a park after an end is a reopen, and \`closed → reopen\` already is that hop — on a staged project and on an autonomous one alike, where a person is its only writer.
 

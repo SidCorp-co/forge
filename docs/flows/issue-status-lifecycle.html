@@ -141,7 +141,7 @@ since ISS-970, so only the kernel status was ever lying.</p>
 <tr><td><code>on_hold</code></td><td>a pause a person chose — <b>not</b> a question</td><td>the person who paused it</td></tr>
 <tr><td><code>reopen</code></td><td>a person disagreed with a close</td><td>a person, by routing it</td></tr>
 <tr><td><code>closed</code></td><td>done, and <code>merged_at</code> is stamped</td><td>nobody</td></tr>
-<tr><td><code>dropped</code></td><td>closed <b>without</b> stamping — it was not work</td><td>nobody</td></tr>
+<tr><td><code>dropped</code></td><td>ended <b>without</b> stamping <code>merged_at</code> — it was not work. It does NOT free dependents: a <code>blocks</code> edge onto a dropped issue holds its dependent against an issue that can never land, so retract the edge in the same pass as the drop</td><td>nobody</td></tr>
 </tbody></table>
 
 <h2>The transition matrix</h2>
