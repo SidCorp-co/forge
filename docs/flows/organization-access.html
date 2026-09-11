@@ -56,7 +56,8 @@ on a predicate that reads nothing off the principal is how the third gate gets s
 who believes it already ran.</p>
 
 <p>The moment the token verifies — before any of the three is asked — the response is told what the
-route wanted. Since ISS-974 every REST request <code>beginPatRequest</code> decides carries
+route wanted. Since ISS-974 a REST request whose token verified through
+<code>beginPatRequest</code>, on a path some permission covers, carries
 <code>X-Accepted-Forge-Permissions: &lt;resource&gt;:&lt;level&gt;</code> &mdash; on the 200 as
 well as on the refusals, because a header only on the 403 leaves discovery-by-trial exactly where
 it was. The name mirrors GitHub's <code>X-Accepted-GitHub-Permissions</code>, and the value is the

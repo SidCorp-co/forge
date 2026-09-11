@@ -14,7 +14,8 @@
   Finding out what a route wants used to mean being refused on it: the name was in the body of a
   `403 PAT_PERMISSION_REQUIRED` and nowhere else, so the only way to a correct grant was to mint a
   token, exercise every path, collect the refusals and narrow by trial — and a request that
-  *succeeded* said nothing at all. Every REST request the PAT grant fence decides now carries
+  *succeeded* said nothing at all. A REST request whose token verifies through the PAT grant fence,
+  on a path some permission covers, now carries
   `X-Accepted-Forge-Permissions: <resource>:<level>`, on the `200` and on the refusals alike,
   named after GitHub's `X-Accepted-GitHub-Permissions` and valued in the same spelling
   `POST /api/pat` accepts, so it can be pasted into a mint request rather than translated. It is in
