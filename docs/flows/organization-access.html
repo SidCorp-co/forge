@@ -126,11 +126,10 @@ flowchart TD
   P6["withPatScope(projectIds, tokenId)<br/>every query below runs inside it"]
   </pre></div>
   <div class="note"><b>The direction of the grant default is the whole risk.</b> A token granted
-  nothing reaches <em>every</em> group, and &ldquo;nothing&rdquo; has three shapes that must stay one
-  answer: a <code>NULL</code> column, an empty array, and a principal built without the field. The
-  migration writes no values, so on the day the column landed all <b>26 active human tokens</b> were
-  in the first shape — reading any of them as permissionless would have locked every live
-  integration out at once. Narrowing is opt-in; a non-empty array is the only narrowing there is.</div>
+  nothing reaches <em>every</em> group, and "nothing" has three shapes that must answer alike: a
+  <code>NULL</code> column, an empty array, a principal built without the field. The migration writes
+  no values, so on the day the column landed all <b>26 active human tokens</b> were in the first
+  shape. Narrowing is opt-in; a non-empty array is the only narrowing there is.</div>
 </div>
 
 <aside class="rail">
@@ -141,23 +140,21 @@ flowchart TD
       <li><b>scopeForMethod</b><span>the METHOD — read or write</span></li>
       <li><b>patGrantCovers</b><span>the CREDENTIAL — the only gate whose answer differs between two valid tokens (ISS-973)</span></li>
     </ol>
-    <p>Which is why the first is no longer called <code>patAllowedFor</code>: a name promising
-    &ldquo;allowed&rdquo; on a predicate that reads nothing off the principal is how the third gate
-    gets skipped by someone who believes it already ran.</p>
+    <p>Which is why the first is no longer <code>patAllowedFor</code>: a name promising "allowed" on a
+    predicate that reads nothing off the principal is how the third gate gets skipped.</p>
   </section>
 
   <section>
     <h2>Two questions, one is not the other</h2>
     <p><b><code>actor_type</code> — who OWNS the write.</b> A job or session token is minted under
     the person the work belongs to, so its writes really are theirs.</p>
-    <p><b><code>agency</code> — who was at the KEYBOARD.</b> Two reads OR'd, never one:
-    <code>users.kind === 'agent'</code> answers for an AAT; the token's name prefix answers for
-    <code>job:</code>/<code>session:</code>, minted from a HUMAN's <code>jobs.created_by</code> and
-    would read <code>human</code> off the kind alone.</p>
-    <p>They disagree for exactly the rows the ISS-786/812 evidence gates exist to catch, and nothing
-    type-checks that a writer keeps them in step. Both persisted side by side:
-    <code>activity_log.actor_agency</code>, <code>kernel_transitions.actor_agency</code>. Dropping
-    the name half is wave 4 of ISS-932 and cannot happen while those tokens are minted.</p>
+    <p><b><code>agency</code> — who was at the KEYBOARD.</b> Two reads OR'd:
+    <code>users.kind === 'agent'</code> for an AAT, the name prefix for
+    <code>job:</code>/<code>session:</code>, which are minted from a human's
+    <code>jobs.created_by</code> and would read <code>human</code> off the kind alone.</p>
+    <p>They disagree for exactly the rows the ISS-786/812 evidence gates catch, and nothing
+    type-checks that a writer keeps them in step. Both persisted:
+    <code>activity_log.actor_agency</code>, <code>kernel_transitions.actor_agency</code>.</p>
   </section>
 
   <section>

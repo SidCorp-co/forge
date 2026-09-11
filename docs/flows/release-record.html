@@ -37,9 +37,9 @@ gate, the release roster, pipeline health, and <code>markMergedOnClose</code>, w
 <code>merged_at</code> on the way past and thereby releases every dependent. So a close is a claim,
 and the whole of this flow is the set of things that must be true before an automated hand may make
 it.</p>
-<p>The claim used to be free. Six issues closed on 2026-08-27 with no changelog entry, two of them
-with <code>releaseNotes</code> null; a batch closed two more the same way. Both doors below were
-built from those measurements (ISS-863, ISS-880, ISS-897).</p>
+<p>The claim used to be free: six issues closed on 2026-08-27 with no changelog entry, two with
+<code>releaseNotes</code> null, and a batch closed two more the same way (ISS-863, ISS-880,
+ISS-897).</p>
 </div>
 
 <h2>The path</h2>
@@ -75,9 +75,8 @@ second is exempt from the first <b>because</b> of the second check:</p>
 </tbody>
 </table>
 <p><code>finishReleaseBatch</code> closes with <code>viaReleasePath</code>, which the first door
-exempts. That exemption is sound only while the claim preflight exists — delete the preflight and
-the batch path silently closes unrecorded issues again. The pair carries
-<code>cm:edge lockstep</code> in both directions for exactly this reason.</p>
+exempts — sound only while the claim preflight exists. Delete the preflight and the batch path
+silently closes unrecorded issues again; the pair carries <code>cm:edge lockstep</code> both ways.</p>
 </div>
 
 <h2>The three exemptions, and why each one is right</h2>
@@ -107,12 +106,11 @@ single process sees both halves.</p>
       entry that was <span class="bad">never written</span> — it only defends entries that existed
       at the base revision.</li>
 </ul>
-<p>Measured consequence: four issues reached <code>main</code> with nothing in the record —
-ISS-877 (08-29), ISS-854 (08-30), ISS-870 (09-02) and ISS-903 (09-03). Every one was found by a
-scheduled sweep days later and backfilled by hand: the first two by ISS-870, the last two by
-ISS-896. Three of the four had <code>releaseNotes</code> populated at their close, so the refusal
-above held and the reader still got nothing — which is the point. The one that did not, ISS-854,
-was closed by hand, where the refusal exempts by design.</p>
+<p>Measured: four issues reached <code>main</code> with nothing in the record — ISS-877, ISS-854,
+ISS-870, ISS-903 (2026-08-29 to 09-03), each found by a sweep days later and backfilled by hand.
+<b>Three of the four had <code>releaseNotes</code> populated at their close</b>, so the refusal above
+held and the reader still got nothing — which is the point. The fourth was closed by hand, where the
+refusal exempts by design.</p>
 <p>This is a <b>known open decision, not an unnoticed hole</b>: whether a close should prompt for
 its note, and whether that prompt should also write the bullet, is held for a human in
 <code>docs/proposals/changelog-omission-is-unguarded.md</code> along with the reason both obvious
