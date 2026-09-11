@@ -38,8 +38,10 @@ export interface ModuleAxisFixture {
   labelsOf(issueId: string): Promise<IssueLabel[]>;
   listIds(filters: Record<string, unknown>): Promise<string[]>;
   junction(issueId: string): Promise<JunctionRow[]>;
-  /** The `CODE: message` text an MCP refusal carries, or `null` when the call did not refuse. */
+  /** The message an MCP refusal carries, or `null` when the call did not refuse. */
   refusalText(res: unknown): string | null;
+  /** Just the code token of an MCP refusal, or `null` when the call did not refuse by a code. */
+  refusalCode(res: unknown): string | null;
 }
 
 /** Installs the suite's own hooks, so each calling `describe` gets a clean project per case. */
@@ -124,6 +126,12 @@ export function installModuleAxisFixture(): ModuleAxisFixture {
     return first?.type === 'text' ? first.text : '';
   }
 
+  // cm:edge contract -> packages/core/src/mcp/server.ts — the shape parsed here is that handler's `Error: ${text}`, after it has stripped its own `BAD_REQUEST:`/`FORBIDDEN:`/`NOT_FOUND:` class prefix; what is left leads with the domain code, and a test asserting the code as a SUBSTRING would pass on `MULTIPLE_PRIMARY_LEGACY` too, so the token is matched whole (ISS-587).
+  function refusalCode(res: unknown): string | null {
+    const text = refusalText(res);
+    return text === null ? null : (/^Error:\s*([A-Z][A-Z0-9_]*):\s/.exec(text)?.[1] ?? null);
+  }
+
   return {
     db: () => harness,
     projectId: () => project.id,
@@ -148,5 +156,6 @@ export function installModuleAxisFixture(): ModuleAxisFixture {
       return [...rows];
     },
     refusalText,
+    refusalCode,
   };
 }

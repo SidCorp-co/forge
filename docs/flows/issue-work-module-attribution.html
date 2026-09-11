@@ -16,7 +16,10 @@
   .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
   .bad { color:var(--bad); font-weight:600; }
   .lock { color:var(--lock); font-weight:600; }
-  svg { background:#fff; border:1px solid var(--line); border-radius:4px; display:block; width:100%; height:auto; max-width:100%; }
+  /* A 900-unit diagram scaled into a 375px phone renders its 11-unit labels at ~5 device pixels.
+     Below `min-width` the figure scrolls sideways instead, so the mechanism stays readable. */
+  .fig { overflow-x:auto; margin:1rem 0; }
+  svg { background:#fff; border:1px solid var(--line); border-radius:4px; display:block; width:100%; height:auto; min-width:42rem; }
   text { font:12px ui-sans-serif,system-ui,sans-serif; fill:var(--fg); }
   text.m { font-size:11px; fill:var(--mut); }
   text.t { font:600 12px ui-monospace,Menlo,monospace; }
@@ -37,6 +40,7 @@ is the issue's <strong>primary</strong> module. Owner:
 request: how an agent comes to know the project has modules at all.</p>
 
 <h2>Where a write is refused, and what has been written when it is</h2>
+<div class="fig">
 <svg viewBox="0 0 900 560" role="img" aria-label="Decision path of a labels[] write carrying a primary module">
   <defs>
     <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -104,14 +108,19 @@ request: how an agent comes to know the project has modules at all.</p>
   <text class="m" x="380" y="430">the old true row is gone before the new one lands,</text>
   <text class="m" x="380" y="445">so the index never sees two</text>
 </svg>
+</div>
 
 <div class="rule">
 <strong>Every refusal above happens before or inside the transaction, so a rejected write leaves
 the issue exactly as it was.</strong> That is the property to preserve: an attach that partly
 applied would leave an issue labelled with a module nobody chose, and no reader could tell it from
-a deliberate one. Two of the four checks (<code>MULTIPLE_PRIMARY</code>,
-<code>PRIMARY_NOT_MODULE</code>) exist only because SQL cannot see <code>labels.kind</code> from an
-<code>issue_labels</code> row — which is also why the index below them is not redundant with them.
+a deliberate one. <strong>The two module checks are not there for the same reason.</strong>
+<code>PRIMARY_NOT_MODULE</code> is the only one SQL cannot make at all: an <code>issue_labels</code>
+row cannot see <code>labels.kind</code>, so without that service check <em>nothing</em> stops a
+plain label being marked primary. <code>MULTIPLE_PRIMARY</code> is a check the database also holds
+— <code>issue_labels_primary_uq</code> is unique on <code>issue_id</code> where
+<code>is_primary</code>, so a second primary would fail on <code>23505</code> anyway. It exists to
+refuse by name, before the transaction, instead of surfacing a constraint violation.
 </div>
 
 <h2>What each layer owns, and what happens when it is bypassed</h2>
@@ -165,6 +174,7 @@ attributes and filters through <code>forge_issues</code>, which never creates a 
 crossing the dashed line is a contract that no type checks: a module name, a
 <code>{labelId, isPrimary}</code> object, and a filter value.</p>
 
+<div class="fig">
 <svg viewBox="0 0 900 400" role="img" aria-label="The taxonomy authored through REST and consumed through MCP, and which test holds each edge">
   <defs>
     <marker id="handshake-ok" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -209,6 +219,7 @@ crossing the dashed line is a contract that no type checks: a module name, a
   <text class="m" x="44" y="332">dropping the narrowing would return the whole project</text>
   <path class="arrowbad" style="marker-end:url(#handshake-bad)" d="M530,321 L430,321"/>
 </svg>
+</div>
 
 <div class="rule">
 <strong>A hand-copied filter is the failure this seam is shaped like.</strong>
@@ -234,6 +245,7 @@ it: nothing in the product asks a human to attribute an issue, so on a Forge pro
 almost always a pipeline agent, and an agent only writes what its prompt told it exists. Owner:
 <code>packages/core/src/prompt/facts/resolve.ts</code>.</p>
 
+<div class="fig">
 <svg viewBox="0 0 900 300" role="img" aria-label="How the module taxonomy reaches a pipeline agent's prompt">
   <defs>
     <marker id="prompt-ok" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -271,6 +283,7 @@ almost always a pipeline agent, and an agent only writes what its prompt told it
   <text class="m" x="574" y="261">forge_issues.update → the path above,</text>
   <text class="m" x="574" y="277">or writes nothing when it is unsure</text>
 </svg>
+</div>
 
 <div class="rule">
 <strong>The taxonomy's existence is the switch.</strong> There is no per-project flag for module

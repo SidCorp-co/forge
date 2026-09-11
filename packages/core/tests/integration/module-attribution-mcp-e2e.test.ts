@@ -69,7 +69,7 @@ describe('ISS-588 · the module axis through forge_issues', () => {
         { labelId: second.name, isPrimary: true },
       ]);
 
-      expect(fx.refusalText(res)).toContain('MULTIPLE_PRIMARY');
+      expect(fx.refusalCode(res)).toBe('MULTIPLE_PRIMARY');
       expect(await fx.junction(issueId)).toEqual([{ label_id: first.id, is_primary: true }]);
     });
 
@@ -84,7 +84,9 @@ describe('ISS-588 · the module axis through forge_issues', () => {
 
       const res = await fx.setLabels(issueId, [{ labelId: plain.name, isPrimary: true }]);
 
-      expect(fx.refusalText(res)).toContain('PRIMARY_NOT_MODULE');
+      expect(fx.refusalCode(res)).toBe('PRIMARY_NOT_MODULE');
+      // cm:guard the offending label is named in the message, not only in the code — `mcp/tools/forge-issues.ts` keeps the ELEMENT intact deliberately, because that is what an agent corrects from on its next call, and a code with a generic message leaves it guessing which of the set it sent was wrong.
+      expect(fx.refusalText(res)).toContain(plain.name);
       expect(await fx.junction(issueId)).toEqual(preimage);
     });
   });
