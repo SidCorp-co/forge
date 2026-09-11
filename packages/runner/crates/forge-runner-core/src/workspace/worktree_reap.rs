@@ -57,12 +57,19 @@ pub async fn holds_work(wt: &Path) -> bool {
         return true;
     }
     match git(wt, &["log", "--oneline", "@{u}..", "-1"]).await {
-        // No upstream is not evidence of safety: a branch that was never pushed
-        // is exactly the one whose commits exist nowhere else.
-        Some(out) if !out.status.success() => true,
-        Some(out) => !out.stdout.is_empty(),
-        None => true,
+        Some(out) if out.status.success() => !out.stdout.is_empty(),
+        // cm:guard a missing upstream is not the question and must not be the answer. The question is whether these commits exist anywhere else, and a branch cut with `worktree add -b` has no upstream while sitting exactly on the base the remote already carries — measured on forge-vm 2026-09-11, 30 runs whose trees were clean and whose HEAD was on `origin/main` were refused release under the old reading, permanently: salvage then found nothing to preserve, `terminate` refused the disagreement, and the run could never end. Asking the remote directly answers the same safety question without the dead end.
+        _ => !head_is_on_a_remote(wt).await,
     }
+}
+
+/// Whether some remote-tracking branch already contains this HEAD.
+// cm:guard a repo with no remote, or a git that cannot answer, reports NOT reachable — the timid direction, because this is the reader that licenses a delete. Losing a tree whose only copy was local is unrecoverable; keeping one too long costs disk the sweep reclaims on the next pass.
+async fn head_is_on_a_remote(wt: &Path) -> bool {
+    matches!(
+        git(wt, &["branch", "-r", "--contains", "HEAD"]).await,
+        Some(out) if out.status.success() && !out.stdout.is_empty()
+    )
 }
 
 fn older_than(p: &Path, age: Duration) -> bool {
@@ -334,6 +341,10 @@ mod tests {
     }
 
     async fn repo_with_worktree_in(tag: &str, root: &str) -> (PathBuf, PathBuf) {
+        repo_with_worktree_pushed(tag, root, true).await
+    }
+
+    async fn repo_with_worktree_pushed(tag: &str, root: &str, push: bool) -> (PathBuf, PathBuf) {
         let repo = std::env::temp_dir().join(format!(
             "forge-wt-reap-{tag}-{}-{:?}",
             std::process::id(),
@@ -367,7 +378,9 @@ mod tests {
             &["worktree", "add", &wt.to_string_lossy(), "-b", tag],
         )
         .await;
-        run(&wt, &["push", "-u", "origin", tag]).await;
+        if push {
+            run(&wt, &["push", "-u", "origin", tag]).await;
+        }
         (repo, wt)
     }
 
@@ -431,6 +444,37 @@ mod tests {
         let repo = std::env::temp_dir().join(format!("forge-wt-none-{}", std::process::id()));
         std::fs::create_dir_all(&repo).unwrap();
         assert!(reap_repo(&repo, NOW, &led()).await.removed.is_empty());
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+    /// The forge-vm shape: `worktree add -b` leaves no upstream, and the base is already on the remote.
+    // cm:guard this is the line the old reading had no test for, and the one that stalled a box: every other test here pushes its branch, so `@{u}` resolved and the no-upstream arm was never exercised. Reaping it is safe because HEAD is `origin/main` — nothing in the tree exists only here.
+    #[tokio::test]
+    async fn reaps_a_clean_worktree_whose_branch_was_never_given_an_upstream() {
+        let (repo, wt) = repo_with_worktree_pushed("noup", WORKTREE_ROOTS[0], false).await;
+        assert_eq!(reap_repo(&repo, NOW, &led()).await.removed.len(), 1);
+        assert!(!wt.exists());
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    // cm:guard the safety half of the same change, and it must never soften: no upstream AND a commit no remote ref contains is work that exists nowhere else.
+    #[tokio::test]
+    async fn spares_a_worktree_with_no_upstream_carrying_a_commit_of_its_own() {
+        let (repo, wt) = repo_with_worktree_pushed("noup-commit", WORKTREE_ROOTS[0], false).await;
+        std::fs::write(wt.join("g.txt"), "local").unwrap();
+        run(&wt, &["add", "."]).await;
+        run(&wt, &["commit", "-m", "nowhere else"]).await;
+        assert!(reap_repo(&repo, NOW, &led()).await.removed.is_empty());
+        assert!(wt.exists());
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    // cm:guard a repo with no remote at all cannot prove anything is copied, so the tree stays.
+    #[tokio::test]
+    async fn spares_a_worktree_in_a_repo_that_has_no_remote() {
+        let (repo, wt) = repo_with_worktree_pushed("noremote", WORKTREE_ROOTS[0], false).await;
+        run(&repo, &["remote", "remove", "origin"]).await;
+        assert!(reap_repo(&repo, NOW, &led()).await.removed.is_empty());
+        assert!(wt.exists());
         let _ = std::fs::remove_dir_all(&repo);
     }
 }

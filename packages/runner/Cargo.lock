@@ -434,7 +434,7 @@ checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
 
 [[package]]
 name = "forge-runner"
-version = "0.12.7"
+version = "0.12.8"
 dependencies = [
  "anyhow",
  "clap",
@@ -452,7 +452,7 @@ dependencies = [
 
 [[package]]
 name = "forge-runner-core"
-version = "0.12.7"
+version = "0.12.8"
 dependencies = [
  "async-trait",
  "base64 0.23.1",

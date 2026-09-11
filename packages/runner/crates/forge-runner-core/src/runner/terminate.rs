@@ -352,6 +352,8 @@ mod tests {
     #[tokio::test]
     async fn abandon_preserves_the_diff_then_releases_the_worktree() {
         let (root, wt) = repo("abandon").await;
+        // cm:guard the diff is STAGED, because that is what makes this tree hold work under the one definition both readers share: an untracked file does not, or every build artifact would pin a checkout forever. Until 2026-09-11 this test reached salvage through the branch having no upstream instead, which is not what it is about.
+        git(&wt, &["add", "work.txt"]).await;
         let mut led = ledger_for(&wt, Incarnation::Exited, "boot-a");
         let (p, s, l) = (
             Procs(Mutex::new(Vec::new())),
@@ -419,6 +421,7 @@ mod tests {
     #[tokio::test]
     async fn a_diff_that_could_not_be_preserved_refuses_the_whole_verb() {
         let (root, wt) = repo("refuse").await;
+        git(&wt, &["add", "work.txt"]).await;
         // The repo root salvage is given is not a git checkout, so
         // `git worktree list` there fails and salvage answers `failed`: it
         // cannot find, let alone commit, the tree holding the diff.

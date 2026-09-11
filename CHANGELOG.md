@@ -1945,6 +1945,23 @@
 
 ### Fixed
 
+- **A checkout whose work is already on the remote is released instead of held forever.** The one
+  reader that decides whether a worktree still holds something took a missing upstream as proof
+  that its commits existed nowhere else. A branch cut for a run has no upstream until it is pushed,
+  while sitting on exactly the commit the remote already carries — so a clean checkout was judged
+  to be holding work, the salvage step then found nothing to preserve, and releasing it was refused
+  as a disagreement between the two. Permanently: the checkout stayed, the run could never reach
+  terminal, and the issue stayed unavailable to every other box. Measured on one box on 2026-09-11,
+  thirty runs were stuck that way, each holding a checkout whose tree was clean and whose HEAD was
+  on `origin/main`. The question is now asked of the remote directly — whether any remote branch
+  already contains this commit — so a branch with genuinely local-only commits is still held, and
+  a repository with no remote at all is held too, because nothing there can prove a copy exists.
+  One consequence is worth stating: a checkout holding ONLY files the agent never added to git is
+  released without those files being committed first. That was already true of every pushed branch
+  and is the same rule the sweep has always applied — untracked files do not protect a checkout, or
+  build output would pin every one of them forever — but it now applies to unpushed branches as
+  well.
+
 - **Updating the runner no longer kills every agent on the box.** Agent sessions live in a
   terminal server the runner used to start as a child of its own service, so stopping the service
   — an update, a restart, a crash — took the server down and every agent with it. That is why an
