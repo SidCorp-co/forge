@@ -11,6 +11,7 @@ import { cors } from 'hono/cors';
 import { adminAggregateRoutes } from './admin/aggregate-routes.js';
 import { adminAlertRoutes } from './admin/alert-routes.js';
 import { adminMcpAuditRoutes } from './admin/mcp-audit-routes.js';
+import { adminMetricSeriesRoutes } from './admin/metric-series-routes.js';
 import { pipelineHealthAdminRoutes } from './admin/pipeline-health-routes.js';
 import { adminRoutes } from './admin/routes.js';
 import { adminThresholdRoutes } from './admin/thresholds-routes.js';
@@ -314,9 +315,7 @@ app.route('/api/projects', gitCredentialRoutes);
 app.route('/api/projects', runLedgerRoutes);
 app.route('/api/projects', projectRoutes);
 app.route('/api/orgs', orgRoutes);
-// Org-scoped Private Keys pool (ISS-628) — a distinct route module mounted at
-// the same '/api/orgs' prefix as orgRoutes (Hono composes sub-apps by path,
-// not one-Hono-per-prefix); the deep `/:orgId/ssh-keys` paths don't collide.
+// cm:guard several route modules may share one prefix — Hono composes sub-apps by path, not one-Hono-per-prefix (ISS-628) — but it then runs the middleware of EVERY router whose mount prefix matches, so a bare `use('*', ...)` on any one of them gates its neighbours' paths too. Check the sibling's middleware, not only its paths, before adding a mount here.
 app.route('/api/orgs', sshKeyRoutes);
 app.route('/api/org-invitations', orgInvitationRoutes);
 app.route('/api/projects', integrationsRoutes);
@@ -392,6 +391,7 @@ app.route('/api/admin', adminRoutes);
 app.route('/api/admin', adminAggregateRoutes);
 app.route('/api/admin', adminAlertRoutes);
 app.route('/api/admin', adminMcpAuditRoutes);
+app.route('/api/admin', adminMetricSeriesRoutes);
 app.route('/api/admin', adminThresholdRoutes);
 app.route('/api/admin/pipeline', pipelineHealthAdminRoutes);
 app.route('/api/devices', devicePublicRoutes);

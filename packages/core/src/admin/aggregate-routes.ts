@@ -2,15 +2,15 @@
  * Admin cross-tenant aggregate endpoints for the Operator Ops Console (Step 1,
  * ISS-651): GET /overview, /adoption, /workspaces. Own requireAdmin gate (like
  * `pipeline-health-routes.ts`) so this router can be imported standalone in a
- * vitest suite. All window cutoffs are bound SQL-side (`now() - (n::int *
- * interval ...)`) — postgres-js cannot serialize a JS Date at Bind time
- * (ISS-267) — and bucket boundaries are computed in JS (mirrors
- * `metrics/queries.ts`) so every series is dense regardless of which buckets
- * have rows.
+ * vitest suite.
+ *
+ * The glance's metric machinery — the window vocabulary, the bucket boundaries,
+ * the bucketed readers and the fold — lives in `metric-series.ts` since
+ * ISS-975, shared with `GET /metrics/:metric/timeseries`.
  */
 
 import { zValidator } from '@hono/zod-validator';
-import { count, eq, inArray, isNull, type SQL, sql } from 'drizzle-orm';
+import { count, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -26,16 +26,30 @@ import {
   users,
 } from '../db/schema.js';
 import { listResponse } from '../lib/pagination.js';
-import { bucketIso, utcDateTrunc } from '../lib/time-buckets.js';
+import { utcDateTrunc } from '../lib/time-buckets.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/require-admin.js';
 import { computeAlerts } from './alert-queries.js';
+import {
+  type BucketUnit,
+  bucketBoundaries,
+  computeSeries,
+  createRawLoaders,
+  cutoffExpr,
+  METRIC_SOURCES,
+  toBucketMap,
+  toGlance,
+  WINDOW_SPECS,
+  windows,
+} from './metric-series.js';
 import { readThresholds } from './thresholds.js';
-import type {
-  AdminAdoptionBucket,
-  AdminGlanceMetric,
-  AdminOverview,
-  AdminWorkspaceRow,
+import {
+  type AdminAdoptionBucket,
+  type AdminGlanceMetric,
+  type AdminGlanceMetricName,
+  type AdminOverview,
+  type AdminWorkspaceRow,
+  GLANCE_METRIC_NAMES,
 } from './types.js';
 
 const badRequest = (details: unknown) =>
@@ -43,227 +57,6 @@ const badRequest = (details: unknown) =>
 
 // cm:edge naming -> packages/core/src/projects/health-routes.ts — mirrors NON_OPEN_STATUSES there; keep the excluded-status set aligned
 const NON_OPEN_STATUSES = new Set(['awaiting_release', 'closed', 'draft']);
-
-const windows = ['24h', '7d', '30d'] as const;
-type Window = (typeof windows)[number];
-
-type BucketUnit = 'hour' | 'day' | 'week';
-
-interface WindowSpec {
-  hours: number;
-  unit: BucketUnit;
-  bucketCount: number;
-}
-
-const WINDOW_SPECS: Record<Window, WindowSpec> = {
-  '24h': { hours: 24, unit: 'hour', bucketCount: 24 },
-  '7d': { hours: 24 * 7, unit: 'day', bucketCount: 7 },
-  '30d': { hours: 24 * 30, unit: 'day', bucketCount: 30 },
-};
-
-function cutoffExpr(hours: number): SQL {
-  return sql`now() - (${hours}::int * interval '1 hour')`;
-}
-
-function bucketStepMs(unit: BucketUnit): number {
-  if (unit === 'hour') return 3_600_000;
-  if (unit === 'day') return 86_400_000;
-  return 7 * 86_400_000;
-}
-
-/** Dense, oldest→newest UTC bucket-start boundaries for `count` buckets of
- *  `unit`, ending at the bucket containing `now`. Week buckets floor to UTC
- *  Monday to match `utcDateTrunc('week', ...)`. */
-// cm:edge contract -> packages/core/src/lib/time-buckets.ts#utcDateTrunc — both sides floor in UTC or `toBucketMap` joins nothing and every glance reads zero
-function bucketBoundaries(unit: BucketUnit, count: number, now: Date): string[] {
-  const end = new Date(now);
-  end.setUTCMilliseconds(0);
-  end.setUTCSeconds(0);
-  end.setUTCMinutes(0);
-  if (unit !== 'hour') end.setUTCHours(0);
-  if (unit === 'week') {
-    // cm:why remaps JS's Sun=0..Sat=6 to ISO Mon=0..Sun=6 so the floor below lands on Monday, matching Postgres date_trunc('week', ...)
-    const isoDay = (end.getUTCDay() + 6) % 7;
-    end.setUTCDate(end.getUTCDate() - isoDay);
-  }
-  const step = bucketStepMs(unit);
-  const out: string[] = [];
-  for (let i = count - 1; i >= 0; i--) out.push(new Date(end.getTime() - i * step).toISOString());
-  return out;
-}
-
-function toBucketMap(rows: Array<Record<string, unknown>>, key: string): Map<string, number> {
-  const m = new Map<string, number>();
-  for (const r of rows) m.set(bucketIso(r.bucket), Number(r[key] ?? 0));
-  return m;
-}
-
-/** Combine per-bucket {value: number} rows into a windowed sum + baseline sum
- *  + dense current-window spark. For plain counts (not ratios) — e.g. signups. */
-function countGlance(
-  numByBucket: Map<string, number>,
-  spec: WindowSpec,
-  now: Date,
-): { value: number; baseline: number; spark: number[] } {
-  const curCutoffMs = now.getTime() - spec.hours * 3_600_000;
-  const fullBuckets = bucketBoundaries(spec.unit, spec.bucketCount * 2, now);
-  let curSum = 0;
-  let baseSum = 0;
-  for (const ts of fullBuckets) {
-    const n = numByBucket.get(ts) ?? 0;
-    if (new Date(ts).getTime() >= curCutoffMs) curSum += n;
-    else baseSum += n;
-  }
-  const curBuckets = bucketBoundaries(spec.unit, spec.bucketCount, now);
-  const spark = curBuckets.map((ts) => numByBucket.get(ts) ?? 0);
-  return { value: curSum, baseline: baseSum, spark };
-}
-
-/** Combine per-bucket {num, den} rows into a windowed ratio (num/den) + baseline
- *  ratio + dense current-window spark ratio. Used for averages (lead time) and
- *  proportions (intervention rate, cost/closed, success rate). */
-function ratioGlance(
-  numByBucket: Map<string, number>,
-  denByBucket: Map<string, number>,
-  spec: WindowSpec,
-  now: Date,
-): { value: number | null; baseline: number | null; spark: number[] } {
-  const curCutoffMs = now.getTime() - spec.hours * 3_600_000;
-  const fullBuckets = bucketBoundaries(spec.unit, spec.bucketCount * 2, now);
-  let curNum = 0;
-  let curDen = 0;
-  let baseNum = 0;
-  let baseDen = 0;
-  for (const ts of fullBuckets) {
-    const num = numByBucket.get(ts) ?? 0;
-    const den = denByBucket.get(ts) ?? 0;
-    if (new Date(ts).getTime() >= curCutoffMs) {
-      curNum += num;
-      curDen += den;
-    } else {
-      baseNum += num;
-      baseDen += den;
-    }
-  }
-  const value = curDen > 0 ? curNum / curDen : null;
-  const baseline = baseDen > 0 ? baseNum / baseDen : null;
-  const curBuckets = bucketBoundaries(spec.unit, spec.bucketCount, now);
-  const spark = curBuckets.map((ts) => {
-    const den = denByBucket.get(ts) ?? 0;
-    return den > 0 ? (numByBucket.get(ts) ?? 0) / den : 0;
-  });
-  return { value, baseline, spark };
-}
-
-function deltaPct(cur: number | null, prev: number | null): number | null {
-  if (cur == null || prev == null || prev === 0) return null;
-  return ((cur - prev) / prev) * 100;
-}
-
-function toGlance(r: {
-  value: number | null;
-  baseline: number | null;
-  spark: number[];
-}): AdminGlanceMetric {
-  return { value: r.value, deltaPct: deltaPct(r.value, r.baseline), spark: r.spark };
-}
-
-async function bucketedUserSignups(spec: WindowSpec, baseStart: SQL): Promise<Map<string, number>> {
-  const rows = (await db.execute(sql`
-    SELECT ${utcDateTrunc(spec.unit, sql`created_at`)} AS bucket, count(*)::int AS n
-    FROM users
-    WHERE created_at >= ${baseStart}
-    GROUP BY 1
-  `)) as unknown as Array<{ bucket: unknown; n: number }>;
-  return toBucketMap(rows, 'n');
-}
-
-async function bucketedLeadTime(
-  spec: WindowSpec,
-  baseStart: SQL,
-): Promise<{ num: Map<string, number>; den: Map<string, number> }> {
-  const rows = (await db.execute(sql`
-    SELECT ${utcDateTrunc(spec.unit, sql`al.created_at`)} AS bucket,
-           sum(extract(epoch from (al.created_at - i.created_at)) / 60.0)::float AS num,
-           count(*)::int AS den
-    FROM activity_log al
-    INNER JOIN issues i ON i.id = al.issue_id
-    WHERE al.action = 'issue.statusChanged'
-      AND al.payload ->> 'to' IN ('in_progress', 'approved')
-      AND al.created_at = (
-        SELECT min(al2.created_at) FROM activity_log al2
-        WHERE al2.issue_id = al.issue_id
-          AND al2.action = 'issue.statusChanged'
-          AND al2.payload ->> 'to' IN ('in_progress', 'approved')
-      )
-      AND al.created_at >= ${baseStart}
-    GROUP BY 1
-  `)) as unknown as Array<{ bucket: unknown; num: number | null; den: number }>;
-  return { num: toBucketMap(rows, 'num'), den: toBucketMap(rows, 'den') };
-}
-
-// cm:guard reads BOTH `released` and `awaiting_release` because `activity_log` is HISTORY: 4,488 rows were written while the rung was called `released` (renamed 2026-09-10, migration 0228) and no migration rewrites them — a payload records what the status was called when it happened. Drop either spelling and the figure silently loses one side of that date.
-async function bucketedResolved(spec: WindowSpec, baseStart: SQL): Promise<Map<string, number>> {
-  const rows = (await db.execute(sql`
-    SELECT ${utcDateTrunc(spec.unit, sql`created_at`)} AS bucket, count(*)::int AS n
-    FROM activity_log
-    WHERE action = 'issue.statusChanged'
-      AND payload ->> 'to' IN ('closed', 'released', 'awaiting_release')
-      AND created_at >= ${baseStart}
-    GROUP BY 1
-  `)) as unknown as Array<{ bucket: unknown; n: number }>;
-  return toBucketMap(rows, 'n');
-}
-
-// cm:guard match label lanes by NAME, never by id — `labels` rows are project-scoped and this query is cross-tenant, so the same lane is a different id in every workspace.
-async function bucketedResolvedWithInterventionLabel(
-  spec: WindowSpec,
-  baseStart: SQL,
-  lanes: string[],
-): Promise<Map<string, number>> {
-  if (lanes.length === 0) return new Map();
-  const laneList = sql.join(
-    lanes.map((name) => sql`${name}`),
-    sql`, `,
-  );
-  const rows = (await db.execute(sql`
-    SELECT ${utcDateTrunc(spec.unit, sql`al.created_at`)} AS bucket, count(DISTINCT al.id)::int AS n
-    FROM activity_log al
-    INNER JOIN issue_labels il ON il.issue_id = al.issue_id
-    INNER JOIN labels l ON l.id = il.label_id
-    WHERE al.action = 'issue.statusChanged'
-      AND al.payload ->> 'to' IN ('closed', 'released', 'awaiting_release')
-      AND l.name IN (${laneList})
-      AND al.created_at >= ${baseStart}
-    GROUP BY 1
-  `)) as unknown as Array<{ bucket: unknown; n: number }>;
-  return toBucketMap(rows, 'n');
-}
-
-async function bucketedCost(spec: WindowSpec, baseStart: SQL): Promise<Map<string, number>> {
-  const rows = (await db.execute(sql`
-    SELECT ${utcDateTrunc(spec.unit, sql`recorded_at`)} AS bucket, coalesce(sum(estimated_cost), 0)::float AS n
-    FROM usage_records
-    WHERE recorded_at >= ${baseStart}
-    GROUP BY 1
-  `)) as unknown as Array<{ bucket: unknown; n: number }>;
-  return toBucketMap(rows, 'n');
-}
-
-async function bucketedRunOutcomes(
-  spec: WindowSpec,
-  baseStart: SQL,
-): Promise<{ num: Map<string, number>; den: Map<string, number> }> {
-  const rows = (await db.execute(sql`
-    SELECT ${utcDateTrunc(spec.unit, sql`started_at`)} AS bucket,
-           count(*) FILTER (WHERE status = 'completed')::int AS num,
-           count(*) FILTER (WHERE status IN ('completed', 'failed', 'cancelled'))::int AS den
-    FROM pipeline_runs
-    WHERE started_at >= ${baseStart}
-    GROUP BY 1
-  `)) as unknown as Array<{ bucket: unknown; num: number; den: number }>;
-  return { num: toBucketMap(rows, 'num'), den: toBucketMap(rows, 'den') };
-}
 
 const overviewQuerySchema = z.object({ window: z.enum(windows).default('24h') });
 
@@ -286,6 +79,7 @@ adminAggregateRoutes.get(
     ).length;
     const cutoff = cutoffExpr(spec.hours);
     const baseStart = cutoffExpr(spec.hours * 2);
+    const raw = createRawLoaders(spec, baseStart, thresholds.interventionLabels);
 
     const [
       [{ n: usersTotal } = { n: 0 }],
@@ -297,12 +91,7 @@ adminAggregateRoutes.get(
       [{ n: inFlightJobs } = { n: 0 }],
       [{ v: spendWindowUsd } = { v: 0 }],
       [{ v: spendBaselineUsd } = { v: 0 }],
-      signupsByBucket,
-      leadTime,
-      resolved,
-      resolvedWithLabel,
-      cost,
-      runOutcomes,
+      glanceEntries,
     ] = await Promise.all([
       db.select({ n: count() }).from(users),
       db.select({ n: count() }).from(organizations),
@@ -327,21 +116,24 @@ adminAggregateRoutes.get(
         .where(
           sql`${usageRecords.recordedAt} >= ${baseStart} AND ${usageRecords.recordedAt} < ${cutoff}`,
         ),
-      bucketedUserSignups(spec, baseStart),
-      bucketedLeadTime(spec, baseStart),
-      bucketedResolved(spec, baseStart),
-      bucketedResolvedWithInterventionLabel(spec, baseStart, thresholds.interventionLabels),
-      bucketedCost(spec, baseStart),
-      bucketedRunOutcomes(spec, baseStart),
+      // cm:guard mapped over GLANCE_METRIC_NAMES rather than written out per metric — the five names appear ONCE, in `types.ts`, so the glance and the series route cannot come to measure different things (ISS-975). Spelling a name here again is what the shared union removed.
+      Promise.all(
+        GLANCE_METRIC_NAMES.map(
+          async (name) =>
+            [name, toGlance(computeSeries(await METRIC_SOURCES[name](raw), spec, now))] as const,
+        ),
+      ),
     ]);
 
-    const signups = countGlance(signupsByBucket, spec, now);
-    const successRate = ratioGlance(runOutcomes.num, runOutcomes.den, spec, now);
+    const glance = Object.fromEntries(glanceEntries) as Record<
+      AdminGlanceMetricName,
+      AdminGlanceMetric
+    >;
 
     const overview: AdminOverview = {
       counts: {
         users: Number(usersTotal),
-        usersNew: signups.value,
+        usersNew: glance.signupsWindow.value ?? 0,
         orgs: Number(orgsTotal),
         projects: Number(projectsTotal),
         activeWorkspaces: Number(activeWorkspaces),
@@ -354,21 +146,7 @@ adminAggregateRoutes.get(
         spendWindowUsd: Number(spendWindowUsd),
         spendBaselineUsd: Number(spendBaselineUsd),
       },
-      glance: {
-        leadTimeMinutes: toGlance(ratioGlance(leadTime.num, leadTime.den, spec, now)),
-        interventionsPerClosed: toGlance(ratioGlance(resolvedWithLabel, resolved, spec, now)),
-        costPerClosedUsd: toGlance(ratioGlance(cost, resolved, spec, now)),
-        successRatePct: toGlance({
-          value: successRate.value != null ? successRate.value * 100 : null,
-          baseline: successRate.baseline != null ? successRate.baseline * 100 : null,
-          spark: successRate.spark.map((v) => v * 100),
-        }),
-        signupsWindow: toGlance({
-          value: signups.value,
-          baseline: signups.baseline,
-          spark: signups.spark,
-        }),
-      },
+      glance,
     };
 
     return c.json(overview);

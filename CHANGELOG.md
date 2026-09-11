@@ -93,6 +93,22 @@
 
 ### Added
 
+- **An operator can now read any console glance metric as a full time series, not just its current
+  value.** `GET /api/admin/metrics/:metric/timeseries` answers the history behind a glance figure
+  over the console's existing `24h | 7d | 30d` windows, for the same five metrics the console
+  already shows — lead time, interventions per closed issue, cost per closed issue, success rate
+  and signups. Until now a number that moved could only be guessed at from two points: the console
+  published one value, one arrow and a 24-point spark, and the full series those sparks were
+  sampled from existed for the length of one request and was then discarded. The response carries
+  every bucket of the window and the equal window before it, oldest first, so the figure and the
+  shape behind it are read from one answer. A bucket where nothing happened is reported as such: a
+  ratio nobody could compute reads `null`, distinct from a ratio that genuinely was zero, while a
+  count with no rows reads `0`. The glance keeps every figure it published before — its spark is
+  now literally the recent tail of this series rather than a parallel reading of the same rows, so
+  a tile and its history can no longer come to disagree. It is admin-only and cross-tenant like the
+  rest of the console, and reaches no personal access token. The last deliverable of the Operator
+  Ops Console epic, which shipped the rest of its surfaces earlier.
+
 - **A session now tells the box what it is doing, instead of the box guessing from its screen.**
   Every agent Forge starts registers its own Claude Code hooks, so the runner learns when a turn
   began, when it ended (including when it ended on a model error), when a child agent is still

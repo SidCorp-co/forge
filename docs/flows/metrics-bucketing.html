@@ -24,8 +24,11 @@
 can be wrong without anything going red. Owner:
 <code>packages/core/src/lib/time-buckets.ts</code> — the chokepoint every bucketed query floors
 through — with the four call sites in <code>metrics/queries.ts</code>,
-<code>admin/aggregate-routes.ts</code>, <code>pipeline/analytics-routes.ts</code> and
-<code>usage-records/routes.ts</code>.</p>
+<code>admin/metric-series.ts</code>, <code>pipeline/analytics-routes.ts</code> and
+<code>usage-records/routes.ts</code>. The console's call site feeds <b>two</b> surfaces from one
+computation since ISS-975: the <code>/overview</code> glance tiles and
+<code>/metrics/:metric/timeseries</code>, where a tile's spark is the current-window tail of the
+series the route returns rather than a second reading of the same rows.</p>
 
 <h2>The bucket key is computed twice, in two languages</h2>
 <p>A time series here is <em>dense</em>: every bucket in the window appears, whether or not any row

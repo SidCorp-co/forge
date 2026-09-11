@@ -15,6 +15,40 @@ export interface AdminGlanceMetric {
   spark: number[];
 }
 
+// cm:guard ISS-975 — the ONE list of what the console measures. `admin/metric-series.ts` keys its source registry by this union and `AdminOverview['glance']` is a record over it, so a name added to the glance without a source (or the reverse) is a type error. Widening this to `string` restores the drift the single list exists to prevent: a metric the series route serves that the glance cannot show means one of the two is lying about what the console measures.
+export const GLANCE_METRIC_NAMES = [
+  'leadTimeMinutes',
+  'interventionsPerClosed',
+  'costPerClosedUsd',
+  'successRatePct',
+  'signupsWindow',
+] as const;
+
+export type AdminGlanceMetricName = (typeof GLANCE_METRIC_NAMES)[number];
+
+/** One bucket of `GET /api/admin/metrics/:metric/timeseries`. `value` is null
+ *  only for a ratio whose denominator was zero — a count with no rows is 0. */
+export interface AdminMetricSeriesPoint {
+  bucketStart: string;
+  value: number | null;
+}
+
+/**
+ * `GET /api/admin/metrics/:metric/timeseries?window=24h|7d|30d`.
+ *
+ * `points` spans the baseline window AND the current one — twice the window's
+ * bucket count, oldest first — which is the same span the glance folds away to
+ * produce `value` and `deltaPct`, both repeated here so the shape and the
+ * figures an operator already saw are explicable from one response.
+ */
+export interface AdminMetricSeries {
+  metric: AdminGlanceMetricName;
+  window: string;
+  value: number | null;
+  deltaPct: number | null;
+  points: AdminMetricSeriesPoint[];
+}
+
 /** `GET /api/admin/overview?window=24h|7d|30d`. */
 export interface AdminOverview {
   counts: {
@@ -32,13 +66,7 @@ export interface AdminOverview {
     spendWindowUsd: number;
     spendBaselineUsd: number;
   };
-  glance: {
-    leadTimeMinutes: AdminGlanceMetric;
-    interventionsPerClosed: AdminGlanceMetric;
-    costPerClosedUsd: AdminGlanceMetric;
-    successRatePct: AdminGlanceMetric;
-    signupsWindow: AdminGlanceMetric;
-  };
+  glance: Record<AdminGlanceMetricName, AdminGlanceMetric>;
 }
 
 /** One bucket of `GET /api/admin/adoption?weeks=&bucket=`. The series is dense:
