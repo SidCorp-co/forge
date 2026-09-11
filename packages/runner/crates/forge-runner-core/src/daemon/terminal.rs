@@ -201,12 +201,30 @@ enum Placement {
     Unavailable(String),
 }
 
-/// How many times this process has asked systemd for the server.
-// cm:guard the serialization is what this counts, and it is the only part of the placement this process OWNS. How long systemd then takes to fork tmux belongs to the host — measured 2026-09-11 on a GitHub runner, the first placement on a cold user manager took over 30 seconds — so a gate asserting the server came UP would be asserting the host's latency and would flake forever. One attempt per cold start is ours; that the pane survives a restart is observed on a real box.
-static PLACEMENT_ATTEMPTS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+/// The most placements this process has ever had in flight at once.
+// cm:guard the OVERLAP is what this process owns, and it is the only part a gate can hold anywhere. How long systemd then takes to fork tmux belongs to the host — measured 2026-09-11 on a GitHub runner, a cold user manager took over thirty seconds, and a caller that waited that out is RIGHT to ask again rather than give up on the box forever. So the count of attempts is not an invariant and the overlap is: two at once means five losers racing `new-session` against a socket nothing has bound yet.
+static PLACEMENTS_AT_ONCE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static MOST_AT_ONCE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+struct OverlapWatch;
+
+impl OverlapWatch {
+    fn enter() -> Self {
+        use std::sync::atomic::Ordering::Relaxed;
+        let now = PLACEMENTS_AT_ONCE.fetch_add(1, Relaxed) + 1;
+        MOST_AT_ONCE.fetch_max(now, Relaxed);
+        Self
+    }
+}
+
+impl Drop for OverlapWatch {
+    fn drop(&mut self) {
+        PLACEMENTS_AT_ONCE.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+    }
+}
 
 async fn ask_systemd_for_the_server(sock: &str) -> Placement {
-    PLACEMENT_ATTEMPTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let _overlap = OverlapWatch::enter();
     let out = Command::new("systemd-run")
         .args([
             "--user",
@@ -843,12 +861,12 @@ mod tests {
         let _ = std::fs::remove_file(&sock);
         assert!(!server_answers().await, "the server must start out cold");
 
-        let before = PLACEMENT_ATTEMPTS.load(std::sync::atomic::Ordering::Relaxed);
+        MOST_AT_ONCE.store(0, std::sync::atomic::Ordering::Relaxed);
         futures_util::future::join_all((0..6).map(|_| ensure_server())).await;
         assert_eq!(
-            PLACEMENT_ATTEMPTS.load(std::sync::atomic::Ordering::Relaxed) - before,
+            MOST_AT_ONCE.load(std::sync::atomic::Ordering::Relaxed),
             1,
-            "six panes starting at once must ask systemd for the server exactly once"
+            "six panes starting at once must never have two placements in flight together"
         );
 
         let dir = std::env::temp_dir().join(format!("forge-race-{}", std::process::id()));
