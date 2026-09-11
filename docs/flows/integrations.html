@@ -1,8 +1,8 @@
 <!doctype html>
 <meta charset="utf-8">
-<meta name="flow-module" content="knowledge-memory-skills">
-<meta name="flow-answers" content="Why a memory can be stored but unfindable, why skills are delivered and memory is searched, where each kind of thing belongs, and why model-written prose is stored as untrusted data">
-<title>Flow · knowledge-memory-skills</title>
+<meta name="flow-module" content="integrations">
+<meta name="flow-answers" content="Why a deploy is finished only once something answers, why a refused connection is a reading rather than a skip, why the two provider refusals must never be worded alike, and how a running instance names its commit">
+<title>Flow · integrations</title>
 <style>
   :root { --fg:#1c1a17; --mut:#6b645c; --faint:#9a9288; --line:#ddd7cf; --bg:#fbfaf8; --panel:#fff;
           --acc:#1f6f4a; --accbg:#e6efe9; --bad:#8a3b52; --badbg:#f6ecef; --new:#5b3a8e; --newbg:#efeaf6; }
@@ -74,63 +74,64 @@
 </style>
 
 <header class="bar">
-  <span class="crumb"><a href="index.html">flows</a> / knowledge-memory-skills</span>
-  <h1>How something learned is written down, found again, and handed over</h1>
-  <span class="pill">a memory nobody can find again was not written</span>
+  <span class="crumb"><a href="index.html">flows</a> / integrations</span>
+  <h1>Shipping to a provider, and knowing whether it worked</h1>
+  <span class="pill">a deploy that builds is not a deploy that serves</span>
 </header>
 
 <div class="cols">
 <div class="canvas">
 
-  <p class="stage"><b>1</b>Writing, and the part that can silently not happen</p>
+  <p class="stage"><b>1</b>A deploy is only finished once something answers</p>
   <div class="board"><pre class="mermaid">
 flowchart TD
-  A["something worth keeping is written"] --> B["it is stored immediately —<br/>the words are safe"]
-  B --> C{"can it be indexed for meaning-based search?"}
-  C -->|"yes"| D["<b>findable.</b> A later search on a<br/>different wording will reach it"]
-  C -->|"the indexer is unavailable"| E["<b>stored, but findable only by exact words.</b><br/>Nothing is lost and nothing says so"]
-  E -.->|"a later backfill can repair it"| D
+  D["a deploy is asked for"] --> B{"did it build?"}
+  B -->|"no"| F1["failed, and the old one is still serving"]
+  B -->|"yes"| H{"does the new one ANSWER?"}
+  H -->|"yes"| OK["<b>deployed.</b> This is the only point<br/>at which that word is true"]
+  H -->|"refuses the connection"| R["<b>a reading, not a skip.</b> It built and<br/>cannot serve — that is the case<br/>this gate exists for"]
+  H -->|"no answer in time"| R
+  R --> U["undo it, back to the last one<br/>known to have served"]
 </pre></div>
-  <p class="cap">Storing and indexing are separate, so a memory is never lost because the indexer was
-  down — but it can be invisible to the search people actually use. The gap is repairable, and the
-  reason it is worth knowing about is that "I searched and found nothing" does not mean nobody
-  wrote it.</p>
+  <p class="cap">Treating a refused connection as "could not tell" is the failure that makes the whole
+  gate pointless, because that is precisely what a broken deploy looks like. The gate is worth having
+  only if the ambiguous reading is treated as bad news.</p>
 
-  <p class="stage"><b>2</b>Delivery — the half that never searches</p>
+  <p class="stage"><b>2</b>A refused call by a provider means two very different things</p>
   <div class="board"><pre class="mermaid">
 flowchart TD
-  W["a worker starts on a project"] --> S["<b>skills</b> are handed to it outright.<br/>It does not go looking — the project's<br/>way of working arrives with the job"]
-  W --> M["<b>memory</b> is searched, on purpose,<br/>when the worker decides it needs<br/>prior context"]
-  S --> R["so a skill that was never registered<br/>simply does not exist for that worker,<br/>however well it is written"]
-  M --> R2["and a memory nobody searches for<br/>is a memory nobody reads"]
+  C["a call to a provider is refused"] --> Q{"which refusal?"}
+  Q -->|"it does not know who we are"| A1["<b>the credential is wrong or expired.</b><br/>Told as: go and re-authorise this integration"]
+  Q -->|"it knows us, and says no"| A2["<b>the credential is fine, the permission is not.</b><br/>Told as: this account lacks access to that thing"]
+  A1 --> W["the two must never be worded alike —<br/>one is fixed by re-connecting,<br/>the other by changing permissions,<br/>and doing the wrong one wastes the day"]
+  A2 --> W
 </pre></div>
-  <p class="cap">These are two different mechanisms and confusing them is the common mistake. Writing
-  a project convention into memory and expecting workers to follow it does not work — conventions
-  belong in a skill, which is delivered whether or not anybody asks.</p>
+  <p class="cap">Every operator instruction this produces is derived from which refusal came back. A
+  provider that returns the wrong one, or a reader that collapses them, sends somebody to re-enter a
+  password that was never the problem.</p>
 
 </div>
 
 <aside class="rail">
-  <h2>Where a thing belongs</h2>
+  <h2>What can be undone</h2>
   <table>
-    <tr><th>Kind</th><th>where</th></tr>
-    <tr><td>How this project works</td><td>a skill — delivered every time</td></tr>
-    <tr><td>A decision and its reason</td><td>memory — found when searched for</td></tr>
-    <tr><td>A durable business rule</td><td>the repository's own docs</td></tr>
-    <tr><td>A thing to do later</td><td>the tracker, never memory</td></tr>
+    <tr><th>Control</th><th>what it does</th></tr>
+    <tr><td>Stop</td><td>halts a deploy in flight</td></tr>
+    <tr><td>Undo</td><td>puts back the last build known to have served</td></tr>
+    <tr><td>Automatic undo</td><td>same, triggered by the gate above</td></tr>
   </table>
-  <p>The last one is the mistake worth naming: memory has no owner, no age and no queue, so work
-  parked there is work nobody will ever do.</p>
+  <p>Undo needs a previous build that actually served. On a first deploy there is nothing to go back
+  to, and the honest answer is to refuse rather than to pick something arbitrary.</p>
 </aside>
 </div>
 
 <section class="pane">
-<h2>Prose a model wrote is treated as untrusted input</h2>
-<p>Much of what gets stored is composed by a model rather than typed by a person. That text is stored
-as text, and anything that reads it later must treat it as data — never as instructions it should
-follow.</p>
-<p>The gate sits at the write, not at every read, because a single place that refuses is checkable
-and a hundred careful readers are not.</p>
+<h2>A running instance should be able to name the commit it was built from</h2>
+<p>Every service reports which commit it is serving, and that answer is what makes "is the fix live
+yet?" a question with a real answer rather than a guess from timestamps.</p>
+<p>The value has to be stamped in at build time and carried through every hop to the running process.
+Any hop that drops it turns the answer into <i>unknown</i> — which is not a small loss: it is the
+difference between verifying a deploy and believing one.</p>
 </section>
 
 <section class="pane">
@@ -138,33 +139,38 @@ and a hundred careful readers are not.</p>
 <table>
   <tr><th>What you see</th><th>what is happening</th><th>what to do</th></tr>
   <tr>
-    <td>A search returns nothing for something you know was written.</td>
-    <td>It was stored when meaning-based indexing was unavailable, so it is only reachable by its
-    exact words.</td>
-    <td>Search with the original wording, and run the backfill so the next search finds it.</td>
+    <td>A deploy reports success but the site is down.</td>
+    <td>It built. Nothing checked that it serves, or the check treated a refused connection as
+    inconclusive.</td>
+    <td>Undo to the last build known to have served, then find out why the gate did not fire.</td>
   </tr>
   <tr>
-    <td>Workers keep ignoring a convention that is written down.</td>
-    <td>It was written into memory, which is only read when searched for.</td>
-    <td>Move it into a skill. Delivery is the difference, not quality of writing.</td>
+    <td>The running version reports an unknown commit.</td>
+    <td>The commit was not stamped at build time, or a hop between the build and the process dropped
+    it.</td>
+    <td>Do not infer the version from deploy timestamps — they are routinely wrong. Fix the stamp.</td>
   </tr>
   <tr>
-    <td>Memory fills with duplicates saying slightly different things.</td>
-    <td>Nothing dedupes on write, and near-duplicates score alike — so a search returns several and
-    the reader cannot tell which is current.</td>
-    <td>Curate: merge them into one entry and delete the rest. Two entries that disagree are worse
-    than neither.</td>
+    <td>An integration keeps asking to be re-authorised and it does not help.</td>
+    <td>The refusal is about permissions, not identity, and is being reported as an expired
+    credential.</td>
+    <td>Check what the account may actually reach. Re-connecting cannot fix a permission it never had.</td>
+  </tr>
+  <tr>
+    <td>Undo is refused.</td>
+    <td>There is no earlier build recorded as having served.</td>
+    <td>Fix forward. The refusal is correct — rolling back to something unverified is how one outage
+    becomes two.</td>
   </tr>
 </table>
 </section>
 
 <section class="pane">
 <h2>Code</h2>
-<p class="foot">Writing, indexing and the backfill that repairs an unindexed row:
-<code>packages/core/src/memory/</code> · search across both transports:
-the search service beside it · skills, registration and delivery to a worker:
-<code>packages/core/src/skills/</code> · project knowledge nodes:
-<code>packages/core/src/knowledge/</code>.
+<p class="foot">Deploy controls, stop and undo: <code>packages/core/src/integrations/</code> · the
+serve-check gate and what each reading means: the health-gate module beside it · build provenance —
+where the commit is stamped and every hop it travels: the provenance module beside it · turning a
+provider refusal into an operator instruction: the credential-health module beside it.
 <a href="index.html">← all flows</a></p>
 </section>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>

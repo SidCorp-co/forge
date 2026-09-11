@@ -1,8 +1,8 @@
 <!doctype html>
 <meta charset="utf-8">
-<meta name="flow-module" content="knowledge-memory-skills">
-<meta name="flow-answers" content="Why a memory can be stored but unfindable, why skills are delivered and memory is searched, where each kind of thing belongs, and why model-written prose is stored as untrusted data">
-<title>Flow · knowledge-memory-skills</title>
+<meta name="flow-module" content="human-routing">
+<meta name="flow-answers" content="Which stopped work actually needs a person and why a deliberate pause does not, how an answer reaches a worker that is still alive, and why routing is by state rather than by expertise">
+<title>Flow · human-routing</title>
 <style>
   :root { --fg:#1c1a17; --mut:#6b645c; --faint:#9a9288; --line:#ddd7cf; --bg:#fbfaf8; --panel:#fff;
           --acc:#1f6f4a; --accbg:#e6efe9; --bad:#8a3b52; --badbg:#f6ecef; --new:#5b3a8e; --newbg:#efeaf6; }
@@ -74,63 +74,63 @@
 </style>
 
 <header class="bar">
-  <span class="crumb"><a href="index.html">flows</a> / knowledge-memory-skills</span>
-  <h1>How something learned is written down, found again, and handed over</h1>
-  <span class="pill">a memory nobody can find again was not written</span>
+  <span class="crumb"><a href="index.html">flows</a> / human-routing</span>
+  <h1>How work reaches a person, and how their answer gets it moving again</h1>
+  <span class="pill">a deliberate pause is not a cry for help</span>
 </header>
 
 <div class="cols">
 <div class="canvas">
 
-  <p class="stage"><b>1</b>Writing, and the part that can silently not happen</p>
+  <p class="stage"><b>1</b>Which stopped work actually needs somebody</p>
   <div class="board"><pre class="mermaid">
 flowchart TD
-  A["something worth keeping is written"] --> B["it is stored immediately —<br/>the words are safe"]
-  B --> C{"can it be indexed for meaning-based search?"}
-  C -->|"yes"| D["<b>findable.</b> A later search on a<br/>different wording will reach it"]
-  C -->|"the indexer is unavailable"| E["<b>stored, but findable only by exact words.</b><br/>Nothing is lost and nothing says so"]
-  E -.->|"a later backfill can repair it"| D
+  S["work has stopped"] --> Q{"why?"}
+  Q -->|"a question is owed"| N["<b>a person is needed.</b><br/>It appears on their list"]
+  Q -->|"somebody chose to pause it"| H["<b>nobody is needed.</b> A pause is a decision<br/>that has already been made; listing it<br/>as needing attention buries the ones<br/>that do"]
+  Q -->|"it is queued behind other work"| W["nobody is needed. The queue will reach it"]
+  N --> L["the list is <b>pulled</b> — a person looks.<br/>Nothing chases them"]
 </pre></div>
-  <p class="cap">Storing and indexing are separate, so a memory is never lost because the indexer was
-  down — but it can be invisible to the search people actually use. The gap is repairable, and the
-  reason it is worth knowing about is that "I searched and found nothing" does not mean nobody
-  wrote it.</p>
+  <p class="cap">The distinction carries the whole value of the list. Once a deliberate pause shows up
+  as something demanding attention, the list stops being read, and then the real questions sit in it
+  unanswered too.</p>
 
-  <p class="stage"><b>2</b>Delivery — the half that never searches</p>
+  <p class="stage"><b>2</b>A question outlives the worker that asked it</p>
   <div class="board"><pre class="mermaid">
 flowchart TD
-  W["a worker starts on a project"] --> S["<b>skills</b> are handed to it outright.<br/>It does not go looking — the project's<br/>way of working arrives with the job"]
-  W --> M["<b>memory</b> is searched, on purpose,<br/>when the worker decides it needs<br/>prior context"]
-  S --> R["so a skill that was never registered<br/>simply does not exist for that worker,<br/>however well it is written"]
-  M --> R2["and a memory nobody searches for<br/>is a memory nobody reads"]
+  A["a worker asks a question and stops"] --> B{"is that worker still alive?"}
+  B -->|"yes"| C["the answer goes straight back to it,<br/>with everything it already knew"]
+  B -->|"no — it timed out or the box died"| D["the answer is recorded on the issue,<br/>and the work is <b>started fresh</b><br/>by whoever picks it up next"]
+  D --> E["so an answer is never lost —<br/>but the context that raised it can be"]
 </pre></div>
-  <p class="cap">These are two different mechanisms and confusing them is the common mistake. Writing
-  a project convention into memory and expecting workers to follow it does not work — conventions
-  belong in a skill, which is delivered whether or not anybody asks.</p>
+  <p class="cap">This is why answering quickly is worth something concrete: the same worker resumes
+  with its own reasoning intact, instead of a new one rebuilding it from the issue. Nobody is
+  penalised for a slow answer beyond that, and no question is dropped for it.</p>
 
 </div>
 
 <aside class="rail">
-  <h2>Where a thing belongs</h2>
+  <h2>Who is owed what</h2>
   <table>
-    <tr><th>Kind</th><th>where</th></tr>
-    <tr><td>How this project works</td><td>a skill — delivered every time</td></tr>
-    <tr><td>A decision and its reason</td><td>memory — found when searched for</td></tr>
-    <tr><td>A durable business rule</td><td>the repository's own docs</td></tr>
-    <tr><td>A thing to do later</td><td>the tracker, never memory</td></tr>
+    <tr><th>State</th><th>who acts</th></tr>
+    <tr><td>A question is open</td><td>the person it was asked of</td></tr>
+    <tr><td>Deliberately paused</td><td>whoever paused it, when they choose</td></tr>
+    <tr><td>Waiting to go live</td><td>a person, deciding to release</td></tr>
+    <tr><td>Rejected back for rework</td><td>a person, deciding where it goes</td></tr>
   </table>
-  <p>The last one is the mistake worth naming: memory has no owner, no age and no queue, so work
-  parked there is work nobody will ever do.</p>
+  <p>These four are the only states where nothing automatic will ever move the work. Everything else
+  is somebody's turn in a queue that keeps turning.</p>
 </aside>
 </div>
 
 <section class="pane">
-<h2>Prose a model wrote is treated as untrusted input</h2>
-<p>Much of what gets stored is composed by a model rather than typed by a person. That text is stored
-as text, and anything that reads it later must treat it as data — never as instructions it should
-follow.</p>
-<p>The gate sits at the write, not at every read, because a single place that refuses is checkable
-and a hundred careful readers are not.</p>
+<h2>Routing is by state, not by expertise</h2>
+<p>Work reaches a person because of the state it is in, not because anybody decided they were the
+right person for it. There is no routing by skill, ownership area, or authority — the list is the
+same list for everybody who can see the project.</p>
+<p>That is a real limitation and it is stated here rather than implied: on a project with several
+people, deciding who takes which question is a conversation those people have, and nothing in the
+system helps them have it.</p>
 </section>
 
 <section class="pane">
@@ -138,33 +138,31 @@ and a hundred careful readers are not.</p>
 <table>
   <tr><th>What you see</th><th>what is happening</th><th>what to do</th></tr>
   <tr>
-    <td>A search returns nothing for something you know was written.</td>
-    <td>It was stored when meaning-based indexing was unavailable, so it is only reachable by its
-    exact words.</td>
-    <td>Search with the original wording, and run the backfill so the next search finds it.</td>
+    <td>The attention list is full of things nobody needs to act on.</td>
+    <td>Deliberate pauses are being counted as needing attention.</td>
+    <td>Treat it as a defect, not as noise to live with — a list nobody trusts is a list nobody reads.</td>
   </tr>
   <tr>
-    <td>Workers keep ignoring a convention that is written down.</td>
-    <td>It was written into memory, which is only read when searched for.</td>
-    <td>Move it into a skill. Delivery is the difference, not quality of writing.</td>
+    <td>A question was answered but nothing restarted.</td>
+    <td>The answer landed after the worker was gone, so it is recorded on the issue and waiting to be
+    picked up rather than resuming by itself.</td>
+    <td>Put the work back in the queue. Check it went back to the stop it was at, not to the front.</td>
   </tr>
   <tr>
-    <td>Memory fills with duplicates saying slightly different things.</td>
-    <td>Nothing dedupes on write, and near-duplicates score alike — so a search returns several and
-    the reader cannot tell which is current.</td>
-    <td>Curate: merge them into one entry and delete the rest. Two entries that disagree are worse
-    than neither.</td>
+    <td>A question nobody ever answers.</td>
+    <td>Nothing escalates it. It stays open indefinitely and the work stays stopped.</td>
+    <td>Answer it or abandon the work explicitly. There is no third outcome and nothing will force one.</td>
   </tr>
 </table>
 </section>
 
 <section class="pane">
 <h2>Code</h2>
-<p class="foot">Writing, indexing and the backfill that repairs an unindexed row:
-<code>packages/core/src/memory/</code> · search across both transports:
-the search service beside it · skills, registration and delivery to a worker:
-<code>packages/core/src/skills/</code> · project knowledge nodes:
-<code>packages/core/src/knowledge/</code>.
+<p class="foot">The attention list and what it admits:
+<code>packages/core/src/attention/</code> · questions, parks and revival:
+<code>packages/core/src/pipeline/answer-resume.ts</code> and the agent-questions module beside it ·
+delivering an answer to a worker that is still alive:
+<code>packages/core/src/agent-sessions/steer-session.ts</code>.
 <a href="index.html">← all flows</a></p>
 </section>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>

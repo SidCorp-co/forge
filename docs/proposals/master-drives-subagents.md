@@ -143,9 +143,9 @@ does, these move in the same PR or become wrong:
 
 | File | Why |
 |---|---|
-| `human-routing-question-park.html` | names `incarnation` / `work` / `blocker_kind` / `resume_id` as the owner of the decision; the first is deleted |
-| `agent-execution.html`, `agent-execution-blocked-branch.html` | describe a child parented by tmux, outliving the daemon |
-| `run-session-lifecycle.html`, `run-session-close.html` | the verbs they draw are removed |
+| `human-routing.html` | names `incarnation` / `work` / `blocker_kind` / `resume_id` as the owner of the decision; the first is deleted |
+| `agent-execution.html`, `agent-execution.html` | describe a child parented by tmux, outliving the daemon |
+| `lifecycle-pipeline.html`, `lifecycle-pipeline.html` | the verbs they draw are removed |
 | `docs/flows/index.html` | registry entry for whatever replaces them |
 
 ## Never executed in production

@@ -296,7 +296,7 @@ Two things about that stamp are worth knowing before you rely on either status, 
 
 ### The status set, and it is closed
 
-Fourteen statuses. Drawing, with the full transition matrix: \`docs/flows/issue-status-lifecycle.html\`.
+Fourteen statuses. Drawing, with the full transition matrix: \`docs/flows/lifecycle-pipeline.html\`.
 
 \`\`\`
               ┌──────────────────── needs_info / on_hold ────────────────────┐  (from ANY live

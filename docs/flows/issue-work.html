@@ -1,0 +1,224 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="flow-module" content="issue-work">
+<meta name="flow-answers" content="What an issue carries, who may write each part, why a rule that binds machines never binds people, and why two module counts must not be added together">
+<title>Flow · issue-work</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --faint:#9a9288; --line:#ddd7cf; --bg:#fbfaf8; --panel:#fff;
+          --acc:#1f6f4a; --accbg:#e6efe9; --bad:#8a3b52; --badbg:#f6ecef; --new:#5b3a8e; --newbg:#efeaf6; }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  code { font:12.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+
+  .bar { display:flex; align-items:baseline; gap:.9rem; flex-wrap:wrap;
+         padding:.85rem 1.4rem; background:var(--panel); border-bottom:1px solid var(--line); }
+  .bar h1 { font-size:1.05rem; margin:0; font-weight:650; letter-spacing:-.01em; }
+  .crumb { font:12px ui-monospace,Menlo,monospace; color:var(--faint); }
+  .crumb a { color:var(--faint); }
+  .pill { margin-left:auto; font-size:12px; padding:.22rem .6rem; border-radius:99px;
+          background:var(--badbg); color:var(--bad); border:1px solid #e6d3d9; font-weight:600; }
+
+  .cols { display:grid; grid-template-columns:minmax(0,1fr) 20rem; gap:1px; background:var(--line); }
+  @media (max-width:1100px){ .cols { grid-template-columns:minmax(0,1fr) } }
+  .canvas, .rail { background:var(--bg); padding:1.1rem 1.4rem; }
+  .board { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:.6rem; overflow-x:auto; }
+  .board svg { display:block; min-width:60rem; width:100%; height:auto; }
+  .cap { color:var(--mut); font-size:13px; margin:.7rem .2rem 0; }
+  .cap b { color:var(--fg) }
+
+  .rail h2 { font-size:11.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--faint);
+             margin:0 0 .5rem; font-weight:700; }
+  .rail section + section { margin-top:1.3rem }
+  .who { list-style:none; margin:0; padding:0; font-size:12.5px; }
+  .who li { display:flex; gap:.5rem; padding:.28rem 0; border-bottom:1px solid var(--line); }
+  .who li:last-child { border-bottom:0 }
+  .who b { flex:0 0 8.6rem; font:600 12px ui-monospace,Menlo,monospace; }
+  .who span { color:var(--mut) }
+  .who .rt b { color:var(--acc) } .who .pk b { color:var(--new) } .who .en b { color:var(--mut) }
+  .key { list-style:none; margin:0; padding:0; font-size:12.5px; color:var(--mut) }
+  .key li { display:flex; align-items:center; gap:.5rem; padding:.2rem 0 }
+  .sw { width:22px; height:13px; border-radius:3px; flex:0 0 auto }
+  .key.strip { display:flex; flex-wrap:wrap; gap:.35rem 1.3rem; margin:.7rem .2rem 0 }
+
+  .tabs { display:flex; gap:.3rem; padding:0 1.4rem; background:var(--panel); border-top:1px solid var(--line);
+          border-bottom:1px solid var(--line); }
+  .tabs button { appearance:none; border:0; background:none; padding:.6rem .85rem; cursor:pointer;
+                 font:600 13px inherit; color:var(--mut); border-bottom:2px solid transparent; }
+  .tabs button[aria-selected=true] { color:var(--fg); border-bottom-color:var(--acc) }
+  .pane { padding:1.4rem 1.4rem 1.8rem; border-top:1px solid var(--line); }
+  .pane h2 { font:600 12.5px ui-sans-serif,system-ui,sans-serif; text-transform:uppercase;
+             letter-spacing:.05em; color:var(--mut); margin:0 0 .8rem; }
+
+  table { border-collapse:collapse; width:100%; font-size:13.5px; }
+  th,td { text-align:left; padding:.45rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--faint); font-size:11.5px; text-transform:uppercase; letter-spacing:.05em; }
+  td.n { white-space:nowrap; font:12px ui-monospace,Menlo,monospace; color:var(--mut) }
+
+  .mx { border-collapse:separate; border-spacing:2px; font-size:12px; width:auto }
+  .mx th { padding:3px 5px; border:0; font:600 11.5px ui-monospace,Menlo,monospace; color:var(--mut);
+           text-transform:none; letter-spacing:0 }
+  .mx th.rh { text-align:right; color:var(--fg) }
+  .mx td { border:0; padding:0 }
+  .mx i { display:block; width:26px; height:22px; line-height:22px; border-radius:3px; font-style:normal;
+          text-align:center; font-size:12px }
+  .y { background:var(--accbg); color:var(--acc); font-weight:700 }
+  .y.p { background:var(--newbg); color:var(--new) }
+  .x { background:#f4f1ec; color:#e2ddd5 }
+  .s { background:#ebe6df; color:var(--faint) }
+  .gone { color:var(--faint); text-decoration:line-through }
+  .note { background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--bad);
+          padding:.6rem .9rem; border-radius:4px; margin:.9rem 0; font-size:13.5px }
+  .note.plan { border-left-color:var(--new) }
+  .foot { padding:1rem 1.4rem 2.5rem; font-size:13px; color:var(--mut) }
+</style>
+
+<header class="bar">
+  <span class="crumb"><a href="index.html">flows</a> / issue-work</span>
+  <h1>What an issue carries, and who may write each part</h1>
+  <span class="pill">one door per kind of write — never one per caller</span>
+</header>
+
+<div class="cols">
+<div class="canvas">
+
+  <p class="stage"><b>1</b>Every write goes through one door, whatever it arrived on</p>
+  <div class="board"><pre class="mermaid">
+flowchart TD
+  W1["a person typing in the browser"] --> D
+  W2["an automated worker"] --> D
+  D["<b>one place decides</b><br/>whether the write is allowed<br/>and what it will actually store"]
+  D --> C{"is the text well formed?"}
+  C -->|"no"| R1["refused, naming what was wrong<br/>and what a valid one looks like"]
+  C -->|"yes, but not what was sent"| S["stored in the cleaned-up form"]
+  C -->|"yes"| S
+  S --> L["the history records <b>what was stored</b>,<br/>never what was typed"]
+</pre></div>
+  <p class="cap">Both entrances share one decision point, and that is the rule rather than an accident:
+  a check placed on one entrance is a check on neither, because the other one still lets the same
+  write through. The history recording the stored version — not the submitted one — is what stops the
+  audit trail showing a value the issue never held.</p>
+
+  <p class="stage"><b>2</b>When a rule applies to machines and not to people</p>
+  <div class="board"><pre class="mermaid">
+flowchart TD
+  A{"who is writing?"}
+  A -->|"a person"| P["<b>never refused.</b> At any stage, for any rule<br/>of this kind. A tracker that rejects a<br/>sentence somebody typed is a tracker<br/>the project switches off"]
+  A -->|"an automated worker"| M{"does this stage demand<br/>a structured answer?"}
+  M -->|"no"| M1["write it as prose"]
+  M -->|"yes"| M2["must fill in the structure the stage asks for,<br/>or be refused and told which part is missing"]
+</pre></div>
+  <p class="cap">The point of demanding structure is to make an automated writer leave a record that
+  can be read back by something other than a human eye. Extending that demand to people would buy
+  nothing and cost the thing everyone actually uses.</p>
+
+  <p class="stage"><b>3</b>Modules — one primary, many secondary, never added together</p>
+  <div class="board"><pre class="mermaid">
+flowchart TD
+  I["an issue"] --> PR["<b>one primary module</b> — where this work mainly lands"]
+  I --> SE["<b>any number of secondary modules</b> — what it also touches"]
+  PR --> CNT{"counting the backlog by module"}
+  SE --> CNT
+  CNT --> Q1["<b>primary and secondary are counted apart.</b><br/>Adding them together counts one issue twice"]
+  CNT --> Q2["a parent module's count folds in its children,<br/>counting each issue ONCE even when it is<br/>attached to the parent and the child both"]
+</pre></div>
+  <p class="cap">An issue carrying no module at all is a distinct answer from an issue attached to
+  nothing countable — the two must not collapse into each other, or work with no owner disappears
+  from the report that exists to find it.</p>
+
+</div>
+
+<aside class="rail">
+  <h2>What an issue carries</h2>
+  <table>
+    <tr><th>Part</th><th>who may write it</th></tr>
+    <tr><td>Title, description</td><td>anyone with write access</td></tr>
+    <tr><td>Status</td><td>anyone — see the lifecycle flow</td></tr>
+    <tr><td>Modules</td><td>anyone; the taxonomy itself is the project's</td></tr>
+    <tr><td>Comments</td><td>anyone; structure may be demanded of machines</td></tr>
+    <tr><td>Attachments</td><td>anyone, one size and type rule for every route in</td></tr>
+    <tr><td>The shipped mark</td><td>asserted by whoever landed the work</td></tr>
+  </table>
+  <p>The shipped mark is the only part that is a <b>claim about the outside world</b>. Everything
+  else describes the issue; that one describes the product.</p>
+</aside>
+</div>
+
+<section class="pane">
+<h2>Two writers, one field</h2>
+<p>When two workers change the same field at once, the second does not silently overwrite the first.
+A write carries the value its author believed was there; if that is no longer true, the write is
+refused and the author is <b>told what the field now holds</b>, so it can decide rather than guess.</p>
+<p>This matters most where a machine and a person are both acting on one issue — the machine
+retries against the new value instead of undoing what the person just did.</p>
+</section>
+
+<section class="pane">
+<h2>Long comment threads are read in pieces</h2>
+<p>A thread longer than one response comes back a page at a time, with a marker for where to resume.
+A reader that ignores the marker sees the first page and believes it saw the thread. Anything
+counting or summarising a discussion must follow the marker to the end, or it is reporting on a
+prefix.</p>
+</section>
+
+<section class="pane">
+<h2>When it goes wrong</h2>
+<table>
+  <tr><th>What you see</th><th>what is happening</th><th>what to do</th></tr>
+  <tr>
+    <td>A comment shows raw markup instead of a formatted block.</td>
+    <td>The stored text is structured, but whatever is displaying it could not interpret the
+    structure, so it fell back to showing the characters.</td>
+    <td>Read it through the tracker's own screen, which understands the structure. If that is where
+    you already are, the body was stored in a form nothing can render — rewrite it.</td>
+  </tr>
+  <tr>
+    <td>A backlog report by module shows more issues than exist.</td>
+    <td>Primary and secondary counts were added together. One issue attached to a module in both
+    roles is counted twice.</td>
+    <td>Read the two numbers separately. They answer different questions and were never meant to sum.</td>
+  </tr>
+  <tr>
+    <td>An automated worker's comment is refused.</td>
+    <td>That stage demands a structured answer and the worker sent prose.</td>
+    <td>Nothing — the refusal names the missing part. A person writing the same comment is never
+    refused, so this is not a tracker fault.</td>
+  </tr>
+  <tr>
+    <td>An attachment is missing after an upload that seemed to work.</td>
+    <td>A file is judged in one place regardless of which route carried it. A route that reported
+    success before that judgement leaves nothing behind.</td>
+    <td>Re-upload and watch for the refusal message, which names the size or type rule that stopped it.</td>
+  </tr>
+</table>
+</section>
+
+<section class="pane">
+<h2>Code</h2>
+<p class="foot">One decision point for every field write, and the stored-not-submitted rule:
+<code>packages/core/src/issues/patch-fields.ts</code> · demanding structure of machines only:
+<code>packages/core/src/body/stage-policy.ts</code> · rendering a stored body:
+<code>packages/core/src/body/</code> · module attribution and the taxonomy:
+<code>packages/core/src/labels/module-service.ts</code> · counting the backlog by module, and the
+dedupe that stops an issue being counted twice: <code>packages/core/src/labels/module-rollup.ts</code>
+· undeclared-coupling drift signal: <code>packages/core/src/labels/module-drift.ts</code> · the
+shipped mark: <code>packages/core/src/issues/merged-at.ts</code>.
+<a href="index.html">← all flows</a></p>
+</section>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({ startOnLoad: false, theme: 'neutral',
+    themeVariables: { fontSize: '12px', fontFamily: 'ui-sans-serif,system-ui,sans-serif' },
+    flowchart: { useMaxWidth: false, nodeSpacing: 30, rankSpacing: 42, padding: 6 } });
+  // .finally, not .then — mermaid.run() REJECTS on some diagram types after drawing them fine,
+  // and a .then here left those figures at mermaid's own shrunken width (two sequenceDiagrams).
+  const fit = () => {
+    // mermaid stamps width="100%" + an inline max-width on some diagram types, which shrinks a
+    // wide figure until the type is unreadable. CSS cannot read viewBox, so set it here.
+    for (const s of document.querySelectorAll('.board svg')) {
+      const vb = (s.getAttribute('viewBox') || '').split(/\s+/);
+      if (vb.length === 4) { s.style.width = vb[2] + 'px'; s.style.maxWidth = 'none'; }
+    }
+  };
+  mermaid.run().catch(() => {}).finally(fit);
+</script>

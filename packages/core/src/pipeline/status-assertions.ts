@@ -11,7 +11,7 @@
  * carried a placement promise from this repo's lifecycle guide and an
  * evidence promise from the driver plugin's contract, and direct-ship is
  * where the two come apart permanently. Drawn in
- * docs/flows/issue-status-placement.html.
+ * docs/flows/lifecycle-pipeline.html.
  */
 
 import { type IssueStatus, issueStatuses } from '../db/schema.js';

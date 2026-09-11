@@ -49,7 +49,7 @@ flowchart LR
   `isPrimary`. At most one per issue, held by `issue_labels_primary_uq` and by
   `resolveLabelIdsForWrite`, which also refuses a primary that is not `kind='module'` — SQL cannot
   see `labels.kind` from a junction row, so that half has no database backstop. Drawn in
-  [`docs/flows/issue-work-module-attribution.html`](../../flows/issue-work-module-attribution.html).
+  [`docs/flows/issue-work.html`](../../flows/issue-work.html).
 - **A module's identity is `labels.slug`, and its knowledge node is `labels.knowledge_entry_id`.**
   The slug is derived from the name on create and on promotion and never on a rename, so retitling
   a module cannot move what its node is found by; `module-${slugify(name)}` computed at a call site
@@ -59,7 +59,7 @@ flowchart LR
   leaving it to the service. Deleting a node clears the link (`ON DELETE SET NULL`) and deleting a
   module leaves the node, so a NULL link means "no node written yet" and never "the node is gone".
   Drawn in
-  [`docs/flows/web-v2-module-taxonomy.html`](../../flows/web-v2-module-taxonomy.html).
+  [`docs/flows/issue-work.html`](../../flows/issue-work.html).
 - **A module's knowledge node refreshes itself when a passing test lands, and never on a status
   change.** A `test` handoff whose `result` is `pass` or `verified_by_test` appends the issue to the
   primary module's node (`knowledge_entries.related_issue_ids`, deduped) and re-stamps
@@ -71,7 +71,7 @@ flowchart LR
   about a specific body (`bodyHash`), which is why nothing clears it — a redrawn flow changes the
   hash and the next landing re-arms against the new body. A refresh that throws is reported to the
   log and the activity feed and never fails the handoff that triggered it. Drawn in
-  [`docs/flows/issue-work-module-knowledge-refresh.html`](../../flows/issue-work-module-knowledge-refresh.html).
+  [`docs/flows/issue-work.html`](../../flows/issue-work.html).
 - **A module pair the issue stream keeps linking, which the hierarchy never declares, is reported
   as a signal — never as an error.** `GET /api/projects/:id/modules/drift` compares two edge sets
   over the same nodes: *observed* is a self-join of `issue_labels` with `kind='module'` on both
@@ -85,7 +85,7 @@ flowchart LR
   legal state and not zero drift; and `nearestCommonAncestor` on every finding, so two cousins
   under one parent read differently from two unrelated subtrees. The signal adds no gate and always
   answers 200 — a gate here would be satisfied by declaring edges nobody means. Drawn in
-  [`docs/flows/issue-work-module-drift.html`](../../flows/issue-work-module-drift.html).
+  [`docs/flows/issue-work.html`](../../flows/issue-work.html).
 - **Only `kind='blocks'` gates dispatch.** An edge `(from=A, to=B, 'blocks')` means A must reach a
   terminal status before B may dispatch, and cross-project edges are legal. `relates`, `duplicates`
   and `parent` are metadata no dispatch path may read. The `cm:guard` is on

@@ -49,7 +49,7 @@ flowchart LR
 ## The issue flow
 
 The status set, every legal hop, what each status claims and who owes the next move at it:
-**`docs/flows/issue-status-lifecycle.html`** — the drawing, the per-status claims table and the
+**`docs/flows/lifecycle-pipeline.html`** — the drawing, the per-status claims table and the
 full transition matrix, in one place. `docs/proposals/status-flow.md` carries the edge-by-edge
 rationale and the removal order **as proposed** — it is the record of a proposal, not of the
 current set, and it predates both revisions. The agent-facing copy of the same set is the
@@ -82,9 +82,7 @@ so the figure has one home and this points at it (ISS-976).
   a paired box decides what runs. A `pipeline_run` for autonomous work is opened BY the box, over a
   group of issues, and closes on three marks it read back — the session went terminal, the worktree
   left disk, and each issue's lease came back. A declaration by an agent sets none of them.
-  Drawn in [`../../flows/run-session-lifecycle.html`](../../flows/run-session-lifecycle.html),
-  [`run-session-close.html`](../../flows/run-session-close.html) and
-  [`run-session-registry-read.html`](../../flows/run-session-registry-read.html).
+  Drawn in [`../../flows/lifecycle-pipeline.html`](../../flows/lifecycle-pipeline.html).
 - **A park no master picks up is not representable.**
   `core/src/issues/autonomous-park.ts` rewrites at write time to the only two statuses the driver
   reads: `reopen` → `open` for **any** actor, and `waiting` → `needs_info` for an **agent** only. A

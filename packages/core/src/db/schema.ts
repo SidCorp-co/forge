@@ -531,7 +531,7 @@ export const jobTypes = [
   'code',
   'review',
   'test',
-  // cm:guard a jobType that survives its ISSUE STATUS: `staging` and `pass` are retired from the issue lifecycle (docs/flows/issue-status-lifecycle.html), and this member stays only because historical `jobs` rows hold it and a client must still render one. Nothing dispatches it.
+  // cm:guard a jobType that survives its ISSUE STATUS: `staging` and `pass` are retired from the issue lifecycle (docs/flows/lifecycle-pipeline.html), and this member stays only because historical `jobs` rows hold it and a client must still render one. Nothing dispatches it.
   'staging',
   'release',
   'fix',

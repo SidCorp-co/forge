@@ -256,6 +256,27 @@ ones — a header that appears only on a refusal leaves discovery-by-trial exact
 </tbody></table>
 </section>
 
+
+<section class="pane">
+<h2>One token, many workers — how it is metered</h2>
+<p>A single credential is often shared by a dispatcher and every worker it starts. It is metered
+<b>per token</b>, and reads are counted apart from writes, so a burst of reading cannot starve the
+writes that record what happened.</p>
+<p>Going over the limit is a <b>throttle, not a rejection</b>: the caller is told how long to wait,
+and the work is expected to resume rather than be abandoned. A client that treats it as a failure
+turns a short pause into lost work.</p>
+</section>
+
+<section class="pane">
+<h2>A machine has no credential of its own</h2>
+<p>Pairing a box does not create a principal — it issues that box an ordinary token belonging to a
+person or to a named agent, which merely records which machine it is installed on. So "who did this"
+always has a real answer, and revoking the person or the agent revokes the box with them.</p>
+<p>A machine credential is never read as the person who installed it. Where a surface is meant for
+people, a machine is <b>refused by name</b> rather than quietly downgraded — the substitution is
+exactly what this shape exists to remove.</p>
+</section>
+
 <p class="foot"><a href="index.html">← all flows</a></p>
 
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>

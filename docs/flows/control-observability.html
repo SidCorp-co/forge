@@ -1,182 +1,188 @@
 <!doctype html>
 <meta charset="utf-8">
 <meta name="flow-module" content="control-observability">
-<meta name="flow-answers" content="How a fault on a box reaches an operator">
-<title>Flow · control-observability — a fault on a box reaches an operator</title>
+<meta name="flow-answers" content="How a fault reaches a person and why nothing pushes it, what counts as a hand intervention and why that number must embarrass us, and why a chart's time buckets are computed twice">
+<title>Flow · control-observability</title>
 <style>
-  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; --warn:#a06a1f; }
-  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
-         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
-  main { max-width:64rem; margin:0 auto; }
-  h1 { font-size:1.6rem; margin:0 0 .3rem; }
-  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
-  .sub { color:var(--mut); margin:0 0 1.6rem; }
-  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
-  table { border-collapse:collapse; width:100%; font-size:14px; }
-  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
-  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
-  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
-  .bad { color:var(--bad); font-weight:600; }
-  .warn { color:var(--warn); font-weight:600; }
-  svg { background:#fff; border:1px solid var(--line); border-radius:4px; display:block; max-width:100%; }
-  text { font:12px ui-sans-serif,system-ui,sans-serif; fill:var(--fg); }
-  text.m { font-size:11px; fill:var(--mut); }
-  text.t { font:600 12px ui-monospace,Menlo,monospace; }
-  .box { fill:#fff; stroke:var(--line); }
-  .push { fill:#f2f7f4; stroke:#c3ddcf; }
-  .pull { fill:#f5f4fb; stroke:#d2cfe6; }
-  .act { fill:#fdf0f3; stroke:#e3c2cb; }
-  .arrow { stroke:var(--fg); stroke-width:1.2; fill:none; marker-end:url(#a); }
-  .arrowdim { stroke:var(--mut); stroke-width:1.1; fill:none; marker-end:url(#b); stroke-dasharray:4 3; }
+  :root { --fg:#1c1a17; --mut:#6b645c; --faint:#9a9288; --line:#ddd7cf; --bg:#fbfaf8; --panel:#fff;
+          --acc:#1f6f4a; --accbg:#e6efe9; --bad:#8a3b52; --badbg:#f6ecef; --new:#5b3a8e; --newbg:#efeaf6; }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  code { font:12.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+
+  .bar { display:flex; align-items:baseline; gap:.9rem; flex-wrap:wrap;
+         padding:.85rem 1.4rem; background:var(--panel); border-bottom:1px solid var(--line); }
+  .bar h1 { font-size:1.05rem; margin:0; font-weight:650; letter-spacing:-.01em; }
+  .crumb { font:12px ui-monospace,Menlo,monospace; color:var(--faint); }
+  .crumb a { color:var(--faint); }
+  .pill { margin-left:auto; font-size:12px; padding:.22rem .6rem; border-radius:99px;
+          background:var(--badbg); color:var(--bad); border:1px solid #e6d3d9; font-weight:600; }
+
+  .cols { display:grid; grid-template-columns:minmax(0,1fr) 20rem; gap:1px; background:var(--line); }
+  @media (max-width:1100px){ .cols { grid-template-columns:minmax(0,1fr) } }
+  .canvas, .rail { background:var(--bg); padding:1.1rem 1.4rem; }
+  .board { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:.6rem; overflow-x:auto; }
+  .board svg { display:block; min-width:60rem; width:100%; height:auto; }
+  .cap { color:var(--mut); font-size:13px; margin:.7rem .2rem 0; }
+  .cap b { color:var(--fg) }
+
+  .rail h2 { font-size:11.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--faint);
+             margin:0 0 .5rem; font-weight:700; }
+  .rail section + section { margin-top:1.3rem }
+  .who { list-style:none; margin:0; padding:0; font-size:12.5px; }
+  .who li { display:flex; gap:.5rem; padding:.28rem 0; border-bottom:1px solid var(--line); }
+  .who li:last-child { border-bottom:0 }
+  .who b { flex:0 0 8.6rem; font:600 12px ui-monospace,Menlo,monospace; }
+  .who span { color:var(--mut) }
+  .who .rt b { color:var(--acc) } .who .pk b { color:var(--new) } .who .en b { color:var(--mut) }
+  .key { list-style:none; margin:0; padding:0; font-size:12.5px; color:var(--mut) }
+  .key li { display:flex; align-items:center; gap:.5rem; padding:.2rem 0 }
+  .sw { width:22px; height:13px; border-radius:3px; flex:0 0 auto }
+  .key.strip { display:flex; flex-wrap:wrap; gap:.35rem 1.3rem; margin:.7rem .2rem 0 }
+
+  .tabs { display:flex; gap:.3rem; padding:0 1.4rem; background:var(--panel); border-top:1px solid var(--line);
+          border-bottom:1px solid var(--line); }
+  .tabs button { appearance:none; border:0; background:none; padding:.6rem .85rem; cursor:pointer;
+                 font:600 13px inherit; color:var(--mut); border-bottom:2px solid transparent; }
+  .tabs button[aria-selected=true] { color:var(--fg); border-bottom-color:var(--acc) }
+  .pane { padding:1.4rem 1.4rem 1.8rem; border-top:1px solid var(--line); }
+  .pane h2 { font:600 12.5px ui-sans-serif,system-ui,sans-serif; text-transform:uppercase;
+             letter-spacing:.05em; color:var(--mut); margin:0 0 .8rem; }
+
+  table { border-collapse:collapse; width:100%; font-size:13.5px; }
+  th,td { text-align:left; padding:.45rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--faint); font-size:11.5px; text-transform:uppercase; letter-spacing:.05em; }
+  td.n { white-space:nowrap; font:12px ui-monospace,Menlo,monospace; color:var(--mut) }
+
+  .mx { border-collapse:separate; border-spacing:2px; font-size:12px; width:auto }
+  .mx th { padding:3px 5px; border:0; font:600 11.5px ui-monospace,Menlo,monospace; color:var(--mut);
+           text-transform:none; letter-spacing:0 }
+  .mx th.rh { text-align:right; color:var(--fg) }
+  .mx td { border:0; padding:0 }
+  .mx i { display:block; width:26px; height:22px; line-height:22px; border-radius:3px; font-style:normal;
+          text-align:center; font-size:12px }
+  .y { background:var(--accbg); color:var(--acc); font-weight:700 }
+  .y.p { background:var(--newbg); color:var(--new) }
+  .x { background:#f4f1ec; color:#e2ddd5 }
+  .s { background:#ebe6df; color:var(--faint) }
+  .gone { color:var(--faint); text-decoration:line-through }
+  .note { background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--bad);
+          padding:.6rem .9rem; border-radius:4px; margin:.9rem 0; font-size:13.5px }
+  .note.plan { border-left-color:var(--new) }
+  .foot { padding:1rem 1.4rem 2.5rem; font-size:13px; color:var(--mut) }
 </style>
-<main>
 
-<h1>control-observability — a fault on a box reaches an operator</h1>
-<p class="sub">A job wedges on a runner. This is every hop from that row going stale to a person
-seeing it and reaping it, and what each hop does when it fails. Owners:
-<code>packages/core/src/admin/alert-queries.ts</code> (the one detector),
-<code>packages/web-v2/src/features/operator/</code> (the screen).</p>
+<header class="bar">
+  <span class="crumb"><a href="index.html">flows</a> / control-observability</span>
+  <h1>How a fault reaches a person, and how work becomes a number</h1>
+  <span class="pill">a hop with nobody at the end is not a hop</span>
+</header>
 
-<div class="rule"><strong>One detector, two deliveries.</strong> <code>computeAlerts()</code> is
-called by the pull route <em>and</em> by the sweeper — and, since ISS-654, by
-<code>GET /api/admin/overview</code> for the <code>openAlerts</code> KPI too. None of the three
-inlines its own query, so the bell, the tile and the feed cannot disagree about whether something is
-wrong. A sixth alert added to one of them and not the others is not a thing that can happen.</div>
+<div class="cols">
+<div class="canvas">
 
-<div class="rule"><strong>Every threshold is a row, not a redeploy.</strong> Each call to
-<code>computeAlerts()</code> re-reads the single <code>admin_thresholds</code> row through
-<code>admin/thresholds.ts</code>, so a <code>PUT /api/admin/thresholds</code> lands on the next
-sweeper tick with nothing restarted. The table ships empty and the declared defaults stand in, which
-is why a deploy that never writes it behaves exactly as before. Crit is <em>derived</em> from the
-configured warn threshold — spend 2×, schedule streak +2, delivery rate 1.6× — so an operator cannot
-invert the pair.</div>
+  <p class="stage"><b>1</b>A fault on a box travels until it reaches somebody who can act</p>
+  <div class="board"><pre class="mermaid">
+flowchart TD
+  F["something fails on a box"] --> R1["the box records it with what it was doing"]
+  R1 --> R2["the control plane keeps it, and shows it<br/>on the screen the work belongs to"]
+  R2 --> Q{"is anybody watching that screen?"}
+  Q -->|"yes"| OK["it is acted on"]
+  Q -->|"no"| N["<b>it sits there.</b> Nothing pushes it further —<br/>no alert, no message, no page"]
+</pre></div>
+  <p class="cap">Faults are <b>pulled, not pushed</b>. That is a deliberate limit rather than a gap to
+  be filled quietly: a fault nobody reads is indistinguishable from no fault, so anyone relying on
+  this to notice an outage must actually be looking. Where that is not good enough, the answer is an
+  external watcher, not a louder record.</p>
 
-<h2>The hops</h2>
-<svg viewBox="0 0 900 470" role="img" aria-label="A stuck job reaching an operator by both the push and the pull path, and the reap that clears it">
-  <defs>
-    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0,0 L10,5 L0,10 z" fill="#1c1a17"/></marker>
-    <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0,0 L10,5 L0,10 z" fill="#6b645c"/></marker>
-  </defs>
+  <p class="stage"><b>2</b>What counts as somebody having to step in</p>
+  <div class="board"><pre class="mermaid">
+flowchart TD
+  A["a status changes, or a row is repaired by hand"] --> B{"did a PERSON do it,<br/>outside the normal path?"}
+  B -->|"no — the system moved it"| N1["not counted. This is the system working"]
+  B -->|"yes"| C["<b>counted as an intervention.</b><br/>The number that matters is<br/>interventions per issue closed"]
+  C --> D["driving it toward zero is the whole<br/>point of the machinery around it"]
+</pre></div>
+  <p class="cap">The measure exists to be embarrassing. A fix applied by hand and not counted is the
+  one that never gets designed out, so repairs made directly in the database are exactly the ones
+  that must show up here.</p>
 
-  <rect class="box" x="20" y="24" width="200" height="52" rx="5"/>
-  <text x="34" y="46" class="t">jobs.dispatched_at</text>
-  <text x="34" y="64" class="m">agent died; row never moved</text>
-
-  <rect class="box" x="290" y="24" width="230" height="52" rx="5"/>
-  <text x="304" y="46" class="t">computeAlerts()</text>
-  <text x="304" y="64" class="m">A2: dispatched|running &gt; stuckJobSeconds</text>
-  <path class="arrow" d="M220,50 L288,50"/>
-
-  <rect class="push" x="590" y="8" width="290" height="84" rx="5"/>
-  <text x="604" y="30" class="t">alert-sweeper.ts (push)</text>
-  <text x="604" y="48" class="m">writes notifications, one row per</text>
-  <text x="604" y="64" class="m">platform admin, keyed ops-alert:A2</text>
-  <text x="604" y="82" class="m">auto-resolves when the alert clears</text>
-  <path class="arrow" d="M520,44 L588,40"/>
-
-  <rect class="pull" x="590" y="112" width="290" height="66" rx="5"/>
-  <text x="604" y="134" class="t">GET /api/admin/alerts</text>
-  <text x="604" y="152" class="m">requireAdmin — ADMIN_EMAILS only</text>
-  <text x="604" y="170" class="m">entities[].ref = the job id</text>
-  <path class="arrow" d="M520,58 L588,140"/>
-
-  <rect class="box" x="590" y="206" width="290" height="66" rx="5"/>
-  <text x="604" y="228" class="t">features/operator — alert-feed</text>
-  <text x="604" y="246" class="m">sorted crit &gt; warn &gt; ok</text>
-  <text x="604" y="264" class="m">A2 job entities carry Reap</text>
-  <path class="arrow" d="M735,178 L735,204"/>
-
-  <rect class="act" x="590" y="300" width="290" height="66" rx="5"/>
-  <text x="604" y="322" class="t">POST /api/jobs/:id/cancel</text>
-  <text x="604" y="340" class="m">member role OR ADMIN_EMAILS</text>
-  <text x="604" y="358" class="m">cancelJob: job_events intervention</text>
-  <path class="arrow" d="M735,272 L735,298"/>
-
-  <rect class="box" x="290" y="300" width="230" height="66" rx="5"/>
-  <text x="304" y="322" class="t">roomManager.publish</text>
-  <text x="304" y="340" class="m">job.cancelled →</text>
-  <text x="304" y="358" class="m">project:&lt;projectId&gt;</text>
-  <path class="arrow" d="M588,333 L522,333"/>
-
-  <rect class="box" x="290" y="394" width="230" height="60" rx="5"/>
-  <text x="304" y="416" class="t">routeEvent</text>
-  <text x="304" y="434" class="m">invalidate ['admin','ops']</text>
-  <path class="arrow" d="M405,366 L405,392"/>
-  <path class="arrowdim" d="M520,424 C700,424 735,410 735,368"/>
-  <text x="560" y="446" class="m">the feed refetches; the reaped row is gone</text>
-</svg>
-
-<h2>Tier 3 — the hops with nobody at the end</h2>
-<p>Three sweeper passes clear their own conditions rather than reporting them, because the fault has
-no action a human could take that the system cannot. Each is best-effort: it logs and skips a row it
-cannot handle, and never aborts the tick.</p>
-<pre>
-  pipeline-sweeper tick
-        |
-        |-- runners/ghost-reaper.ts   offline &gt; ghostRunnerOfflineDays,
-        |                             no dispatched/running job, no live session
-        |                             --&gt; setRunnerStatus('disabled', reason:'ghost')
-        |                                 (a flag, never a DELETE — the row carries job attribution
-        |                                  and the uptime timeline; a returning box re-onlines itself
-        |                                  on its next heartbeat)
-        |
-        |-- pipeline/runs-concluded.ts reapConcludedRuns / reapJoblessRuns
-                                      phantom runs --&gt; terminal, via closeRun
-                                      (docs/flows/lifecycle-pipeline.html has the predicates)
-</pre>
-
-<h2>What each hop does when it fails</h2>
-<table>
-  <tr><th>Hop</th><th>Fails how</th><th>What the operator sees</th></tr>
-  <tr>
-    <td><code>computeAlerts()</code></td>
-    <td>a query throws</td>
-    <td>The GET 500s and the feed shows its own <code>ErrorState</code> with a retry. The sweeper
-      swallows the throw into zeros instead, so the <span class="bad">push half goes quiet while the
-      pull half says so</span> — the screen is the honest one.</td>
-  </tr>
-  <tr>
-    <td><code>GET /admin/alerts</code></td>
-    <td>caller is not on <code>ADMIN_EMAILS</code></td>
-    <td>403 <code>ADMIN_ONLY</code>. The <code>/admin</code> route is already 307'd away by
-      <code>src/middleware.ts</code> before this, so in practice only a direct API call sees it.</td>
-  </tr>
-  <tr>
-    <td>the feed</td>
-    <td>one of the four panels rejects</td>
-    <td>That panel alone renders its error and retry. The other three keep their data —
-      <span class="warn">a whole-screen error would cost three working panels to report one broken
-      endpoint</span>.</td>
-  </tr>
-  <tr>
-    <td><code>POST /jobs/:id/cancel</code></td>
-    <td>job already terminal</td>
-    <td>409 <code>NOT_CANCELLABLE</code> → error toast. The alert clears on the next refetch anyway,
-      because the job that raised it is no longer stuck.</td>
-  </tr>
-  <tr>
-    <td>the WS room</td>
-    <td>socket down, or <code>subscribe.denied</code></td>
-    <td>Nothing arrives and nothing says so. The reap's own
-      <code>invalidateQueries(['admin','ops'])</code> is why the screen still updates for the action
-      the operator just took — <span class="bad">the live path is the bonus, never the mechanism</span>.</td>
-  </tr>
-</table>
-
-<h2>The two things nothing type-checks</h2>
-<div class="rule">
-  <p><strong>The room list.</strong> <code>pipeline_run.status_changed</code> publishes to
-  <code>project:&lt;projectId&gt;</code> and to no cross-tenant room. The console therefore joins one
-  room per project it lists, and <code>ws/server.ts</code> <code>canSubscribe</code> admits a
-  <code>project:</code> room on project role <em>or</em> the <code>ADMIN_EMAILS</code> allow-list.
-  Drop that second arm and every room past the operator's own memberships answers
-  <code>subscribe.denied</code>: the numbers stay cross-tenant, the refresh quietly does not.</p>
-  <p><strong>The query key.</strong> <code>routeEvent</code> invalidates by prefix. Every operator
-  query is keyed <code>['admin','ops', …]</code> and nothing enforces that but
-  <code>features/operator/hooks.live.test.tsx</code>, which drives the real hooks and the real router
-  rather than restating either key.</p>
 </div>
 
-</main>
+<aside class="rail">
+  <h2>What is measured</h2>
+  <table>
+    <tr><th>Number</th><th>what it answers</th></tr>
+    <tr><td>Interventions per issue</td><td>how much hand-holding the machine still needs</td></tr>
+    <tr><td>Request → running work</td><td>how long from asking to something happening</td></tr>
+    <tr><td>Step durations</td><td>where time actually goes</td></tr>
+    <tr><td>Failures by cause</td><td>what breaks, and whether it is us or the box</td></tr>
+  </table>
+  <p>The first two are the ones the design is steered by. The rest explain them.</p>
+</aside>
+</div>
+
+<section class="pane">
+<h2>A chart groups rows by time, and the grouping must be computed once</h2>
+<p>Turning timestamped rows into points on a chart means deciding which bucket each row falls in.
+That decision is made in two places — where the rows are queried and where the chart is drawn — and
+if the two disagree, points land in the wrong bucket or vanish.</p>
+<p>Nothing about this fails loudly: a chart with a wrong bucket looks like a chart. The rule is that
+the two implementations are checked against each other rather than trusted to match, because the only
+symptom is a number that is quietly wrong.</p>
+</section>
+
+<section class="pane">
+<h2>When it goes wrong</h2>
+<table>
+  <tr><th>What you see</th><th>what is happening</th><th>what to do</th></tr>
+  <tr>
+    <td>An outage nobody noticed for hours.</td>
+    <td>Working as designed — faults are pulled. Nothing was watching.</td>
+    <td>Do not expect a louder record to fix it. Put an external watcher on the thing that must not
+    go down.</td>
+  </tr>
+  <tr>
+    <td>The intervention count looks too good.</td>
+    <td>Repairs are being made in a way the count cannot see — most often directly against the
+    database.</td>
+    <td>Route repairs through a path that records them. An uncounted fix is a design problem that
+    never surfaces.</td>
+  </tr>
+  <tr>
+    <td>A chart is missing recent activity.</td>
+    <td>Rows are landing in a bucket the chart does not draw, usually a time-zone or boundary
+    disagreement between the query and the display.</td>
+    <td>Compare the two bucket calculations directly. Do not assume the data is missing — it is
+    usually mis-filed.</td>
+  </tr>
+</table>
+</section>
+
+<section class="pane">
+<h2>Code</h2>
+<p class="foot">Event stream and audit trail: <code>packages/core/src/events/</code> · the
+intervention ledger and what it counts: <code>packages/core/src/metrics/</code> · bucket keys, and
+the check that keeps the two implementations agreeing: <code>packages/core/src/metrics/</code> plus
+its test reading the source directly · error reporting to the external tracker:
+<code>packages/observability/</code>.
+<a href="index.html">← all flows</a></p>
+</section>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({ startOnLoad: false, theme: 'neutral',
+    themeVariables: { fontSize: '12px', fontFamily: 'ui-sans-serif,system-ui,sans-serif' },
+    flowchart: { useMaxWidth: false, nodeSpacing: 30, rankSpacing: 42, padding: 6 } });
+  // .finally, not .then — mermaid.run() REJECTS on some diagram types after drawing them fine,
+  // and a .then here left those figures at mermaid's own shrunken width (two sequenceDiagrams).
+  const fit = () => {
+    // mermaid stamps width="100%" + an inline max-width on some diagram types, which shrinks a
+    // wide figure until the type is unreadable. CSS cannot read viewBox, so set it here.
+    for (const s of document.querySelectorAll('.board svg')) {
+      const vb = (s.getAttribute('viewBox') || '').split(/\s+/);
+      if (vb.length === 4) { s.style.width = vb[2] + 'px'; s.style.maxWidth = 'none'; }
+    }
+  };
+  mermaid.run().catch(() => {}).finally(fit);
+</script>

@@ -1,190 +1,241 @@
 <!doctype html>
 <meta charset="utf-8">
 <meta name="flow-module" content="lifecycle-pipeline">
-<meta name="flow-answers" content="How a run and its jobs open, advance and close without orphans">
-<title>Flow · lifecycle-pipeline — a run and its jobs reach terminal together</title>
+<meta name="flow-answers" content="Where work waits and who owes the next move, why a batch and its pieces must end together, how a machine picks work up, and what must be recorded before an issue may close">
+<title>Flow · lifecycle-pipeline</title>
 <style>
-  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; --lock:#a06a1f; }
-  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
-         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
-  main { max-width:64rem; margin:0 auto; }
-  h1 { font-size:1.6rem; margin:0 0 .3rem; }
-  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
-  .sub { color:var(--mut); margin:0 0 1.6rem; }
-  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
-  table { border-collapse:collapse; width:100%; font-size:14px; }
-  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
-  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
-  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
-  .bad { color:var(--bad); font-weight:600; }
-  .lock { color:var(--lock); font-weight:600; }
-  svg { background:#fff; border:1px solid var(--line); border-radius:4px; display:block; max-width:100%; }
-  text { font:12px ui-sans-serif,system-ui,sans-serif; fill:var(--fg); }
-  text.m { font-size:11px; fill:var(--mut); }
-  text.t { font:600 12px ui-monospace,Menlo,monospace; }
-  .box { fill:#fff; stroke:var(--line); }
-  .lockband { fill:#fdf6e7; stroke:#e8d9b4; }
-  .exit { fill:#fdf0f3; stroke:#e3c2cb; }
-  .arrow { stroke:var(--fg); stroke-width:1.2; fill:none; marker-end:url(#a); }
-  .arrowbad { stroke:var(--bad); stroke-width:1.2; fill:none; marker-end:url(#b); stroke-dasharray:4 3; }
-  .board { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; margin:1rem 0; overflow-x:auto; }
-  .board svg { max-width:none !important; height:auto; }
-  .cap { color:var(--mut); font-size:13.5px; max-width:52rem; }
-</style>
-<main>
-<h1>lifecycle-pipeline</h1>
-<p class="sub">What closes a run when its jobs are already done, and what stops it closing while
-a deploy is unproven.</p>
+  :root { --fg:#1c1a17; --mut:#6b645c; --faint:#9a9288; --line:#ddd7cf; --bg:#fbfaf8; --panel:#fff;
+          --acc:#1f6f4a; --accbg:#e6efe9; --bad:#8a3b52; --badbg:#f6ecef; --new:#5b3a8e; --newbg:#efeaf6; }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  code { font:12.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
 
-<h2>The invariant, in both directions</h2>
-<div class="rule">
-<p>A <code>pipeline_run</code> and its child <code>jobs</code> must reach terminal
-<b>together</b>. The two directions fail differently and are defended by different code:</p>
-<ul>
-  <li><b>Forward</b> — an active job under a terminal run. Costs a runner slot: the pool counts it
-      against the box's in-flight cap and no lifecycle event will ever resolve it.</li>
-  <li><b>Inverse</b> — a <code>running</code> run whose jobs are all terminal. Costs nothing
-      mechanical, which is exactly why it went unnoticed: it makes the UI report work that no box
-      is doing, and every recovery was a hand-driven cancel + transition.</li>
-</ul>
-<p>Reading the invariant one way only is how 98 of 114 live runs across 18 projects ended up
-<code>running</code> with nothing in flight (ISS-923).</p>
+  .bar { display:flex; align-items:baseline; gap:.9rem; flex-wrap:wrap;
+         padding:.85rem 1.4rem; background:var(--panel); border-bottom:1px solid var(--line); }
+  .bar h1 { font-size:1.05rem; margin:0; font-weight:650; letter-spacing:-.01em; }
+  .crumb { font:12px ui-monospace,Menlo,monospace; color:var(--faint); }
+  .crumb a { color:var(--faint); }
+  .pill { margin-left:auto; font-size:12px; padding:.22rem .6rem; border-radius:99px;
+          background:var(--badbg); color:var(--bad); border:1px solid #e6d3d9; font-weight:600; }
+
+  .cols { display:grid; grid-template-columns:minmax(0,1fr) 20rem; gap:1px; background:var(--line); }
+  @media (max-width:1100px){ .cols { grid-template-columns:minmax(0,1fr) } }
+  .canvas, .rail { background:var(--bg); padding:1.1rem 1.4rem; }
+  .board { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:.6rem; overflow-x:auto; }
+  .board svg { display:block; min-width:60rem; width:100%; height:auto; }
+  .cap { color:var(--mut); font-size:13px; margin:.7rem .2rem 0; }
+  .cap b { color:var(--fg) }
+
+  .rail h2 { font-size:11.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--faint);
+             margin:0 0 .5rem; font-weight:700; }
+  .rail section + section { margin-top:1.3rem }
+  .who { list-style:none; margin:0; padding:0; font-size:12.5px; }
+  .who li { display:flex; gap:.5rem; padding:.28rem 0; border-bottom:1px solid var(--line); }
+  .who li:last-child { border-bottom:0 }
+  .who b { flex:0 0 8.6rem; font:600 12px ui-monospace,Menlo,monospace; }
+  .who span { color:var(--mut) }
+  .who .rt b { color:var(--acc) } .who .pk b { color:var(--new) } .who .en b { color:var(--mut) }
+  .key { list-style:none; margin:0; padding:0; font-size:12.5px; color:var(--mut) }
+  .key li { display:flex; align-items:center; gap:.5rem; padding:.2rem 0 }
+  .sw { width:22px; height:13px; border-radius:3px; flex:0 0 auto }
+  .key.strip { display:flex; flex-wrap:wrap; gap:.35rem 1.3rem; margin:.7rem .2rem 0 }
+
+  .tabs { display:flex; gap:.3rem; padding:0 1.4rem; background:var(--panel); border-top:1px solid var(--line);
+          border-bottom:1px solid var(--line); }
+  .tabs button { appearance:none; border:0; background:none; padding:.6rem .85rem; cursor:pointer;
+                 font:600 13px inherit; color:var(--mut); border-bottom:2px solid transparent; }
+  .tabs button[aria-selected=true] { color:var(--fg); border-bottom-color:var(--acc) }
+  .pane { padding:1.4rem 1.4rem 1.8rem; border-top:1px solid var(--line); }
+  .pane h2 { font:600 12.5px ui-sans-serif,system-ui,sans-serif; text-transform:uppercase;
+             letter-spacing:.05em; color:var(--mut); margin:0 0 .8rem; }
+
+  table { border-collapse:collapse; width:100%; font-size:13.5px; }
+  th,td { text-align:left; padding:.45rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--faint); font-size:11.5px; text-transform:uppercase; letter-spacing:.05em; }
+  td.n { white-space:nowrap; font:12px ui-monospace,Menlo,monospace; color:var(--mut) }
+
+  .mx { border-collapse:separate; border-spacing:2px; font-size:12px; width:auto }
+  .mx th { padding:3px 5px; border:0; font:600 11.5px ui-monospace,Menlo,monospace; color:var(--mut);
+           text-transform:none; letter-spacing:0 }
+  .mx th.rh { text-align:right; color:var(--fg) }
+  .mx td { border:0; padding:0 }
+  .mx i { display:block; width:26px; height:22px; line-height:22px; border-radius:3px; font-style:normal;
+          text-align:center; font-size:12px }
+  .y { background:var(--accbg); color:var(--acc); font-weight:700 }
+  .y.p { background:var(--newbg); color:var(--new) }
+  .x { background:#f4f1ec; color:#e2ddd5 }
+  .s { background:#ebe6df; color:var(--faint) }
+  .gone { color:var(--faint); text-decoration:line-through }
+  .note { background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--bad);
+          padding:.6rem .9rem; border-radius:4px; margin:.9rem 0; font-size:13.5px }
+  .note.plan { border-left-color:var(--new) }
+  .foot { padding:1rem 1.4rem 2.5rem; font-size:13px; color:var(--mut) }
+</style>
+
+<header class="bar">
+  <span class="crumb"><a href="index.html">flows</a> / lifecycle-pipeline</span>
+  <h1>How an issue becomes work, and how that work ends</h1>
+  <span class="pill">work and the record of it end together, or the board lies</span>
+</header>
+
+<div class="cols">
+<div class="canvas">
+
+  <p class="stage"><b>1</b>Where work waits — every stop is a party, not a step</p>
+  <div class="board"><pre class="mermaid">
+flowchart LR
+  D["<b>draft</b><br/>nobody is working it"] -->|"promote"| O
+  O["<b>open</b><br/>the ONLY stop that hands<br/>work to a machine"]
+  O --> C["<b>confirmed</b><br/>a reader said<br/>what this is"]
+  C --> A["<b>approved</b><br/>a plan and a bar<br/>now exist"]
+  A --> I["<b>in progress</b><br/>something is<br/>building it"]
+  I --> V["<b>developed</b><br/>code exists,<br/>proof does not"]
+  V --> T["<b>testing</b>"]
+  T --> W["<b>awaiting release</b><br/>a PERSON decides<br/>when it goes live"]
+  W --> R["<b>releasing</b>"] --> Z["<b>closed</b>"]
+  T -.->|"no release gate"| Z
+</pre></div>
+  <p class="cap">A stop earns its place when a <b>different party</b> owes the next move at it — not
+  when there is more work left to do. Parking (a question owed, or a deliberate pause) can happen at
+  any live stop and is a different thing from waiting in the queue: a park names a person, and no
+  queue will ever move it. <b>The ladder is advice.</b> Only two moves are actually refused — work
+  that has not started cannot jump into the middle, and nothing may be put back to not-started.</p>
+
+  <p class="stage"><b>2</b>Work and the record of it end together — in both directions</p>
+  <div class="board"><pre class="mermaid">
+flowchart TD
+  R["a batch of work is running"] --> Q1{"the batch is marked finished"}
+  Q1 --> F1["<b>every piece under it must stop too.</b><br/>One left running holds a machine slot<br/>for work nobody is waiting for"]
+  R --> Q2{"the last piece finishes"}
+  Q2 --> F2["<b>the batch must close, on that last piece's outcome.</b><br/>A batch whose last piece FAILED<br/>may never close as a success"]
+  F1 --> G["the board shows what is really happening"]
+  F2 --> G
+</pre></div>
+  <p class="cap">Defending only the first direction is what produced the symptom worth remembering:
+  <b>98 of 114 batches sat marked as running with every piece under them already finished</b>, across
+  18 projects — presenting as work in flight that no machine was doing. Anything that marks a batch
+  finished must go through the one path that also settles its pieces; there is exactly one writer on
+  each direction, by design.</p>
+
+  <p class="stage"><b>3</b>How a machine picks up work</p>
+  <div class="board"><pre class="mermaid">
+flowchart TD
+  B["a box is told to look at a project"] --> L{"what may it see?"}
+  L --> L1["<b>the claimable queue</b> — work it may start right now"]
+  L --> L2["<b>the backlog</b> — work it may see but not start<br/>until somebody admits it to the queue"]
+  L1 --> S["it opens a batch and begins"]
+  L2 -.->|"needs an explicit admission"| L1
+  B -.->|"nothing wakes it"| N["a timer sweeps anyway,<br/>so a missed signal costs<br/>delay, never the work"]
+</pre></div>
+  <p class="cap">Seeing a piece of work is not permission to start it. The two lists exist so a box can
+  show what is coming without that acting as a decision to begin — and a project that declares a
+  backlog stop it never admits leaves work visible forever and started never.</p>
+
 </div>
 
-<h2>Forward — the run closes first</h2>
-<div class="board"><pre class="mermaid">
-flowchart TD
-  A["issue reaches a terminal status"] --> B["apply-transition.ts"]
-  B -->|RUN_CLOSING_STATUSES| C["runs.ts closeOpenRunForIssue"]
-  C -->|same transaction| D["runs-cascade.ts<br/>cascadeCancelChildJobs"]
-  D -->|reason = pipeline_completed| E["active jobs → done<br/>sessions → completed"]
-  D -->|reason = failed / cancelled| F["active jobs → cancelled<br/>sessions → failed"]
-  E --> G["requestKillsForCascade"]
-  F --> G
-  G -.->|AFTER commit only| H["the box is told to kill"]
-</pre></div>
-<p>Three defences in lockstep, plus a DB trigger as a bypass-proof fourth:</p>
-<table>
-<thead><tr><th>Defence</th><th>Where</th><th>What it catches</th></tr></thead>
-<tbody>
-<tr><td>close-cascade</td><td><code>pipeline/runs-cascade.ts</code></td><td>the jobs live at the moment the run closes</td></tr>
-<tr><td>loop monitor</td><td><code>jobs/loop-monitor.ts</code></td><td>a job that misses one of the four hops (dispatch, ack, heartbeat, result)</td></tr>
-<tr><td>pool exclusion</td><td><code>devices/pool.ts</code></td><td>an orphan the cascade missed is never offered to a master</td></tr>
-<tr><td>I1 trigger</td><td>migration <code>0113</code></td><td>an active child written under a terminal run at all — auto-cancelled, audited</td></tr>
-</tbody>
-</table>
-<p><code>held</code> is a deliberate fourth job shape and is <b>not</b> an orphan.</p>
+<aside class="rail">
+  <h2>Who owes the next move</h2>
+  <table>
+    <tr><th>Stop</th><th>waiting on</th></tr>
+    <tr><td>draft</td><td>whoever decides it is real</td></tr>
+    <tr><td>open</td><td>a machine, by picking it up</td></tr>
+    <tr><td>confirmed</td><td>whoever executes it</td></tr>
+    <tr><td>approved</td><td>whoever builds it</td></tr>
+    <tr><td>in progress</td><td>the work itself</td></tr>
+    <tr><td>developed</td><td>whoever reviews it</td></tr>
+    <tr><td>testing</td><td>whoever is testing it</td></tr>
+    <tr><td>awaiting release</td><td><b>a person</b></td></tr>
+    <tr><td>releasing</td><td>the release going out</td></tr>
+    <tr><td>needs info · on hold</td><td><b>a person</b></td></tr>
+    <tr><td>closed · dropped</td><td>nobody</td></tr>
+  </table>
+  <p>Where the answer is <b>a person</b>, no queue will move it. Those are the only stops where age
+  means something is wrong.</p>
+</aside>
+</div>
 
-<h2>Inverse — the jobs finished first</h2>
-<p class="cap">Nothing fires when the LAST job of an open run goes terminal, so this half is a
-detector rather than a hook — but the write still goes through the same <code>closeRun</code>, so a
-run's terminal status never has a second writer.</p>
-<div class="board"><pre class="mermaid">
-flowchart TD
-  T["pipeline-sweeper tick"] --> O1["reapOrphanedOneShotRuns<br/>no jobs, no live session"]
-  T --> O2["reapOrphanedIssueRuns<br/>backing issue closed / dropped"]
-  T --> C["reapConcludedRuns"]
-  T --> J["reapJoblessRuns — kind='issue' only"]
-  C --> CG{"running|paused · HAS a job ·<br/>no job queued/dispatched/running/held ·<br/>none touched within RESULT_QUIET_MINUTES ·<br/>if paused: no session queued/running/idle"}
-  CG -->|admits| CO["outcome := LAST job's status<br/>done→completed · failed→failed · cancelled→cancelled"]
-  J --> JG{"running|paused · NO jobs at all ·<br/>started_at older than RESULT_QUIET_MINUTES ·<br/>no session queued/running/idle"}
-  JG -->|admits| JO["outcome := from the run's sessions<br/>completed &amp; no failure→completed ·<br/>any failure→failed · no session→cancelled"]
-  CO --> W["runs.ts closeRun(runId, outcome)"]
-  JO --> W
-  W --> X["cascadeCancelChildJobs — a no-op here"]
-</pre></div>
+<section class="pane">
+<h2>A stop says where work is queued. It never says code exists.</h2>
+<p><i>in progress</i> means a machine is holding it, not that a line was written. <i>developed</i>
+means somebody says code exists and the proof is still owed. The claim that work reached the product
+is made in exactly one place — the shipped mark, written when an issue closes. Anything reporting on
+delivery reads that mark, never the stop.</p>
+<p>Both endings release whatever was queued behind them. Only <b>closed</b> claims something was
+delivered; <b>dropped</b> releases the queue too, but tells each waiting item that what it needed is
+never coming.</p>
+</section>
 
-<div class="rule">The <code>paused</code> arm is narrow on purpose — an operator's hold is a
-decision no sweeper may undo, so what admits it is not the pause but the proof there is nothing to
-resume into. Widen it and the pass starts cancelling deliberate holds.</div>
+<section class="pane">
+<h2>Before an issue may close, the record must say what shipped</h2>
+<p>Closing is not just a status. The external record of what went out has to carry an entry, and
+three narrow cases are exempt — work that changed nothing a user can see, work already recorded under
+another entry, and work that never shipped at all. Everything else is refused until the record exists.</p>
+<p>The rule is enforced at both doors — the one a person uses and the one a machine uses — because a
+rule enforced at one door is a rule at neither.</p>
+</section>
 
-<h2>The deploy gate — the one thing that can refuse a close</h2>
-<p class="cap">Every close above asks this first, and only about <code>completed</code>: does the
-run carry a deploy nobody has heard back from? Before ISS-922 nothing asked — measured 2026-09-06,
-50 runs sat <code>completed</code> while their own <code>current_step</code> still read
-<code>release.deploy.in_flight</code>, and <code>release.deploy.done</code> had never been stamped
-fleet-wide.</p>
-<div class="board"><pre class="mermaid">
-flowchart TD
-  A["tryDispatchCoolifyRelease<br/>opens a HOLD on the run"] --> B["coolify/adapter.ts<br/>deploy each target — one hold per target"]
-  B --> C["coolify/confirm.ts<br/>poll GET /deployments/{uuid}"]
-  C -->|succeeded| M1["mark hold"]
-  C -->|failed| M2["mark hold"]
-  C -->|still running| C2["re-poll until deadlineAt — 30 min"]
-  C2 --> C
-  M1 --> G{"resolveDeployGate(holds)"}
-  M2 --> G
-  A --> R["closeRun / closeOpenRunForIssue"] --> G
-  G -->|clear| V1["writes the terminal status as asked<br/>no deploy, or every target confirmed"]
-  G -->|defer| V2["NOTHING is written. The run stays running at<br/>release.deploy.in_flight (k/n); confirm.ts closes it<br/>when the last hold lands"]
-  G -->|failed| V3["Coolify said failed, or the deadline passed —<br/>the run closes FAILED, naming the deploy"]
-  classDef bad fill:#f7ecef,stroke:#8a3b52,color:#5c2436;
-  class V3 bad;
-</pre></div>
-<div class="rule">Every hold carries a 30-minute <code>deadlineAt</code>, below
-<code>RESULT_QUIET_MINUTES</code> (60), so the gate always resolves before the sweeper's window opens
-and two mechanisms never decide one run. A deferral cannot leak a run: past the deadline the gate
-answers <code>failed</code> through that same single writer. And the hold write is refused on an
-already-terminal run — a deploy asked for after its run closed cannot be witnessed by it, so
-<code>release-coolify.ts</code> logs ERROR rather than stamping a substep it cannot back up.</div>
-
+<section class="pane">
 <h2>When it goes wrong</h2>
 <table>
-<thead><tr><th>Symptom</th><th>What actually happened</th></tr></thead>
-<tbody>
-<tr><td>A run sits <code>running</code> for days with no live job</td>
-    <td>The inverse detector did not admit it. Check the four conditions above in order — the usual
-        answer is a job stuck at <code>queued</code>, which is a <i>different</i> defect and must not
-        be fixed by widening this pass.</td></tr>
-<tr><td>A run closed <code>completed</code> but its work failed</td>
-    <td>The outcome is read off the <b>last</b> job, so this means the last job was <code>done</code>.
-        A failure earlier in the run that was retried to success is a legitimate
-        <code>completed</code>; a last job at <code>failed</code> closing <code>completed</code> is a
-        real defect.</td></tr>
-<tr><td>A run closed while work was still coming</td>
-    <td>Only possible if the next job had not been INSERTed yet. <code>jobs/retry.ts</code> inserts
-        the clone at <code>queued</code> <i>before</i> the delayed enqueue precisely so a
-        backing-off retry always leaves a non-terminal job here.</td></tr>
-<tr><td>An operator's <code>paused</code> run was closed</td>
-    <td>It had no live session and every job terminal, so the sweeper judged it unresumable. If the
-        hold was real, the session or the queued job that made it real was missing — that is the
-        defect, not the reap.</td></tr>
-<tr><td>A run sits <code>running</code> at <code>release.deploy.in_flight (k/n)</code></td>
-    <td>Not a leak — <i>k</i> of <i>n</i> deploy targets have reported and the rest have not. It
-        resolves either way within 30 minutes: every target confirms and the run closes, or the
-        deadline passes and it closes <code>failed</code> naming what went unconfirmed.</td></tr>
-<tr><td>A run closed <code>failed</code> and every job in it was <code>done</code></td>
-    <td>The deploy failed, or went unconfirmed past its deadline. <code>current_step</code> names the
-        target and Coolify's reason, and the inbound <code>integration_deliveries</code> row for that
-        <code>deployment_uuid</code> carries the read that decided it.</td></tr>
-<tr><td>The run split into two rows across a gap</td>
-    <td>Expected, not damage. <code>runs.ts openIssueRun</code> opens a fresh run when none is open,
-        which is what makes closing a concluded run safe in the first place.</td></tr>
-</tbody>
+  <tr><th>What you see</th><th>what is happening</th><th>what to do</th></tr>
+  <tr>
+    <td>The board says work is running, but no machine is doing anything.</td>
+    <td>A batch was left marked running after everything under it finished. It holds nothing up, but
+    every reader believes work is in flight.</td>
+    <td>Close the batch on the outcome of its last piece. If it happens repeatedly, something is
+    marking batches finished without going through the one path that settles their pieces.</td>
+  </tr>
+  <tr>
+    <td>An issue sits <b>open</b> with the shipped mark already set, and nothing is running.</td>
+    <td>The run that owed the close died. Two separate passes notice this — one within a minute, one
+    on a six-hour grace — and <b>neither closes the issue</b>, deliberately: the shipped mark is
+    asserted by whoever landed the work, so the honest act is to show a person who can check.</td>
+    <td>Check whether the work really shipped, then close it yourself. Two issues were found serving
+    production while the tracker said the work had not started.</td>
+  </tr>
+  <tr>
+    <td>Work is visible in a project's backlog but never starts.</td>
+    <td>The project declared a stop as backlog-visible but nothing ever admits it to the claimable
+    queue.</td>
+    <td>Admit it explicitly, or stop declaring that stop. Visible-but-unstartable is the one state
+    that looks healthy and never moves.</td>
+  </tr>
+  <tr>
+    <td>A box's work session is half-closed — the record ended, the workspace did not.</td>
+    <td>Closing takes three separate marks and one was never set. If the box that owned it is gone, a
+    ten-minute grace lets somebody else finish the close.</td>
+    <td>Wait out the grace before intervening. Clearing it by hand earlier races the box that may
+    still be alive.</td>
+  </tr>
 </table>
+</section>
 
-<h2>Sources</h2>
-<table>
-<thead><tr><th>Step</th><th>Module</th></tr></thead>
-<tbody>
-<tr><td>open / close a run</td><td><code>packages/core/src/pipeline/runs.ts</code></td></tr>
-<tr><td>reap children on close</td><td><code>packages/core/src/pipeline/runs-cascade.ts</code></td></tr>
-<tr><td>reap a run whose children are done, and the job-less issue runs</td><td><code>packages/core/src/pipeline/runs-concluded.ts</code></td></tr>
-<tr><td>the four job hops</td><td><code>packages/core/src/jobs/loop-monitor.ts</code></td></tr>
-<tr><td>the tick that drives all of it</td><td><code>packages/core/src/pipeline/sweeper.ts</code></td></tr>
-<tr><td>the deploy gate a close must pass</td><td><code>packages/core/src/pipeline/deploy-confirmations.ts</code></td></tr>
-<tr><td>reading a deploy's outcome out of Coolify</td><td><code>packages/core/src/integrations/coolify/confirm.ts</code></td></tr>
-</tbody>
-</table>
-
-</main>
+<section class="pane">
+<h2>Code</h2>
+<p class="foot">Admission and the two refusals: <code>packages/core/src/pipeline/state-machine.ts</code>
+· applying a move: <code>packages/core/src/issues/apply-transition.ts</code> · the shipped mark:
+<code>packages/core/src/issues/merged-at.ts</code> · releasing the queue behind an abandoned issue:
+<code>packages/core/src/issues/drop-cascade.ts</code> · resuming an answered question:
+<code>packages/core/src/pipeline/answer-resume.ts</code> · what a stop may be read as evidence of:
+<code>packages/core/src/pipeline/status-assertions.ts</code> · batch closes its pieces:
+<code>packages/core/src/pipeline/runs-cascade.ts</code> · pieces close their batch:
+<code>packages/core/src/pipeline/runs-concluded.ts</code> · the wedge and owed-close passes:
+<code>packages/core/src/jobs/loop-monitor.ts</code>, <code>packages/core/src/pipeline/reconciler.ts</code>.
+Agent-facing copy: guide <code>pipeline-and-issue-lifecycle</code>. Turning the ladder into a rule:
+<code>docs/proposals/one-status-vocabulary-and-a-real-transition-table.md</code>.
+<a href="index.html">← all flows</a></p>
+</section>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 <script>
   mermaid.initialize({ startOnLoad: false, theme: 'neutral',
     themeVariables: { fontSize: '12px', fontFamily: 'ui-sans-serif,system-ui,sans-serif' },
     flowchart: { useMaxWidth: false, nodeSpacing: 30, rankSpacing: 42, padding: 6 } });
-  // .finally, not .then — mermaid.run() REJECTS on some diagram types after drawing them fine.
+  // .finally, not .then — mermaid.run() REJECTS on some diagram types after drawing them fine,
+  // and a .then here left those figures at mermaid's own shrunken width (two sequenceDiagrams).
   const fit = () => {
+    // mermaid stamps width="100%" + an inline max-width on some diagram types, which shrinks a
+    // wide figure until the type is unreadable. CSS cannot read viewBox, so set it here.
     for (const s of document.querySelectorAll('.board svg')) {
       const vb = (s.getAttribute('viewBox') || '').split(/\s+/);
       if (vb.length === 4) { s.style.width = vb[2] + 'px'; s.style.maxWidth = 'none'; }
