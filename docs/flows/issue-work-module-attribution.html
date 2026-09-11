@@ -16,7 +16,18 @@
   .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
   .bad { color:var(--bad); font-weight:600; }
   .lock { color:var(--lock); font-weight:600; }
-  svg { background:#fff; border:1px solid var(--line); border-radius:4px; display:block; max-width:100%; }
+  /* A 900-unit diagram scaled into a 375px phone renders its 11-unit labels at ~5 CSS pixels.
+     `min-width` is the viewBox's own 900 units, so the smallest label never renders below the
+     11px it was drawn at; a narrower screen scrolls the figure instead of shrinking its text.
+     `tabindex` is what lets a keyboard reach the clipped half — a scroll container with nothing
+     focusable in it cannot be scrolled without a pointer. */
+  .fig, .tbl { overflow-x:auto; margin:1rem 0; border-radius:4px; }
+  .fig:focus-visible, .tbl:focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
+  /* A `width:100%` table still cannot render below its min-content, so at 360px this one was
+     419px wide and the PAGE scrolled sideways. The same container that holds the diagrams holds
+     it, so the overflow stays inside the figure it belongs to. */
+  .tbl table { min-width:26rem; }
+  svg { background:#fff; border:1px solid var(--line); border-radius:4px; display:block; width:100%; height:auto; min-width:56.25rem; }
   text { font:12px ui-sans-serif,system-ui,sans-serif; fill:var(--fg); }
   text.m { font-size:11px; fill:var(--mut); }
   text.t { font:600 12px ui-monospace,Menlo,monospace; }
@@ -37,6 +48,7 @@ is the issue's <strong>primary</strong> module. Owner:
 request: how an agent comes to know the project has modules at all.</p>
 
 <h2>Where a write is refused, and what has been written when it is</h2>
+<div class="fig" tabindex="0" role="group" aria-label="Where a write is refused, and what has been written when it is — scrollable diagram">
 <svg viewBox="0 0 900 560" role="img" aria-label="Decision path of a labels[] write carrying a primary module">
   <defs>
     <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -104,17 +116,23 @@ request: how an agent comes to know the project has modules at all.</p>
   <text class="m" x="380" y="430">the old true row is gone before the new one lands,</text>
   <text class="m" x="380" y="445">so the index never sees two</text>
 </svg>
+</div>
 
 <div class="rule">
 <strong>Every refusal above happens before or inside the transaction, so a rejected write leaves
 the issue exactly as it was.</strong> That is the property to preserve: an attach that partly
 applied would leave an issue labelled with a module nobody chose, and no reader could tell it from
-a deliberate one. Two of the four checks (<code>MULTIPLE_PRIMARY</code>,
-<code>PRIMARY_NOT_MODULE</code>) exist only because SQL cannot see <code>labels.kind</code> from an
-<code>issue_labels</code> row — which is also why the index below them is not redundant with them.
+a deliberate one. <strong>The two module checks are not there for the same reason.</strong>
+<code>PRIMARY_NOT_MODULE</code> is the only one SQL cannot make at all: an <code>issue_labels</code>
+row cannot see <code>labels.kind</code>, so without that service check <em>nothing</em> stops a
+plain label being marked primary. <code>MULTIPLE_PRIMARY</code> is a check the database also holds
+— <code>issue_labels_primary_uq</code> is unique on <code>issue_id</code> where
+<code>is_primary</code>, so a second primary would fail on <code>23505</code> anyway. It exists to
+refuse by name, before the transaction, instead of surfacing a constraint violation.
 </div>
 
 <h2>What each layer owns, and what happens when it is bypassed</h2>
+<div class="tbl" tabindex="0" role="group" aria-label="What each layer owns — scrollable table">
 <table>
 <tr><th>Layer</th><th>Holds</th><th>Bypassed ⇒</th></tr>
 <tr>
@@ -145,6 +163,7 @@ a deliberate one. Two of the four checks (<code>MULTIPLE_PRIMARY</code>,
       <code>text(col,{enum})</code> is a compile-time type and emits no constraint</td>
 </tr>
 </table>
+</div>
 
 <h2>Reading it back</h2>
 <p>Every surface that lists an issue's labels reports <code>kind</code> and <code>isPrimary</code>
@@ -165,11 +184,12 @@ attributes and filters through <code>forge_issues</code>, which never creates a 
 crossing the dashed line is a contract that no type checks: a module name, a
 <code>{labelId, isPrimary}</code> object, and a filter value.</p>
 
+<div class="fig" tabindex="0" role="group" aria-label="The taxonomy authored through REST and consumed through MCP — scrollable diagram">
 <svg viewBox="0 0 900 400" role="img" aria-label="The taxonomy authored through REST and consumed through MCP, and which test holds each edge">
   <defs>
-    <marker id="d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <marker id="handshake-ok" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#1c1a17"/></marker>
-    <marker id="e" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <marker id="handshake-bad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#8a3b52"/></marker>
   </defs>
 
@@ -185,8 +205,8 @@ crossing the dashed line is a contract that no type checks: a module name, a
   <text class="t" x="44" y="140">labels rows, kind='module'</text>
   <text class="m" x="44" y="158">the taxonomy IS this set; there is no registry table</text>
 
-  <path class="arrow" style="marker-end:url(#d)" d="M230,98 L230,118"/>
-  <path class="arrow" style="marker-end:url(#d)" d="M430,147 L530,147"/>
+  <path class="arrow" style="marker-end:url(#handshake-ok)" d="M230,98 L230,118"/>
+  <path class="arrow" style="marker-end:url(#handshake-ok)" d="M430,147 L530,147"/>
 
   <rect class="box" x="530" y="118" width="350" height="58" rx="4"/>
   <text class="t" x="544" y="140">forge_issues.update  data.labels[]</text>
@@ -201,14 +221,15 @@ crossing the dashed line is a contract that no type checks: a module name, a
   <text class="t" x="544" y="314">forge_issues.list  filters.module</text>
   <text class="m" x="544" y="332">resolved against kind='module' only, then EXISTS-join</text>
 
-  <path class="arrow" style="marker-end:url(#d)" d="M705,176 L705,196"/>
-  <path class="arrow" style="marker-end:url(#d)" d="M705,272 L705,292"/>
+  <path class="arrow" style="marker-end:url(#handshake-ok)" d="M705,176 L705,196"/>
+  <path class="arrow" style="marker-end:url(#handshake-ok)" d="M705,272 L705,292"/>
 
   <rect class="exit" x="30" y="292" width="400" height="58" rx="4"/>
   <text class="t" x="44" y="314">an unresolved module returns NO issues</text>
   <text class="m" x="44" y="332">dropping the narrowing would return the whole project</text>
-  <path class="arrowbad" style="marker-end:url(#e)" d="M530,321 L430,321"/>
+  <path class="arrowbad" style="marker-end:url(#handshake-bad)" d="M530,321 L430,321"/>
 </svg>
+</div>
 
 <div class="rule">
 <strong>A hand-copied filter is the failure this seam is shaped like.</strong>
@@ -234,43 +255,45 @@ it: nothing in the product asks a human to attribute an issue, so on a Forge pro
 almost always a pipeline agent, and an agent only writes what its prompt told it exists. Owner:
 <code>packages/core/src/prompt/facts/resolve.ts</code>.</p>
 
+<div class="fig" tabindex="0" role="group" aria-label="How the module taxonomy reaches a pipeline agent's prompt — scrollable diagram">
 <svg viewBox="0 0 900 300" role="img" aria-label="How the module taxonomy reaches a pipeline agent's prompt">
   <defs>
-    <marker id="c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <marker id="prompt-ok" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#1c1a17"/></marker>
-    <marker id="d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <marker id="prompt-bad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#8a3b52"/></marker>
   </defs>
 
   <rect class="box" x="20" y="16" width="300" height="34" rx="4"/>
   <text class="t" x="34" y="38">a job is dispatched for this project</text>
 
-  <path class="arrow" style="marker-end:url(#c)" d="M170,50 L170,80"/>
+  <path class="arrow" style="marker-end:url(#prompt-ok)" d="M170,50 L170,80"/>
   <rect class="box" x="20" y="80" width="300" height="34" rx="4"/>
   <text class="t" x="34" y="102">loadProjectFactInputs</text>
   <text class="m" x="330" y="102">reads the project row, then listProjectModules</text>
 
-  <path class="arrow" style="marker-end:url(#c)" d="M170,114 L170,144"/>
+  <path class="arrow" style="marker-end:url(#prompt-ok)" d="M170,114 L170,144"/>
   <rect class="lockband" x="20" y="144" width="300" height="48" rx="4"/>
   <text class="t" x="34" y="166">fact.relevant(ctx) — modules.length &gt; 0</text>
   <text class="m" x="34" y="183">the only gate; render() is never asked</text>
-  <path class="arrowbad" style="marker-end:url(#d)" d="M320,168 L560,168"/>
+  <path class="arrowbad" style="marker-end:url(#prompt-bad)" d="M320,168 L560,168"/>
   <rect class="exit" x="560" y="144" width="320" height="48" rx="4"/>
   <text class="t bad" x="574" y="166">no section in the prompt</text>
   <text class="m" x="574" y="183">a project with no taxonomy pays nothing</text>
 
-  <path class="arrow" style="marker-end:url(#c)" d="M170,192 L170,222"/>
+  <path class="arrow" style="marker-end:url(#prompt-ok)" d="M170,192 L170,222"/>
   <rect class="box" x="20" y="222" width="300" height="62" rx="4"/>
   <text class="t" x="34" y="244">## Forge context → ### The issue's</text>
   <text class="t" x="34" y="261">primary module</text>
   <text class="m" x="34" y="277">names the modules and the isPrimary payload</text>
 
-  <path class="arrow" style="marker-end:url(#c)" d="M320,253 L560,253"/>
+  <path class="arrow" style="marker-end:url(#prompt-ok)" d="M320,253 L560,253"/>
   <rect class="box" x="560" y="222" width="320" height="62" rx="4"/>
   <text class="t" x="574" y="244">the agent decides, and writes</text>
   <text class="m" x="574" y="261">forge_issues.update → the path above,</text>
   <text class="m" x="574" y="277">or writes nothing when it is unsure</text>
 </svg>
+</div>
 
 <div class="rule">
 <strong>The taxonomy's existence is the switch.</strong> There is no per-project flag for module
