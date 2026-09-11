@@ -4061,11 +4061,11 @@ One sentence, `ALWAYS_INJECT_GUARANTEE_NOTE`, now states the split: the body rea
   a dark fleet. `devices` rows keep their ids, so every `runners` binding, `jobs.device_id`,
   `agent_sessions.device_id` and `projects.default_device_id` reference survives.
 
-  `agency` now reads `users.kind === 'agent'` OR the token's machine-name prefix, and both halves
-  are load-bearing: an AAT's owner is an agent, while a `job:`/`session:` token is minted from a
-  human and would read `human` off the kind alone. `device:` joined
-  `MACHINE_TOKEN_NAME_PREFIXES` so a fleet's tokens stay off their owner's PAT cap and a daemon's
-  writes are held to the ISS-786/812 evidence gates.
+  `agency` reads the token OWNER's `users.kind` and nothing else (ISS-932 wave 4). A credential is
+  NAMED after the box it was issued to so a re-pair can find and rotate the same row, but that name
+  is a label: nothing reads behaviour off it, and a person's token called `device:` is inert. Read
+  `agency` any other way at any door and the ISS-786/812 evidence gates and the comment mandate stop
+  agreeing about who an agent is.
 
 
 - **An agent session authenticates `/mcp` with its own job token, and a device token no longer
