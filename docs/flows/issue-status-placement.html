@@ -4,78 +4,77 @@
 <meta name="flow-answers" content="What a status claims, which exits a draft has, and what happens when the actor who finished the work cannot land it">
 <title>Flow · issue-status-placement — what a status claims, and who is owed the next move</title>
 <style>
-  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; --lock:#a06a1f; }
-  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
-         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
-  main { max-width:64rem; margin:0 auto; }
-  h1 { font-size:1.6rem; margin:0 0 .3rem; }
-  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
-  .sub { color:var(--mut); margin:0 0 1.6rem; }
-  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
-  table { border-collapse:collapse; width:100%; font-size:14px; }
-  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
-  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
-  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
-  .bad { color:var(--bad); font-weight:600; }
-  .lock { color:var(--lock); font-weight:600; }
-  ul { padding-left:1.1rem; } li { margin:.3rem 0; }
-  svg { background:#fff; border:1px solid var(--line); border-radius:4px; display:block; max-width:100%; }
-  text { font:12px ui-sans-serif,system-ui,sans-serif; fill:var(--fg); }
-  text.m { font-size:11px; fill:var(--mut); }
-  text.t { font:600 12px ui-monospace,Menlo,monospace; }
-  .box { fill:#fff; stroke:var(--line); }
-  .agent { fill:#eef6f1; stroke:#b9d8c8; }
-  .human { fill:#fff; stroke:var(--line); }
-  .term { fill:#f4f2ef; stroke:var(--line); }
-  .exit { fill:#fdf0f3; stroke:#e3c2cb; }
-  .arrow { stroke:var(--fg); stroke-width:1.2; fill:none; marker-end:url(#a); }
-  .arrowbad { stroke:var(--bad); stroke-width:1.2; fill:none; marker-end:url(#b); stroke-dasharray:4 3; }
+  :root { --fg:#1c1a17; --mut:#6b645c; --faint:#9a9288; --line:#ddd7cf; --bg:#fbfaf8; --panel:#fff;
+          --acc:#1f6f4a; --accbg:#e6efe9; --bad:#8a3b52; --badbg:#f6ecef; --new:#5b3a8e; --lock:#a06a1f; }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  code { font:12.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px }
+  .bar { display:flex; align-items:baseline; gap:.9rem; flex-wrap:wrap;
+         padding:.85rem 1.4rem; background:var(--panel); border-bottom:1px solid var(--line) }
+  .bar h1 { font-size:1.05rem; margin:0; font-weight:650; letter-spacing:-.01em }
+  .crumb { font:12px ui-monospace,Menlo,monospace; color:var(--faint) }
+  .crumb a { color:var(--faint) }
+  .pill { margin-left:auto; font-size:12px; padding:.22rem .6rem; border-radius:99px;
+          background:var(--accbg); color:var(--acc); border:1px solid #cfe0d6; font-weight:600 }
+  .cols { display:grid; grid-template-columns:minmax(0,1fr) 22rem; gap:1px; background:var(--line) }
+  @media (max-width:1150px){ .cols { grid-template-columns:minmax(0,1fr) } }
+  .canvas, .rail { background:var(--bg); padding:1.1rem 1.4rem }
+  .stage { font:600 11.5px ui-sans-serif,system-ui,sans-serif; text-transform:uppercase;
+           letter-spacing:.06em; color:var(--faint); margin:1.5rem 0 .45rem }
+  .stage:first-child { margin-top:0 }
+  .stage b { color:var(--acc); font-size:12.5px; margin-right:.4rem }
+  .board { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:.7rem; overflow-x:auto }
+  .cap { color:var(--mut); font-size:13px; margin:.55rem .2rem 0 }
+  .cap b { color:var(--fg) }
+  svg { background:var(--panel); display:block; max-width:none }
+  text { font:12px ui-sans-serif,system-ui,sans-serif; fill:var(--fg) }
+  text.m { font-size:11px; fill:var(--mut) }
+  text.t { font:600 12px ui-monospace,Menlo,monospace }
+  .box { fill:#fff; stroke:var(--line) }
+  .agent { fill:#eef6f1; stroke:#b9d8c8 }
+  .human { fill:#fff; stroke:var(--line) }
+  .term { fill:#f4f2ef; stroke:var(--line) }
+  .exit { fill:#fdf0f3; stroke:#e3c2cb }
+  .arrow { stroke:var(--fg); stroke-width:1.2; fill:none; marker-end:url(#a) }
+  .arrowbad { stroke:var(--bad); stroke-width:1.2; fill:none; marker-end:url(#b); stroke-dasharray:4 3 }
+  .bad { fill:var(--bad); font-weight:600 }
+  .rail h2 { font-size:11.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--faint);
+             margin:0 0 .5rem; font-weight:700 }
+  .rail section + section { margin-top:1.4rem }
+  .claims { list-style:none; margin:0; padding:0; font-size:12.5px }
+  .claims li { padding:.45rem 0; border-bottom:1px solid var(--line) }
+  .claims li:last-child { border-bottom:0 }
+  .claims b { display:block; color:var(--fg) }
+  .claims .f { display:block; font:600 11.5px ui-monospace,Menlo,monospace; color:var(--acc); margin:.1rem 0 }
+  .claims span { color:var(--mut) }
+  .tabs { display:flex; gap:.3rem; padding:0 1.4rem; background:var(--panel); flex-wrap:wrap;
+          border-top:1px solid var(--line); border-bottom:1px solid var(--line) }
+  .tabs button { appearance:none; border:0; background:none; padding:.6rem .85rem; cursor:pointer;
+                 font:600 13px inherit; color:var(--mut); border-bottom:2px solid transparent }
+  .tabs button[aria-selected=true] { color:var(--fg); border-bottom-color:var(--acc) }
+  .pane { padding:1.2rem 1.4rem 2rem } .pane[hidden] { display:none }
+  table { border-collapse:collapse; width:100%; font-size:13.5px }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top }
+  th { font-weight:600; color:var(--faint); font-size:11.5px; text-transform:uppercase; letter-spacing:.05em }
+  td.k { width:30% }
+  .note { background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--bad);
+          padding:.6rem .9rem; border-radius:4px; margin:.9rem 0; font-size:13.5px }
+  .note.plan { border-left-color:var(--new) }
+  .foot { padding:1rem 1.4rem 2.5rem; font-size:13px; color:var(--mut) }
 </style>
-<main>
-<h1>issue-status-placement</h1>
-<p class="sub">What a status is allowed to claim, which exits a <code>draft</code> has, and what
-happens to work whose author is bound not to land it.</p>
 
-<h2>The split, and why it exists</h2>
-<div class="rule">
-<p>A status answers <b>placement</b> — which gate the work sits at, and whose move is next. It
-answers nothing else. <b>Evidence</b> — whether code was written, pushed or merged — is answered
-by three fields on the row, read directly.</p>
-<p>The two were welded together until 2026-09-06, and <code>developed</code> was where they broke
-apart: this repo's lifecycle guide read it as placement (work built outside the pipeline enters at
-the review gate), the driver plugin's own contract read it as evidence (the mark is earned by the
-merged commit and the base it landed on). Four runs reached one identical real state — built,
-gates run, branch pushed, PR open, nothing merged — and recorded four different statuses. None was
-careless; each honoured a different documented promise (ISS-940).</p>
-<p>The generalisation is worth stating plainly, because it is what the fix is shaped by: the
-tracker had assumed the actor who finishes work can also land it. For an actor bound not to merge,
-placement is earned when the branch is pushed and the merge evidence is never earned at all, so no
-single rung can be honest about both.</p>
-</div>
+<header class="bar">
+  <span class="crumb"><a href="index.html">flows</a> / issue-status-placement</span>
+  <h1>What a status claims, and who is owed the next move</h1>
+  <span class="pill">a status says placement — never evidence</span>
+</header>
 
-<h2>Where each claim lives</h2>
-<table>
-<thead><tr><th>Claim</th><th>Answered by</th><th>Shape</th></tr></thead>
-<tbody>
-<tr><td>Which gate is this at, and whose move is next</td>
-    <td><code>packages/core/src/pipeline/status-assertions.ts</code> &rarr; <code>STATUS_ASSERTIONS</code></td>
-    <td>Exhaustive <code>Record&lt;IssueStatus, {gate, nextActor}&gt;</code> &mdash; two fields, both placement, and a status added to the schema without an entry fails <code>tsc</code></td></tr>
-<tr><td>Did it land</td><td><code>issues.merged_at</code></td>
-    <td>Caller-asserted: any hop out of the base merge state stamps it, merge or not — and the <b>first</b> stamp wins, so a later mark answers <code>already_merged</code> rather than moving it</td></tr>
-<tr><td>Which commit it landed at</td><td><code>issues.merged_commit_sha</code></td>
-    <td>ISS-959. Written by the same conditional statement as <code>merged_at</code>, so the pair is stamped together or not at all; a deliberate mark carries it (or core fills it from the recorded handoff), and the two automatic writers know no commit and leave it null</td></tr>
-<tr><td>Does a branch exist</td><td><code>issues.session_context.branch</code></td>
-    <td>Written by the session; the project's own base/production branch does not count</td></tr>
-<tr><td>Which of those a master sees on a backlog row</td>
-    <td><code>packages/core/src/devices/admissible.ts</code> &rarr; <code>AdmissibleIssue.mergedAt</code>, <code>.branch</code></td>
-    <td>Raw, beside the same module's raw <code>blockerStatus</code>/<code>blockerMergedAt</code>; never a <code>shipped</code> or <code>ready</code> boolean</td></tr>
-<tr><td>Is there a commit</td><td><code>issue_step_contexts</code> <code>kind='handoff'</code> &rarr; <code>payload.commitSha</code></td>
-    <td>From a <code>code</code>/<code>fix</code>/<code>drive</code> step; an empty handoff is not evidence</td></tr>
-</tbody>
-</table>
-
-<h2>Exits from <code>draft</code>, and which one dispatches</h2>
-<svg viewBox="0 0 900 330" role="img" aria-label="The five legal exits from draft and what each one mints">
+<div class="cols">
+<div class="canvas">
+  <p class="stage"><b>1</b>The five exits from draft, and the one that mints work</p>
+  <div class="board">
+<svg viewBox="0 0 900 300" role="img" aria-label="The five legal exits from draft and what each one mints">
   <defs>
     <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#1c1a17"/></marker>
@@ -121,33 +120,14 @@ single rung can be honest about both.</p>
   <path class="arrow" d="M530,118 L640,140"/>
   <path class="arrow" d="M530,190 L640,168"/>
 
-  <text class="m" x="20" y="308">A session already in the worktree takes `in_progress`; one that has pushed its branch and cannot merge takes `developed`.</text>
-  <text class="m" x="20" y="324">Promoting to `open` instead is what races a runner-dispatched agent against the session already building the branch (ISS-933).</text>
-</svg>
+</svg>  </div>
+  <p class="cap"><b>Only <code>open</code> mints anything.</b> A session already in the worktree takes
+  <code>in_progress</code>; one that pushed its branch and cannot merge takes <code>developed</code>.
+  Promoting to <code>open</code> instead races a runner-dispatched agent against the session already
+  building the branch (ISS-933).</p>
 
-<h2>What a master can tell from a backlog row</h2>
-<div class="rule">
-<p>The declared backlog (ISS-917) excludes an issue only when work has been <b>opened</b> for it —
-a job, or a live run. A run built by the pipeline mints a job and so never appears. <b>An issue
-built by hand mints neither</b>, which is exactly the shape a session-per-run design produces, so
-a <code>draft</code> somebody finished and a <code>draft</code> nobody has touched arrive as the
-same row.</p>
-<p>The fix is the one the module already applies to blockers, extended to the issue itself: carry
-the evidence <i>fields</i>, and let the master decide. <code>mergedAt</code> and
-<code>branch</code> are on the row; there is no derived <code>shipped</code> flag, and a row
-carrying a merge mark is <b>not</b> filtered out — <code>merged_at</code> is caller-asserted, so
-it is a fact to show a reader, never grounds for the kernel to hide the row and take the decision
-away.</p>
-</div>
-
-<h2>When the run that owed the close dies</h2>
-<div class="rule">
-<p>The mirror failure. The code merged and deployed, the mark landed on the row, and the session
-that owed the close was gone before it wrote one. The issue reads <code>open</code>, which means
-<b>claimable</b>, and the reconciler re-dispatches it every minute. Observed on ISS-920 and
-ISS-931, both serving production traffic while the tracker said the work had not started.</p>
-</div>
-
+  <p class="stage"><b>2</b>When the run that owed the close dies</p>
+  <div class="board">
 <svg viewBox="0 0 900 250" role="img" aria-label="How a merged issue with a dead run is kept out of dispatch and surfaced to a human instead">
   <rect class="box" x="20" y="90" width="200" height="66" rx="4"/>
   <text class="t" x="120" y="112" text-anchor="middle">status open</text>
@@ -178,98 +158,144 @@ ISS-931, both serving production traffic while the tracker said the work had not
   <path class="arrow" d="M220,140 L320,190"/>
   <path class="arrowbad" d="M560,53 L650,53"/>
   <path class="arrow" d="M560,193 L650,193"/>
-</svg>
-
-<div class="rule">
-<p><b>The refusal and the notification are one decision split across two passes.</b> Drop the
-detector and the exclusion becomes a silent skip — the issue is neither worked nor reported, which
-is worse than the re-dispatch it replaced. The exclusion is silent <i>at the reconciler</i> on
-purpose: that pass runs every 60 seconds and a warn there prints the same ids every minute.</p>
-<p>Neither pass closes the issue. Closing is a claim about shipped work, and a pass that cannot
-read the repository must not make it — <code>merged_at</code> is caller-asserted, so the honest act
-is to put it in front of the person who can check.</p>
+</svg>  </div>
+  <p class="cap"><b>The mirror failure.</b> Code merged and deployed, the mark landed, and the session
+  that owed the close was gone before it wrote one. The issue reads <code>open</code> — which means
+  claimable — and the reconciler re-dispatches it every minute. Observed on ISS-920 and ISS-931, both
+  serving production traffic while the tracker said the work had not started. The refusal and the
+  notification are <b>one decision split across two passes</b>: drop the detector and the exclusion
+  becomes a silent skip, which is worse than the re-dispatch it replaced. Neither pass closes the
+  issue — <code>merged_at</code> is caller-asserted, so the honest act is to put it in front of
+  someone who can check.</p>
 </div>
 
-<h2>The refusal every actor now meets (ISS-959)</h2>
-<div class="rule">
-<p>Every content rule on the transition writer used to return early unless the actor was an
-<em>agent</em> — <code>issues/transition-evidence.ts</code>, <code>release-record-required.ts</code>
-and <code>release-gate-hold.ts</code> all short-circuit on
-<code>agency !== 'agent'</code>. The same status set from the tracker's own screens was therefore
-neither earned nor refused: measured twice on forge-dev on 2026-09-07, an ordinary
-<code>forge record</code> write and an ordinary <code>forge comment</code> write each moved an issue
-from <code>needs_info</code> back to <code>open</code>, and on that project <code>open</code> is what
-makes an issue claimable — a silent un-park is a live path to two agents on one issue.</p>
-<p>A project now DECLARES which records a status entry requires, as
-<code>pipelineConfig.statusEntryCriteria</code>, and the declaration is checked for every actor. The
-vocabulary is core's (<code>plan</code>, <code>acceptance_criteria</code>, <code>release_note</code>,
-<code>work_evidence</code>, <code>merged_mark</code>) and every key reads the TRACKER RECORD, never a
-working tree — a check that read a checkout would answer differently on every machine that ran it.
-Which criteria a status carries is the project's decision, not this repo's.</p>
-<p>Three things bound it, in the order they matter. The declaration is resolved from the project
-config <b>outside</b> the transaction and handed in, because ISS-863 removed a <code>projects</code>
-SELECT from inside every status transition and this would put one back. It is keyed on the status the
-actor <em>asked for</em>, not on the park rewrite's target. And it is skipped entirely under
-<code>options.skip</code> — the orchestrator's curated soft-skip/failover chain is the
-highest-volume status writer in the product, and the checker exempts it anyway, so a read there
-would be a query whose answer is discarded. A project that declares nothing is byte-for-byte
-unchanged, and a config that cannot be read declares nothing rather than freezing every status
-write on the project.</p>
-<p><code>no_work_evidence</code> stays agent-only, and the carve-out is now on the rule rather than
-on the checker: an operator advancing by hand makes the shipped claim deliberately and owns it. A
-project that wants that rule held against people too declares <code>work_evidence</code>, which is
-the door built for that decision.</p>
+<aside class="rail">
+  <section>
+    <h2>Where each claim lives</h2>
+    <ul class="claims">
+      <li><b>Which gate, and whose move</b><span class="f">pipeline/status-assertions.ts → STATUS_ASSERTIONS</span><span>Exhaustive <code>Record&lt;IssueStatus, {gate, nextActor}&gt;</code> — both fields placement. A status added to the schema without an entry fails <code>tsc</code>.</span></li>
+      <li><b>Did it land</b><span class="f">issues.merged_at</span><span>Caller-asserted: any hop out of the base merge state stamps it, merge or not. The <b>first</b> stamp wins — a later mark answers <code>already_merged</code> rather than moving it.</span></li>
+      <li><b>At which commit</b><span class="f">issues.merged_commit_sha</span><span>ISS-959. Same conditional statement as <code>merged_at</code>, so the pair is stamped together or not at all. The two automatic writers know no commit and leave it null.</span></li>
+      <li><b>Does a branch exist</b><span class="f">session_context.branch</span><span>Written by the session; the project's own base/production branch does not count.</span></li>
+      <li><b>What a master sees</b><span class="f">devices/admissible.ts → AdmissibleIssue</span><span>Raw <code>mergedAt</code>/<code>branch</code>, beside raw <code>blockerStatus</code>. Never a <code>shipped</code> or <code>ready</code> boolean.</span></li>
+      <li><b>Is there a commit</b><span class="f">issue_step_contexts kind='handoff'</span><span>From a <code>code</code>/<code>fix</code>/<code>drive</code> step. An empty handoff is not evidence.</span></li>
+    </ul>
+  </section>
+  <section>
+    <h2>What a master reads on a backlog row</h2>
+    <p style="font-size:12.5px;color:var(--mut);margin:0">The declared backlog (ISS-917) excludes an
+    issue only when work has been <b>opened</b> for it — a job, or a live run. A pipeline run mints a
+    job and never appears; <b>an issue built by hand mints neither</b>, so a <code>draft</code>
+    somebody finished and a <code>draft</code> nobody touched arrive as the same row. The fix is to
+    carry the evidence <i>fields</i> and let the master decide: a row carrying a merge mark is
+    <b>not</b> filtered out. Show the fact; never take the decision.</p>
+  </section>
+</aside>
 </div>
 
-<h2>What breaks this</h2>
+<nav class="tabs" role="tablist">
+  <button role="tab" aria-selected="true"  aria-controls="sp">Why the split exists</button>
+  <button role="tab" aria-selected="false" aria-controls="dc">Declared criteria</button>
+  <button role="tab" aria-selected="false" aria-controls="br">What breaks this</button>
+  <button role="tab" aria-selected="false" aria-controls="wc">Where the code is</button>
+</nav>
+
+<section class="pane" id="sp" role="tabpanel">
+<p>A status answers <b>placement</b> — which gate the work sits at, and whose move is next. It answers
+nothing else. <b>Evidence</b> — whether code was written, pushed or merged — is answered by three
+fields on the row, read directly.</p>
+<p>The two were welded together until 2026-09-06, and <code>developed</code> is where they broke
+apart: this repo's lifecycle guide read it as placement (work built outside the pipeline enters at the
+review gate), the driver plugin's contract read it as evidence (the mark is earned by the merged
+commit and the base it landed on). <b>Four runs reached one identical real state</b> — built, gates
+run, branch pushed, PR open, nothing merged — <b>and recorded four different statuses</b>. None was
+careless; each honoured a different documented promise (ISS-940).</p>
+<p>The generalisation is what the fix is shaped by: the tracker had assumed the actor who finishes
+work can also land it. For an actor bound not to merge, placement is earned when the branch is pushed
+and the merge evidence is never earned at all — so no single rung can be honest about both.</p>
+<div class="note"><b>The half that is not in this repo.</b> <code>forge guide contract developed</code>
+ships from <code>github.com/SidCorp-co/forge-plugin</code> and still describes the mark as earned by
+&ldquo;the merged mark with its commit and the base it landed on&rdquo; — the evidence promise this
+flow removes from the status. Nothing here gates that pair. Reported there; until it lands, a driver
+session reads two definitions and this page is the one core enforces.</div>
+</section>
+
+<section class="pane" id="dc" role="tabpanel" hidden>
+<p><b>Every content rule on the transition writer used to return early unless the actor was an
+agent.</b> <code>transition-evidence.ts</code>, <code>release-record-required.ts</code> and
+<code>release-gate-hold.ts</code> all short-circuited on <code>agency !== 'agent'</code>, so the same
+status set from the tracker's own screens was neither earned nor refused. Measured twice on forge-dev
+on 2026-09-07: an ordinary <code>forge record</code> write and an ordinary <code>forge comment</code>
+write each moved an issue from <code>needs_info</code> back to <code>open</code> — and on that project
+<code>open</code> is what makes an issue claimable, so a silent un-park is a live path to two agents
+on one issue.</p>
+<table>
+<thead><tr><th>The rule now</th><th>And the bound on it</th></tr></thead>
+<tbody>
+<tr><td class="k">A project DECLARES which records a status entry requires, as <code>pipelineConfig.statusEntryCriteria</code>, checked for every actor</td>
+  <td>Vocabulary is core's — <code>plan</code>, <code>acceptance_criteria</code>, <code>release_note</code>, <code>work_evidence</code>, <code>merged_mark</code> — and every key reads the TRACKER RECORD, never a working tree: a check that read a checkout would answer differently on every machine. Which criteria a status carries is the project's decision, not this repo's.</td></tr>
+<tr><td class="k">Resolved from the project config <b>outside</b> the transaction and handed in</td>
+  <td>ISS-863 removed a <code>projects</code> SELECT from inside every status transition; doing it inside would put one back.</td></tr>
+<tr><td class="k">Keyed on the status the actor <em>asked for</em>, not the park rewrite's target</td>
+  <td>Otherwise a project declaring criteria for <code>waiting</code> refuses a <code>needs_info</code> park it never mentioned.</td></tr>
+<tr><td class="k">Skipped entirely under <code>options.skip</code></td>
+  <td>The orchestrator's curated soft-skip chain is the highest-volume status writer in the product and the checker exempts it anyway — a read there is a query whose answer is discarded.</td></tr>
+<tr><td class="k">A project that declares nothing is byte-for-byte unchanged</td>
+  <td>And a config that cannot be read declares nothing, rather than freezing every status write on the project.</td></tr>
+<tr><td class="k"><code>no_work_evidence</code> stays agent-only — on the RULE, not the checker</td>
+  <td>An operator advancing by hand makes the shipped claim deliberately and owns it. A project wanting it held against people too declares <code>work_evidence</code>, which is the door built for that decision.</td></tr>
+</tbody></table>
+</section>
+
+<section class="pane" id="br" role="tabpanel" hidden>
 <table>
 <thead><tr><th>Change</th><th>What goes wrong</th></tr></thead>
 <tbody>
-<tr><td>Putting the declared-criteria read back inside the transaction, or keying it on <code>toStatus</code></td>
-    <td>The first re-adds the per-transition <code>projects</code> SELECT that ISS-863 removed from inside the write. The second checks the park rewrite's target rather than the ask, so a project declaring criteria for <code>waiting</code> would refuse a <code>needs_info</code> park it never mentioned.</td></tr>
-<tr><td>Moving the agency carve-out back onto the whole checker</td>
-    <td>Declared criteria stop holding against a person, which is the entire half of the surface this rule exists for — and it fails silently, because the happy path passes either way.</td></tr>
-<tr><td>A third field on <code>StatusAssertion</code> naming a commit, a branch or a merge</td>
-    <td>An evidence claim is back inside a status and the next pair of runs splits on it again. The key set is compared literally in <code>status-assertions.test.ts</code> for exactly this.</td></tr>
-<tr><td>Adding a status to <code>AUTONOMOUS_DRIVER_STATUSES</code> to mean &ldquo;done, awaiting a human&rdquo;</td>
-    <td>It falls into <code>AUTONOMOUS_INFLIGHT_STATUSES</code> by subtraction, and <code>resetAutonomousWedgesOnce</code> rolls finished work back to <code>open</code> and re-dispatches it.</td></tr>
-<tr><td>A wedge pass that stops requiring a prior <code>drive</code> job row</td>
-    <td><code>draft &rarr; in_progress</code> stops being safe: a live hand session gets an agent dropped into the worktree it is working in.</td></tr>
-<tr><td>Reporting <code>merged</code> from <code>applyMergeMarker</code> when the stamp did not move</td>
-    <td>The audit trail grows a corrected note beside a timestamp an earlier write set, and nobody can see that <code>unmark</code> then <code>mark</code> is the only correction — which itself re-blocks every dependent. The <code>WHERE merged_at IS NULL</code> predicate is what makes the question answerable; <code>RETURNING</code> reports the row AFTER the write and cannot.</td></tr>
-<tr><td>Excluding rows with <code>merged_at</code> set from the declared backlog</td>
-    <td>The kernel silently hides an issue whose stamp may be wrong, and the master cannot tell that from an empty backlog. Show the fact; do not take the decision.</td></tr>
-<tr><td>Dropping the live-job or running-run arm from <code>detectOwedCloses</code></td>
-    <td>A reopened issue carries the mark of its first landing, so the alarm fires on every issue that has ever shipped anything.</td></tr>
-</tbody>
-</table>
+<tr><td class="k">Putting the declared-criteria read back inside the transaction, or keying it on <code>toStatus</code></td>
+  <td>The first re-adds the per-transition <code>projects</code> SELECT ISS-863 removed from inside the write. The second checks the park rewrite's target rather than the ask.</td></tr>
+<tr><td class="k">Moving the agency carve-out back onto the whole checker</td>
+  <td>Declared criteria stop holding against a person — the entire half this rule exists for — and it fails <b>silently</b>, because the happy path passes either way.</td></tr>
+<tr><td class="k">A third field on <code>StatusAssertion</code> naming a commit, a branch or a merge</td>
+  <td>An evidence claim is back inside a status and the next pair of runs splits on it again. The key set is compared literally in <code>status-assertions.test.ts</code> for exactly this.</td></tr>
+<tr><td class="k">Adding a status to <code>AUTONOMOUS_DRIVER_STATUSES</code> to mean &ldquo;done, awaiting a human&rdquo;</td>
+  <td>It falls into <code>AUTONOMOUS_INFLIGHT_STATUSES</code> by subtraction, and <code>resetAutonomousWedgesOnce</code> rolls finished work back to <code>open</code> and re-dispatches it.</td></tr>
+<tr><td class="k">A wedge pass that stops requiring a prior <code>drive</code> job row</td>
+  <td><code>draft → in_progress</code> stops being safe: a live hand session gets an agent dropped into the worktree it is working in.</td></tr>
+<tr><td class="k">Reporting <code>merged</code> from <code>applyMergeMarker</code> when the stamp did not move</td>
+  <td>The audit trail grows a corrected note beside a timestamp an earlier write set, and nobody can see that <code>unmark</code> then <code>mark</code> is the only correction — which itself re-blocks every dependent. <code>WHERE merged_at IS NULL</code> is what makes the question answerable; <code>RETURNING</code> reports the row AFTER the write and cannot.</td></tr>
+<tr><td class="k">Excluding rows with <code>merged_at</code> set from the declared backlog</td>
+  <td>The kernel silently hides an issue whose stamp may be wrong, and the master cannot tell that from an empty backlog.</td></tr>
+<tr><td class="k">Dropping the live-job or running-run arm from <code>detectOwedCloses</code></td>
+  <td>A reopened issue carries the mark of its first landing, so the alarm fires on every issue that has ever shipped anything.</td></tr>
+</tbody></table>
+</section>
 
-<h2>Where the code is</h2>
+<section class="pane" id="wc" role="tabpanel" hidden>
 <table>
 <thead><tr><th>Step</th><th>File</th></tr></thead>
 <tbody>
-<tr><td>What each status claims</td><td><code>packages/core/src/pipeline/status-assertions.ts</code></td></tr>
-<tr><td>The five draft exits, and the only runtime gate on them</td><td><code>packages/core/src/pipeline/state-machine.ts</code> &rarr; <code>DRAFT_EXIT_TARGETS</code>, <code>canTransitionFree</code></td></tr>
-<tr><td>The refusal an illegal exit gets</td><td><code>packages/core/src/issues/apply-transition.ts</code></td></tr>
-<tr><td>The records a project declares for a status, and which are unmet</td><td><code>packages/core/src/issues/entry-criteria.ts</code>, vocabulary in <code>entry-criteria-keys.ts</code></td></tr>
-<tr><td>Which rules hold against whom</td><td><code>packages/core/src/issues/transition-evidence.ts</code> &rarr; <code>EvidenceRule.agentOnly</code></td></tr>
-<tr><td>The one status that dispatches</td><td><code>packages/core/src/pipeline/autonomous-mode.ts</code> &rarr; <code>autonomousStepFor</code></td></tr>
-<tr><td>Re-dispatch, and its refusal on a merged row</td><td><code>packages/core/src/pipeline/reconciler.ts</code></td></tr>
-<tr><td>What a master reads before opening a run</td><td><code>packages/core/src/devices/admissible.ts</code></td></tr>
-<tr><td>Who stamped <code>merged_at</code>, and whether this call did</td><td><code>packages/core/src/issues/merge-marker.ts</code></td></tr>
-<tr><td>Surfacing the owed close</td><td><code>packages/core/src/pipeline/stranded-issues.ts</code> &rarr; <code>detectOwedCloses</code></td></tr>
-<tr><td>What the agent is told</td><td><code>packages/core/src/guides/registry.ts</code> &rarr; <code>pipeline-and-issue-lifecycle</code></td></tr>
-</tbody>
-</table>
+<tr><td class="k">What each status claims</td><td><code>packages/core/src/pipeline/status-assertions.ts</code></td></tr>
+<tr><td class="k">The five draft exits, and the only runtime gate on them</td><td><code>packages/core/src/pipeline/state-machine.ts</code> → <code>DRAFT_EXIT_TARGETS</code>, <code>canTransitionFree</code></td></tr>
+<tr><td class="k">The refusal an illegal exit gets</td><td><code>packages/core/src/issues/apply-transition.ts</code></td></tr>
+<tr><td class="k">The records a project declares, and which are unmet</td><td><code>packages/core/src/issues/entry-criteria.ts</code>, vocabulary in <code>entry-criteria-keys.ts</code></td></tr>
+<tr><td class="k">Which rules hold against whom</td><td><code>packages/core/src/issues/transition-evidence.ts</code> → <code>EvidenceRule.agentOnly</code></td></tr>
+<tr><td class="k">The one status that dispatches</td><td><code>packages/core/src/pipeline/autonomous-mode.ts</code> → <code>autonomousStepFor</code></td></tr>
+<tr><td class="k">Re-dispatch, and its refusal on a merged row</td><td><code>packages/core/src/pipeline/reconciler.ts</code></td></tr>
+<tr><td class="k">What a master reads before opening a run</td><td><code>packages/core/src/devices/admissible.ts</code></td></tr>
+<tr><td class="k">Who stamped <code>merged_at</code>, and whether this call did</td><td><code>packages/core/src/issues/merge-marker.ts</code></td></tr>
+<tr><td class="k">Surfacing the owed close</td><td><code>packages/core/src/pipeline/stranded-issues.ts</code> → <code>detectOwedCloses</code></td></tr>
+<tr><td class="k">What the agent is told</td><td><code>packages/core/src/guides/registry.ts</code> → <code>pipeline-and-issue-lifecycle</code></td></tr>
+</tbody></table>
+</section>
 
-<h2>The half that is not in this repo</h2>
-<div class="rule">
-<p><code>forge guide contract developed</code> ships from
-<code>github.com/SidCorp-co/forge-plugin</code> and still describes the mark as earned by
-&ldquo;the merged mark with its commit and the base it landed on&rdquo;. That is the evidence
-promise this flow removes from the status, and nothing in this repo gates the pair. Reported to
-that project; until it lands, a driver session reads two definitions and this page is the one
-core enforces.</p>
-</div>
-
-</main>
+<p class="foot"><a href="index.html">← all flows</a></p>
+<script>
+  const tabs = [...document.querySelectorAll('.tabs button')];
+  tabs.forEach(t => t.addEventListener('click', () => {
+    tabs.forEach(o => {
+      const on = o === t;
+      o.setAttribute('aria-selected', String(on));
+      document.getElementById(o.getAttribute('aria-controls')).hidden = !on;
+    });
+  }));
+</script>
