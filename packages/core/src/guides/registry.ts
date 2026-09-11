@@ -296,7 +296,8 @@ Two things about that stamp are worth knowing before you rely on either status, 
 
 ### The status set, and it is closed
 
-Fourteen statuses. Drawing, with the full transition matrix: \`docs/flows/lifecycle-pipeline.html\`.
+Fourteen statuses. Which party owes the next move at each, and the two hops the system
+actually refuses: \`docs/flows/lifecycle-pipeline.html\`.
 
 \`\`\`
               ┌──────────────────── needs_info / on_hold ────────────────────┐  (from ANY live
