@@ -138,7 +138,7 @@ describe("the open round a person is being asked about", () => {
     loaded([aQuestion({ steps: [step({ round: 2 })] })]);
     renderPanel();
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Choose" })[0] as HTMLElement);
+    fireEvent.click(screen.getAllByRole("button", { name: /^Choose / })[0] as HTMLElement);
 
     expect(mutate).toHaveBeenCalledWith({
       questionId: "q-1",
@@ -157,7 +157,7 @@ describe("a lock is the server's verdict and the screen renders it", () => {
       screen.getByText("Deploy it"),
       "hiding an option leaves a queue of decisions only one person can even look at",
     ).toBeInTheDocument();
-    const [safe, deploy] = screen.getAllByRole("button", { name: "Choose" });
+    const [safe, deploy] = screen.getAllByRole("button", { name: /^Choose / });
     expect(safe).not.toBeDisabled();
     expect(deploy).toBeDisabled();
   });
@@ -173,7 +173,7 @@ describe("a lock is the server's verdict and the screen renders it", () => {
     loaded([aQuestion({ options: [{ ...SAFE, locked: true }, { ...DEPLOY, locked: false }] })]);
     renderPanel();
 
-    const [safe, deploy] = screen.getAllByRole("button", { name: "Choose" });
+    const [safe, deploy] = screen.getAllByRole("button", { name: /^Choose / });
     expect(safe).toBeDisabled();
     expect(deploy).not.toBeDisabled();
   });
@@ -188,7 +188,7 @@ describe("a question nobody is being asked to answer", () => {
     renderPanel();
 
     expect(screen.getByText("Push to a shared branch?")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Choose" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Choose / })).toBeNull();
   });
 
   it("shows what was chosen on an answered question and offers no form", () => {
@@ -198,7 +198,7 @@ describe("a question nobody is being asked to answer", () => {
     renderPanel();
 
     expect(screen.getByText("Answered — Deploy it")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Choose" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Choose / })).toBeNull();
   });
 
   it("shows why a voided question was withdrawn and offers no form", () => {
@@ -206,7 +206,7 @@ describe("a question nobody is being asked to answer", () => {
     renderPanel();
 
     expect(screen.getByText("Withdrawn — the branch is gone")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Choose" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Choose / })).toBeNull();
   });
 
   it("says an expired question went unanswered and offers no form", () => {
@@ -214,7 +214,7 @@ describe("a question nobody is being asked to answer", () => {
     renderPanel();
 
     expect(screen.getByText("Expired unanswered — unanswered_2d")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Choose" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Choose / })).toBeNull();
   });
 });
 
@@ -235,7 +235,7 @@ describe("nothing, loading and broken are three different screens", () => {
     });
     const { container } = renderPanel();
     expect(container).not.toBeEmptyDOMElement();
-    expect(screen.queryByRole("button", { name: "Choose" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Choose / })).toBeNull();
   });
 
   // cm:guard a failed read rendered as the empty state makes a decision somebody owes VANISH from the screen, indistinguishable from an issue that never had one — and the reader is never told to try again (ISS-980 criterion 17).
