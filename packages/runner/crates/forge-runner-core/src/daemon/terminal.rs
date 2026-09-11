@@ -57,9 +57,40 @@ pub fn session_name(prefix: &str, raw: &str) -> String {
     name
 }
 
+/// The socket this box's agent sessions live on.
+///
+/// Derived from `Config::path()` and nothing else, exactly as the control
+/// socket is: dev1 runs several runner services that differ ONLY by
+/// `XDG_CONFIG_HOME`, and a shared session server would let one of them address
+/// another's panes.
+// cm:guard a socket of OUR OWN is not tidiness, it is the survival property: on the default socket the runner shares a server with whatever tmux the operator is running, so one `tmux kill-server`, or their last personal session ending, takes every agent on the box with it. Measured forge-vm 2026-09-11: `-L`/`-S` appeared zero times in this crate and 47 agent panes were sitting on the operator's own server.
+pub fn socket_path() -> Option<std::path::PathBuf> {
+    crate::config::Config::path()
+        .ok()
+        .map(|p| p.with_file_name("tmux.sock"))
+        .filter(|p| fits_a_unix_socket(&p.to_string_lossy()))
+}
+
+/// Whether a path can be a unix socket at all on this platform.
+// cm:guard `sockaddr_un.sun_path` is 108 bytes INCLUDING the terminator, and a path over it fails with `File name too long` — measured while writing this, on a 122-character scratch path. Without this filter every tmux call on such a box fails, which is not a degraded runner but a dead one: `XDG_CONFIG_HOME` is operator-set and dev1 already runs several runners that differ only by it.
+fn fits_a_unix_socket(path: &str) -> bool {
+    path.len() <= 100
+}
+
+/// `-S <socket>`, or nothing when this box cannot name its config dir.
+// cm:guard falling back to the DEFAULT socket is deliberate and is the safe direction: a box that cannot resolve its config dir still runs work, it simply runs it where the old builds ran it. Refusing instead would take the whole box out over a path lookup.
+fn socket_args() -> Vec<String> {
+    match socket_path() {
+        Some(p) => vec!["-S".into(), p.to_string_lossy().into_owned()],
+        None => Vec::new(),
+    }
+}
+
 async fn tmux(args: &[&str]) -> Result<std::process::Output> {
+    let mut all = socket_args();
+    all.extend(args.iter().map(|a| (*a).to_string()));
     Command::new("tmux")
-        .args(args)
+        .args(&all)
         .stdin(Stdio::null())
         .output()
         .await
@@ -108,6 +139,104 @@ pub async fn alive(name: &str) -> bool {
 /// liveness check and tmux's own refusal to duplicate a name are both in play,
 /// so a race between two sweeps costs a log line and not a second master.
 // cm:guard `-x`/`-y` are not cosmetic. A detached tmux session defaults to 80x24, and Claude Code's TUI reflows its input box to the pane width — at 80 columns a pasted pass prompt wraps into the composer and a human attaching later reads a mangled transcript. The numbers only need to be generous; they are not a layout.
+/// The unit the session server runs as, when this box can give it one.
+// cm:edge naming -> packages/runner/crates/forge-runner/src/cmd/service.rs — the runner's own unit is `forge-runner*`; this one must NOT share that prefix, or an operator's `systemctl --user stop forge-runner*` takes the sessions this exists to spare.
+const SESSION_UNIT: &str = "forge-sessions";
+
+/// The session the server is started with, so it has one and does not exit.
+// cm:guard named OUTSIDE both `MASTER_PREFIX` and `RUN_PREFIX`, because every reader on this box classifies a session by that prefix and would otherwise adopt the keep-alive as a master with no project.
+const KEEPALIVE: &str = "forge-session-host";
+
+/// Start the session server under a unit of its OWN, if it is not already up.
+///
+/// This is the survival property, and it is about the SERVER, not the panes.
+/// tmux already gives each pane a scope of its own, but a server that dies
+/// takes its panes with it — so a server forked into this service's cgroup
+/// means `systemctl restart forge-runner` kills every agent on the box. That is
+/// what makes an ordinary update destructive.
+// cm:guard a transient SERVICE with `--service-type=forking`, never `--scope`: measured 2026-09-11, `tmux start-server` daemonizes, so the process a scope tracks exits immediately, the scope is collected, and the server it was supposed to hold ends up in the caller's cgroup after all. The scope form looks right and places nothing.
+// cm:guard the server is started WITH a session (`new-session`), never bare (`start-server`): a tmux server with no sessions exits on the spot — `exit-empty` is on by default — so the bare form leaves the unit inactive and no server at all. Measured the same day, twice.
+// cm:guard a box with no `systemd-run` (macOS, a container) is NOT refused. It runs exactly as every build before this one did, and says so by name once — the property is unavailable there, the work is not.
+// cm:guard idempotent under CONCURRENCY, not just repetition: a master sweep starts several panes at once, so the attempt is serialized in-process and a caller that loses the race waits for the winner's socket instead of reporting a failure. Across processes systemd itself is the lock, and `already exists` is the same loss.
+// cm:guard the caller is never refused. `ensure` proceeds either way — a box with no `systemd-run` runs exactly as every build before this one did, and says so by name once.
+async fn ensure_server() -> bool {
+    static PLACING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    let _one_attempt = PLACING.lock().await;
+    if server_answers().await {
+        return true;
+    }
+    let Some(sock) = socket_path() else {
+        tracing::warn!(
+            "[terminal] no usable session socket path — agent panes will run on the default tmux server and die with this service, as they did before"
+        );
+        return false;
+    };
+    let sock = sock.to_string_lossy().into_owned();
+    let out = Command::new("systemd-run")
+        .args([
+            "--user",
+            "--unit",
+            SESSION_UNIT,
+            "--service-type=forking",
+            "--collect",
+            "--quiet",
+            "tmux",
+            "-S",
+            &sock,
+            "new-session",
+            "-d",
+            "-s",
+            KEEPALIVE,
+            "sleep",
+            "infinity",
+        ])
+        .stdin(Stdio::null())
+        .output()
+        .await;
+    if server_answers_within(SERVER_READY_WITHIN).await {
+        tracing::info!(
+            "[terminal] session server running as {SESSION_UNIT}.service — agent panes now outlive a restart of this one"
+        );
+        return true;
+    }
+    // cm:guard name the CONSEQUENCE, never just the failed command: the operator reading this line is being told that the next update kills every agent on the box, which is the only part of it they can act on.
+    let detail = match &out {
+        Ok(o) if o.status.success() => "the unit started but its socket never answered".to_string(),
+        Ok(o) => String::from_utf8_lossy(&o.stderr).trim().to_string(),
+        Err(e) => e.to_string(),
+    };
+    tracing::warn!(
+        "[terminal] the session server could not be given its own unit ({detail}) — panes will be killed with this service, as they were before"
+    );
+    false
+}
+
+/// Whether a server is listening on our socket right now.
+// cm:guard a tmux server with no sessions cannot exist (`exit-empty` is on by default), so an exit-0 listing is the whole liveness probe — there is no "up but empty" state to distinguish.
+async fn server_answers() -> bool {
+    tmux(&["list-sessions"])
+        .await
+        .is_ok_and(|o| o.status.success())
+}
+
+/// How long a caller waits for the socket after asking for the server.
+// cm:guard the wait is the RACE FIX, not a timeout for a slow box. `systemd-run` returns as soon as systemd accepts the job, and the loser of a race gets `Unit forge-sessions.service already exists` — an exit code that is NOT a failure, because the winner is mid-fork and the socket appears milliseconds later. Measured 2026-09-11: without this wait, `cargo test` running the module's panes concurrently failed two tests with `it must be findable by its exact name`, which is the same shape as a master sweep starting several panes at once.
+const SERVER_READY_WITHIN: Duration = Duration::from_secs(5);
+
+/// Poll the socket until it answers, or `within` elapses.
+async fn server_answers_within(within: Duration) -> bool {
+    let deadline = std::time::Instant::now() + within;
+    loop {
+        if server_answers().await {
+            return true;
+        }
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
 pub async fn ensure(
     name: &str,
     cwd: &std::path::Path,
@@ -123,6 +252,8 @@ pub async fn ensure(
     if alive(name).await {
         return Ok(false);
     }
+    // cm:guard BEFORE `new-session`, always: the implicit server `new-session` would start is forked by this process into this service's cgroup, and once it is there nothing can move it — cgroup membership is inherited at fork and the pane is already inside it.
+    ensure_server().await;
     let cwd = cwd.to_string_lossy().to_string();
     let mut args: Vec<String> = vec![
         "new-session".into(),
@@ -207,8 +338,15 @@ pub async fn send_line(name: &str, text: &str) -> Result<()> {
     let target = pane_target(name);
     let buffer = format!("forge-{}", std::process::id());
 
+    // cm:guard the SECOND spawn site, and it needs the socket as much as the wrapper does: a buffer loaded on the default server is invisible to a `paste-buffer` on ours, so the paste finds no buffer and the pane is briefed with nothing while every call reports success.
+    let mut load = socket_args();
+    load.extend(
+        ["load-buffer", "-b", &buffer, "-"]
+            .iter()
+            .map(|a| (*a).to_string()),
+    );
     let mut child = Command::new("tmux")
-        .args(["load-buffer", "-b", &buffer, "-"])
+        .args(&load)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -283,6 +421,21 @@ pub fn pane_env() -> Vec<(String, String)> {
 mod tests {
     use super::*;
 
+    /// Every test below drives ONE server on one socket, so they run one at a time.
+    // cm:guard serialised because a cold-start test has to kill that shared server, and `cargo test` runs this module's tests concurrently by default — without the lock it takes the panes the other two tests are mid-assertion on.
+    static ONE_AT_A_TIME: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+    /// Whether this box can place a unit at all; where it cannot, the property does not exist.
+    async fn can_place_a_unit() -> bool {
+        which::which("systemd-run").is_ok()
+            && Command::new("systemctl")
+                .args(["--user", "is-system-running"])
+                .stdin(Stdio::null())
+                .output()
+                .await
+                .is_ok_and(|o| !String::from_utf8_lossy(&o.stdout).trim().is_empty())
+    }
+
     // cm:guard a bare `=name` is a SESSION target and not a pane target, and the two are not interchangeable: tmux answers `can't find pane: =name` and every write is silently lost. Measured against tmux 3.4 while building this.
     #[test]
     fn a_pane_target_is_not_a_session_target() {
@@ -328,6 +481,7 @@ mod tests {
     // cm:guard skipped rather than failed when tmux is absent, and the daemon refuses to start a master on such a box — so the skip cannot hide a broken transport in production, only on a developer machine that could never have run one.
     #[tokio::test]
     async fn a_pane_receives_what_is_typed_at_it_and_the_transcript_keeps_it() {
+        let _serialised = ONE_AT_A_TIME.lock().await;
         if !available() {
             eprintln!("tmux is not installed here — the transport test cannot run");
             return;
@@ -402,6 +556,7 @@ mod tests {
     // cm:guard the second `ensure` passes a DIFFERENT argv on purpose, because that is what a restarted daemon carrying a new build sends. A reuse path that read the argv would relaunch here and the test would catch it; one that matched on the name alone is what the design needs.
     #[tokio::test]
     async fn a_restart_re_enters_the_pane_it_left_rather_than_starting_a_second_one() {
+        let _serialised = ONE_AT_A_TIME.lock().await;
         if !available() {
             eprintln!("tmux is not installed here — the residency test cannot run");
             return;
@@ -512,6 +667,162 @@ mod tests {
                 assert_eq!(env[0].0, "MCP_TOOL_TIMEOUT");
                 assert!(env[0].1.parse::<u64>().is_ok(), "{:?}", env[0].1);
             }
+        }
+    }
+    const THIS_SOURCE: &str = include_str!("terminal.rs");
+
+    // cm:guard the boundary is the box-killer: one character over and EVERY tmux call on that box fails with `File name too long`, which is not a degraded runner but a dead one. Measured 2026-09-11 on a 122-character path.
+    #[test]
+    fn a_socket_path_too_long_to_bind_is_refused_before_it_is_used() {
+        assert!(fits_a_unix_socket(&"a".repeat(100)));
+        assert!(!fits_a_unix_socket(&"a".repeat(101)));
+        assert!(!fits_a_unix_socket(&format!(
+            "/home/x/{}/tmux.sock",
+            "d".repeat(120)
+        )));
+    }
+
+    // cm:guard a refused path falls back to the DEFAULT socket rather than to nothing: `socket_args` empty means "run where the old builds ran", which is degraded and alive, where a bad `-S` is neither.
+    #[test]
+    fn a_refused_socket_leaves_the_args_empty_rather_than_broken() {
+        let args = socket_args();
+        assert!(args.is_empty() || args[0] == "-S", "{args:?}");
+        if args.len() == 2 {
+            assert!(fits_a_unix_socket(&args[1]));
+        }
+    }
+
+    // cm:guard EVERY tmux invocation has to carry the socket, so the count of raw spawns is the assertion: a third `Command::new("tmux")` added without the socket would talk to the operator's default server, and the failure is silent — a buffer loaded there is simply invisible to a paste on ours.
+    #[test]
+    fn nothing_spawns_tmux_without_the_socket() {
+        let production = THIS_SOURCE.split("#[cfg(test)]").next().unwrap();
+        assert_eq!(
+            production.matches("Command::new(\"tmux\")").count(),
+            2,
+            "the wrapper and load-buffer are the only two, and both take `socket_args()`"
+        );
+        let load = production
+            .split("Command::new(\"tmux\")")
+            .nth(2)
+            .expect("the load-buffer spawn");
+        assert!(
+            production.contains("let mut load = socket_args();"),
+            "load-buffer builds its args from the socket"
+        );
+        assert!(load.contains("&load"), "and passes them");
+    }
+
+    // cm:guard the ORDER is the property: cgroup membership is inherited at fork and cannot be changed afterwards, so a server started implicitly by `new-session` is already inside this service's cgroup by the time anything could move it.
+    #[test]
+    fn the_server_is_placed_before_the_first_session_is_created() {
+        let body = THIS_SOURCE
+            .split("pub async fn ensure(")
+            .nth(1)
+            .expect("ensure")
+            .split("\n}")
+            .next()
+            .unwrap();
+        let placed = body.find("ensure_server().await").expect("placement");
+        let created = body.find("\"new-session\"").expect("the session");
+        assert!(
+            placed < created,
+            "the server must be placed before the first session, not after"
+        );
+    }
+
+    // cm:guard the keep-alive is not an agent pane and must never be read as one — every reader on this box classifies a session by these two prefixes.
+    #[test]
+    fn the_keepalive_session_is_not_mistakable_for_an_agent() {
+        assert!(!KEEPALIVE.starts_with(MASTER_PREFIX));
+        assert!(!KEEPALIVE.starts_with(RUN_PREFIX));
+    }
+
+    // cm:guard the unit name is what stops an operator's `systemctl --user stop forge-runner*` from taking the sessions with it, so it may not share that prefix.
+    #[test]
+    fn the_session_unit_is_not_matched_by_a_glob_over_the_runners_own() {
+        assert!(!SESSION_UNIT.starts_with("forge-runner"));
+    }
+
+    // cm:guard `--scope` places NOTHING here and the source must not drift back to it: `tmux` daemonizes, so the tracked process exits, the scope is collected, and the server lands in the caller's cgroup. Measured 2026-09-11 — the scope form looked correct and left the server in `org.gnome.Shell@x11.service`.
+    #[test]
+    fn the_server_is_started_as_a_forking_service_and_never_as_a_scope() {
+        let production = THIS_SOURCE.split("#[cfg(test)]").next().unwrap();
+        assert!(production.contains("--service-type=forking"));
+        assert!(
+            !production.contains("\"--scope\""),
+            "a scope cannot hold a process that daemonizes"
+        );
+    }
+
+    // cm:guard started WITH a session, never bare: a tmux server with no sessions exits immediately (`exit-empty` defaults on), so `start-server` alone leaves the unit inactive and no server at all.
+    #[test]
+    fn the_server_is_started_holding_a_session_rather_than_empty() {
+        let production = THIS_SOURCE.split("#[cfg(test)]").next().unwrap();
+        let call = production
+            .split("Command::new(\"systemd-run\")")
+            .nth(1)
+            .expect("the placement");
+        let call = call.split("await").next().unwrap();
+        assert!(call.contains("\"new-session\""), "must carry a session");
+        assert!(
+            !call.contains("\"start-server\""),
+            "a bare server exits on the spot"
+        );
+    }
+    /// A sweep starts several panes at once; the server must be placed exactly once and they must all land.
+    // cm:guard this is the regression for the race the wait fixes: cold-start, then N callers at once. Without `server_answers_within`, every caller but the winner gets `Unit forge-sessions.service already exists` — a non-zero exit that is NOT a failure — reports false, and races `new-session` against a socket nothing has bound yet.
+    #[tokio::test]
+    async fn a_cold_start_hit_by_several_panes_at_once_places_one_server_and_loses_no_pane() {
+        let _serialised = ONE_AT_A_TIME.lock().await;
+        if !available() || !can_place_a_unit().await {
+            eprintln!("no tmux or no systemd user manager here — the placement property does not exist on this box");
+            return;
+        }
+        let Some(sock) = socket_path() else {
+            eprintln!("no usable socket path here");
+            return;
+        };
+        let _ = tmux(&["kill-server"]).await;
+        let _ = Command::new("systemctl")
+            .args(["--user", "stop", &format!("{SESSION_UNIT}.service")])
+            .stdin(Stdio::null())
+            .output()
+            .await;
+        let _ = Command::new("systemctl")
+            .args(["--user", "reset-failed", &format!("{SESSION_UNIT}.service")])
+            .stdin(Stdio::null())
+            .output()
+            .await;
+        let _ = std::fs::remove_file(&sock);
+        assert!(!server_answers().await, "the server must start out cold");
+
+        let placed: Vec<bool> =
+            futures_util::future::join_all((0..6).map(|_| ensure_server())).await;
+        assert!(
+            placed.iter().all(|p| *p),
+            "every concurrent caller must report the server placed, including the ones that lost the race: {placed:?}"
+        );
+
+        let dir = std::env::temp_dir().join(format!("forge-race-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let names: Vec<String> = (0..4)
+            .map(|i| session_name("forge-test", &format!("race{}-{i}", std::process::id())))
+            .collect();
+        for n in &names {
+            let _ = kill(n).await;
+        }
+        futures_util::future::join_all(names.iter().map(|n| {
+            let dir = dir.clone();
+            async move {
+                ensure(n, &dir, &["sleep".to_string(), "60".to_string()], &[], None)
+                    .await
+                    .expect("the pane must start")
+            }
+        }))
+        .await;
+        for n in &names {
+            assert!(alive(n).await, "{n} must be findable by its exact name");
+            let _ = kill(n).await;
         }
     }
 }

@@ -1929,6 +1929,20 @@
 
 ### Fixed
 
+- **Updating the runner no longer kills every agent on the box.** Agent sessions live in a
+  terminal server the runner used to start as a child of its own service, so stopping the service
+  — an update, a restart, a crash — took the server down and every agent with it. That is why an
+  ordinary version bump had to be scheduled around running work, and why a box that restarted under
+  load woke up with dozens of dead sessions still holding their checkouts. The session server now
+  runs under a unit of its own and survives a restart of the runner, which reattaches to the
+  sessions that were already there. Two things fall out of the same change: the server is on a
+  socket of its own, so it no longer shares one with whatever terminals the person logged into the
+  box is running — until now, their `tmux kill-server`, or simply their last window closing, could
+  end every agent on the machine — and a box that cannot give the server its own unit (macOS, a
+  container) says so by name and keeps working exactly as before. Sessions left on the old shared
+  server are reclaimed the way any unreachable session is: their work is pushed to a branch first,
+  then the checkout is released.
+
 - **A run whose agent died without shutting down no longer holds its checkout and its issue
   forever.** Recovery could see everything it needed — the process gone, the session terminal — and
   still had no way to act on it: a run only reaches terminal after its worktree is observed off the
