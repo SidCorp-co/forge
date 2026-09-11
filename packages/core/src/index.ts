@@ -120,6 +120,7 @@ import { memoryWriteRoutes } from './memory/write-routes.js';
 import { projectMetricsRoutes } from './metrics/routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
+import { PAT_ACCEPTED_PERMISSIONS_HEADER } from './middleware/pat-rest-surface.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
 import { requirePat } from './middleware/require-pat.js';
 import { notificationRoutes } from './notifications/routes.js';
@@ -207,7 +208,7 @@ const corsMiddleware = cors({
   credentials: true,
   allowHeaders: ['Content-Type', 'Authorization', 'X-Device-Token', 'X-Forge-Project-Slug'],
   allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  // cm:guard a response header a browser must READ has to be listed here or `fetch` hides it, whatever the server sent. `Retry-After` and the `X-RateLimit-*` set are the whole of what a 429 tells a client (ISS-961), and none of them is CORS-safelisted, so omitting one leaves the web UI guessing exactly as the CLI used to.
+  // cm:guard a response header a browser must READ has to be listed here or `fetch` hides it, whatever the server sent. `Retry-After` and the `X-RateLimit-*` set are the whole of what a 429 tells a client (ISS-961), and none of them is CORS-safelisted, so omitting one leaves the web UI guessing exactly as the CLI used to. `PAT_ACCEPTED_PERMISSIONS_HEADER` joined them for the same reason on the other three PAT outcomes (ISS-974), imported rather than spelled again so the two lists cannot name different headers.
   exposeHeaders: [
     'X-Total-Count',
     'Retry-After',
@@ -215,6 +216,7 @@ const corsMiddleware = cors({
     'X-RateLimit-Remaining',
     'X-RateLimit-Reset',
     'X-RateLimit-Scope',
+    PAT_ACCEPTED_PERMISSIONS_HEADER,
   ],
 });
 app.use('/api/*', corsMiddleware);
@@ -345,10 +347,7 @@ app.route('/api/issues', issueAttachmentRoutes);
 // cm:guard mount issueExtrasRoutes BEFORE issueRoutes — its `/pipeline-timing` is a STATIC segment and `issueRoutes`' `GET /:id` carries a `z.uuid()` validator, so the wrong order answers 400 on a real route instead of serving it. Same shape as the projectHealthRoutes guard above.
 app.route('/api/issues', issueExtrasRoutes);
 app.route('/api/issues', issueMergeRoutes);
-// Capability-authenticated attachment upload (presigned-URL pattern). On its own
-// /api/uploads prefix with NO auth middleware — the ticket id minted by
-// forge_uploads is the bearer-free capability. Kept off /api/issues so it is not
-// shadowed by issueRoutes' requireAuth (see require-any-auth shadowing note).
+// cm:guard the ticket id minted by `forge_uploads` IS the credential, so this router declares no gate of its own and must stay off `/api/issues`, whose routers all carry one. What it is NOT is a prefix nothing guards — the `cm:edge` on `auth/pat-permissions.ts` measured a PAT on `GET /api/uploads` taking the fence's own `PAT_NOT_PERMITTED` at 46805dc0, because Hono runs the middleware of EVERY router whose mount prefix matches and three are mounted bare at `/api`. So giving `/api/uploads` a permission resource would not be inert, and the prose here said the opposite until ISS-974.
 app.route('/api/uploads', uploadRoutes);
 app.route('/api/issues', issueRoutes);
 app.route('/api/issues', transitionRoutes);

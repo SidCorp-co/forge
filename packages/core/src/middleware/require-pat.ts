@@ -206,13 +206,16 @@ function maybeEmitPatUsed(tokenId: string, userId: string): void {
  * (`pat-rest-surface.ts:scopeForMethod`), `/mcp` off the JSON-RPC envelope
  * (`mcp/request-class.ts`).
  */
+// cm:guard `onVerified` fires at the ONE instant this function knows the caller is who they say, and it is the only evidence of that a thrower can leave behind: everything below may throw, and a caller that inferred authentication from the status it caught would be reading a 429 as proof of a `verifyPat` that a future upstream throttle need never have run (ISS-974). It is deliberately not a return value — the 429 path never reaches one.
 export async function authenticatePat(
   c: Context,
   token: string,
   requestClass: PatRequestClass,
+  onVerified?: () => void,
 ): Promise<PatPrincipal | null> {
   const verified = await verifyPat(token);
   if (!verified) return null;
+  onVerified?.();
   const { row, ownerKind } = verified;
 
   const outcome = checkPatRateLimit(row.id, requestClass, row.rateLimitMax);

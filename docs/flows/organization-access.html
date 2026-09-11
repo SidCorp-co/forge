@@ -55,6 +55,31 @@ first is no longer called <code>patAllowedFor</code> &mdash; a name promising &l
 on a predicate that reads nothing off the principal is how the third gate gets skipped by someone
 who believes it already ran.</p>
 
+<p>The moment the token verifies — before any of the three is asked — the response is told what the
+route wanted. Since ISS-974 every PAT-authenticated REST request carries
+<code>X-Accepted-Forge-Permissions: &lt;resource&gt;:&lt;level&gt;</code> &mdash; on the 200 as
+well as on the refusals, because a header only on the 403 leaves discovery-by-trial exactly where
+it was. The name mirrors GitHub's <code>X-Accepted-GitHub-Permissions</code>, and the value is the
+Forge permission name in the spelling a mint request takes, so it can be pasted rather than
+translated. <code>beginPatRequest</code> resolves it <b>once</b>, from
+<code>patPermissionWanted</code>, and hands that single value to the header, to
+<code>patGrantCovers</code> and to the refusal body's <code>details.wanted</code>: the predicate
+takes a derived <code>PatPermission</code> and can no longer resolve a path itself, which is what
+stops the header becoming a second source of truth that can name a permission the fence would not
+have honoured. A path no permission covers carries <b>no</b> header rather than an empty one
+&mdash; an empty value would read as &ldquo;this route requires nothing&rdquo; on precisely the
+routes a PAT may never reach.</p>
+
+<p>What earns the header is <em>authentication</em>, and deliberately not a status code.
+<code>authenticatePat</code> fires an <code>onVerified</code> callback at the one instant
+<code>verifyPat</code> resolves a row, and that callback is what sets the header &mdash; so a
+token throttled to a <code>429</code> is told what the route wanted, because it verified before
+the bucket refused it, while a token that never verified is told nothing at all. Reading the
+<code>429</code> <em>status</em> as proof of authentication would give the same answer today and
+hand the permission map to every caller the moment a throttle is added above
+<code>verifyPat</code>, which is the leak the guard on <code>patSurfaceCovers</code> already
+refuses in its cruder form.</p>
+
 <p>The direction of the grant default is the whole risk. A token granted nothing reaches
 <em>every</em> group, and &ldquo;nothing&rdquo; has three shapes that must stay one answer: a
 <code>NULL</code> column, an empty array, and a principal built without the field. The migration
@@ -77,7 +102,8 @@ flowchart TD
   U1 -- ok --> U2["userId = claims.sub<br/>principal = 'user', agency = human"]
   U1 -- throws --> X3["401"]
   P1 -- null --> X5["401 INVALID_TOKEN"]
-  P1 -- ok --> P2["rate limit: 600/min per token<br/>429 + Retry-After on breach<br/>(device + /ws paths skip the bucket)"]
+  P1 -- ok --> H0["verified ⇒ onVerified fires HERE, and only here.<br/>REST sets X-Accepted-Forge-Permissions = the permission<br/>patPermissionWanted resolved once, before any gate;<br/>null ⇒ no header at all, never an empty one"]
+  H0 --> P2["rate limit: 600/min per token<br/>429 + Retry-After on breach — carries the header,<br/>because the token verified before the bucket refused<br/>(device + /ws paths skip the bucket)"]
   P2 --> P3["agency = ownerKind === 'agent'<br/>OR isMachineTokenName(row.name)"]
   P3 --> P3b["machine = parseMachineTokenName(row.name)<br/>the JOB or SESSION the token names.<br/>device: is in the family but answers null —<br/>a box is for all of them or none"]
   P3b --> S{"which surface?"}
@@ -88,10 +114,10 @@ flowchart TD
   S2 -- yes --> S3["principal = the DEVICE, userId LEFT UNSET<br/>so loadProjectAccess fails closed"]
   S -- "REST data plane" --> P4{"patSurfaceCovers(path)?<br/>a question about the ROUTE"}
   S -- "/mcp" --> P5
-  P4 -- no --> X6["403 PAT_NOT_PERMITTED<br/>the route resolves no project,<br/>so there is nothing to fence on"]
+  P4 -- no --> X6["403 PAT_NOT_PERMITTED<br/>the route resolves no project,<br/>so there is nothing to fence on<br/>(and no header: wanted was null)"]
   P4 -- yes --> P5{"scope for method?<br/>GET/HEAD -&gt; read, else write"}
   P5 -- no --> X7["403 INSUFFICIENT_SCOPE"]
-  P5 -- yes --> P7{"patGrantCovers(row.permissions, path, level)?<br/>a question about the TOKEN"}
+  P5 -- yes --> P7{"patGrantCovers(row.permissions, wanted)?<br/>a question about the TOKEN,<br/>on the value the header already carries"}
   P7 -- "granted nothing<br/>(NULL, absent or [])" --> P6
   P7 -- "holds the group" --> P6
   P7 -- "holds other groups" --> X8["403 PAT_PERMISSION_REQUIRED<br/>names the permission the path wanted<br/>and the ones the token holds"]
@@ -131,10 +157,23 @@ writer keeps them in step. Both are now persisted beside each other:
   <td>The route is on the surface; this <em>token</em> was granted a narrower set of
     groups than the one covering it (ISS-973). The refusal names both halves — the permission the
     path wanted, and what the token holds — because a grant set is invisible from the caller's
-    side and a bare &ldquo;no&rdquo; makes narrowing a token something nobody does twice. Absence
+    side and a bare &ldquo;no&rdquo; makes narrowing a token something nobody does twice. Since
+    ISS-974 the wanted half is also on <code>X-Accepted-Forge-Permissions</code>, from the same
+    single resolution, so the header and <code>details.wanted</code> cannot name different
+    permissions. Absence
     of a grant is <b>every</b> group, never none, so a token that has never been granted anything
     cannot produce this code: every row the migration did not write reads as the full menu, which
     is why the column landing did not take 26 live integrations down with it.</td></tr>
+<tr><td>&ldquo;Which permission does this route need?&rdquo; &mdash; asked without being refused first</td>
+    <td>Read <code>X-Accepted-Forge-Permissions</code> off the response (ISS-974). It is on the
+    <code>200</code> as well as the refusals, so a caller narrows a token by walking the paths it
+    will use and collecting the names, rather than by minting, failing and guessing. The value is
+    the name a mint request takes. Two absences are meaningful and different: no header on a
+    <code>403 PAT_NOT_PERMITTED</code> means no permission covers that path <em>at all</em> and
+    no grant will ever reach it; no header on a <code>200</code> means the request was not
+    PAT-authenticated. A browser reads it because it is in <code>corsMiddleware</code>'s
+    <code>exposeHeaders</code> — omit it there and <code>fetch</code> hides it whatever the
+    server sent.</td></tr>
 <tr><td><code>403 PAT_NOT_PERMITTED</code> on a route that plainly exists</td>
     <td>The path belongs to no resource in <code>PAT_PERMISSION_RESOURCES</code>, so it is not in
     the <code>PAT_ALLOWED_PREFIXES</code> union. That is a statement about the ROUTE,

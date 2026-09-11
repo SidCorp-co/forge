@@ -119,7 +119,11 @@ export function patPermissionWanted(path: string, level: PatPermissionLevel): Pa
 }
 
 /**
- * Does a token granted `granted` reach this path with this level?
+ * Does a token granted `granted` hold the permission a request wanted?
+ *
+ * `wanted` is what {@link patPermissionWanted} answered, so `null` is "the menu
+ * covers this path at all" answered no — a different refusal from "covered, but
+ * not by this token".
  *
  * The grant is a narrowing, so its ABSENCE is the whole menu — and absence has
  * three shapes held to one answer: a `NULL` column the migration never wrote,
@@ -127,13 +131,12 @@ export function patPermissionWanted(path: string, level: PatPermissionLevel): Pa
  */
 // cm:guard absent AND empty both mean EVERY group, never no group. 26 active human tokens on production the day this shipped, 25 of them immortal, every one unmigrated the instant the column landed — reading an ungranted token as permissionless locks out every live integration on deploy (ISS-972's rule, ISS-973's implementation). The two shapes are one `?? []` away from being confused, so they are tested apart.
 // cm:guard a NON-EMPTY array that names nothing this menu still declares covers NO path, which is the opposite direction to the rule above and is deliberate: a token somebody narrowed to `foo:read` after `foo` left the menu must reach nothing, never everything. Only absence is the full menu.
+// cm:guard takes the DERIVED permission and never a path, so this predicate cannot resolve one: `beginPatRequest` calls `patPermissionWanted` once and hands that single value to the response header, to this check and to the refusal's `details.wanted`, which is what stops the three disagreeing. Give it a path again and the request path carries two resolutions that merely happen to agree — and every assertion about the header's value stays green while the property goes unproved (ISS-974).
 export function patGrantCovers(
   granted: readonly string[] | null | undefined,
-  path: string,
-  level: PatPermissionLevel,
+  wanted: PatPermission | null,
 ): boolean {
-  const resource = patResourceForPath(path);
-  if (resource === null) return false;
+  if (wanted === null) return false;
   if (granted === null || granted === undefined || granted.length === 0) return true;
-  return granted.includes(`${resource}:${level}` satisfies PatPermission);
+  return granted.includes(wanted);
 }
