@@ -19,39 +19,14 @@
   .bad { color:var(--bad); font-weight:600; }
   .board { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; overflow-x:auto; }
   .board svg { max-width:none !important; height:auto; }
+  .cap { color:var(--mut); font-size:13.5px; margin:.6rem 0 1.2rem; max-width:52rem; }
 </style>
 <main>
 
 <h1>mcp-tool-deletion — a tool leaves the registry, or is refused by name</h1>
-<p class="sub">The decision path one MCP tool walks on its way out of
-<code>REGISTERED_TOOLS</code>, after <code>ISS-931</code> left <code>/mcp</code> with a single
-credential species. Owner: <code>packages/core/src/mcp/registered-tools.ts</code>,
-<code>packages/core/src/mcp/server.ts</code>,
-<code>packages/core/src/middleware/require-pat.ts</code>. The rule in prose:
-<code>docs/architecture/agent-surface.md</code>.</p>
-
-<h2>Why this flow changed shape</h2>
-<p>Until <code>ISS-931</code> the gate was one number: a tool was clear when its
-<code>mcp_audit_log</code> <em>device</em> count was zero. <code>ISS-931</code> did not make that
-number meaningless — it changed what it is a statement about. <code>requirePat</code> refuses a
-device, so no new device rows are written and the counts stop rising; but the sessions behind them
-are <b>paused, not retired</b>. A box installs a <code>runner-v*</code> that writes the job token
-and the same Claude MCP client resumes against the same tool list, on a PAT.</p>
-
-<p><span class="bad">So a non-zero device count is a forecast of returning traffic, not a record of
-dead traffic</span>, and it stays a refusal. What genuinely went obsolete is the rule's <em>second</em>
-clause: it asked for a replacement route that accepts a <em>device token</em>, and every caller
-that comes back holds a <code>forge_pat_*</code> instead.</p>
-
-<p>Two things this page previously got wrong about that are worth stating, because both are easy to
-re-derive. The counts do not fall <em>because of</em> <code>ISS-931</code> — they could not fall
-before it either, since <code>mcp_audit_log</code> declares 90-day retention and nothing calls
-<code>enforceMcpAuditRetention</code>. And wiring that pruner would drain every device count to
-zero, which must <b>not</b> be read as clearing twenty tools at once: the refusal is about callers
-who return, not rows that expire.</p>
-
-<p>The question therefore moved from <em>who called this</em> to <em>who will lose it</em>, and
-there are three populations rather than one.</p>
+<p class="sub">The decision path one MCP tool walks out of <code>REGISTERED_TOOLS</code>.
+<code>core/src/mcp/{registered-tools,server}.ts</code> · <code>core/src/middleware/require-pat.ts</code> ·
+prose: <code>docs/architecture/agent-surface.md</code></p>
 
 <div class="board"><pre class="mermaid">
 flowchart TD
@@ -80,30 +55,27 @@ flowchart TD
   class NEVER,FENCED,REFUSE0,REFUSE1,REFUSE2,REFUSE3,STOP2 stop;
   class DELETE go;
 </pre></div>
+<p class="cap">Since <code>ISS-931</code> the device count is a <b>forecast of returning traffic</b>,
+not a record of dead traffic: <code>requirePat</code> refuses a device, so the counts stop rising
+while the sessions behind them are paused — a box installs a <code>runner-v*</code> and the same
+client resumes on a PAT. The counts could never fall anyway (<code>mcp_audit_log</code> declares
+90-day retention and nothing calls <code>enforceMcpAuditRetention</code>); wiring that pruner would
+drain every device count to zero and must not be read as clearing twenty tools. What did go
+obsolete is the rule's second clause — it asked for a replacement accepting a <em>device token</em>,
+and every caller that returns holds a <code>forge_pat_*</code>.</p>
 
-<h2>Rule 2 is a version, and it is readable from a box</h2>
-<p>The <code>forge</code> CLI is built in <a
-href="https://github.com/SidCorp-co/forge-plugin">forge-plugin</a>, not here, so this repo cannot
-see which tools it names. <code>ISS-508</code> moved every verb to a path under <code>/api</code>;
-the fleet has not installed that build. The copy on a runner box is the authority, and it is a
-directory you can grep:</p>
-
+<h2>Rule 2 is a version, readable from a box</h2>
 <div class="rule">
 <code>~/.config/forge-runner/marketplaces/sidcorp-co__forge-plugin/plugin</code> — version
 <b>3.35.140</b>, carrying <code>src/tracker/rpc.mjs</code> and <b>no</b>
-<code>src/tracker/rest.mjs</code>. <b>When <code>rest.mjs</code> is present on every box, the
-<em>wrapped verbs</em> are discharged together.</b> That is the observable end state for them, and
-it is a file rather than an issue. It does <b>not</b> cover <code>forge call</code>, the raw
-<code>tools/call</code> passthrough whose purpose is the tools no verb wraps — whether 3.35.141+
-still ships it against <code>/mcp</code> is not knowable from this repo, and guessing is what the
-forge-plugin carve-out exists to prevent.
+<code>src/tracker/rest.mjs</code>. <b>When <code>rest.mjs</code> is on every box, the wrapped verbs
+are discharged together</b> — a file, not an issue. It does <b>not</b> cover <code>forge call</code>,
+the raw passthrough for tools no verb wraps; whether 3.35.141+ still ships it against
+<code>/mcp</code> is not knowable from this repo, and guessing is what the forge-plugin carve-out
+prevents. The CLI holds a <code>forge_pat_prd_*</code>, so <code>requirePat</code> admits it:
+<span class="bad"><code>ISS-931</code> took nothing away, and its calls land as <code>token_id</code>
+traffic a device split cannot see.</span>
 </div>
-
-<p>This CLI holds a <code>forge_pat_prd_*</code> — a PAT, not a device token — so
-<code>requirePat</code> admits it. <span class="bad"><code>ISS-931</code> did not take its access
-away, and its calls land as <code>token_id</code> traffic that a device split cannot see.</span>
-The nine, with the call site in the installed copy:</p>
-
 <table>
 <thead><tr><th>Tool</th><th>Occurrences under <code>plugin/src</code> in the installed 3.35.140 copy</th></tr></thead>
 <tbody>
@@ -119,46 +91,34 @@ The nine, with the call site in the installed copy:</p>
 <tr><td><code>forge_memory.write</code>, <code>forge_memory.feedback</code></td><td><b>0 hard-coded.</b> Reached through <code>forge call</code>, and <code>src/guides/guides.mjs</code> tells agents to do exactly that</td></tr>
 </tbody>
 </table>
-
-<p><code>forge_memory.search</code>, <code>forge_projects.get</code> and
-<code>forge_projects.list</code> were all filed <em>free to go</em> until this was measured, and
-<code>forge_projects.create</code> was listed as blocked with <b>zero</b> call sites in the
-installed copy.</p>
-
-<p><b>What deleting one costs differs per call site, and only one of the three is a hard break.</b>
-<code>callTool</code> (<code>src/tracker/rpc.mjs:189</code>) returns a refusal object instead of
-exiting when its <code>soft</code> flag is set. <code>forge_projects.list</code> is reached through
-<code>idOfProject(false)</code> — not soft — so it exits: that one is the <code>7f0c5a56</code>
-shape, where six tools went on a bad measurement and the fleet read <code>not_found</code> the same
-day. <code>forge_memory.search</code> degrades to a note (<code>neighbours.mjs</code> returns
-<code>{hits: [], note: …}</code>) and <code>forge_projects.get</code> degrades to
-<code>null</code>. A silent degradation is still a caller losing a capability — that is the reason
-to refuse, not a reason to discount it — but the blast radius is "recall quietly stops working"
-rather than "every command exits", and a rule whose stated cost is overstated is one a reader
-eventually stops trusting.</p>
+<p class="cap">Measured in the installed copy — <code>forge_memory.search</code>,
+<code>forge_projects.get</code> and <code>forge_projects.list</code> were all filed <em>free to go</em>
+before this, and <code>forge_projects.create</code> was filed blocked at zero call sites.
+Blast radius differs per call site: <code>callTool</code> (<code>rpc.mjs:189</code>) returns a
+refusal when <code>soft</code> is set, but <code>forge_projects.list</code> comes through
+<code>idOfProject(false)</code> and <b>exits</b> — the <code>7f0c5a56</code> shape, six tools deleted
+on a bad measurement and the fleet reading <code>not_found</code> that day.
+<code>forge_memory.search</code> degrades to a note, <code>forge_projects.get</code> to
+<code>null</code>. A silent degradation is still a lost capability, but it is not an exit.</p>
 
 <h2>Rule 3 has a source the database does not hold</h2>
-<p><code>forge_memory.search</code> has a second live caller that no audit query would have
-surfaced: <code>packages/runner/crates/forge-runner-core/src/workspace/orientation.rs</code> writes
-<em>"Recall memory FIRST — <code>forge_memory_search({...})</code>"</em> into every project
-workspace's orientation. Every agent on every box is told to call it by name, in text this repo
-ships. <span class="bad">Grep the runner's bundled prose as well as the tables.</span></p>
-
 <div class="rule">
-<b>Rule 3 is answerable, and not by the agent that needs it — the rule is two-party by design.</b>
-<code>GET /api/admin/mcp-audit/tools</code> (<code>ISS-946</code>) returns the whole-table
-per-tool counts: <code>deviceCalls</code>, <code>tokenCalls</code>, <code>unattributedCalls</code>,
-<code>notFoundCalls</code>, <code>totalCalls</code>, <code>firstSeen</code>,
-<code>lastSeen</code>, spelling normalised, registry FULL OUTER joined so a never-called tool
-comes back at zero. It sits behind <code>requireAdmin</code> because a tool's callers span every
-project on the instance, which resolves no project for the PAT fence to bite on — the
-<code>/api/me/ops-health</code> shape. So an agent on a box gathers the <em>refusals</em> (rules 1
-and 2, both static and both greppable there) and a human runs this route for the
-<em>clearance</em>. <span class="bad">A project-scoped twin is refused by name, not merely
-unbuilt</span>: a tool idle in this project and busy in the next would read <em>clear</em>, which
-is the <code>7f0c5a56</code> substitution again. And the route returns <code>oldestRow</code>, so
-whether these are lifetime counts is something you read rather than assume — it starts reading ~90
-days back the day <code>enforceMcpAuditRetention</code> is wired.
+<b>Grep the runner's bundled prose as well as the tables.</b>
+<code>forge-runner-core/src/workspace/orientation.rs</code> writes <em>"Recall memory FIRST —
+<code>forge_memory_search({…})</code>"</em> into every workspace: every agent on every box is told
+to call it by name, in text this repo ships, and no audit query would surface it.
+</div>
+<div class="rule">
+<b>Rule 3 is two-party by design.</b> <code>GET /api/admin/mcp-audit/tools</code>
+(<code>ISS-946</code>) returns whole-table per-tool counts — <code>deviceCalls</code>,
+<code>tokenCalls</code>, <code>unattributedCalls</code>, <code>notFoundCalls</code>,
+<code>firstSeen</code>/<code>lastSeen</code>, plus <code>oldestRow</code> so the window is read
+rather than assumed — registry FULL OUTER joined so a never-called tool comes back at zero. It sits
+behind <code>requireAdmin</code> because a tool's callers span every project, which resolves no
+project for the PAT fence to bite on. So an agent gathers the <em>refusals</em> (rules 1 and 2, both
+greppable on the box) and a human runs this route for the <em>clearance</em>.
+<span class="bad">A project-scoped twin is refused by name</span>: a tool idle here and busy in the
+next project would read <em>clear</em> — the <code>7f0c5a56</code> substitution again.
 </div>
 
 <h2>What refuses, and what must never happen instead</h2>
@@ -179,12 +139,6 @@ days back the day <code>enforceMcpAuditRetention</code> is wired.
     <code>requireAuth()</code> answered them 401. A mounted route is not a reachable one</td></tr>
 </tbody>
 </table>
-
-<p>One thing the deletion cannot honour, and the commit says so rather than pretending otherwise:
-three <code>cm:guard</code>s in <code>mcp/server.ts</code> record that callers pin to
-<code>tools/list</code> order. Those guards govern <em>insertion</em> — a new tool is appended, not
-spliced in. A deletion shifts every index below it and there is no position that leaves the tail
-where it was. A caller that pins by index is already broken.</p>
 
 <p><a href="index.html">← all flows</a></p>
 </main>
