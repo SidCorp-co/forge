@@ -7,9 +7,9 @@
 // cm:guard must be fired from BOTH terminal writers — agent-sessions/routes.ts PATCH (runner happy-path) and lifecycle/transition.ts (sweeper, cascade, cancel, dispatch-failure) — or a whole class of escalations hangs silent
 
 import { eq } from 'drizzle-orm';
-import { runExternalChatTurn } from '../../chat/external-chat.js';
-import { buildChatToolContext } from '../../chat/tools/principal.js';
-import { buildProjectToolset } from '../../chat/tools/registry.js';
+import { runExternalChatTurn } from '../../assistant/external-chat.js';
+import { buildChatToolContext } from '../../assistant/tools/principal.js';
+import { buildProjectToolset } from '../../assistant/tools/registry.js';
 import { db } from '../../db/client.js';
 import {
   type agentSessions as agentSessionsTable,

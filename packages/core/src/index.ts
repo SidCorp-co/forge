@@ -22,6 +22,9 @@ import { registerAgentCronTicker, unregisterAgentCronTicker } from './agents/cro
 import { agentRoutes } from './agents/routes.js';
 import { memoryModelRoutes } from './app-config/memory-model-routes.js';
 import { appConfigRoutes } from './app-config/routes.js';
+import { bootstrapChatProviders } from './assistant/providers/bootstrap.js';
+import { chatRoutes } from './assistant/routes.js';
+import { chatSessionRoutes } from './assistant/sessions-routes.js';
 import { devForceVerifyRoutes } from './auth/dev-force-verify.js';
 import { loginRoutes } from './auth/login.js';
 import { logoutRoutes } from './auth/logout.js';
@@ -32,9 +35,6 @@ import { reauthRoutes } from './auth/reauth.js';
 import { refreshRoutes } from './auth/refresh.js';
 import { authRoutes } from './auth/register.js';
 import { verifyRoutes } from './auth/verify.js';
-import { bootstrapChatProviders } from './chat/providers/bootstrap.js';
-import { chatRoutes } from './chat/routes.js';
-import { chatSessionRoutes } from './chat/sessions-routes.js';
 import { chatLogRoutes } from './chat-logs/routes.js';
 import { commentRoutes } from './comments/routes.js';
 import { env } from './config/env.js';
@@ -420,8 +420,7 @@ app.route('/api/app-config', appConfigRoutes);
 app.route('/api/domain-templates', domainTemplateRoutes);
 app.route('/api/runners', runnerRoutes);
 
-// v1 EPIC 1 (ISS-270) — chat support agent. Mount only when the flag is on
-// so a default `main` build behaves as if the route doesn't exist.
+// cm:why flag-gated so a default `main` build behaves as if `/api/chat` does not exist (ISS-270)
 if (isEnabled('chatProvider')) {
   app.route('/api/chat', chatRoutes);
 }

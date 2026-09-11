@@ -24,15 +24,15 @@ vi.mock('../../db/client.js', () => ({
 }));
 
 const runExternalChatTurn = vi.fn();
-vi.mock('../../chat/external-chat.js', () => ({
+vi.mock('../../assistant/external-chat.js', () => ({
   runExternalChatTurn: (...args: unknown[]) => runExternalChatTurn(...args),
 }));
 
-vi.mock('../../chat/tools/registry.js', () => ({
+vi.mock('../../assistant/tools/registry.js', () => ({
   buildProjectToolset: () => ({ tools: [], execute: async () => ({ content: [] }) }),
 }));
 
-vi.mock('../../chat/tools/external-mcp.js', () => ({
+vi.mock('../../assistant/tools/external-mcp.js', () => ({
   buildExternalMcpToolsets: async () => ({ toolsets: [], dispose: async () => {} }),
 }));
 
@@ -150,7 +150,7 @@ describe('connection-manager escalation wiring', () => {
       }),
     );
     expect(ac.client.sendMessage).toHaveBeenCalledWith('room-1', 'ACK:Babo', undefined);
-    // The escalate branch returns before reaching the output-guard verify step.
+    // cm:why the escalate branch returns before the output-guard verify step, so this reply never reaches the screener
     expect(screenStakeholderReply).not.toHaveBeenCalled();
   });
 

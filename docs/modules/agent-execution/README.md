@@ -31,7 +31,7 @@ flowchart LR
 | The run session a master opens over a group of issues | `core/src/devices/run-session.ts`, `packages/runner/crates/forge-runner-core/src/runner/run_session.rs` |
 | Job preparation and event stream | `core/src/jobs/`, `schema.ts:jobEvents`, `schema.ts:jobEventKinds` |
 | Agent sessions and their inbox | `core/src/agent-sessions/`, `schema.ts:agentSessions`, `schema.ts:sessionInbox` |
-| Interactive chat (not a pipeline job) | `core/src/chat/`, `core/src/chat-logs/` |
+| Interactive chat (not a pipeline job) | `core/src/assistant/`, `core/src/chat-logs/` |
 | Transport | `core/src/ws/` |
 | Worktree and git work | `core/src/git/` |
 | Git credential for a checkout | `core/src/git/github-app-credential.ts` (mint), `packages/runner` `cmd/git_credential.rs` (helper) |

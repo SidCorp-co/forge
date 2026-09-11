@@ -58,8 +58,8 @@ the citations go in the same commit.
 | `retry-context-continuity.md` | L1–L3 shipped 2026-08-26 (`da2a2189` core, `948d50f6`+`c1080aa9` runner). L4 (hold instead of rotating into exhausted accounts) is the only residual, and its own body says it belongs to ISS-862's scope rather than to a separate proposal | git history · L4 → ISS-862 |
 | `mcp-principal-agency.md` | The decision it was blocked on was made 2026-08-25 (attribution follows the token's owner; the ISS-812 guard's scope is unchanged) and shipped in `aba0b10d` | `agency` on `McpPrincipal` + `principalActor()` in `mcp/tools/lib.ts` |
 | `fan-out-scope.md` | The fix belongs to archmap, which is its own repo now — a Forge proposal describing another repo's work is filed in the wrong tracker | [SidCorp-co/archmap#1](https://github.com/SidCorp-co/archmap/issues/1) |
-| `rocketchat-bot.md` | Lane A shipped + live; its own body carried three SHIPPED markers (ISS-609, ISS-671/672/674/675/687/727) while this table said otherwise | `packages/core/src/chat/providers/` |
-| `chat-provider-standardization.md` | P1 shipped 2026-07-02 in `934dab4a`, the commit naming its own ISS-604; P2 2026-07-03 (ISS-609); P3 write tools live in `chat/tools/` | `packages/core/src/chat/providers/` |
+| `rocketchat-bot.md` | Lane A shipped + live; its own body carried three SHIPPED markers (ISS-609, ISS-671/672/674/675/687/727) while this table said otherwise | `packages/core/src/assistant/providers/` |
+| `chat-provider-standardization.md` | P1 shipped 2026-07-02 in `934dab4a`, the commit naming its own ISS-604; P2 2026-07-03 (ISS-609); P3 write tools live in `assistant/tools/` | `packages/core/src/assistant/providers/` |
 | `pm-lane-audit.md` | An audit whose decision was consumed — ISS-795 and its step 5 (ISS-801) both closed and merged 2026-08-08/09 | git history |
 | `cost-aware-model-routing.md` | Schema + cost rollup shipped; routing never written in the four months after 2026-04-20 | rollup: `pipeline_run_step_durations` (root `CLAUDE.md`) |
 | `mcp-project-scoped-tokens.md` | Design capture 2026-06-16 (ISS-496); no trace in the tree since | git history |

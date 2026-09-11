@@ -4,8 +4,8 @@
  * is agentic — the model gets `rocketchat_history` (50 msgs/call, 3 calls/turn) and decides itself.
  */
 
-import type { ChatTool } from '../../chat/providers/types.js';
-import { type ChatToolset, toolError } from '../../chat/tools/mcp-adapter.js';
+import type { ChatTool } from '../../assistant/providers/types.js';
+import { type ChatToolset, toolError } from '../../assistant/tools/mcp-adapter.js';
 import type { CallToolResult } from '../../mcp/tool-result.js';
 import {
   buildMessagePermalink,
@@ -63,7 +63,7 @@ export function formatConversationLines(
   }
   if (lines.length === 0) return null;
   let block = lines.join('\n');
-  // Keep the TAIL when over cap — the most recent lines matter most.
+  // cm:guard keep the TAIL, never the head — the newest lines are the ones the mention is about, so slicing the other way hands the model a transcript that stops before the question it was asked
   if (block.length > BLOCK_CHAR_CAP)
     block = `… [older messages truncated]\n${block.slice(-BLOCK_CHAR_CAP)}`;
   return block;

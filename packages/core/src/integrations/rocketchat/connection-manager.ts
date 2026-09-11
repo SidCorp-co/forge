@@ -6,12 +6,12 @@
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import pg from 'pg';
-import { type ExternalChatTurnResult, runExternalChatTurn } from '../../chat/external-chat.js';
-import { ESCALATE_TOOL_NAME } from '../../chat/tools/escalate.js';
+import { type ExternalChatTurnResult, runExternalChatTurn } from '../../assistant/external-chat.js';
+import { ESCALATE_TOOL_NAME } from '../../assistant/tools/escalate.js';
 import {
   buildExternalMcpToolsets,
   type ExternalMcpToolsets,
-} from '../../chat/tools/external-mcp.js';
+} from '../../assistant/tools/external-mcp.js';
 import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
 import { integrationConnections, organizations, projects } from '../../db/schema.js';
@@ -209,7 +209,7 @@ class RocketChatConnectionManager {
       .limit(1);
     if (!conn?.active) return;
 
-    // Single-owner: hold a session advisory lock on a dedicated connection.
+    // cm:guard single-owner: a DEDICATED pg connection, never the pooled `db` — `pg_try_advisory_lock` is SESSION-scoped, so the lock binds to THIS backend session and is released only by an explicit unlock or by that session ending. Taken on a pooled checkout it goes back into the pool still attached, where this manager can no longer release it and no other instance can take it: the room then has a lock with no owner instead of one owner
     const lockClient = new pg.Client({ connectionString: env.DATABASE_URL });
     await lockClient.connect();
     const res = await lockClient.query<{ ok: boolean }>(

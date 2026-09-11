@@ -8,12 +8,12 @@
  * have to authenticate.
  */
 
-import { buildEscalationToolset } from '../../chat/tools/escalate.js';
-import { type ChatToolset, mergeToolsets } from '../../chat/tools/mcp-adapter.js';
-import { buildChatToolContext } from '../../chat/tools/principal.js';
-import { buildProjectToolset } from '../../chat/tools/registry.js';
-import { withTurnImages } from '../../chat/tools/turn-images.js';
-import type { ImageResolver, TurnImage } from '../../chat/vision.js';
+import { buildEscalationToolset } from '../../assistant/tools/escalate.js';
+import { type ChatToolset, mergeToolsets } from '../../assistant/tools/mcp-adapter.js';
+import { buildChatToolContext } from '../../assistant/tools/principal.js';
+import { buildProjectToolset } from '../../assistant/tools/registry.js';
+import { withTurnImages } from '../../assistant/tools/turn-images.js';
+import type { ImageResolver, TurnImage } from '../../assistant/vision.js';
 import { logger } from '../../logger.js';
 import { buildRocketChatHistoryToolset } from './context.js';
 import {

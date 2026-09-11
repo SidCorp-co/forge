@@ -14,6 +14,9 @@
     "core-app-config": [
       "packages/core/src/app-config/**"
     ],
+    "core-assistant": [
+      "packages/core/src/assistant/**"
+    ],
     "core-auth": [
       "packages/core/src/auth/**"
     ],
@@ -22,9 +25,6 @@
     ],
     "core-branches": [
       "packages/core/src/branches/**"
-    ],
-    "core-chat": [
-      "packages/core/src/chat/**"
     ],
     "core-chat-logs": [
       "packages/core/src/chat-logs/**"

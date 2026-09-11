@@ -4,7 +4,7 @@
  *
  * - `userId` — authenticated owner; null for widget traffic.
  * - The audit key for `chat_logs.userKey` is **not** stored on the session row;
- *   it is passed through `runChatTurn` per turn (see `chat/run-turn.ts`).
+ *   it is passed through `runChatTurn` per turn (see `assistant/run-turn.ts`).
  */
 
 import { eq } from 'drizzle-orm';
