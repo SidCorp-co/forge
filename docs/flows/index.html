@@ -39,8 +39,18 @@
       backfills that flow in the same change. Nobody is assigned to draw the missing ones.</li>
   <li><b>One flow per file</b>, named <code>&lt;domain&gt;-&lt;flow&gt;.html</code>, and listed in the
       table below in the same commit. A file not in the table is unreachable and counts as missing.</li>
-  <li><b>Show the mechanism.</b> The test is whether a reader who has not seen the code can say what
-      happens when it goes wrong. A diagram that only names the components has not earned its file.</li>
+  <li><b>A flow states the RULE, never the code that carries it.</b> Who owes the next move, what
+      each party may and may not do, what the system refuses and what the person is told. A function
+      name, a file path, a SQL clause, a migration number or a test file is the implementation of the
+      rule — it belongs at the foot of the page as a pointer, never inside the figure, the caption or
+      a table cell. The rule outlives three rewrites of the code under it; a page written against
+      symbol names is stale the first time somebody renames one, and stale in silence.</li>
+  <li><b>Show the mechanism, in the business's own words.</b> The test is whether a reader who has
+      never opened the repository can say what happens when it goes wrong, and what they should do
+      about it. A diagram that only names the components has not earned its file.</li>
+  <li><b>Cite a measurement, not a changelog.</b> A number that proves the rule earns its line (how
+      many rows, how many minutes, how many projects). An account of which issue changed what, in
+      which order, does not — that history already lives in the tracker and the changelog.</li>
   <li><b>Pick the form from the question</b> — sequence when the point is who talks to whom and in
       what order; state machine when the point is which transitions are legal; flowchart when the
       point is where a decision forks. Inline SVG or a <code>&lt;pre class="mermaid"&gt;</code> block,
