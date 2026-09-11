@@ -29,11 +29,12 @@
   .arrowbad { stroke:var(--bad); stroke-width:1.2; fill:none; marker-end:url(#b); stroke-dasharray:4 3; }
   .board { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; margin:1rem 0; overflow-x:auto; }
   .board svg { max-width:none !important; height:auto; }
+  .cap { color:var(--mut); font-size:13.5px; max-width:52rem; }
 </style>
 <main>
 <h1>lifecycle-pipeline</h1>
-<p class="sub">How a run and its jobs open, advance and close without orphans — what closes the
-run when the jobs are already done, and what stops it closing while a deploy is unproven.</p>
+<p class="sub">What closes a run when its jobs are already done, and what stops it closing while
+a deploy is unproven.</p>
 
 <h2>The invariant, in both directions</h2>
 <div class="rule">
@@ -75,90 +76,57 @@ flowchart TD
 <p><code>held</code> is a deliberate fourth job shape and is <b>not</b> an orphan.</p>
 
 <h2>Inverse — the jobs finished first</h2>
-<p>Nothing runs when the LAST job of an open run goes terminal, so the run needs a detector rather
-than a hook. That detector is a sweeper pass; the terminal write itself still goes through the same
-<code>closeRun</code> SSOT, so there is never a second writer of a run's terminal status.</p>
-<pre>
-  pipeline-sweeper tick (pipeline/sweeper.ts)
-        |
-        |  ... reapOrphanedOneShotRuns    run has NO jobs, no live session
-        |  ... reapOrphanedIssueRuns      backing issue is closed / dropped
-        v
-  runs-concluded.ts reapConcludedRuns
-        |
-        |  admits a run only when ALL of:
-        |    status = 'running' or 'paused'
-        |    it HAS at least one job     (job-less runs go to reapJoblessRuns below)
-        |    no job in queued | dispatched | running | held
-        |    no job touched within RESULT_QUIET_MINUTES
-        |    if 'paused': no agent_session in queued | running | idle
-        v
-  outcome := last job's status     done -> completed | failed -> failed | cancelled -> cancelled
-        |
-        v
-  runs.ts closeRun(runId, outcome)  -->  cascadeCancelChildJobs  (a no-op: nothing is active)
+<p class="cap">Nothing fires when the LAST job of an open run goes terminal, so this half is a
+detector rather than a hook — but the write still goes through the same <code>closeRun</code>, so a
+run's terminal status never has a second writer.</p>
+<div class="board"><pre class="mermaid">
+flowchart TD
+  T["pipeline-sweeper tick"] --> O1["reapOrphanedOneShotRuns<br/>no jobs, no live session"]
+  T --> O2["reapOrphanedIssueRuns<br/>backing issue closed / dropped"]
+  T --> C["reapConcludedRuns"]
+  T --> J["reapJoblessRuns — kind='issue' only"]
+  C --> CG{"running|paused · HAS a job ·<br/>no job queued/dispatched/running/held ·<br/>none touched within RESULT_QUIET_MINUTES ·<br/>if paused: no session queued/running/idle"}
+  CG -->|admits| CO["outcome := LAST job's status<br/>done→completed · failed→failed · cancelled→cancelled"]
+  J --> JG{"running|paused · NO jobs at all ·<br/>started_at older than RESULT_QUIET_MINUTES ·<br/>no session queued/running/idle"}
+  JG -->|admits| JO["outcome := from the run's sessions<br/>completed &amp; no failure→completed ·<br/>any failure→failed · no session→cancelled"]
+  CO --> W["runs.ts closeRun(runId, outcome)"]
+  JO --> W
+  W --> X["cascadeCancelChildJobs — a no-op here"]
+</pre></div>
 
-
-  runs-concluded.ts reapJoblessRuns          (the ISSUE-kind job-less shape)
-        |
-        |  admits a run only when ALL of:
-        |    kind = 'issue'              (system/interactive go to reapOrphanedOneShotRuns)
-        |    status = 'running' or 'paused'
-        |    NO jobs at all
-        |    started_at older than RESULT_QUIET_MINUTES
-        |    no agent_session in queued | running | idle
-        v
-  outcome := from the run's sessions   a completed one and no failure -> completed
-                                       any failure                    -> failed
-                                       no session at all              -> cancelled
-        |
-        v
-  runs.ts closeRun(runId, outcome)
-</pre>
-
-<p>The <code>paused</code> arm is narrow on purpose. An operator's hold is a decision no sweeper may
-undo, so what admits a paused run is not the pause itself but the proof that nothing is left to
-resume into: every job terminal, an hour of silence, and no session beating. Widen it and the pass
-starts cancelling deliberate holds.</p>
+<div class="rule">The <code>paused</code> arm is narrow on purpose — an operator's hold is a
+decision no sweeper may undo, so what admits it is not the pause but the proof there is nothing to
+resume into. Widen it and the pass starts cancelling deliberate holds.</div>
 
 <h2>The deploy gate — the one thing that can refuse a close</h2>
-<p>Every close above asks one question first, and only about <code>completed</code>: does this run
-carry a deploy nobody has heard back from? Before ISS-922 nothing asked. A release run closed
-<code>completed</code> on the evidence that an agent had <i>asked</i> Coolify to deploy — measured
-2026-09-06, 50 runs sat at <code>status='completed'</code> while their own <code>current_step</code>
-still read <code>release.deploy.in_flight</code>, and <code>release.deploy.done</code> had been
-stamped zero times fleet-wide.</p>
-<pre>
-  tryDispatchCoolifyRelease           coolify/adapter.ts                coolify/confirm.ts
-        |                                    |                                |
-   open a HOLD on the run  --enqueue-->  deploy each target  --enqueue-->  poll GET /deployments/{uuid}
-   (deploy-confirmations.ts)             one hold per target                     |
-        |                                                          +-------------+-------------+
-        |                                                          |             |             |
-        |                                                     succeeded       failed      still running
-        |                                                          |             |             |
-        |                                                     mark hold     mark hold     re-poll until
-        |                                                          |             |         deadlineAt (30 min)
-        v                                                          v             v             |
-  closeRun / closeOpenRunForIssue  ---- asks ---->  resolveDeployGate(holds)  <----------------+
-        |                                                          |
-        |                          +-------------------------------+-------------------------------+
-        |                          |                               |                               |
-        v                     verdict=clear                  verdict=defer                   verdict=failed
-   writes the terminal      no deploy, or every         a deploy is genuinely in           Coolify said failed,
-   status as asked          target confirmed            flight: NOTHING is written,        or the deadline passed
-                                                        the run stays running at           -> the run closes
-                                                        release.deploy.in_flight (k/n)        <b>failed</b>, naming
-                                                        and confirm.ts performs the           the deploy
-                                                        close when the last hold lands
-</pre>
-<p>Bounded by construction: every hold carries its own <code>deadlineAt</code>, 30 minutes, chosen
-below <code>RESULT_QUIET_MINUTES</code> (60) so the gate always resolves before the sweeper's own
-window opens and two mechanisms never decide one run. A deferral therefore cannot leak a run — past
-the deadline the gate itself answers <code>failed</code>, through the same single writer.</p>
-<p>The hold write is refused on a run that is already terminal. A deploy asked for after its run
-closed cannot be witnessed by that run; <code>release-coolify.ts</code> reports it at ERROR level
-rather than stamping the run with a deploy substep it cannot back up.</p>
+<p class="cap">Every close above asks this first, and only about <code>completed</code>: does the
+run carry a deploy nobody has heard back from? Before ISS-922 nothing asked — measured 2026-09-06,
+50 runs sat <code>completed</code> while their own <code>current_step</code> still read
+<code>release.deploy.in_flight</code>, and <code>release.deploy.done</code> had never been stamped
+fleet-wide.</p>
+<div class="board"><pre class="mermaid">
+flowchart TD
+  A["tryDispatchCoolifyRelease<br/>opens a HOLD on the run"] --> B["coolify/adapter.ts<br/>deploy each target — one hold per target"]
+  B --> C["coolify/confirm.ts<br/>poll GET /deployments/{uuid}"]
+  C -->|succeeded| M1["mark hold"]
+  C -->|failed| M2["mark hold"]
+  C -->|still running| C2["re-poll until deadlineAt — 30 min"]
+  C2 --> C
+  M1 --> G{"resolveDeployGate(holds)"}
+  M2 --> G
+  A --> R["closeRun / closeOpenRunForIssue"] --> G
+  G -->|clear| V1["writes the terminal status as asked<br/>no deploy, or every target confirmed"]
+  G -->|defer| V2["NOTHING is written. The run stays running at<br/>release.deploy.in_flight (k/n); confirm.ts closes it<br/>when the last hold lands"]
+  G -->|failed| V3["Coolify said failed, or the deadline passed —<br/>the run closes FAILED, naming the deploy"]
+  classDef bad fill:#f7ecef,stroke:#8a3b52,color:#5c2436;
+  class V3 bad;
+</pre></div>
+<div class="rule">Every hold carries a 30-minute <code>deadlineAt</code>, below
+<code>RESULT_QUIET_MINUTES</code> (60), so the gate always resolves before the sweeper's window opens
+and two mechanisms never decide one run. A deferral cannot leak a run: past the deadline the gate
+answers <code>failed</code> through that same single writer. And the hold write is refused on an
+already-terminal run — a deploy asked for after its run closed cannot be witnessed by it, so
+<code>release-coolify.ts</code> logs ERROR rather than stamping a substep it cannot back up.</div>
 
 <h2>When it goes wrong</h2>
 <table>
