@@ -201,11 +201,7 @@ projectRoutes.post(
 
 projectRoutes.get('/', async (c) => {
   const userId = c.get('userId');
-  // ISS-353 — archived projects are excluded by default so existing callers
-  // (switcher, dashboard) don't see them. `?archived=1` includes them, for an
-  // explicit "Archived" view. `archivedAt` must be in the select projection or
-  // the UI can't render archived state (see memory
-  // `web:useProjectBySlug-omits-branch-fields`).
+  // cm:guard `archivedAt` must stay in the select projection whatever `?archived=1` does — the flag decides which ROWS come back, the projection decides whether the UI can tell an archived one apart, and dropping it renders every row as live (ISS-353).
   const includeArchived = ['1', 'true'].includes((c.req.query('archived') ?? '').toLowerCase());
   // Visible = explicit membership (any role) OR org owner/admin on the
   // project's org (implicit admin) — same rule as lib/authz.ts.
@@ -556,11 +552,7 @@ projectRoutes.post(
     const access = await loadProjectAccess(id, userId);
     assertOrgRoleOnProject(access, 'admin', 'org admin required');
 
-    // `coalesce(archived_at, now())` keeps the ORIGINAL archive timestamp when
-    // re-archiving an already-archived project (idempotent), and only stamps
-    // the clock on the first archive. `now()` is a SQL literal, NOT an
-    // interpolated JS Date — an untyped Date bind 500s on a timestamptz column
-    // (memory `core/drizzle-date-param-needs-timestamptz-cast`).
+    // cm:guard `now()` here is raw SQL, never an interpolated JS `Date` — an untyped Date bind 500s against a timestamptz column; the `coalesce` is what keeps a re-archive idempotent by preserving the FIRST timestamp.
     const [updated] = await db
       .update(projects)
       .set({ archivedAt: sql`coalesce(${projects.archivedAt}, now())` })

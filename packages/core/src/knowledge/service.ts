@@ -57,8 +57,7 @@ export interface UpsertKnowledgeResult {
   truncated: boolean;
 }
 
-// MAX_RESPONSE_CHARS guards MCP list responses from token overflow (see
-// mcp-list-tools-need-body-free-projection knowledge note).
+// cm:why an MCP list response is spent from the caller's context window, so the cap is a token budget rather than a payload limit — raising it makes every list cost more of the window it is read in.
 const MAX_RESPONSE_CHARS = 38_000;
 
 export async function upsertKnowledgeEntry(

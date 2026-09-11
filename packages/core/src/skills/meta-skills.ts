@@ -4,7 +4,7 @@
  * ISS-739), applied to EVERY project on a device with no per-project
  * override. This is a distinct concept from `MANAGED_META_SKILLS` in
  * `./effective.ts` (the live MCP-prompt reference channel, no longer called
- * "meta" per project policy `skill-taxonomy-meta-vs-per-project`).
+ * "meta").
  *
  * A name here is reserved: a user cannot create/adopt/rename a per-project
  * skill to shadow it. Adding a name is the entire change.
