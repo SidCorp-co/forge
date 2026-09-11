@@ -321,3 +321,34 @@ describe('relation expansion', () => {
     expect(res.expanded).toBe(false);
   });
 });
+
+describe('stale demotion', () => {
+  // cm:why measured on the live forge-dev store 2026-09-12 — a hybrid search returned 8 hits, 4 carrying `staleSince`, and the row the reranker put FIRST had been superseded three months earlier; a staleness badge that cannot touch the order is one nobody reads
+  const staleHit = (id: string) => ({ ...hit(id), stale: true, supersededBy: 'ISS-942' });
+
+  it('moves a stale hit below every fresh one and reports how many moved', async () => {
+    searchMemories.mockResolvedValueOnce([staleHit('stale-1'), hit('fresh-1')]);
+    keywordSearchMemories.mockResolvedValueOnce([staleHit('stale-1'), hit('fresh-2')]);
+
+    const res = await agentHybrid(8);
+
+    expect(res.hits.map((h) => h.id)).toEqual(['fresh-1', 'fresh-2', 'stale-1']);
+    expect(res.demotedStale).toBe(1);
+  });
+
+  it('demotes rather than drops — a result set that is ALL stale still answers', async () => {
+    searchMemories.mockResolvedValueOnce([staleHit('s1'), staleHit('s2')]);
+    keywordSearchMemories.mockResolvedValueOnce([]);
+
+    const res = await agentHybrid(8);
+
+    expect(res.hits.map((h) => h.id)).toEqual(['s1', 's2']);
+    expect(res.demotedStale).toBe(2);
+  });
+
+  it('says nothing when no hit is stale — the field is absent, not zero', async () => {
+    const res = await agentHybrid(8);
+    expect(res.hits.length).toBeGreaterThan(0);
+    expect(res.demotedStale).toBeUndefined();
+  });
+});

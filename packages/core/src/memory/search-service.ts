@@ -64,6 +64,8 @@ export interface MemorySearchResult {
   rerankHoldout?: true;
   /** True when rows carrying `via` were appended after the ranked hits. */
   expanded: boolean;
+  /** How many retrieved hits were moved below the fresh ones because they carry `staleSince`. Absent when none were. */
+  demotedStale?: number;
 }
 
 /** What one search did beyond retrieving — the fields both the response and the analytics row carry. */
@@ -73,6 +75,16 @@ interface SearchOutcome {
   rerankHoldout?: true;
   expanded: boolean;
   expandedCount?: number;
+  demotedStale?: number;
+}
+
+// cm:guard a stale hit is DEMOTED, never dropped — it may be the only row that answers the query, and a search that silently returns nothing is worse than one that answers late. The reorder is REPORTED (`demotedStale`) because a boundary that changes what the caller sees and says nothing is indistinguishable from one that never ran.
+// cm:guard this reorders the hits ALREADY retrieved; it does not fetch deeper, so a fresh row that ranked below the cut is still not returned. Fixing that means over-fetching, which is a cost decision nobody has taken — do not describe this as "fresh results win", it is "a superseded row no longer leads".
+function demoteStale(hits: MemoryHit[]): { hits: MemoryHit[]; demoted: number } {
+  const fresh = hits.filter((h) => !h.stale);
+  if (fresh.length === hits.length) return { hits, demoted: 0 };
+  const stale = hits.filter((h) => h.stale);
+  return { hits: [...fresh, ...stale], demoted: stale.length };
 }
 
 function rerankEligible(input: RunMemorySearchInput, flags: RetrievalFlags): boolean {
@@ -123,7 +135,7 @@ async function retrieve(
     };
   } catch (err) {
     if (!(err instanceof EmbeddingUnavailableError) || requested !== 'hybrid') throw err;
-    // Keyword needs no embedding — serve degraded results instead of 503.
+    // cm:why only `hybrid` degrades: its keyword arm needs no embedding, so a caller asking for it gets answers with `degraded: true` rather than a 503. `semantic` has no second arm to fall back to and must still throw — quietly answering a similarity query with ts_rank scores would hand every threshold caller (knowledge dedup at > 0.8) numbers on a different scale.
     logger.warn(
       { projectId: input.projectId, err: (err as Error).message },
       'memory.search: embeddings unavailable, hybrid degraded to keyword',
@@ -173,6 +185,10 @@ export async function runMemorySearch(input: RunMemorySearchInput): Promise<Memo
     hits = hits.slice(0, topK);
   }
 
+  const demotion = demoteStale(hits);
+  hits = demotion.hits;
+  if (demotion.demoted > 0) outcome.demotedStale = demotion.demoted;
+
   if (flags.expandRelations && hits.length > 0) {
     const appended = await expand(input, hits, topK);
     if (appended.length > 0) {
@@ -208,6 +224,7 @@ export async function runMemorySearch(input: RunMemorySearchInput): Promise<Memo
     reranked: outcome.reranked,
     ...(outcome.rerankHoldout ? { rerankHoldout: true as const } : {}),
     expanded: outcome.expanded,
+    ...(outcome.demotedStale ? { demotedStale: outcome.demotedStale } : {}),
   };
 }
 
