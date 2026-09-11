@@ -2,7 +2,7 @@
 <meta charset="utf-8">
 <meta name="flow-module" content="lifecycle-pipeline">
 <meta name="flow-answers" content="The fourteen statuses an issue may hold, which hops are legal, and why nothing refuses an illegal one today">
-<title>Flow · issue-status-lifecycle — fourteen statuses, and which hops are legal</title>
+<title>Flow · issue-status-lifecycle</title>
 <style>
   :root { --fg:#1c1a17; --mut:#6b645c; --faint:#9a9288; --line:#ddd7cf; --bg:#fbfaf8; --panel:#fff;
           --acc:#1f6f4a; --accbg:#e6efe9; --bad:#8a3b52; --badbg:#f6ecef; --new:#5b3a8e; --newbg:#efeaf6; }
@@ -46,8 +46,9 @@
   .tabs button { appearance:none; border:0; background:none; padding:.6rem .85rem; cursor:pointer;
                  font:600 13px inherit; color:var(--mut); border-bottom:2px solid transparent; }
   .tabs button[aria-selected=true] { color:var(--fg); border-bottom-color:var(--acc) }
-  .pane { padding:1.2rem 1.4rem 2rem; }
-  .pane[hidden] { display:none }
+  .pane { padding:1.4rem 1.4rem 1.8rem; border-top:1px solid var(--line); }
+  .pane h2 { font:600 12.5px ui-sans-serif,system-ui,sans-serif; text-transform:uppercase;
+             letter-spacing:.05em; color:var(--mut); margin:0 0 .8rem; }
 
   table { border-collapse:collapse; width:100%; font-size:13.5px; }
   th,td { text-align:left; padding:.45rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
@@ -232,14 +233,8 @@
 </aside>
 </div>
 
-<nav class="tabs" role="tablist">
-  <button role="tab" aria-selected="true"  aria-controls="mx">Transition matrix</button>
-  <button role="tab" aria-selected="false" aria-controls="gp">Where it goes wrong</button>
-  <button role="tab" aria-selected="false" aria-controls="rt">Retired</button>
-  <button role="tab" aria-selected="false" aria-controls="dn">Do not</button>
-</nav>
-
-<section class="pane" id="mx" role="tabpanel">
+<section class="pane">
+<h2>Transition matrix</h2>
 <p class="cap" style="margin:0 0 .8rem"><b>Lit = legal; every blank is a refusal once the table is the
 gate.</b> Purple = a park edge. Today nothing refuses any of it —
 <code>canTransitionFree</code> permits any non-<code>draft</code> hop to any non-<code>draft</code>
@@ -267,57 +262,50 @@ status, and <code>transitions</code> is read only by prompt generation and the U
 </div>
 </section>
 
-<section class="pane" id="gp" role="tabpanel" hidden>
+<section class="pane">
+<h2>Where it goes wrong</h2>
 <table>
 <thead><tr><th>Gap</th><th>Where</th><th>What it costs</th></tr></thead>
 <tbody>
-<tr><td>Nothing refuses a hop</td><td class="n">canTransitionFree</td><td>It refuses two things only: <code>draft</code> as a target, and a <code>draft</code> leaving outside <code>DRAFT_EXIT_TARGETS</code>. So <code>releasing → open</code> and <code>closed → in_progress</code> both succeed, and the map that would call them illegal is read by prompt generation and the UI picker — a retired ladder teaching itself to agents and operators</td></tr>
-<tr><td>A park forgets the rung it left</td><td class="n">pipeline/answer-resume.ts</td><td>Sends an answered <code>needs_info</code> to <code>open</code> <b>unconditionally</b>, because nothing records where the park came from. A park taken at <code>awaiting_release</code> is merged work; pushing it to <code>open</code> races a fresh agent onto shipped code. <b>Step 5 — making the table the gate — cannot land until a park records its origin</b></td></tr>
-<tr><td>Rows stranded on retired statuses</td><td class="n">31 rows · 10 projects</td><td>Measured 2026-09-11 (433 on 2026-09-09). Heaviest sid-desk 9, codemap 6, sidpeak 5. Sidpeak holds five at <code>approved</code> — three <code>critical</code>, already merged — while its config names no <code>approved</code>, so no pool offers them. Half fixed: <code>approved</code> is a rung again and IS pool-admissible, but each project must declare it in <code>poolBacklog.statuses</code> itself</td></tr>
-<tr><td>An aborted release waits forever</td><td class="n">releasing → reopen</td><td>Does not self-heal, deliberately — a failed release re-driven automatically is how a half-landed batch becomes two. The cost is that a fleet nobody watches accumulates aborted releases at <code>reopen</code></td></tr>
-<tr><td>Neither new rung is a driver status</td><td class="n">BACKLOG_ADMISSIBLE_STATUSES</td><td>On purpose: that set is <code>issueStatuses</code> minus <code>AUTONOMOUS_DRIVER_STATUSES</code>, so adding <code>confirmed</code>/<code>approved</code> there would take them OFF the backlog menu — and the backlog is how a dead session at either rung is recovered. It would also stop every project naming them: an inadmissible element answers <code>invalid_value</code> for the <b>whole</b> <code>pipelineConfig</code>, so <code>cfg = null</code>, <code>isAutonomous</code> false, no dispatch, in silence</td></tr>
+<tr><td>Nothing refuses a hop</td><td class="n">canTransitionFree</td><td>Refuses two things: <code>draft</code> as a target, and a <code>draft</code> leaving outside <code>DRAFT_EXIT_TARGETS</code>. <code>releasing → open</code> and <code>closed → in_progress</code> both succeed, and the map that would call them illegal is read only by prompt generation and the UI picker</td></tr>
+<tr><td>A park forgets the rung it left</td><td class="n">pipeline/answer-resume.ts</td><td>Sends an answered <code>needs_info</code> to <code>open</code> <b>unconditionally</b> — a park taken at <code>awaiting_release</code> is merged work, and <code>open</code> races a fresh agent onto shipped code. <b>Making the table the gate cannot land until a park records its origin</b></td></tr>
+<tr><td>Rows stranded on retired statuses</td><td class="n">31 rows · 10 projects</td><td>Measured 2026-09-11 (433 on 09-09). sid-desk 9, codemap 6, sidpeak 5 — sidpeak's five sit at <code>approved</code>, three <code>critical</code> and already merged, while its config names no <code>approved</code>. Half fixed: the rung is pool-admissible again, but each project must declare it in <code>poolBacklog.statuses</code></td></tr>
+<tr><td>An aborted release waits forever</td><td class="n">releasing → reopen</td><td>Deliberately no self-heal — a failed release re-driven automatically is how a half-landed batch becomes two. The cost: an unwatched fleet accumulates aborted releases at <code>reopen</code></td></tr>
+<tr><td>Neither new rung is a driver status</td><td class="n">BACKLOG_ADMISSIBLE_STATUSES</td><td>On purpose — the set is <code>issueStatuses</code> minus <code>AUTONOMOUS_DRIVER_STATUSES</code>, so adding them takes them OFF the backlog menu, which is how a dead session at either rung is recovered. It would also stop every project naming them: an inadmissible element answers <code>invalid_value</code> for the <b>whole</b> config — <code>cfg = null</code>, no dispatch, in silence</td></tr>
 </tbody></table>
-<div class="note"><b>FIXED — one status used to mean two things during a release.</b> An issue stood at
-<code>released</code> for the whole batch while the in-flight fact lived only in
-<code>release_batch_run_id</code>, so the status read as both <i>waiting to be pressed</i> and
-<i>being released now</i>. 16 <code>release_batch</code> jobs have run, <b>4 failed and 2
-cancelled</b> — exactly where the two meanings diverge. <code>releasing</code> is now the middle
-(migration 0227) and <code>awaiting_release</code> the waiting rung (0228).</div>
+
 </section>
 
-<section class="pane" id="rt" role="tabpanel" hidden>
+<section class="pane">
+<h2>Retired, and renamed</h2>
 <table>
 <thead><tr><th>Status</th><th>Rows</th><th>Replaced by</th></tr></thead>
 <tbody>
 <tr><td><code class="gone">clarified</code></td><td class="n">1</td><td>nothing — it recorded that a phase inside one session had finished, which the handoff already says</td></tr>
-<tr><td><code class="gone">tested</code></td><td class="n">7 resting<br>124 hops/24h</td><td><code>testing</code>, the same rung under the name the flow uses. A <b>transit</b> status, not a parking one — it has exits (49 to <code>awaiting_release</code>, 19 to <code>closed</code>), so it strands nothing and simply writes a name that no longer exists. The one retired status still being <i>written</i>: forge-plugin's <code>ORDER</code> has no <code>testing</code> and lands work here, and one project names it in <code>poolBacklog.statuses</code> — dropping it from the enum moves both in the same change (ISS-1022)</td></tr>
+<tr><td><code class="gone">tested</code></td><td class="n">7 resting<br>124 hops/24h</td><td><code>testing</code>. Transit, not parking — it has exits (49 to <code>awaiting_release</code>, 19 to <code>closed</code>), so it strands nothing. The one retired status still being <i>written</i>: forge-plugin's <code>ORDER</code> lands work here and one project names it in <code>poolBacklog.statuses</code>, so dropping it from the enum moves both in one change (ISS-1022)</td></tr>
 <tr><td><code class="gone">waiting</code></td><td class="n">30 · 9 projects</td><td><code>needs_info</code>. An agent's <code>waiting</code> is already rewritten there (<code>autonomous-park.ts</code>, ISS-886)</td></tr>
-<tr><td><code>released</code> → <code>awaiting_release</code></td><td class="n">80 · 13 projects</td><td><b>renamed, not retired</b> (migration 0228). The rung stays; what left is its second job as a <i>trigger</i>. The old lane had no button, so moving an issue to <code>released</code> <i>was</i> how a release started — a trigger standing in for an action, in the past tense, for a thing that had not happened. The board had called this rung <code>awaiting_release</code> since ISS-970; only the kernel status was lying</td></tr>
-<tr><td><code>confirmed</code> <code>approved</code></td><td class="n">2 · 2 projects<br>9 · 5 projects</td><td><b>not retired — restored as rungs</b> 2026-09-11 (ISS-976). Cut on 2026-09-10 against a pipeline where one agent walked all four; the wave model splits triage from execution, which is the party boundary the test asks for. forge-plugin's <code>ORDER</code> never stopped naming them: <code>open → confirmed</code> succeeded on ISS-952 with nothing warning, and the row sat invisible until a person moved it</td></tr>
+<tr><td><code>released</code> → <code>awaiting_release</code></td><td class="n">80 · 13 projects</td><td><b>renamed, not retired</b> (migration 0228). The rung stays; what left is its second job as a <i>trigger</i> — with no button, moving an issue to <code>released</code> <i>was</i> how a release started. The board had said <code>awaiting_release</code> since ISS-970; only the kernel status was lying</td></tr>
+<tr><td><code>confirmed</code> <code>approved</code></td><td class="n">2 · 2 projects<br>9 · 5 projects</td><td><b>not retired — restored as rungs</b> 2026-09-11 (ISS-976). Cut a day earlier against a pipeline where one agent walked all four; the wave model splits triage from execution. forge-plugin's <code>ORDER</code> never stopped naming them — <code>open → confirmed</code> succeeded on ISS-952 with nothing warning, and the row sat invisible until a person moved it</td></tr>
 <tr><td><code>developed</code> <code>testing</code></td><td class="n">1 · 0</td><td><b>not retired — restored as rungs</b> 2026-09-10. Both are places a different party owes the next move</td></tr>
 </tbody></table>
-<div class="note plan"><b><code>waiting</code> costs more than its 30 rows.</b> It is the only status
-carrying a second column — <code>waitingKind</code> — with a refusal family around it
-(<code>WAITING_KIND_REQUIRED</code>, <code>WAITING_KIND_NOT_APPLICABLE</code>) named <b>by code</b> in
-<code>guides/registry.ts</code> and <code>prompt/facts/registry.ts</code>, which is text an agent
-reads. Read from Postgres rather than MCP: <b>24 <code>needs_decision</code>, 6
-<code>needs_resource</code></b>. The 24 lose nothing. Of the six, five are real external dependencies
-— an unpublished npm package, two people, unmeasured production data, and a GitLab push credential
-the runner does not have. <b>No amount of deciding produces a push credential</b>, so whether
-<code>needs_info</code> inherits the kind is the open question, and five rows need re-parking by hand
-either way.</div>
+<div class="note plan"><b><code>waiting</code> costs more than its 30 rows.</b> It is the only
+status carrying a second column — <code>waitingKind</code> — with a refusal family named <b>by code</b>
+in <code>guides/registry.ts</code> and <code>prompt/facts/registry.ts</code>. From Postgres: <b>24
+<code>needs_decision</code>, 6 <code>needs_resource</code></b>. The 24 lose nothing; five of the six
+are real external dependencies (an unpublished package, two people, unmeasured production data, a
+GitLab push credential the runner lacks) and need re-parking by hand. Whether <code>needs_info</code>
+inherits the kind is open.</div>
 <div class="note plan"><b><code>reopen</code> stays; its rewrite goes.</b>
-<code>autonomous-park.ts</code> rewrites <code>reopen → open</code> for every actor, from an incident
-(epodsystem ISS-141, 2026-08-24). Its stated reason is a claim about meaning — the staged pipeline
-read <code>reopen</code> as <i>a step rejected this</i>, and the driver has no steps. Under this
-vocabulary it names <b>a person disagreed with a close</b>. Three readers say the wedge cannot return:
-<code>reconciler.ts:183</code> resolves <code>AUTONOMOUS_INFLIGHT_STATUSES</code> to
-<code>['in_progress']</code> and never reads it; <code>notify-transitions.ts:41</code> already classes
-it <code>PROBLEM_STATUSES</code>; <code>attention-buckets.ts:100</code> surfaces it to a human, never
-a dispatcher. It holds 0 rows across 28 projects, so nothing is stranded either way.</div>
+<code>autonomous-park.ts</code> rewrites <code>reopen → open</code> for every actor, from epodsystem
+ISS-141. Its reason was a claim about meaning under the staged pipeline; under this vocabulary it
+names <b>a person disagreed with a close</b>. Three readers say the wedge cannot return —
+<code>reconciler.ts</code> never reads it, <code>notify-transitions.ts</code> classes it
+<code>PROBLEM_STATUSES</code>, <code>attention-buckets.ts</code> surfaces it to a human. 0 rows across
+28 projects.</div>
 </section>
 
-<section class="pane" id="dn" role="tabpanel" hidden>
+<section class="pane">
+<h2>Do not</h2>
 <table>
 <thead><tr><th>Do not</th><th>Because</th></tr></thead>
 <tbody>
@@ -336,13 +324,4 @@ guide <code>pipeline-and-issue-lifecycle</code>. Removal order and its price:
 <code>docs/proposals/one-status-vocabulary-and-a-real-transition-table.md</code>.
 <a href="index.html">← all flows</a></p>
 
-<script>
-  const tabs = [...document.querySelectorAll('.tabs button')];
-  tabs.forEach(t => t.addEventListener('click', () => {
-    tabs.forEach(o => {
-      const on = o === t;
-      o.setAttribute('aria-selected', String(on));
-      document.getElementById(o.getAttribute('aria-controls')).hidden = !on;
-    });
-  }));
-</script>
+
