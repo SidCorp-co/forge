@@ -16,10 +16,18 @@
   .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
   .bad { color:var(--bad); font-weight:600; }
   .lock { color:var(--lock); font-weight:600; }
-  /* A 900-unit diagram scaled into a 375px phone renders its 11-unit labels at ~5 device pixels.
-     Below `min-width` the figure scrolls sideways instead, so the mechanism stays readable. */
-  .fig { overflow-x:auto; margin:1rem 0; }
-  svg { background:#fff; border:1px solid var(--line); border-radius:4px; display:block; width:100%; height:auto; min-width:42rem; }
+  /* A 900-unit diagram scaled into a 375px phone renders its 11-unit labels at ~5 CSS pixels.
+     `min-width` is the viewBox's own 900 units, so the smallest label never renders below the
+     11px it was drawn at; a narrower screen scrolls the figure instead of shrinking its text.
+     `tabindex` is what lets a keyboard reach the clipped half — a scroll container with nothing
+     focusable in it cannot be scrolled without a pointer. */
+  .fig, .tbl { overflow-x:auto; margin:1rem 0; border-radius:4px; }
+  .fig:focus-visible, .tbl:focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
+  /* A `width:100%` table still cannot render below its min-content, so at 360px this one was
+     419px wide and the PAGE scrolled sideways. The same container that holds the diagrams holds
+     it, so the overflow stays inside the figure it belongs to. */
+  .tbl table { min-width:26rem; }
+  svg { background:#fff; border:1px solid var(--line); border-radius:4px; display:block; width:100%; height:auto; min-width:56.25rem; }
   text { font:12px ui-sans-serif,system-ui,sans-serif; fill:var(--fg); }
   text.m { font-size:11px; fill:var(--mut); }
   text.t { font:600 12px ui-monospace,Menlo,monospace; }
@@ -40,7 +48,7 @@ is the issue's <strong>primary</strong> module. Owner:
 request: how an agent comes to know the project has modules at all.</p>
 
 <h2>Where a write is refused, and what has been written when it is</h2>
-<div class="fig">
+<div class="fig" tabindex="0" role="group" aria-label="Where a write is refused, and what has been written when it is — scrollable diagram">
 <svg viewBox="0 0 900 560" role="img" aria-label="Decision path of a labels[] write carrying a primary module">
   <defs>
     <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -124,6 +132,7 @@ refuse by name, before the transaction, instead of surfacing a constraint violat
 </div>
 
 <h2>What each layer owns, and what happens when it is bypassed</h2>
+<div class="tbl" tabindex="0" role="group" aria-label="What each layer owns — scrollable table">
 <table>
 <tr><th>Layer</th><th>Holds</th><th>Bypassed ⇒</th></tr>
 <tr>
@@ -154,6 +163,7 @@ refuse by name, before the transaction, instead of surfacing a constraint violat
       <code>text(col,{enum})</code> is a compile-time type and emits no constraint</td>
 </tr>
 </table>
+</div>
 
 <h2>Reading it back</h2>
 <p>Every surface that lists an issue's labels reports <code>kind</code> and <code>isPrimary</code>
@@ -174,7 +184,7 @@ attributes and filters through <code>forge_issues</code>, which never creates a 
 crossing the dashed line is a contract that no type checks: a module name, a
 <code>{labelId, isPrimary}</code> object, and a filter value.</p>
 
-<div class="fig">
+<div class="fig" tabindex="0" role="group" aria-label="The taxonomy authored through REST and consumed through MCP — scrollable diagram">
 <svg viewBox="0 0 900 400" role="img" aria-label="The taxonomy authored through REST and consumed through MCP, and which test holds each edge">
   <defs>
     <marker id="handshake-ok" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -245,7 +255,7 @@ it: nothing in the product asks a human to attribute an issue, so on a Forge pro
 almost always a pipeline agent, and an agent only writes what its prompt told it exists. Owner:
 <code>packages/core/src/prompt/facts/resolve.ts</code>.</p>
 
-<div class="fig">
+<div class="fig" tabindex="0" role="group" aria-label="How the module taxonomy reaches a pipeline agent's prompt — scrollable diagram">
 <svg viewBox="0 0 900 300" role="img" aria-label="How the module taxonomy reaches a pipeline agent's prompt">
   <defs>
     <marker id="prompt-ok" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
