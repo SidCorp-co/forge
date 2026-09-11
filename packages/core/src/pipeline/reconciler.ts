@@ -149,6 +149,17 @@ export async function runReconcilerOnce(): Promise<{
  * ending in a hand-close. The rescue above cannot see it: that pass selects on
  * the ENTRY status, and `in_progress` is not one.
  *
+ * A dead session leaves the same wedge by a different road, and until
+ * 2026-09-11 nothing could see that one. `in_progress` is the only status that
+ * is a driver status and neither the entry nor the question, so it is reachable
+ * ONLY from the run that put the issue there: it cannot be admitted to a
+ * master's backlog (`BACKLOG_ADMISSIBLE_STATUSES` subtracts the driver
+ * statuses) and the entry-status rescue does not select it. When that run ends
+ * without moving the issue on, nothing in the system is looking at it again.
+ * Measured on sidpeak that day: eleven issues at `in_progress`, no issue-kind
+ * run in `running` anywhere on the project, and the oldest of them eight days
+ * stranded — work on seven pushed branches that no box would ever offer.
+ *
  * The remedy is to roll the issue BACK to the entry status and let the one
  * dispatch path re-enter it. Nothing here mints a job, so there is no second
  * way for a drive job to be born.
@@ -162,6 +173,10 @@ export async function resetAutonomousWedgesOnce(): Promise<number> {
     sql`, `,
   );
 
+  // cm:guard TWO disjoint shapes, and the second is not a relaxation of the first. (A) the agent's drive job ended CLEANLY and left the issue behind while its run is still open — the ISS-880 shape. (B) the run itself is terminal or absent, so neither a retry nor a master can ever come back for this issue, whatever its last job's outcome was. Keeping them separate is what preserves every decision already tested here — a FAILED last job under a RUNNING run is still left alone, because the retry machinery owns that one and shape A does not admit it.
+  // cm:guard `merged_at IS NULL` sits on shape B and is a REFUSAL, not a filter — the same one the rescue above carries (ISS-940). Shape A inherits it from the running run it requires; B has no such implication, so without that line a run that died after its work shipped is rolled back to the entry status and re-dispatched into code that is live. `detectOwedCloses` in pipeline/stranded-issues.ts is what tells a human about those instead. Measured on sidpeak 2026-09-11: of eleven issues stranded at `in_progress`, one carried the mark.
+  // cm:edge lockstep -> packages/core/src/pipeline/stranded-issues.ts — shape B's `merged_at` refusal and `detectOwedCloses` are one decision in two halves, the SECOND pair on this file: what this pass declines to re-dispatch is exactly what that detector owes a human. Drop the detector and a run that died after shipping its work goes quiet in both places.
+  // cm:guard a PAUSED run excludes shape B as well as shape A. A pause is a person's decision and it outlives the run's own liveness, so a terminal sibling run must not licence the rollback that pause was holding.
   // cm:guard NO project filter, and adding one back is how this net gets switched off for the fleet. It used to carry `coalesce(...->>'mode','autonomous') <> 'staged'` — the last reader of a stored column ISS-897 had already stripped from all 38 rows and ISS-895 removed the concept of. There is one lane, so every project is in scope; a filter that finds nothing and a pass that is switched off report the same number.
   const wedged = await db.execute<{
     id: string;
@@ -182,16 +197,29 @@ export async function resetAutonomousWedgesOnce(): Promise<number> {
     ) lj
     WHERE i.status IN (${inflightList})
       AND i.updated_at < now() - interval '${sql.raw(WEDGE_GRACE)}'
-      AND lj.status = 'done'
       AND lj.type = ${AUTONOMOUS_JOB_TYPE}
-      AND EXISTS (
-        SELECT 1 FROM pipeline_runs r
-        WHERE r.issue_id = i.id AND r.kind = 'issue' AND r.status = 'running'
-      )
       AND NOT EXISTS (
         SELECT 1 FROM jobs j2
         WHERE j2.issue_id = i.id
           AND j2.status IN ('queued', 'dispatched', 'running')
+      )
+      AND (
+        (
+          lj.status = 'done'
+          AND EXISTS (
+            SELECT 1 FROM pipeline_runs r
+            WHERE r.issue_id = i.id AND r.kind = 'issue' AND r.status = 'running'
+          )
+        )
+        OR (
+          i.merged_at IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM pipeline_runs r2
+            WHERE r2.issue_id = i.id
+              AND r2.kind = 'issue'
+              AND r2.status IN ('running', 'paused')
+          )
+        )
       )
     LIMIT ${WEDGE_RESET_LIMIT}
   `);

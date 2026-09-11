@@ -1945,6 +1945,19 @@
 
 ### Fixed
 
+- **An issue whose run died mid-build is picked up again instead of sitting there for ever.** While
+  an issue is being built it holds a status only the run building it can move it off — it is
+  deliberately not offered to any box's backlog, because a run already has it. The recovery pass for
+  that status asked for two things that are only true when the agent finished tidily: that its last
+  piece of work ended cleanly, and that its run was still open. A run that DIED satisfies neither,
+  so the issue it was building stayed where it was, offered to nobody, with nothing in the system
+  ever looking at it again. Measured on one project on 2026-09-11: eleven issues stranded that way,
+  the oldest for eight days, seven of them holding work already pushed to a branch. The pass now
+  also recognises the shape where the run itself has ended, whatever its last piece of work
+  reported — and two things it refuses are unchanged or newly explicit: an issue somebody has paused
+  stays paused, and an issue whose work already shipped is never re-dispatched into live code but
+  reported for a human to close.
+
 - **Two more ways a finished run could hold its checkout for ever.** Both ended the same way — the
   release was refused, so the run never reached terminal, so the issue stayed unavailable to every
   box — and both were found on one box the day the first of these fixes let it drain. The first: the

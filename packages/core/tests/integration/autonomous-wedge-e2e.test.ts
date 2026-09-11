@@ -29,78 +29,80 @@ const AUTONOMOUS = { pipelineConfig: { enabled: true } };
 // cm:why the legacy `mode` key a project row may still carry in its jsonb — ISS-895 removed it from the schema, and `pipelineConfigSchema` drops unknown keys on parse, so the row must behave exactly like one that never had it
 const LEGACY_STAGED_ROW = { pipelineConfig: { enabled: true, mode: 'staged' } };
 
-describe('ISS-890 autonomous driver wedge (real Postgres)', () => {
-  let harness: TestDatabase;
-  let userId: string;
+let harness: TestDatabase;
+let userId: string;
 
-  beforeAll(async () => {
-    harness = await setupTestDatabase();
-    process.env.DATABASE_URL = harness.url;
-  });
+beforeAll(async () => {
+  harness = await setupTestDatabase();
+  process.env.DATABASE_URL = harness.url;
+});
 
-  afterAll(async () => {
-    await harness.cleanup();
-  });
+afterAll(async () => {
+  await harness.cleanup();
+});
 
-  beforeEach(async () => {
-    await truncateAll(harness.db);
-    const user = await createTestUser(harness.db);
-    userId = user.id;
-  });
+beforeEach(async () => {
+  await truncateAll(harness.db);
+  const user = await createTestUser(harness.db);
+  userId = user.id;
+});
 
-  /** A wedge specimen: the shape ISS-880 sat in for 2h15m. */
-  async function seed(opts: {
-    agentConfig?: unknown;
-    issueStatus?: string;
-    runStatus?: string;
-    jobStatus?: string;
-    jobType?: string;
-    idle?: string;
-    extraJobStatus?: string;
-  }): Promise<{ projectId: string; issueId: string; runId: string }> {
-    const project = await createTestProject(harness.db, userId);
-    await harness.db.execute(sql`
-      UPDATE projects SET agent_config = ${JSON.stringify(opts.agentConfig ?? AUTONOMOUS)}::jsonb
-      WHERE id = ${project.id}
-    `);
+/** A wedge specimen: the shape ISS-880 sat in for 2h15m. */
+async function seed(opts: {
+  agentConfig?: unknown;
+  issueStatus?: string;
+  runStatus?: string;
+  jobStatus?: string;
+  jobType?: string;
+  idle?: string;
+  extraJobStatus?: string;
+  merged?: boolean;
+}): Promise<{ projectId: string; issueId: string; runId: string }> {
+  const project = await createTestProject(harness.db, userId);
+  await harness.db.execute(sql`
+    UPDATE projects SET agent_config = ${JSON.stringify(opts.agentConfig ?? AUTONOMOUS)}::jsonb
+    WHERE id = ${project.id}
+  `);
 
-    const issueId = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO issues (id, project_id, title, status, created_by_id, updated_at)
-      VALUES (${issueId}, ${project.id}, 'wedge specimen', ${opts.issueStatus ?? 'in_progress'},
-              ${userId}, now() - interval '${sql.raw(opts.idle ?? '30 minutes')}')
-    `);
+  const issueId = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO issues (id, project_id, title, status, created_by_id, updated_at, merged_at)
+    VALUES (${issueId}, ${project.id}, 'wedge specimen', ${opts.issueStatus ?? 'in_progress'},
+            ${userId}, now() - interval '${sql.raw(opts.idle ?? '30 minutes')}',
+            ${opts.merged ? sql`now() - interval '2 hours'` : sql`NULL`})
+  `);
 
-    const runId = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, current_step)
-      VALUES (${runId}, ${project.id}, ${issueId}, 'issue', ${opts.runStatus ?? 'running'}, 'in_progress')
-    `);
+  const runId = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, current_step)
+    VALUES (${runId}, ${project.id}, ${issueId}, 'issue', ${opts.runStatus ?? 'running'}, 'in_progress')
+  `);
 
+  await harness.db.execute(sql`
+    INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, created_by, type, status, created_at)
+    VALUES (${randomUUID()}, ${project.id}, ${issueId}, ${runId}, ${userId},
+            ${opts.jobType ?? 'drive'}, ${opts.jobStatus ?? 'done'}, now() - interval '1 hour')
+  `);
+
+  if (opts.extraJobStatus) {
     await harness.db.execute(sql`
       INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, created_by, type, status, created_at)
       VALUES (${randomUUID()}, ${project.id}, ${issueId}, ${runId}, ${userId},
-              ${opts.jobType ?? 'drive'}, ${opts.jobStatus ?? 'done'}, now() - interval '1 hour')
+              'drive', ${opts.extraJobStatus}, now() - interval '2 hours')
     `);
-
-    if (opts.extraJobStatus) {
-      await harness.db.execute(sql`
-        INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, created_by, type, status, created_at)
-        VALUES (${randomUUID()}, ${project.id}, ${issueId}, ${runId}, ${userId},
-                'drive', ${opts.extraJobStatus}, now() - interval '2 hours')
-      `);
-    }
-
-    return { projectId: project.id, issueId, runId };
   }
 
-  async function statusOf(issueId: string): Promise<string> {
-    const rows = await harness.db.execute<{ status: string }>(
-      sql`SELECT status FROM issues WHERE id = ${issueId}`,
-    );
-    return rows[0]?.status ?? '<missing>';
-  }
+  return { projectId: project.id, issueId, runId };
+}
 
+async function statusOf(issueId: string): Promise<string> {
+  const rows = await harness.db.execute<{ status: string }>(
+    sql`SELECT status FROM issues WHERE id = ${issueId}`,
+  );
+  return rows[0]?.status ?? '<missing>';
+}
+
+describe('ISS-890 autonomous driver wedge (real Postgres)', () => {
   it('rolls the ISS-880 shape back to the entry status', async () => {
     const { issueId } = await seed({});
     const { resetAutonomousWedgesOnce } = await import('../../src/pipeline/reconciler.js');
@@ -267,5 +269,55 @@ describe('ISS-890 autonomous driver wedge (real Postgres)', () => {
       expect(rows[0]?.reason).toBe('held_by_a_human');
       expect((await rescueState(runId)).count).toBe(1);
     });
+  });
+});
+
+describe('a run that DIED, not one that is still open (sidpeak, 2026-09-11)', () => {
+  // cm:guard `in_progress` is reachable only from the run that set it: the backlog subtracts the driver statuses and the entry-status rescue does not select it. So a run that ends without moving the issue on strands it with nothing in the system looking again — eleven of them on one project, the oldest eight days old, seven carrying pushed branches.
+  it('rolls back a wedge whose run is terminal and whose last job failed', async () => {
+    const { issueId } = await seed({ runStatus: 'failed', jobStatus: 'failed' });
+    const { resetAutonomousWedgesOnce } = await import('../../src/pipeline/reconciler.js');
+
+    expect(await resetAutonomousWedgesOnce()).toBe(1);
+    expect(await statusOf(issueId)).toBe('open');
+  });
+
+  // cm:guard the run ROW always exists — `jobs.pipeline_run_id` is NOT NULL, so a drive job cannot outlive its run's row and "no run at all" is not a reachable state. Terminal is the whole of what "the run is gone" can mean here.
+  it('rolls back a wedge whose run was cancelled under it', async () => {
+    const { issueId } = await seed({ runStatus: 'cancelled', jobStatus: 'cancelled' });
+    const { resetAutonomousWedgesOnce } = await import('../../src/pipeline/reconciler.js');
+
+    expect(await resetAutonomousWedgesOnce()).toBe(1);
+    expect(await statusOf(issueId)).toBe('open');
+  });
+
+  // cm:guard the refusal that keeps this pass from re-dispatching live production code (ISS-940). Shape A could not reach it — a running run means the work had not shipped — and shape B can, so the mark is read explicitly.
+  it('refuses a dead run whose work already shipped, and leaves it for the owed-close detector', async () => {
+    const { issueId } = await seed({ runStatus: 'completed', jobStatus: 'done', merged: true });
+    const { resetAutonomousWedgesOnce } = await import('../../src/pipeline/reconciler.js');
+
+    expect(await resetAutonomousWedgesOnce()).toBe(0);
+    expect(await statusOf(issueId)).toBe('in_progress');
+  });
+
+  // cm:guard the hand-session fence (ISS-940): a draft somebody is building by hand has no drive job, so the LATERAL finds a different type and the row is never a candidate. A pass that stopped reading the job type would roll a live human's issue back and dispatch an agent into their worktree.
+  it('leaves an issue whose last job is not the driver alone, dead run or not', async () => {
+    const { issueId } = await seed({
+      runStatus: 'completed',
+      jobType: 'release_batch',
+      jobStatus: 'done',
+    });
+    const { resetAutonomousWedgesOnce } = await import('../../src/pipeline/reconciler.js');
+
+    expect(await resetAutonomousWedgesOnce()).toBe(0);
+    expect(await statusOf(issueId)).toBe('in_progress');
+  });
+
+  it('leaves a paused run alone even when the pass no longer needs a running one', async () => {
+    const { issueId } = await seed({ runStatus: 'paused', jobStatus: 'failed' });
+    const { resetAutonomousWedgesOnce } = await import('../../src/pipeline/reconciler.js');
+
+    expect(await resetAutonomousWedgesOnce()).toBe(0);
+    expect(await statusOf(issueId)).toBe('in_progress');
   });
 });
