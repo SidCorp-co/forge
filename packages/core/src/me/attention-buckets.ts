@@ -129,6 +129,7 @@ export interface AttentionAwaitingRow extends AttentionIssueRow {
   workspacesPinned: number;
   dependents: number;
   blockerKind: string | null;
+  questionId: string | null;
 }
 
 export interface AttentionMentionRow {
@@ -214,7 +215,8 @@ export function selectAwaitingInput(userId: string): Promise<AttentionAwaitingRo
       claimsHeld: openQuestionCost('claims_held'),
       workspacesPinned: openQuestionCost('workspaces_pinned'),
       dependents: openQuestionCost('dependents'),
-      blockerKind: openQuestionBlocker(),
+      blockerKind: openQuestionColumn('blocker_kind'),
+      questionId: openQuestionColumn('id'),
     })
     .from(issues)
     .innerJoin(projects, eq(projects.id, issues.projectId))
@@ -224,10 +226,12 @@ export function selectAwaitingInput(userId: string): Promise<AttentionAwaitingRo
 }
 
 // cm:guard `status='open'` here too, matching `openQuestionCost` exactly: a settled question names no blocker anybody still has to act on, and showing one would put a resolver's name against a wait that has ended. NULL is the honest answer for an issue a person blocked by hand, which has no question row at all.
-function openQuestionBlocker(): SQL<string | null> {
-  return sql<string | null>`(select q.blocker_kind from agent_questions q
+// cm:guard the `q.id` tie-break is what lets the two callers below read two columns off the SAME row: ordered by `created_at` alone, an issue whose open questions share a timestamp could report one question's kind under another's id (ISS-980 criterion 25).
+// cm:guard the identifiers are written LITERALLY and the subquery is CORRELATED, for the reason `openQuestionCost`'s own guard gives — drizzle renders a column reference inside a raw `sql` template unqualified, and a grouped subquery needs `groupBy`/`as`, which `attention-routes.test.ts`'s mock chain does not implement.
+function openQuestionColumn(column: string): SQL<string | null> {
+  return sql<string | null>`(select q.${sql.raw(column)} from agent_questions q
     where q.issue_id = issues.id and q.status = 'open'
-    order by q.created_at desc limit 1)`;
+    order by q.created_at desc, q.id desc limit 1)`;
 }
 
 function adminsProject(userId: string) {

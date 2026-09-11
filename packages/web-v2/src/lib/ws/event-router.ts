@@ -45,11 +45,13 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			qc.invalidateQueries({ queryKey: ["projects", "health"] });
 			// cm:why every attention bucket is derived from `issues.status` on read (packages/core/src/me/attention-buckets.ts) and none of them is cached server-side, so a status event is the only signal that the cross-project inbox and its rail badge are stale — nothing else fires for an issue in a project this client is not looking at.
 			qc.invalidateQueries({ queryKey: ["attention"] });
-			// ISS-665 — status transitions are the primary "Recent changes" signal.
+			// cm:why the Overview "Recent changes" panel is ordered by `issues.updatedAt`, and a status transition is the commonest writer of it — without this the panel keeps the previous ordering until something unrelated refetches (ISS-665).
 			qc.invalidateQueries({ queryKey: ["recent-changes"] });
 			if (data?.issueId) {
 				qc.invalidateQueries({ queryKey: ["issue", data.issueId] });
 				qc.invalidateQueries({ queryKey: ["activities", data.issueId] });
+				// cm:why a run that parks to ask writes the question and the issue's park status together, and core publishes nothing else a browser subscribes to — this is the only event that reaches a screen already open on an issue whose decision has just appeared (ISS-980).
+				qc.invalidateQueries({ queryKey: ["questions", data.issueId] });
 			}
 			return;
 		}
@@ -329,14 +331,13 @@ export function replayOnReconnect(qc: QueryClient): void {
 	// dropped connection (its buckets ride issue/job/notification events above).
 	qc.invalidateQueries({ queryKey: ["attention"] });
 	qc.invalidateQueries({ queryKey: ["devices", "me"] });
-	// ISS-314 — refresh the cross-project Activity feed (`features/activity`,
-	// keyed ['chat-logs']) after a dropped connection. chat_logs has no per-row
-	// WS broadcast yet, so reconnect replay (+ window-focus refetch + Refresh) is
-	// its freshness signal until a `chat-log.created` event lands in core.
+	// cm:why `chat_logs` has no per-row WS broadcast in core, so this plus window-focus and the Refresh button is the whole of the cross-project Activity feed's freshness until a `chat-log.created` event lands (ISS-314).
 	qc.invalidateQueries({ queryKey: ["chat-logs"] });
 	// ISS-401/C — refresh integration bindings/status (per-project) + the owner-
 	// scoped connections list after a dropped connection. Connection mutations
 	// have no WS broadcast, so reconnect replay is their cross-client freshness.
 	qc.invalidateQueries({ queryKey: ["integrations"] });
 	qc.invalidateQueries({ queryKey: ["integration-connections"] });
+	// cm:guard the ONE recovery an empty decision panel has. `features/questions` polls only once an issue already carries a question — `agent_questions` has no index on `issue_id` — so a screen that was open across a dropped connection learns of its first question here or not until the next navigation (ISS-980).
+	qc.invalidateQueries({ queryKey: ["questions"] });
 }

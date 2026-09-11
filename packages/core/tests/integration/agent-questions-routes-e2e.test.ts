@@ -123,7 +123,7 @@ describe('who may see a question, and which of its options', () => {
   it('refuses to answer with an option the caller may not choose', async () => {
     const q = await aQuestion();
     await expect(
-      read.answerAs({ questionId: q.id, optionId: adminOption.id, userId: ctx.memberId }),
+      read.answerAs({ questionId: q.id, optionId: adminOption.id, round: 1, userId: ctx.memberId }),
       'a locked option that answers anyway is a lock drawn on the screen and nowhere else (ISS-964 criterion 15)',
     ).rejects.toThrow(/authority|not allowed/i);
   });
@@ -132,7 +132,12 @@ describe('who may see a question, and which of its options', () => {
 describe('an answer belongs to the question, not to the waiter', () => {
   it('is still there for whoever continues after a revival is cancelled', async () => {
     const q = await aQuestion();
-    await read.answerAs({ questionId: q.id, optionId: writerOption.id, userId: ctx.memberId });
+    await read.answerAs({
+      questionId: q.id,
+      optionId: writerOption.id,
+      round: 1,
+      userId: ctx.memberId,
+    });
 
     const after = await write.getQuestion(q.id);
     expect(
@@ -150,7 +155,12 @@ describe('an answer belongs to the question, not to the waiter', () => {
     await read.registerWaiter({ questionId: q.id, deviceId: device.id, runId: 'run-a' });
     await read.registerWaiter({ questionId: q.id, deviceId: device.id, runId: 'run-b' });
 
-    await read.answerAs({ questionId: q.id, optionId: writerOption.id, userId: ctx.memberId });
+    await read.answerAs({
+      questionId: q.id,
+      optionId: writerOption.id,
+      round: 1,
+      userId: ctx.memberId,
+    });
 
     expect(
       (await read.waitersOf(q.id)).map((w) => w.runId).sort(),
@@ -162,7 +172,12 @@ describe('an answer belongs to the question, not to the waiter', () => {
 describe('the connection is a doorbell', () => {
   it('delivers the answer to a box that was offline for the whole episode', async () => {
     const q = await aQuestion();
-    await read.answerAs({ questionId: q.id, optionId: writerOption.id, userId: ctx.memberId });
+    await read.answerAs({
+      questionId: q.id,
+      optionId: writerOption.id,
+      round: 1,
+      userId: ctx.memberId,
+    });
 
     expect(
       await read.answerOf(q.id),
@@ -234,7 +249,13 @@ describe('a master reading its own question', () => {
       'the master waits on its own question under its own session id — the same authorisation rule a run passes, which is why the device route needs no second address (ISS-964 criterion 43)',
     ).toBeTruthy();
 
-    await write.answerQuestion({ questionId: q.id, optionId: writerOption.id, by: ctx.memberId });
+    await write.answerQuestion({
+      questionId: q.id,
+      optionId: writerOption.id,
+      round: 1,
+      by: ctx.memberId,
+      role: 'member',
+    });
 
     expect(
       (await read.answerOf(q.id))?.optionId,

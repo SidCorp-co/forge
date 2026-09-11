@@ -8,6 +8,43 @@
 
 ## [Unreleased]
 
+### Added
+
+- **A decision a run parked on is now readable and answerable on the issue itself.** When an agent
+  stops and asks, it writes a structured question: a prompt, a set of options, which one it
+  recommends, and for each option who may choose it, how far the choice reaches and who carries it
+  out. All of that has been on the record since the park was built, and there was no screen for
+  any of it — the only thing a person saw was a banner saying a question had been left in the
+  comments. The issue page now renders the decision above the pipeline tracker: every round it has
+  been through, the current round's options with what each one actually commits you to in plain
+  words, and a button on each one. Choosing tells the run, which picks the answer up and carries
+  on. **An option you may not choose stays on the screen, greyed, saying which authority it
+  needs** — it is not hidden, because a queue of decisions only one person can even look at is how
+  a decision sits for a week. The Attention inbox marks the rows that carry one, so a decision
+  somebody can settle in a click is no longer indistinguishable from work that was paused by hand.
+  A question aimed at another machine rather than at a person renders as a record and offers no
+  button. An answered, withdrawn or expired question shows what became of it.
+
+### Fixed
+
+- **Answering a decision can no longer overwrite an answer that was already there, revive one that
+  was withdrawn, or apply to a round you were never shown.** The write that recorded an answer
+  checked only that the option belonged to the question's latest round, then wrote unconditionally:
+  two people answering at once left the second one's choice on the record with no sign the first
+  had ever happened, a question somebody had deliberately withdrawn came back as live and the run
+  acted on it, and an expired one did the same. It is now a single locked write — status, deadline,
+  round, option and authority are all checked against the same locked row, exactly one answer wins,
+  and the losers are told why in words rather than being discarded quietly. An answer now carries
+  the round it was shown on, so a decision that moved on while your screen was open is refused as
+  stale instead of silently settling the newer question. The run is told only once the answer is
+  durable.
+
+- **A signed-in person who belongs to neither a project nor its organisation could read that
+  project's parked decisions, and answer them.** The check that decided who may look asked whether
+  any access record existed rather than whether the person held a role, and the check that decided
+  who may choose asked only that they were not a viewer — so someone with no relationship to a
+  project at all passed both. They now see nothing and can choose nothing.
+
 ### Security
 
 - **Every response to a personal access token now names the permission the route required.**
