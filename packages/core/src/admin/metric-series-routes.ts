@@ -21,10 +21,9 @@ import {
   deltaPct,
   METRIC_SOURCES,
   WINDOW_SPECS,
-  windows,
 } from './metric-series.js';
 import { readThresholds } from './thresholds.js';
-import { type AdminMetricSeries, GLANCE_METRIC_NAMES } from './types.js';
+import { type AdminMetricSeries, GLANCE_METRIC_NAMES, GLANCE_WINDOWS } from './types.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -33,7 +32,7 @@ const badRequest = (details: unknown) =>
 const paramSchema = z.object({ metric: z.enum(GLANCE_METRIC_NAMES) });
 
 // cm:edge contract -> packages/core/src/admin/aggregate-routes.ts — the SAME window enum and the same `24h` default as `/overview`, deliberately: a second vocabulary for one idea is the drift ISS-975 was split out to avoid, and an operator comparing a tile against its series must be reading one span.
-const querySchema = z.object({ window: z.enum(windows).default('24h') });
+const querySchema = z.object({ window: z.enum(GLANCE_WINDOWS).default('24h') });
 
 export const adminMetricSeriesRoutes = new Hono<{ Variables: AuthVars }>();
 

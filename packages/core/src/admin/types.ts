@@ -26,6 +26,11 @@ export const GLANCE_METRIC_NAMES = [
 
 export type AdminGlanceMetricName = (typeof GLANCE_METRIC_NAMES)[number];
 
+// cm:guard ISS-975 — the ONE window vocabulary, for the same reason as the names above: `/overview` and `/metrics/:metric/timeseries` both build their `z.enum` from this tuple and `WINDOW_SPECS` is a record over it, so neither route can come to offer a window the other does not. A second enum for the same idea is the drift this endpoint was split out to avoid.
+export const GLANCE_WINDOWS = ['24h', '7d', '30d'] as const;
+
+export type AdminMetricWindow = (typeof GLANCE_WINDOWS)[number];
+
 /** One bucket of `GET /api/admin/metrics/:metric/timeseries`. `value` is null
  *  only for a ratio whose denominator was zero — a count with no rows is 0. */
 export interface AdminMetricSeriesPoint {
@@ -43,7 +48,7 @@ export interface AdminMetricSeriesPoint {
  */
 export interface AdminMetricSeries {
   metric: AdminGlanceMetricName;
-  window: string;
+  window: AdminMetricWindow;
   value: number | null;
   deltaPct: number | null;
   points: AdminMetricSeriesPoint[];

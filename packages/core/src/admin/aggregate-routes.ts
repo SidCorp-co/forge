@@ -40,7 +40,6 @@ import {
   toBucketMap,
   toGlance,
   WINDOW_SPECS,
-  windows,
 } from './metric-series.js';
 import { readThresholds } from './thresholds.js';
 import {
@@ -50,6 +49,7 @@ import {
   type AdminOverview,
   type AdminWorkspaceRow,
   GLANCE_METRIC_NAMES,
+  GLANCE_WINDOWS,
 } from './types.js';
 
 const badRequest = (details: unknown) =>
@@ -58,7 +58,7 @@ const badRequest = (details: unknown) =>
 // cm:edge naming -> packages/core/src/projects/health-routes.ts — mirrors NON_OPEN_STATUSES there; keep the excluded-status set aligned
 const NON_OPEN_STATUSES = new Set(['awaiting_release', 'closed', 'draft']);
 
-const overviewQuerySchema = z.object({ window: z.enum(windows).default('24h') });
+const overviewQuerySchema = z.object({ window: z.enum(GLANCE_WINDOWS).default('24h') });
 
 export const adminAggregateRoutes = new Hono<{ Variables: AuthVars }>();
 adminAggregateRoutes.use('*', requireAuth(), assertEmailVerified(), requireAdmin());
@@ -211,7 +211,7 @@ adminAggregateRoutes.get(
 );
 
 const workspacesQuerySchema = z.object({
-  window: z.enum(windows).default('7d'),
+  window: z.enum(GLANCE_WINDOWS).default('7d'),
   sort: z.enum(['runs', 'spend', 'leadTime']).default('runs'),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });

@@ -15,12 +15,14 @@
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { bucketIso, utcDateTrunc } from '../lib/time-buckets.js';
-import type { AdminGlanceMetric, AdminGlanceMetricName, AdminMetricSeriesPoint } from './types.js';
+import type {
+  AdminGlanceMetric,
+  AdminGlanceMetricName,
+  AdminMetricSeriesPoint,
+  AdminMetricWindow,
+} from './types.js';
 
 // cm:edge naming -> packages/core/src/mcp/tools/forge-metrics.ts — `project_timeseries` is the OTHER time-series surface and deliberately shares NO computation with this one: different metric names (cost|throughput|cycle_time|queue_wait|runner_utilization|cache_hit_rate), different window vocabulary (days 1..90 + bucket day|hour), different fence (project membership vs ADMIN_EMAILS) and different scope (one project vs cross-tenant). Neither is canonical; a shared fold would have to reconcile four disagreements to serve two callers.
-
-export const windows = ['24h', '7d', '30d'] as const;
-export type Window = (typeof windows)[number];
 
 export type BucketUnit = 'hour' | 'day' | 'week';
 
@@ -30,7 +32,7 @@ export interface WindowSpec {
   bucketCount: number;
 }
 
-export const WINDOW_SPECS: Record<Window, WindowSpec> = {
+export const WINDOW_SPECS: Record<AdminMetricWindow, WindowSpec> = {
   '24h': { hours: 24, unit: 'hour', bucketCount: 24 },
   '7d': { hours: 24 * 7, unit: 'day', bucketCount: 7 },
   '30d': { hours: 24 * 30, unit: 'day', bucketCount: 30 },
