@@ -85,6 +85,14 @@ const CHECKS = [
   },
   // cm:guard this gate is what makes the PAT permission menu a proof rather than a habit: `PAT_PERMISSION_RESOURCES` declares reachability per-PREFIX while the property it claims is per-ROUTE, so one unfenced route under an admitted prefix is a project-scoped token reading another project with every handler around it looking correct. Measured on its first run: a text search inside the route span reported 80 of 285 routes unfenced and the three sampled were all its own false positives (a file-local `assertMember`, a service layer, two routers sharing a file) — the invariant is call-graph reachability, not a string, and a checker at 95% noise is worse than none because it teaches the reader to skip it.
   {
+    // cm:guard the map is GENERATED and this gate is what keeps it that way — hand-kept, `docs/system.graph.json` sat 5 months and was missing 2 of its 9 modules (2026-09-11)
+    axis: 'knowledge',
+    label: 'flow-map',
+    cmd: ['node', 'scripts/build-flow-map.mjs', '--check'],
+    scanned: /: (\d+) flow\(s\) across/,
+    unit: 'flows',
+  },
+  {
     axis: 'knowledge',
     label: 'pat-surface',
     // cm:edge naming -> scripts/check-pat-surface.mjs — parses that script's success line

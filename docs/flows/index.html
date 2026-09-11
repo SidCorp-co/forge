@@ -1,31 +1,38 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>Forge flow diagrams</title>
+<title>Forge flow map</title>
 <style>
-  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --gap:#8a3b52; }
-  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
-         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
-  main { max-width:60rem; margin:0 auto; }
-  h1 { font-size:1.6rem; margin:0 0 .3rem; }
-  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
-  .sub { color:var(--mut); margin:0 0 1.6rem; }
-  table { border-collapse:collapse; width:100%; font-size:14px; }
-  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
-  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
-  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
-  .done { color:var(--acc); font-weight:600; }
-  .gap  { color:var(--gap); }
-  ul { padding-left:1.1rem; } li { margin:.3rem 0; }
-  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; }
+  :root { --fg:#1c1a17; --mut:#6b645c; --faint:#9a9288; --line:#ddd7cf; --bg:#fbfaf8; --panel:#fff;
+          --acc:#1f6f4a; --accbg:#e6efe9; --bad:#8a3b52; --warn:#9a6b1f; }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:14.5px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  code { font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px }
+  .bar { display:flex; align-items:center; gap:.5rem; padding:.75rem 1.3rem; background:var(--panel);
+         border-bottom:1px solid var(--line); font:12.5px ui-monospace,Menlo,monospace }
+  .bar a { color:var(--acc); text-decoration:none } .bar a:hover { text-decoration:underline }
+  .bar .sep { color:var(--faint) } .bar .now { font-weight:700 }
+  .bar .hint { margin-left:auto; color:var(--faint); font-family:ui-sans-serif,system-ui,sans-serif }
+  #canvas { padding:1.5rem 1.3rem; overflow-x:auto }
+  .mermaid svg { max-width:none !important; height:auto }
+  .node.clickable { cursor:pointer }
+  .node.clickable:hover rect, .node.clickable:hover polygon { filter:brightness(.94) }
+  details { border-top:1px solid var(--line); background:var(--panel) }
+  summary { padding:.75rem 1.3rem; cursor:pointer; font:600 12.5px ui-sans-serif,system-ui,sans-serif; color:var(--mut) }
+  .rules { padding:0 1.3rem 1.6rem; max-width:62rem }
+  .rules ul { padding-left:1.1rem; font-size:13.5px } .rules li { margin:.35rem 0 }
+  .rule { background:var(--bg); border:1px solid var(--line); border-left:3px solid var(--acc);
+          padding:.9rem 1.1rem; border-radius:4px }
+  .warn { color:var(--bad); font-weight:600 }
 </style>
-<main>
 
-<h1>Flow diagrams</h1>
-<p class="sub">One file per flow. A flow is something that <em>moves</em> — a request across
-processes, a lifecycle, a decision path. Not a box diagram of what exists; <code>docs/modules/</code>
-already owns structure.</p>
+<div class="bar" id="crumb"></div>
+<div id="canvas"><pre class="mermaid" id="fig"></pre></div>
 
-<h2>Rules</h2>
+<details>
+  <summary>Rules — how a flow in this folder is drawn</summary>
+  <div class="rules">
+<!--RULES-->
 <div class="rule">
 <ul>
   <li><b>Backfilled by the work, never as a project.</b> An issue that touches a feature or module
@@ -73,67 +80,70 @@ already owns structure.</p>
       that discovers it — not marked stale.</li>
 </ul>
 </div>
+<!--/RULES-->
+  </div>
+</details>
 
-<h2>Flows</h2>
-<table>
-<thead><tr><th>Flow</th><th>Answers</th><th>Module</th><th>State</th></tr></thead>
-<tbody>
-<tr><td colspan="4">The rows still marked <span class="gap">missing</span> are the worklist, seeded
-from <code>docs/modules/</code> — each becomes a link when a change touching that domain draws it.</td></tr>
-<tr><td><a href="gate-signal-honesty.html">gate-signal-honesty</a></td><td>How a failing check says whether the defect is in the repo or on this box, and why a serial re-run cannot tell you</td><td>conformance gates &amp; test harnesses</td><td class="done">drawn</td></tr>
-<tr><td><a href="agent-execution.html">agent-execution</a></td><td>How a claimed job becomes a running agent, and what ends it</td><td>agent-execution</td><td class="done">drawn</td></tr>
-<tr><td><a href="agent-execution-blocked-branch.html">agent-execution-blocked-branch</a></td><td>Which of four branches a blocked run takes, why only the human one releases the box, and why a park is unwritable until core says it is protected</td><td>agent-execution</td><td class="done">drawn</td></tr>
-<tr><td><a href="agent-execution-session-turns.html">agent-execution-session-turns</a></td><td>How one resident session serves many turns, why a turn ending is not the job ending, and how an answer reaches a session that is still alive</td><td>agent-execution</td><td class="done">drawn</td></tr>
-<tr><td><a href="control-observability.html">control-observability</a></td><td>How a fault on a box reaches an operator</td><td>control-observability</td><td class="done">drawn</td></tr>
-<tr><td><a href="control-observability-intervention-ledger.html">control-observability-intervention-ledger</a></td><td>How a status change or a row deletion becomes a number in the interventions-per-issue metric, and where the ruler still stops</td><td>control-observability</td><td class="done">drawn</td></tr>
-<tr><td><a href="human-routing-question-park.html">human-routing-question-park</a></td><td>How a question reaches a person once the process is gone, why the answer cannot be delivered to the asker, and the four gates a revival passes</td><td>human-routing</td><td class="done">drawn</td></tr>
-<tr><td><a href="human-routing-attention-claim.html">human-routing-attention-claim</a></td><td>How a status becomes the claim &ldquo;a human is needed&rdquo;, why a deliberate pause is not one, and which of the four readers is a copy rather than a read</td><td>human-routing</td><td class="done">drawn</td></tr>
-<tr><td><a href="deploy-build-provenance.html">deploy-build-provenance</a></td><td>How the commit a container was built from reaches <code>/version</code> and a Sentry release, and every hop at which that answer becomes <code>null</code></td><td>integrations</td><td class="done">drawn</td></tr>
-<tr><td><a href="deploy-health-gate.html">deploy-health-gate</a></td><td>How a deploy that builds but cannot serve is detected and undone, why connection-refused is a reading rather than a skip, and every point the rollback refuses</td><td>integrations</td><td class="done">drawn</td></tr>
-<tr><td><a href="coolify-deploy-controls.html">coolify-deploy-controls</a></td><td>How a deploy is stopped or undone, everywhere each control refuses, and where a deploy target comes from</td><td>integrations</td><td class="done">drawn</td></tr>
-<tr><td><a href="integration-credential-health.html">integration-credential-health</a></td><td>How a refused provider API call becomes the words an operator reads, and why 401 and 403 must not read alike</td><td>integrations</td><td class="done">drawn</td></tr>
-<tr><td><a href="issue-status-lifecycle.html">issue-status-lifecycle</a></td><td>The fourteen statuses an issue may hold, which hops are legal, and why nothing refuses an illegal one today</td><td>lifecycle-pipeline</td><td class="done">drawn</td></tr>
-<tr><td><a href="issue-status-placement.html">issue-status-placement</a></td><td>What a status claims, which exits a <code>draft</code> has, and what happens when the actor who finished the work cannot land it</td><td>issue-work</td><td class="done">drawn</td></tr>
-<tr><td><a href="issue-work-module-attribution.html">issue-work-module-attribution</a></td><td>How a project&rsquo;s modules reach an agent&rsquo;s prompt, how a label becomes an issue&rsquo;s primary module, where a bad one is refused, and how a taxonomy authored through the web is consumed through MCP</td><td>issue-work</td><td class="done">drawn</td></tr>
-<tr><td>issue-work</td><td>How an issue becomes a landed diff</td><td>issue-work</td><td class="gap">missing</td></tr>
-<tr><td><a href="issue-work-attachment-upload.html">issue-work-attachment-upload</a></td><td>How a file becomes an attachment, which hop refuses it, and what a refused upload leaves behind</td><td>issue-work</td><td class="done">drawn</td></tr>
-<tr><td><a href="issue-work-conditional-field-write.html">issue-work-conditional-field-write</a></td><td>How two writers of one issue field are separated by the tracker rather than by etiquette, where the loser is told what the field now holds, and why a check above the write enforces nothing</td><td>issue-work</td><td class="done">drawn</td></tr>
-<tr><td><a href="issue-work-body-render.html">issue-work-body-render</a></td><td>How a body stored as <code>forge-*</code> components becomes pixels, the three hops where it silently degrades to literal markup or a blank, and why the composer previews through the server rather than a second parser</td><td>issue-work</td><td class="done">drawn</td></tr>
-<tr><td><a href="issue-work-comment-body-mandate.html">issue-work-comment-body-mandate</a></td><td>How a stage comes to require a typed component on a comment, which writers it refuses and which it never touches, and how the adoption number that decides the mandate avoids counting what was merely intended</td><td>issue-work</td><td class="done">drawn</td></tr>
-<tr><td><a href="issue-work-comment-thread-read.html">issue-work-comment-thread-read</a></td><td>How a client reads a comment thread longer than one response, the four bounds between the rows and the caller, and every way the walk ends early without saying so</td><td>issue-work</td><td class="done">drawn</td></tr>
-<tr><td><a href="issue-work-shipped-evidence.html">issue-work-shipped-evidence</a></td><td>How finished work becomes a countable &ldquo;shipped&rdquo;, and why a close is not a claim</td><td>issue-work</td><td class="done">drawn</td></tr>
-<tr><td><a href="issue-work-module-knowledge-refresh.html">issue-work-module-knowledge-refresh</a></td><td>How a passing test keeps a module&rsquo;s knowledge node current, which hop declines to write and says so instead, and why a failed refresh cannot fail the issue&rsquo;s own pipeline</td><td>issue-work</td><td class="done">drawn</td></tr>
-<tr><td><a href="issue-work-module-drift.html">issue-work-module-drift</a></td><td>How a module pair the issue stream keeps linking becomes a signal an owner acts on, which layer that signal speaks about, and why nothing it reports can fail a build</td><td>issue-work</td><td class="done">drawn</td></tr>
-<tr><td><a href="issue-work-module-rollup-read.html">issue-work-module-rollup-read</a></td><td>How the backlog is counted by module rather than by issue, why primary and secondary are never summed, and where the narrowing has to sit so an issue with a plain label is not read as an issue with none</td><td>issue-work</td><td class="done">drawn</td></tr>
-<tr><td><a href="issue-work-module-diagram-generation.html">issue-work-module-diagram-generation</a></td><td>How a module taxonomy becomes the four generated diagrams, which of the four reads which rows, and every hop that refuses by name rather than drawing a partial picture</td><td>issue-work</td><td class="done">drawn</td></tr>
-<tr><td><a href="web-v2-module-taxonomy.html">web-v2-module-taxonomy</a></td><td>How a module reaches the three web-v2 screens and comes back as an attribution, how its slug is derived and why a rename does not move it, and what deleting either side of its knowledge-node binding leaves behind</td><td>issue-work</td><td class="done">drawn</td></tr>
-<tr><td><a href="knowledge-memory-skills.html">knowledge-memory-skills</a></td><td>How something learned is written, found again, and delivered</td><td>knowledge-memory-skills</td><td class="done">drawn</td></tr>
-<tr><td><a href="knowledge-memory-model-prose.html">knowledge-memory-model-prose</a></td><td>How prose a model composed becomes a stored memory, the one hop that refuses a script the prompt never showed it, and why extraction computes that allowance more narrowly than consolidation does</td><td>knowledge-memory-skills</td><td class="done">drawn</td></tr>
-<tr><td><a href="metrics-bucketing.html">metrics-bucketing</a></td><td>How a timestamped row becomes a point on a chart, and the one join where a wrong answer raises nothing</td><td>control-observability</td><td class="done">drawn</td></tr>
-<tr><td><a href="mcp-tool-deletion.html">mcp-tool-deletion</a></td><td>How a tool leaves the MCP registry, and which of the two remaining caller populations refuses the deletion by name</td><td>agent-execution</td><td class="done">drawn</td></tr>
-<tr><td><a href="master-wake.html">master-wake</a></td><td>What makes a box look at a project — the push, the timer under it, and what covers a wake that was published while the socket was down</td><td>lifecycle-pipeline</td><td class="done">drawn</td></tr>
-<tr><td><a href="run-session-lifecycle.html">run-session-lifecycle</a></td><td>How a group of issues becomes one worktree, one pane and one ledger row, and which refusal names what it collided with</td><td>lifecycle-pipeline</td><td class="done">drawn</td></tr>
-<tr><td><a href="run-session-registry-read.html">run-session-registry-read</a></td><td>How a box&rsquo;s session registry reaches core and a reader who is not on that box, which three conditions make it decline rather than guess, and why last activity is joined rather than mirrored</td><td>lifecycle-pipeline</td><td class="done">drawn</td></tr>
-<tr><td><a href="run-session-close.html">run-session-close</a></td><td>The three marks that close a run, why none of them may be set by a report, and who closes the loop when the master is gone</td><td>lifecycle-pipeline</td><td class="done">drawn</td></tr>
-<tr><td><a href="master-pool-admission.html">master-pool-admission</a></td><td>What a master agent may see beside its claimable pool, and what turns one of those rows into work without bypassing the entry gate</td><td>lifecycle-pipeline</td><td class="done">drawn</td></tr>
-<tr><td><a href="lifecycle-pipeline.html">lifecycle-pipeline</a></td><td>How a run and its jobs open, advance and close without orphans</td><td>lifecycle-pipeline</td><td class="done">drawn</td></tr>
-<tr><td><a href="release-record.html">release-record</a></td><td>How an issue reaches <code>closed</code>, what must be written before it may, and where the record is still lost</td><td>lifecycle-pipeline</td><td class="done">drawn</td></tr>
-<tr><td><a href="lifecycle-run-state-operator-surface.html">lifecycle-run-state-operator-surface</a></td><td>How a paused run and a failed step reach the screens a person acts from, and what each says when it cannot name the cause</td><td>lifecycle-pipeline</td><td class="done">drawn</td></tr>
-<tr><td><a href="organization-access.html">organization-access</a></td><td>How a principal resolves to what it may touch</td><td>organization-access</td><td class="done">drawn</td></tr>
-<tr><td><a href="organization-agent-credentials.html">organization-agent-credentials</a></td><td>How a machine and a named agent are issued a credential, and every place the chain refuses</td><td>organization-access</td><td class="done">drawn</td></tr>
-<tr><td><a href="organization-access-token-throttle.html">organization-access-token-throttle</a></td><td>How one token shared by a dispatcher and its agents is metered, why reads and writes are counted apart, and what a 429 tells the client to do</td><td>organization-access</td><td class="done">drawn</td></tr>
-</tbody>
-</table>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+const DATA = {"modules":{"agent-execution":{"parent":"packages/core","purpose":"Device/runner plane, job dispatch, event streaming, agent + chat sessions","flows":[{"file":"agent-execution.html","module":"agent-execution","answers":"How a claimed job becomes a running agent, and what ends it","figures":2,"words":1488},{"file":"mcp-tool-deletion.html","module":"agent-execution","answers":"How a tool leaves the MCP registry, and which of the two remaining caller populations refuses the deletion by name","figures":1,"words":1423},{"file":"agent-execution-session-turns.html","module":"agent-execution","answers":"How one resident session serves many turns, why a turn ending is not the job ending, and how an answer reaches a session that is still alive","figures":2,"words":1273},{"file":"agent-execution-blocked-branch.html","module":"agent-execution","answers":"Which of four branches a blocked run takes, why only the human one releases the box, and why a park is unwritable until core says it is protected","figures":2,"words":708}]},"control-observability":{"parent":"packages/core","purpose":"Event stream, audit trail, evidence retention, metrics, cost","flows":[{"file":"control-observability-intervention-ledger.html","module":"control-observability","answers":"How a status change or a row deletion becomes a number in the interventions-per-issue metric, and where the ruler still stops","figures":1,"words":1156},{"file":"metrics-bucketing.html","module":"control-observability","answers":"How a timestamped row becomes a point on a chart, and the one join where a wrong answer raises nothing","figures":1,"words":881},{"file":"control-observability.html","module":"control-observability","answers":"How a fault on a box reaches an operator","figures":1,"words":615}]},"integrations":{"parent":"packages/core","purpose":"Provider bindings — deploy, build provenance, health gates, credential state","flows":[{"file":"deploy-build-provenance.html","module":"integrations","answers":"How the commit a container was built from reaches /version and a Sentry release, and every hop at which that answer becomes null","figures":1,"words":916},{"file":"deploy-health-gate.html","module":"integrations","answers":"How a deploy that builds but cannot serve is detected and undone, why connection-refused is a reading rather than a skip, and every point the rollback refuses","figures":1,"words":820},{"file":"coolify-deploy-controls.html","module":"integrations","answers":"How a deploy is stopped or undone, everywhere each control refuses, and where a deploy target comes from","figures":1,"words":420},{"file":"integration-credential-health.html","module":"integrations","answers":"How a refused provider API call becomes the words an operator reads, and why 401 and 403 must not read alike","figures":1,"words":386}]},"conformance-gates":{"parent":"forge","purpose":"The fifteen gates a change passes, and how a failing one says where the defect lives","flows":[{"file":"gate-signal-honesty.html","module":"conformance-gates","answers":"How a failing check says whether the defect is in the repo or on this box, and why a serial re-run cannot tell you","figures":1,"words":715}]},"human-routing":{"parent":"packages/core","purpose":"Assignment + the /me/attention pull surface; routing by expertise and authority is not built","flows":[{"file":"human-routing-attention-claim.html","module":"human-routing","answers":"How a status becomes the claim “a human is needed”, why a deliberate pause is not one, and which of the four readers is a copy rather than a read","figures":1,"words":857},{"file":"human-routing-question-park.html","module":"human-routing","answers":"How a question reaches a person once the process is gone, why the answer cannot be delivered to the asker, and the four gates a revival passes","figures":2,"words":734}]},"lifecycle-pipeline":{"parent":"packages/core","purpose":"Runs, jobs, dispatch gates, retry, release gate — the engine that turns an issue into work","flows":[{"file":"issue-status-lifecycle.html","module":"lifecycle-pipeline","answers":"The fourteen statuses an issue may hold, which hops are legal, and why nothing refuses an illegal one today","figures":1,"words":1344},{"file":"master-wake.html","module":"lifecycle-pipeline","answers":"What makes a box look at a project — the push, the timer under it, and what covers a wake that was published while the socket was down","figures":3,"words":1279},{"file":"lifecycle-pipeline.html","module":"lifecycle-pipeline","answers":"How a run and its jobs open, advance and close without orphans","figures":1,"words":1170},{"file":"master-pool-admission.html","module":"lifecycle-pipeline","answers":"What a master agent may see beside its claimable pool, and what turns one of those rows into work without bypassing the entry gate","figures":3,"words":1105},{"file":"release-record.html","module":"lifecycle-pipeline","answers":"How an issue reaches closed, what must be written before it may, and where the record is still lost","figures":1,"words":962},{"file":"lifecycle-run-state-operator-surface.html","module":"lifecycle-pipeline","answers":"How a paused run and a failed step reach the screens a person acts from, and what each says when it cannot name the cause","figures":3,"words":871},{"file":"run-session-lifecycle.html","module":"lifecycle-pipeline","answers":"How a group of issues becomes one worktree, one pane and one ledger row, and which refusal names what it collided with","figures":1,"words":731},{"file":"run-session-close.html","module":"lifecycle-pipeline","answers":"The three marks that close a run, why none of them may be set by a report, and who closes the loop when the master is gone","figures":2,"words":647},{"file":"run-session-registry-read.html","module":"lifecycle-pipeline","answers":"How a box’s session registry reaches core and a reader who is not on that box, which three conditions make it decline rather than guess, and why last activity is joined rather than mirrored","figures":1,"words":633}]},"issue-work":{"parent":"packages/core","purpose":"The issue as a lifecycle object: projects, comments, labels, relations","flows":[{"file":"issue-status-placement.html","module":"issue-work","answers":"What a status claims, which exits a draft has, and what happens when the actor who finished the work cannot land it","figures":2,"words":1649},{"file":"issue-work-attachment-upload.html","module":"issue-work","answers":"How a file becomes an attachment, which hop refuses it, and what a refused upload leaves behind","figures":1,"words":1119},{"file":"web-v2-module-taxonomy.html","module":"issue-work","answers":"How a module reaches the three web-v2 screens and comes back as an attribution, how its slug is derived and why a rename does not move it, and what deleting either side of its knowledge-node binding leaves behind","figures":2,"words":1092},{"file":"issue-work-module-attribution.html","module":"issue-work","answers":"How a project’s modules reach an agent’s prompt, how a label becomes an issue’s primary module, where a bad one is refused, and how a taxonomy authored through the web is consumed through MCP","figures":3,"words":968},{"file":"issue-work-module-drift.html","module":"issue-work","answers":"How a module pair the issue stream keeps linking becomes a signal an owner acts on, which layer that signal speaks about, and why nothing it reports can fail a build","figures":1,"words":911},{"file":"issue-work-comment-thread-read.html","module":"issue-work","answers":"How a client reads a comment thread longer than one response, the four bounds between the rows and the caller, and every way the walk ends early without saying so","figures":1,"words":883},{"file":"issue-work-comment-body-mandate.html","module":"issue-work","answers":"How a stage comes to require a typed component on a comment, which writers it refuses and which it never touches, and how the adoption number that decides the mandate avoids counting what was merely intended","figures":2,"words":863},{"file":"issue-work-module-knowledge-refresh.html","module":"issue-work","answers":"How a passing test keeps a module’s knowledge node current, which hop declines to write and says so instead, and why a failed refresh cannot fail the issue’s own pipeline","figures":1,"words":766},{"file":"issue-work-shipped-evidence.html","module":"issue-work","answers":"How finished work becomes a countable “shipped”, and why a close is not a claim","figures":1,"words":733},{"file":"issue-work-module-diagram-generation.html","module":"issue-work","answers":"How a module taxonomy becomes the four generated diagrams, which of the four reads which rows, and every hop that refuses by name rather than drawing a partial picture","figures":1,"words":721},{"file":"issue-work-module-rollup-read.html","module":"issue-work","answers":"How the backlog is counted by module rather than by issue, why primary and secondary are never summed, and where the narrowing has to sit so an issue with a plain label is not read as an issue with none","figures":1,"words":688},{"file":"issue-work-body-render.html","module":"issue-work","answers":"How a body stored as forge-* components becomes pixels, the three hops where it silently degrades to literal markup or a blank, and why the composer previews through the server rather than a second parser","figures":1,"words":676},{"file":"issue-work-conditional-field-write.html","module":"issue-work","answers":"How two writers of one issue field are separated by the tracker rather than by etiquette, where the loser is told what the field now holds, and why a check above the write enforces nothing","figures":1,"words":558}]},"knowledge-memory-skills":{"parent":"packages/core","purpose":"Skills, pgvector semantic memory, project knowledge — the context an execution gets","flows":[{"file":"knowledge-memory-skills.html","module":"knowledge-memory-skills","answers":"How something learned is written, found again, and delivered","figures":3,"words":790},{"file":"knowledge-memory-model-prose.html","module":"knowledge-memory-skills","answers":"How prose a model composed becomes a stored memory, the one hop that refuses a script the prompt never showed it, and why extraction computes that allowance more narrowly than consolidation does","figures":1,"words":672}]},"organization-access":{"parent":"packages/core","purpose":"Orgs, projects, membership; dual-principal auth (user JWT + revocable device token)","flows":[{"file":"organization-access.html","module":"organization-access","answers":"How a principal resolves to what it may touch","figures":3,"words":2073},{"file":"organization-agent-credentials.html","module":"organization-access","answers":"How a machine and a named agent are issued a credential, and every place the chain refuses","figures":1,"words":1149},{"file":"organization-access-token-throttle.html","module":"organization-access","answers":"How one token shared by a dispatcher and its agents is metered, why reads and writes are counted apart, and what a 429 tells the client to do","figures":1,"words":661}]}}};
+const esc = s => String(s).replace(/"/g, '&quot;');
+const nid = s => 'N' + s.replace(/[^A-Za-z0-9]/g, '');
+// a flow's own name already carries its module; the map shows the part that differs
+const trim = (n, mod) => n.replace(new RegExp('^' + mod.replace(/[^a-z0-9-]/g, '') + '-?'), '') || n;
 
-<h2>Read when · Updated by</h2>
-<table>
-<thead><tr><th>Read when</th><th>Updated by</th></tr></thead>
-<tbody>
-<tr><td>You need to know what happens across processes before changing one of them</td>
-    <td>Any change that alters the order, the hops, or the failure paths of a flow listed above</td></tr>
-<tr><td>A failure crosses a boundary and you cannot tell which side owns it</td>
-    <td>The change that discovers a flow here is wrong — corrected or deleted, never annotated</td></tr>
-</tbody>
-</table>
+function overview() {
+  const mods = Object.entries(DATA.modules);
+  let s = 'flowchart LR\n';
+  s += '  classDef svc fill:#e6efe9,stroke:#1f6f4a,stroke-width:2px,color:#14532d\n';
+  s += '  classDef mod fill:#fff,stroke:#ddd7cf\n';
+  s += '  classDef gap fill:#f6ecef,stroke:#8a3b52\n';
+  const parents = [...new Set(mods.map(([, v]) => v.parent))];
+  for (const p of parents) s += `  ${nid(p)}["${esc(p)}"]:::svc\n`;
+  for (const [id, v] of mods) {
+    const n = v.flows.length, gaps = v.flows.filter(f => f.figures === 0).length;
+    s += `  ${nid(v.parent)} --> ${nid(id)}["${esc(id)}<br/>${n} flow"]:::${gaps ? 'gap' : 'mod'}\n`;
+    s += `  click ${nid(id)} "#/m/${encodeURIComponent(id)}"\n`;
+  }
+  return s;
+}
 
-</main>
+function module(id) {
+  const v = DATA.modules[id];
+  let s = 'flowchart LR\n';
+  s += '  classDef hub fill:#e6efe9,stroke:#1f6f4a,stroke-width:2px,color:#14532d\n';
+  s += '  classDef f fill:#fff,stroke:#ddd7cf\n';
+  s += '  classDef gap fill:#f6ecef,stroke:#8a3b52\n';
+  s += `  H(["${esc(id)}"]):::hub\n`;
+  v.flows.forEach((f, i) => {
+    s += `  H --> F${i}["${esc(trim(f.file.replace(/\.html$/, ''), id))}"]:::${f.figures ? 'f' : 'gap'}\n`;
+    s += `  click F${i} "${esc(f.file)}"\n`;
+  });
+  return s;
+}
+
+function render() {
+  const m = location.hash.match(/^#\/m\/(.+)$/);
+  const id = m && DATA.modules[decodeURIComponent(m[1])] ? decodeURIComponent(m[1]) : null;
+  const bar = document.getElementById('crumb');
+  bar.innerHTML = id
+    ? `<a href="#/">forge</a><span class="sep">/</span><span class="now">${esc(id)}</span>`
+      + `<span class="hint">${esc(DATA.modules[id].purpose)}</span>`
+    : `<span class="now">forge</span><span class="hint">click a module &mdash; red means a flow in it draws nothing</span>`;
+  const fig = document.getElementById('fig');
+  fig.removeAttribute('data-processed');
+  fig.textContent = id ? module(id) : overview();
+  mermaid.run({ nodes: [fig] }).catch(() => {}).finally(() => {
+    const svg = fig.querySelector('svg');
+    if (!svg) return;
+    const vb = (svg.getAttribute('viewBox') || '').split(/\s+/);
+    if (vb.length === 4) { svg.style.width = vb[2] + 'px'; svg.style.maxWidth = 'none'; }
+  });
+}
+
+mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', theme: 'neutral',
+  themeVariables: { fontSize: '12px', fontFamily: 'ui-sans-serif,system-ui,sans-serif' },
+  flowchart: { useMaxWidth: false, nodeSpacing: 26, rankSpacing: 52, padding: 6 } });
+addEventListener('hashchange', render);
+render();
+</script>

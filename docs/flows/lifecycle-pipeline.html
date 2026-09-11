@@ -1,5 +1,7 @@
 <!doctype html>
 <meta charset="utf-8">
+<meta name="flow-module" content="lifecycle-pipeline">
+<meta name="flow-answers" content="How a run and its jobs open, advance and close without orphans">
 <title>Flow · lifecycle-pipeline — a run and its jobs reach terminal together</title>
 <style>
   :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; --lock:#a06a1f; }
@@ -25,6 +27,8 @@
   .exit { fill:#fdf0f3; stroke:#e3c2cb; }
   .arrow { stroke:var(--fg); stroke-width:1.2; fill:none; marker-end:url(#a); }
   .arrowbad { stroke:var(--bad); stroke-width:1.2; fill:none; marker-end:url(#b); stroke-dasharray:4 3; }
+  .board { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; margin:1rem 0; overflow-x:auto; }
+  .board svg { max-width:none !important; height:auto; }
 </style>
 <main>
 <h1>lifecycle-pipeline</h1>
@@ -47,26 +51,17 @@ run when the jobs are already done, and what stops it closing while a deploy is 
 </div>
 
 <h2>Forward — the run closes first</h2>
-<pre>
-  issue reaches a terminal status
-        |
-        v
-  apply-transition.ts  --RUN_CLOSING_STATUSES-->  runs.ts closeOpenRunForIssue
-                                                        |
-                                        (same transaction)
-                                                        v
-                                       runs-cascade.ts cascadeCancelChildJobs
-                                                        |
-              +-----------------------------------------+
-              |                                         |
-   reason = pipeline_completed              reason = failed / cancelled
-   active jobs  -> done                     active jobs  -> cancelled
-   sessions     -> completed                sessions     -> failed
-              |                                         |
-              +--------------------+--------------------+
-                                   v
-                    requestKillsForCascade  (AFTER commit only)
-</pre>
+<div class="board"><pre class="mermaid">
+flowchart TD
+  A["issue reaches a terminal status"] --> B["apply-transition.ts"]
+  B -->|RUN_CLOSING_STATUSES| C["runs.ts closeOpenRunForIssue"]
+  C -->|same transaction| D["runs-cascade.ts<br/>cascadeCancelChildJobs"]
+  D -->|reason = pipeline_completed| E["active jobs → done<br/>sessions → completed"]
+  D -->|reason = failed / cancelled| F["active jobs → cancelled<br/>sessions → failed"]
+  E --> G["requestKillsForCascade"]
+  F --> G
+  G -.->|AFTER commit only| H["the box is told to kill"]
+</pre></div>
 <p>Three defences in lockstep, plus a DB trigger as a bypass-proof fourth:</p>
 <table>
 <thead><tr><th>Defence</th><th>Where</th><th>What it catches</th></tr></thead>
@@ -215,3 +210,17 @@ rather than stamping the run with a deploy substep it cannot back up.</p>
 </table>
 
 </main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({ startOnLoad: false, theme: 'neutral',
+    themeVariables: { fontSize: '12px', fontFamily: 'ui-sans-serif,system-ui,sans-serif' },
+    flowchart: { useMaxWidth: false, nodeSpacing: 30, rankSpacing: 42, padding: 6 } });
+  // .finally, not .then — mermaid.run() REJECTS on some diagram types after drawing them fine.
+  const fit = () => {
+    for (const s of document.querySelectorAll('.board svg')) {
+      const vb = (s.getAttribute('viewBox') || '').split(/\s+/);
+      if (vb.length === 4) { s.style.width = vb[2] + 'px'; s.style.maxWidth = 'none'; }
+    }
+  };
+  mermaid.run().catch(() => {}).finally(fit);
+</script>

@@ -1,5 +1,7 @@
 <!doctype html>
 <meta charset="utf-8">
+<meta name="flow-module" content="lifecycle-pipeline">
+<meta name="flow-answers" content="How an issue reaches closed, what must be written before it may, and where the record is still lost">
 <title>Flow · release-record — what has to be true before an issue may claim it shipped</title>
 <style>
   :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; --lock:#a06a1f; }
@@ -20,6 +22,8 @@
   pre { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; overflow-x:auto;
         font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; }
   ul { padding-left:1.1rem; } li { margin:.3rem 0; }
+  .board { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; margin:1rem 0; overflow-x:auto; }
+  .board svg { max-width:none !important; height:auto; }
 </style>
 <main>
 <h1>release-record</h1>
@@ -39,68 +43,22 @@ built from those measurements (ISS-863, ISS-880, ISS-897).</p>
 </div>
 
 <h2>The path</h2>
-<pre>
-  agent finishes the work, asks for `closed`
-                |
-                v
-  +-------------------------------+
-  | issues/release-gate-hold.ts   |   resolveAgentCloseTarget
-  | does this project ship        |   agency=agent AND not viaReleasePath
-  | anywhere else?                |
-  +-------------------------------+
-        |                     |
-   no gate                  gate = `awaiting_release` <- release-batch/gate.ts:
-        |                     |                          an ACTIVE prod binding, AND
-        |                     v                          (a production branch distinct
-        |            the close is REWRITTEN              from the base OR a declared
-        |            to `awaiting_release` and held      releaseRunnerLabel)
-        |                     |
-        v                     |          an operator selects the parked issues
-  +------------------------+  |                        |
-  | release-record-        |  |                        v
-  | required.ts            |  |     +--------------------------------------+
-  | refuseUnrecordedClose  |  |     | release-batch/service.ts             |
-  |                        |  |     | createReleaseBatch                   |
-  | exempt: a human,       |  |     |  1. every issue at the gate status   |
-  |   viaReleasePath,      |  |     |  2. NONE missing a release note  <---+-- the same rule,
-  |   `dropped`            |  |     |  3. a named, online release box      |   second door
-  +------------------------+  |     |  4. read the LIVE commit FIRST       |
-        |            |        |     +--------------------------------------+
-   note present   no note     |                        |
-        |            |        |            one `release_batch` job, one agent
-        |            v        |                        |
-        |        REFUSED      |                        v
-        |     nothing moves   |     +--------------------------------------+
-        |                     |     | finishReleaseBatch                   |
-        |                     |     |  probes: live commit CHANGED and     |
-        |                     |     |  matches what the release pushed     |
-        |                     |     +--------------------------------------+
-        |                     |            |                    |
-        |                     |         verified            not verified
-        |                     |            |                    |
-        |                     |            v                    v
-        |                     |     close every claim     ReleaseNotVerifiedError
-        |                     |     viaReleasePath        NOTHING closes; abort is
-        |                     |            |              the only remaining move
-        +---------------------+------------+
-                              |
-                              v
-              +--------------------------------+
-              | issues/merged-at.ts            |
-              | leaving BASE_MERGE_STATE  -> stamp merged_at   (cm:flow release/stamp)
-              | reaching `closed`         -> stamp if still null (cm:flow release/close)
-              +--------------------------------+
-                              |
-                              v
-                 every `blocks` dependent is now free
-                              |
-                              v
-              +--------------------------------+
-              | runs-cascade.ts closes the run | (cm:flow release/reap)
-              | job completion dispatches the  | (cm:flow release/deploy)
-              | deploy; prod parks for a human |
-              +--------------------------------+
-</pre>
+<div class="board"><pre class="mermaid">
+flowchart TD
+  A["agent finishes the work, asks for `closed`"] --> B{"release-gate-hold.ts<br/>resolveAgentCloseTarget<br/>agency=agent AND not viaReleasePath"}
+  B -->|no gate| C{"release-record-required.ts<br/>refuseUnrecordedClose<br/>exempt: a human · viaReleasePath · dropped"}
+  C -->|note present| M
+  C -->|no note| X1["REFUSED — nothing moves"]
+  B -->|"gate = awaiting_release"| D["the close is REWRITTEN to<br/>awaiting_release and HELD"]
+  D --> E["an operator selects the parked issues"]
+  E --> F["release-batch/service.ts createReleaseBatch<br/>1. every issue at the gate status<br/>2. NONE missing a release note ← the same rule, second door<br/>3. a named, online release box<br/>4. read the LIVE commit FIRST"]
+  F -->|one release_batch job, one agent| G{"finishReleaseBatch<br/>live commit CHANGED and matches what was pushed?"}
+  G -->|verified| H["close every claim, viaReleasePath"]
+  G -->|not verified| X2["ReleaseNotVerifiedError<br/>NOTHING closes · abort is the only move left"]
+  H --> M["issues/merged-at.ts<br/>leaving BASE_MERGE_STATE → stamp merged_at<br/>reaching closed → stamp if still null"]
+  M --> N["every blocks dependent is now free"]
+  N --> O["runs-cascade.ts closes the run<br/>job completion dispatches the deploy<br/>prod parks for a human"]
+</pre></div>
 
 <h2>The two doors are one rule</h2>
 <div class="rule">
@@ -197,3 +155,17 @@ gates are refused. Do not close it from a diff.</p>
 </ul>
 
 </main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({ startOnLoad: false, theme: 'neutral',
+    themeVariables: { fontSize: '12px', fontFamily: 'ui-sans-serif,system-ui,sans-serif' },
+    flowchart: { useMaxWidth: false, nodeSpacing: 30, rankSpacing: 42, padding: 6 } });
+  // .finally, not .then — mermaid.run() REJECTS on some diagram types after drawing them fine.
+  const fit = () => {
+    for (const s of document.querySelectorAll('.board svg')) {
+      const vb = (s.getAttribute('viewBox') || '').split(/\s+/);
+      if (vb.length === 4) { s.style.width = vb[2] + 'px'; s.style.maxWidth = 'none'; }
+    }
+  };
+  mermaid.run().catch(() => {}).finally(fit);
+</script>

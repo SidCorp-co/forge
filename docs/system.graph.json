@@ -1,7 +1,7 @@
 {
   "$schema": "./system.graph.schema.json",
   "version": "1.0.0",
-  "generated": "2026-04-23",
+  "generated": "2026-09-11",
   "root": "forge",
   "legend": {
     "kinds": [
@@ -84,7 +84,7 @@
     {
       "id": "packages/runner",
       "kind": "service",
-      "purpose": "Headless CLI device agent (Rust forge-runner daemon \u2014 CI runners, servers)",
+      "purpose": "Headless CLI device agent (Rust forge-runner daemon — CI runners, servers)",
       "status": "active",
       "decisions": [
         "ADR-0001"
@@ -107,7 +107,7 @@
     {
       "id": "knowledge-memory-skills",
       "kind": "module",
-      "purpose": "Skills, pgvector semantic memory, project knowledge \u2014 the context an execution gets",
+      "purpose": "Skills, pgvector semantic memory, project knowledge — the context an execution gets",
       "status": "active",
       "docs": "docs/modules/knowledge-memory-skills/",
       "decisions": [
@@ -190,7 +190,7 @@
       "id": "lifecycle-pipeline",
       "kind": "module",
       "status": "active",
-      "purpose": "Runs, jobs, dispatch gates, retry, release gate \u2014 the engine that turns an issue into work",
+      "purpose": "Runs, jobs, dispatch gates, retry, release gate — the engine that turns an issue into work",
       "docs": "docs/modules/lifecycle-pipeline/"
     },
     {
@@ -206,6 +206,20 @@
       "status": "active",
       "purpose": "Event stream, audit trail, evidence retention, metrics, cost",
       "docs": "docs/modules/control-observability/"
+    },
+    {
+      "id": "integrations",
+      "kind": "module",
+      "purpose": "Provider bindings — deploy, build provenance, health gates, credential state",
+      "status": "active",
+      "docs": "docs/modules/integrations/"
+    },
+    {
+      "id": "conformance-gates",
+      "kind": "module",
+      "purpose": "The fifteen gates a change passes, and how a failing one says where the defect lives",
+      "status": "active",
+      "docs": "scripts/README.md"
     }
   ],
   "edges": [
@@ -360,6 +374,16 @@
     {
       "from": "packages/core",
       "to": "control-observability",
+      "relation": "contains"
+    },
+    {
+      "from": "packages/core",
+      "to": "integrations",
+      "relation": "contains"
+    },
+    {
+      "from": "forge",
+      "to": "conformance-gates",
       "relation": "contains"
     }
   ]
