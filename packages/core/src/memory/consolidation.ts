@@ -335,6 +335,7 @@ async function consolidate(projectId: string): Promise<ConsolidationResult> {
     .filter((id): id is string => typeof id === 'string' && byId.has(id))
     .slice(0, MAX_ARCHIVES);
   let archived = 0;
+  let archivedRefs: string[] = [];
   if (archiveIds.length > 0) {
     const rows = await db
       .update(memories)
@@ -346,23 +347,23 @@ async function consolidate(projectId: string): Promise<ConsolidationResult> {
           inArray(memories.source, [...CONSOLIDATABLE_SOURCES]),
         ),
       )
-      .returning({ id: memories.id });
+      .returning({ sourceRef: memories.sourceRef });
     archived = rows.length;
+    archivedRefs = rows.map((r) => r.sourceRef);
   }
 
-  const summary =
-    typeof actions.summary === 'string' && actions.summary
-      ? actions.summary
-      : `created ${created}, updated ${updated}, archived ${archived}`;
+  const counts = `created ${created}, updated ${updated}, archived ${archived}`;
+  const summary = typeof actions.summary === 'string' && actions.summary ? actions.summary : counts;
 
-  // Audit trail: a decision memory row, searchable like any other.
+  // cm:guard the ref must stay unique PER RUN — the natural key is (projectId, source, sourceRef), and while this read `consolidation:<date>` a same-day second run REPLACED the first receipt, losing a run with no trace; a timestamp is not enough either, two runs can share a second
+  // cm:why archived refs are named rather than counted — "archived 3" identifies nothing, so a reader cannot check what went or put it back
   if (created + updated + archived > 0) {
     await indexMemoryBestEffort({
       projectId,
       source: 'decision',
-      sourceRef: `consolidation:${new Date().toISOString().slice(0, 10)}`,
-      text: `Memory consolidation: ${summary} (created: ${created}, updated: ${updated}, archived: ${archived})`,
-      metadata: { cause: 'memory-consolidation' },
+      sourceRef: `consolidation:${new Date().toISOString().slice(0, 10)}-${crypto.randomBytes(4).toString('hex')}`,
+      text: `Memory consolidation: ${counts}${summary === counts ? '' : ` — ${summary}`}${archivedRefs.length > 0 ? `\narchived: ${archivedRefs.join(', ')}` : ''}`,
+      metadata: { cause: 'memory-consolidation', archivedRefs },
     });
   }
 
@@ -627,7 +628,7 @@ async function reconcile(projectId: string, issueId: string): Promise<ReconcileR
     'memory.reconcile',
   );
 
-  let contradicted = 0;
+  const contradictedRefs: string[] = [];
   for (const item of (Array.isArray(actions.contradicted) ? actions.contradicted : []).slice(
     0,
     RECONCILE_MAX_CANDIDATES,
@@ -644,7 +645,7 @@ async function reconcile(projectId: string, issueId: string): Promise<ReconcileR
         verdict: 'outdated',
         evidence: `superseded by ${issRef}: ${item.evidence}`.slice(0, 2000),
       });
-      contradicted++;
+      contradictedRefs.push(candidate.sourceRef);
     } catch (err) {
       logger.warn(
         { err: (err as Error).message, projectId, issueId, memoryId: item.id },
@@ -653,7 +654,7 @@ async function reconcile(projectId: string, issueId: string): Promise<ReconcileR
     }
   }
 
-  let possiblyStale = 0;
+  const staleRefs: string[] = [];
   const staleSinceIso = mergedAt.toISOString();
   for (const item of (Array.isArray(actions.possiblyStale) ? actions.possiblyStale : []).slice(
     0,
@@ -672,7 +673,7 @@ async function reconcile(projectId: string, issueId: string): Promise<ReconcileR
         })
         .where(eq(memories.id, candidate.id))
         .returning({ id: memories.id });
-      if (updated.length > 0) possiblyStale++;
+      if (updated.length > 0) staleRefs.push(candidate.sourceRef);
     } catch (err) {
       logger.warn(
         { err: (err as Error).message, projectId, issueId, memoryId: item.id },
@@ -681,15 +682,25 @@ async function reconcile(projectId: string, issueId: string): Promise<ReconcileR
     }
   }
 
+  const contradicted = contradictedRefs.length;
+  const possiblyStale = staleRefs.length;
   const summary = `reconcile ${issRef}: ${contradicted} contradicted, ${possiblyStale} possibly-stale of ${candidates.length} candidates`;
 
-  // Audit trail, doubles as the idempotency guard above.
+  // cm:guard this row IS the idempotency guard read at the top of this function — deleting it re-arms the whole reconcile for that issue, re-spending the LLM call and re-stamping rows on the next reopen→release
+  // cm:why the refs are NAMED, not just counted — a receipt saying "5 possibly-stale" identifies nothing, so the stamping it claims can be neither checked nor undone by whoever reads it back
   await indexMemoryBestEffort({
     projectId,
     source: 'decision',
     sourceRef: decisionRef,
-    text: summary,
-    metadata: { cause: 'memory-reconcile', issueId, contradicted, possiblyStale },
+    text: `${summary}${contradictedRefs.length > 0 ? `\ncontradicted: ${contradictedRefs.join(', ')}` : ''}${staleRefs.length > 0 ? `\nstale-stamped: ${staleRefs.join(', ')}` : ''}`,
+    metadata: {
+      cause: 'memory-reconcile',
+      issueId,
+      contradicted,
+      possiblyStale,
+      contradictedRefs,
+      staleRefs,
+    },
   });
 
   return { contradicted, possiblyStale, refused: guard.count, summary };

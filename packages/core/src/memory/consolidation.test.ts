@@ -125,7 +125,7 @@ beforeEach(() => {
     degraded: false,
   });
   indexMemoryBestEffortMock.mockResolvedValue(undefined);
-  archiveUpdateMock.mockResolvedValue([{ id: 'm-1' }]);
+  archiveUpdateMock.mockResolvedValue([{ sourceRef: 'ref-m-1' }]);
   insertReturningMock.mockResolvedValue([{ id: 'issue-new' }]);
   embedMock.mockResolvedValue(new Array(8).fill(0.01));
   runMemoryFeedbackMock.mockResolvedValue({ found: true, action: 'archived' });
@@ -288,9 +288,55 @@ describe('runConsolidationForProject', () => {
   });
 });
 
+describe('a receipt names what it touched, never only how much', () => {
+  // cm:why these assert on the TEXT and the metadata refs, not the counts — a receipt that counts is what shipped for months, and a count identifies no row, so nothing it claims can be checked or undone by a later reader
+  it('reconcile names the contradicted and stale-stamped refs', async () => {
+    queueIssueLookup();
+    queueIdempotency();
+    searchMemoriesMock.mockResolvedValueOnce([memoryHit('m-1'), memoryHit('m-2')]);
+    llmResponds({
+      contradicted: [{ id: 'm-1', evidence: 'IA restructured into 3 pipelines' }],
+      possiblyStale: [{ id: 'm-2' }],
+    });
+    updateSetMock.mockReturnValue(undefined);
+
+    await reconcileForReleasedIssue(PROJECT_ID, ISSUE_ID);
+
+    const receipt = indexMemoryBestEffortMock.mock.calls.at(-1)?.[0];
+    expect(receipt.text).toContain('contradicted: ref-m-1');
+    expect(receipt.text).toContain('stale-stamped: ref-m-2');
+    expect(receipt.metadata.contradictedRefs).toEqual(['ref-m-1']);
+    expect(receipt.metadata.staleRefs).toEqual(['ref-m-2']);
+  });
+
+  it('consolidation names the archived refs and does not print its counts twice', async () => {
+    queueSignal();
+    llmResponds({ create: [], update: [], archive: ['m-1'] });
+
+    await runConsolidationForProject(PROJECT_ID);
+
+    const receipt = indexMemoryBestEffortMock.mock.calls.at(-1)?.[0];
+    expect(receipt.text).toContain('archived: ref-m-1');
+    expect(receipt.metadata.archivedRefs).toEqual(['ref-m-1']);
+    expect(receipt.text.match(/created 0, updated 0, archived 1/g)).toHaveLength(1);
+  });
+
+  it('gives each consolidation run its own ref so a same-day rerun cannot replace the first', async () => {
+    const refs: string[] = [];
+    for (let i = 0; i < 2; i++) {
+      queueSignal();
+      llmResponds({ create: [], update: [], archive: ['m-1'] });
+      await runConsolidationForProject(PROJECT_ID);
+      refs.push(indexMemoryBestEffortMock.mock.calls.at(-1)?.[0].sourceRef);
+    }
+    expect(refs[0]).not.toBe(refs[1]);
+    expect(refs[0]).toMatch(/^consolidation:\d{4}-\d{2}-\d{2}-[0-9a-f]{8}$/);
+  });
+});
+
 describe('reconcileForReleasedIssue', () => {
   it('skips when the issue is not found', async () => {
-    selectResults.push([]); // issue lookup — empty
+    selectResults.push([]);
 
     const result = await reconcileForReleasedIssue(PROJECT_ID, ISSUE_ID);
 
