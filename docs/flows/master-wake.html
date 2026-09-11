@@ -37,7 +37,7 @@ already used and decides for itself.</p>
 <div class="board"><pre class="mermaid">
 flowchart TD
   subgraph core["core"]
-    T1["issue reaches open / draft / released<br/>(transition hook)"] --> W
+    T1["issue reaches open / draft / awaiting_release<br/>(transition hook)"] --> W
     T2["issue CREATED at open / draft<br/>(issueCreated hook)"] --> W
     W["ws/master-wake.ts<br/>wakeMastersForProject"]
     W --> Q["SELECT DISTINCT device_id FROM runners<br/>WHERE project_id = ?<br/>— no status filter, a draining box is woken too"]

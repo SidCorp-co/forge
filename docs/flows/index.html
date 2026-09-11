@@ -38,6 +38,21 @@ already owns structure.</p>
       what order; state machine when the point is which transitions are legal; flowchart when the
       point is where a decision forks. Inline SVG or a <code>&lt;pre class="mermaid"&gt;</code> block,
       self-contained, opens from disk with no build step.</li>
+  <li><b>An edge that leaves from EVERY node is a band, not N arrows.</b> Draw it once as a labelled
+      strip with a tick down to each node it touches. <code>issue-status-lifecycle</code> spent 29 of
+      its 59 edges on three universal exits and rendered as a hairball; the same three facts are one
+      band and one footer.</li>
+  <li><b>The figure is the page; prose is a caption.</b> The landing view is the diagram, a legend,
+      and at most three lines under it. Everything else goes in a tab or a table row. <b>If a
+      paragraph is needed to explain the diagram, fix the diagram.</b></li>
+  <li><b>Lay it out like a screen, not a document.</b> A header bar naming the flow and its one-line
+      status, the figure on its own panel, a right rail for the per-node reference, tabs for the
+      detail. The reader is scanning, not reading top to bottom.</li>
+  <li><b>Hand-author the SVG when the layout carries meaning.</b> A layout engine given 14 nodes packs
+      them and shrinks the type until nobody reads it. Mermaid is right for a short chain; past ~10
+      nodes or ~20 edges, place them yourself. Keep the figure in a scrolling panel
+      (<code>overflow-x:auto</code>) with its grid column at <code>minmax(0,1fr)</code>, or a wide
+      figure drags the whole page sideways.</li>
   <li><b>Delete rather than carry.</b> A flow the code no longer performs is removed in the change
       that discovers it — not marked stale.</li>
 </ul>

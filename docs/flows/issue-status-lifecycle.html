@@ -2,183 +2,250 @@
 <meta charset="utf-8">
 <title>Flow · issue-status-lifecycle — fourteen statuses, and which hops are legal</title>
 <style>
-  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52;
-          --new:#5b3a8e; }
-  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
-         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
-  main { max-width:64rem; margin:0 auto; }
-  h1 { font-size:1.6rem; margin:0 0 .3rem; }
-  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
-  .sub { color:var(--mut); margin:0 0 1.6rem; }
-  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
-  table { border-collapse:collapse; width:100%; font-size:14px; }
-  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
-  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
-  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
-  .warn { border-left-color:var(--bad); }
-  .plan { border-left-color:var(--new); }
-  .board { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; overflow-x:auto; }
-  .mx { border-collapse:separate; border-spacing:2px; font-size:12px; }
-  .mx th { padding:4px 6px; border:0; font:600 12px ui-monospace,Menlo,monospace; color:var(--mut); text-transform:none; letter-spacing:0; }
-  .mx th.rh { text-align:right; color:var(--fg); }
-  .mx td { border:0; padding:0; }
-  .mx i { display:block; height:24px; line-height:24px; border-radius:3px; font-style:normal; text-align:center; font-size:13px; }
-  .y { background:#e6efe9; color:var(--acc); font-weight:700; }
-  .y.p { background:#f6ecef; color:var(--bad); }
-  .x { background:transparent; color:var(--line); }
-  .s { background:#f0ece6; color:var(--mut); }
-  .gone { color:var(--mut); text-decoration:line-through; }
+  :root { --fg:#1c1a17; --mut:#6b645c; --faint:#9a9288; --line:#ddd7cf; --bg:#fbfaf8; --panel:#fff;
+          --acc:#1f6f4a; --accbg:#e6efe9; --bad:#8a3b52; --badbg:#f6ecef; --new:#5b3a8e; --newbg:#efeaf6; }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  code { font:12.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+
+  .bar { display:flex; align-items:baseline; gap:.9rem; flex-wrap:wrap;
+         padding:.85rem 1.4rem; background:var(--panel); border-bottom:1px solid var(--line); }
+  .bar h1 { font-size:1.05rem; margin:0; font-weight:650; letter-spacing:-.01em; }
+  .crumb { font:12px ui-monospace,Menlo,monospace; color:var(--faint); }
+  .crumb a { color:var(--faint); }
+  .pill { margin-left:auto; font-size:12px; padding:.22rem .6rem; border-radius:99px;
+          background:var(--badbg); color:var(--bad); border:1px solid #e6d3d9; font-weight:600; }
+
+  .cols { display:grid; grid-template-columns:minmax(0,1fr) 20rem; gap:1px; background:var(--line); }
+  @media (max-width:1100px){ .cols { grid-template-columns:minmax(0,1fr) } }
+  .canvas, .rail { background:var(--bg); padding:1.1rem 1.4rem; }
+  .board { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:.6rem; overflow-x:auto; }
+  .board svg { display:block; min-width:60rem; width:100%; height:auto; }
+  .cap { color:var(--mut); font-size:13px; margin:.7rem .2rem 0; }
+  .cap b { color:var(--fg) }
+
+  .rail h2 { font-size:11.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--faint);
+             margin:0 0 .5rem; font-weight:700; }
+  .rail section + section { margin-top:1.3rem }
+  .who { list-style:none; margin:0; padding:0; font-size:12.5px; }
+  .who li { display:flex; gap:.5rem; padding:.28rem 0; border-bottom:1px solid var(--line); }
+  .who li:last-child { border-bottom:0 }
+  .who b { flex:0 0 8.6rem; font:600 12px ui-monospace,Menlo,monospace; }
+  .who span { color:var(--mut) }
+  .who .rt b { color:var(--acc) } .who .pk b { color:var(--new) } .who .en b { color:var(--mut) }
+  .key { list-style:none; margin:0; padding:0; font-size:12.5px; color:var(--mut) }
+  .key li { display:flex; align-items:center; gap:.5rem; padding:.2rem 0 }
+  .sw { width:22px; height:13px; border-radius:3px; flex:0 0 auto }
+  .key.strip { display:flex; flex-wrap:wrap; gap:.35rem 1.3rem; margin:.7rem .2rem 0 }
+
+  .tabs { display:flex; gap:.3rem; padding:0 1.4rem; background:var(--panel); border-top:1px solid var(--line);
+          border-bottom:1px solid var(--line); }
+  .tabs button { appearance:none; border:0; background:none; padding:.6rem .85rem; cursor:pointer;
+                 font:600 13px inherit; color:var(--mut); border-bottom:2px solid transparent; }
+  .tabs button[aria-selected=true] { color:var(--fg); border-bottom-color:var(--acc) }
+  .pane { padding:1.2rem 1.4rem 2rem; }
+  .pane[hidden] { display:none }
+
+  table { border-collapse:collapse; width:100%; font-size:13.5px; }
+  th,td { text-align:left; padding:.45rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--faint); font-size:11.5px; text-transform:uppercase; letter-spacing:.05em; }
+  td.n { white-space:nowrap; font:12px ui-monospace,Menlo,monospace; color:var(--mut) }
+
+  .mx { border-collapse:separate; border-spacing:2px; font-size:12px; width:auto }
+  .mx th { padding:3px 5px; border:0; font:600 11.5px ui-monospace,Menlo,monospace; color:var(--mut);
+           text-transform:none; letter-spacing:0 }
+  .mx th.rh { text-align:right; color:var(--fg) }
+  .mx td { border:0; padding:0 }
+  .mx i { display:block; width:26px; height:22px; line-height:22px; border-radius:3px; font-style:normal;
+          text-align:center; font-size:12px }
+  .y { background:var(--accbg); color:var(--acc); font-weight:700 }
+  .y.p { background:var(--newbg); color:var(--new) }
+  .x { background:#f4f1ec; color:#e2ddd5 }
+  .s { background:#ebe6df; color:var(--faint) }
+  .gone { color:var(--faint); text-decoration:line-through }
+  .note { background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--bad);
+          padding:.6rem .9rem; border-radius:4px; margin:.9rem 0; font-size:13.5px }
+  .note.plan { border-left-color:var(--new) }
+  .foot { padding:1rem 1.4rem 2.5rem; font-size:13px; color:var(--mut) }
 </style>
-<main>
 
-<h1>issue-status-lifecycle — fourteen statuses, and which hops are legal</h1>
-<p class="sub">What an issue may be, and where it may go from there. Decided by the owner
-2026-09-09 and 2026-09-10, replacing a seventeen-status enum whose retired ladder still held rows,
-and revised 2026-09-11 (ISS-976) when two of the cuts turned out to have a party boundary after all.
-The table below is the target: every hop absent from it is refused. <b>Today it is not</b> —
+<header class="bar">
+  <span class="crumb"><a href="index.html">flows</a> / issue-status-lifecycle</span>
+  <h1>Fourteen statuses, and which hops are legal</h1>
+  <span class="pill">advisory — nothing refuses a hop today</span>
+</header>
+
+<div class="cols">
+<div class="canvas">
+  <div class="board">
+<svg viewBox="0 140 1320 470" role="img" aria-label="Issue status lifecycle: ingress, the nine-rung rail, two parks above, reopen and the no-gate shortcut below, dropped at the foot">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1c1a17"/></marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6b645c"/></marker>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8a3b52"/></marker>
+    <marker id="ap" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5b3a8e"/></marker>
+    <style>
+      .n  { font:600 12px ui-monospace,Menlo,monospace; fill:#1c1a17; text-anchor:middle }
+      .el { font:11px ui-sans-serif,system-ui,sans-serif; fill:#6b645c; text-anchor:middle }
+      .bl { font:600 11.5px ui-sans-serif,system-ui,sans-serif; fill:#5b3a8e }
+      .bs { font:11px ui-sans-serif,system-ui,sans-serif; fill:#6b645c }
+      .rl { font:600 11px ui-sans-serif,system-ui,sans-serif; fill:#8a3b52 }
+      .box  { fill:#fff; stroke:#ddd7cf; stroke-width:1.2 }
+      .rung { fill:#fff; stroke:#1f6f4a; stroke-width:1.2 }
+      .door { fill:#e6efe9; stroke:#1f6f4a; stroke-width:2 }
+      .end  { fill:#ebe6df; stroke:#9a9288; stroke-width:1.2 }
+      .drop { fill:#f6ecef; stroke:#8a3b52; stroke-width:1.2; stroke-dasharray:4 3 }
+      .park { fill:#efeaf6; stroke:#5b3a8e; stroke-width:1.2 }
+      .e  { stroke:#1c1a17; stroke-width:1.4; fill:none; marker-end:url(#a) }
+      .eg { stroke:#6b645c; stroke-width:1.2; fill:none; stroke-dasharray:5 3; marker-end:url(#ag) }
+      .er { stroke:#8a3b52; stroke-width:1.2; fill:none; marker-end:url(#ar) }
+      .ep { stroke:#5b3a8e; stroke-width:1.1; fill:none; marker-start:url(#ap); marker-end:url(#ap) }
+    </style>
+  </defs>
+
+  <!-- park band -->
+  <rect x="174" y="150" width="1120" height="58" rx="10" fill="#efeaf6" stroke="#5b3a8e" stroke-width="1.1" stroke-dasharray="5 4"/>
+  <rect class="park" x="196" y="165" width="104" height="28" rx="6"/><text class="n" x="248" y="183">needs_info</text>
+  <rect class="park" x="312" y="165" width="86" height="28" rx="6"/><text class="n" x="355" y="183">on_hold</text>
+  <text class="bl" x="416" y="176">enterable from EVERY live rung, and from each other</text>
+  <text class="bs" x="416" y="192">a resume returns to the rung it left — not always to open. draft, closed and dropped cannot park.</text>
+
+  <!-- park connectors -->
+  <g class="ep">
+    <path d="M230,208 V276"/><path d="M356,208 V276"/><path d="M482,208 V276"/><path d="M608,208 V276"/>
+    <path d="M734,208 V276"/><path d="M860,208 V276"/><path d="M986,208 V276"/><path d="M1112,208 V276"/>
+  </g>
+
+  <!-- ingress -->
+  <rect class="box" x="38" y="276" width="100" height="40" rx="8"/><text class="n" x="88" y="301">draft</text>
+  <path class="e" d="M138,296 H168"/>
+  <text class="el" x="88" y="336">promote</text>
+  <text class="bs" x="18" y="360">4 other exits, none of which dispatch:</text>
+  <text class="bs" x="18" y="376">in_progress · developed (direct-ship,</text>
+  <text class="bs" x="18" y="392">ISS-431) · dropped · closed</text>
+
+  <!-- rail -->
+  <g>
+    <rect class="door" x="174" y="276" width="112" height="40" rx="8"/><text class="n" x="230" y="301">open</text>
+    <rect class="rung" x="300" y="276" width="112" height="40" rx="8"/><text class="n" x="356" y="301">confirmed</text>
+    <rect class="rung" x="426" y="276" width="112" height="40" rx="8"/><text class="n" x="482" y="301">approved</text>
+    <rect class="rung" x="552" y="276" width="112" height="40" rx="8"/><text class="n" x="608" y="301">in_progress</text>
+    <rect class="rung" x="678" y="276" width="112" height="40" rx="8"/><text class="n" x="734" y="301">developed</text>
+    <rect class="rung" x="804" y="276" width="112" height="40" rx="8"/><text class="n" x="860" y="301">testing</text>
+    <rect class="rung" x="930" y="276" width="112" height="40" rx="8"/><text class="n" x="986" y="299">awaiting</text><text class="n" x="986" y="311">_release</text>
+    <rect class="rung" x="1056" y="276" width="112" height="40" rx="8"/><text class="n" x="1112" y="301">releasing</text>
+    <rect class="end"  x="1182" y="276" width="104" height="40" rx="8"/><text class="n" x="1234" y="301">closed</text>
+  </g>
+  <g class="e">
+    <path d="M286,296 H296"/><path d="M412,296 H422"/><path d="M538,296 H548"/><path d="M664,296 H674"/>
+    <path d="M790,296 H800"/><path d="M916,296 H926"/><path d="M1042,296 H1052"/><path d="M1168,296 H1178"/>
+  </g>
+  <g class="el">
+    <text x="291" y="254">a reader</text><text x="291" y="266">says what it is</text>
+    <text x="417" y="254">a plan and</text><text x="417" y="266">criteria</text>
+    <text x="543" y="254">the build</text><text x="543" y="266">starts</text>
+    <text x="669" y="254">code exists,</text><text x="669" y="266">proof owed</text>
+    <text x="795" y="254">review</text><text x="795" y="266">passed</text>
+    <text x="921" y="254">merged,</text><text x="921" y="266">gate declared</text>
+    <text x="1047" y="254">RELEASE</text><text x="1047" y="266">pressed</text>
+    <text x="1173" y="254">release</text><text x="1173" y="266">finished</text>
+  </g>
+  <text class="bs" x="174" y="336">the ONLY status that dispatches</text>
+
+  <!-- no-gate collector -->
+  <path class="eg" d="M608,316 V372" style="marker-end:none"/><path class="eg" d="M860,316 V372" style="marker-end:none"/>
+  <path class="eg" d="M604,372 H1234 V320"/>
+  <text class="bs" x="620" y="390">project with no release gate — closes from the rung it stands on</text>
+
+  <!-- reopen -->
+  <rect class="box" x="560" y="452" width="112" height="40" rx="8" stroke="#8a3b52"/><text class="n" x="616" y="477">reopen</text>
+  <text class="bs" x="470" y="516">a person disagreed;</text><text class="bs" x="470" y="530">a person routes it</text>
+  <path class="er" d="M700,316 V452 H676"/>
+  <path class="er" d="M856,316 V466 H676"/>
+  <path class="er" d="M1112,316 V500 H640 V496"/>
+  <path class="er" d="M1234,320 V524 H616 V496"/>
+  <text class="rl" x="708" y="346">review rejected</text>
+  <text class="rl" x="864" y="430">proof failed</text>
+  <text class="rl" x="1044" y="494">abort</text>
+  <text class="rl" x="1120" y="518">a person disagrees</text>
+  <path class="e" d="M590,452 V320"/><path class="e" d="M652,456 Q730,456 730,320"/>
+  <text class="el" x="556" y="400">rework</text>
+  <text class="el" x="772" y="452">proof was wrong,</text><text class="el" x="772" y="464">not the code</text>
+
+  <!-- dropped -->
+  <rect class="drop" x="174" y="558" width="1120" height="40" rx="8"/>
+  <text class="n" x="236" y="583">dropped</text>
+  <text class="bs" x="296" y="577">from every live rung · ends WITHOUT stamping merged_at · no exit, deliberately</text>
+  <text class="bs" x="296" y="592">does NOT free dependents — a blocks edge onto it holds forever; retract the edge in the same pass</text>
+</svg>
+  </div>
+  <ul class="key strip">
+    <li><i class="sw" style="background:#e6efe9;border:2px solid #1f6f4a"></i>the one status that dispatches</li>
+    <li><i class="sw" style="background:#fff;border:1.2px solid #1f6f4a"></i>rung — a party owes a move</li>
+    <li><i class="sw" style="background:#efeaf6;border:1.2px solid #5b3a8e"></i>park — a person owes a move</li>
+    <li><i class="sw" style="background:#ebe6df;border:1.2px solid #9a9288"></i>end</li>
+    <li><i class="sw" style="background:#fff;border:1.2px dashed #6b645c"></i>conditional on the project</li>
+    <li><i class="sw" style="background:#fff;border:1.2px solid #8a3b52"></i>rejection path</li>
+  </ul>
+  <p class="cap"><b>One dispatch door</b> (<code>open</code>), a reading rung and a plan rung, one
+  worker, two rungs where a proof is owed then run, one gate a person holds, one release middle, two
+  ends that differ only in whether <code>merged_at</code> is stamped. <b>A rung earns its place when a
+  different party owes the next move at it</b> — the owner's test, 2026-09-10. <code>confirmed</code>
+  and <code>approved</code> failed it under a single-driver pipeline and pass it under the wave model,
+  where triage and execution are different runs (ISS-976).</p>
+</div>
+
+<aside class="rail">
+  <section>
+    <h2>Who owes the next move</h2>
+    <ul class="who">
+      <li class="en"><b>draft</b><span>whoever triages it</span></li>
+      <li class="rt"><b>open</b><span>a master, by claiming</span></li>
+      <li class="rt"><b>confirmed</b><span>whoever executes it</span></li>
+      <li class="rt"><b>approved</b><span>whoever builds it</span></li>
+      <li class="rt"><b>in_progress</b><span>the run</span></li>
+      <li class="rt"><b>developed</b><span>whoever reviews it</span></li>
+      <li class="rt"><b>testing</b><span>whoever is testing it</span></li>
+      <li class="rt"><b>awaiting_release</b><span>a person, by pressing RELEASE</span></li>
+      <li class="rt"><b>releasing</b><span>the release batch</span></li>
+      <li class="pk"><b>needs_info</b><span>a person, by answering</span></li>
+      <li class="pk"><b>on_hold</b><span>the person who paused it</span></li>
+      <li class="pk"><b>reopen</b><span>a person, by routing it</span></li>
+      <li class="en"><b>closed</b><span>nobody · stamps merged_at</span></li>
+      <li class="en"><b>dropped</b><span>nobody · no stamp</span></li>
+    </ul>
+  </section>
+  <section>
+    <h2>Claims nothing about evidence</h2>
+    <p style="font-size:12.5px;color:var(--mut);margin:0">A status says which gate the work sits at,
+    never that code exists. The evidence fields are <code>merged_at</code>,
+    <code>sessionContext.branch</code> and the handoff's <code>commitSha</code> — read those
+    (<code>pipeline/status-assertions.ts</code>, ISS-940).</p>
+  </section>
+</aside>
+</div>
+
+<nav class="tabs" role="tablist">
+  <button role="tab" aria-selected="true"  aria-controls="mx">Transition matrix</button>
+  <button role="tab" aria-selected="false" aria-controls="gp">Where it goes wrong</button>
+  <button role="tab" aria-selected="false" aria-controls="rt">Retired</button>
+  <button role="tab" aria-selected="false" aria-controls="dn">Do not</button>
+</nav>
+
+<section class="pane" id="mx" role="tabpanel">
+<p class="cap" style="margin:0 0 .8rem"><b>Lit = legal; every blank is a refusal once the table is the
+gate.</b> Purple = a park edge. Today nothing refuses any of it —
 <code>canTransitionFree</code> permits any non-<code>draft</code> hop to any non-<code>draft</code>
-status, which is the gap this flow exists to close.</p>
-
-<h2>The flow</h2>
-<div class="board"><pre class="mermaid">
-stateDiagram-v2
-    direction LR
-    [*] --> draft: filed
-    draft --> open: promoted
-    draft --> in_progress: taken up in place
-    draft --> dropped: not work
-    draft --> developed: shipped by hand, branch pushed
-    open --> confirmed: a reader says what it is
-    confirmed --> approved: a decision, a plan, criteria
-    approved --> in_progress: the build starts
-    confirmed --> in_progress: one session reads and builds
-    open --> in_progress: a run claims it
-    in_progress --> closed: landed, no release gate
-    in_progress --> developed: code exists, proof owed
-    developed --> testing: review passed
-    developed --> reopen: review rejected it
-    testing --> reopen: the proof failed
-    testing --> closed: landed, no release gate
-    testing --> awaiting_release: merged, gate declared
-    awaiting_release --> releasing: RELEASE pressed
-    releasing --> closed: release finished
-    closed --> [*]
-    releasing --> reopen: release aborted or failed
-    closed --> reopen: a person disagrees
-    reopen --> in_progress: work resumes
-    reopen --> developed: the proof was wrong, not the code
-    open --> needs_info
-    confirmed --> needs_info
-    approved --> needs_info
-    developed --> needs_info
-    testing --> needs_info
-    in_progress --> needs_info
-    awaiting_release --> needs_info
-    releasing --> needs_info
-    reopen --> needs_info
-    on_hold --> needs_info
-    needs_info --> open: answered onto the rung it left
-    open --> on_hold
-    confirmed --> on_hold
-    approved --> on_hold
-    developed --> on_hold
-    testing --> on_hold
-    in_progress --> on_hold
-    awaiting_release --> on_hold
-    releasing --> on_hold
-    reopen --> on_hold
-    needs_info --> on_hold
-    on_hold --> open: resumed onto the rung it left
-    open --> dropped
-    confirmed --> dropped
-    approved --> dropped
-    developed --> dropped
-    testing --> dropped
-    in_progress --> dropped
-    awaiting_release --> dropped
-    releasing --> dropped
-    needs_info --> dropped
-    on_hold --> dropped
-    reopen --> dropped
-    dropped --> [*]
-</pre></div>
-
-<p>One dispatch door (<code>open</code>), a reading rung (<code>confirmed</code>), a plan rung
-(<code>approved</code>), one worker (<code>in_progress</code>), two rungs where a
-proof is owed and then run (<code>developed</code>, <code>testing</code>), one gate a person holds
-(<code>awaiting_release</code>), one release middle (<code>releasing</code>), two parks reachable
-from every live rung, one park a person routes (<code>reopen</code>), and two ends differing only in
-whether <code>merged_at</code> is stamped.</p>
-
-<p><b>What makes a rung a rung, and why the list changed twice in two days.</b> The test is the
-owner's, set 2026-09-10: a rung earns its place when a <i>different party</i> owes the next move at
-it. At <code>developed</code> the code exists and a reviewer owes a verdict; at <code>testing</code>
-the proof is running and a tester owes a result. Judged that day against the single-driver pipeline,
-<code>confirmed</code> <code>clarified</code> <code>approved</code> <code>tested</code> all failed it
-— one agent walked the lot, so each only recorded that a phase inside one session had finished,
-which the handoff already says, and the issue stood there waiting for nobody. <b>Two of the four
-answer the other way under the wave model</b> (ISS-976, 2026-09-11): triage reads the issue and
-posts the confirmation, and a <i>different</i> run executes it — measured on forge-dev 2026-09-10,
-three issues triaged by one session for others to execute. So <code>confirmed</code> is where a
-reader has said what the issue is and an executor owes the next move, and <code>approved</code> is
-where a decision, a plan and criteria exist and the build owes it. <code>clarified</code> and
-<code>tested</code> still fail the test and stay retired. A rejection at
-<code>developed</code> or <code>testing</code> goes to <code>reopen</code> rather than down the
-ladder, so the count of rejections stays readable in one place (<code>isReopenEntry</code>).</p>
-
-<p><b>Reviving cost nothing across the repo boundary, and retiring would have cost a change there.</b>
-forge-plugin's driver ladder (<code>src/flow/earned.mjs</code>, <code>ORDER</code>) has always been
-these same eight rungs, each earned by a record kind. Nothing in this repo gates that one, so while
-the kernel called the two retired, <code>open → confirmed</code> succeeded on ISS-952 on 2026-09-10
-with no warning and the row sat invisible until a person moved it. Killing them here would have
-forced a matching edit in a repo this one may not touch; naming the same rungs costs neither side
-anything.</p>
-
-<p><b>Neither is an autonomous driver status</b>, on purpose.
-<code>BACKLOG_ADMISSIBLE_STATUSES</code> is <code>issueStatuses</code> minus
-<code>AUTONOMOUS_DRIVER_STATUSES</code>, so adding them there would take them OFF the backlog menu
-— and the backlog is exactly how a dead session at either rung is recovered: the next master can
-claim the work where it stands. It would also stop the dispatcher on every project whose
-<code>poolBacklog.statuses</code> names them: measured 2026-09-10, an inadmissible element answers
-<code>invalid_value</code> for the <b>whole</b> <code>pipelineConfig</code>, so
-<code>cfg = null</code>, <code>isAutonomous</code> is false, and that project silently dispatches
-nothing.</p>
-
-<p><b>Why the gate is a status and the trigger is a button.</b> The old lane had no button, so
-moving an issue to <code>released</code> <i>was</i> how a release started — a trigger standing in
-for an action, and a name in the past tense for a thing that had not happened. Splitting the two
-gives each half an honest name: <code>awaiting_release</code> is where the work waits, the RELEASE
-button is the action, and <code>releasing</code> is the middle while a batch runs. Renamed from
-<code>released</code> in migration 0228; the board has called this rung <code>awaiting_release</code>
-since ISS-970, so only the kernel status was ever lying.</p>
-
-<h2>What each status claims</h2>
-<table>
-<thead><tr><th>Status</th><th>Claims</th><th>Who owes the next move</th></tr></thead>
-<tbody>
-<tr><td><code>draft</code></td><td>filed, not admitted — the ingress state</td><td>whoever triages it</td></tr>
-<tr><td><code>open</code></td><td>claimable. <b>The only status that dispatches</b> — <code>autonomousStepFor</code> answers for this and nothing else</td><td>a master, by claiming</td></tr>
-<tr><td><code>confirmed</code></td><td>a reader has said what the issue is, against the code. Nothing dispatches here — a row resting on it reaches a master only where the project names it in <code>poolBacklog.statuses</code></td><td>whoever executes it</td></tr>
-<tr><td><code>approved</code></td><td>a decision, a plan and criteria exist — object to the plan now, not after. Same admission rule as <code>confirmed</code>: declared in <code>poolBacklog.statuses</code> or invisible</td><td>whoever builds it</td></tr>
-<tr><td><code>in_progress</code></td><td>a session holds it</td><td>the run</td></tr>
-<tr><td><code>developed</code></td><td>the code exists and owes a proof. With <code>sessionContext.branch</code> set this is the direct-ship entry (ISS-431); the branch field, not the status, says where the code is</td><td>whoever reviews it</td></tr>
-<tr><td><code>testing</code></td><td>the proof is being run. <b>forge-plugin writes <code>tested</code> here</b> — retired, and ISS-1022 is what moves it</td><td>whoever is testing it</td></tr>
-<tr><td><code>awaiting_release</code></td><td>merged to the base branch and waiting for production. <b>Renamed from <code>released</code></b> (migration 0228) — the old name was the past tense of an action that had not happened</td><td>a person, by pressing RELEASE</td></tr>
-<tr><td><code>releasing</code></td><td>a release was triggered over this issue and is running</td><td>the release batch</td></tr>
-<tr><td><code>needs_info</code></td><td>a question a person owes an answer to. <code>answer-resume.ts</code> restarts it</td><td>a person, by answering</td></tr>
-<tr><td><code>on_hold</code></td><td>a pause a person chose — <b>not</b> a question</td><td>the person who paused it</td></tr>
-<tr><td><code>reopen</code></td><td>a person disagreed with a close</td><td>a person, by routing it</td></tr>
-<tr><td><code>closed</code></td><td>done, and <code>merged_at</code> is stamped</td><td>nobody</td></tr>
-<tr><td><code>dropped</code></td><td>ended <b>without</b> stamping <code>merged_at</code> — it was not work. It does NOT free dependents: a <code>blocks</code> edge onto a dropped issue holds its dependent against an issue that can never land, so retract the edge in the same pass as the drop</td><td>nobody</td></tr>
-</tbody></table>
-
-<h2>The transition matrix</h2>
-<p class="sub">Lit = legal. <b>Every blank cell is a refusal</b> once the table is the gate.
-<span style="color:var(--bad)">■</span> = the hop is refused without an authored reason.</p>
-<div class="board">
+status, and <code>transitions</code> is read only by prompt generation and the UI picker.</p>
+<div class="board" style="padding:.9rem">
 <table class="mx">
 <thead><tr><th class="rh">from ↓&nbsp;&nbsp;to →</th>
-<th>draft</th><th>open</th><th>confirmed</th><th>approved</th><th>in_prog</th><th>developed</th><th>testing</th><th>awaiting</th><th>releasing</th><th>needs_info</th><th>on_hold</th><th>reopen</th><th>closed</th><th>dropped</th></tr></thead>
+<th>dft</th><th>opn</th><th>cnf</th><th>apr</th><th>inp</th><th>dev</th><th>tst</th><th>awr</th><th>rls</th><th>nfo</th><th>hld</th><th>rop</th><th>cls</th><th>drp</th></tr></thead>
 <tbody>
 <tr><th class="rh">draft</th><td><i class="s">·</i></td><td><i class="y">→</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="y">→</i></td><td><i class="y">→</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="y">→</i></td><td><i class="y">→</i></td></tr>
 <tr><th class="rh">open</th><td><i class="x">·</i></td><td><i class="s">·</i></td><td><i class="y">→</i></td><td><i class="x">·</i></td><td><i class="y">→</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="y p">■</i></td><td><i class="y p">■</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="y">→</i></td></tr>
@@ -196,135 +263,84 @@ since ISS-970, so only the kernel status was ever lying.</p>
 <tr><th class="rh">dropped</th><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="x">·</i></td><td><i class="s">·</i></td></tr>
 </tbody></table>
 </div>
+</section>
 
-<div class="rule warn"><b>A park resumes onto the rung it LEFT, not onto <code>open</code>.</b> Corrected
-2026-09-10: the first version of this matrix gave <code>on_hold</code> and <code>needs_info</code> a
-single exit to <code>open</code>, and that is wrong for a park taken at <code>awaiting_release</code>
-— an issue merged and waiting for production, parked and then answered, would be pushed back into
-the dispatch queue, racing a fresh agent onto shipped work and losing its place at the gate. The
-parks therefore exit to <code>open</code>, <code>in_progress</code> AND
-<code>awaiting_release</code>.
-<b>The live defect this exposes:</b> <code>pipeline/answer-resume.ts</code> sends an answered
-<code>needs_info</code> to <code>AUTONOMOUS_ENTRY_STATUS</code> = <code>open</code>
-<i>unconditionally</i>, because nothing records the rung a park left. That is harmless only while
-this table is advice. <b>Step 5 (making the table the gate) cannot land until a park records where
-it came from.</b></div>
+<section class="pane" id="gp" role="tabpanel" hidden>
+<table>
+<thead><tr><th>Gap</th><th>Where</th><th>What it costs</th></tr></thead>
+<tbody>
+<tr><td>Nothing refuses a hop</td><td class="n">canTransitionFree</td><td>It refuses two things only: <code>draft</code> as a target, and a <code>draft</code> leaving outside <code>DRAFT_EXIT_TARGETS</code>. So <code>releasing → open</code> and <code>closed → in_progress</code> both succeed, and the map that would call them illegal is read by prompt generation and the UI picker — a retired ladder teaching itself to agents and operators</td></tr>
+<tr><td>A park forgets the rung it left</td><td class="n">pipeline/answer-resume.ts</td><td>Sends an answered <code>needs_info</code> to <code>open</code> <b>unconditionally</b>, because nothing records where the park came from. A park taken at <code>awaiting_release</code> is merged work; pushing it to <code>open</code> races a fresh agent onto shipped code. <b>Step 5 — making the table the gate — cannot land until a park records its origin</b></td></tr>
+<tr><td>Rows stranded on retired statuses</td><td class="n">31 rows · 10 projects</td><td>Measured 2026-09-11 (433 on 2026-09-09). Heaviest sid-desk 9, codemap 6, sidpeak 5. Sidpeak holds five at <code>approved</code> — three <code>critical</code>, already merged — while its config names no <code>approved</code>, so no pool offers them. Half fixed: <code>approved</code> is a rung again and IS pool-admissible, but each project must declare it in <code>poolBacklog.statuses</code> itself</td></tr>
+<tr><td>An aborted release waits forever</td><td class="n">releasing → reopen</td><td>Does not self-heal, deliberately — a failed release re-driven automatically is how a half-landed batch becomes two. The cost is that a fleet nobody watches accumulates aborted releases at <code>reopen</code></td></tr>
+<tr><td>Neither new rung is a driver status</td><td class="n">BACKLOG_ADMISSIBLE_STATUSES</td><td>On purpose: that set is <code>issueStatuses</code> minus <code>AUTONOMOUS_DRIVER_STATUSES</code>, so adding <code>confirmed</code>/<code>approved</code> there would take them OFF the backlog menu — and the backlog is how a dead session at either rung is recovered. It would also stop every project naming them: an inadmissible element answers <code>invalid_value</code> for the <b>whole</b> <code>pipelineConfig</code>, so <code>cfg = null</code>, <code>isAutonomous</code> false, no dispatch, in silence</td></tr>
+</tbody></table>
+<div class="note"><b>FIXED — one status used to mean two things during a release.</b> An issue stood at
+<code>released</code> for the whole batch while the in-flight fact lived only in
+<code>release_batch_run_id</code>, so the status read as both <i>waiting to be pressed</i> and
+<i>being released now</i>. 16 <code>release_batch</code> jobs have run, <b>4 failed and 2
+cancelled</b> — exactly where the two meanings diverge. <code>releasing</code> is now the middle
+(migration 0227) and <code>awaiting_release</code> the waiting rung (0228).</div>
+</section>
 
-<div class="rule"><b>Both parks are enterable from every rung, and from each other.</b> This is what
-<code>prompt/facts/registry.ts</code> already tells agents — <i>&ldquo;From ANY state you may set
-<code>needs_info</code> &hellip; <code>on_hold</code> &hellip; don't force the ladder&rdquo;</i> — so
-the instruction was right and the map was the narrow half. Two exclusions, each with a reason:
-<code>draft</code> cannot park because it already is a resting place
-(<code>DRAFT_EXIT_TARGETS</code> is the one existing real gate), and <code>closed</code>/
-<code>dropped</code> cannot park because a park after an end is a reopen, which
-<code>closed → reopen</code> already is.</div>
-
-<h2>Where it goes wrong</h2>
-
-<div class="rule warn"><b>Nothing refuses a hop today.</b>
-<code>pipeline/state-machine.ts:transitions</code> holds a map over every enum member, retired ones included, and its own
-first guard says <i>&ldquo;ADVISORY, NOT A GATE. Nothing enforces this map&rdquo;</i>. The one runtime
-check is <code>canTransitionFree</code>, which refuses exactly two things: <code>draft</code> as a
-target, and a <code>draft</code> leaving to anything outside <code>DRAFT_EXIT_TARGETS</code>. So
-<code>releasing → open</code> or <code>closed → in_progress</code> are permitted, and the map that
-would call them illegal is read by prompt generation and the UI's next-state picker — a retired
-ladder teaching itself to agents and operators.</div>
-
-<div class="rule warn"><b>A status whose meaning left and whose rows stayed has no way out.</b>
-Measured 2026-09-09: <b>433 rows sit on statuses the kernel does not drive</b>. Sidpeak holds five
-issues at <code>approved</code> while that project's config has no <code>approved</code> entry at
-all — no pool offers it, no stage accepts it, so those five cannot move by machine. Three are
-<code>critical</code> and already merged.
-<b>Half fixed, 2026-09-11.</b> <code>approved</code> is a live rung again and is admissible to a
-pool backlog, so a project that declares it in <code>poolBacklog.statuses</code> offers those rows
-to its master. forge-dev declares <code>confirmed</code> and <code>approved</code>; the other nine
-projects holding retired rows — 31 across 10 on 2026-09-11, heaviest sid-desk 9, codemap 6,
-sidpeak 5 — are each their owner's to open, so sidpeak's five are still stranded until that project
-declares the status.</div>
-
-<div class="rule warn"><b>FIXED &mdash; one status used to mean two things during a release.</b>
-The issue stood at <code>released</code> for the whole batch and the in-flight fact lived only in
-<code>issues.release_batch_run_id</code>, so the status read as both <i>waiting for a person to
-press it</i> and <i>being released right now</i>. 16 <code>release_batch</code> jobs have run
-&mdash; <b>4 failed and 2 cancelled</b> &mdash; which are exactly the cases where the two meanings
-diverge. <code>releasing</code> is now the middle (migration 0227), <code>awaiting_release</code>
-is the waiting rung (0228), and a batch that ends without either outcome hands its issues to
-<code>reopen</code> rather than leaving them mid-release.</div>
-
-<div class="rule warn"><b>A gate is not a trigger, and a name in the past tense is not a place to
-wait.</b> <code>released</code> was BOTH: the old lane had no release button, so moving an issue to
-that status was how a release started. That is why the status could not be renamed without also
-building the button &mdash; and why the board had already been calling this rung
-<code>awaiting_release</code> since ISS-970 while the column said something that was not true. The
-rename in 0228 also had to move <code>states.released</code> on <b>29 project configs</b>:
-<code>pipelineConfig.states</code> is a <code>partialRecord(z.enum(STAGE_NAMES))</code> and zod 4
-answers <code>invalid_key</code> rather than stripping, and a config that fails to parse reads as
-<code>cfg = null</code> &mdash; <code>isAutonomous</code> false, no dispatch, in silence.</div>
-
-<h2>Retired, and what replaces each</h2>
+<section class="pane" id="rt" role="tabpanel" hidden>
 <table>
 <thead><tr><th>Status</th><th>Rows</th><th>Replaced by</th></tr></thead>
 <tbody>
-<tr><td><code class="gone">clarified</code></td><td>1</td><td>nothing — it recorded that a phase inside one session had finished, which the handoff already says</td></tr>
-<tr><td><code>confirmed</code> <code>approved</code></td><td>2 · 2 projects · 9 · 5 projects</td><td><b>not retired — restored as rungs</b> 2026-09-11 (ISS-976). They were cut on 2026-09-10 with the two above, judged against a pipeline where one agent walked all four. The wave model splits triage from execution, which is the party boundary the test asks for, and forge-plugin's <code>ORDER</code> never stopped naming them: <code>open → confirmed</code> succeeded on ISS-952 on 2026-09-10 with nothing warning. Nothing dispatches at either — a row rests there visibly only where its project declares the status in <code>poolBacklog.statuses</code>, which forge-dev now does</td></tr>
-<tr><td><code class="gone">tested</code></td><td>7 resting · 124 hops/24h</td><td><code>testing</code> — the same rung under the name the flow uses. Measured 2026-09-10: it is a <b>transit</b> status, not a parking one — 124 hops onto it in 24 hours and only 7 rows standing still, because it has exits (49 to <code>awaiting_release</code>, 19 to <code>closed</code>). So it is not stranding work; it is writing a name that no longer exists. It is the one retired status still being <i>written</i>: forge-plugin's <code>ORDER</code> has no <code>testing</code> and lands work here instead, and one project names it in <code>poolBacklog.statuses</code>, so dropping it from the enum has to move both in the same change (ISS-1022)</td></tr>
-<tr><td><code>developed</code> <code>testing</code></td><td>1 · 0</td><td><b>not retired — restored as rungs</b> 2026-09-10. Both are places a different party owes the next move, which is what a status is for</td></tr>
-<tr><td><code>released</code> → <code>awaiting_release</code></td><td>80 · 13 projects</td><td><b>renamed, not retired</b> (migration 0228). The rung stays — it is where merged work waits for production. What left is its second job as a <i>trigger</i>: the RELEASE button starts a release now, and <code>releasing</code> holds the middle</td></tr>
-<tr><td><code class="gone">waiting</code></td><td>30 · 9 projects</td><td><code>needs_info</code>. The driver's <code>waiting</code> is already rewritten there (<code>autonomous-park.ts</code>, ISS-886)</td></tr>
+<tr><td><code class="gone">clarified</code></td><td class="n">1</td><td>nothing — it recorded that a phase inside one session had finished, which the handoff already says</td></tr>
+<tr><td><code class="gone">tested</code></td><td class="n">7 resting<br>124 hops/24h</td><td><code>testing</code>, the same rung under the name the flow uses. A <b>transit</b> status, not a parking one — it has exits (49 to <code>awaiting_release</code>, 19 to <code>closed</code>), so it strands nothing and simply writes a name that no longer exists. The one retired status still being <i>written</i>: forge-plugin's <code>ORDER</code> has no <code>testing</code> and lands work here, and one project names it in <code>poolBacklog.statuses</code> — dropping it from the enum moves both in the same change (ISS-1022)</td></tr>
+<tr><td><code class="gone">waiting</code></td><td class="n">30 · 9 projects</td><td><code>needs_info</code>. An agent's <code>waiting</code> is already rewritten there (<code>autonomous-park.ts</code>, ISS-886)</td></tr>
+<tr><td><code>released</code> → <code>awaiting_release</code></td><td class="n">80 · 13 projects</td><td><b>renamed, not retired</b> (migration 0228). The rung stays; what left is its second job as a <i>trigger</i>. The old lane had no button, so moving an issue to <code>released</code> <i>was</i> how a release started — a trigger standing in for an action, in the past tense, for a thing that had not happened. The board had called this rung <code>awaiting_release</code> since ISS-970; only the kernel status was lying</td></tr>
+<tr><td><code>confirmed</code> <code>approved</code></td><td class="n">2 · 2 projects<br>9 · 5 projects</td><td><b>not retired — restored as rungs</b> 2026-09-11 (ISS-976). Cut on 2026-09-10 against a pipeline where one agent walked all four; the wave model splits triage from execution, which is the party boundary the test asks for. forge-plugin's <code>ORDER</code> never stopped naming them: <code>open → confirmed</code> succeeded on ISS-952 with nothing warning, and the row sat invisible until a person moved it</td></tr>
+<tr><td><code>developed</code> <code>testing</code></td><td class="n">1 · 0</td><td><b>not retired — restored as rungs</b> 2026-09-10. Both are places a different party owes the next move</td></tr>
 </tbody></table>
-
-<div class="rule plan"><b><code>waiting</code> costs more than its 30 rows.</b> It is the only status
+<div class="note plan"><b><code>waiting</code> costs more than its 30 rows.</b> It is the only status
 carrying a second column — <code>waitingKind</code> — with a refusal family around it
 (<code>WAITING_KIND_REQUIRED</code>, <code>WAITING_KIND_NOT_APPLICABLE</code>) named <b>by code</b> in
 <code>guides/registry.ts</code> and <code>prompt/facts/registry.ts</code>, which is text an agent
-reads. Read from Postgres rather than MCP (which returned no kind for every row before
-<code>30e1ed0ad</code>): <b>24 <code>needs_decision</code>, 6 <code>needs_resource</code></b>. The 24
-lose nothing — a question owed a decision <i>is</i> <code>needs_info</code>. Of the six, five are
-real external dependencies: an unpublished npm package, two people, unmeasured production data, and
-a GitLab push credential the runner does not have. <b>No amount of deciding produces a push
-credential</b>, so whether <code>needs_info</code> inherits the kind is the open question, and five
-rows need re-parking by hand either way.</div>
+reads. Read from Postgres rather than MCP: <b>24 <code>needs_decision</code>, 6
+<code>needs_resource</code></b>. The 24 lose nothing. Of the six, five are real external dependencies
+— an unpublished npm package, two people, unmeasured production data, and a GitLab push credential
+the runner does not have. <b>No amount of deciding produces a push credential</b>, so whether
+<code>needs_info</code> inherits the kind is the open question, and five rows need re-parking by hand
+either way.</div>
+<div class="note plan"><b><code>reopen</code> stays; its rewrite goes.</b>
+<code>autonomous-park.ts</code> rewrites <code>reopen → open</code> for every actor, from an incident
+(epodsystem ISS-141, 2026-08-24). Its stated reason is a claim about meaning — the staged pipeline
+read <code>reopen</code> as <i>a step rejected this</i>, and the driver has no steps. Under this
+vocabulary it names <b>a person disagreed with a close</b>. Three readers say the wedge cannot return:
+<code>reconciler.ts:183</code> resolves <code>AUTONOMOUS_INFLIGHT_STATUSES</code> to
+<code>['in_progress']</code> and never reads it; <code>notify-transitions.ts:41</code> already classes
+it <code>PROBLEM_STATUSES</code>; <code>attention-buckets.ts:100</code> surfaces it to a human, never
+a dispatcher. It holds 0 rows across 28 projects, so nothing is stranded either way.</div>
+</section>
 
-<h2>Why <code>reopen</code> stays, and its rewrite goes</h2>
-<p><code>issues/autonomous-park.ts</code> rewrites <code>reopen → open</code> for every actor on an
-autonomous project. It was written from an incident — epodsystem ISS-141 sat at <code>reopen</code>
-for over an hour on 2026-08-24, rendering as a live session while the reconciler re-read it every
-60s and counted a rescue each time — and its stated reason is a claim about <b>meaning</b>: the
-staged pipeline read <code>reopen</code> as <i>&ldquo;a step rejected this&rdquo;</i>, and the
-autonomous driver has no steps.</p>
-<p>This vocabulary changes that meaning. <code>reopen</code> names <b>a person disagreed with a
-close</b>, and a person routes what follows — not a step. Three readers measured 2026-09-10 say the
-wedge cannot return through this door:</p>
+<section class="pane" id="dn" role="tabpanel" hidden>
 <table>
-<thead><tr><th>Reader</th><th>What it does with <code>reopen</code></th></tr></thead>
+<thead><tr><th>Do not</th><th>Because</th></tr></thead>
 <tbody>
-<tr><td><code>pipeline/reconciler.ts:183</code></td><td>selects <code>AUTONOMOUS_INFLIGHT_STATUSES</code>, which resolves to <b><code>['in_progress']</code></b> — the every-60s pass that counted ISS-141's rescues does not read <code>reopen</code> at all</td></tr>
-<tr><td><code>notifications/notify-transitions.ts:41</code></td><td>already classes it in <code>PROBLEM_STATUSES</code> — &ldquo;a person is needed&rdquo;, with an auto-resolve key. The same reading this vocabulary gives it</td></tr>
-<tr><td><code>me/attention-buckets.ts:100</code></td><td><code>NEEDS_REVIEW_STATUSES = ['developed', 'reopen']</code> — surfaced to a human, never to a dispatcher</td></tr>
+<tr><td>Force a project with no release gate through <code>releasing</code></td><td><code>resolveReleaseGate</code> returns <code>null</code> for most projects; inventing a release step they do not have is what <code>in_progress → closed</code> exists to avoid</td></tr>
+<tr><td>Let anything but <code>finish</code> and <code>abort</code> write out of <code>releasing</code></td><td>They own the outcome edges. An agent that could leave it would be declaring its own release finished — the guard <code>release-gate-hold.ts</code> was written from, after epodsystem ISS-141 self-closed with the reported bug still reproducing</td></tr>
+<tr><td>Send <code>reopen</code> to <code>open</code></td><td>A reopened issue has a branch and a worktree; offering it to the pool races a fresh agent against the tree that already exists</td></tr>
+<tr><td>Rename a status without moving its <code>pipelineConfig.states</code> key</td><td>zod answers <code>invalid_key</code>, the config parses to <code>null</code>, and the project stops dispatching with nothing reporting it — measured on 29 configs before migration 0228 moved them in the same transaction</td></tr>
+<tr><td>Drain a retired status before its writers are refused</td><td>The writers refill it behind you. The order is freeze, then drain, then enforce</td></tr>
+<tr><td>Read a rung as evidence that code exists</td><td>A status says which gate the work sits at and nothing else (<code>status-assertions.ts</code>). Four runs on 2026-09-06 reached one state and recorded four different statuses because the promise was undefined (ISS-940)</td></tr>
 </tbody></table>
-<p>Two already agree and the third does not read it, so the rewrite is now the only thing asserting
-the old meaning. It holds 0 rows across 28 projects, so nothing is stranded either way.
-<b>Cost:</b> <code>releasing → reopen</code> does not self-heal — a failed release parks for a
-person and stays there. That is the right trade for a half-landed batch, but a fleet nobody watches
-accumulates aborted releases at <code>reopen</code>.</p>
+</section>
 
-<h2>Do not</h2>
-<p>Force a project with no release gate through <code>releasing</code> —
-<code>resolveReleaseGate</code> returns <code>null</code> for most projects, and inventing a release
-step they do not have is what <code>in_progress → closed</code> exists to avoid. Let anything but
-<code>finish</code> and <code>abort</code> write out of <code>releasing</code>: they own the outcome
-edges, and an agent that could leave it would be declaring its own release finished — the guard
-<code>release-gate-hold.ts</code> was written from, after epodsystem ISS-141 self-closed with the
-reported bug still reproducing. Send <code>reopen</code> to <code>open</code>: a reopened issue has
-a branch and a worktree, and offering it to the pool races a fresh agent against the tree that
-already exists. Rename a status in the enum without also moving its
-<code>pipelineConfig.states</code> key: zod answers <code>invalid_key</code>, the config parses to
-<code>null</code>, and the project stops dispatching with nothing reporting it (measured on 29
-configs before migration 0228 moved them in the same transaction). Drain the retired statuses
-before their writers are refused — the writers refill them, which is why the order is freeze,
-then drain, then enforce.</p>
+<p class="foot">Set decided by the owner 2026-09-09 and 2026-09-10; revised 2026-09-11 (ISS-976) when
+two of the cuts turned out to have a party boundary after all. Agent-facing copy of the same set:
+guide <code>pipeline-and-issue-lifecycle</code>. Removal order and its price:
+<code>docs/proposals/one-status-vocabulary-and-a-real-transition-table.md</code>.
+<a href="index.html">← all flows</a></p>
 
-<p><a href="index.html">&larr; all flows</a></p>
-</main>
-<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
-<script>mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script>
+<script>
+  const tabs = [...document.querySelectorAll('.tabs button')];
+  tabs.forEach(t => t.addEventListener('click', () => {
+    tabs.forEach(o => {
+      const on = o === t;
+      o.setAttribute('aria-selected', String(on));
+      document.getElementById(o.getAttribute('aria-controls')).hidden = !on;
+    });
+  }));
+</script>

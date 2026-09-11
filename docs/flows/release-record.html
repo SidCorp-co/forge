@@ -49,11 +49,11 @@ built from those measurements (ISS-863, ISS-880, ISS-897).</p>
   | anywhere else?                |
   +-------------------------------+
         |                     |
-   no gate                  gate = `released`         <- release-batch/gate.ts:
+   no gate                  gate = `awaiting_release` <- release-batch/gate.ts:
         |                     |                          an ACTIVE prod binding, AND
         |                     v                          (a production branch distinct
-        |            the close is REWRITTEN               from the base OR a declared
-        |            to `released` and held               releaseRunnerLabel)
+        |            the close is REWRITTEN              from the base OR a declared
+        |            to `awaiting_release` and held      releaseRunnerLabel)
         |                     |
         v                     |          an operator selects the parked issues
   +------------------------+  |                        |
@@ -172,7 +172,7 @@ gates are refused. Do not close it from a diff.</p>
     <td><code>closed</code> becomes reachable with nothing written from every internal transition</td>
     <td>the same file — it was tried and falsified there</td></tr>
 <tr><td>Re-add <code>merged_at IS NULL</code> to bound the refusal</td>
-    <td>It refuses the canonical <code>released → closed</code>, the one path it meant to exempt: the
+    <td>It refuses the canonical <code>awaiting_release → closed</code>, the one path it meant to exempt: the
         stamp lands later in the same transaction</td>
     <td>the same file; the mocked unit suite passes this one</td></tr>
 <tr><td>Let <code>finishReleaseBatch</code> close before the probes agree</td>
