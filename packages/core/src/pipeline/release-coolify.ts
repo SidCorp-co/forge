@@ -426,7 +426,7 @@ export async function resolveLatestIssueRunId(issueId: string): Promise<string |
 }
 
 /**
- * Whether an issue has reached the post-release stage (`released`/`closed`) —
+ * Whether an issue has reached the post-release stage (`awaiting_release`/`closed`) —
  * the only statuses where an agent-driven `forge_coolify_deploy` call is
  * allowed to touch a prod integration. Every pre-release status returns
  * `false`, so a mid-pipeline deploy (code/fix/testing) is staging-only.

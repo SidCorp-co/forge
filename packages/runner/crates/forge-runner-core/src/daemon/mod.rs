@@ -728,7 +728,7 @@ pub async fn run(
                             }
                         });
                     }
-                    // cm:edge contract -> packages/core/src/ws/master-wake.ts — core publishes this on the device room when an issue reaches `open`, `draft` or `released`. The event NAME and the optional `projectId` are the whole contract; the frame carries no work, so nothing here reads anything else off it.
+                    // cm:edge contract -> packages/core/src/ws/master-wake.ts — core publishes this on the device room when an issue reaches `open`, `draft` or `awaiting_release`. The event NAME and the optional `projectId` are the whole contract; the frame carries no work, so nothing here reads anything else off it.
                     "master.wake" => {
                         let project_id = frame
                             .data

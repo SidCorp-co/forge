@@ -23,7 +23,7 @@ import { cascadeCancelChildJobs, type JobRow, requestKillsForCascade } from './r
 
 /**
  * ISS-411 — issue statuses an operator cancel must NOT disturb. `on_hold` is
- * already parked; `closed`/`released` are terminal (parking them would re-open
+ * already parked; `closed`/`awaiting_release` are terminal (parking them would re-open
  * a finished issue). Everything else is "actionable" and would be re-picked by
  * the orchestrator the moment the run dies, so cancel parks it at `on_hold`.
  */

@@ -55,7 +55,7 @@ pipelineAnalyticsRoutes.use('*', requireAuth(), assertEmailVerified());
 /**
  * Daily closure rate per project. Used for the throughput trend line chart
  * on /pipeline/health. Counts `activity_log` entries where `payload.to` is
- * `closed` or `released` over the requested window.
+ * `closed` or the release rung — BOTH spellings, see the guard below — over the requested window.
  */
 pipelineAnalyticsRoutes.get(
   '/throughput',

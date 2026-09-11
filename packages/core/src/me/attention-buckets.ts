@@ -54,7 +54,7 @@ import { agentChannelCondition } from '../issues/creator.js';
  *        to 7 days. The LATEST attempt in a chain has no retry pointing at
  *        it, so it still surfaces if it is itself still failed.
  *     2. jobs whose linked issue has already reached a terminal state
- *        (`closed`, `released`) — the problem was resolved by hand even
+ *        (`closed`, `awaiting_release`) — the problem was resolved by hand even
  *        though the job row itself stays `failed`. Jobs with no linked issue
  *        (PM/system/deploy jobs) are NOT excluded by this rule.
  * - `pendingSkillUpdates` — reconcile runs at the human decision gate for
@@ -364,7 +364,7 @@ export function selectFailedJobs(userId: string): Promise<AttentionFailedJobRow[
         sql`${jobs.createdAt} >= now() - interval '7 days'`,
         // cm:why every retry is inserted as a NEW row and the original stays `failed` forever, so without this a failure a retry already resolved keeps reporting itself for 7 days.
         notExists(db.select({ one: sql`1` }).from(retryJobs).where(eq(retryJobs.retryOf, jobs.id))),
-        // cm:why a job whose issue reached closed/released was resolved by hand even though the row stays `failed`; a null-issue job (PM/system/deploy) carries no such signal, which is why the isNull branch KEEPS it.
+        // cm:why a job whose issue reached closed/awaiting_release was resolved by hand even though the row stays `failed`; a null-issue job (PM/system/deploy) carries no such signal, which is why the isNull branch KEEPS it.
         or(isNull(issues.id), notInArray(issues.status, [...FAILED_JOB_RESOLVED_ISSUE_STATUSES])),
       ),
     )

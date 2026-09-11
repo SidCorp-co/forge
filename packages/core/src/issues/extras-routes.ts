@@ -373,7 +373,7 @@ issueExtrasRoutes.post(
         actor: restActor(c),
         reason: { manual: true },
       });
-      // cm:guard `released`, not `queued`, and no `jobId` — since ISS-933 core mints nothing for an autonomous issue. Answering `queued` with a fabricated id would tell the UI work started that no box has yet decided to take.
+      // cm:guard `awaiting_release`, not `queued`, and no `jobId` — since ISS-933 core mints nothing for an autonomous issue. Answering `queued` with a fabricated id would tell the UI work started that no box has yet decided to take.
       return c.json({ issueId: issue.id, status: 'awaiting_release' }, 202);
     } catch (err) {
       if (err instanceof ActiveJobConflictError) {

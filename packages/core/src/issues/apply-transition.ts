@@ -33,13 +33,13 @@ import { postTransitionReasonComment, requiresAuthoredReason } from './transitio
  * terminal dispatch fan-out. Does NOT imply the run closes here — see
  * `RUN_CLOSING_STATUSES`.
  *
- * `released` and `closed` free a dependent by SATISFYING the edge — they stamp
+ * `awaiting_release` and `closed` free a dependent by SATISFYING the edge — they stamp
  * `merged_at`, which is what the gate reads. `dropped` frees it the other way:
  * the edge is expired (`drop-cascade.ts`), so the gate finds no edge at all.
  * The two mechanisms are not interchangeable, and the difference is the whole
  * reason `dropped` exists — see `RUN_CLOSING_STATUSES` below.
  */
-// cm:guard `releasing` belongs here for the same reason `released` does — a release is running over this issue, so offering it to a dispatcher races a second agent against the batch it is executing under. It is the half `released` alone could not express: one status meant both "waiting for a person to press it" and "a batch is running", so the in-flight fact lived only in `issues.release_batch_run_id` where no dispatch gate read it.
+// cm:guard `releasing` belongs here for the same reason `awaiting_release` does — a release is running over this issue, so offering it to a dispatcher races a second agent against the batch it is executing under. It is the half `released` alone could not express: one status meant both "waiting for a person to press it" and "a batch is running", so the in-flight fact lived only in `issues.release_batch_run_id` where no dispatch gate read it.
 export const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>([
   'awaiting_release',
   'releasing',
@@ -48,12 +48,12 @@ export const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>([
 ]);
 
 /**
- * Statuses that close the issue's open `pipeline_run`. Only `closed`:
- * `released` is ALSO the `release` job's dispatch-trigger status
- * (registry.ts), so closing the run on `released` orphaned it and forced the
- * release step into a brand-new run every time (ISS-669's re-run cascade).
- * Leaving the run open on `released` lets the release step run inside it;
- * the run closes when release finishes and sets `closed`.
+ * Statuses that close the issue's open `pipeline_run` — `closed` and
+ * `dropped`, and deliberately NOT `awaiting_release`: the release batch still
+ * runs over the issue from that rung, so closing the run at the gate orphaned
+ * it and forced the release into a brand-new run every time (ISS-669's re-run
+ * cascade). Leaving the run open lets the release run inside it; the run
+ * closes when release finishes and sets `closed`.
  */
 // cm:guard `dropped` closes the run like `closed` but must NEVER reach markMergedOnClose. Since 2026-08-25 dropping DOES release the dependents (owner's call), so this split is no longer what stops that — `drop-cascade.ts` expires the edges and records why on each dependent. What the split still stops is the shipped claim: `merged_at` means the code reached the base branch, a dropped issue's never did, and stamping it would make every downstream reader (release notes, the L2 gate's satisfied arm, pipeline-health) count work that does not exist.
 export const RUN_CLOSING_STATUSES = new Set<IssueStatus>(['closed', 'dropped']);
@@ -150,7 +150,7 @@ export interface StatusTransitionResult {
    * (`triggerTerminalDispatch`) is left to the caller so the batch route can
    * fan out once per request and programmatic callers can rely on the 60s
    * pg-boss backstop. The open run is closed separately, only when `toStatus`
-   * is in `RUN_CLOSING_STATUSES` (ISS-669 — `released` no longer closes it).
+   * is in `RUN_CLOSING_STATUSES` (ISS-669 — `awaiting_release` does not close it).
    */
   terminal: boolean;
   /**

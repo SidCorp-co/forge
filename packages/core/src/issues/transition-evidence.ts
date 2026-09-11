@@ -57,7 +57,7 @@ export const isBlankPlan = (plan: string | null | undefined): boolean =>
   !plan || plan.trim().length === 0;
 
 /**
- * Statuses that assert "code exists". `closed`/`released` are deliberately
+ * Statuses that assert "code exists". `closed`/`awaiting_release` are deliberately
  * excluded — a coordination epic legitimately reaches them with no
  * branch of its own (its children carry the code), and `markMergedOnClose`'s
  * unconditional stamp on `closed` is out of scope for this rule (ISS-786

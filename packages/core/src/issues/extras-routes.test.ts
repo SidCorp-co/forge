@@ -198,7 +198,7 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
     });
   }
 
-  // cm:guard `released` and no `jobId`, because since ISS-933 core mints nothing for an autonomous issue. Answering `queued` with a fabricated id would tell the UI work started that no box has yet decided to take.
+  // cm:guard `awaiting_release` and no `jobId`, because since ISS-933 core mints nothing for an autonomous issue. Answering `queued` with a fabricated id would tell the UI work started that no box has yet decided to take.
   it('202 releases the issue at the entry status, minting no job', async () => {
     setupHappyPath({ status: 'open' });
 

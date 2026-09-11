@@ -373,7 +373,7 @@ describe('runPipelineSweep — per-pass fault isolation', () => {
 
 describe('reapOrphanedOneShotRuns (ISS-445 — still an ACTIVE reaper)', () => {
   it('candidate SELECT scopes to job-less system/interactive runs with no live session past the age cutoff', async () => {
-    dbExecute.mockResolvedValueOnce([]); // no candidates
+    dbExecute.mockResolvedValueOnce([]);
     const result = await reapOrphanedOneShotRuns(new Date('2026-06-12T00:00:00Z'));
 
     expect(result.reaped).toBe(0);
@@ -432,7 +432,7 @@ describe('reapOrphanedOneShotRuns (ISS-445 — still an ACTIVE reaper)', () => {
   it('runs as part of runPipelineSweep and reports the count', async () => {
     const result = await runPipelineSweep();
     expect(result).toHaveProperty('orphanedOneShotRuns');
-    expect(result.orphanedOneShotRuns.reaped).toBe(0); // default mock: no candidates
+    expect(result.orphanedOneShotRuns.reaped).toBe(0);
   });
 });
 
@@ -480,7 +480,7 @@ describe('closeIdleChatSessions — quiet chat sessions are closed, not left liv
 
 describe('reapOrphanedIssueRuns (ISS-461 — issue runs leaked past a terminal issue)', () => {
   it('candidate SELECT scopes to issue runs whose backing issue is terminal, past the age cutoff', async () => {
-    dbExecute.mockResolvedValueOnce([]); // no candidates
+    dbExecute.mockResolvedValueOnce([]);
     const result = await reapOrphanedIssueRuns(new Date('2026-06-12T00:00:00Z'));
 
     expect(result.reaped).toBe(0);
@@ -495,8 +495,8 @@ describe('reapOrphanedIssueRuns (ISS-461 — issue runs leaked past a terminal i
     expect(closeOpenRunForIssueMock).not.toHaveBeenCalled();
   });
 
-  it('does not reap a run whose issue is `released` (ISS-669 — release runs inside the open run)', async () => {
-    // cm:guard `released` must never join the status list above — the release step runs INSIDE the still-open run (ISS-669), so reaping there would cancel the very job doing the release; the SQL-shape assertion above is what actually holds it, this asserts the behaviour that follows
+  it('does not reap a run whose issue is `awaiting_release` (ISS-669 — release runs inside the open run)', async () => {
+    // cm:guard `awaiting_release` must never join the status list above — the release step runs INSIDE the still-open run (ISS-669), so reaping there would cancel the very job doing the release; the SQL-shape assertion above is what actually holds it, this asserts the behaviour that follows
     dbExecute.mockResolvedValueOnce([]);
     const result = await reapOrphanedIssueRuns(new Date('2026-06-12T00:00:00Z'));
 
@@ -536,7 +536,7 @@ describe('reapOrphanedIssueRuns (ISS-461 — issue runs leaked past a terminal i
   it('runs as part of runPipelineSweep and reports the count', async () => {
     const result = await runPipelineSweep();
     expect(result).toHaveProperty('orphanedIssueRuns');
-    expect(result.orphanedIssueRuns.reaped).toBe(0); // default mock: no candidates
+    expect(result.orphanedIssueRuns.reaped).toBe(0);
   });
 });
 

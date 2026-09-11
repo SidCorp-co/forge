@@ -7,9 +7,7 @@ const updateWhere = vi.fn(() => ({ returning: updateReturning }));
 const updateSet = vi.fn(() => ({ where: updateWhere }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
 const txExecute = vi.fn(async () => undefined);
-// `markMergedIfLeavingBase` runs a `tx.select(...).from(...).where(...).limit(1)`
-// read against `projects` before it decides whether to stamp `merged_at`; an
-// empty row set resolves the default merge states and short-circuits it.
+// cm:why the EMPTY row set is the point — `markMergedIfLeavingBase` reads `projects` before deciding to stamp `merged_at`, and no row resolves the default merge states and short-circuits it
 const selectLimit = vi.fn(async () => [] as unknown[]);
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
@@ -57,7 +55,7 @@ beforeEach(() => {
 });
 
 describe('transitionIssueStatus — run-closing decoupled from terminal-for-dispatch (ISS-669)', () => {
-  it('entering `released` does NOT close the open run but still reports terminal:true', async () => {
+  it('entering `awaiting_release` does NOT close the open run but still reports terminal:true', async () => {
     queueUpdate('awaiting_release');
     const result = await transitionIssueStatus(
       { id: ISSUE_ID, projectId: PROJECT_ID, status: 'tested', reopenCount: 0 },

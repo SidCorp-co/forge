@@ -677,7 +677,7 @@ export async function closeIdleChatSessions(
 
 /**
  * ISS-461 — close `issue`-kind runs left `running`/`paused` after their backing
- * issue already reached a run-closing status (ISS-669 removed `released` from
+ * issue already reached a run-closing status (ISS-669 kept `awaiting_release` out of
  * that set — the release step runs inside the still-open run).
  *
  * `closeOpenRunForIssue` is wired in exactly one place — `apply-transition.ts`'s

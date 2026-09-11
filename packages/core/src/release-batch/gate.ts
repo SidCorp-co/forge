@@ -9,7 +9,7 @@
 // already merged into.
 //
 // The answer is `'awaiting_release'` or nothing. There is no third state and no
-// per-project status name: `released` means merged to the base branch, run and
+// per-project status name: `awaiting_release` means merged to the base branch, run and
 // verified on staging, waiting for production — and a project with nothing to
 // release does not get a button for it.
 
