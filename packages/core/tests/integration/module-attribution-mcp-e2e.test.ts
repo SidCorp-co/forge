@@ -12,264 +12,160 @@
  * The cross-surface direction is the other half: a taxonomy an admin defines through
  * `labels/routes.ts` (what project-settings drives) being consumed by an agent through MCP. Both
  * halves of that handshake live in different packages and neither child's suite crosses it.
+ *
+ * Two inner suites, over one fixture in `tests/helpers/module-axis-fixture.ts`: what a write does,
+ * and what `filters.module` narrows to. The fixture is installed once, at the outer suite — the
+ * `db` export is a module singleton built from `DATABASE_URL`, so two installations in one file
+ * leave the second suite talking to the first one's torn-down container.
  */
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { Hono } from 'hono';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import {
-  createTestProject,
-  createTestProjectMember,
-  createTestUser,
-  setupTestDatabase,
-  type TestDatabase,
-  truncateAll,
-} from '../helpers/index.js';
-import { connectClientAsPat, parseToolResult } from '../helpers/mcp-harness.js';
-
-type IssueLabel = { id: string; name: string; kind: string; isPrimary: boolean };
+import { describe, expect, it } from 'vitest';
+import { createTestProject, createTestUser } from '../helpers/index.js';
+import { installModuleAxisFixture } from '../helpers/module-axis-fixture.js';
 
 describe('ISS-588 · the module axis through forge_issues', () => {
-  let harness: TestDatabase;
-  let mintPat: typeof import('../../src/auth/pat.js').mintPat;
-  let signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
-  // biome-ignore lint/suspicious/noExplicitAny: test-only mount
-  let rest: any;
-  let user: { id: string };
-  let project: { id: string };
-  let token: string;
-  let ctx: Awaited<ReturnType<typeof connectClientAsPat>>;
+  const fx = installModuleAxisFixture();
 
-  beforeAll(async () => {
-    harness = await setupTestDatabase();
-    process.env.DATABASE_URL = harness.url;
-    process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
-    process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
-    process.env.NODE_ENV ??= 'test';
+  describe('writing a module attribution', () => {
+    it('carries a taxonomy defined through REST into an attribution written through MCP', async () => {
+      const parent = await fx.defineModule('platform');
+      const child = await fx.defineModule('platform/labels', { parentId: parent.id });
+      const issueId = await fx.createIssue('an issue against the labels module');
 
-    const [labelMod, jwtMod, errMod, patMod] = await Promise.all([
-      import('../../src/labels/routes.js'),
-      import('../../src/auth/jwt.js'),
-      import('../../src/middleware/error.js'),
-      import('../../src/auth/pat.js'),
-    ]);
-    ({ mintPat } = patMod);
-    ({ signUserToken } = jwtMod);
+      const res = await fx.setLabels(issueId, [{ labelId: child.name, isPrimary: true }]);
+      expect((res as { isError?: boolean }).isError ?? false).toBe(false);
 
-    rest = new Hono();
-    rest.route('/api/projects', labelMod.labelProjectRoutes);
-    rest.onError(errMod.errorHandler);
-  }, 60_000);
-
-  afterAll(async () => {
-    if (harness) await harness.cleanup();
-  });
-
-  beforeEach(async () => {
-    await truncateAll(harness.db);
-    user = await createTestUser(harness.db);
-    await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);
-    project = await createTestProject(harness.db, user.id);
-    await createTestProjectMember(harness.db, {
-      userId: user.id,
-      projectId: project.id,
-      role: 'admin',
+      expect(await fx.junction(issueId)).toEqual([{ label_id: child.id, is_primary: true }]);
+      expect(await fx.labelsOf(issueId)).toEqual([
+        expect.objectContaining({ id: child.id, kind: 'module', isPrimary: true }),
+      ]);
     });
-    token = await signUserToken(user.id);
-    const { plaintext } = await mintPat({ userId: user.id, name: 'test-cli' });
-    ctx = await connectClientAsPat(plaintext);
-  });
 
-  /** Define a label through the surface project-settings drives, not through MCP. */
-  async function defineLabel(body: Record<string, unknown>): Promise<{ id: string; name: string }> {
-    const res = await rest.request(`/api/projects/${project.id}/labels`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-      body: JSON.stringify(body),
+    it('keeps exactly one primary when a set carries a primary and a secondary', async () => {
+      const primary = await fx.defineModule('core');
+      const secondary = await fx.defineModule('web');
+      const issueId = await fx.createIssue('cross-cutting work');
+
+      await fx.setLabels(issueId, [{ labelId: primary.name, isPrimary: true }, secondary.name]);
+
+      const rows = await fx.junction(issueId);
+      expect(rows).toHaveLength(2);
+      expect(rows.filter((r) => r.is_primary)).toEqual([
+        { label_id: primary.id, is_primary: true },
+      ]);
     });
-    expect(res.status).toBe(201);
-    return (await res.json()) as { id: string; name: string };
-  }
 
-  const defineModule = (name: string, extra: Record<string, unknown> = {}) =>
-    defineLabel({ name, kind: 'module', ...extra });
+    // cm:guard the assertion is that the junction is UNCHANGED, not merely that the call errored — the refusal happens outside the transaction in `resolveLabelIdsForWrite`, and a version that refused after opening one would leave the issue holding a set nobody asked for while still answering with an error.
+    it('refuses a second primary in one set through MCP, and writes nothing', async () => {
+      const first = await fx.defineModule('core');
+      const second = await fx.defineModule('web');
+      const issueId = await fx.createIssue('two primaries');
+      await fx.setLabels(issueId, [{ labelId: first.name, isPrimary: true }]);
 
-  async function tool(args: Record<string, unknown>) {
-    return ctx.client.callTool({ name: 'forge_issues', arguments: args });
-  }
+      const res = await fx.setLabels(issueId, [
+        { labelId: first.name, isPrimary: true },
+        { labelId: second.name, isPrimary: true },
+      ]);
 
-  async function createIssue(title: string): Promise<string> {
-    const res = await tool({
-      action: 'create',
-      projectId: project.id,
-      data: { title, status: 'draft', priority: 'low' },
+      expect(fx.refusalText(res)).toContain('MULTIPLE_PRIMARY');
+      expect(await fx.junction(issueId)).toEqual([{ label_id: first.id, is_primary: true }]);
     });
-    return (parseToolResult(res as never) as { documentId: string }).documentId;
-  }
 
-  async function setLabels(issueId: string, labels: unknown[]) {
-    return tool({ action: 'update', projectId: project.id, documentId: issueId, data: { labels } });
-  }
+    it('refuses a plain label marked primary through MCP, and writes nothing', async () => {
+      const plain = await fx.defineLabel({ name: 'bug', color: '#ff0000' });
+      const module = await fx.defineModule('core');
+      const issueId = await fx.createIssue('a plain label cannot be primary');
+      // cm:guard the issue starts with a NON-EMPTY set, deliberately — from an empty junction `toEqual([])` reads identically whether the refusal wrote nothing or cleared the set and then errored, and only one of those is the contract, so the preimage is what gives this assertion a way to go red (ISS-587).
+      await fx.setLabels(issueId, [{ labelId: module.name, isPrimary: true }, plain.name]);
+      const preimage = await fx.junction(issueId);
+      expect(preimage).toHaveLength(2);
 
-  async function labelsOf(issueId: string): Promise<IssueLabel[]> {
-    const res = await tool({ action: 'get', projectId: project.id, documentId: issueId });
-    return (parseToolResult(res as never) as { labels?: IssueLabel[] }).labels ?? [];
-  }
+      const res = await fx.setLabels(issueId, [{ labelId: plain.name, isPrimary: true }]);
 
-  async function listIds(filters: Record<string, unknown>): Promise<string[]> {
-    const res = await tool({ action: 'list', projectId: project.id, filters });
-    const out = parseToolResult(res as never) as { issues: Array<{ documentId: string }> };
-    return out.issues.map((i) => i.documentId);
-  }
-
-  async function junction(issueId: string) {
-    const rows = await harness.db.execute<{ label_id: string; is_primary: boolean }>(
-      sql`SELECT label_id, is_primary FROM issue_labels WHERE issue_id = ${issueId}`,
-    );
-    return [...rows];
-  }
-
-  // cm:guard the refusal's CODE is what a test may assert, never `isError` alone — `module-service.ts` declares "the code IS the contract … MCP as the `CODE: message` prefix, and both are asserted", and an assertion on `isError` holds just as green when `MULTIPLE_PRIMARY` degrades to a bare `BAD_REQUEST`, which is the contract going out from under the agent with no test noticing.
-  /** The `CODE: message` text an MCP refusal carries, or `null` when the call did not refuse. */
-  function refusalText(res: unknown): string | null {
-    const r = res as { isError?: boolean; content?: Array<{ type: string; text: string }> };
-    if (r.isError !== true) return null;
-    const first = r.content?.[0];
-    return first?.type === 'text' ? first.text : '';
-  }
-
-  it('carries a taxonomy defined through REST into an attribution written through MCP', async () => {
-    const parent = await defineModule('platform');
-    const child = await defineModule('platform/labels', { parentId: parent.id });
-    const issueId = await createIssue('an issue against the labels module');
-
-    const res = await setLabels(issueId, [{ labelId: child.name, isPrimary: true }]);
-    expect((res as { isError?: boolean }).isError ?? false).toBe(false);
-
-    expect(await junction(issueId)).toEqual([{ label_id: child.id, is_primary: true }]);
-    expect(await labelsOf(issueId)).toEqual([
-      expect.objectContaining({ id: child.id, kind: 'module', isPrimary: true }),
-    ]);
+      expect(fx.refusalText(res)).toContain('PRIMARY_NOT_MODULE');
+      expect(await fx.junction(issueId)).toEqual(preimage);
+    });
   });
 
-  it('keeps exactly one primary when a set carries a primary and a secondary', async () => {
-    const primary = await defineModule('core');
-    const secondary = await defineModule('web');
-    const issueId = await createIssue('cross-cutting work');
+  describe('narrowing by module', () => {
+    // cm:guard assert the OTHER issue is ABSENT, not merely that the wanted one is present. `filters.module` is hand-copied into the search params in `mcp/tools/forge-issues.ts`; a mapping that drops it returns EVERY issue in the project, which an assertion that only looks for its own issue passes against just as happily.
+    it('narrows the list to the module and leaves the others out', async () => {
+      const wanted = await fx.defineModule('core');
+      const other = await fx.defineModule('web');
+      const tagged = await fx.createIssue('against core');
+      const untagged = await fx.createIssue('against web');
+      await fx.setLabels(tagged, [{ labelId: wanted.name, isPrimary: true }]);
+      await fx.setLabels(untagged, [{ labelId: other.name, isPrimary: true }]);
 
-    await setLabels(issueId, [{ labelId: primary.name, isPrimary: true }, secondary.name]);
+      const ids = await fx.listIds({ module: wanted.name });
 
-    const rows = await junction(issueId);
-    expect(rows).toHaveLength(2);
-    expect(rows.filter((r) => r.is_primary)).toEqual([{ label_id: primary.id, is_primary: true }]);
-  });
+      expect(ids).toContain(tagged);
+      expect(ids).not.toContain(untagged);
+    });
 
-  // cm:guard the assertion is that the junction is UNCHANGED, not merely that the call errored — the refusal happens outside the transaction in `resolveLabelIdsForWrite`, and a version that refused after opening one would leave the issue holding a set nobody asked for while still answering with an error.
-  it('refuses a second primary in one set through MCP, and writes nothing', async () => {
-    const first = await defineModule('core');
-    const second = await defineModule('web');
-    const issueId = await createIssue('two primaries');
-    await setLabels(issueId, [{ labelId: first.name, isPrimary: true }]);
+    it('narrows by module uuid exactly as it does by name', async () => {
+      const wanted = await fx.defineModule('core');
+      const other = await fx.defineModule('web');
+      const tagged = await fx.createIssue('against core');
+      const untagged = await fx.createIssue('against web');
+      await fx.setLabels(tagged, [{ labelId: wanted.name, isPrimary: true }]);
+      await fx.setLabels(untagged, [{ labelId: other.name, isPrimary: true }]);
 
-    const res = await setLabels(issueId, [
-      { labelId: first.name, isPrimary: true },
-      { labelId: second.name, isPrimary: true },
-    ]);
+      const ids = await fx.listIds({ module: wanted.id });
 
-    expect(refusalText(res)).toContain('MULTIPLE_PRIMARY');
-    expect(await junction(issueId)).toEqual([{ label_id: first.id, is_primary: true }]);
-  });
+      expect(ids).toContain(tagged);
+      expect(ids).not.toContain(untagged);
+    });
 
-  it('refuses a plain label marked primary through MCP, and writes nothing', async () => {
-    const plain = await defineLabel({ name: 'bug', color: '#ff0000' });
-    const module = await defineModule('core');
-    const issueId = await createIssue('a plain label cannot be primary');
-    // cm:guard the issue starts with a NON-EMPTY set, deliberately — from an empty junction `toEqual([])` reads identically whether the refusal wrote nothing or cleared the set and then errored, and only one of those is the contract, so the preimage is what gives this assertion a way to go red.
-    await setLabels(issueId, [{ labelId: module.name, isPrimary: true }, plain.name]);
-    const preimage = await junction(issueId);
-    expect(preimage).toHaveLength(2);
+    it('matches nothing for the name of a plain label, rather than behaving as filters.label', async () => {
+      const plain = await fx.defineLabel({ name: 'bug', color: '#ff0000' });
+      const issueId = await fx.createIssue('carries a plain label');
+      await fx.setLabels(issueId, [plain.name]);
 
-    const res = await setLabels(issueId, [{ labelId: plain.name, isPrimary: true }]);
+      expect(await fx.listIds({ module: plain.name })).toEqual([]);
+    });
 
-    expect(refusalText(res)).toContain('PRIMARY_NOT_MODULE');
-    expect(await junction(issueId)).toEqual(preimage);
-  });
+    it('matches nothing for a module no project defines', async () => {
+      await fx.defineModule('core');
+      const issueId = await fx.createIssue('against core');
+      await fx.setLabels(issueId, ['core']);
 
-  // cm:guard assert the OTHER issue is ABSENT, not merely that the wanted one is present. `filters.module` is hand-copied into the search params in `mcp/tools/forge-issues.ts`; a mapping that drops it returns EVERY issue in the project, which an assertion that only looks for its own issue passes against just as happily.
-  it('narrows the list to the module and leaves the others out', async () => {
-    const wanted = await defineModule('core');
-    const other = await defineModule('web');
-    const tagged = await createIssue('against core');
-    const untagged = await createIssue('against web');
-    await setLabels(tagged, [{ labelId: wanted.name, isPrimary: true }]);
-    await setLabels(untagged, [{ labelId: other.name, isPrimary: true }]);
+      expect(await fx.listIds({ module: 'a-module-nobody-defined' })).toEqual([]);
+    });
 
-    const ids = await listIds({ module: wanted.name });
+    it('leaves filters.label answering as it did before the module axis existed', async () => {
+      const plain = await fx.defineLabel({ name: 'bug', color: '#ff0000' });
+      const module = await fx.defineModule('core');
+      const tagged = await fx.createIssue('carries the plain label');
+      const untagged = await fx.createIssue('carries only a module');
+      await fx.setLabels(tagged, [plain.name]);
+      await fx.setLabels(untagged, [{ labelId: module.name, isPrimary: true }]);
 
-    expect(ids).toContain(tagged);
-    expect(ids).not.toContain(untagged);
-  });
+      const ids = await fx.listIds({ label: plain.name });
 
-  it('narrows by module uuid exactly as it does by name', async () => {
-    const wanted = await defineModule('core');
-    const other = await defineModule('web');
-    const tagged = await createIssue('against core');
-    const untagged = await createIssue('against web');
-    await setLabels(tagged, [{ labelId: wanted.name, isPrimary: true }]);
-    await setLabels(untagged, [{ labelId: other.name, isPrimary: true }]);
+      expect(ids).toContain(tagged);
+      expect(ids).not.toContain(untagged);
+    });
 
-    const ids = await listIds({ module: wanted.id });
-
-    expect(ids).toContain(tagged);
-    expect(ids).not.toContain(untagged);
-  });
-
-  it('matches nothing for the name of a plain label, rather than behaving as filters.label', async () => {
-    const plain = await defineLabel({ name: 'bug', color: '#ff0000' });
-    const issueId = await createIssue('carries a plain label');
-    await setLabels(issueId, [plain.name]);
-
-    expect(await listIds({ module: plain.name })).toEqual([]);
-  });
-
-  it('matches nothing for a module no project defines', async () => {
-    await defineModule('core');
-    const issueId = await createIssue('against core');
-    await setLabels(issueId, ['core']);
-
-    expect(await listIds({ module: 'a-module-nobody-defined' })).toEqual([]);
-  });
-
-  it('leaves filters.label answering as it did before the module axis existed', async () => {
-    const plain = await defineLabel({ name: 'bug', color: '#ff0000' });
-    const module = await defineModule('core');
-    const tagged = await createIssue('carries the plain label');
-    const untagged = await createIssue('carries only a module');
-    await setLabels(tagged, [plain.name]);
-    await setLabels(untagged, [{ labelId: module.name, isPrimary: true }]);
-
-    const ids = await listIds({ label: plain.name });
-
-    expect(ids).toContain(tagged);
-    expect(ids).not.toContain(untagged);
-  });
-
-  // cm:guard a LOCAL issue must carry the FOREIGN label id, planted through SQL — `resolveModuleIdsTolerant` narrows on `eq(labels.projectId, projectId)`, and with no local issue holding the foreign label the filter answers `[]` whether that predicate is there or not, so the only fixture this assertion can fail against is the junction row the predicate exists to keep out of the answer.
-  it('does not narrow to another project’s module of the same name', async () => {
-    const otherOwner = await createTestUser(harness.db);
-    const otherProject = await createTestProject(harness.db, otherOwner.id);
-    const foreignId = randomUUID();
-    await harness.db.execute(sql`
+    // cm:guard a LOCAL issue must carry the FOREIGN label id, planted through SQL — `resolveModuleIdsTolerant` narrows on `eq(labels.projectId, projectId)`, and with no local issue holding the foreign label the filter answers `[]` whether that predicate is there or not, so the only fixture this assertion can fail against is the junction row the predicate exists to keep out of the answer (ISS-587).
+    it('does not narrow to another project’s module of the same name', async () => {
+      const db = fx.db().db;
+      const otherOwner = await createTestUser(db);
+      const otherProject = await createTestProject(db, otherOwner.id);
+      const foreignId = randomUUID();
+      await db.execute(sql`
       INSERT INTO labels (id, project_id, name, color, kind, slug)
       VALUES (${foreignId}, ${otherProject.id}, 'core', '#123456', 'module', 'core')
     `);
-    const issueId = await createIssue('this project has no module called core');
-    await harness.db.execute(sql`
+      const issueId = await fx.createIssue('this project has no module called core');
+      await db.execute(sql`
       INSERT INTO issue_labels (issue_id, label_id, is_primary)
       VALUES (${issueId}, ${foreignId}, true)
     `);
 
-    expect(await listIds({ module: 'core' })).toEqual([]);
+      expect(await fx.listIds({ module: 'core' })).toEqual([]);
+    });
   });
 });
