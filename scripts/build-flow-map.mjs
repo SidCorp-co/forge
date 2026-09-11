@@ -149,14 +149,7 @@ for (const file of readdirSync(flowsDir)
     problems.push(
       `${file}: declares no figure — a flow file that shows no mechanism has not earned its file`,
     );
-  const body = src.replace(/<(style|script|svg)\b[\s\S]*?<\/\1>/gi, '').replace(/<[^>]+>/g, ' ');
-  flows.push({
-    file,
-    module,
-    answers,
-    figures,
-    words: (body.match(/[A-Za-z][A-Za-z-]+/g) ?? []).length,
-  });
+  flows.push({ file, module, answers, figures });
 }
 
 const byModule = {};
@@ -180,9 +173,10 @@ const data = {
       {
         parent: parentOf.get(id) ?? 'forge',
         purpose: graph.nodes.find((n) => n.id === id)?.purpose ?? '',
-        // cm:guard the emitted rows carry NO word count: nothing renders one, and embedding it made every
-    // prose edit in any flow file dirty the generated index and fail this script's own gate.
-    flows: fs.sort((a, b) => b.words - a.words).map(({ file, answers, figures }) => ({ file, answers, figures })),
+        // cm:guard nothing derived from a flow file's PROSE may reach this map — a word count, or a sort keyed on one, made every cut to any flow file dirty the generated index and fail this script's own gate.
+        flows: fs
+          .sort((a, b) => a.file.localeCompare(b.file))
+          .map(({ file, answers, figures }) => ({ file, answers, figures })),
       },
     ]),
   ),
