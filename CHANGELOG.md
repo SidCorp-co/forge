@@ -93,6 +93,25 @@
 
 ### Added
 
+- **The chat tool catalog now has a price, and it is re-derivable rather than quoted.**
+  `pnpm --filter @forge/core measure:catalog-cost` builds the live catalog through the same call the
+  chat routes make, serializes it by calling `toRequestBody` itself so what is counted is what the
+  wire carries, and prints its size, the input-side cost of one request cold and warm at two
+  history lengths, and — given `FORGE_CENSUS_DATABASE_URL` — how many logged chat requests ever came
+  back reporting a cache read. It also prints the worked case the estimate rests on: two requests
+  with an identical cached catalog and different history lengths report aggregate
+  `cachedPromptTokens / promptTokens` ratios a factor of 3.6 apart while saving exactly the same
+  tokens, which is why that ratio cannot price a prefix. The report it feeds is
+  `docs/modules/agent-execution/tool-catalog-cost.md`. **What it found: nothing in this fleet has
+  ever cached** — 0 of 79 `chat_logs` rows carry `cachedPromptTokens` at all, every one of them is
+  `gemini/gemini-2.5-flash` over the Completions wire, and no chat request has been logged since the
+  Anthropic adapter became the default, so the path that asks for caching has never run here. Any
+  saving argued from a cache-hit rate on this deployment was argued from a number that does not
+  exist. Figures the host could not measure are labelled as estimates and named as such, and the
+  census says in its own output which grouping it could not produce before it prints the narrower one
+  it can — `chat_logs` records `model` and no provider column — and a census that cannot run at all
+  is said and exits non-zero rather than being skipped past.
+
 - **A decision a run parked on is now readable and answerable on the issue itself.** When an agent
   stops and asks, it writes a structured question: a prompt, a set of options, which one it
   recommends, and for each option who may choose it, how far the choice reaches and who carries it

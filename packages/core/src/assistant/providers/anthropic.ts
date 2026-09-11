@@ -133,7 +133,8 @@ function jsonInstruction(format: ChatResponseFormat): string {
     : 'Respond with a single JSON object and nothing else.';
 }
 
-// cm:guard the system block and the LAST tool carry `cache_control: ephemeral` and nothing else does — Anthropic caches only up to an explicit breakpoint, one marker on the last tool covers every tool before it, and `runTurnEvents` keeps system + tools byte-stable across rounds and turns so that prefix is what reads from cache; a marker on a per-turn block would cache what never repeats
+// cm:guard the system block and the LAST tool carry `cache_control: ephemeral` and nothing else does — Anthropic caches only to an explicit breakpoint, one marker on the last tool covers every tool before it, and a third on a per-turn block would cache what never repeats; `tools` is byte-stable across rounds AND turns, the system block is byte-stable across rounds ONLY, because `buildSystemPrompt` appends counters recomputed every turn, so the tools breakpoint survives the invalidation the system one takes (ISS-983)
+// cm:edge contract -> packages/core/src/assistant/system-prompt.ts — what the marked system block holds is composed there, and text that moves per turn put inside it costs this breakpoint, which is why `jsonInstruction` rides in a second unmarked block
 export function toRequestBody(
   req: ChatStreamRequest,
   maxTokens: number,

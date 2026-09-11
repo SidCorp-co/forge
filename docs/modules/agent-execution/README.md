@@ -21,6 +21,12 @@ flowchart LR
   CRED[model credentials] -.never leave.-> RT
 ```
 
+## Map
+
+| File | Answers | Read when | Updated by |
+|---|---|---|---|
+| [tool-catalog-cost.md](tool-catalog-cost.md) | What does the chat tool catalog cost per request, and does anything cache? | `before-change` | the change itself |
+
 ## What it owns
 
 | Concern | Where it lives |
