@@ -23,11 +23,10 @@
 <main>
 
 <h1>web-v2-module-taxonomy — a module reaches the screen and comes back as an attribution</h1>
-<p class="sub">The browser half of module taxonomy. <code>issue-work-module-attribution</code> owns
-what the server does with a <code>labels[]</code> write and where it refuses one; this file owns how
-that write is composed, what the three screens read to compose it, and what the reader is told when
-the server says no. There is <strong>no <code>/modules</code> endpoint</strong> anywhere in this
-flow — every hop rides the labels routes, the issue PATCH, and the issues search.</p>
+<p class="sub">The browser half — how a <code>labels[]</code> write is composed and what the reader
+is told when the server refuses it (<code>issue-work-module-attribution</code> owns the server side).
+There is <strong>no <code>/modules</code> endpoint</strong>: every hop rides the labels routes, the
+issue PATCH and the issues search.</p>
 
 <h2>The three surfaces and the one cache they share</h2>
 <div class="board"><pre class="mermaid">
@@ -53,11 +52,10 @@ flowchart LR
 </pre></div>
 
 <div class="rule">
-<b>One fetch serves all three.</b> Core has no <code>?kind=</code> filter and no modules route, so
-<code>useProjectModules</code> is <code>useProjectLabels</code> narrowed on <code>kind</code> in the
-client. Adding a second endpoint would put the Labels tab and the Modules tab on two caches that can
-disagree about the same row — which one a rename reaches would then depend on which screen you were
-standing on.
+<b>One fetch serves all three.</b> No <code>?kind=</code> filter and no modules route, so
+<code>useProjectModules</code> is <code>useProjectLabels</code> narrowed client-side. A second
+endpoint would put the Labels and Modules tabs on two caches that disagree about one row — which a
+rename reached would depend on which screen you stood on.
 </div>
 
 <h2>Saving an attribution: the replace nobody sees</h2>
@@ -84,14 +82,12 @@ sequenceDiagram
 </pre></div>
 
 <div class="rule">
-<b class="bad">The failure this flow exists to prevent.</b> <code>PATCH /issues/:id</code> replaces the
-label set <em>wholesale</em> — <code>[]</code> means "clear them all", and the server cannot tell a
-payload that forgot the issue's plain labels from one that meant to drop them. A picker that sent
-only its modules would silently delete every <code>bug</code>, <code>ux</code> and
-<code>regression</code> on the issue, with a success toast.
-<code>buildModuleLabelWrite</code> (<code>features/issues/hooks.ts</code>) is the single point that
-merges them back in, and it is the reason that function is exported and unit-tested rather than
-inlined in the mutation.
+<b class="bad">The failure this flow exists to prevent.</b> <code>PATCH /issues/:id</code> replaces
+the label set <em>wholesale</em>, and the server cannot tell a payload that forgot the plain labels
+from one that meant to drop them — a picker sending only its modules deletes every <code>bug</code>,
+<code>ux</code> and <code>regression</code> on the issue, with a success toast.
+<code>buildModuleLabelWrite</code> (<code>features/issues/hooks.ts</code>) is the one place they are
+merged back, which is why it is exported and unit-tested rather than inlined.
 </div>
 
 <h2>Reading it back: two different questions, two different params</h2>
@@ -106,9 +102,7 @@ inlined in the mutation.
 
 <div class="rule">
 <b>Why the module column needed a server change.</b> The search response serialises the raw
-<code>issues</code> row and joins no labels at all — <code>withCost</code>,
-<code>withFailureInfo</code>, <code>withPipelineHealth</code> and <code>withAgentSessions</code> were
-the only hydrations it had. Without <code>withModules</code> the list's Module cell had exactly two
+<code>issues</code> row and joins no labels. Without <code>withModules</code> the Module cell had two
 options: one <code>GET /issues/:id</code> per row, or no column. The flag is the third (ISS-594).
 </div>
 
@@ -129,34 +123,26 @@ options: one <code>GET /issues/:id</code> per row, or no column. The flag is the
 </table>
 
 <div class="rule">
-<b>The slug is derived once, and a rename does not move it.</b> <code>POST /projects/:id/labels</code>
-with <code>kind='module'</code> derives <code>slug</code> from the name and stores it;
-<code>PATCH /labels/:id</code> derives it again only on a promotion
-(<code>label</code>&nbsp;&rarr;&nbsp;<code>module</code>), clears it together with
-<code>knowledgeEntryId</code> on a demotion, and leaves it untouched on every rename. That is the
-whole point of storing it: the module's knowledge node is found through the slug, so a slug that
-followed the display name would orphan the node every time somebody retitled a module. Two distinct
-names that derive one base (<code>API/v2</code> and <code>API&nbsp;v2</code>) get
-<code>api-v2</code> and <code>api-v2-2</code> rather than a refusal, and the chosen slug comes back
-in the response so the disambiguation is visible (ISS-947).
+<b>The slug is derived once, and a rename does not move it.</b> Derived at create, again only on a
+promotion (<code>label</code>&nbsp;&rarr;&nbsp;<code>module</code>), cleared with
+<code>knowledgeEntryId</code> on a demotion, untouched on every rename — the knowledge node is found
+through the slug, so a slug that followed the display name would orphan the node on every retitle.
+Two names deriving one base (<code>API/v2</code>, <code>API&nbsp;v2</code>) get <code>api-v2</code>
+and <code>api-v2-2</code> rather than a refusal, and the chosen slug comes back in the response
+(ISS-947).
 </div>
 
 <div class="rule">
 <b>Deleting a node clears the link; deleting a module leaves the node.</b> The FK is
-<code>ON DELETE SET NULL</code>, so a knowledge entry can be removed without taking its module with
-it — the module comes back with <code>knowledgeEntryId: null</code>, which is the same state as a
-module whose node was never written. Nothing runs in the other direction:
-<code>DELETE /labels/:id</code> removes the module and the <code>knowledge_entries</code> row
-stands. A NULL link therefore means "no node right now" and never "the node is gone", which is why
-the column is nullable rather than carrying a tombstone.
+<code>ON DELETE SET NULL</code>, and nothing runs the other way — <code>DELETE /labels/:id</code>
+removes the module and the <code>knowledge_entries</code> row stands. A NULL link means "no node
+right now", never "the node is gone", which is why the column is nullable rather than a tombstone.
 </div>
 
 <div class="rule">
-<b>Delete is refused, not confirmed away.</b> <code>DELETE /labels/:id</code> answers 409
-<code>LABEL_IN_USE</code> whenever <em>any</em> issue carries the label, so "delete a module that has
-attributed issues" is not a thing the UI can do behind a confirm — the confirm guards the
-irreversible case (a module with no issues), and the 409 is what stops the rest. Detaching the
-module from its issues first is the only path, and the toast says so.
+<b>Delete is refused, not confirmed away.</b> 409 <code>LABEL_IN_USE</code> whenever <em>any</em>
+issue carries the label, so deleting an attributed module is not something a confirm can authorise —
+the confirm guards only the irreversible case (no issues). Detach first; the toast says so.
 </div>
 
 </main>

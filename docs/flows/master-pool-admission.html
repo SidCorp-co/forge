@@ -19,23 +19,22 @@
   .warn { border-left-color:var(--bad); }
   .board { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; overflow-x:auto; }
   .board svg { max-width:none !important; height:auto; }
+  .cap { color:var(--mut); font-size:13.5px; max-width:52rem; }
 </style>
 <main>
 
 <h1>master-pool-admission — what a master may see, and what it may start</h1>
-<p class="sub">Two surfaces answer two different questions, and the whole design is that they never
-become one. The <b>pool</b> answers &ldquo;what may I claim right now&rdquo;; the <b>backlog</b>
-answers &ldquo;what exists that nobody has decided about yet&rdquo;. Owner:
-<code>packages/core/src/devices/</code> (<code>pool.ts</code>, <code>admissible.ts</code>,
-<code>run-session.ts</code>, <code>pool-routes.ts</code>),
-<code>packages/core/src/pipeline/pipeline-config-schema.ts</code>,
-<code>packages/runner/crates/forge-runner-core/src/daemon/master.rs</code>.</p>
+<p class="sub">The <b>pool</b> answers "what may I claim right now"; the <b>backlog</b> answers
+"what exists that nobody has decided about yet" — and the design is that they never become one.
+<code>core/src/devices/{pool,admissible,run-session,pool-routes}.ts</code> ·
+<code>core/src/pipeline/pipeline-config-schema.ts</code> ·
+<code>forge-runner-core/src/daemon/master.rs</code></p>
 
 <h2>One read, two lists</h2>
-<p>A claimable row is a <code>queued</code> job under a live <code>pipeline_run</code>. A backlog row
-is an <em>issue</em> at a status the project declared in <code>pipelineConfig.poolBacklog.statuses</code>
-&mdash; it has no job, no run, and no <code>jobId</code> field at all. A project that declared nothing
-issues no second query and gets <code>backlog: []</code>, which is every project on the fleet but
+<p class="cap">A claimable row is a <code>queued</code> job under a live <code>pipeline_run</code>.
+A backlog row is an <em>issue</em> at a status declared in
+<code>pipelineConfig.poolBacklog.statuses</code> — no job, no run, no <code>jobId</code> field.
+A project that declared nothing gets <code>backlog: []</code>: every project on the fleet but
 forge-dev.</p>
 
 <div class="board"><pre class="mermaid">
@@ -53,19 +52,16 @@ flowchart TD
   RESP --> M["master.rs:nudge<br/>go and read the pool; the skill lists it itself"]
 </pre></div>
 
-<div class="rule">The two lists are told apart in the response, and the master reads them itself:
-since ISS-933 the nudge carries no snapshot of the pool, because a snapshot typed at a pane is
-already stale by the time the turn reaches it. A master that reads a backlog key as claimable
-spends its turn on <code>pool claim &lt;issueId&gt;</code>,
-which core refuses as <code>not_found</code> &mdash; and that refusal names the job rather than the
-mistake, so nothing in the transcript says why. An older runner that has never heard of the key
-ignores it and keeps parsing <code>items</code> unchanged.</div>
+<div class="rule">The master tells the two lists apart itself — since ISS-933 the nudge carries no
+snapshot, because one typed at a pane is stale by the time the turn reaches it. A master that reads a
+backlog key as claimable spends its turn on <code>pool claim &lt;issueId&gt;</code> and core answers
+<code>not_found</code>, naming the job rather than the mistake, so the transcript never says why.
+An older runner ignores the key and parses <code>items</code> unchanged.</div>
 
 <h2>Opening a run &mdash; the only way an admissible issue becomes work</h2>
-<p>Promotion is gone (ISS-933). A master no longer moves an issue to the entry status so core mints
-a <code>drive</code> job; it opens a <b>run session</b> over a GROUP of issues on its own box, and
-the ledger there is what refuses a second run over an issue or a worktree. Core learns about it
-after the fact.</p>
+<p class="cap">Promotion is gone (ISS-933) — a master opens a <b>run session</b> over a GROUP of
+issues on its own box, and the ledger there refuses a second run over an issue or a worktree. Core
+learns after the fact.</p>
 
 <div class="board"><pre class="mermaid">
 flowchart TD
@@ -90,10 +86,9 @@ widens what a master may <em>see</em>; it has never widened what core will start
 after ISS-933 core starts no <code>drive</code> work at all.</div>
 
 <h2>Where a contradiction is refused &mdash; at the config write, not at dispatch</h2>
-<p><code>intakeGate</code> exists so a <em>human</em> approves every arriving issue by moving it out
-of <code>draft</code>. A master that may open runs over drafts is that human. Declaring both is therefore
-unrepresentable, and the rule lives in the schema so REST and MCP <code>forge_config</code> are both
-covered by one copy.</p>
+<p class="cap"><code>intakeGate</code> exists so a <em>human</em> moves every arriving issue out of
+<code>draft</code>; a master that may open runs over drafts is that human. Declaring both is
+unrepresentable, and the rule lives in the schema so REST and MCP are covered by one copy.</p>
 
 <div class="board"><pre class="mermaid">
 sequenceDiagram
@@ -139,16 +134,20 @@ told <code>no repo path for &lt;slug&gt;</code> loses ten minutes, one whose run
 another checkout loses the diff.</div>
 
 <h2>Read this before</h2>
-<p>Adding a status to the admissible set &mdash; it is <em>derived</em> as
-<code>issueStatuses</code> minus <code>AUTONOMOUS_DRIVER_STATUSES</code>, never hand-written,
-because a driver status already carries a run and a job and would offer a row nothing could open a
-second run over. Adding a cross-field rule to <code>pipelineConfig</code> &mdash; put it in the schema and
-make sure the merged document is what gets validated, or it holds on one write and falls to two.
-Adding a key to the pool response &mdash; siblings only; a row with no job sitting in the array the
-master claims from invites a malformed claim. And adding a cap on how much a master may take: the
-<code>cm:guard</code> on <code>/api/devices/me/load</code> forbids a computed
-&ldquo;you may take N more&rdquo;, because batch size is the master's judgement and a ceiling in the
-kernel is the knob this design removed.</p>
+<div class="rule">
+<ul>
+  <li><b>Adding a status to the admissible set</b> — it is <em>derived</em> as
+      <code>issueStatuses</code> minus <code>AUTONOMOUS_DRIVER_STATUSES</code>, never hand-written:
+      a driver status already carries a run and a job.</li>
+  <li><b>Adding a cross-field rule to <code>pipelineConfig</code></b> — in the schema, validating the
+      MERGED document, or it holds on one write and falls to two.</li>
+  <li><b>Adding a key to the pool response</b> — siblings only; a row with no job inside the array
+      the master claims from invites a malformed claim.</li>
+  <li><b>Adding a cap on how much a master may take</b> — the <code>cm:guard</code> on
+      <code>/api/devices/me/load</code> forbids a computed "you may take N more": batch size is the
+      master's judgement, and a kernel ceiling is the knob this design removed.</li>
+</ul>
+</div>
 
 <p><a href="index.html">&larr; all flows</a></p>
 </main>
