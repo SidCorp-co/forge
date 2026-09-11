@@ -53,6 +53,22 @@ already owns structure.</p>
       nodes or ~20 edges, place them yourself. Keep the figure in a scrolling panel
       (<code>overflow-x:auto</code>) with its grid column at <code>minmax(0,1fr)</code>, or a wide
       figure drags the whole page sideways.</li>
+  <li><b>A figure that renders is not a figure that is legible.</b> Mermaid defaults to
+      <code>useMaxWidth</code>, which fits a wide diagram to its column by <em>scaling the whole SVG
+      down</em> — type included. Measured across this folder 2026-09-11: the worst was
+      <code>agent-execution</code> at <b>0.21×</b> (2412px of diagram squeezed into 514px, 16px type
+      rendering at about 3px), and <code>organization-access</code> at 0.38×. Every file here now
+      initializes with <code>startOnLoad:false</code>, a 12px base font,
+      <code>flowchart.useMaxWidth:false</code>, and a <code>fit()</code> pass that sets each SVG's
+      width from its own <code>viewBox</code> — CSS cannot read a viewBox, so this cannot be done in
+      the stylesheet, and a <code>width</code> rule carrying <code>!important</code> there silently
+      beats the script. Attach it with <code>.finally</code>: <code>mermaid.run()</code> REJECTS on
+      some diagram types after drawing them correctly, and a <code>.then</code> leaves exactly those
+      figures shrunken.</li>
+  <li><b>Check that the figure draws at all.</b> <code>agent-execution-session-turns</code> shipped
+      marked <span class="done">drawn</span> with two <code>&lt;pre class="mermaid"&gt;</code> blocks
+      and no mermaid script on the page — for as long as it existed it showed
+      <code>stateDiagram-v2 [*] --&gt; Spawning</code> as literal text to every reader.</li>
   <li><b>Delete rather than carry.</b> A flow the code no longer performs is removed in the change
       that discovers it — not marked stale.</li>
 </ul>

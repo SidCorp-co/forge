@@ -2,266 +2,260 @@
 <meta charset="utf-8">
 <title>Flow · organization-access — a principal resolves to what it may touch</title>
 <style>
-  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; --lock:#a06a1f; }
-  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
-         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
-  main { max-width:64rem; margin:0 auto; }
-  h1 { font-size:1.6rem; margin:0 0 .3rem; }
-  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
-  .sub { color:var(--mut); margin:0 0 1.6rem; }
-  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
-  table { border-collapse:collapse; width:100%; font-size:14px; }
-  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
-  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
-  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
-  .bad { color:var(--bad); font-weight:600; }
-  .board { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; overflow-x:auto; }
+  :root { --fg:#1c1a17; --mut:#6b645c; --faint:#9a9288; --line:#ddd7cf; --bg:#fbfaf8; --panel:#fff;
+          --acc:#1f6f4a; --accbg:#e6efe9; --bad:#8a3b52; --badbg:#f6ecef; --new:#5b3a8e; --newbg:#efeaf6; }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  code { font:12.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+
+  .bar { display:flex; align-items:baseline; gap:.9rem; flex-wrap:wrap;
+         padding:.85rem 1.4rem; background:var(--panel); border-bottom:1px solid var(--line); }
+  .bar h1 { font-size:1.05rem; margin:0; font-weight:650; letter-spacing:-.01em; }
+  .crumb { font:12px ui-monospace,Menlo,monospace; color:var(--faint); }
+  .crumb a { color:var(--faint); }
+  .pill { margin-left:auto; font-size:12px; padding:.22rem .6rem; border-radius:99px;
+          background:var(--accbg); color:var(--acc); border:1px solid #cfe0d6; font-weight:600; }
+
+  .cols { display:grid; grid-template-columns:minmax(0,1fr) 21rem; gap:1px; background:var(--line); }
+  @media (max-width:1100px){ .cols { grid-template-columns:minmax(0,1fr) } }
+  .canvas, .rail { background:var(--bg); padding:1.1rem 1.4rem; }
+  .stage { font:600 11.5px ui-sans-serif,system-ui,sans-serif; text-transform:uppercase;
+           letter-spacing:.06em; color:var(--faint); margin:1.4rem 0 .45rem; }
+  .stage:first-child { margin-top:0 }
+  .stage b { color:var(--acc); font-size:12.5px; margin-right:.4rem }
+  .board { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:.7rem; overflow-x:auto; }
+  .board svg { max-width:none !important; height:auto; }
+  .cap { color:var(--mut); font-size:13px; margin:.55rem .2rem 0; }
+  .cap b { color:var(--fg) }
+
+  .rail h2 { font-size:11.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--faint);
+             margin:0 0 .5rem; font-weight:700; }
+  .rail section + section { margin-top:1.4rem }
+  .gates { list-style:none; margin:0; padding:0; counter-reset:g }
+  .gates li { position:relative; padding:.45rem 0 .45rem 1.8rem; border-bottom:1px solid var(--line); font-size:12.5px }
+  .gates li:last-child { border-bottom:0 }
+  .gates li::before { counter-increment:g; content:counter(g); position:absolute; left:0; top:.5rem;
+    width:1.15rem; height:1.15rem; line-height:1.15rem; text-align:center; border-radius:4px;
+    background:var(--accbg); color:var(--acc); font:700 10.5px ui-monospace,Menlo,monospace }
+  .gates b { display:block; font:600 12px ui-monospace,Menlo,monospace }
+  .gates span { color:var(--mut) }
+  .rail p { font-size:12.5px; color:var(--mut); margin:.4rem 0 }
+  .rail p b { color:var(--fg) }
+
+  .tabs { display:flex; gap:.3rem; padding:0 1.4rem; background:var(--panel);
+          border-top:1px solid var(--line); border-bottom:1px solid var(--line); flex-wrap:wrap }
+  .tabs button { appearance:none; border:0; background:none; padding:.6rem .85rem; cursor:pointer;
+                 font:600 13px inherit; color:var(--mut); border-bottom:2px solid transparent; }
+  .tabs button[aria-selected=true] { color:var(--fg); border-bottom-color:var(--acc) }
+  .pane { padding:1.2rem 1.4rem 2rem }
+  .pane[hidden] { display:none }
+
+  table { border-collapse:collapse; width:100%; font-size:13.5px }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top }
+  th { font-weight:600; color:var(--faint); font-size:11.5px; text-transform:uppercase; letter-spacing:.05em }
+  td.sym { width:26%; }
+  .note { background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--bad);
+          padding:.6rem .9rem; border-radius:4px; margin:.9rem 0; font-size:13.5px }
+  .note.plan { border-left-color:var(--new) }
+  .foot { padding:1rem 1.4rem 2.5rem; font-size:13px; color:var(--mut) }
 </style>
-<main>
 
-<h1>organization-access — a principal resolves to what it may touch</h1>
-<p class="sub">One <code>Authorization: Bearer</code> header, from the byte that decides which
-verifier runs to the project ids the request is fenced to — and every place the answer is refused.
-Owner: <code>packages/core/src/middleware/{bearer,auth,require-any-auth,require-device,require-pat,pat-rest-surface}.ts</code>,
-<code>packages/core/src/auth/pat-permissions.ts</code>,
-<code>packages/core/src/auth/{pat,pat-format,device-credential,agent-account}.ts</code>, <code>packages/core/src/lib/authz.ts</code>.</p>
+<header class="bar">
+  <span class="crumb"><a href="index.html">flows</a> / organization-access</span>
+  <h1>A principal resolves to what it may touch</h1>
+  <span class="pill">one credential species — a PAT, or a user JWT</span>
+</header>
 
-<h2>The token decides the verifier, and the verifier decides who you are</h2>
-<p>There is one credential species left. <code>isPatLike()</code> reads the
-<code>forge_pat_&lt;env&gt;_</code> prefix and that one test routes the whole request; everything
-else is tried as a user JWT and nothing else is tried at all. Since ISS-932 a box has no credential
-of its own either &mdash; <code>devices</code> is a registry of machines, and what authenticates on
-the control plane (<code>/api/devices</code>, <code>/api/jobs</code>, <code>/api/skills</code>,
-<code>/ws</code>) is an ordinary PAT or AAT whose <code>device_id</code> names the box.
-So the question a verifier answers is no longer <em>which species is this</em> but <em>what does
-this one token carry</em>: a <code>device_id</code> makes it a machine, an owner with
-<code>users.kind = 'agent'</code> makes it an agent, a <code>job:</code>/<code>session:</code> name
-makes it a piece of pipeline work.</p>
+<div class="cols">
+<div class="canvas">
 
-<p>The refusals stay loud in both directions, and they are the point. <code>/mcp</code> refuses a
-non-PAT bearer naming the credential class; <code>requireDevice</code> refuses a perfectly valid
-PAT that carries no <code>device_id</code>, naming the class and <code>forge login</code> as the
-remedy. Neither falls back to the other, and neither reads the token's owner as a stand-in for the
-box &mdash; the <code>device.ownerId</code> fiction, where a machine borrowed a person's whole
-account, is what this shape exists to remove.</p>
-
-<p>On the REST data plane a PAT passes <b>three</b> gates, not one, and they answer different
-questions. <code>patSurfaceCovers</code> asks about the <em>route</em> &mdash; is this path in the
-union of the permission menu at all &mdash; and its refusal is the same for every token that
-exists. <code>scopeForMethod</code> asks about the <em>method</em>. <code>patGrantCovers</code>
-(ISS-973) asks about the <em>credential</em>: is this path in a group this token was granted. The
-last one is the only gate whose answer differs between two valid tokens, and it is the reason the
-first is no longer called <code>patAllowedFor</code> &mdash; a name promising &ldquo;allowed&rdquo;
-on a predicate that reads nothing off the principal is how the third gate gets skipped by someone
-who believes it already ran.</p>
-
-<p>The moment the token verifies — before any of the three is asked — the response is told what the
-route wanted. Since ISS-974 a REST request whose token verified through
-<code>beginPatRequest</code>, on a path some permission covers, carries
-<code>X-Accepted-Forge-Permissions: &lt;resource&gt;:&lt;level&gt;</code> &mdash; on the 200 as
-well as on the refusals, because a header only on the 403 leaves discovery-by-trial exactly where
-it was. The name mirrors GitHub's <code>X-Accepted-GitHub-Permissions</code>, and the value is the
-Forge permission name in the spelling a mint request takes, so it can be pasted rather than
-translated. <code>beginPatRequest</code> resolves it <b>once</b>, from
-<code>patPermissionWanted</code>, and hands that single value to the header, to
-<code>patGrantCovers</code> and to the refusal body's <code>details.wanted</code>: the predicate
-takes a derived <code>PatPermission</code> and can no longer resolve a path itself, which is what
-stops the header becoming a second source of truth that can name a permission the fence would not
-have honoured. A path no permission covers carries <b>no</b> header rather than an empty one
-&mdash; an empty value would read as &ldquo;this route requires nothing&rdquo; on precisely the
-routes a PAT may never reach.</p>
-
-<p>What earns the header is <em>authentication</em>, and deliberately not a status code.
-<code>authenticatePat</code> fires an <code>onVerified</code> callback at the one instant
-<code>verifyPat</code> resolves a row, and that callback is what sets the header &mdash; so a
-token throttled to a <code>429</code> is told what the route wanted, because it verified before
-the bucket refused it, while a token that never verified is told nothing at all. Reading the
-<code>429</code> <em>status</em> as proof of authentication would give the same answer today and
-hand the permission map to every caller the moment a throttle is added above
-<code>verifyPat</code>, which is the leak the guard on <code>patSurfaceCovers</code> already
-refuses in its cruder form.</p>
-
-<p>The direction of the grant default is the whole risk. A token granted nothing reaches
-<em>every</em> group, and &ldquo;nothing&rdquo; has three shapes that must stay one answer: a
-<code>NULL</code> column, an empty array, and a principal built without the field. The migration
-writes no values, so on the day the column landed all 26 active human tokens were in the first of
-those shapes; reading any of them as permissionless would have locked every live integration out
-at once. Narrowing is opt-in, and a non-empty array is the only narrowing there is.</p>
-
-<div class="board"><pre class="mermaid">
+  <p class="stage"><b>1</b>Which verifier runs — one byte decides</p>
+  <div class="board"><pre class="mermaid">
 flowchart TD
   A["Authorization: Bearer &lt;t&gt;<br/>parseBearerHeader"] --> B{absent?}
-  B -- yes, and a forge_auth cookie exists --> C["cookie = the token<br/>(browser uploads only)"]
-  B -- yes, no cookie --> X1["401 UNAUTHENTICATED"]
+  B -- "yes, forge_auth cookie exists" --> C["cookie = the token<br/>(browser uploads only)"]
+  B -- "yes, no cookie" --> X1["401 UNAUTHENTICATED"]
   B -- malformed --> X2["401 — /mcp adds error=invalid_request<br/>so a spec-aware client fixes its header<br/>instead of re-prompting for credentials"]
   B -- no --> D{"isPatLike(t)?<br/>forge_pat_&lt;env&gt;_"}
   C --> D
-  D -- yes --> P1["verifyPat: prefix lookup + argon2<br/>joins users.kind in the SAME query"]
-  D -- "no, and the surface is /mcp" --> M1["401 invalid_token — names the CLASS:<br/>'device tokens no longer authenticate /mcp'"]
-  D -- "no, and the surface is a device route" --> M2["401 — 'carries no device … run forge login'.<br/>Since ISS-932 there is no device verifier<br/>in the process to fall back to"]
+  D -- yes --> P1["verifyPat — prefix lookup + argon2<br/>joins users.kind in the SAME query"]
   D -- no --> U1["verifyUserToken (JWT)"]
-  U1 -- ok --> U2["userId = claims.sub<br/>principal = 'user', agency = human"]
+  U1 -- ok --> U2["principal = user · agency = human"]
   U1 -- throws --> X3["401"]
   P1 -- null --> X5["401 INVALID_TOKEN"]
-  P1 -- ok --> H0["verified ⇒ onVerified fires HERE, and only here.<br/>REST sets X-Accepted-Forge-Permissions = the permission<br/>patPermissionWanted resolved once, before any gate;<br/>null ⇒ no header at all, never an empty one"]
-  H0 --> P2["rate limit: 600/min per token<br/>429 + Retry-After on breach — carries the header,<br/>because the token verified before the bucket refused<br/>(device + /ws paths skip the bucket)"]
-  P2 --> P3["agency = ownerKind === 'agent'<br/>OR isMachineTokenName(row.name)"]
-  P3 --> P3b["machine = parseMachineTokenName(row.name)<br/>the JOB or SESSION the token names.<br/>device: is in the family but answers null —<br/>a box is for all of them or none"]
-  P3b --> S{"which surface?"}
-  S -- "device route or /ws" --> S1{"row.device_id set?"}
-  S1 -- no --> M2
-  S1 -- yes --> S2{"devices row live?"}
-  S2 -- "missing or revoked" --> M2
-  S2 -- yes --> S3["principal = the DEVICE, userId LEFT UNSET<br/>so loadProjectAccess fails closed"]
-  S -- "REST data plane" --> P4{"patSurfaceCovers(path)?<br/>a question about the ROUTE"}
-  S -- "/mcp" --> P5
-  P4 -- no --> X6["403 PAT_NOT_PERMITTED<br/>the route resolves no project,<br/>so there is nothing to fence on<br/>(and no header: wanted was null)"]
-  P4 -- yes --> P5{"scope for method?<br/>GET/HEAD -&gt; read, else write"}
-  P5 -- no --> X7["403 INSUFFICIENT_SCOPE"]
-  P5 -- yes --> P7{"patGrantCovers(row.permissions, wanted)?<br/>a question about the TOKEN,<br/>on the value the header already carries"}
-  P7 -- "granted nothing<br/>(NULL, absent or [])" --> P6
-  P7 -- "holds the group" --> P6
-  P7 -- "holds other groups" --> X8["403 PAT_PERMISSION_REQUIRED<br/>names the permission the path wanted<br/>and the ones the token holds"]
-  P7 -- "holds only names the menu<br/>no longer declares" --> X8
-  P6["withPatScope(projectIds, tokenId)<br/>every query below runs inside it"]
-</pre></div>
+  </pre></div>
+  <p class="cap"><b>That one test routes the whole request</b> — everything not PAT-shaped is tried
+  as a user JWT and nothing else is tried at all. Since ISS-932 a box has no credential of its own:
+  <code>devices</code> is a registry of machines, and what authenticates is an ordinary PAT or AAT
+  whose <code>device_id</code> names the box.</p>
 
-<h2>Two questions, and the answer to one is not the answer to the other</h2>
-<div class="rule">
-<p><b><code>actor_type</code> — who OWNS the write.</b> A job or session token is minted under the
-person the work belongs to, so its writes really are theirs and read as theirs.</p>
-<p><b><code>agency</code> — who was at the KEYBOARD.</b> Two reads OR'd together, never one:
-<code>users.kind === 'agent'</code> answers for an AAT, whose owner IS an agent; the token's name
-prefix answers for <code>job:</code>/<code>session:</code>, which is minted from a HUMAN's
-<code>jobs.created_by</code> and would read <code>human</code> off the kind alone. This is what the
-ISS-786/812 evidence gates read. Dropping the name half is wave 4 of ISS-932 and cannot happen
-while those tokens are minted.</p>
-<p>They disagree for exactly the rows those gates exist to catch, and nothing type-checks that a
-writer keeps them in step. Both are now persisted beside each other:
-<code>activity_log.actor_agency</code> and <code>kernel_transitions.actor_agency</code>.</p>
+  <p class="stage"><b>2</b>What the one token carries</p>
+  <div class="board"><pre class="mermaid">
+flowchart TD
+  H0["verified ⇒ onVerified fires HERE, and only here<br/>REST sets X-Accepted-Forge-Permissions"] --> P2["rate limit 600/min per token<br/>429 + Retry-After — CARRIES the header,<br/>the token verified before the bucket refused"]
+  P2 --> P3["agency = ownerKind is 'agent'<br/>OR isMachineTokenName(row.name)"]
+  P3 --> P3b["machine = the JOB or SESSION the token names<br/>device: is in the family but answers null —<br/>a box is for all of them or none"]
+  P3b --> S{"which surface?"}
+  S -- "device route or /ws" --> S1{"row.device_id set,<br/>devices row live?"}
+  S1 -- no --> M2["401 — 'carries no device … run forge login'<br/>no device verifier remains to fall back to"]
+  S1 -- yes --> S3["principal = the DEVICE, userId LEFT UNSET<br/>so loadProjectAccess fails closed"]
+  S -- "/mcp, non-PAT bearer" --> M1["401 invalid_token, names the CLASS:<br/>'device tokens no longer authenticate /mcp'"]
+  S -- "REST data plane" --> G["the three gates →"]
+  </pre></div>
+  <p class="cap"><b>The refusals stay loud in both directions.</b> <code>/mcp</code> refuses a
+  non-PAT bearer by class; <code>requireDevice</code> refuses a perfectly valid PAT carrying no
+  <code>device_id</code>, naming <code>forge login</code> as the remedy. Neither falls back to the
+  other, and neither reads the token's owner as a stand-in for the box — the
+  <code>device.ownerId</code> fiction is what this shape exists to remove.</p>
+
+  <p class="stage"><b>3</b>Three gates on the REST data plane, asking three different questions</p>
+  <div class="board"><pre class="mermaid">
+flowchart TD
+  P4{"patSurfaceCovers(path)<br/>— about the ROUTE"}
+  P4 -- no --> X6["403 PAT_NOT_PERMITTED<br/>the route resolves no project, so there is<br/>nothing to fence on · no header: wanted was null"]
+  P4 -- yes --> P5{"scopeForMethod<br/>— about the METHOD<br/>GET/HEAD → read, else write"}
+  P5 -- no --> X7["403 INSUFFICIENT_SCOPE"]
+  P5 -- yes --> P7{"patGrantCovers(row.permissions, wanted)<br/>— about the CREDENTIAL,<br/>on the value the header already carries"}
+  P7 -- "granted nothing<br/>NULL · absent · []" --> P6
+  P7 -- "holds the group" --> P6
+  P7 -- "holds only other groups,<br/>or only names the menu dropped" --> X8["403 PAT_PERMISSION_REQUIRED<br/>names what the path wanted<br/>AND what the token holds"]
+  P6["withPatScope(projectIds, tokenId)<br/>every query below runs inside it"]
+  </pre></div>
+  <div class="note"><b>The direction of the grant default is the whole risk.</b> A token granted
+  nothing reaches <em>every</em> group, and &ldquo;nothing&rdquo; has three shapes that must stay one
+  answer: a <code>NULL</code> column, an empty array, and a principal built without the field. The
+  migration writes no values, so on the day the column landed all <b>26 active human tokens</b> were
+  in the first shape — reading any of them as permissionless would have locked every live
+  integration out at once. Narrowing is opt-in; a non-empty array is the only narrowing there is.</div>
 </div>
 
-<h2>When it goes wrong</h2>
+<aside class="rail">
+  <section>
+    <h2>The three gates</h2>
+    <ol class="gates">
+      <li><b>patSurfaceCovers</b><span>the ROUTE — same answer for every token that exists</span></li>
+      <li><b>scopeForMethod</b><span>the METHOD — read or write</span></li>
+      <li><b>patGrantCovers</b><span>the CREDENTIAL — the only gate whose answer differs between two valid tokens (ISS-973)</span></li>
+    </ol>
+    <p>Which is why the first is no longer called <code>patAllowedFor</code>: a name promising
+    &ldquo;allowed&rdquo; on a predicate that reads nothing off the principal is how the third gate
+    gets skipped by someone who believes it already ran.</p>
+  </section>
+
+  <section>
+    <h2>Two questions, one is not the other</h2>
+    <p><b><code>actor_type</code> — who OWNS the write.</b> A job or session token is minted under
+    the person the work belongs to, so its writes really are theirs.</p>
+    <p><b><code>agency</code> — who was at the KEYBOARD.</b> Two reads OR'd, never one:
+    <code>users.kind === 'agent'</code> answers for an AAT; the token's name prefix answers for
+    <code>job:</code>/<code>session:</code>, minted from a HUMAN's <code>jobs.created_by</code> and
+    would read <code>human</code> off the kind alone.</p>
+    <p>They disagree for exactly the rows the ISS-786/812 evidence gates exist to catch, and nothing
+    type-checks that a writer keeps them in step. Both persisted side by side:
+    <code>activity_log.actor_agency</code>, <code>kernel_transitions.actor_agency</code>. Dropping
+    the name half is wave 4 of ISS-932 and cannot happen while those tokens are minted.</p>
+  </section>
+
+  <section>
+    <h2>Owner</h2>
+    <p><code>middleware/{bearer,auth,require-any-auth,require-device,require-pat,pat-rest-surface}.ts</code>
+    · <code>auth/pat-permissions.ts</code> ·
+    <code>auth/{pat,pat-format,device-credential,agent-account}.ts</code> · <code>lib/authz.ts</code></p>
+  </section>
+</aside>
+</div>
+
+<nav class="tabs" role="tablist">
+  <button role="tab" aria-selected="true"  aria-controls="wr">When it goes wrong</button>
+  <button role="tab" aria-selected="false" aria-controls="hd">The header</button>
+  <button role="tab" aria-selected="false" aria-controls="bw">Before you widen</button>
+</nav>
+
+<section class="pane" id="wr" role="tabpanel">
 <table>
 <thead><tr><th>Symptom</th><th>What actually happened</th></tr></thead>
 <tbody>
-<tr><td><code>403 PAT_PERMISSION_REQUIRED</code> wanting <code>projects:read</code> on a route
-    that plainly reads issues</td>
-  <td>A permission is as coarse as its <em>mount</em>. <code>/api/projects</code> is one prefix and
-    the router under it serves issues, schedules, knowledge, members and jobs, so
-    <code>/api/projects/&lt;id&gt;/issues</code> attributes to <code>projects</code> and not to
-    <code>issues</code> &mdash; which makes <code>projects:read</code> a near-universal read grant
-    and <code>issues:read</code> cover only the four flat mounts. Measured live at
-    <code>b32bdc2d</code>; pinned as a test rather than left to be rediscovered, with the shape of a
-    fix in <code>docs/proposals/pat-permission-granularity-is-mount-shaped.md</code>.</td></tr>
-<tr><td><code>403 PAT_PERMISSION_REQUIRED</code> on a route another token reaches fine</td>
-  <td>The route is on the surface; this <em>token</em> was granted a narrower set of
-    groups than the one covering it (ISS-973). The refusal names both halves — the permission the
-    path wanted, and what the token holds — because a grant set is invisible from the caller's
-    side and a bare &ldquo;no&rdquo; makes narrowing a token something nobody does twice. Since
-    ISS-974 the wanted half is also on <code>X-Accepted-Forge-Permissions</code>, from the same
-    single resolution, so the header and <code>details.wanted</code> cannot name different
-    permissions. Absence
-    of a grant is <b>every</b> group, never none, so a token that has never been granted anything
-    cannot produce this code: every row the migration did not write reads as the full menu, which
-    is why the column landing did not take 26 live integrations down with it.</td></tr>
-<tr><td>&ldquo;Which permission does this route need?&rdquo; &mdash; asked without being refused first</td>
-    <td>Read <code>X-Accepted-Forge-Permissions</code> off the response (ISS-974). It is on the
-    <code>200</code> as well as the refusals, so a caller narrows a token by walking the paths it
-    will use and collecting the names, rather than by minting, failing and guessing. The value is
-    the name a mint request takes. Two absences are meaningful and different: no header on a
-    <code>403 PAT_NOT_PERMITTED</code> means no permission covers that path <em>at all</em> and
-    no grant will ever reach it; no header on a <code>200</code> means the grant fence never ran
-    on that request &mdash; a JWT, or a <code>forge_pat_*</code> carrying a <code>device_id</code>
-    on a device route, which <code>verifyDeviceCredential</code> answers without ever reaching
-    <code>beginPatRequest</code>. A browser reads it because it is in <code>corsMiddleware</code>'s
-    <code>exposeHeaders</code> — omit it there and <code>fetch</code> hides it whatever the
-    server sent.</td></tr>
-<tr><td><code>403 PAT_NOT_PERMITTED</code> on a route that plainly exists</td>
-    <td>The path belongs to no resource in <code>PAT_PERMISSION_RESOURCES</code>, so it is not in
-    the <code>PAT_ALLOWED_PREFIXES</code> union. That is a statement about the ROUTE,
-    not the token: a route resolving no project has nothing for the fence to bite on, so a
-    project-scoped token there would be an account-scoped credential wearing a project label.
-    <code>/api/me/collaborators</code> and <code>/api/me/ops-health</code> are permanently in this
-    class — they fan out over every project the caller can see, and there is deliberately no
-    per-project twin because <code>GET /api/projects/:id/members</code> already is one.</td></tr>
-<tr><td>An agent session's MCP calls all 401 at once, on a box that was fine</td>
-    <td>Its <code>.mcp.json</code> carries the box's device token, and <code>/mcp</code> stopped
-    accepting one (ISS-931). The fix is a <code>forge-runner</code> new enough to write the job's
-    own token into the per-job config, which is why the refusal text says so. Core refuses at
-    deploy and a box changes at binary install, so the two are never simultaneous — read this
-    before deploying core ahead of a <code>runner-v*</code> release.</td></tr>
-<tr><td>An admin-gated MCP tool 403s <code>this token lacks the admin scope</code></td>
-    <td>Working as designed, and new since ISS-931. A paired device carried no scopes, so
-    <code>assertPrincipalIsAdmin</code>'s scope half was skipped for it and only the project role
-    was asked; a <code>job:</code>/<code>session:</code> token is minted
-    <code>['read','write']</code>. An operator who wants <code>forge_skills.*</code>,
-    <code>forge_runners</code> writes, <code>forge_config action=update</code>,
-    <code>forge_schedules</code> writes or <code>forge_reconcile</code> from an agent mints a PAT
-    with <code>admin</code> and exports it as the box's <code>$FORGE_PAT</code>. Widening the
-    machine mint instead would restore ambient admin authority, which is the thing ISS-927
-    removed.</td></tr>
-<tr><td>An MCP tool answers <code>NOT_FOUND: project not found or not accessible</code> to a caller
-    who IS a member</td>
-    <td>Then they are not, on the effective role — or the token's <code>projectIds</code> allowlist
-    excludes the project. Fourteen tools moved from <code>assertDeviceOwnerIsMember</code> (which
-    answered <code>FORBIDDEN</code> and never read the allowlist) to
-    <code>assertPrincipalIsMember</code> in ISS-931, so this reads as not-found by design: a 403
-    would confirm the project exists to a caller who cannot see it.</td></tr>
-<tr><td>Every box in the fleet 401s at once, right after a deploy</td>
-    <td>ISS-932 deleted the device credential. A token minted before it is argon2 in
-    <code>devices.token_hash</code>, which core cannot map to a PAT, so there is no backfill and
-    there was never going to be one: each box re-runs <code>forge login</code> once and is issued a
-    PAT (or its project agent's AAT) carrying <code>device_id</code>. The migration refuses to drop
-    those columns while any non-revoked device still holds one, and names the rows, so this should
-    have been read at deploy time rather than discovered here.</td></tr>
-<tr><td>A runner's REST call 401s where it used to work</td>
-    <td>Either it is presenting a device token to <code>requireAnyAuth</code> — that branch is gone
-    (ISS-927) — or it holds a PAT with no <code>device_id</code> on a device route, which
-    ISS-932 refuses by name rather than accepting as its owner. An unattended caller holds a real
-    token: <code>job:&lt;id&gt;</code> minted at claim, <code>session:&lt;id&gt;</code> on
-    <code>agent:start</code>, <code>device:&lt;id&gt;</code> at pairing.</td></tr>
-<tr><td>A person cannot sign in and the error says the account is an agent</td>
-    <td>Working as designed. <code>users.kind = 'agent'</code> is refused at every entrance that
-    mints a user JWT, and <code>agent-login-refusal.test.ts</code> scans the tree so a fourth
-    entrance cannot be added without one. If a HUMAN's row carries that kind, it was created
-    through <code>POST /api/orgs/:orgId/agents</code> and should be retired there.</td></tr>
-<tr><td>A runner's REST call 401s and the token IS a PAT</td>
-    <td>Its work went terminal. Both credentials die with the thing they were minted for, and for a
-    session that is <b>two</b> writers: <code>applyKernelTransition</code> for cancel / sweeper /
-    dispatch failure, and <code>PATCH /api/agent-sessions/:id</code> for the runner's happy path.
-    The second is a direct <code>db.update</code> the kernel chokepoint never sees.</td></tr>
-<tr><td>An agent's write shows in the feed as a person's</td>
-    <td>The token's name lost its machine prefix AND its owner is not <code>kind:'agent'</code>,
-    so <code>authenticatePat</code> stamped <code>agency: 'human'</code>. Every consumer reads the
-    FAMILY via <code>isMachineTokenName</code>, so a species added to
-    <code>MACHINE_TOKEN_NAME_PREFIXES</code> is covered everywhere at once — and one minted without
-    being added there escapes the PAT cap, the revoke sweep and the evidence gates together.
-    <code>device:</code> joined that family in ISS-932 for exactly those three reasons.</td></tr>
-<tr><td>A device principal 403s inside a handler that looked correct</td>
-    <td>Working as designed. Three middlewares verify a device token and none sets
-    <code>userId</code>, so <code>loadProjectAccess(projectId, userId)</code> fails closed unless
-    the handler honours the device principal explicitly and scopes by <code>row.deviceId</code>.
-    Fixing one half of a read/write pair leaves the other half failing closed.</td></tr>
-</tbody>
-</table>
+<tr><td class="sym"><code>403 PAT_PERMISSION_REQUIRED</code> wanting <code>projects:read</code> on a route that plainly reads issues</td>
+  <td>A permission is as coarse as its <em>mount</em>. <code>/api/projects</code> is one prefix and the router under it serves issues, schedules, knowledge, members and jobs, so <code>/api/projects/&lt;id&gt;/issues</code> attributes to <code>projects</code> — which makes <code>projects:read</code> a near-universal read grant and <code>issues:read</code> cover only the four flat mounts. Measured live at <code>b32bdc2d</code>; pinned as a test, with the shape of a fix in <code>docs/proposals/pat-permission-granularity-is-mount-shaped.md</code>.</td></tr>
+<tr><td class="sym"><code>403 PAT_PERMISSION_REQUIRED</code> on a route another token reaches fine</td>
+  <td>The route is on the surface; this <em>token</em> was granted a narrower set of groups (ISS-973). The refusal names both halves, because a grant set is invisible from the caller's side and a bare &ldquo;no&rdquo; makes narrowing a token something nobody does twice. Absence of a grant is <b>every</b> group, never none — so a token never granted anything cannot produce this code.</td></tr>
+<tr><td class="sym">&ldquo;Which permission does this route need?&rdquo; — asked without being refused first</td>
+  <td>Read <code>X-Accepted-Forge-Permissions</code> off the response (ISS-974) — it is on the <code>200</code> too, so a caller narrows a token by walking the paths it will use. Two absences are meaningful and different: no header on a <code>403 PAT_NOT_PERMITTED</code> means no permission covers that path <em>at all</em>; no header on a <code>200</code> means the grant fence never ran — a JWT, or a PAT carrying a <code>device_id</code> on a device route, which <code>verifyDeviceCredential</code> answers without reaching <code>beginPatRequest</code>. A browser reads it only because it is in <code>corsMiddleware</code>'s <code>exposeHeaders</code>.</td></tr>
+<tr><td class="sym"><code>403 PAT_NOT_PERMITTED</code> on a route that plainly exists</td>
+  <td>The path belongs to no resource in <code>PAT_PERMISSION_RESOURCES</code>, so it is not in the <code>PAT_ALLOWED_PREFIXES</code> union. A statement about the ROUTE, not the token: a route resolving no project has nothing for the fence to bite on. <code>/api/me/collaborators</code> and <code>/api/me/ops-health</code> are permanently in this class — they fan out over every visible project, and <code>GET /api/projects/:id/members</code> already is the per-project twin.</td></tr>
+<tr><td class="sym">An agent session's MCP calls all 401 at once, on a box that was fine</td>
+  <td>Its <code>.mcp.json</code> carries the box's device token and <code>/mcp</code> stopped accepting one (ISS-931). The fix is a <code>forge-runner</code> new enough to write the job's own token into the per-job config. Core refuses at deploy and a box changes at binary install, so the two are never simultaneous — read this before deploying core ahead of a <code>runner-v*</code> release.</td></tr>
+<tr><td class="sym">An admin-gated MCP tool 403s <code>this token lacks the admin scope</code></td>
+  <td>Working as designed, new since ISS-931. A paired device carried no scopes, so <code>assertPrincipalIsAdmin</code>'s scope half was skipped for it; a <code>job:</code>/<code>session:</code> token is minted <code>['read','write']</code>. An operator who wants <code>forge_skills.*</code>, <code>forge_runners</code> writes, <code>forge_config action=update</code>, <code>forge_schedules</code> writes or <code>forge_reconcile</code> from an agent mints a PAT with <code>admin</code> and exports it as <code>$FORGE_PAT</code>. Widening the machine mint would restore the ambient admin authority ISS-927 removed.</td></tr>
+<tr><td class="sym">An MCP tool answers <code>NOT_FOUND: project not found or not accessible</code> to a caller who IS a member</td>
+  <td>Then they are not, on the effective role — or the token's <code>projectIds</code> allowlist excludes it. Fourteen tools moved from <code>assertDeviceOwnerIsMember</code> to <code>assertPrincipalIsMember</code> in ISS-931, so this reads as not-found by design: a 403 would confirm the project exists to a caller who cannot see it.</td></tr>
+<tr><td class="sym">Every box in the fleet 401s at once, right after a deploy</td>
+  <td>ISS-932 deleted the device credential. A token minted before it is argon2 in <code>devices.token_hash</code>, which core cannot map to a PAT, so there is no backfill and never was going to be one: each box re-runs <code>forge login</code> once. The migration refuses to drop those columns while any non-revoked device still holds one, and names the rows — this should have been read at deploy time rather than discovered here.</td></tr>
+<tr><td class="sym">A runner's REST call 401s where it used to work</td>
+  <td>Either it is presenting a device token to <code>requireAnyAuth</code> — that branch is gone (ISS-927) — or it holds a PAT with no <code>device_id</code> on a device route, which ISS-932 refuses by name rather than accepting as its owner. An unattended caller holds a real token: <code>job:&lt;id&gt;</code> at claim, <code>session:&lt;id&gt;</code> on <code>agent:start</code>, <code>device:&lt;id&gt;</code> at pairing.</td></tr>
+<tr><td class="sym">A person cannot sign in and the error says the account is an agent</td>
+  <td>Working as designed. <code>users.kind = 'agent'</code> is refused at every entrance that mints a user JWT, and <code>agent-login-refusal.test.ts</code> scans the tree so a fourth entrance cannot be added without one. A HUMAN's row carrying that kind was created through <code>POST /api/orgs/:orgId/agents</code> and should be retired there.</td></tr>
+<tr><td class="sym">A runner's REST call 401s and the token IS a PAT</td>
+  <td>Its work went terminal. Both credentials die with the thing they were minted for, and for a session that is <b>two</b> writers: <code>applyKernelTransition</code> for cancel / sweeper / dispatch failure, and <code>PATCH /api/agent-sessions/:id</code> for the runner's happy path — a direct <code>db.update</code> the kernel chokepoint never sees.</td></tr>
+<tr><td class="sym">An agent's write shows in the feed as a person's</td>
+  <td>The token's name lost its machine prefix AND its owner is not <code>kind:'agent'</code>, so <code>authenticatePat</code> stamped <code>agency: 'human'</code>. Every consumer reads the FAMILY via <code>isMachineTokenName</code>, so a species added to <code>MACHINE_TOKEN_NAME_PREFIXES</code> is covered everywhere at once — and one minted without being added there escapes the PAT cap, the revoke sweep and the evidence gates together. <code>device:</code> joined that family in ISS-932 for exactly those three reasons.</td></tr>
+<tr><td class="sym">A device principal 403s inside a handler that looked correct</td>
+  <td>Working as designed. Three middlewares verify a device token and none sets <code>userId</code>, so <code>loadProjectAccess(projectId, userId)</code> fails closed unless the handler honours the device principal explicitly and scopes by <code>row.deviceId</code>. Fixing one half of a read/write pair leaves the other half failing closed.</td></tr>
+</tbody></table>
+</section>
 
-<h2>Read this before</h2>
-<p>Widening what a PAT may reach. <code>PAT_ALLOWED_PREFIXES</code> is now a computed union and
-not an editable list: the declaration is <code>PAT_PERMISSION_RESOURCES</code> in
-<code>packages/core/src/auth/pat-permissions.ts</code>, one named resource to the prefixes it
-covers, and a prefix reaches the union only by belonging to a resource (ISS-972 phase 1). Every
-entry must still be reachable by a PAT <em>today</em>, which is what forces the grant to be made
-by someone looking at the route, and
-<code>/api/pat</code> and <code>/api/orgs</code> being absent is the whole reason an agent cannot
-mint another agent. <code>requireUserOrDevice</code> now HAS a PAT branch (ISS-932) and it resolves
-a device without setting <code>userId</code>; that declaration is the only thing keeping a token off
-<code>GET /api/agent-sessions</code>, which with no <code>projectId</code> returns every session of
-every visible project with <code>messages[]</code> attached. And minting a
-new species of machine token — it belongs in <code>MACHINE_TOKEN_NAME_PREFIXES</code> and nowhere
-else, or it is a credential three separate mechanisms silently disagree about.</p>
+<section class="pane" id="hd" role="tabpanel" hidden>
+<p><b>The moment the token verifies — before any of the three gates is asked — the response is told
+what the route wanted.</b> Since ISS-974 a REST request whose token verified through
+<code>beginPatRequest</code>, on a path some permission covers, carries
+<code>X-Accepted-Forge-Permissions: &lt;resource&gt;:&lt;level&gt;</code> on the 200 as well as on the
+refusals — a header only on the 403 leaves discovery-by-trial exactly where it was. The name mirrors
+GitHub's <code>X-Accepted-GitHub-Permissions</code>, and the value is the Forge permission name in the
+spelling a mint request takes, so it can be pasted rather than translated.</p>
+<table>
+<thead><tr><th>Rule</th><th>Why it is that way</th></tr></thead>
+<tbody>
+<tr><td>Resolved <b>once</b>, by <code>beginPatRequest</code>, from <code>patPermissionWanted</code></td>
+  <td>That single value goes to the header, to <code>patGrantCovers</code> and to the refusal body's <code>details.wanted</code>. The predicate takes a derived <code>PatPermission</code> and can no longer resolve a path itself — which is what stops the header becoming a second source of truth naming a permission the fence would not have honoured.</td></tr>
+<tr><td>A path no permission covers carries <b>no</b> header, never an empty one</td>
+  <td>An empty value would read as &ldquo;this route requires nothing&rdquo; on precisely the routes a PAT may never reach.</td></tr>
+<tr><td>What earns it is <b>authentication</b>, deliberately not a status code</td>
+  <td><code>authenticatePat</code> fires <code>onVerified</code> at the instant <code>verifyPat</code> resolves a row, and that callback sets the header — so a token throttled to a <code>429</code> is told what the route wanted, while a token that never verified is told nothing. Reading the <code>429</code> <em>status</em> as proof of authentication gives the same answer today and hands the permission map to every caller the moment a throttle is added above <code>verifyPat</code>.</td></tr>
+</tbody></table>
+</section>
 
-<p><a href="index.html">← all flows</a></p>
-</main>
+<section class="pane" id="bw" role="tabpanel" hidden>
+<table>
+<thead><tr><th>Before you</th><th>Know this</th></tr></thead>
+<tbody>
+<tr><td class="sym">Widen what a PAT may reach</td>
+  <td><code>PAT_ALLOWED_PREFIXES</code> is a computed union, not an editable list: the declaration is <code>PAT_PERMISSION_RESOURCES</code> in <code>packages/core/src/auth/pat-permissions.ts</code>, one named resource to the prefixes it covers, and a prefix reaches the union only by belonging to a resource (ISS-972 phase 1). Every entry must still be reachable by a PAT <em>today</em>, which is what forces the grant to be made by someone looking at the route.</td></tr>
+<tr><td class="sym">Assume <code>/api/pat</code> or <code>/api/orgs</code> could join it</td>
+  <td>Their absence is the whole reason an agent cannot mint another agent.</td></tr>
+<tr><td class="sym">Touch <code>requireUserOrDevice</code></td>
+  <td>It now HAS a PAT branch (ISS-932) and resolves a device without setting <code>userId</code>. That declaration is the only thing keeping a token off <code>GET /api/agent-sessions</code>, which with no <code>projectId</code> returns every session of every visible project with <code>messages[]</code> attached.</td></tr>
+<tr><td class="sym">Mint a new species of machine token</td>
+  <td>It belongs in <code>MACHINE_TOKEN_NAME_PREFIXES</code> and nowhere else, or it is a credential three separate mechanisms silently disagree about.</td></tr>
+</tbody></table>
+</section>
+
+<p class="foot"><a href="index.html">← all flows</a></p>
+
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
-<script>mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script>
+<script>
+  mermaid.initialize({ startOnLoad: false, theme: 'neutral',
+    themeVariables: { fontSize: '12px', fontFamily: 'ui-sans-serif,system-ui,sans-serif' },
+    flowchart: { useMaxWidth: false, nodeSpacing: 30, rankSpacing: 42, padding: 6 } });
+  // .finally, not .then — mermaid.run() REJECTS on some diagram types after drawing them fine,
+  // and a .then here left those figures at mermaid's own shrunken width (two sequenceDiagrams).
+  const fit = () => {
+    // mermaid stamps width="100%" + an inline max-width on some diagram types, which shrinks a
+    // wide figure until the type is unreadable. CSS cannot read viewBox, so set it here.
+    for (const s of document.querySelectorAll('.board svg')) {
+      const vb = (s.getAttribute('viewBox') || '').split(/\s+/);
+      if (vb.length === 4) { s.style.width = vb[2] + 'px'; s.style.maxWidth = 'none'; }
+    }
+  };
+  mermaid.run().catch(() => {}).finally(fit);
+</script>

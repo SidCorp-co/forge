@@ -26,6 +26,7 @@
   .exit { fill:#fdf0f3; stroke:#e3c2cb; }
   .arrow { stroke:var(--fg); stroke-width:1.2; fill:none; marker-end:url(#a); }
   .arrowbad { stroke:var(--bad); stroke-width:1.2; fill:none; marker-end:url(#b); stroke-dasharray:4 3; }
+  .board svg { max-width:none !important; height:auto; }
 </style>
 <main>
 
@@ -268,4 +269,19 @@ each other and the build fails if the ordering breaks.</p>
 <p><a href="index.html">← all flows</a></p>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
-<script>mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script>
+<script>
+  mermaid.initialize({ startOnLoad: false, theme: 'neutral',
+    themeVariables: { fontSize: '12px', fontFamily: 'ui-sans-serif,system-ui,sans-serif' },
+    flowchart: { useMaxWidth: false, nodeSpacing: 30, rankSpacing: 42, padding: 6 } });
+  // .finally, not .then — mermaid.run() REJECTS on some diagram types after drawing them fine,
+  // and a .then here left those figures at mermaid's own shrunken width (two sequenceDiagrams).
+  const fit = () => {
+    // mermaid stamps width="100%" + an inline max-width on some diagram types, which shrinks a
+    // wide figure until the type is unreadable. CSS cannot read viewBox, so set it here.
+    for (const s of document.querySelectorAll('.board svg')) {
+      const vb = (s.getAttribute('viewBox') || '').split(/\s+/);
+      if (vb.length === 4) { s.style.width = vb[2] + 'px'; s.style.maxWidth = 'none'; }
+    }
+  };
+  mermaid.run().catch(() => {}).finally(fit);
+</script>

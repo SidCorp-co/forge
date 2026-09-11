@@ -16,6 +16,7 @@
   .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
   .warn { border-left-color:var(--bad); }
   .board { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; overflow-x:auto; }
+  .board svg { max-width:none !important; height:auto; }
 </style>
 <main>
 
@@ -94,4 +95,19 @@ Suppress an unchanged snapshot: a silent box would then be indistinguishable fro
 <p><a href="index.html">&larr; all flows</a></p>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
-<script>mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script>
+<script>
+  mermaid.initialize({ startOnLoad: false, theme: 'neutral',
+    themeVariables: { fontSize: '12px', fontFamily: 'ui-sans-serif,system-ui,sans-serif' },
+    flowchart: { useMaxWidth: false, nodeSpacing: 30, rankSpacing: 42, padding: 6 } });
+  // .finally, not .then — mermaid.run() REJECTS on some diagram types after drawing them fine,
+  // and a .then here left those figures at mermaid's own shrunken width (two sequenceDiagrams).
+  const fit = () => {
+    // mermaid stamps width="100%" + an inline max-width on some diagram types, which shrinks a
+    // wide figure until the type is unreadable. CSS cannot read viewBox, so set it here.
+    for (const s of document.querySelectorAll('.board svg')) {
+      const vb = (s.getAttribute('viewBox') || '').split(/\s+/);
+      if (vb.length === 4) { s.style.width = vb[2] + 'px'; s.style.maxWidth = 'none'; }
+    }
+  };
+  mermaid.run().catch(() => {}).finally(fit);
+</script>
