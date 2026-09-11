@@ -2,9 +2,11 @@
  * v1 EPIC 1 (ISS-294 / PR-B) — the system prompt: persona or `app_config.systemPromptOverride`
  * (the override wins), the project's `agentConfig.systemPrompt`, the `personaStyle` knob, and the
  * ISS-671 `progressFacts` block, which survives the override because a kernel fact must not be
- * strippable by a project's prompt customization. No RAG, no rolling stats. Everything that changes
- * per turn (the conversation seed, the page context) is NOT here — see `turn-context.ts`: the
- * system message plus `tools[]` is the prompt-cache prefix and must stay byte-stable across turns.
+ * strippable by a project's prompt customization. No RAG, no rolling stats. The conversation seed
+ * and the page context are NOT here — see `turn-context.ts`. What IS here does not all hold still:
+ * `progressFacts` renders counters recomputed every turn, so this message is a cache prefix across
+ * rounds and not across turns, while `tools[]`, which renders before it, is stable across both
+ * (ISS-983).
  */
 
 export interface ProjectSummary {

@@ -3,7 +3,7 @@
   "version": "0.3.0",
   "private": true,
   "license": "Apache-2.0",
-  "description": "Forge core API — Hono + Drizzle (RFC 0002 Strapi replacement).",
+  "description": "Forge core API \u2014 Hono + Drizzle (RFC 0002 Strapi replacement).",
   "type": "module",
   "main": "dist/index.js",
   "exports": {
@@ -27,6 +27,7 @@
     "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
     "build": "tsc -p tsconfig.build.json",
     "start": "node --env-file-if-exists=.env dist/index.js",
+    "measure:catalog-cost": "tsx --env-file-if-exists=.env src/assistant/tool-catalog-cost.ts",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage --coverage.reporter=json --coverage.reportsDirectory=coverage/unit",
