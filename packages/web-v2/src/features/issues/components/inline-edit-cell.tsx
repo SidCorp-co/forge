@@ -6,7 +6,8 @@
 // the mutation factory, the row value snaps back since nothing is invalidated).
 
 import { Menu, NativeSelect, Select, StatusChip, type MenuItem, type SelectOption } from "@/design";
-import { allowedTransitions, statusToChip } from "../derive";
+import { groupedTransitions, statusToChip, transitionLabels } from "../derive";
+import { useStatusExits } from "../hooks";
 import { useStatusLabeller } from "../vocabulary";
 import type { IssueAgentStatus, IssueStatus } from "../types";
 
@@ -69,17 +70,35 @@ interface StatusEditProps {
 }
 
 /**
- * StatusChip that doubles as an inline status editor. Clicking opens a menu of
- * the VALID next statuses (`allowedTransitions`, mirroring core's runtime
- * guard); selecting one fires a transition. Pre-filtering stops the user from
- * picking a target that 409s and silently snaps back (ISS-308 E1).
+ * StatusChip that doubles as an inline status editor. The menu offers the moves
+ * the RUNG has — core's exits row for this status, read over the pipeline
+ * registry — forward move first, then the bounces, then the discards. A rung
+ * with no exit says so rather than opening empty (ISS-982).
  */
+// cm:guard the three no-target states are DISTINCT lines and must stay so: "loading", "could not load" and "no exits at all" are three different things for the person holding the mouse, and collapsing them renders ordinary latency as a failure and a terminal issue as a broken menu
 export function StatusEdit({ status, agentStatus, onTransition, disabled, size }: StatusEditProps) {
   const statusLabel = useStatusLabeller();
-  const items: MenuItem[] = allowedTransitions(status).map((s) => ({
-    label: statusLabel(s),
-    onSelect: () => onTransition(s),
-  }));
+  const { exits, isPending, isError } = useStatusExits();
+  const grouped = groupedTransitions(exits, status);
+  let items: MenuItem[];
+  if (isPending) {
+    items = [{ label: "Loading status moves…", disabled: true }];
+  } else if (isError) {
+    items = [{ label: "Couldn't load status moves", disabled: true }];
+  } else if (grouped.length === 0) {
+    items = [{ label: `No move from ${statusLabel(status)} — re-file instead`, disabled: true }];
+  } else {
+    const names = transitionLabels(
+      grouped.map((g) => g.to),
+      statusLabel,
+    );
+    items = grouped.map((g, i) => ({
+      label: names[i],
+      danger: g.kind === "discard",
+      separatorBefore: g.startsGroup,
+      onSelect: () => onTransition(g.to),
+    }));
+  }
   const chip = (
     <span className="inline-flex items-center gap-1">
       <StatusChip status={statusToChip(status, agentStatus)} size={size} />

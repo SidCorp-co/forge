@@ -9,6 +9,10 @@ export interface MenuItem {
   icon?: IconName;
   onSelect?: () => void;
   danger?: boolean;
+  /** Inert row — a state the menu is reporting, not a choice. Skipped by ↑/↓. */
+  disabled?: boolean;
+  /** Draw a rule above this item, separating it from the group before it. */
+  separatorBefore?: boolean;
 }
 
 export interface MenuProps {
@@ -41,7 +45,7 @@ export function Menu({
 
   useEffect(() => {
     if (!open) return;
-    itemRefs.current[0]?.focus();
+    itemRefs.current.find((el) => el && !el.disabled)?.focus();
     const onDoc = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
@@ -55,7 +59,10 @@ export function Menu({
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
-    const focusables = itemRefs.current.filter(Boolean) as HTMLButtonElement[];
+    const focusables = (itemRefs.current.filter(Boolean) as HTMLButtonElement[]).filter(
+      (el) => !el.disabled,
+    );
+    if (focusables.length === 0) return;
     const idx = focusables.indexOf(document.activeElement as HTMLButtonElement);
     if (e.key === "ArrowDown") {
       e.preventDefault();
@@ -71,12 +78,9 @@ export function Menu({
     }
   };
 
+  // cm:guard `trigger` must be an interactive element (button/IconButton): the span below carries the popup semantics only, and native Enter/Space activation bubbling to its onClick is what makes the menu keyboard-operable without a redundant tab stop (D1)
   return (
     <div ref={ref} className={cn("relative inline-flex", className)}>
-      {/* The wrapper carries the popup semantics; callers pass an interactive
-          element (button/IconButton) as `trigger`, so native Enter/Space
-          activation bubbles to this onClick — keyboard-operable without a
-          redundant tab stop. aria-haspopup/expanded announce the menu (D1). */}
       <span
         ref={triggerRef}
         className={triggerClassName}
@@ -98,18 +102,26 @@ export function Menu({
         >
           {items.map((it, i) => (
             <button
-              key={it.label}
+              // biome-ignore lint/suspicious/noArrayIndexKey: a menu's items are positional and hold no state of their own — the list is rebuilt whole on every render and never reordered while open — and the index is what keeps two items legitimately sharing a label from colliding (ISS-982)
+              key={`${i}-${it.label}`}
               ref={(el) => {
                 itemRefs.current[i] = el;
               }}
               role="menuitem"
+              disabled={it.disabled}
+              aria-disabled={it.disabled}
               onClick={() => {
+                if (it.disabled) return;
                 it.onSelect?.();
                 close();
               }}
               className={cn(
-                "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13.5px] transition-colors hover:bg-hover focus-visible:bg-hover focus-visible:outline-none",
-                it.danger ? "text-[color:var(--red-600)]" : "text-fg",
+                "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13.5px] transition-colors focus-visible:outline-none",
+                it.separatorBefore && "mt-1 border-line border-t pt-2.5",
+                it.disabled
+                  ? "cursor-default text-subtle"
+                  : "hover:bg-hover focus-visible:bg-hover",
+                it.danger ? "text-[color:var(--red-600)]" : it.disabled ? "" : "text-fg",
               )}
             >
               {it.icon && <Icon name={it.icon} size={16} style={it.danger ? { color: "var(--red-500)" } : { color: "var(--fg-subtle)" }} />}

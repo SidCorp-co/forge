@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { StatusExits } from "@forge/contracts/pipeline-registry";
 import { STATUS_KEY_TONE } from "@/design/status";
 import {
 	allowedTransitions,
@@ -14,6 +15,7 @@ import {
 	FORGE_AGENT_LABEL,
 	filterToQueryParams,
 	groupRows,
+	groupedTransitions,
 	HEARTBEAT_STALE_MS,
 	heartbeatState,
 	initials,
@@ -151,38 +153,147 @@ describe("statusToTone (ISS-509 — chip↔dashboard color consistency)", () => 
 	});
 });
 
+// cm:why the rows are copied from core's own `transitions` table rather than invented, so a case here reads as the menu a person would actually see at that rung
+const EXITS = {
+	open: ["confirmed", "in_progress", "needs_info", "on_hold", "dropped"],
+	approved: ["in_progress", "needs_info", "on_hold", "dropped"],
+	in_progress: ["developed", "closed", "needs_info", "on_hold", "dropped"],
+	developed: ["testing", "reopen", "needs_info", "on_hold", "dropped"],
+	testing: ["awaiting_release", "closed", "reopen", "needs_info", "on_hold", "dropped"],
+	releasing: ["closed", "reopen", "needs_info", "on_hold"],
+	closed: ["reopen"],
+	dropped: [],
+	confirmed: ["approved", "in_progress", "needs_info", "on_hold", "dropped"],
+	draft: ["open", "closed", "dropped", "developed", "in_progress"],
+} satisfies StatusExits;
+
 describe("allowedTransitions", () => {
-	it("never offers draft as a target, nor the current status", () => {
-		const from = allowedTransitions("approved");
-		expect(from).not.toContain("draft");
-		expect(from).not.toContain("approved");
-		expect(from).toContain("in_progress");
-		expect(from).toContain("on_hold");
-		expect(from).toContain("reopen");
+	it("offers a closed issue the one move it has", () => {
+		expect(allowedTransitions(EXITS, "closed")).toEqual(["reopen"]);
 	});
-	// cm:guard spell all five out and keep `dropped` among them — this list is a SECOND copy of core's DRAFT_EXIT_TARGETS, and core's refusal message renders that constant member by member, so any member missing here is a menu that hides an exit the server offers the user by name. Until 2026-08-27 (ISS-787) `dropped` was absent and `closed` was the only discard on offer: the one that stamps merged_at and unblocks every dependent of work that never existed.
+
+	it("offers a dropped issue nothing", () => {
+		expect(allowedTransitions(EXITS, "dropped")).toEqual([]);
+	});
+
+	// cm:guard the three retired statuses must not reappear as TARGETS: nothing dispatches at them, so the write succeeds and the issue is stranded until a person reads the database. 21 rows sat that way across the fleet on 2026-09-10 (ISS-982); removing them from the enum is ISS-976 Part C.
+	it("offers no retired status from any rung it is given", () => {
+		for (const from of Object.keys(EXITS) as (keyof typeof EXITS)[]) {
+			const offered = allowedTransitions(EXITS, from);
+			expect(offered).not.toContain("clarified");
+			expect(offered).not.toContain("waiting");
+			expect(offered).not.toContain("tested");
+		}
+	});
+
+	it("returns the row in the order core declared it", () => {
+		expect(allowedTransitions(EXITS, "developed")).toEqual([
+			"testing",
+			"reopen",
+			"needs_info",
+			"on_hold",
+			"dropped",
+		]);
+	});
+
+	// cm:guard spell all five out and keep `dropped` among them — this is what core's DRAFT_EXIT_TARGETS holds, and core's refusal message renders that constant member by member, so a member missing from the menu hides an exit the server offers the user by name. Until 2026-08-27 (ISS-787) `dropped` was absent and `closed` was the only discard on offer: the one that stamps merged_at and unblocks every dependent of work that never existed.
 	it("restricts draft to promote, take up, direct-ship, or either discard", () => {
-		expect(allowedTransitions("draft")).toEqual([
+		expect(allowedTransitions(EXITS, "draft")).toEqual([
 			"open",
-			"in_progress",
+			"closed",
+			"dropped",
 			"developed",
+			"in_progress",
+		]);
+	});
+
+	it("offers nothing at all while the exits are unread", () => {
+		expect(allowedTransitions(undefined, "open")).toEqual([]);
+		expect(allowedTransitions({}, "open")).toEqual([]);
+	});
+});
+
+describe("groupedTransitions (ISS-982)", () => {
+	it("puts the forward rung first", () => {
+		expect(groupedTransitions(EXITS, "open")[0]).toEqual({
+			to: "confirmed",
+			kind: "forward",
+			startsGroup: false,
+		});
+	});
+
+	it("orders the groups forward, then bounce, then discard", () => {
+		expect(groupedTransitions(EXITS, "in_progress").map((g) => g.to)).toEqual([
+			"developed",
+			"needs_info",
+			"on_hold",
 			"closed",
 			"dropped",
 		]);
+	});
+
+	// cm:guard pick a row whose declared order is NOT alphabetical — `testing` bounces to reopen, needs_info, on_hold in that order — or the case passes against code that sorts the group and proves only that the letters came out right
+	it("keeps each group in the order core declared it, not in any order of its own", () => {
+		expect(groupedTransitions(EXITS, "testing").map((g) => g.to)).toEqual([
+			"awaiting_release",
+			"reopen",
+			"needs_info",
+			"on_hold",
+			"closed",
+			"dropped",
+		]);
+	});
+
+	it("marks the three bounce targets as bounces", () => {
+		const byTo = new Map(groupedTransitions(EXITS, "developed").map((g) => [g.to, g.kind]));
+		expect(byTo.get("needs_info")).toBe("bounce");
+		expect(byTo.get("on_hold")).toBe("bounce");
+		expect(byTo.get("reopen")).toBe("bounce");
+	});
+
+	it("marks the two discard targets as discards", () => {
+		const byTo = new Map(groupedTransitions(EXITS, "in_progress").map((g) => [g.to, g.kind]));
+		expect(byTo.get("closed")).toBe("discard");
+		expect(byTo.get("dropped")).toBe("discard");
+	});
+
+	// cm:guard a row's FIRST exit is its forward move whatever set it belongs to — from `releasing` closing IS the outcome, and filing it under the danger group there reads as abandoning shipped work
+	it("does not file releasing's close under the discards", () => {
+		expect(groupedTransitions(EXITS, "releasing")[0]).toEqual({
+			to: "closed",
+			kind: "forward",
+			startsGroup: false,
+		});
+	});
+
+	it("starts a group at the first item of each kind after the first", () => {
+		const g = groupedTransitions(EXITS, "in_progress");
+		expect(g.filter((x) => x.startsGroup).map((x) => x.to)).toEqual(["needs_info", "closed"]);
+	});
+
+	it("never starts a group on the very first item", () => {
+		for (const from of Object.keys(EXITS) as (keyof typeof EXITS)[]) {
+			const g = groupedTransitions(EXITS, from);
+			if (g.length > 0) expect(g[0].startsGroup).toBe(false);
+		}
+	});
+
+	it("groups nothing when the exits are unread", () => {
+		expect(groupedTransitions(undefined, "open")).toEqual([]);
 	});
 });
 
 describe("bulkAllowedStatuses (ISS-463)", () => {
 	it("returns [] for an empty selection", () => {
-		expect(bulkAllowedStatuses([])).toEqual([]);
+		expect(bulkAllowedStatuses(EXITS, [])).toEqual([]);
 	});
 	it("matches allowedTransitions when every row shares a status, less the reason-required three", () => {
 		const rows = [
 			row({ id: "a", status: "approved" }),
 			row({ id: "b", status: "approved" }),
 		];
-		expect(bulkAllowedStatuses(rows)).toEqual(
-			allowedTransitions("approved").filter(
+		expect(bulkAllowedStatuses(EXITS, rows)).toEqual(
+			allowedTransitions(EXITS, "approved").filter(
 				(s) => s !== "reopen" && s !== "waiting" && s !== "needs_info",
 			),
 		);
@@ -193,7 +304,7 @@ describe("bulkAllowedStatuses (ISS-463)", () => {
 			row({ id: "a", status: "in_progress" }),
 			row({ id: "b", status: "developed" }),
 		];
-		const result = bulkAllowedStatuses(rows);
+		const result = bulkAllowedStatuses(EXITS, rows);
 		expect(result).not.toContain("waiting");
 		expect(result).not.toContain("needs_info");
 		expect(result).not.toContain("reopen");
@@ -204,39 +315,37 @@ describe("bulkAllowedStatuses (ISS-463)", () => {
 			row({ id: "a", status: "open" }),
 			row({ id: "b", status: "approved" }),
 		];
-		const result = bulkAllowedStatuses(rows);
+		const result = bulkAllowedStatuses(EXITS, rows);
 		for (const s of result) {
-			expect(allowedTransitions("open")).toContain(s);
-			expect(allowedTransitions("approved")).toContain(s);
+			expect(allowedTransitions(EXITS, "open")).toContain(s);
+			expect(allowedTransitions(EXITS, "approved")).toContain(s);
 		}
-		expect(result).not.toContain("open");
-		expect(result).not.toContain("approved");
-		expect(result).not.toContain("draft");
-		expect(result).toContain("on_hold");
+		expect(result).toEqual(["in_progress", "on_hold", "dropped"]);
+	});
+	it("keeps the first selected row's declared order, not the enum's", () => {
+		const rows = [
+			row({ id: "a", status: "draft" }),
+			row({ id: "b", status: "approved" }),
+		];
+		expect(bulkAllowedStatuses(EXITS, rows)).toEqual(["dropped", "in_progress"]);
+	});
+	it("narrows to nothing when a terminal row is in the mix", () => {
+		const rows = [
+			row({ id: "a", status: "dropped" }),
+			row({ id: "b", status: "approved" }),
+		];
+		expect(bulkAllowedStatuses(EXITS, rows)).toEqual([]);
 	});
 	it("narrows hard when a draft row is in the mix (a draft's five exits bound the whole selection)", () => {
 		const rows = [
 			row({ id: "a", status: "draft" }),
 			row({ id: "b", status: "approved" }),
 		];
-		expect(bulkAllowedStatuses(rows)).toEqual([
-			"open",
-			"in_progress",
-			"developed",
-			"closed",
-			"dropped",
-		]);
+		expect(bulkAllowedStatuses(EXITS, rows)).toEqual(["dropped", "in_progress"]);
 	});
-	it("preserves enum order in the result", () => {
-		const rows = [
-			row({ id: "a", status: "open" }),
-			row({ id: "b", status: "confirmed" }),
-		];
-		const result = bulkAllowedStatuses(rows);
-		const sorted = [...result].sort(
-			(x, y) => ISSUE_STATUSES.indexOf(x) - ISSUE_STATUSES.indexOf(y),
-		);
-		expect(result).toEqual(sorted);
+	it("offers nothing while the exits are unread", () => {
+		const rows = [row({ id: "a", status: "open" })];
+		expect(bulkAllowedStatuses(undefined, rows)).toEqual([]);
 	});
 });
 

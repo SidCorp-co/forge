@@ -5,17 +5,18 @@
 // issue via `useBulkUpdateIssues` (a fan-out over the same per-row
 // transition/patch endpoints, tallied once with a single summary toast).
 //
-// Set-status offers only `bulkAllowedStatuses()` — the intersection of valid
-// next states across the whole selection — so a bulk pick can't mass-409
-// (mirrors the per-row ISS-308 E1 guard); when there is no common-valid target
-// the control is disabled. Priority has no state-machine constraint, so all
-// five values are always offered.
+// Set-status offers only `bulkAllowedStatuses()` — the intersection, across the
+// whole selection, of the exits core declares for each row's rung — so a bulk
+// pick can't mass-409 (mirrors the per-row ISS-308 E1 guard). The control is
+// disabled, with the reason in its title, both when that intersection is empty
+// and while the exits themselves are unread. Priority has no state-machine
+// constraint, so all five values are always offered.
 
 import { useState } from "react";
 import { Button, Menu, type MenuItem } from "@/design";
-import { bulkAllowedStatuses, priorityLabel } from "../derive";
+import { bulkAllowedStatuses, priorityLabel, transitionLabels } from "../derive";
 import { useStatusLabeller } from "../vocabulary";
-import { type BulkUpdate, useBulkUpdateIssues } from "../hooks";
+import { type BulkUpdate, useBulkUpdateIssues, useStatusExits } from "../hooks";
 import { ISSUE_PRIORITIES, type IssueRow } from "../types";
 import { BatchReleaseDialog, type BatchReleaseIssue } from "./batch-release-dialog";
 
@@ -48,20 +49,28 @@ export function BulkActionBar({
 }) {
   const bulk = useBulkUpdateIssues();
   const statusLabel = useStatusLabeller();
+  const { exits, isPending: exitsPending, isError: exitsFailed } = useStatusExits();
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
   const count = selectedRows.length;
   if (count === 0) return null;
 
   const ids = selectedRows.map((r) => r.id);
-  const statusTargets = bulkAllowedStatuses(selectedRows);
+  const statusTargets = bulkAllowedStatuses(exits, selectedRows);
+  // cm:guard an unread registry and a genuinely empty intersection disable the SAME control and must not share a reason — one says come back in a moment, the other says re-pick the selection (ISS-982)
+  const statusUnavailable = exitsPending
+    ? "Loading the status moves…"
+    : exitsFailed
+      ? "Couldn't load the status moves"
+      : null;
   const noCommonStatus = statusTargets.length === 0;
   const batchRelease = canBatchRelease(selectedRows);
 
   const run = (update: BulkUpdate) =>
     bulk.mutate({ ids, update }, { onSuccess: onCleared });
 
-  const statusItems: MenuItem[] = statusTargets.map((s) => ({
-    label: statusLabel(s),
+  const statusNames = transitionLabels(statusTargets, statusLabel);
+  const statusItems: MenuItem[] = statusTargets.map((s, i) => ({
+    label: statusNames[i],
     onSelect: () => run({ kind: "status", toStatus: s }),
   }));
   const priorityItems: MenuItem[] = ISSUE_PRIORITIES.map((p) => ({
@@ -74,13 +83,13 @@ export function BulkActionBar({
       <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface px-3 py-2 shadow-sm">
         <span className="fg-body-sm font-medium text-fg">{count} selected</span>
         <span className="ml-auto flex flex-wrap items-center gap-2">
-          {noCommonStatus ? (
+          {statusUnavailable || noCommonStatus ? (
             <Button
               variant="secondary"
               size="sm"
               icon="chevronDown"
               disabled
-              title="No status change is valid for every selected issue"
+              title={statusUnavailable ?? "No status change is valid for every selected issue"}
             >
               Set status
             </Button>

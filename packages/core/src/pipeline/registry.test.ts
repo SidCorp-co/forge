@@ -10,6 +10,7 @@ import {
   REGISTRY_RUNNER_TYPES,
 } from '@forge/contracts';
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import {
   issueComplexities,
   issuePriorities,
@@ -22,6 +23,7 @@ import {
 } from '../db/schema.js';
 import { BACKLOG_ADMISSIBLE_STATUSES } from './autonomous-mode.js';
 import { getPipelineRegistry, PIPELINE_REGISTRY_VERSION, RUNNER_CAPABILITIES } from './registry.js';
+import { transitions } from './state-machine.js';
 
 const STAGED_JOB_TYPES: readonly JobType[] = [
   'triage',
@@ -71,18 +73,67 @@ describe('contracts ↔ core enum parity', () => {
 });
 
 describe('getPipelineRegistry()', () => {
-  it('returns the two-key payload at version 6', () => {
+  it('returns the three-key payload at version 7', () => {
     const payload = getPipelineRegistry();
     expect(payload.version).toBe(PIPELINE_REGISTRY_VERSION);
-    expect(payload.version).toBe(6);
+    expect(payload.version).toBe(7);
     expect(payload.runnerCapabilities).toBe(RUNNER_CAPABILITIES);
-    expect(Object.keys(payload).sort()).toEqual(['runnerCapabilities', 'version']);
+    expect(Object.keys(payload).sort()).toEqual(['runnerCapabilities', 'statusExits', 'version']);
   });
 
   it('parses cleanly against the @forge/contracts schema', () => {
     const json = JSON.parse(JSON.stringify(getPipelineRegistry()));
     const parsed = pipelineRegistryResponseSchema.parse(json);
-    expect(parsed.version).toBe(6);
+    expect(parsed.version).toBe(7);
+  });
+
+  // cm:guard the picker offers a rung exactly the row it reads here, so a status absent from this map is a status whose menu is EMPTY in the UI — the shape `dropped` has on purpose and no other rung may acquire by omission (ISS-982)
+  it('serves an exits row for every issue status and no other key', () => {
+    const { statusExits } = getPipelineRegistry();
+    expect(Object.keys(statusExits).sort()).toEqual([...issueStatuses].sort());
+  });
+
+  it('serves each row exactly as state-machine declares it, order included', () => {
+    const { statusExits } = getPipelineRegistry();
+    for (const s of issueStatuses) {
+      expect(statusExits[s]).toEqual(transitions[s]);
+    }
+  });
+
+  it('rejects a payload missing a status, which the key-set check above would otherwise pass', () => {
+    const json = JSON.parse(JSON.stringify(getPipelineRegistry()));
+    delete json.statusExits.dropped;
+    expect(Object.keys(json.statusExits).sort()).not.toEqual([...issueStatuses].sort());
+  });
+
+  it('rejects a row that is shape-valid and wrong', () => {
+    const json = JSON.parse(JSON.stringify(getPipelineRegistry()));
+    json.statusExits.closed = ['open'];
+    expect(pipelineRegistryResponseSchema.safeParse(json).success).toBe(true);
+    expect(json.statusExits.closed).not.toEqual(transitions.closed);
+  });
+
+  // cm:guard both directions of the version-7 rollout, which is what lets the two halves deploy in either order (ISS-982): a client on the old schema must accept the new payload, and this schema must accept a response from a core that predates `statusExits`.
+  it('parses a response from a core that sends no statusExits', () => {
+    const json = JSON.parse(JSON.stringify(getPipelineRegistry()));
+    json.version = 6;
+    delete json.statusExits;
+    const parsed = pipelineRegistryResponseSchema.parse(json);
+    expect(parsed.statusExits).toBeUndefined();
+  });
+
+  it('parses the new payload against a schema shaped as the one clients held before it', () => {
+    const beforeThisChange = z.object({
+      version: z.number().int().positive(),
+      runnerCapabilities: z.record(
+        z.enum(REGISTRY_RUNNER_TYPES),
+        z.array(z.enum(REGISTRY_JOB_TYPES)),
+      ),
+    });
+    const json = JSON.parse(JSON.stringify(getPipelineRegistry()));
+    const parsed = beforeThisChange.parse(json);
+    expect(parsed.version).toBe(7);
+    expect('statusExits' in parsed).toBe(false);
   });
 });
 
@@ -98,7 +149,9 @@ describe('GET /api/pipeline/registry', () => {
     expect(res.status).toBe(200);
 
     const parsed = pipelineRegistryResponseSchema.parse(await res.json());
-    expect(parsed.version).toBe(6);
+    expect(parsed.version).toBe(7);
+    expect(parsed.statusExits?.closed).toEqual(['reopen']);
+    expect(parsed.statusExits?.dropped).toEqual([]);
     expect(parsed.runnerCapabilities['claude-code']).toEqual([
       'drive',
       'smoke',

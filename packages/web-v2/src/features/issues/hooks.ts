@@ -16,6 +16,7 @@ import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { type CreateIssueInput, type PatchIssueInput, type CreateReleaseBatchResult, type LabelAttach, issuesApi, modulesApi, releaseBatchApi } from "./api";
+import { registryApi } from "./registry-api";
 import type {
   IssueLabel,
   IssuePriority,
@@ -378,4 +379,24 @@ export function useBulkUpdateIssues() {
       toast({ title: "Bulk update failed", description: formatApiError(err), tone: "error" });
     },
   });
+}
+
+/**
+ * The per-rung status exits, read once per session from core's pipeline
+ * registry. `isPending` and `isError` are what the three status surfaces
+ * render instead of a menu — an absent map is never widened back into the
+ * whole enum.
+ */
+// cm:guard staleTime Infinity is load-bearing, not a tuning: this answers a MENU, and a refetch mid-session would reorder a list a person is reading. The table changes only when core deploys, which ends the session's page anyway.
+export function useStatusExits() {
+  const q = useQuery({
+    queryKey: ["pipeline", "registry"],
+    queryFn: () => registryApi.get(),
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+  return {
+    exits: q.data?.statusExits,
+    isPending: q.isPending,
+    isError: q.isError || (!q.isPending && q.data?.statusExits === undefined),
+  };
 }

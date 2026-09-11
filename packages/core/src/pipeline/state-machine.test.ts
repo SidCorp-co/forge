@@ -50,6 +50,34 @@ const EXPECTED_EXITS: Record<string, readonly string[]> = {
   tested: ['awaiting_release', 'closed', 'dropped', 'needs_info', 'on_hold', 'reopen'],
 };
 
+// cm:guard the expected side is written from the two documented rules and NOT from `DRAFT_EXIT_TARGETS`, so a change to that constant shows up here as a failure rather than being absorbed into both sides of the comparison. ISS-982 narrowed what the UI OFFERS; this matrix is what holds the line that nothing narrowed what the server ACCEPTS.
+const DRAFT_MAY_REACH = ['open', 'closed', 'dropped', 'developed', 'in_progress'];
+
+function acceptedByTheDocumentedRules(from: string, to: string): boolean {
+  if (to === 'draft') return false;
+  if (from === 'draft') return DRAFT_MAY_REACH.includes(to);
+  return true;
+}
+
+describe('canTransitionFree over every ordered pair', () => {
+  it('answers the documented rules for all 17 x 17 pairs', () => {
+    const disagreed: string[] = [];
+    for (const from of issueStatuses) {
+      for (const to of issueStatuses) {
+        const expected = acceptedByTheDocumentedRules(from, to);
+        if (canTransitionFree(from, to) !== expected) disagreed.push(`${from} -> ${to}`);
+      }
+    }
+    expect(disagreed).toEqual([]);
+  });
+
+  it('counts the pairs it actually walked, so a shrunken enum cannot pass it silently', () => {
+    expect(issueStatuses.length).toBe(17);
+    const pairs = issueStatuses.length * issueStatuses.length;
+    expect(pairs).toBe(289);
+  });
+});
+
 describe('state machine', () => {
   it('defines transitions for every issue status', () => {
     for (const s of issueStatuses) {

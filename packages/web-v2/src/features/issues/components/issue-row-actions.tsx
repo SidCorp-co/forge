@@ -23,7 +23,6 @@ import { formatRelativeTime } from "@/lib/utils/format";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import {
-  allowedTransitions,
   complexityLabel,
   creatorLabelOf,
   initials,
@@ -39,6 +38,8 @@ import {
   queuedChipStatus,
   type QueuedStepView,
 } from "../waiting";
+import { groupedTransitions, transitionLabels } from "../derive";
+import { useStatusExits } from "../hooks";
 import { useStatusLabeller } from "../vocabulary";
 import {
   ISSUE_COMPLEXITIES,
@@ -205,6 +206,7 @@ function useRowMenuItems(
   open: () => void,
 ): MenuItem[] {
   const statusLabel = useStatusLabeller();
+  const { exits, isPending, isError } = useStatusExits();
   const items: MenuItem[] = [
     { label: "Open issue", icon: "arrowRight", onSelect: open },
   ];
@@ -213,12 +215,22 @@ function useRowMenuItems(
   // 403s them regardless — this is UX).
   if (actions.canWrite === false) return items;
 
-  // Only valid next states (mirrors core's runtime guard) so a pick can't 409
-  // and silently snap back (ISS-308 E1).
-  for (const s of allowedTransitions(row.status)) {
+  const grouped = groupedTransitions(exits, row.status);
+  if (isPending) {
+    items.push({ label: "Loading status moves…", disabled: true, separatorBefore: true });
+  } else if (isError) {
+    items.push({ label: "Couldn't load status moves", disabled: true, separatorBefore: true });
+  }
+  const statusNames = transitionLabels(
+    grouped.map((g) => g.to),
+    statusLabel,
+  );
+  for (const [i, g] of grouped.entries()) {
     items.push({
-      label: `Status: ${statusLabel(s)}`,
-      onSelect: () => actions.transition({ id: row.id, toStatus: s }),
+      label: `Status: ${statusNames[i]}`,
+      danger: g.kind === "discard",
+      separatorBefore: g.startsGroup,
+      onSelect: () => actions.transition({ id: row.id, toStatus: g.to }),
     });
   }
   for (const p of ISSUE_PRIORITIES) {

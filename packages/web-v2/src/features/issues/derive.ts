@@ -7,6 +7,7 @@ import {
 	statusesForLabels,
 	toAutonomousLabel,
 } from "@forge/contracts/issue-vocabulary";
+import type { StatusExits } from "@forge/contracts/pipeline-registry";
 import { STAGE_INDEX, STAGES, type StageKey } from "@/design/stages";
 import {
 	type SemanticTone,
@@ -31,7 +32,6 @@ import type {
 	StepDurationRow,
 	StepHandoffRow,
 } from "./types";
-import { ISSUE_STATUSES } from "./types";
 
 /**
  * Human-readable labels for the lifecycle enums. Single source of truth so the
@@ -236,38 +236,111 @@ export function statusToTone(status: IssueStatus): SemanticTone {
 }
 
 /**
- * Status targets the server will accept from `from`, for the inline status
- * editors. Mirrors core's runtime guard `canTransitionFree`
- * (`pipeline/state-machine.ts`): the lifecycle is permissive — any state may
- * branch to needs_info / on_hold / reopen / forward — the ONLY hard rules are
- * (1) `draft` is never a transition target and (2) a `draft` may only be
- * promoted to `open`, taken up in place at `in_progress` (ISS-940 — a session
- * already building it says so without dispatching), handed off direct-ship to
- * `developed` (ISS-431 — work done outside the pipeline enters at the review
- * gate), or discarded to `dropped` (`closed` is accepted too, for callers
- * older than `dropped`).
- * Filtering to this set stops the menu from offering picks that 409 and
- * silently snap back (ISS-308 E1).
+ * The targets a rung may move to, read off core's exits table as the pipeline
+ * registry served it (`useStatusExits`). The row arrives in its declared
+ * order and is returned in it: the first entry is the rung's forward move.
+ *
+ * An absent map — the read is in flight, or it failed, or the server predates
+ * `statusExits` — yields NO targets. It is never widened back to the enum:
+ * offering fifteen moves from a terminal issue, three of them statuses
+ * nothing dispatches at, is what ISS-982 removed.
  */
-// cm:edge lockstep -> packages/core/src/pipeline/state-machine.ts — this array is the second copy of DRAFT_EXIT_TARGETS, and core's refusal message now RENDERS that constant member by member, so a member missing here is a menu that hides a discard the server names to the user by that exact word. `dropped` was missing until 2026-08-27 (ISS-787), leaving `closed` the only discard the UI offered — the one that stamps merged_at and unblocks every dependent of work that never existed.
-export function allowedTransitions(from: IssueStatus): IssueStatus[] {
-	if (from === "draft")
-		return ["open", "in_progress", "developed", "closed", "dropped"];
-	return ISSUE_STATUSES.filter((s) => s !== from && s !== "draft");
+// cm:edge contract -> packages/core/src/pipeline/registry.ts#getPipelineRegistry — `statusExits` is where this list comes from; web keeps no copy of it, and adding one re-opens the drift ISS-982 closed
+export function allowedTransitions(
+	exits: StatusExits | undefined,
+	from: IssueStatus,
+): IssueStatus[] {
+	return [...(exits?.[from] ?? [])];
+}
+
+/** How a target reads against the rung it is offered from. */
+export type TransitionKind = "forward" | "bounce" | "discard";
+
+export interface GroupedTransition {
+	to: IssueStatus;
+	kind: TransitionKind;
+	/** First of its kind in the menu — the renderer draws a rule above it. */
+	startsGroup: boolean;
+}
+
+// cm:guard membership here decides a target's kind only where the first-exit rule has not already claimed it — `closed → reopen` is that row's only exit and reads forward, which is correct: from a closed issue, reopening IS the move
+const BOUNCE_TARGETS = new Set<IssueStatus>(["needs_info", "on_hold", "reopen"]);
+// cm:guard `closed` is a discard EXCEPT where it is the row's first exit — from `releasing` and `testing` closing IS the outcome, and filing it under the danger group there would read as abandoning shipped work
+const DISCARD_TARGETS = new Set<IssueStatus>(["closed", "dropped"]);
+
+const KIND_ORDER: TransitionKind[] = ["forward", "bounce", "discard"];
+
+/**
+ * The rung's targets as the menu draws them: forward first, then the bounces,
+ * then the discards, each group in the order core declared it. A row's FIRST
+ * exit is its forward move whatever set it belongs to, which is what keeps
+ * `releasing → closed` out of the discard group.
+ */
+export function groupedTransitions(
+	exits: StatusExits | undefined,
+	from: IssueStatus,
+): GroupedTransition[] {
+	const row = allowedTransitions(exits, from);
+	const kindOf = (to: IssueStatus, i: number): TransitionKind => {
+		if (i === 0) return "forward";
+		if (BOUNCE_TARGETS.has(to)) return "bounce";
+		if (DISCARD_TARGETS.has(to)) return "discard";
+		return "forward";
+	};
+	const typed = row.map((to, i) => ({ to, kind: kindOf(to, i) }));
+	const out: GroupedTransition[] = [];
+	for (const kind of KIND_ORDER) {
+		let first = true;
+		for (const t of typed) {
+			if (t.kind !== kind) continue;
+			out.push({ ...t, startsGroup: first && out.length > 0 });
+			first = false;
+		}
+	}
+	return out;
+}
+
+/**
+ * The label each target is offered under, disambiguated WITHIN one menu.
+ *
+ * The autonomous vocabulary is many-to-one — `confirmed`, `in_progress`,
+ * `developed` and `testing` all read "Running" — which the fifteen-item menu
+ * hid in its own noise. A rung's real exits are few enough that two identical
+ * rows are the whole list, so a repeated label carries its kernel status.
+ */
+// cm:guard disambiguate by the KERNEL name and never by relabelling: the map in `@forge/contracts/issue-vocabulary` is what every client reads a status as, and a menu inventing its own word for one is a second vocabulary (ISS-982)
+export function transitionLabels(
+	targets: IssueStatus[],
+	label: (s: IssueStatus) => string,
+): string[] {
+	const seen = new Map<string, number>();
+	for (const t of targets) {
+		const l = label(t);
+		seen.set(l, (seen.get(l) ?? 0) + 1);
+	}
+	return targets.map((t) => {
+		const l = label(t);
+		return (seen.get(l) ?? 0) > 1 ? `${l} (${STATUS_LABELS[t].toLowerCase()})` : l;
+	});
 }
 
 /**
  * Status targets valid for a BULK action — the intersection of
- * `allowedTransitions()` across every selected row, preserving enum order. Only
- * offering common-valid targets means a bulk pick can't mass-409 (mirrors the
- * per-row ISS-308 E1 guard). Empty selection, or rows with no common target,
- * → `[]` (the bulk bar then disables the Set-status control). ISS-463.
+ * `allowedTransitions()` across every selected row, in the order the FIRST
+ * row's rung declares them (ISS-982 replaced the enum order this used to keep:
+ * there is no single enum walk left to preserve). Only offering common-valid
+ * targets means a bulk pick can't mass-409 (mirrors the per-row ISS-308 E1
+ * guard). Empty selection, rows with no common target, and an unread exits map
+ * all → `[]`, and the bulk bar then disables the Set-status control. ISS-463.
  */
-export function bulkAllowedStatuses(rows: IssueRow[]): IssueStatus[] {
+export function bulkAllowedStatuses(
+	exits: StatusExits | undefined,
+	rows: IssueRow[],
+): IssueStatus[] {
 	if (rows.length === 0) return [];
 	let common: IssueStatus[] | null = null;
 	for (const r of rows) {
-		const allowed = allowedTransitions(r.status);
+		const allowed = allowedTransitions(exits, r.status);
 		if (common === null) {
 			common = allowed;
 		} else {

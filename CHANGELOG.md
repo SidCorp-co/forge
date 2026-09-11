@@ -3840,6 +3840,25 @@
 
 ### Changed
 
+- **The status menu offers the moves a rung actually has, instead of all fifteen.** Opening the
+  status picker used to show the same fifteen choices on every issue at every stage, ordered by
+  nothing a reader cares about: a closed issue was offered fourteen moves past the one that is
+  real, and a dropped issue — whose whole point is that it has no way out — was offered fifteen.
+  Three of the fifteen were worse than clutter. `clarified`, `waiting` and `tested` are retired:
+  nothing picks work up at them, so choosing one succeeded, moved the issue somewhere nothing
+  watches, and left it there until a person went looking. Twenty-one issues were sitting that way
+  across all projects. The menu now shows what that stage can really do — the move that carries
+  the work forward first, then the ways to pause or send it back, then the two ways to discard it,
+  each group set apart — and the retired three are not on it at all. A closed issue offers
+  "Reopened" and nothing else; a dropped one says plainly that it is re-filed rather than reopened.
+  Where two moves would have read as the same word, the menu now says which is which. Selecting
+  several issues and setting their status together follows the same rule, and says whether the
+  control is off because the selection has nothing in common or because the moves are still
+  loading. The list itself is no longer kept in two places: it is the one the pipeline has always
+  used, now read straight from it, so the menu and the system cannot disagree about what is
+  possible.
+
+
 - **An issue may rest at `confirmed` or `approved` again, and a master can see it there.**
   Five statuses were cut from the forward ladder on 2026-09-10 and left in the enum to be drained.
   Two of them were not dead: the driver that runs every autonomous project walks

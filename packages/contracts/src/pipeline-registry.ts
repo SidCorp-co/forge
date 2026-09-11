@@ -102,13 +102,28 @@ export const REGISTRY_PIPELINE_RUN_KINDS = [
 ] as const;
 
 // cm:guard `steps`, `manualOnlyJobTypes` and the eight `auto*` toggle keys left with the staged lane (ISS-895) and must not come back here alone: this schema is what a client PARSES, so re-adding a required key the server no longer sends makes every registry read throw. The nine staged job types stay in REGISTRY_JOB_TYPES because ~30k historical `jobs` rows hold them and a client must still render one.
+// cm:guard OPTIONAL, and it stays optional: a client carrying this schema must parse a response from a core that predates `statusExits` rather than throw, which is what keeps the rollout order of the two halves free (ISS-982). The reader's absent-map branch is the same one it shows while the read is still in flight.
+// cm:edge contract -> packages/core/src/pipeline/registry.ts#getPipelineRegistry — the server sends this key on every response; parity asserted in packages/core/src/pipeline/registry.test.ts
 export const pipelineRegistryResponseSchema = z.object({
 	version: z.number().int().positive(),
 	runnerCapabilities: z.record(
 		z.enum(REGISTRY_RUNNER_TYPES),
 		z.array(z.enum(REGISTRY_JOB_TYPES)),
 	),
+	statusExits: z
+		.record(
+			z.enum(REGISTRY_ISSUE_STATUSES),
+			z.array(z.enum(REGISTRY_ISSUE_STATUSES)),
+		)
+		.optional(),
 });
+
+export type StatusExits = Partial<
+	Record<
+		(typeof REGISTRY_ISSUE_STATUSES)[number],
+		(typeof REGISTRY_ISSUE_STATUSES)[number][]
+	>
+>;
 export type PipelineRegistryResponse = z.infer<
 	typeof pipelineRegistryResponseSchema
 >;

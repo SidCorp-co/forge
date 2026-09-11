@@ -64,11 +64,13 @@ so the figure has one home and this points at it (ISS-976).
 ## Guards
 
 - **The transition map is advisory, not a gate — and the flow above is the target, not the state.**
-  `state-machine.ts:transitions` covers all 16 statuses and its own first guard says nothing
-  enforces it; `canTransitionFree` permits any non-`draft` → any non-`draft`. So a hop missing from
-  *that* map is not illegal today, and reading it as illegal has produced wrong conclusions and
-  pointless multi-hop workarounds. Its consumers are prompt generation and UI next-state
-  suggestion. Making that table the gate is step 5 of the proposal, and it has a prerequisite:
+  `state-machine.ts:transitions` covers all 17 statuses and its own first guard says nothing
+  enforces what the server ACCEPTS; `canTransitionFree` permits any non-`draft` → any non-`draft`.
+  So a hop missing from *that* map is not illegal today — what it means is that the menu does not
+  OFFER it — and reading it as illegal has produced wrong conclusions and pointless multi-hop
+  workarounds. Its consumers are prompt generation and, since ISS-982, the web status picker, which
+  reads the map as the pipeline registry's `statusExits` rather than keeping a copy. Making that
+  table the gate is step 5 of the proposal, and it has a prerequisite:
   `pipeline/answer-resume.ts` sends every answered park back through `open` unconditionally,
   because nothing records the rung a park left.
 - **No child `jobs` row stays non-terminal under a terminal `pipeline_run`** — one orphan wedges a
