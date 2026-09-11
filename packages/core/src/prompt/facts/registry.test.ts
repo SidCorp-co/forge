@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import type { JobType } from '../../db/schema.js';
 import { stepHandoffSchema } from '../../memory/step-handoff-schema.js';
 import {
+  CANONICAL_LADDER,
   FORGE_FACTS,
   getFact,
   listFacts,
@@ -66,16 +67,6 @@ describe('forge facts registry', () => {
     expect(text).not.toContain('Reopens are capped');
   });
 
-  // AC5 token evidence (measured via renderFact + estimateTokens, no new
-  // instrumentation): the mcp-tool-reference block grew 735 -> 766 estTokens
-  // (+31, +111 chars) for this one bullet. A connected provider with a seeded
-  // capability guide (e.g. coolify) adds another ~12 estTokens to its
-  // preamble integrations bullet; providers without one are unaffected. On a
-  // representative full pipeline preamble (pipeline-rules + tool-reference +
-  // forge-facts + a per-stage state block, ~4090 estTokens) that is a ~0.8%
-  // total growth in the common case and ~1.05% in the worst case (an
-  // integration with a guide connected) — see FORGE_MCP_INSTRUCTIONS' own
-  // guardrail test for the CLI-side number (net -77 chars, well under +50).
   it('mcp-tool-reference names forge_guide + the public /api/guides pointer (ISS-746)', () => {
     const text = renderFact('mcp-tool-reference') ?? '';
     expect(text).toContain('forge_guide');
@@ -126,17 +117,20 @@ describe('forge facts registry', () => {
       ladder: ['open', 'confirmed', 'developed', 'testing', 'awaiting_release'],
     });
     expect(resolved).toContain('open → confirmed → developed → testing → awaiting_release');
-    // cm:guard the DEFAULT must be the four-rung chain, not the staged ladder: while `CANONICAL_LADDER` named the retired six, agents walked them — 153 hops over 4 projects in 3 hours, 45 issues left on a status no job dispatches at (2026-09-10)
-    expect(renderFact('status-ladder')).toContain(
-      'open → in_progress → developed → testing → awaiting_release → closed',
-    );
-    // cm:why scoped to the LADDER line and not the whole body: the retired six legitimately appear in the body's never-write warning, so a whole-body `not.toContain` would fail on the very text that stops them being written
+    // cm:guard the DEFAULT is read off `CANONICAL_LADDER` rather than spelled here, because a literal would let the two disagree and still pass. What a literal did buy is the reason the assertion exists at all: while the array named `clarified` and `tested` too, agents walked them — 153 hops over 4 projects in 3 hours, 45 issues left on a status no job dispatches at (2026-09-10) — and `confirmed` and `approved` are back on it by ISS-976 because a different party owes the next move at each.
+    const defaultChain = CANONICAL_LADDER.join(' → ');
+    expect(renderFact('status-ladder')).toContain(defaultChain);
+    // cm:why scoped to the LADDER line and not the whole body: the three still-retired statuses legitimately appear in the body's never-write warning, so a whole-body `not.toContain` would fail on the very text that stops them being written
     const ladderLine = (renderFact('status-ladder') ?? '')
       .split('\n')
       .find((l) => l.startsWith('`open'));
-    expect(ladderLine).toBe(
-      '`open → in_progress → developed → testing → awaiting_release → closed`',
-    );
+    expect(ladderLine).toBe(`\`${defaultChain}\``);
+  });
+
+  // cm:guard the prose chain in PIPELINE_RULES and `CANONICAL_LADDER` are two copies of one sequence, and this is the only thing comparing them — the array's own guard used to say nothing did, which is how the prompt could state two ladders. It reads the array and searches the prose for it, so neither side is spelled twice here; a rung added to one alone leaves the other's chain unfindable and this goes red.
+  it('the PIPELINE_RULES prose chain is the canonical ladder', () => {
+    const rules = renderFact('pipeline-rules', { projectId: 'p', stage: 'code' }) ?? '';
+    expect(rules).toContain(`\`${CANONICAL_LADDER.join(' → ')}\``);
   });
 
   it('handoff fact renders the per-stage payload keys', () => {
@@ -311,11 +305,17 @@ describe('status-ladder fact — authoritative over a stale exit status in a for
     expect(body).toMatch(/authoritative set of statuses/);
   });
 
-  // cm:guard naming the retired statuses explicitly is the point — a generic "check the enum" loses to a concrete numbered step the agent is already executing, which is how this failed six times. And the two SHAPES of stale must both be named: `deploying` is refused so the agent learns at once, while `approved` and its five siblings are still in the enum and the write SUCCEEDS in silence, which is the one that strands an issue.
+  // cm:guard naming the retired statuses explicitly is the point — a generic "check the enum" loses to a concrete numbered step the agent is already executing, which is how this failed six times. And the two SHAPES of stale must both be named: `deploying` is refused so the agent learns at once, while `tested` and its two remaining siblings are still in the enum and the write SUCCEEDS in silence, which is the one that strands an issue.
+  // cm:guard the still-retired three, and the two that came back must NOT be among them — a rung on `CANONICAL_LADDER` that the same body calls never-write is the two-ladders contradiction stated inside one fact (ISS-976)
   it('names both shapes of retired status and says what to do instead', () => {
     expect(body).toContain('deploying');
     expect(body).toMatch(/REFUSES them/);
-    expect(body).toContain('approved');
+    const silentLine = body.split('\n').find((l) => l.includes('still IN the enum')) ?? '';
+    const named = [...silentLine.matchAll(/`([a-z_]+)`/g)].map((m) => m[1]);
+    expect(named.slice(0, 3)).toEqual(['clarified', 'waiting', 'tested']);
+    for (const rung of CANONICAL_LADDER) {
+      expect(named, `${rung} must not be named retired`).not.toContain(rung);
+    }
     expect(body).toMatch(/SUCCEEDS and nothing warns you/);
     expect(body).toMatch(/advance to the ladder's next rung instead/);
   });

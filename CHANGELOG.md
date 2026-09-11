@@ -3716,6 +3716,29 @@
 
 ### Changed
 
+- **An issue may rest at `confirmed` or `approved` again, and a master can see it there.**
+  Five statuses were cut from the forward ladder on 2026-09-10 and left in the enum to be drained.
+  Two of them were not dead: the driver that runs every autonomous project walks
+  `open → confirmed → approved → in_progress → developed → testing → awaiting_release → closed` and
+  earns each rung with a record, so it kept writing two statuses the kernel called retired — and the
+  kernel accepted them in silence, because the transition table is documentation and the enum is the
+  gate. That is how a triage run wrote `open → confirmed` and the row then sat invisible, on a
+  status no job dispatches at, until a person moved it by hand. The rule the retirement was judged
+  against has not changed — **a rung earns its place when a different party owes the next move at
+  it** — but the answer has: under the wave model a reader triages the issue and a different run
+  executes it, so `confirmed` (a reader has said what the issue is; an executor owes the next move)
+  and `approved` (a decision, a plan and criteria exist; the build owes it) both clear that bar
+  where they did not under a single agent walking the whole ladder. Both are live rungs of the
+  canonical ladder, of the transition table and of the lifecycle guide; both are places a park now
+  returns to rather than being forced through `open`; and `clarified`, `waiting` and `tested` stay
+  retired, since each only ever recorded that a phase inside one session had finished. No status
+  was added or removed, and no migration ran — every row already resting on either rung is exactly
+  as reachable as before. **Nothing dispatches at either rung**, so a row rests there visibly only
+  where its project admits the status to its master's backlog; forge-dev now does, and the other
+  nine projects holding such rows are each their owner's to open. Reviving cost no change in the
+  driver's own repository, which is the half this one cannot edit; retiring the two would have
+  required one.
+
 - **A paired box's agents now come from the box, not from core. Core mints no drive job, and the
   box's own master decides what it runs.** An issue arriving at the entry status used to produce a
   `pipeline_run` and a `drive` job pushed at whichever runner the picker chose. Core now publishes

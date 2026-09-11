@@ -39,7 +39,7 @@ flowchart LR
 
 | Set | Values |
 |---|---|
-| `schema.ts:issueStatuses` | 16 statuses today, **nine decided** (owner, 2026-09-09) — see *The issue flow* below. The enum still holds seven the lane retired; `docs/proposals/one-status-vocabulary-and-a-real-transition-table.md` prices the removal and names the order |
+| `schema.ts:issueStatuses` | 17 statuses today, **fourteen live** — see *The issue flow* below. The enum still holds `clarified`, `waiting` and `tested`, which nothing on the ladder names; `docs/proposals/one-status-vocabulary-and-a-real-transition-table.md` prices the removal and names the order |
 | `schema.ts:pipelineRunKinds` | `issue` · `pm` · `interactive` · `system` |
 | `schema.ts:pipelineRunStatuses` | `running` · `paused` · `completed` · `failed` · `cancelled` |
 | `schema.ts:jobStatuses` | `queued` · `dispatched` · `running` · `held` · `done` · `failed` · `cancelled` |
@@ -48,95 +48,18 @@ flowchart LR
 
 ## The issue flow
 
-Decided by the owner 2026-09-09. **Nine statuses**, and the table below is the target: every hop
-absent from it is refused. Today it is not — `canTransitionFree` permits any non-`draft` hop, which
-is the next guard in this file.
+The status set, every legal hop, what each status claims and who owes the next move at it:
+**`docs/flows/issue-status-lifecycle.html`** — the drawing, the per-status claims table and the
+full transition matrix, in one place. `docs/proposals/status-flow.md` carries the edge-by-edge
+rationale and the removal order **as proposed** — it is the record of a proposal, not of the
+current set, and it predates both revisions. The agent-facing copy of the same set is the
+`pipeline-and-issue-lifecycle` guide (`core/src/guides/registry.ts`).
 
-```mermaid
-stateDiagram-v2
-    direction LR
-    [*] --> draft: filed
-    draft --> open: promoted
-    draft --> in_progress: taken up in place
-    draft --> dropped: not work
-    open --> in_progress: a run claims it
-    in_progress --> closed: landed, no release gate
-    in_progress --> releasing: release triggered
-    releasing --> closed: release finished
-    closed --> [*]
-    releasing --> reopen: release aborted or failed
-    closed --> reopen: a person disagrees
-    reopen --> in_progress: work resumes
-    open --> needs_info
-    in_progress --> needs_info
-    releasing --> needs_info
-    reopen --> needs_info
-    on_hold --> needs_info
-    needs_info --> open: answered
-    open --> on_hold
-    in_progress --> on_hold
-    releasing --> on_hold
-    reopen --> on_hold
-    needs_info --> on_hold
-    on_hold --> open: resumed by hand
-    open --> dropped
-    in_progress --> dropped
-    releasing --> dropped
-    needs_info --> dropped
-    on_hold --> dropped
-    reopen --> dropped
-    dropped --> [*]
-```
-
-One dispatch door (`open`), one worker (`in_progress`), one release middle (`releasing`), two parks
-reachable from every rung, one park a person routes (`reopen`), two ends differing only in whether
-`merged_at` is stamped.
-
-| From | May go to |
-|---|---|
-| `draft` | `open` · `in_progress` · `dropped` |
-| `open` | `in_progress` · `needs_info` · `on_hold` · `dropped` |
-| `in_progress` | `releasing` · `closed` · `needs_info` · `on_hold` · `dropped` |
-| `releasing` | `closed` · `reopen` · `needs_info` · `on_hold` |
-| `needs_info` | `open` · `on_hold` · `dropped` |
-| `on_hold` | `open` · `needs_info` · `dropped` |
-| `reopen` | `in_progress` · `needs_info` · `on_hold` · `dropped` |
-| `closed` | `reopen` |
-| `dropped` | — terminal, no exit |
-
-- **`needs_info` and `on_hold` are enterable from every rung and from each other.** This is what
-  `prompt/facts/registry.ts` already tells agents ("From ANY state you may set `needs_info` … don't
-  force the ladder"); the map was the narrow half.
-- **`draft` cannot park** — it already is a resting place, and `DRAFT_EXIT_TARGETS` is the one
-  existing real gate. **`closed`/`dropped` cannot park** — a park after an end is a reopen.
-- **`releasing` is written out of by `finish` and `abort` only.** They own the outcome edges
-  (`closed`, `reopen`); a park off `releasing` is a person stopping to ask, which a half-landed
-  batch needs. What must not exist is an agent declaring its own release finished.
-- **`reopen → in_progress`, never `→ open`** — a reopened issue has a branch and a worktree, and
-  offering it to the pool races a fresh agent against the tree that already exists.
-- **`reopen` is a park a person routes, and the autonomous rewrite of it is retired.**
-  `issues/autonomous-park.ts` rewrites `reopen → open` for every actor because the staged pipeline
-  read `reopen` as "a step rejected this"; this vocabulary reads it as "a person disagreed with a
-  close", which is not a step at all. Measured 2026-09-10: the reconciler's every-60s wedge pass
-  reads `AUTONOMOUS_INFLIGHT_STATUSES`, which resolves to `['in_progress']` and never sees
-  `reopen`; `notify-transitions.ts` already classes it in `PROBLEM_STATUSES`; `attention-buckets.ts`
-  puts it in `NEEDS_REVIEW_STATUSES`. Two readers already treat it as a human's business and the
-  third does not read it, so the ISS-141 wedge cannot return through this door. Cost: a failed
-  release parks at `reopen` and does not self-heal.
-- **`released` is renamed to `awaiting_release`** (migration 0228), and the *trigger* half of what
-  it used to do becomes the release button (`POST /:projectId/release-batches`) plus `releasing`
-  for the middle (0227). The old name was the past tense of an action that had not happened: the
-  lane had no button, so moving an issue to `released` WAS how a release started, and an issue kept
-  standing there during the batch while the in-flight fact lived only in
-  `issues.release_batch_run_id` — one status meaning both "waiting for a person to press it" and
-  "being released right now". The board has rendered this rung as `awaiting_release` since ISS-970;
-  only the kernel status disagreed. Renaming it also moved `states.released` on 29 project configs
-  in the same transaction: `pipelineConfig.states` is a `partialRecord(z.enum(STAGE_NAMES))`, zod
-  answers `invalid_key` rather than stripping, and a config that fails to parse reads as `null` —
-  no dispatch, in silence.
-
-Drawing: `docs/flows/issue-status-lifecycle.html` · edge-by-edge rationale and the removal order:
-`docs/proposals/status-flow.md`.
+This file carried a second drawing and a second transition table until 2026-09-11, and by then it
+was two revisions behind: it said nine statuses and its table had no `developed`, `testing` or
+`awaiting_release` row at all, while the paragraph under it discussed the `awaiting_release`
+rename. A module README is the map — what lives where, and which file is authoritative for what —
+so the figure has one home and this points at it (ISS-976).
 
 ## Guards
 
@@ -145,7 +68,9 @@ Drawing: `docs/flows/issue-status-lifecycle.html` · edge-by-edge rationale and 
   enforces it; `canTransitionFree` permits any non-`draft` → any non-`draft`. So a hop missing from
   *that* map is not illegal today, and reading it as illegal has produced wrong conclusions and
   pointless multi-hop workarounds. Its consumers are prompt generation and UI next-state
-  suggestion. Making the nine-status table the gate is step 5 of the proposal.
+  suggestion. Making that table the gate is step 5 of the proposal, and it has a prerequisite:
+  `pipeline/answer-resume.ts` sends every answered park back through `open` unconditionally,
+  because nothing records the rung a park left.
 - **No child `jobs` row stays non-terminal under a terminal `pipeline_run`** — one orphan wedges a
   `cap=1` runner slot. Three defences move in lockstep, plus `held` as a deliberate fourth shape
   that is *not* an orphan. New code that flips `pipelineRuns.status` terminal must route through a

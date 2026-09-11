@@ -16,6 +16,7 @@
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { CANONICAL_LADDER } from '../../src/prompt/facts/registry.js';
 import {
   createTestProject,
   createTestUser,
@@ -118,8 +119,8 @@ describe('the assembled preamble forks on the lane', () => {
     const code = await preambleFor('code');
 
     expect(code).toContain('## Pipeline Rules');
-    // cm:guard the staged preamble's forward chain is FOUR rungs since 2026-09-10 — it read `open → confirmed` while the retired ladder was still being taught, which is what agents then walked (153 hops, 4 projects, 3 hours, 45 issues stranded)
-    expect(code).toContain('open → in_progress → developed → testing → awaiting_release → closed');
+    // cm:guard read the chain off `CANONICAL_LADDER`, never as a literal — a literal here passed while the array and the prose disagreed, which is the drift the array's own guard names. It is EIGHT rungs since ISS-976, each one a place a different party owes the next move; the shorter chains it has worn are why the assertion exists (153 hops over 4 projects in 3 hours on the retired ladder, 45 issues stranded, 2026-09-10).
+    expect(code).toContain(CANONICAL_LADDER.join(' → '));
     expect(code).toContain('`waiting`');
     expect(code).toContain('forge_step_start');
   });

@@ -9,6 +9,47 @@ import {
   transitions,
 } from './state-machine.js';
 
+// cm:guard the WHOLE matrix, spelled out, because every other assertion in this file reads one row or one property and an exit silently dropped from any other row passes all of them. It is a deliberate second copy: the point is that changing `transitions` without changing this goes red, so an edit that means to move an exit says so here too. ISS-976 added `open → confirmed` and `confirmed → approved` and moved those two rungs out of the retired block; nothing else in it has been removed since.
+const EXPECTED_EXITS: Record<string, readonly string[]> = {
+  draft: ['closed', 'developed', 'dropped', 'in_progress', 'open'],
+  open: ['confirmed', 'dropped', 'in_progress', 'needs_info', 'on_hold'],
+  confirmed: ['approved', 'dropped', 'in_progress', 'needs_info', 'on_hold'],
+  approved: ['dropped', 'in_progress', 'needs_info', 'on_hold'],
+  in_progress: ['closed', 'developed', 'dropped', 'needs_info', 'on_hold'],
+  developed: ['dropped', 'needs_info', 'on_hold', 'reopen', 'testing'],
+  testing: ['awaiting_release', 'closed', 'dropped', 'needs_info', 'on_hold', 'reopen'],
+  awaiting_release: ['dropped', 'needs_info', 'on_hold', 'releasing'],
+  releasing: ['closed', 'needs_info', 'on_hold', 'reopen'],
+  needs_info: [
+    'approved',
+    'awaiting_release',
+    'confirmed',
+    'developed',
+    'dropped',
+    'in_progress',
+    'on_hold',
+    'open',
+    'testing',
+  ],
+  on_hold: [
+    'approved',
+    'awaiting_release',
+    'confirmed',
+    'developed',
+    'dropped',
+    'in_progress',
+    'needs_info',
+    'open',
+    'testing',
+  ],
+  reopen: ['developed', 'dropped', 'in_progress', 'needs_info', 'on_hold'],
+  closed: ['reopen'],
+  dropped: [],
+  clarified: ['dropped', 'in_progress', 'needs_info', 'on_hold'],
+  waiting: ['dropped', 'in_progress', 'needs_info', 'on_hold', 'open'],
+  tested: ['awaiting_release', 'closed', 'dropped', 'needs_info', 'on_hold', 'reopen'],
+};
+
 describe('state machine', () => {
   it('defines transitions for every issue status', () => {
     for (const s of issueStatuses) {
@@ -54,10 +95,12 @@ describe('state machine', () => {
     expect([...transitions.dropped]).toEqual([]);
   });
 
-  // cm:guard a park resumes onto the LIVE rungs and must include `awaiting_release`: an issue merged and waiting for production, parked and then resumed, must not be forced through `open` — that dispatches a fresh agent onto shipped work and loses its place at the gate. It must NOT offer a retired rung: this row used to be `issueStatuses.filter(...)`, which offered every retired one and is how a resume put work back on a status nothing dispatches at. `developed` and `testing` are LIVE rungs since 2026-09-10 and belong in the first list, not the second.
+  // cm:guard a park resumes onto the LIVE rungs and must include `awaiting_release`: an issue merged and waiting for production, parked and then resumed, must not be forced through `open` — that dispatches a fresh agent onto shipped work and loses its place at the gate. It must NOT offer a retired rung: this row used to be `issueStatuses.filter(...)`, which offered every retired one and is how a resume put work back on a status nothing dispatches at. `confirmed` and `approved` joined `developed` and `testing` in the first list by ISS-976.
   it('a park resumes onto a live rung, never a retired one', () => {
     for (const live of [
       'open',
+      'confirmed',
+      'approved',
       'in_progress',
       'developed',
       'testing',
@@ -66,9 +109,18 @@ describe('state machine', () => {
       expect(transitions.on_hold, `on_hold → ${live}`).toContain(live);
       expect(transitions.needs_info, `needs_info → ${live}`).toContain(live);
     }
-    for (const retired of ['confirmed', 'clarified', 'approved', 'waiting', 'tested'] as const) {
+    for (const retired of ['clarified', 'waiting', 'tested'] as const) {
       expect(transitions.on_hold, `on_hold → ${retired}`).not.toContain(retired);
       expect(transitions.needs_info, `needs_info → ${retired}`).not.toContain(retired);
+    }
+  });
+
+  it('every row offers exactly these exits', () => {
+    expect(Object.keys(EXPECTED_EXITS).sort()).toEqual([...issueStatuses].sort());
+    for (const status of issueStatuses) {
+      expect([...transitions[status]].sort(), `${status} exits`).toEqual(
+        [...(EXPECTED_EXITS[status] ?? [])].sort(),
+      );
     }
   });
 

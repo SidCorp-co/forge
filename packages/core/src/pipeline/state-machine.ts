@@ -16,7 +16,11 @@ export const DRAFT_EXIT_TARGETS: readonly IssueStatus[] = [
 
 // cm:guard ADVISORY, NOT A GATE — and read by NOTHING outside this file today. `canTransitionFree` below is the only runtime check and it permits ANY non-draft from → ANY non-draft to, so reading a missing pair here as "illegal" has produced wrong conclusions and pointless multi-hop workarounds. The consumers this guard used to name are gone: the soft-skip resolver was deleted by ISS-897 and nothing imports `transitions`, `canTransition` or `getAllowedTransitions`. It is kept because step 5 of the removal order makes it the gate — which is the one change that turns every row here from advice into a refusal, so a row that is merely stale becomes a rule.
 export const transitions: Record<IssueStatus, readonly IssueStatus[]> = {
-  open: ['in_progress', 'needs_info', 'on_hold', 'dropped'],
+  open: ['confirmed', 'in_progress', 'needs_info', 'on_hold', 'dropped'],
+  // cm:guard `confirmed` is where A READER has said what the issue is and AN EXECUTOR owes the next move — that party boundary is the whole justification for the rung, and a row here with no confirmation record on it is the shape the 2026-09-10 retirement was aimed at. It came back because the wave model split those two parties; the driver's ladder (forge-plugin `flow/earned.mjs` ORDER) has always named it, so a kernel that called it retired was the half that was wrong.
+  confirmed: ['approved', 'in_progress', 'needs_info', 'on_hold', 'dropped'],
+  // cm:guard `approved` is where A DECISION, A PLAN AND CRITERIA exist and THE BUILD owes the next move. `in_progress` was its only exit while it was a retired drain route and stays its forward hop now, so no exit is lost. Neither this rung nor `confirmed` may join `AUTONOMOUS_DRIVER_STATUSES`: that list is subtracted to build `BACKLOG_ADMISSIBLE_STATUSES`, and every config naming a status that leaves it stops parsing WHOLE (ISS-976).
+  approved: ['in_progress', 'needs_info', 'on_hold', 'dropped'],
   // cm:guard `closed` stays reachable from `in_progress` for a project with NO release gate — `resolveAgentCloseTarget` only rewrites an agent's close when `resolveReleaseGate` answers, so on a gateless project the agent closes from whatever rung it is standing on. Remove this and that close has nowhere legal to land.
   in_progress: ['developed', 'closed', 'needs_info', 'on_hold', 'dropped'],
   // cm:guard `developed` and `testing` are the review and QA rungs, and they are NOT in `AUTONOMOUS_DRIVER_STATUSES` on purpose: that list is subtracted to build `BACKLOG_ADMISSIBLE_STATUSES`, so adding them would take them OFF the backlog menu — and sidpeak declares both in `poolBacklog.statuses` precisely so a master can pick up work sitting there. Leaving them admissible is what makes a dead session at either rung recoverable by the next master rather than stranded.
@@ -32,6 +36,8 @@ export const transitions: Record<IssueStatus, readonly IssueStatus[]> = {
   // cm:guard a park must be able to put the issue back on the rung it LEFT, which is why these two rows list every live rung rather than one exit each. `awaiting_release` is the case that matters: an issue merged and waiting for production, parked and then answered, must not be forced through `open` — that dispatches a fresh agent onto shipped work (the ISS-940 shape) and loses its place at the gate. `pipeline/answer-resume.ts` does exactly that today, unconditionally, because nothing records the rung a park left; it is safe only while this map is advisory, and step 5 of the removal order cannot land before that is fixed.
   needs_info: [
     'open',
+    'confirmed',
+    'approved',
     'in_progress',
     'developed',
     'testing',
@@ -41,6 +47,8 @@ export const transitions: Record<IssueStatus, readonly IssueStatus[]> = {
   ],
   on_hold: [
     'open',
+    'confirmed',
+    'approved',
     'in_progress',
     'developed',
     'testing',
@@ -54,10 +62,9 @@ export const transitions: Record<IssueStatus, readonly IssueStatus[]> = {
   // cm:guard terminal with NO exit, unlike `closed → reopen`: reopening a dropped issue would leave `merged_at` NULL on an issue that then ships, so re-filing is the correct move and this map must not offer a shortcut past it
   dropped: [],
 
-  // cm:guard the five rows below are RETIRED statuses, kept only until their rows are drained, and their exits are deliberately DRAIN ROUTES onto live rungs rather than the old ladder hops — the whole point of listing them is to get an issue off them. Do not extend them, and do not add a hop BETWEEN two of them. `tested` is the one to watch: it holds the most rows, it is what forge-plugin writes today where this flow says `testing`, and sidpeak names it in `poolBacklog.statuses`, so dropping it from the enum has to move that config in the same change.
-  confirmed: ['in_progress', 'needs_info', 'on_hold', 'dropped'],
+  // cm:guard the three rows below are RETIRED statuses, kept only until their rows are drained, and their exits are deliberately DRAIN ROUTES onto live rungs rather than the old ladder hops — the whole point of listing them is to get an issue off them. Do not extend them, and do not add a hop BETWEEN two of them. `tested` is the one to watch: it holds the most rows, it is what forge-plugin writes today where this flow says `testing`, and sidpeak names it in `poolBacklog.statuses`, so dropping it from the enum has to move that config in the same change.
+  // cm:guard `confirmed` and `approved` were retired here beside these three and are LIVE RUNGS again above, because the rule the retirement was judged against — a rung earns its place when a DIFFERENT party owes the next move — answers the other way under the wave model. Moving either back into this block is a change forge-plugin's ladder does not have, and this repo cannot edit that repo (ISS-976).
   clarified: ['in_progress', 'needs_info', 'on_hold', 'dropped'],
-  approved: ['in_progress', 'needs_info', 'on_hold', 'dropped'],
   waiting: ['open', 'in_progress', 'needs_info', 'on_hold', 'dropped'],
   tested: ['awaiting_release', 'closed', 'reopen', 'needs_info', 'on_hold', 'dropped'],
 };
