@@ -33,7 +33,7 @@ export type PatPrincipal = {
    * it. Attribution follows `userId` either way — this decides whether the
    * write is treated as a human's or a machine's.
    */
-  // cm:guard NEVER derive this from `kind`. `chat/tools/principal.ts` builds `kind:'pat'` for an agent-driven surface, so `kind === 'pat' ? human : agent` exempts every agent chat write from the ISS-812 fabrication guard — the guard that exists because agents were fabricating evidence. That mapping is live at mcp/tools/forge-release-batch.ts and is why this field exists.
+  // cm:guard NEVER derive this from `kind`. `assistant/tools/principal.ts` builds `kind:'pat'` for an agent-driven surface, so `kind === 'pat' ? human : agent` exempts every agent chat write from the ISS-812 fabrication guard — the guard that exists because agents were fabricating evidence. That mapping is live at mcp/tools/forge-release-batch.ts and is why this field exists.
   agency: 'human' | 'agent';
   userId: string;
   tokenId: string;

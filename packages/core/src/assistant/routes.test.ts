@@ -36,11 +36,7 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-// ISS-71 regression guard: chat turns must NOT broadcast over WS. The
-// chat.message publisher was deleted because no client listened to it
-// (widget streams via SSE response body, not WS). If anyone re-introduces
-// a roomManager.publish call from chat/routes.ts or run-turn.ts, this mock
-// catches it and the assertion in the success-path test will fail.
+// cm:guard a chat turn must NOT broadcast over WS — the chat.message publisher was deleted because no client listened to it (the widget streams over the SSE response body, not WS), so a roomManager.publish re-introduced in assistant/routes.ts or run-turn.ts is caught by this mock and fails the success-path test's assertion (ISS-71)
 const wsPublish = vi.fn();
 vi.mock('../ws/server.js', () => ({
   roomManager: { publish: wsPublish },

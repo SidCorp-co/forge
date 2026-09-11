@@ -3,7 +3,7 @@ import { eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { chatTurnKinds } from '../chat/providers/registry.js';
+import { chatTurnKinds } from '../assistant/providers/registry.js';
 import { db } from '../db/client.js';
 import { appConfig } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';

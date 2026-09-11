@@ -2108,8 +2108,9 @@ export type ChatSessionSource = (typeof chatSessionSources)[number];
  * - `userId` is the authenticated owner — set when the request carries a Bearer
  *   JWT (web/desktop). Drives the per-user scoping in GET/PATCH/DELETE.
  * - `userKey` is the chat_logs audit key — propagated to `chat_logs.userKey`
- *   inside `chat/run-turn.ts`.
+ *   inside `assistant/run-turn.ts`.
  */
+// cm:guard `chat_sessions`, `chat_logs` and `chatSessionSources` keep the `chat` name the module dropped in ISS-979 — renaming live tables costs a migration that cannot be half-applied, and the `_journal.json` `when` rule (max(when) + 86400000) makes it a one-way door. Cost: a reader meets `assistant/` and `chat_sessions` in one file. Ends when a migration wave has another reason to touch these tables.
 export const chatSessions = pgTable(
   'chat_sessions',
   {

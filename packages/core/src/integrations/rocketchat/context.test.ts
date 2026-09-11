@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ChatToolset } from '../../chat/tools/mcp-adapter.js';
+import type { ChatToolset } from '../../assistant/tools/mcp-adapter.js';
 import {
   buildRocketChatHistoryToolset,
   extractQuotedMessageIds,
@@ -150,7 +150,7 @@ describe('buildRocketChatHistoryToolset', () => {
 
   it('caps calls per turn with a JSON error', async () => {
     const set = buildRocketChatHistoryToolset(auth, 'RID1');
-    // fetch against rc.invalid fails → empty message lists, but calls still count.
+    // cm:why the per-turn counter is what is under test, not the fetch: rc.invalid fails and yields empty message lists, and a failed call still counts against the cap
     await set.execute('rocketchat_history', '{}');
     await set.execute('rocketchat_history', '{}');
     await set.execute('rocketchat_history', '{}');

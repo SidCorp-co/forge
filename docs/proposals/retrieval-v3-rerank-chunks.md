@@ -39,7 +39,7 @@ near-duplicate probe — assumes **one row per natural key**. The chunk design b
 The owner accepts migrating a project's data into a new shape for a better result, project by
 project. The switch already has a home: `app_config` is the per-project runtime row
 (`chatProviderId`, `retrievalTopK`, `retrievalMinScore`), read by
-`chat/providers/registry.ts:resolveForProject` and written through `PUT /api/app-config/:projectId`.
+`assistant/providers/registry.ts:resolveForProject` and written through `PUT /api/app-config/:projectId`.
 
 Three flag columns and one status column, in one migration owned by phase 0:
 
@@ -365,7 +365,7 @@ never interleaved: the ranking is the retriever's claim, the expansion is a cour
 the ranked part; expansion adds at most `topK` more.
 
 The predecessor did this inside the chat prompt builder. Forge has no injected RAG — the agent
-calls `forge_memory_search` as a tool (`chat/tools/registry.ts`) — so the expansion lives in the
+calls `forge_memory_search` as a tool (`assistant/tools/registry.ts`) — so the expansion lives in the
 service where every caller gets it.
 
 Files: `memory/search-service.ts`, `mcp/tools/forge-memory.ts`, `knowledge/unified-search.ts`.

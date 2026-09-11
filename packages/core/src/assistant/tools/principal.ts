@@ -1,7 +1,7 @@
 /**
  * ISS-604 — build the MCP {@link McpContext} under which provider-chat tool
  * calls execute. The chat request is already user-authenticated and asserted
- * to be a project member (see `chat/routes.ts`), so we synthesize a PAT
+ * to be a project member (see `assistant/routes.ts`), so we synthesize a PAT
  * principal for that user, FENCED to the one project the session belongs to
  * (`boundProjectId` + a single-entry `projectIds` allowlist). Cross-project
  * reads therefore surface as NOT_FOUND via the standard membership fences.

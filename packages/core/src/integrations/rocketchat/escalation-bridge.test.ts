@@ -8,10 +8,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Stub eager env validation (config/env.js throws at import when DATABASE_URL /
-// JWT_SECRET / DEVICE_TOKEN_PEPPER are absent) — escalation-bridge.js pulls in
-// escalation.js's chat-turn/lifecycle graph transitively. Same pattern as
-// agent-sessions/chat-turn.test.ts.
+// cm:guard this stub must stay, and must stay above the subject's import — `config/env.js` validates EAGERLY and throws at import time without DATABASE_URL / JWT_SECRET / DEVICE_TOKEN_PEPPER, which `escalation-bridge.js` pulls in transitively through escalation.js's chat-turn/lifecycle graph, so removing it turns the whole file into a collection error rather than a failing test (same pattern as agent-sessions/chat-turn.test.ts)
 vi.mock('../../config/env.js', () => ({
   env: { JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef', NODE_ENV: 'test' },
 }));
@@ -55,17 +52,17 @@ vi.mock('./connection-manager.js', () => ({
 }));
 
 const runExternalChatTurn = vi.fn();
-vi.mock('../../chat/external-chat.js', () => ({
+vi.mock('../../assistant/external-chat.js', () => ({
   runExternalChatTurn: (...args: unknown[]) => runExternalChatTurn(...args),
 }));
 
 const buildProjectToolset = vi.fn((..._args: unknown[]) => ({ TOOLSET: true }));
-vi.mock('../../chat/tools/registry.js', () => ({
+vi.mock('../../assistant/tools/registry.js', () => ({
   buildProjectToolset: (...args: unknown[]) => buildProjectToolset(...args),
 }));
 
 const buildChatToolContext = vi.fn((..._args: unknown[]) => ({ CTX: true }));
-vi.mock('../../chat/tools/principal.js', () => ({
+vi.mock('../../assistant/tools/principal.js', () => ({
   buildChatToolContext: (...args: unknown[]) => buildChatToolContext(...args),
 }));
 

@@ -67,7 +67,7 @@ it('still refuses unblock and a dispatching status', () => {
   );
 });
 
-// cm:edge contract -> packages/core/src/chat/tools/guards.ts — this is the checker half of the classification edge: the guard is open-by-default, so a `forge_issues` data key nobody classified is a key that reached chat with nobody deciding it should
+// cm:edge contract -> packages/core/src/assistant/tools/guards.ts — this is the checker half of the classification edge: the guard is open-by-default, so a `forge_issues` data key nobody classified is a key that reached chat with nobody deciding it should
 it('forces every forge_issues data key to be classified refused or tolerated', () => {
   const classified = new Set([...CHAT_REFUSED_DATA_KEYS, ...CHAT_TOLERATED_DATA_KEYS]);
   const unclassified = ISSUE_UPDATE_DATA_KEYS.filter((k) => !classified.has(k));

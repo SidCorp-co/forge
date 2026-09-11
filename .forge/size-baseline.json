@@ -21,7 +21,7 @@
       "fileLines": 880,
       "maxFunctionLines": 174
     },
-    "packages/core/src/chat/tools/mcp-adapter.test.ts": {
+    "packages/core/src/assistant/tools/mcp-adapter.test.ts": {
       "fileLines": 0,
       "maxFunctionLines": 220
     },
@@ -393,7 +393,7 @@
       "fileLines": 0,
       "maxFunctionLines": 185
     },
-    "packages/core/src/chat/providers/openai.test.ts": {
+    "packages/core/src/assistant/providers/openai.test.ts": {
       "fileLines": 0,
       "maxFunctionLines": 184
     }

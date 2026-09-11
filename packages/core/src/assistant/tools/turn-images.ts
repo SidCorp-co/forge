@@ -42,7 +42,7 @@ function withinPersistLimits(images: readonly TurnImage[]): TurnImage[] {
  * passed through untouched.
  */
 // cm:why base64-inline rather than the `forge_uploads` presigned PUT the tool description prefers: that warning is about a MODEL emitting bytes (they land in the transcript and in chat_logs.toolCalls, costing context every later turn). Here the bytes are injected server-side AFTER the model emitted its arguments — run-turn-core replays the model's own `tc.arguments`, never these — so the transcript cost is zero and a presigned round-trip would only add a ticket to something already in memory.
-// cm:edge contract -> packages/core/src/chat/tools/guards.ts — `attachments` must stay in CHAT_TOLERATED_DATA_KEYS for this injection to survive the guard; moving it to CHAT_REFUSED_DATA_KEYS silently drops every image the bot files
+// cm:edge contract -> packages/core/src/assistant/tools/guards.ts — `attachments` must stay in CHAT_TOLERATED_DATA_KEYS for this injection to survive the guard; moving it to CHAT_REFUSED_DATA_KEYS silently drops every image the bot files
 export function withTurnImages(inner: ChatToolset, images: readonly TurnImage[]): ChatToolset {
   const attachments = withinPersistLimits(images).map((i) => ({
     name: i.name,
