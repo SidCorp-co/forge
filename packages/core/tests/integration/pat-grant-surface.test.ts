@@ -37,6 +37,8 @@ let unmigrated: string;
 let emptyGrant: string;
 let issuesReadOnly: string;
 let issuesWrite: string;
+let schedulesRead: string;
+let everythingElse: string;
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
@@ -86,6 +88,18 @@ beforeAll(async () => {
     })
   ).plaintext;
 
+  const { PAT_PERMISSION_NAMES } = await import('../../src/auth/pat-permissions.js');
+  schedulesRead = (
+    await mintPat({ userId: user.id, name: 'schedules-read', permissions: ['schedules:read'] })
+  ).plaintext;
+  everythingElse = (
+    await mintPat({
+      userId: user.id,
+      name: 'all-but-schedules-read',
+      permissions: PAT_PERMISSION_NAMES.filter((n) => n !== 'schedules:read'),
+    })
+  ).plaintext;
+
   ({ app } = await import('../../src/index.js'));
 });
 
@@ -121,7 +135,12 @@ async function send(method: string, path: string, token: string, body?: unknown)
   } catch {
     json = null;
   }
-  return { status: res.status, text, json: json as Record<string, unknown> | null };
+  return {
+    status: res.status,
+    text,
+    json: json as Record<string, unknown> | null,
+    accepted: res.headers.get('X-Accepted-Forge-Permissions'),
+  };
 }
 
 const codeOf = (r: { json: Record<string, unknown> | null }) =>
@@ -250,5 +269,54 @@ describe('the mint route offers the menu and refuses anything off it', () => {
     expect(byName.get('issues-read')).toEqual(['issues:read']);
     expect(byName.get('unmigrated')).toBeNull();
     expect(byName.get('empty')).toEqual([]);
+  });
+});
+
+/**
+ * ISS-974 — the loop the header exists to close, walked end to end.
+ *
+ * The unit files prove the header is set and derived from one resolution. What
+ * only a real token and a real column can show is that the name it carries is
+ * the name that FIXES the refusal: read the 403's header, mint a token holding
+ * exactly that, and the same request answers. The negative half matters as
+ * much — a token holding all thirteen OTHER names is still refused, so the
+ * header names the permission that is necessary and not merely one that is
+ * sufficient alongside others.
+ */
+describe('the header names the grant that fixes the refusal', () => {
+  const path = () => `/api/schedules?projectId=${projectId}`;
+
+  it('spells the header the way the middleware exports it', async () => {
+    const { PAT_ACCEPTED_PERMISSIONS_HEADER } = await import(
+      '../../src/middleware/pat-rest-surface.js'
+    );
+    expect(PAT_ACCEPTED_PERMISSIONS_HEADER).toBe('X-Accepted-Forge-Permissions');
+  });
+
+  it('names what a narrowed token lacks, on the refusal itself', async () => {
+    const res = await send('GET', path(), issuesReadOnly);
+    expect(res.status).toBe(403);
+    expect(codeOf(res)).toBe('PAT_PERMISSION_REQUIRED');
+    expect(res.accepted).toBe('schedules:read');
+  });
+
+  it('admits the same request once a token holds exactly that name', async () => {
+    const res = await send('GET', path(), schedulesRead);
+    expect(res.status).toBe(200);
+    expect(res.accepted).toBe('schedules:read');
+  });
+
+  // cm:guard the token here holds every OTHER name on the menu, which is what makes this a test of the header's claim rather than of the fence in general: if the refusal survives a grant of all thirteen siblings, the one name the header printed is the one the route actually needed (ISS-974).
+  it('still refuses a token granted every other name on the menu', async () => {
+    const res = await send('GET', path(), everythingElse);
+    expect(res.status).toBe(403);
+    expect(codeOf(res)).toBe('PAT_PERMISSION_REQUIRED');
+    expect(res.accepted).toBe('schedules:read');
+  });
+
+  it('says nothing at all on a path no permission covers', async () => {
+    const res = await send('GET', '/api/pat', issuesReadOnly);
+    expect(codeOf(res)).toBe('PAT_NOT_PERMITTED');
+    expect(res.accepted).toBeNull();
   });
 });

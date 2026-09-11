@@ -24,15 +24,36 @@ flowchart LR
   P["forge · the plugin CLI<br/>the agent's surface"] -->|"3.35.141+"| CLI
   P -->|"3.35.140 · what the fleet runs"| MCP["/mcp"]
   MC["Claude's MCP client<br/>job:/session: PAT"] --> MCP
-  CLI --> F{"PAT allowlist<br/>union of 7 resources<br/>= 16 prefixes"}
+  CLI --> W["X-Accepted-Forge-Permissions<br/>resolved once, set before every gate"]
+  W --> F{"PAT allowlist<br/>union of 7 resources<br/>= 16 prefixes"}
   F -->|on it| R["REST · the data plane"]
-  F -->|not on it| X["403 PAT_NOT_PERMITTED"]
+  F -->|not on it| X["403 PAT_NOT_PERMITTED<br/>and no header"]
   MCP --> R
 ```
 
 The fence is an allowlist, not a deny-list: **a new REST route is 403 to every PAT until some
 resource covers its prefix.** That is deliberate — a forgotten entry costs a caller an error they
 report, where a forgotten deny-list entry is a silent leak nobody reports.
+
+**A refused PAT is told what the route wanted, and so is an admitted one.** Since ISS-972 phase 3
+a REST response carries `X-Accepted-Forge-Permissions` naming the permission the route required, in
+the `resource:level` spelling a mint request takes, on exactly two conditions: the token verified
+through `beginPatRequest`, and some permission covers the path. The first is the decision point and
+not the credential's species — a `forge_pat_*` carrying a `device_id` presented to a device route is
+verified by `verifyDeviceCredential` and never reaches `beginPatRequest`, so it is answered with no
+header while being, literally, a PAT-authenticated REST request, and `/mcp` is the same case for the
+same reason. The second is what the uncovered-path rule below is. It is on the `200` too,
+which is the point: a header only on the refusal leaves the only route to a correct grant being to
+mint, exercise every path and narrow by trial. `beginPatRequest` resolves the name once and hands
+that one value to the header, to `patGrantCovers` and to the refusal body's `details.wanted`, so
+none of the three can name a different permission from the others. A path no resource covers
+carries **no** header — not an empty one, which would read as "this route requires nothing" on
+exactly the paths a PAT may never reach.
+
+What earns it is authentication, not a status code: `authenticatePat` fires an `onVerified`
+callback the instant `verifyPat` resolves a row, and the header rides on that. So a throttled
+token's `429` carries it — it verified before the bucket refused — and a token that never
+verified gets nothing, which stays true if a throttle is ever added above `verifyPat`.
 
 **The allowlist only governs routes that authenticate.** A router mounted with no auth middleware
 never reaches `beginPatRequest`, so the fence never runs and the prefix is irrelevant — `/api/guides`

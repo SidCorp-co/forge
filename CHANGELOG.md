@@ -10,6 +10,24 @@
 
 ### Security
 
+- **Every response to a personal access token now names the permission the route required.**
+  Finding out what a route wants used to mean being refused on it: the name was in the body of a
+  `403 PAT_PERMISSION_REQUIRED` and nowhere else, so the only way to a correct grant was to mint a
+  token, exercise every path, collect the refusals and narrow by trial — and a request that
+  *succeeded* said nothing at all. A REST request whose token verifies through the PAT grant fence,
+  on a path some permission covers, now carries
+  `X-Accepted-Forge-Permissions: <resource>:<level>`, on the `200` and on the refusals alike,
+  named after GitHub's `X-Accepted-GitHub-Permissions` and valued in the same spelling
+  `POST /api/pat` accepts, so it can be pasted into a mint request rather than translated. It is in
+  the CORS `exposeHeaders` set, so a browser can read it. **A path no permission covers carries no
+  header rather than an empty one** — an empty value would read as "this route requires nothing"
+  on exactly the routes a PAT may never reach. The header cannot disagree with the fence, and that
+  is a property of the code rather than of care: `beginPatRequest` resolves the name once and hands
+  that single value to the header, to the grant check and to the refusal body's `details.wanted`,
+  and `patGrantCovers` now takes the derived permission instead of a path, so it can no longer
+  resolve one itself. Nothing about reachability changed — no token gains or loses a path, and the
+  three refusals keep their codes and messages. Third of the seven phases ISS-972 carries.
+
 - **A personal access token now reaches only the permission groups it was granted.**
   Phase 1 built the menu and nothing consulted it: every PAT reached the same 16 prefixes, because
   `patAllowedFor` tested the path against the union of the whole menu and never against anything

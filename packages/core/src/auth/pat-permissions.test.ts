@@ -23,11 +23,21 @@ import {
   PAT_PERMISSION_LEVELS,
   PAT_PERMISSION_NAMES,
   PAT_PERMISSION_RESOURCES,
+  type PatPermissionLevel,
   patGrantCovers,
   patPermissionPrefixes,
   patPermissionWanted,
   patResourceForPath,
 } from './pat-permissions.js';
+
+// cm:guard the path-to-permission step is the CALLER's since ISS-974, so the menu-level assertions below go through one helper instead of each doing its own resolution — which is the shape the request path is forbidden. What the helper composes is asserted apart: `patPermissionWanted` has its own describe block, and the predicate's three-shapes rule is about the grant array alone.
+function covers(
+  granted: readonly string[] | null | undefined,
+  path: string,
+  level: PatPermissionLevel,
+): boolean {
+  return patGrantCovers(granted, patPermissionWanted(path, level));
+}
 
 // cm:guard the reachable set as it stood at 896ca541a, before the menu existed. Editing this list is how a reachability change is DECLARED — never how a red test is quieted. A prefix added to `PAT_PERMISSION_RESOURCES` and mirrored here in the same commit is a decision someone made; one mirrored here to make this test green again is the silent widening this exists to stop.
 const REACHABLE_ON_2026_09_10 = [
@@ -156,13 +166,11 @@ describe('the grant predicate honours the whole menu', () => {
   it.each([...PAT_PERMISSION_NAMES])('%s admits its own prefixes and no others', (name) => {
     const group = PAT_PERMISSION_GROUPS[name];
     for (const prefix of group.prefixes) {
-      expect(patGrantCovers([name], prefix, group.level), `${name} on ${prefix}`).toBe(true);
+      expect(covers([name], prefix, group.level), `${name} on ${prefix}`).toBe(true);
     }
     const foreign = patPermissionPrefixes().filter((p) => !group.prefixes.includes(p));
     for (const prefix of foreign) {
-      expect(patGrantCovers([name], prefix, group.level), `${name} leaked onto ${prefix}`).toBe(
-        false,
-      );
+      expect(covers([name], prefix, group.level), `${name} leaked onto ${prefix}`).toBe(false);
     }
   });
 
@@ -171,7 +179,7 @@ describe('the grant predicate honours the whole menu', () => {
     const other = PAT_PERMISSION_LEVELS.find((l) => l !== group.level);
     expect(other, 'the menu has exactly two levels').toBeDefined();
     for (const prefix of group.prefixes) {
-      expect(patGrantCovers([name], prefix, other as typeof group.level)).toBe(false);
+      expect(covers([name], prefix, other as typeof group.level)).toBe(false);
     }
   });
 });
@@ -185,7 +193,7 @@ describe('an absent grant is every group, in each of its three shapes', () => {
   ] as const)('%s covers every prefix on the menu', (_label, granted) => {
     for (const prefix of patPermissionPrefixes()) {
       for (const level of PAT_PERMISSION_LEVELS) {
-        expect(patGrantCovers(granted, prefix, level), `${prefix} ${level}`).toBe(true);
+        expect(covers(granted, prefix, level), `${prefix} ${level}`).toBe(true);
       }
     }
   });
@@ -196,7 +204,7 @@ describe('an absent grant is every group, in each of its three shapes', () => {
     ['an empty array', []],
   ] as const)('%s still covers nothing off the menu', (_label, granted) => {
     for (const prefix of ['/api/pat', '/api/admin', '/api/uploads', '/api/agent-sessions']) {
-      expect(patGrantCovers(granted, prefix, 'read'), prefix).toBe(false);
+      expect(covers(granted, prefix, 'read'), prefix).toBe(false);
     }
   });
 });
@@ -204,7 +212,7 @@ describe('an absent grant is every group, in each of its three shapes', () => {
 describe('a non-empty grant naming nothing the menu declares reaches nothing', () => {
   it('is the opposite direction to an absent grant, and deliberately so', () => {
     for (const prefix of patPermissionPrefixes()) {
-      expect(patGrantCovers(['retired:read'], prefix, 'read'), prefix).toBe(false);
+      expect(covers(['retired:read'], prefix, 'read'), prefix).toBe(false);
     }
   });
 });
@@ -247,13 +255,13 @@ describe('a permission is as coarse as its mount', () => {
   });
 
   it('so issues:read does not reach the project-scoped issue list, and projects:read does', () => {
-    expect(patGrantCovers(['issues:read'], '/api/projects/p1/issues', 'read')).toBe(false);
-    expect(patGrantCovers(['projects:read'], '/api/projects/p1/issues', 'read')).toBe(true);
+    expect(covers(['issues:read'], '/api/projects/p1/issues', 'read')).toBe(false);
+    expect(covers(['projects:read'], '/api/projects/p1/issues', 'read')).toBe(true);
   });
 
   it('and issues:read still reaches the flat mounts it names', () => {
     for (const prefix of PAT_PERMISSION_RESOURCES.issues) {
-      expect(patGrantCovers(['issues:read'], prefix, 'read'), prefix).toBe(true);
+      expect(covers(['issues:read'], prefix, 'read'), prefix).toBe(true);
     }
   });
 });
