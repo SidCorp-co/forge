@@ -140,14 +140,20 @@ fn pid_alive(_pid: u32) -> bool {
 // cm:guard both restart paths MUST route their exit through this return value — the update path re-checked and the credential path did not, and one bug in one of two copies of the same loop is exactly what this function exists to make impossible.
 // cm:guard the ceiling bounds TURNS, never the park: a session parked at `awaiting_input` is not in-flight (`InflightGuard` is scoped to the frame task), so it reads as idle here and no amount of waiting would ever close it. `close_parked` is what ends it, and it runs ONLY after the drain succeeds — closing a park while a turn is still generating would drop that turn's result into a receiver the exiting daemon no longer reads.
 // cm:edge protocol -> packages/runner/crates/forge-runner-core/src/runner/claude_code.rs — `checkpoint_and_close` is both halves: each resident session is asked to record where it is and given `CHECKPOINT_BUDGET` to answer before EOF. The alternative both replace is exit(0) leaving a setsid-detached child writing the worktree the relaunched daemon is about to hand to a second agent.
-async fn drain_to_idle<F, Fut>(inflight: &Arc<AtomicUsize>, what: &str, close_parked: F) -> bool
+// cm:guard the run-session count is a PORT and not a call, for the same reason `count_live_runs` was split out below it: read directly, this function resolves `Ledger::default_path()` — a real file in the home of whoever runs the suite — so its verdict depends on rows some other run left there. Measured 2026-09-11: four drain tests went red on a dev box because two stale ledger rows named pids the OS had since handed to unrelated processes.
+async fn drain_to_idle<F, Fut>(
+    inflight: &Arc<AtomicUsize>,
+    what: &str,
+    live: impl Fn() -> usize,
+    close_parked: F,
+) -> bool
 where
     F: FnOnce() -> Fut,
     Fut: std::future::Future<Output = usize>,
 {
     let mut waited = 0u64;
     loop {
-        let busy = inflight.load(Ordering::Acquire) + live_run_sessions();
+        let busy = inflight.load(Ordering::Acquire) + live();
         if busy == 0 {
             let closed = close_parked().await;
             if closed > 0 {
@@ -343,7 +349,7 @@ pub async fn run(
                                         o.from,
                                         o.to
                                     );
-                                    if drain_to_idle(&inflight, "update", || {
+                                    if drain_to_idle(&inflight, "update", live_run_sessions, || {
                                         close_parked_sessions(&runner)
                                     })
                                     .await
@@ -410,8 +416,10 @@ pub async fn run(
                         tracing::warn!(
                             "[cred] device token changed (re-login detected) — draining in-flight work, then restarting to apply it"
                         );
-                        if !drain_to_idle(&inflight, "cred", || close_parked_sessions(&runner))
-                            .await
+                        if !drain_to_idle(&inflight, "cred", live_run_sessions, || {
+                            close_parked_sessions(&runner)
+                        })
+                        .await
                         {
                             continue;
                         }
@@ -889,6 +897,16 @@ mod tests {
         assert_eq!(count_live_runs(&runs, "boot-a", |_| true), 0);
     }
 
+    // cm:guard with every test passing `|| 0`, nothing else would notice the term being deleted — and deleting it is exactly the bug 0.12.5 fixed: the drain answered idle 0.7ms after `apply()` while 26 panes were live, and the restart took the tmux server with it.
+    #[tokio::test(start_paused = true)]
+    async fn a_box_whose_run_sessions_are_live_defers_even_with_nothing_in_flight() {
+        let inflight = Arc::new(AtomicUsize::new(0));
+        assert!(
+            !drain_to_idle(&inflight, "test", || 1, || std::future::ready(0)).await,
+            "a live run session is busy, however empty the in-flight counter is"
+        );
+    }
+
     #[test]
     fn the_drain_ceiling_clears_the_measured_ninetieth_percentile() {
         const {
@@ -903,7 +921,7 @@ mod tests {
     async fn idle_drains_immediately() {
         let inflight = Arc::new(AtomicUsize::new(0));
         let (_calls, close) = spy(0);
-        assert!(drain_to_idle(&inflight, "test", close).await);
+        assert!(drain_to_idle(&inflight, "test", || 0, close).await);
     }
 
     // cm:guard a park is NOT in-flight, so an idle drain is exactly when a resident session is still alive and holding the worktree. Skipping the close here is the exit(0)-with-a-detached-survivor that invariant 4 exists to prevent.
@@ -911,7 +929,7 @@ mod tests {
     async fn an_idle_drain_still_closes_the_parked_sessions() {
         let inflight = Arc::new(AtomicUsize::new(0));
         let (calls, close) = spy(2);
-        assert!(drain_to_idle(&inflight, "test", close).await);
+        assert!(drain_to_idle(&inflight, "test", || 0, close).await);
         assert_eq!(calls.load(Ordering::Acquire), 1);
     }
 
@@ -920,7 +938,7 @@ mod tests {
     async fn a_refused_drain_closes_nothing() {
         let inflight = Arc::new(AtomicUsize::new(1));
         let (calls, close) = spy(1);
-        assert!(!drain_to_idle(&inflight, "test", close).await);
+        assert!(!drain_to_idle(&inflight, "test", || 0, close).await);
         assert_eq!(calls.load(Ordering::Acquire), 0);
     }
 
@@ -936,7 +954,7 @@ mod tests {
             assert_eq!(observed.load(Ordering::Acquire), 0, "closed mid-turn");
             finisher.fetch_sub(1, Ordering::AcqRel);
         });
-        assert!(drain_to_idle(&inflight, "test", close).await);
+        assert!(drain_to_idle(&inflight, "test", || 0, close).await);
         assert_eq!(calls.load(Ordering::Acquire), 1);
     }
 
@@ -947,7 +965,7 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn busy_past_the_ceiling_refuses_the_restart() {
         let inflight = Arc::new(AtomicUsize::new(1));
-        assert!(!drain_to_idle(&inflight, "test", || std::future::ready(0)).await);
+        assert!(!drain_to_idle(&inflight, "test", || 0, || std::future::ready(0)).await);
     }
 
     #[tokio::test(start_paused = true)]
@@ -958,14 +976,14 @@ mod tests {
             tokio::time::sleep(std::time::Duration::from_secs(DRAIN_POLL_SECS * 3)).await;
             finisher.fetch_sub(1, Ordering::AcqRel);
         });
-        assert!(drain_to_idle(&inflight, "test", || std::future::ready(0)).await);
+        assert!(drain_to_idle(&inflight, "test", || 0, || std::future::ready(0)).await);
     }
 
     #[tokio::test(start_paused = true)]
     async fn the_ceiling_is_a_ceiling_and_not_a_wait_forever() {
         let inflight = Arc::new(AtomicUsize::new(1));
         let started = tokio::time::Instant::now();
-        let _ = drain_to_idle(&inflight, "test", || std::future::ready(0)).await;
+        let _ = drain_to_idle(&inflight, "test", || 0, || std::future::ready(0)).await;
         assert!(started.elapsed().as_secs() <= DRAIN_TIMEOUT_SECS + DRAIN_POLL_SECS);
     }
 
