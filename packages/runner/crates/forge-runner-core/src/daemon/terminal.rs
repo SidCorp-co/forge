@@ -171,7 +171,37 @@ async fn ensure_server() -> bool {
         );
         return false;
     };
-    let sock = sock.to_string_lossy().into_owned();
+    match ask_systemd_for_the_server(&sock.to_string_lossy()).await {
+        Placement::Accepted if server_answers_within(SERVER_READY_WITHIN).await => {
+            tracing::info!(
+                "[terminal] session server running as {SESSION_UNIT}.service — agent panes now outlive a restart of this one"
+            );
+            true
+        }
+        // cm:guard name the CONSEQUENCE, never just the failed command: the operator reading this line is being told that the next update kills every agent on the box, which is the only part of it they can act on.
+        Placement::Accepted => {
+            tracing::warn!(
+                "[terminal] systemd took the session server but its socket never answered within {SERVER_READY_WITHIN:?} — panes will be killed with this service, as they were before"
+            );
+            false
+        }
+        Placement::Unavailable(detail) => {
+            tracing::warn!(
+                "[terminal] the session server could not be given its own unit ({detail}) — panes will be killed with this service, as they were before"
+            );
+            false
+        }
+    }
+}
+
+/// What systemd did with the request, which is NOT the same as whether our own call won.
+// cm:guard the two outcomes carry different WAITS, and conflating them is what CI caught on 2026-09-11: a cold machine took longer than the bound to fork tmux, three callers in a row declared the placement impossible, and each one would have gone on to start an implicit server inside this service's cgroup — the destructive shape, back silently, on exactly the slow box that can least afford it. A box that HAS no systemd must not pay that wait either, so `Unavailable` returns at once.
+enum Placement {
+    Accepted,
+    Unavailable(String),
+}
+
+async fn ask_systemd_for_the_server(sock: &str) -> Placement {
     let out = Command::new("systemd-run")
         .args([
             "--user",
@@ -182,7 +212,7 @@ async fn ensure_server() -> bool {
             "--quiet",
             "tmux",
             "-S",
-            &sock,
+            sock,
             "new-session",
             "-d",
             "-s",
@@ -193,22 +223,34 @@ async fn ensure_server() -> bool {
         .stdin(Stdio::null())
         .output()
         .await;
-    if server_answers_within(SERVER_READY_WITHIN).await {
-        tracing::info!(
-            "[terminal] session server running as {SESSION_UNIT}.service — agent panes now outlive a restart of this one"
-        );
-        return true;
+    match out {
+        Ok(o) if o.status.success() => Placement::Accepted,
+        other => {
+            if unit_is_running().await {
+                return Placement::Accepted;
+            }
+            Placement::Unavailable(match &other {
+                Ok(o) => String::from_utf8_lossy(&o.stderr).trim().to_string(),
+                Err(e) => e.to_string(),
+            })
+        }
     }
-    // cm:guard name the CONSEQUENCE, never just the failed command: the operator reading this line is being told that the next update kills every agent on the box, which is the only part of it they can act on.
-    let detail = match &out {
-        Ok(o) if o.status.success() => "the unit started but its socket never answered".to_string(),
-        Ok(o) => String::from_utf8_lossy(&o.stderr).trim().to_string(),
-        Err(e) => e.to_string(),
-    };
-    tracing::warn!(
-        "[terminal] the session server could not be given its own unit ({detail}) — panes will be killed with this service, as they were before"
-    );
-    false
+}
+
+/// Whether systemd already holds the unit, asked structurally rather than by reading a message.
+// cm:guard `is-active`, never a substring of `systemd-run`'s stderr: losing the race prints `Unit forge-sessions.service already exists`, which is a translated, version-specific sentence — and the thing the caller actually needs to know is whether the unit is coming up, which systemd will answer directly.
+async fn unit_is_running() -> bool {
+    Command::new("systemctl")
+        .args(["--user", "is-active", &format!("{SESSION_UNIT}.service")])
+        .stdin(Stdio::null())
+        .output()
+        .await
+        .is_ok_and(|o| {
+            matches!(
+                String::from_utf8_lossy(&o.stdout).trim(),
+                "active" | "activating" | "reloading"
+            )
+        })
 }
 
 /// Whether a server is listening on our socket right now.
@@ -219,9 +261,9 @@ async fn server_answers() -> bool {
         .is_ok_and(|o| o.status.success())
 }
 
-/// How long a caller waits for the socket after asking for the server.
-// cm:guard the wait is the RACE FIX, not a timeout for a slow box. `systemd-run` returns as soon as systemd accepts the job, and the loser of a race gets `Unit forge-sessions.service already exists` — an exit code that is NOT a failure, because the winner is mid-fork and the socket appears milliseconds later. Measured 2026-09-11: without this wait, `cargo test` running the module's panes concurrently failed two tests with `it must be findable by its exact name`, which is the same shape as a master sweep starting several panes at once.
-const SERVER_READY_WITHIN: Duration = Duration::from_secs(5);
+/// How long a caller waits for a socket systemd has ALREADY agreed to bring up.
+// cm:guard generous on purpose, and it costs nothing in steady state: a running server short-circuits every call before this, so the wait is paid once per box and only while the server is genuinely starting. Five seconds was not enough on a cold CI machine (measured 2026-09-11, three callers timed out in a row), and the price of being too short is silent — a false "could not place it" followed by an implicit server in this service's cgroup.
+const SERVER_READY_WITHIN: Duration = Duration::from_secs(30);
 
 /// Poll the socket until it answers, or `within` elapses.
 async fn server_answers_within(within: Duration) -> bool {
