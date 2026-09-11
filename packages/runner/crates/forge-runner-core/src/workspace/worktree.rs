@@ -102,10 +102,14 @@ async fn reusable(repo: &str, abs: &Path, branch: &str) -> Option<PathBuf> {
         .then(|| abs.to_path_buf())
 }
 
-/// Remove a worktree (force).
-pub async fn remove(repo: &str, branch: &str) -> Result<()> {
-    let rel = format!(".worktrees/{}", sanitize(branch));
-    let out = git(repo, &["worktree", "remove", &rel, "--force"]).await?;
+/// Remove the checkout AT this path, whatever its branch is called.
+// cm:guard the path the caller holds, never one rebuilt from the branch name. `create` names a tree after its branch, so the two agreed for as long as nothing renamed either — and on forge-vm they had diverged on three runs: `.worktrees/ISS-972` carrying branch `ISS-972-uploads-inertness-claim`, where the derived path made git answer `is not a working tree` and the run could never be released. The ledger's `worktree_path` is the record of what was actually cut.
+pub async fn remove_at(repo: &str, worktree: &std::path::Path) -> Result<()> {
+    let out = git(
+        repo,
+        &["worktree", "remove", &worktree.to_string_lossy(), "--force"],
+    )
+    .await?;
     if !out.status.success() {
         return Err(Error::Other(format!(
             "git worktree remove failed: {}",

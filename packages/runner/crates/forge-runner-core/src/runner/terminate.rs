@@ -113,43 +113,45 @@ pub async fn force_terminal(
 
     let worktree = Path::new(&run.worktree_path);
     // cm:guard the run's OWN tree is probed first, with the reaper's own reader, and salvage is called only when that says there is something to lose. Handing every abandon to salvage looked equivalent and is not: `pick_target` answers `refused` when it finds dirt it cannot attribute, so a CLEAN park would have been refused because some stranger's worktree on the same box was dirty.
-    let salvage =
-        if worktree.exists() && crate::workspace::worktree_reap::holds_work(worktree).await {
-            let branch = branch_of(worktree).await.ok_or_else(|| {
-                Error::Other(format!(
-                    "cannot read the branch of {} — refusing to release a worktree whose diff \
+    let salvage = if worktree.exists()
+        && crate::workspace::worktree_reap::holds_work(worktree).await
+    {
+        let branch = branch_of(worktree).await.ok_or_else(|| {
+            Error::Other(format!(
+                "cannot read the branch of {} — refusing to release a worktree whose diff \
                  could not be preserved",
-                    run.worktree_path.display()
-                ))
-            })?;
-            let report = salvage::salvage_wip(salvage::SalvageInput {
-                repo_root: what.repo_root,
-                base_branch: what.base_branch,
-                agent_branch: &branch,
-                job_id: run_id,
-                attempt: 0,
-                failure: what.reason,
-            })
-            .await;
-            if !preserved(report.outcome) {
-                return Err(Error::Other(format!(
-                    "refusing to {verb:?} run {run_id}: the diff in {} was not preserved ({})",
-                    run.worktree_path.display(),
-                    report.detail.as_deref().unwrap_or("no detail")
-                )));
-            }
-            crate::workspace::worktree::remove(&what.repo_root.to_string_lossy(), &branch).await?;
-            Some(report)
-        } else {
-            // cm:guard a tree holding nothing is still RELEASED — there is simply no diff to preserve first. Leaving it because salvage was skipped would keep a checkout, and with it a slot's worth of disk, for every clean park ever abandoned.
-            if worktree.exists() {
-                if let Some(branch) = branch_of(worktree).await {
-                    crate::workspace::worktree::remove(&what.repo_root.to_string_lossy(), &branch)
-                        .await?;
-                }
-            }
-            None
-        };
+                run.worktree_path.display()
+            ))
+        })?;
+        let report = salvage::salvage_wip(salvage::SalvageInput {
+            repo_root: what.repo_root,
+            base_branch: what.base_branch,
+            agent_branch: &branch,
+            job_id: run_id,
+            attempt: 0,
+            failure: what.reason,
+        })
+        .await;
+        // cm:guard the refusal is conditioned on the tree STILL holding uncommitted work, asked of that tree directly. Salvage answers `none` both when it could not preserve a diff and when there was no diff to preserve — a clean checkout carrying commits of its own arrives as the second, and reading it as the first refuses the release forever: the tree stays, the run never reaches terminal, and its issue is unavailable to every box. Measured on forge-vm 2026-09-11, six runs sat there. A removal cannot lose a commit, so a clean tree is safe to release whatever salvage made of it.
+        if !preserved(report.outcome)
+            && crate::workspace::worktree_reap::has_uncommitted_changes(worktree).await
+        {
+            return Err(Error::Other(format!(
+                "refusing to {verb:?} run {run_id}: the diff in {} was not preserved ({})",
+                run.worktree_path.display(),
+                report.detail.as_deref().unwrap_or("no detail")
+            )));
+        }
+        crate::workspace::worktree::remove_at(&what.repo_root.to_string_lossy(), worktree).await?;
+        Some(report)
+    } else {
+        // cm:guard a tree holding nothing is still RELEASED — there is simply no diff to preserve first. Leaving it because salvage was skipped would keep a checkout, and with it a slot's worth of disk, for every clean park ever abandoned.
+        if worktree.exists() {
+            crate::workspace::worktree::remove_at(&what.repo_root.to_string_lossy(), worktree)
+                .await?;
+        }
+        None
+    };
 
     let close = close_loop::close(ledger, run_id, ports.sessions, ports.leases).await?;
     if close.is_closed() {
@@ -566,5 +568,89 @@ mod tests {
                 "{mark} is close_loop's to set by reading the world back"
             );
         }
+    }
+    /// The forge-vm shape: the checkout's directory and its branch had diverged.
+    // cm:guard released by the PATH the ledger recorded. A path rebuilt from the branch made git answer `is not a working tree`, the release errored, and the run stayed open forever — three of them on forge-vm on 2026-09-11, one `.worktrees/ISS-972` carrying branch `ISS-972-uploads-inertness-claim`.
+    #[tokio::test]
+    async fn a_checkout_whose_directory_is_not_named_after_its_branch_is_still_released() {
+        let (root, _other) = repo("renamed").await;
+        let wt = root.join(".worktrees/short");
+        git(
+            &root,
+            &[
+                "worktree",
+                "add",
+                &wt.to_string_lossy(),
+                "-b",
+                "a-much-longer-branch-name",
+            ],
+        )
+        .await;
+        git(
+            &wt,
+            &["push", "-q", "-u", "origin", "a-much-longer-branch-name"],
+        )
+        .await;
+
+        let mut led = ledger_for(&wt, Incarnation::Exited, "boot-a");
+        let (p, s, l) = (
+            Procs(Mutex::new(Vec::new())),
+            Sessions,
+            Leases(Mutex::new(HashSet::new())),
+        );
+
+        let out = force_terminal(
+            &mut led,
+            "run-1",
+            forcing(&root, "boot-a"),
+            ports(&p, &s, &l),
+        )
+        .await
+        .expect("a clean checkout must be released whatever its directory is called");
+
+        assert!(!wt.exists(), "the worktree must be released");
+        assert!(out.close.is_closed(), "{:?}", out.close);
+        assert!(led.run("run-1").unwrap().unwrap().ended_by.is_some());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+    /// A clean checkout whose commits exist only here: released, with the commits left behind.
+    // cm:guard salvage reports `none` for this tree because there was nothing uncommitted to commit, and until 2026-09-11 that was read as a failed preserve and refused forever — six runs on forge-vm. The assertion that matters is the last one: the commit is still reachable on the branch after the checkout is gone, which is why releasing it loses nothing.
+    #[tokio::test]
+    async fn a_clean_checkout_whose_commits_are_only_local_is_released_and_keeps_them() {
+        let (root, wt) = repo("localonly").await;
+        git(&wt, &["add", "work.txt"]).await;
+        git(&wt, &["commit", "-qm", "work no remote has"]).await;
+
+        let mut led = ledger_for(&wt, Incarnation::Exited, "boot-a");
+        let (p, s, l) = (
+            Procs(Mutex::new(Vec::new())),
+            Sessions,
+            Leases(Mutex::new(HashSet::new())),
+        );
+
+        let out = force_terminal(
+            &mut led,
+            "run-1",
+            forcing(&root, "boot-a"),
+            ports(&p, &s, &l),
+        )
+        .await
+        .expect("a clean checkout must be released even when salvage had nothing to do");
+
+        assert!(!wt.exists(), "the worktree must be released");
+        assert!(out.close.is_closed(), "{:?}", out.close);
+        assert!(led.run("run-1").unwrap().unwrap().ended_by.is_some());
+
+        let log = tokio::process::Command::new("git")
+            .args(["log", "--oneline", "ISS-964", "--", "work.txt"])
+            .current_dir(&root)
+            .output()
+            .await
+            .unwrap();
+        assert!(
+            !log.stdout.is_empty(),
+            "the commit must survive on the branch after the checkout is gone"
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

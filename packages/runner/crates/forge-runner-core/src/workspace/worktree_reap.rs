@@ -49,17 +49,23 @@ async fn git(dir: &Path, args: &[&str]) -> Option<std::process::Output> {
 /// True when the worktree holds something losing it would destroy.
 // cm:guard the ONE definition of "this tree still holds work", read by the reaper before it deletes and by `runner/terminate.rs` before it releases — so what `Abandon` calls preserved is exactly what this reader calls safe. A second copy would let one of them delete what the other was still protecting (ISS-964 criteria 33, 37).
 pub async fn holds_work(wt: &Path) -> bool {
-    if let Some(out) = git(wt, &["status", "--porcelain", "--untracked-files=no"]).await {
-        if !out.stdout.is_empty() {
-            return true;
-        }
-    } else {
+    if has_uncommitted_changes(wt).await {
         return true;
     }
     match git(wt, &["log", "--oneline", "@{u}..", "-1"]).await {
         Some(out) if out.status.success() => !out.stdout.is_empty(),
         // cm:guard a missing upstream is not the question and must not be the answer. The question is whether these commits exist anywhere else, and a branch cut with `worktree add -b` has no upstream while sitting exactly on the base the remote already carries — measured on forge-vm 2026-09-11, 30 runs whose trees were clean and whose HEAD was on `origin/main` were refused release under the old reading, permanently: salvage then found nothing to preserve, `terminate` refused the disagreement, and the run could never end. Asking the remote directly answers the same safety question without the dead end.
         _ => !head_is_on_a_remote(wt).await,
+    }
+}
+
+/// Whether a tracked file in this worktree differs from its commit.
+// cm:guard this is what a `git worktree remove` would actually DESTROY, and the only thing it destroys: removal leaves the branch ref and every object behind, so commits — pushed or not — outlive the checkout. Untracked files are excluded on purpose and that is the same call the sweep has always made: counting them would pin every checkout with build output in it forever.
+// cm:guard a git that cannot answer reports dirty, the timid direction, because both readers above license a delete.
+pub async fn has_uncommitted_changes(wt: &Path) -> bool {
+    match git(wt, &["status", "--porcelain", "--untracked-files=no"]).await {
+        Some(out) => !out.stdout.is_empty(),
+        None => true,
     }
 }
 

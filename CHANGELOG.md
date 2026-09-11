@@ -1945,6 +1945,19 @@
 
 ### Fixed
 
+- **Two more ways a finished run could hold its checkout for ever.** Both ended the same way — the
+  release was refused, so the run never reached terminal, so the issue stayed unavailable to every
+  box — and both were found on one box the day the first of these fixes let it drain. The first: the
+  checkout was removed by a path rebuilt from the branch name, which is right only while the two
+  agree. Three runs had a checkout under one name carrying a branch under another, and git answered
+  that the path was not a working tree. The path the run actually recorded is used now. The second:
+  the salvage step answers "nothing" both when it could not preserve a diff and when there was no
+  diff to preserve, and the second was being read as the first. Six runs were clean checkouts
+  carrying commits of their own, refused release on the grounds that a diff nobody had was not
+  saved. Removing a checkout leaves the branch and its commits in the repository, so a clean one is
+  safe to release whatever salvage made of it — the refusal now asks that checkout directly whether
+  it still holds uncommitted work, and stands whenever it does.
+
 - **A checkout whose work is already on the remote is released instead of held forever.** The one
   reader that decides whether a worktree still holds something took a missing upstream as proof
   that its commits existed nowhere else. A branch cut for a run has no upstream until it is pushed,
