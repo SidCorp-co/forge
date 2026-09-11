@@ -103,7 +103,13 @@ describe('a question has one shape', () => {
       ...aQuestion({ options }),
       recommendedOptionId: opt(options, 0),
     });
-    await mods.answerQuestion({ questionId: q.id, optionId: opt(options, 0), by: ctx.userId });
+    await mods.answerQuestion({
+      questionId: q.id,
+      optionId: opt(options, 0),
+      round: 1,
+      by: ctx.userId,
+      role: 'admin',
+    });
 
     await expect(
       mods.checkPermission({ questionId: q.id, fingerprint: 'git push --force origin main' }),
@@ -121,7 +127,9 @@ describe('a chain is one thread', () => {
     await mods.answerQuestion({
       questionId: q.id,
       optionId: q.recommendedOptionId,
+      round: 1,
       by: ctx.userId,
+      role: 'admin',
     });
     const again = await mods.askFollowUp({
       questionId: q.id,
@@ -143,7 +151,9 @@ describe('a chain is one thread', () => {
       await mods.answerQuestion({
         questionId: q.id,
         optionId: opt(q.steps.at(-1)?.options ?? [], 0),
+        round: q.steps.length,
         by: ctx.userId,
+        role: 'admin',
       });
       q = await mods.askFollowUp({
         questionId: q.id,
@@ -154,7 +164,9 @@ describe('a chain is one thread', () => {
     await mods.answerQuestion({
       questionId: q.id,
       optionId: opt(q.steps.at(-1)?.options ?? [], 0),
+      round: q.steps.length,
       by: ctx.userId,
+      role: 'admin',
     });
 
     await expect(

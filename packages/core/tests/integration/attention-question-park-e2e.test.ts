@@ -94,6 +94,7 @@ describe('attention · the question park', () => {
     issueRef: string;
     status: string;
     blockerKind?: string | null;
+    questionId?: string | null;
     cost?: { claimsHeld: number; workspacesPinned: number; dependents: number };
   }
 
@@ -175,6 +176,39 @@ describe('attention · the question park', () => {
       'the reader is shown what the wait costs, in the same numbers the order was computed from',
     ).toEqual({ claimsHeld: 2, workspacesPinned: 1, dependents: 3 });
     expect(row?.blockerKind).toBe('human');
+  });
+
+  // cm:why the id is what tells a DECISION apart from a `waiting` a person typed, and both land in this one bucket looking identical — without it the row can say a human is needed and not that there is a row they can settle (ISS-980 criterion 25).
+  it('names the open question on the awaiting bucket', async () => {
+    const issueId = await parkIssue({ assignee: null, createdBy: ownerId });
+    const questionId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO agent_questions (id, project_id, issue_id, status, blocker_kind, steps)
+      VALUES (${questionId}, ${projectId}, ${issueId}, 'open', 'human', '[]'::jsonb)
+    `);
+
+    const [row] = await awaitingInput();
+    expect(row?.questionId).toBe(questionId);
+  });
+
+  // cm:guard the falsifying half: a park a PERSON entered has no question row, and a non-null id here would send that reader to a screen with nothing on it. NULL is the honest answer, exactly as it is for `blockerKind`.
+  it('names no question on a park a person entered by hand', async () => {
+    await parkIssue({ status: 'waiting', assignee: null, createdBy: ownerId });
+    const [row] = await awaitingInput();
+    expect(row?.questionId).toBeNull();
+  });
+
+  // cm:guard an ANSWERED question costs nothing and blocks nobody, so it must not be named here either — the id and the kind are read through the same `status='open'` predicate, and a surface offering a settled decision to answer is worse than one offering none.
+  it('names no question once the decision has been settled', async () => {
+    const issueId = await parkIssue({ assignee: null, createdBy: ownerId });
+    await harness.db.execute(sql`
+      INSERT INTO agent_questions (id, project_id, issue_id, status, blocker_kind, steps)
+      VALUES (${randomUUID()}, ${projectId}, ${issueId}, 'answered', 'human', '[]'::jsonb)
+    `);
+
+    const [row] = await awaitingInput();
+    expect(row?.questionId).toBeNull();
+    expect(row?.blockerKind).toBeNull();
   });
 
   // cm:guard the OTHER buckets must NOT grow these keys: `needsReview` is not a wait anybody is paying for, and a cost of three zeros there reads as a measured zero rather than as not-applicable.

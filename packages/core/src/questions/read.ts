@@ -4,15 +4,36 @@
 // never carries the answer, so a box offline for the whole episode loses
 // latency and nothing else (ISS-964 criterion 12).
 
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { agentQuestions, type QuestionOption, questionWaiters } from '../db/schema-questions.js';
+import { issues, type ProjectMemberRole } from '../db/schema.js';
+import {
+  agentQuestions,
+  type QuestionOption,
+  type QuestionStep,
+  questionWaiters,
+} from '../db/schema-questions.js';
 import { effectiveProjectRole } from '../lib/authz.js';
-import { answerQuestion, QuestionRefused } from './write.js';
+import { answerQuestion, mayChoose, QuestionRefused } from './write.js';
 
 export type VisibleOption = QuestionOption & { locked: boolean };
 
+// cm:guard a null ROLE is refused as hard as a null access. `effectiveProjectRole` answers `{ role: null }` — not `null` — for a signed-in caller who is neither a project member nor an org member of the owning org, so the earlier `if (!access)` handed that caller the whole question row of any project in the fleet (ISS-980).
+async function roleOn(projectId: string, userId: string): Promise<ProjectMemberRole | null> {
+  const access = await effectiveProjectRole(userId, projectId);
+  return access?.role ?? null;
+}
+
 // cm:guard visibility and choosability are SEPARATE. Any member of the project opens the question and reads every option; `authority: admin` locks the CHOICE alone. A question hidden from a writer is the failure criterion 15 names, and it is the one that leaves a queue of decisions only one person can even look at.
+function seenBy<T extends { steps: QuestionStep[] }>(row: T, role: ProjectMemberRole | null) {
+  const current = row.steps[row.steps.length - 1];
+  const options: VisibleOption[] = (current?.options ?? []).map((o) => ({
+    ...o,
+    locked: !mayChoose(o, role),
+  }));
+  return { ...row, options, recommendedOptionId: current?.recommendedOptionId ?? '' };
+}
+
 export async function readQuestionFor(questionId: string, userId: string) {
   const [row] = await db
     .select()
@@ -20,32 +41,56 @@ export async function readQuestionFor(questionId: string, userId: string) {
     .where(eq(agentQuestions.id, questionId))
     .limit(1);
   if (!row?.projectId) return null;
-  const access = await effectiveProjectRole(userId, row.projectId);
-  if (!access) return null;
-  const current = row.steps[row.steps.length - 1];
-  const options: VisibleOption[] = (current?.options ?? []).map((o) => ({
-    ...o,
-    locked: !mayChoose(o, access.role),
-  }));
-  return { ...row, options, recommendedOptionId: current?.recommendedOptionId ?? '' };
+  const role = await roleOn(row.projectId, userId);
+  if (!role) return null;
+  return seenBy(row, role);
 }
 
-function mayChoose(option: QuestionOption, role: string | null) {
-  if (role === 'viewer') return false;
-  return option.authority === 'writer' || role === 'admin';
+/**
+ * Every question on one issue, newest first, or null when the caller cannot reach it.
+ */
+// cm:guard authorised against the ISSUE's project and never against the questions it happens to carry, so an issue with no question answers an empty LIST to a member and `null` to a stranger — collapsing those two makes "you may not look" indistinguishable from "there is nothing to look at" (ISS-980 criteria 20, 22).
+export async function readQuestionsForIssue(issueId: string, userId: string) {
+  const [issue] = await db
+    .select({ projectId: issues.projectId })
+    .from(issues)
+    .where(eq(issues.id, issueId))
+    .limit(1);
+  if (!issue?.projectId) return null;
+  const role = await roleOn(issue.projectId, userId);
+  if (!role) return null;
+  const rows = await db
+    .select()
+    .from(agentQuestions)
+    .where(eq(agentQuestions.issueId, issueId))
+    .orderBy(desc(agentQuestions.createdAt), desc(agentQuestions.id));
+  return rows.map((row) => seenBy(row, role));
 }
 
-export async function answerAs(args: { questionId: string; optionId: string; userId: string }) {
-  const seen = await readQuestionFor(args.questionId, args.userId);
-  if (!seen) throw new QuestionRefused(`no question ${args.questionId}`);
-  const option = seen.options.find((o) => o.id === args.optionId);
-  if (!option) throw new QuestionRefused('that option is not on the open round of this question');
-  if (option.locked) {
-    throw new QuestionRefused(
-      `option ${option.id} carries authority ${option.authority} and this caller may not choose it`,
-    );
+// cm:guard the ROLE is resolved here and handed down; the option it governs is read inside `answerQuestion`'s row lock. Authorization stays request-time, as on every other route — locking `agent_questions` does not lock `project_members`, so resolving the role under that lock would buy nothing and cost a join under it.
+export async function answerAs(args: {
+  questionId: string;
+  optionId: string;
+  round: number;
+  userId: string;
+}) {
+  const [row] = await db
+    .select({ projectId: agentQuestions.projectId })
+    .from(agentQuestions)
+    .where(eq(agentQuestions.id, args.questionId))
+    .limit(1);
+  if (!row?.projectId) {
+    throw new QuestionRefused(`no question ${args.questionId}`, 'QUESTION_NOT_FOUND');
   }
-  return answerQuestion({ questionId: args.questionId, optionId: args.optionId, by: args.userId });
+  const role = await roleOn(row.projectId, args.userId);
+  if (!role) throw new QuestionRefused(`no question ${args.questionId}`, 'QUESTION_NOT_FOUND');
+  return answerQuestion({
+    questionId: args.questionId,
+    optionId: args.optionId,
+    round: args.round,
+    by: args.userId,
+    role,
+  });
 }
 
 /**

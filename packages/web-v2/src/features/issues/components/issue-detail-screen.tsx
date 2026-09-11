@@ -33,6 +33,7 @@ import { STAGES, type StageKey } from "@/design/stages";
 import type { StatusKey } from "@/design/status";
 import { useResumeRun } from "@/features/pipeline/hooks";
 import { useProjects } from "@/features/projects/hooks";
+import { DecisionPanel } from "@/features/questions/components/decision-panel";
 import { buildShareLink, useRecents } from "@/features/shell";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
@@ -427,7 +428,6 @@ export function IssueDetailScreen({
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="min-w-0 space-y-4">
-          {/* Tier-1: "why is it stuck" — shown only when blocked (ISS-377 AC#1). */}
           {blocker && (
             <BlockerBanner
               blocker={blocker}
@@ -439,6 +439,8 @@ export function IssueDetailScreen({
               onProvideInfo={focusComments}
             />
           )}
+
+          <DecisionPanel issueId={issue.id} />
 
           <AwaitingReleaseBanner
             projectId={issue.projectId}

@@ -32,6 +32,10 @@ export interface AttentionItem {
    *  Core sets these on that bucket alone, so absent means not-applicable
    *  rather than zero — render nothing, never "0 claims". */
   blockerKind?: string | null;
+  /** Awaiting-input only: the open `agent_questions` row, or null for a park a
+   *  person entered by hand. Present means a structured decision is waiting and
+   *  the issue screen renders it (ISS-980); absent means not-applicable. */
+  questionId?: string | null;
   cost?: { claimsHeld: number; workspacesPinned: number; dependents: number };
 }
 

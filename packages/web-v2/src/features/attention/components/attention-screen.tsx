@@ -77,6 +77,7 @@ function KindTag({ kind }: { kind: AttentionKind }) {
   );
 }
 
+// cm:why `questionId` earns a tag of its own because an agent's decision and a `waiting` somebody entered by hand arrive in this one bucket looking identical — the first is settled in a click on the issue screen and the second is not settled at all (ISS-980).
 function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: (link: string) => void }) {
   return (
     <button
@@ -85,6 +86,7 @@ function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: (link: st
       className="flex w-full items-center gap-3 rounded-md border border-line bg-surface px-3 py-2.5 text-left transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] max-md:min-h-[44px]"
     >
       <KindTag kind={item.kind} />
+      {item.questionId && <MonoTag hue="flame">Decision</MonoTag>}
       <span className="fg-body-sm min-w-0 flex-1 truncate text-fg">{item.title}</span>
       {item.issueRef && <MonoTag>{item.issueRef}</MonoTag>}
       {item.projectName && (
@@ -226,7 +228,6 @@ export function AttentionScreen() {
 
   return (
     <PageContainer className="flex min-h-dvh flex-col">
-      {/* Active-org live fan-out so attention updates arrive over WS. */}
       {projects.map((p) => (
         <RoomSub key={p.id} room={projectRoom(p.id)} />
       ))}

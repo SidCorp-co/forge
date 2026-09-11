@@ -6,6 +6,7 @@
 
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import type { ProjectMemberRole } from '../db/schema.js';
 import {
   agentQuestions,
   type QuestionBlockerKind,
@@ -29,7 +30,34 @@ export type AskInput = {
   parkDeadlineAt?: Date;
 };
 
-export class QuestionRefused extends Error {}
+// cm:guard the `code` is the machine-readable half a surface acts on and it must stay distinct per refusal — web-v2's `formatApiError` replaces a generic `FORBIDDEN` with "You do not have access to this resource", so a stale round or an already-answered question routed through that code reaches the person as a sentence about permissions.
+export class QuestionRefused extends Error {
+  readonly code: QuestionRefusalCode;
+  constructor(message: string, code: QuestionRefusalCode = 'QUESTION_REFUSED') {
+    super(message);
+    this.code = code;
+  }
+}
+
+export const questionRefusalCodes = [
+  'QUESTION_REFUSED',
+  'QUESTION_NOT_FOUND',
+  'QUESTION_NOT_OPEN',
+  'QUESTION_EXPIRED',
+  'QUESTION_ROUND_STALE',
+  'QUESTION_OPTION_UNKNOWN',
+  'QUESTION_AUTHORITY_REQUIRED',
+  'QUESTION_REASON_REQUIRED',
+] as const;
+export type QuestionRefusalCode = (typeof questionRefusalCodes)[number];
+
+// cm:guard test what the role IS, never what it is not. `effectiveProjectRole` answers `{ role: null }` — not `null` — for a signed-in caller who belongs to neither the project nor the org that owns it, so the earlier "anything but viewer" form let a stranger choose every `authority: 'writer'` option in the fleet (ISS-980).
+// cm:guard this is the ONE implementation of choosability; `questions/read.ts` imports it for the `locked` flag rather than restating the rule, because two authorities disagreeing is how a lock becomes decorative (ISS-964 criterion 15).
+export function mayChoose(option: QuestionOption, role: ProjectMemberRole | null): boolean {
+  if (role === 'admin') return true;
+  if (role === 'member') return option.authority === 'writer';
+  return false;
+}
 
 // cm:guard `binds_to: this_call` REQUIRES a fingerprint, and that pair is the whole of the permission shape — there is no `kind` column saying an option is a permission. An option that binds to one call without naming it is a standing allowance wearing the label of a single decision (ISS-964 criteria 13, 16).
 function checkOptions(options: QuestionOption[], recommendedOptionId: string) {
@@ -94,24 +122,78 @@ export async function openQuestionCount(projectId: string) {
   return row?.n ?? 0;
 }
 
-export async function answerQuestion(args: { questionId: string; optionId: string; by: string }) {
-  const row = await load(args.questionId);
-  const steps = row.steps;
-  const current = steps[steps.length - 1];
-  if (!current) throw new QuestionRefused('this question has no round to answer');
-  if (!current.options.some((o) => o.id === args.optionId)) {
-    throw new QuestionRefused(`option ${args.optionId} is not on the open round of this question`);
-  }
-  current.answeredAt = new Date().toISOString();
-  current.chosenOptionId = args.optionId;
-  current.answeredBy = args.by;
-  await db
-    .update(agentQuestions)
-    .set({ steps, status: 'answered', updatedAt: new Date() })
-    .where(eq(agentQuestions.id, args.questionId));
-  // cm:guard published AFTER the write commits and never awaited for its result, because the answer is already on the record: the box reads it back through `GET /me/questions/:id`, so this wake only decides whether that read happens now or on the next 30s sweep. Publishing before the write would wake a box to read an answer that is not there yet (ISS-964 criteria 12, 44).
-  void wakeMastersForAnswer({ projectId: row.projectId, questionId: args.questionId });
-  return view({ ...row, steps, status: 'answered' as const });
+export type AnswerInput = {
+  questionId: string;
+  optionId: string;
+  /** The round the answerer was looking at. Never defaulted to the current one. */
+  round: number;
+  by: string;
+  role: ProjectMemberRole | null;
+};
+
+/**
+ * Record one answer, or refuse and leave the row exactly as it was.
+ */
+// cm:guard ONE transaction and the row taken `FOR UPDATE` before any check, because a status check performed before an unconditional update is not a check: the pre-ISS-980 form read, validated and then wrote `status: 'answered'` with `where(eq(id))` alone, so it overwrote an existing answer and resurrected a `void` or `expired` row. Every predicate below must read the LOCKED row, and the write must go through `tx`.
+// cm:guard the clock is sampled AFTER the lock is granted, never before: a caller that waited on the lock while the park deadline passed must be refused by the deadline it actually crossed, not by the one it saw when it queued.
+// cm:guard nothing here mutates `row.steps` in place — the answered step is a copy — so a refusal thrown below leaves the caller's loaded row as untouched as the database row (criterion 35).
+export async function answerQuestion(args: AnswerInput) {
+  const committed = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .select()
+      .from(agentQuestions)
+      .where(eq(agentQuestions.id, args.questionId))
+      .limit(1)
+      .for('update');
+    if (!row) throw new QuestionRefused(`no question ${args.questionId}`, 'QUESTION_NOT_FOUND');
+    const now = new Date();
+    if (row.status !== 'open') {
+      throw new QuestionRefused(
+        `this question is ${row.status} — only an open question takes an answer`,
+        'QUESTION_NOT_OPEN',
+      );
+    }
+    if (row.parkDeadlineAt && row.parkDeadlineAt.getTime() <= now.getTime()) {
+      throw new QuestionRefused(
+        `this question's park deadline passed at ${row.parkDeadlineAt.toISOString()}`,
+        'QUESTION_EXPIRED',
+      );
+    }
+    const current = row.steps[row.steps.length - 1];
+    if (!current) throw new QuestionRefused('this question has no round to answer');
+    if (current.round !== args.round) {
+      throw new QuestionRefused(
+        `this answer names round ${args.round} and the question is on round ${current.round} — the round you were shown has been superseded`,
+        'QUESTION_ROUND_STALE',
+      );
+    }
+    const option = current.options.find((o) => o.id === args.optionId);
+    if (!option) {
+      throw new QuestionRefused(
+        `option ${args.optionId} is not on round ${current.round} of this question`,
+        'QUESTION_OPTION_UNKNOWN',
+      );
+    }
+    if (!mayChoose(option, args.role)) {
+      throw new QuestionRefused(
+        `option ${option.id} carries authority ${option.authority} and this caller may not choose it`,
+        'QUESTION_AUTHORITY_REQUIRED',
+      );
+    }
+    const steps = row.steps.map((s, i) =>
+      i === row.steps.length - 1
+        ? { ...s, answeredAt: now.toISOString(), chosenOptionId: option.id, answeredBy: args.by }
+        : s,
+    );
+    await tx
+      .update(agentQuestions)
+      .set({ steps, status: 'answered', updatedAt: now })
+      .where(eq(agentQuestions.id, args.questionId));
+    return { ...row, steps, status: 'answered' as const };
+  });
+  // cm:guard published after the transaction RESOLVES — not merely after the statement inside it — and never awaited for its result, because the answer is already on the record: the box reads it back through `GET /me/questions/:id`, so this wake only decides whether that read happens now or on the next 30s sweep. A wake published from inside the transaction sends a box to read an answer a rejected commit never left (ISS-964 criteria 12, 44).
+  void wakeMastersForAnswer({ projectId: committed.projectId, questionId: args.questionId });
+  return view(committed);
 }
 
 // cm:guard a follow-up is a STEP on the same row, never a second row. Two rows for one chain is two entries in a queue ordered by the cost of blocking, and the cost is a property of the decision rather than of how many times the agent had to come back (ISS-964 criterion 20).
@@ -149,6 +231,7 @@ export async function voidQuestion(args: { questionId: string; reason: string })
   if (!args.reason?.trim()) {
     throw new QuestionRefused(
       'a question is voided WITH a reason — removed silently it is indistinguishable from one nobody answered',
+      'QUESTION_REASON_REQUIRED',
     );
   }
   await db
