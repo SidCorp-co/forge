@@ -16,7 +16,7 @@
   .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
   .bad { color:var(--bad); font-weight:600; }
   .lock { color:var(--lock); font-weight:600; }
-  svg { background:#fff; border:1px solid var(--line); border-radius:4px; display:block; max-width:100%; }
+  svg { background:#fff; border:1px solid var(--line); border-radius:4px; display:block; width:100%; height:auto; max-width:100%; }
   text { font:12px ui-sans-serif,system-ui,sans-serif; fill:var(--fg); }
   text.m { font-size:11px; fill:var(--mut); }
   text.t { font:600 12px ui-monospace,Menlo,monospace; }
@@ -167,9 +167,9 @@ crossing the dashed line is a contract that no type checks: a module name, a
 
 <svg viewBox="0 0 900 400" role="img" aria-label="The taxonomy authored through REST and consumed through MCP, and which test holds each edge">
   <defs>
-    <marker id="d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <marker id="handshake-ok" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#1c1a17"/></marker>
-    <marker id="e" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <marker id="handshake-bad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#8a3b52"/></marker>
   </defs>
 
@@ -185,8 +185,8 @@ crossing the dashed line is a contract that no type checks: a module name, a
   <text class="t" x="44" y="140">labels rows, kind='module'</text>
   <text class="m" x="44" y="158">the taxonomy IS this set; there is no registry table</text>
 
-  <path class="arrow" style="marker-end:url(#d)" d="M230,98 L230,118"/>
-  <path class="arrow" style="marker-end:url(#d)" d="M430,147 L530,147"/>
+  <path class="arrow" style="marker-end:url(#handshake-ok)" d="M230,98 L230,118"/>
+  <path class="arrow" style="marker-end:url(#handshake-ok)" d="M430,147 L530,147"/>
 
   <rect class="box" x="530" y="118" width="350" height="58" rx="4"/>
   <text class="t" x="544" y="140">forge_issues.update  data.labels[]</text>
@@ -201,13 +201,13 @@ crossing the dashed line is a contract that no type checks: a module name, a
   <text class="t" x="544" y="314">forge_issues.list  filters.module</text>
   <text class="m" x="544" y="332">resolved against kind='module' only, then EXISTS-join</text>
 
-  <path class="arrow" style="marker-end:url(#d)" d="M705,176 L705,196"/>
-  <path class="arrow" style="marker-end:url(#d)" d="M705,272 L705,292"/>
+  <path class="arrow" style="marker-end:url(#handshake-ok)" d="M705,176 L705,196"/>
+  <path class="arrow" style="marker-end:url(#handshake-ok)" d="M705,272 L705,292"/>
 
   <rect class="exit" x="30" y="292" width="400" height="58" rx="4"/>
   <text class="t" x="44" y="314">an unresolved module returns NO issues</text>
   <text class="m" x="44" y="332">dropping the narrowing would return the whole project</text>
-  <path class="arrowbad" style="marker-end:url(#e)" d="M530,321 L430,321"/>
+  <path class="arrowbad" style="marker-end:url(#handshake-bad)" d="M530,321 L430,321"/>
 </svg>
 
 <div class="rule">
@@ -236,36 +236,36 @@ almost always a pipeline agent, and an agent only writes what its prompt told it
 
 <svg viewBox="0 0 900 300" role="img" aria-label="How the module taxonomy reaches a pipeline agent's prompt">
   <defs>
-    <marker id="c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <marker id="prompt-ok" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#1c1a17"/></marker>
-    <marker id="d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <marker id="prompt-bad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#8a3b52"/></marker>
   </defs>
 
   <rect class="box" x="20" y="16" width="300" height="34" rx="4"/>
   <text class="t" x="34" y="38">a job is dispatched for this project</text>
 
-  <path class="arrow" style="marker-end:url(#c)" d="M170,50 L170,80"/>
+  <path class="arrow" style="marker-end:url(#prompt-ok)" d="M170,50 L170,80"/>
   <rect class="box" x="20" y="80" width="300" height="34" rx="4"/>
   <text class="t" x="34" y="102">loadProjectFactInputs</text>
   <text class="m" x="330" y="102">reads the project row, then listProjectModules</text>
 
-  <path class="arrow" style="marker-end:url(#c)" d="M170,114 L170,144"/>
+  <path class="arrow" style="marker-end:url(#prompt-ok)" d="M170,114 L170,144"/>
   <rect class="lockband" x="20" y="144" width="300" height="48" rx="4"/>
   <text class="t" x="34" y="166">fact.relevant(ctx) — modules.length &gt; 0</text>
   <text class="m" x="34" y="183">the only gate; render() is never asked</text>
-  <path class="arrowbad" style="marker-end:url(#d)" d="M320,168 L560,168"/>
+  <path class="arrowbad" style="marker-end:url(#prompt-bad)" d="M320,168 L560,168"/>
   <rect class="exit" x="560" y="144" width="320" height="48" rx="4"/>
   <text class="t bad" x="574" y="166">no section in the prompt</text>
   <text class="m" x="574" y="183">a project with no taxonomy pays nothing</text>
 
-  <path class="arrow" style="marker-end:url(#c)" d="M170,192 L170,222"/>
+  <path class="arrow" style="marker-end:url(#prompt-ok)" d="M170,192 L170,222"/>
   <rect class="box" x="20" y="222" width="300" height="62" rx="4"/>
   <text class="t" x="34" y="244">## Forge context → ### The issue's</text>
   <text class="t" x="34" y="261">primary module</text>
   <text class="m" x="34" y="277">names the modules and the isPrimary payload</text>
 
-  <path class="arrow" style="marker-end:url(#c)" d="M320,253 L560,253"/>
+  <path class="arrow" style="marker-end:url(#prompt-ok)" d="M320,253 L560,253"/>
   <rect class="box" x="560" y="222" width="320" height="62" rx="4"/>
   <text class="t" x="574" y="244">the agent decides, and writes</text>
   <text class="m" x="574" y="261">forge_issues.update → the path above,</text>
