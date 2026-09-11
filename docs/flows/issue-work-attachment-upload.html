@@ -28,22 +28,20 @@
   .arrow { stroke:var(--fg); stroke-width:1.2; fill:none; marker-end:url(#a); }
   .arrowbad { stroke:var(--bad); stroke-width:1.2; fill:none; marker-end:url(#b); stroke-dasharray:4 3; }
   .txn { fill:none; stroke:var(--lock); stroke-width:1.2; stroke-dasharray:6 4; }
+  .cap { color:var(--mut); font-size:13.5px; max-width:52rem; }
 </style>
 <main>
 
-<h1>issue-work-attachment-upload — how a file becomes an attachment, which hop refuses it, and what a refused upload leaves behind</h1>
-<p class="sub">Six entry paths, one decision point, and four ways out. The question this answers is
-the one a person actually arrives with — <em>my upload was refused, at which hop, and what do I do
-about it</em> — so every refusal below names the field that tells you. Owners:
-<code>packages/core/src/lib/attachment-mime.ts</code> (the type decision and the allowed set),
-<code>packages/core/src/{issues,comments,agent-sessions}/attachment-service.ts</code> (the three
-persist funnels), <code>packages/core/src/uploads/ticket-service.ts</code> (the mint hop) and
-<code>packages/core/src/uploads/routes.ts</code> (the presigned PUT).</p>
+<h1>issue-work-attachment-upload — which hop refuses a file, and what it leaves behind</h1>
+<p class="sub">Six entry paths, one decision point, four ways out — every refusal below names the
+field that tells you which. <code>core/src/lib/attachment-mime.ts</code> ·
+<code>core/src/{issues,comments,agent-sessions}/attachment-service.ts</code> ·
+<code>core/src/uploads/{ticket-service,routes}.ts</code></p>
 
 <h2>Six ways in, one place the file is judged</h2>
-<p>The convergence is the whole reason a single change fixes every surface: REST multipart, the
-presigned PUT and the base64 MCP paths all end at one of three <code>persist*Attachment</code>
-functions, and the type resolution lives inside those rather than at any entrance.</p>
+<p class="cap">REST multipart, the presigned PUT and the base64 MCP paths all end at one of three
+<code>persist*Attachment</code> functions, with type resolution inside those rather than at any
+entrance — which is why one change fixes every surface.</p>
 
 <svg viewBox="0 0 900 570" role="img" aria-label="Six upload entry paths converging on one resolution step, with four refusal exits">
   <defs>
@@ -168,60 +166,51 @@ functions, and the type resolution lives inside those rather than at any entranc
 </table>
 
 <div class="rule">
-<b>The mint hop got MORE permissive and the PUT got stricter, in the same change.</b> An extension
-the table does not know used to be refused at mint as <code>application/octet-stream</code>; it now
-mints as <code>text/plain</code>, because a ticket is a capability and not a verdict. The refusal for
-an unknown extension therefore <b>moved one hop later</b>: a binary <code>.log</code> now pays its
-bytes before it is told no. That is the price of a plain-text <code>.log</code> attaching at all, and
-it is why the refusal carries the allowed set — the client that just spent the upload should not have
-to guess what would have worked.
+<b>The mint hop got MORE permissive and the PUT got stricter, in one change.</b> An unknown
+extension used to be refused at mint as <code>application/octet-stream</code>; it now mints
+<code>text/plain</code>, because a ticket is a capability and not a verdict. So the refusal moved one
+hop later — a binary <code>.log</code> pays its bytes before it is told no. That is the price of a
+plain-text <code>.log</code> attaching at all, and why the refusal carries the allowed set.
 </div>
 
 <div class="rule">
 <b>The check, the <code>storage.put</code> and the <code>INSERT</code> are one transaction under a
-name lock.</b> Without it the check is decorative for concurrent callers: it is a read followed by a
-write with no constraint underneath, and the blob write sits in the window between them — measured
-2026-09-07, four concurrent uploads of one name stored four rows and refused none. The lock is
-<code>pg_advisory_xact_lock</code> keyed on <code>scope:parentId:sanitisedName</code>, so it only
-serialises the uploads that must be serialised, and never the <code>_try_</code> form: a caller that
-cannot take it must <em>wait</em> and then see the row, because failing open is the bug it closes. A
-<code>UNIQUE (parent_id, name)</code> index would be stronger and is not available — rows predating
-the rule already violate it, and this repo does not discard a row so an <code>ALTER</code> can
-succeed. <b>The price:</b> the lock is held across the storage write on a pooled connection, so
-concurrent uploads of <em>one</em> name on one parent serialise behind one blob write.
+name lock.</b> Without it the check is a read then a write with no constraint underneath and the blob
+write in the window between — measured 2026-09-07, four concurrent uploads of one name stored four
+rows and refused none. <code>pg_advisory_xact_lock</code> on
+<code>scope:parentId:sanitisedName</code>, never the <code>_try_</code> form: a caller that cannot
+take it must <em>wait</em> and then see the row, because failing open is the bug it closes.
+<code>UNIQUE (parent_id, name)</code> would be stronger but pre-rule rows already violate it, and
+this repo does not discard a row so an <code>ALTER</code> succeeds. <b>Price:</b> the lock is held
+across the storage write on a pooled connection.
 </div>
 
 <div class="rule">
-<b>A name is an identity, so the sanitiser may not merge two of them.</b> The keep-class is
-<code>\p{L}\p{M}\p{N}._-</code> after NFC, and every part of that carries: <code>[^A-Za-z0-9._-]</code>
-sent <code>报告.pdf</code> and <code>设计.pdf</code> both to <code>__.pdf</code>, and dropping
-<code>\p{M}</code> does the same to Devanagari, Arabic harakat and Hebrew niqqud. NFC is the one
-direction it <em>does</em> merge, and deliberately: the two Unicode spellings of <code>café.pdf</code>
-are one document. The read path pays for this too — a <code>Content-Disposition</code> value is a
-ByteString, so the served name goes out RFC 5987 encoded
-(<code>packages/core/src/lib/attachment-headers.ts</code>) or a file that uploaded fine 500s on
-download.
+<b>A name is an identity, so the sanitiser may not merge two of them.</b> Keep-class
+<code>\p{L}\p{M}\p{N}._-</code> after NFC: <code>[^A-Za-z0-9._-]</code> sent <code>报告.pdf</code> and
+<code>设计.pdf</code> both to <code>__.pdf</code>, and dropping <code>\p{M}</code> does the same to
+Devanagari, Arabic harakat and Hebrew niqqud. NFC is the one merge it makes on purpose — the two
+spellings of <code>café.pdf</code> are one document. The read path pays too: a
+<code>Content-Disposition</code> value is a ByteString, so the served name goes out RFC 5987 encoded
+(<code>lib/attachment-headers.ts</code>) or a file that uploaded fine 500s on download.
 </div>
 
 <div class="rule">
-<b>The two refusals are one fix seen from two ends.</b> A half-landed batch is what <em>creates</em>
-the duplicate names the identity check then refuses: the measured incident was a batch refused on its
-third file that left the first two up under names that could not be re-sent. Fixing identity while
-batches still half-land would leave the generator of the problem running, which is why whole-batch
-atomicity and name identity shipped together (ISS-957 + ISS-963).
+<b>The two refusals are one fix from two ends.</b> A half-landed batch <em>creates</em> the
+duplicate names the identity check refuses — the measured incident was a batch refused on its third
+file, leaving two up under names that could not be re-sent. So whole-batch atomicity and name
+identity shipped together (ISS-957 + ISS-963).
 </div>
 
 <h2>Where a reader gets this wrong</h2>
 <ul>
-  <li><b>A claim binds; a guess does not.</b> A file of plain text named <code>photo.png</code> is
-      stored <code>image/png</code> — the name asks for a type the target allows, and retyping a
-      believed declaration would be a silent substitution. What the bytes rescue is the
-      <em>guess</em>: <code>report.log</code>, <code>schema.sql</code> and every unmapped extension
-      guess <code>text/plain</code>, and text bytes make that guess stand even when the guessed type
-      is one the target refuses. <code>application/octet-stream</code> counts as no declaration at
-      all, because the multipart routes write it themselves for every <code>.log</code> a person
-      drags in. <code>image/svg+xml</code> survives a text sniff because SVG <em>is</em> XML source;
-      no other image, video or office type does.</li>
+  <li><b>A claim binds; a guess does not.</b> Plain text named <code>photo.png</code> stores as
+      <code>image/png</code> — retyping a believed declaration would be a silent substitution. The
+      bytes rescue only the <em>guess</em>: <code>report.log</code>, <code>schema.sql</code> and every
+      unmapped extension guess <code>text/plain</code>, and text bytes make that stand even where the
+      guessed type is refused. <code>application/octet-stream</code> is no declaration at all — the
+      multipart routes write it themselves. <code>image/svg+xml</code> survives a text sniff because
+      SVG <em>is</em> XML source; no other image, video or office type does.</li>
   <li><b>The symmetric half bites too.</b> A <code>notes.txt</code> whose bytes are binary used to be
       stored as <code>text/plain</code> and is now refused <code>not-text</code>. That is a removal,
       not an addition.</li>
