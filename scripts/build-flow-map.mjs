@@ -180,7 +180,9 @@ const data = {
       {
         parent: parentOf.get(id) ?? 'forge',
         purpose: graph.nodes.find((n) => n.id === id)?.purpose ?? '',
-        flows: fs.sort((a, b) => b.words - a.words),
+        // cm:guard the emitted rows carry NO word count: nothing renders one, and embedding it made every
+    // prose edit in any flow file dirty the generated index and fail this script's own gate.
+    flows: fs.sort((a, b) => b.words - a.words).map(({ file, answers, figures }) => ({ file, answers, figures })),
       },
     ]),
   ),
