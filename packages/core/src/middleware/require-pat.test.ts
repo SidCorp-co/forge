@@ -29,7 +29,7 @@ vi.mock('../auth/mcp-audit.js', () => ({
 }));
 
 const { errorHandler } = await import('./error.js');
-const { requirePat, __resetPatBuckets } = await import('./require-pat.js');
+const { authenticatePat, requirePat, __resetPatBuckets } = await import('./require-pat.js');
 const { verifyPat } = await import('../auth/pat.js');
 const { writeMcpAudit } = await import('../auth/mcp-audit.js');
 
@@ -399,5 +399,62 @@ describe('requirePat rate limit, split by request class', () => {
     const res = await app.request('/read', { headers: hdrs });
     expect(res.status).toBe(429);
     expect(res.headers.get('X-RateLimit-Scope')).toBe('write');
+  });
+});
+
+/**
+ * `onVerified`, driven through the real function (ISS-974).
+ *
+ * `pat-accepted-permissions-header.test.ts` is one seam away: it mocks this
+ * module and fires the callback from its own stub, so it proves what
+ * `beginPatRequest` DOES with the callback and nothing about when
+ * `authenticatePat` fires it. Move `onVerified?.()` below the rate-limit
+ * rejection and that file stays green while a verified, throttled request
+ * loses the accepted-permissions header on the wire. These two cases hold the
+ * other side of the seam, which is the half criterion 28 turns on.
+ */
+describe('onVerified fires at verification and never at the outcome', () => {
+  const hdrs = { Authorization: `Bearer ${PAT_TOKEN}` };
+
+  function appCalling(fired: string[]) {
+    const app = new Hono();
+    app.use('*', async (c, next) => {
+      const principal = await authenticatePat(c, PAT_TOKEN, 'read', () => {
+        fired.push(`${c.req.method} ${c.req.path}`);
+        c.header('X-Test-Verified', 'yes');
+      });
+      if (!principal) return c.json({ code: 'INVALID_TOKEN' }, 401);
+      return next();
+    });
+    app.get('/read', (c) => c.json({ ok: true }));
+    app.onError(errorHandler as unknown as Parameters<typeof app.onError>[0]);
+    return app;
+  }
+
+  it('has already fired when the bucket refuses the request it verified', async () => {
+    vi.mocked(verifyPat).mockResolvedValue({
+      ownerKind: 'human',
+      row: { ...testPatRow, rateLimitMax: 1 },
+    } as never);
+    const fired: string[] = [];
+    const app = appCalling(fired);
+
+    expect((await app.request('/read', { headers: hdrs })).status).toBe(200);
+    const throttled = await app.request('/read', { headers: hdrs });
+
+    expect(throttled.status).toBe(429);
+    expect(fired).toEqual(['GET /read', 'GET /read']);
+    expect(throttled.headers.get('X-Test-Verified')).toBe('yes');
+  });
+
+  it('never fires for a token that does not verify, whatever is answered after', async () => {
+    vi.mocked(verifyPat).mockResolvedValue(null);
+    const fired: string[] = [];
+
+    const res = await appCalling(fired).request('/read', { headers: hdrs });
+
+    expect(res.status).toBe(401);
+    expect(fired).toEqual([]);
+    expect(res.headers.get('X-Test-Verified')).toBeNull();
   });
 });

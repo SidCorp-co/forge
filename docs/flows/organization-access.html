@@ -56,7 +56,7 @@ on a predicate that reads nothing off the principal is how the third gate gets s
 who believes it already ran.</p>
 
 <p>The moment the token verifies — before any of the three is asked — the response is told what the
-route wanted. Since ISS-974 every PAT-authenticated REST request carries
+route wanted. Since ISS-974 every REST request <code>beginPatRequest</code> decides carries
 <code>X-Accepted-Forge-Permissions: &lt;resource&gt;:&lt;level&gt;</code> &mdash; on the 200 as
 well as on the refusals, because a header only on the 403 leaves discovery-by-trial exactly where
 it was. The name mirrors GitHub's <code>X-Accepted-GitHub-Permissions</code>, and the value is the
@@ -170,8 +170,10 @@ writer keeps them in step. Both are now persisted beside each other:
     will use and collecting the names, rather than by minting, failing and guessing. The value is
     the name a mint request takes. Two absences are meaningful and different: no header on a
     <code>403 PAT_NOT_PERMITTED</code> means no permission covers that path <em>at all</em> and
-    no grant will ever reach it; no header on a <code>200</code> means the request was not
-    PAT-authenticated. A browser reads it because it is in <code>corsMiddleware</code>'s
+    no grant will ever reach it; no header on a <code>200</code> means the grant fence never ran
+    on that request &mdash; a JWT, or a <code>forge_pat_*</code> carrying a <code>device_id</code>
+    on a device route, which <code>verifyDeviceCredential</code> answers without ever reaching
+    <code>beginPatRequest</code>. A browser reads it because it is in <code>corsMiddleware</code>'s
     <code>exposeHeaders</code> — omit it there and <code>fetch</code> hides it whatever the
     server sent.</td></tr>
 <tr><td><code>403 PAT_NOT_PERMITTED</code> on a route that plainly exists</td>

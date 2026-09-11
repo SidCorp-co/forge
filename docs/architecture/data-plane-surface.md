@@ -36,8 +36,12 @@ resource covers its prefix.** That is deliberate — a forgotten entry costs a c
 report, where a forgotten deny-list entry is a silent leak nobody reports.
 
 **A refused PAT is told what the route wanted, and so is an admitted one.** Since ISS-972 phase 3
-every PAT-authenticated REST response carries `X-Accepted-Forge-Permissions` naming the permission
-the route required, in the `resource:level` spelling a mint request takes. It is on the `200` too,
+every REST response whose request `beginPatRequest` decided carries `X-Accepted-Forge-Permissions`
+naming the permission the route required, in the `resource:level` spelling a mint request takes.
+That decision point, and not the credential's species, is what the header follows: a `forge_pat_*`
+carrying a `device_id` presented to a device route is verified by `verifyDeviceCredential` and
+never reaches `beginPatRequest`, so it is answered with no header while being, literally, a
+PAT-authenticated REST request. `/mcp` is the same case for the same reason. It is on the `200` too,
 which is the point: a header only on the refusal leaves the only route to a correct grant being to
 mint, exercise every path and narrow by trial. `beginPatRequest` resolves the name once and hands
 that one value to the header, to `patGrantCovers` and to the refusal body's `details.wanted`, so
