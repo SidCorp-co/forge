@@ -23,14 +23,13 @@
   .board { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; overflow-x:auto; }
   ul { padding-left:1.1rem; } li { margin:.3rem 0; }
   .board svg { max-width:none !important; height:auto; }
+  .cap { color:var(--mut); font-size:13px; margin:.4rem 0 1.2rem; }
 </style>
 <main>
 
 <h1>agent-execution-session-turns — one session, many turns</h1>
-<p class="sub">What happens between a <code>claude</code> process starting and the job it belongs to
-finishing — which is no longer the same event. Since ISS-873 phase 6 there is exactly one process
-model: stdin is a pipe, the prompt is a message on it, and the process outlives the turn that
-started it.</p>
+<p class="sub">Since ISS-873 phase 6 there is one process model: stdin is a pipe, the prompt is a
+message on it, and the process outlives the turn that started it.</p>
 
 <div class="rule">
 <b>The one thing to take away.</b> A <b>turn</b> ending and a <b>job</b> ending are different
@@ -40,10 +39,9 @@ the driver made over MCP <em>during</em> the turn, so only core knows. The runne
 "ended" finishes a job that is retryable, a wrong "did not end" wedges the box's only slot.
 </div>
 
-<p>Owner: <code>packages/runner/crates/forge-runner-core/src/runner/claude_code.rs</code>
-(<code>duplex_turns</code>, <code>turn_verdict</code>, <code>build_args</code>),
-<code>packages/core/src/jobs/{turn-verdict-routes,events-routes,park-deadline,resident-session}.ts</code>,
-<code>packages/core/src/agent-sessions/{session-send,steer-session}.ts</code>.</p>
+<p class="cap"><code>forge-runner-core/src/runner/claude_code.rs</code> ·
+<code>core/src/jobs/{turn-verdict-routes,events-routes,park-deadline,resident-session}.ts</code> ·
+<code>core/src/agent-sessions/{session-send,steer-session}.ts</code></p>
 
 <h2>The turn loop, and the two ways out of it</h2>
 <div class="board"><pre class="mermaid">
@@ -69,9 +67,6 @@ stateDiagram-v2
 </pre></div>
 
 <h2>How an answer reaches a session that is still alive</h2>
-<p>This is the whole point of the change: under the deleted one-shot model the process was gone
-before anyone could reply, so a parked question waited on a human with nothing to wake.</p>
-
 <div class="board"><pre class="mermaid">
 sequenceDiagram
   actor H as Human
@@ -105,62 +100,54 @@ answered.
 <tbody>
 <tr><td>The job finished</td><td>core's turn verdict, acted on by the runner</td>
     <td>the turn's terminal event; <code>stdin</code> dropped immediately</td>
-    <td>a finished job must not sit resident — every second after holds a slot for a job nobody
-        will send another turn to. Chat does the opposite on purpose: its residency <em>is</em> the
-        feature.</td></tr>
+    <td>every second resident holds a slot for a job nobody will send another turn to. Chat does the
+        opposite on purpose — its residency <em>is</em> the feature.</td></tr>
 <tr><td>Nobody answered the park</td><td>the runner's own ceiling — <code>resolve_residency</code></td>
     <td><code>StateChanged("closed")</code>, then EOF</td>
-    <td>the runner owns its own deadline. Absent and <code>0</code> both mean the default
-        (<code>SESSION_IDLE_TIMEOUT</code>, 10 min); core sends
-        <code>sessionResidencySeconds</code> only when a project set a positive number, so the
-        knob's default cannot silently disable the feature it configures.</td></tr>
+    <td>the runner owns its deadline. Absent and <code>0</code> both mean the default
+        (<code>SESSION_IDLE_TIMEOUT</code>, 10 min) — core sends <code>sessionResidencySeconds</code>
+        only for a positive project value, so the knob's default cannot disable what it configures.</td></tr>
 <tr><td>The runner died while a session was parked</td>
     <td class="wait">core's backstop — <code>park-deadline.ts</code> hop 3b</td>
     <td><code>residency_expired</code></td>
-    <td>fires at residency <b>plus a 5-minute grace</b>, never at residency. The grace is what
-        keeps the runner always closing its own park first, so <code>residency_expired</code> keeps
-        meaning "the runner is gone" instead of becoming a coin flip between two racing closers.</td></tr>
+    <td>residency <b>+ 5-minute grace</b>, never residency. The grace keeps the runner closing its own
+        park first, so <code>residency_expired</code> still means "the runner is gone" rather than a
+        coin flip between two racing closers.</td></tr>
 <tr><td>An operator asked for a stop</td><td><code>abort</code> — a signal, not a checkpoint</td>
     <td>the two-phase kill gate's <code>killed</code> ack</td>
-    <td>a generating turn stops for nothing but a signal. Checkpoint-then-close is the
-        <em>restart</em> path and the <code>cancel</code> inbox kind — both act between turns.</td></tr>
+    <td>a generating turn stops for nothing but a signal. Checkpoint-then-close is the <em>restart</em>
+        path and the <code>cancel</code> inbox kind — both act between turns.</td></tr>
 <tr><td>The daemon is restarting</td><td><code>checkpoint_and_close</code></td>
     <td>the agent records where it is, then EOF</td>
-    <td>a park is not in-flight, so the drain counter reads an idle daemon and would exit leaving a
-        detached child writing the worktree — two agents on one checkout.</td></tr>
+    <td>a park is not in-flight, so the drain counter reads an idle daemon and exits leaving a detached
+        child writing the worktree — two agents on one checkout.</td></tr>
 <tr><td>The process died mid-turn</td><td>nobody — it is a failure</td>
     <td>the session-failure classification at process exit</td>
-    <td>a process that dies WITHOUT a result is a session failure, not a turn. This is why the
-        job-level outcome derivation still exists.</td></tr>
+    <td>dying WITHOUT a result is a session failure, not a turn — which is why the job-level outcome
+        derivation still exists.</td></tr>
 </tbody>
 </table>
 
 <h2>Three things that look like print residue and are not</h2>
-<p>ISS-873 phase 6 listed these for deletion. Each was kept, and the reason is the same in all
-three: they are shared machinery the issue attributed to the mode.</p>
 <table>
 <thead><tr><th>Kept</th><th>Why it survives print</th></tr></thead>
 <tbody>
 <tr><td>The 25s synthetic <code>progress</code> beat</td>
-    <td>It has two jobs and only one was print's. The other keeps a long silent step (docker build,
-        E2E) off the 3-minute heartbeat hop — and <code>loop-monitor.ts</code> exempts
-        <code>runtime_state = 'awaiting_input'</code> and <b>nothing else</b>, so a session
-        declaring <code>working</code> through a 15-minute build is on exactly the clock a one-shot
-        process was. Deleting it also moves core's park clock from "time since the runner went
-        quiet" to "time since the park", which is precisely the race the 5-minute grace exists to
-        prevent.</td></tr>
+    <td>Two jobs, only one of them print's. The other keeps a long silent step (docker build, E2E) off
+        the 3-minute heartbeat hop: <code>loop-monitor.ts</code> exempts
+        <code>runtime_state = 'awaiting_input'</code> and <b>nothing else</b>. Deleting it also moves
+        core's park clock from "since the runner went quiet" to "since the park" — the race the
+        5-minute grace exists to prevent.</td></tr>
 <tr><td><code>RESULT_EXIT_GRACE</code></td>
-    <td>It is a bounded <em>wait</em> for the stdout reader, not a kill, and the select holding it is
-        entered only once the turn loop has returned with the reader still live — a reachable
-        state, by the race below.</td></tr>
+    <td>A bounded <em>wait</em> for the stdout reader, not a kill; its select is entered only once the
+        turn loop returned with the reader still live — reachable, by the race below.</td></tr>
 <tr><td>The job-level outcome derivation<br><code>result_seen</code> · <code>succeeded</code> ·
         <code>result_error</code> · per-job <code>num_turns</code></td>
-    <td>It is the session-failure path. <code>duplex_turns</code> selects over the result notify and
-        reader-EOF, and <code>tokio::select!</code> picks <b>randomly</b> among ready branches — so a
-        process exiting immediately after its final result can return through the EOF arm with that
-        result never consumed and <code>reset_turn</code> never run. The job then reaches exit
-        unreported with <code>succeeded == Some(true)</code>, and this derivation is the only thing
-        that reports it finished.</td></tr>
+    <td>The session-failure path. <code>duplex_turns</code> selects over the result notify and reader-EOF,
+        and <code>tokio::select!</code> picks <b>randomly</b> among ready branches — so a process
+        exiting right after its final result can return through the EOF arm with that result never
+        consumed and <code>reset_turn</code> never run. The job reaches exit unreported with
+        <code>succeeded == Some(true)</code>, and this is the only thing that reports it finished.</td></tr>
 </tbody>
 </table>
 
@@ -190,16 +177,7 @@ three: they are shared machinery the issue attributed to the mode.</p>
 </tbody>
 </table>
 
-<h2>Read when · Updated by</h2>
-<table>
-<tbody>
-<tr><td><b>Read when</b></td>
-    <td>Changing what ends a turn or a job, the residency ceiling, the park/answer path, or anything
-        that reads <code>agent_sessions.runtime_state</code></td></tr>
-<tr><td><b>Updated by</b></td>
-    <td>The change that alters those hops — corrected or deleted, never annotated as stale</td></tr>
-</tbody>
-</table>
+
 
 </main>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
