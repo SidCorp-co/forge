@@ -507,7 +507,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     'labels only.\n' +
     'LABELS. data.labels takes label NAMES or UUIDs from this project; unknown ones are ' +
     'refused, never auto-created. On update it is a REPLACE-SET, not additive: [] clears all, ' +
-    'omitting it changes none. Read the labels[] every response carries before a delta, or you ' +
+    'omitting it changes none. Read the current labels[] off a FULL get before a delta, or you ' +
     'clobber the set. A module is a label with kind:"module", and each labels[] entry reports ' +
     'kind and isPrimary. Set the primary module by sending { labelId, isPrimary: true } among ' +
     'the plain strings - at most one, and it must be a module, or the whole write is refused. ' +
