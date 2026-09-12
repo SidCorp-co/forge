@@ -45,10 +45,17 @@ request has been logged since 2026-09-03**, so that path has never run here. The
 `toRequestBody` sets are, on this fleet's evidence, unexercised.
 
 **Verdict: the ~790-tokens-per-request figure a command layer was argued from does not exist.** The
-catalog costs its full size every turn today. That is not an argument for the command layer either —
-it is an argument for finding out whether the Anthropic path caches at all, which costs one live
-chat turn and which no amount of catalog-trimming substitutes for. Build nothing on a cache-hit
-rate until a row in `chat_logs` reports one.
+catalog costs its full size every turn today — 5,034 tokens, not 790.
+
+That is not an argument for the command layer either, for two reasons the measurement turned up:
+
+1. **The saving was argued against the wrong door.** 28,343 chars is the uncapped `/mcp`
+   serialization; the chat door is served 20,134, of which only 7,157 is description and 12,977 is
+   schema. A command layer or a trim that replaces prose cannot reach the two thirds that is schema.
+2. **The question the estimate rests on is still open.** Whether the Anthropic path caches costs one
+   live chat turn to find out, and no amount of catalog-trimming substitutes for the answer.
+
+Build nothing on a cache-hit rate until a row in `chat_logs` reports one.
 
 ## Catalog, as the provider sees it
 
@@ -59,10 +66,43 @@ rate until a row in `chat_logs` reports one.
 | tokens | 5,034 (**estimated**, chars/4) |
 | minimum cacheable prefix | 1,024 tokens on `claude-sonnet-5` — the catalog clears it |
 
-`forge_issues` alone is 7,487 chars, 37% of the catalog.
+`forge_issues` alone is 7,487 chars, 37% of the catalog — and 6,394 of those are its schema.
 
-The issue that commissioned this measurement cited 28,343 chars. That figure does not reproduce
-under any shape the script prints:
+### 28,343 is a different door
+
+The figure ISS-983 and ISS-986 both carry — 28,343 chars — is the **uncapped** serialization, which
+is what `/mcp` serves. The chat door is not served that. `tools/mcp-adapter.ts:buildToolset` puts
+every description through `truncate(..., DESCRIPTION_CAP)` at 1,024 characters, and **5 of the 9
+tools come back cut**:
+
+| Tool | Served to chat | Description | Schema |
+|---|---|---|---|
+| `forge_issues` | 7,487 | 1,037 **cut** | 6,394 |
+| `forge_comments` | 2,876 | 1,037 **cut** | 1,779 |
+| `forge_knowledge` | 2,077 | 633 | 1,379 |
+| `forge_memory_search` | 1,603 | 1,037 **cut** | 497 |
+| `forge_projects_get` | 1,232 | 1,037 **cut** | 133 |
+| `forge_project_pipeline_runs` | 1,941 | 1,037 **cut** | 831 |
+| `forge_metrics_project_step_durations` | 1,143 | 619 | 440 |
+| `forge_metrics_project_timeseries` | 1,076 | 458 | 505 |
+| `forge_pipeline_runs_get` | 689 | 262 | 360 |
+| **total** | **20,134** | **7,157** | **12,977** |
+
+**Two thirds of what the chat door pays for is schema, which no description trim reaches**, and the
+five tools already at the cap give back nothing at all when their prose is shortened — the cap, not
+the prose, is what sets their size. A trim is worth what it moves on the four tools under the cap
+and on the `/mcp` door; on the chat door's headline it is worth close to nothing.
+
+The cut is also not only prose. `buildToolset` appends `readNote` and `spec.describe` **before**
+capping, so on a tool already over 1,024 those tails are what falls off: the chat model is never
+told which actions it may call on `forge_issues` or `forge_comments`, and finds out from a
+`toolError` after spending the call. That is a correctness cost rather than a token cost, it belongs
+to the adapter, and it is left here rather than fixed — ISS-986's rule is that the flag off must be
+byte-identical to today, so moving the serialization now would corrupt the baseline it needs.
+
+### Against the other serializations
+
+Nothing lands on 28,343 under any shape the script prints, including the uncapped ones:
 
 | Serialization | Chars |
 |---|---|
@@ -71,8 +111,9 @@ under any shape the script prints:
 | OpenAI-shaped toolset, project-bound | 20,358 |
 | wire, project-bound, pretty-printed at two spaces | 35,042 |
 
-Nothing lands on 28,343, which is why the script re-derives rather than cites, and why it prints
-all four: a size quoted somewhere else can be matched against the shape that produced it.
+A size quoted somewhere else can be matched against the shape that produced it. The one that
+produced 28,343 is none of these four: it is the catalog before the chat cap, which is the `/mcp`
+door's and not this one's.
 
 ## Pricing assumptions
 
