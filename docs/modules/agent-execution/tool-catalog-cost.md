@@ -49,8 +49,8 @@ catalog costs its full size every turn today — 5,034 tokens, not 790.
 
 That is not an argument for the command layer either, for two reasons the measurement turned up:
 
-1. **The saving was argued against the wrong door.** The figure was the uncapped `/mcp`
-   serialization, which measures 26,366 today; the chat door is served 20,136, of which only 7,157
+1. **The saving was argued against the wrong door.** The figure was the same nine tools with the
+   description cap not applied, which measures 26,366 today; the chat door is served 20,136, of which only 7,157
    is description, 12,318 is schema and 661 is wire framing. A command layer or a trim that replaces
    prose cannot reach the 64% that is schema and framing.
 2. **The question the estimate rests on is still open.** Whether the Anthropic path caches costs one
@@ -71,8 +71,14 @@ Build nothing on a cache-hit rate until a row in `chat_logs` reports one.
 
 ### The costed figure is a different door
 
-The figure ISS-983 and ISS-986 both carry — 28,343 chars — is the **uncapped** serialization, which
-is what `/mcp` serves, measured at `b4850a2e`; that door is 26,366 as of this run. The chat door is not served that. `tools/mcp-adapter.ts:buildToolset` puts
+The figure ISS-983 and ISS-986 both carry — 28,343 chars — is the **uncapped** serialization of the
+same nine tools, measured at `b4850a2e`; that shape is 26,366 as of this run. The chat door is not served that.
+
+It is **not** the `/mcp` door, and an earlier draft of this report called it one. `/mcp` is
+`mcp/server.ts`'s `ListToolsRequestSchema` handler, which serves a different and far longer tool
+list and spells the key `inputSchema`; the shape priced here is the provider wire, which spells it
+`input_schema`. Nothing in this report measures `/mcp`, and `catalogVariants()` carries a guard
+saying so. `tools/mcp-adapter.ts:buildToolset` puts
 every description through `truncate(..., DESCRIPTION_CAP)` at 1,024 characters, and **5 of the 9
 tools come back cut**:
 
@@ -96,7 +102,7 @@ the script prints that sum, because a remainder reported as schema overstates wh
 could ever reach. And the
 five tools already at the cap give back nothing at all when their prose is shortened — the cap, not
 the prose, is what sets their size. A trim is worth what it moves on the four tools under the cap
-and on the `/mcp` door; on the chat door's headline it is worth close to nothing.
+and on the uncapped shape; on the chat door's headline it is worth close to nothing.
 
 The cut is also not only prose. `buildToolset` appends `readNote` and `spec.describe` **before**
 capping, so on a tool already over 1,024 those tails are what falls off: the chat model is never
@@ -107,20 +113,20 @@ byte-identical to today, so moving the serialization now would corrupt the basel
 
 ### Against the other serializations
 
-Every shape below is derived by the script, including the uncapped `/mcp` one the 28,343 figure came
-from — a report that could not reproduce that door's figure would leave the quote unfalsifiable:
+Every shape below is derived by the script, including the uncapped one the 28,343 figure came
+from — a report that could not reproduce that figure would leave the quote unfalsifiable:
 
 | Serialization | Chars |
 |---|---|
 | wire, project-bound — what is priced above | 20,136 |
-| **uncapped, descriptions whole — the `/mcp` door** | **26,366** |
+| **uncapped, descriptions whole — the chat nine before the cap** | **26,366** |
 | wire, unbound — `projectId` left in every schema | 21,769 |
 | OpenAI-shaped toolset, project-bound | 20,360 |
 | wire, project-bound, pretty-printed at two spaces | 35,044 |
 
-**The `/mcp` door measures 26,366 here, not the 28,343 ISS-983 and ISS-986 both carried.** The
+**The uncapped shape measures 26,366 here, not the 28,343 ISS-983 and ISS-986 both carried.** The
 difference is ISS-984, which trimmed `forge_issues`' description and landed before this measurement;
-28,343 was that door's size at `b4850a2e` and is no longer anything's size. This is the figure this
+28,343 was that shape's size at `b4850a2e` and is no longer anything's size. This is the figure this
 report re-derives rather than cites, which is what ISS-984's own rule asks of whichever of the two
 lands second.
 

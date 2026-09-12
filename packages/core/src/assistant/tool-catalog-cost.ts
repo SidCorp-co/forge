@@ -84,8 +84,9 @@ export function measureLiveCatalog(): CatalogMeasurement {
   };
 }
 
-/** The chat door's own composition with the cap not applied — what `/mcp` serves, which sends every description whole. */
-// cm:guard this variant must be built from `CHAT_TOOL_ALLOWLIST`'s factories directly and NOT from `buildProjectToolset`, whose `buildToolset` has already truncated at `DESCRIPTION_CAP` — measuring the capped output and calling it the uncapped door is the substitution this whole module exists to refuse (ISS-983)
+/** The chat door's own nine tools with `DESCRIPTION_CAP` not applied — the shape the 28,343 figure was taken in, which is NOT what `/mcp` serves. */
+// cm:guard this variant must be built from `CHAT_TOOL_ALLOWLIST`'s factories directly and NOT from `buildProjectToolset`, whose `buildToolset` has already truncated at `DESCRIPTION_CAP` — measuring the capped output and calling it the uncapped one is the substitution this whole module exists to refuse (ISS-983)
+// cm:guard this is NOT the `/mcp` door and must never be labelled one: `mcp/server.ts`'s ListToolsRequestSchema handler serves a different and much larger tool list and spells the key `inputSchema`, where the provider wire this measures spells it `input_schema` (ISS-983)
 export function uncappedCatalogChars(ctx: Parameters<typeof buildProjectToolset>[0]): number {
   const whole = CHAT_TOOL_ALLOWLIST.map((spec) => {
     const tool = spec.factory(ctx);
@@ -100,7 +101,7 @@ export function uncappedCatalogChars(ctx: Parameters<typeof buildProjectToolset>
 
 /**
  * The same nine tools under every serialization anyone might have counted: the wire form this
- * module prices, the uncapped `/mcp` form the proposal's figure came from, the OpenAI-shaped
+ * module prices, the uncapped form the proposal's 28,343 figure came from, the OpenAI-shaped
  * toolset it is built from, the unbound form that keeps the `projectId` a bound context strips,
  * and the pretty-printed form. A catalog size quoted somewhere else can be matched against the
  * shape that produced it instead of argued about.
@@ -120,7 +121,7 @@ export function catalogVariants(catalog: CatalogMeasurement): [string, number][]
   }).tools;
   return [
     ['wire, project-bound — what this module prices', catalog.chars],
-    ['uncapped, descriptions whole — the /mcp door', uncappedCatalogChars(boundCtx)],
+    ['uncapped, descriptions whole — the chat nine before the cap', uncappedCatalogChars(boundCtx)],
     [
       'wire, unbound — projectId left in every schema',
       JSON.stringify(serializeCatalogForWire(unbound)).length,

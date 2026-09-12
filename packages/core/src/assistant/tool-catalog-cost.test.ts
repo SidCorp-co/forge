@@ -170,12 +170,20 @@ describe('the serialization a quoted figure came from', () => {
     expect(variants.size).toBe(5);
   });
 
-  // cm:guard the uncapped shape is the /mcp door's and MUST be derived, never carried: the report quotes a figure for it, and a variant list that cannot produce that figure leaves the quote unfalsifiable (ISS-983 F1)
-  it('derives the uncapped /mcp shape, and it is larger than the capped chat one', () => {
+  // cm:guard the uncapped shape MUST be derived, never carried: the report quotes a figure for it, and a variant list that cannot produce that figure leaves the quote unfalsifiable (ISS-983 F1)
+  it('derives the uncapped shape, and it is larger than the capped chat one', () => {
     const catalog = measureLiveCatalog();
     const variants = new Map(catalogVariants(catalog));
-    const uncapped = variants.get('uncapped, descriptions whole — the /mcp door');
+    const uncapped = variants.get('uncapped, descriptions whole — the chat nine before the cap');
     expect(uncapped).toBeGreaterThan(catalog.chars);
+  });
+
+  // cm:guard no variant label may claim `/mcp`: that door is `mcp/server.ts`'s ListToolsRequestSchema handler, a different tool list under a different key spelling, and naming it here is the substitution this module exists to refuse (ISS-983)
+  it('claims no variant is the /mcp door, because none of them is', () => {
+    const catalog = measureLiveCatalog();
+    for (const [label] of catalogVariants(catalog)) {
+      expect(label).not.toMatch(/mcp/i);
+    }
   });
 
   it('reads the uncapped shape past the cap the chat door applies', () => {
