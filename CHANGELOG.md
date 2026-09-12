@@ -318,7 +318,7 @@
   vanishing, and the issues carrying no module at all are their own row rather than being dropped.
   The aggregation reads `issue_labels` joined to `kind='module'` labels and nothing else: there is
   no second store of module membership. Flow:
-  [`docs/flows/issue-work-module-rollup-read.html`](docs/flows/issue-work-module-rollup-read.html).
+  [`docs/flows/issue-work.html`](docs/flows/issue-work.html).
 - **A project's four module diagrams — mindmap, context, user flow and swimlane — are now generated
   from its module taxonomy instead of drawn by hand.** `GET /api/projects/:id/module-diagrams/:kind`
   computes the Mermaid inside the request from the `kind='module'` labels and the knowledge nodes
