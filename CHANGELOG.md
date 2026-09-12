@@ -3987,6 +3987,36 @@
 
 ### Changed
 
+- **The workspace dashboard now tells you whether anything is actually running.** It used to open
+  with throughput for the last seven days and an average cycle time — figures that read the same
+  whether the control plane was busy or had not executed anything in three days. On 2026-09-12 it
+  did exactly that: forty-two runs were counted as work in flight while not one of them had a live
+  job under it, and nothing on the screen said so. The dashboard is now five sections, in the order
+  the questions actually get asked. Is it alive: jobs running, queued and held, runs that were
+  claimed with nothing under them, how long since anything happened, and a thirty-day trace that
+  draws a flat line rather than an empty box when the answer is "nothing". Where the work is
+  sitting: the unfinished issues split into open, in flight, awaiting release and blocked on a
+  person, with every project ranked by how long it has gone without a run — and a project that has
+  never run one says that, instead of being shown as the quietest. What needs someone: a ranked
+  list where each row says whether a person or the machine ends it, including the five things the
+  old inbox never mentioned — stuck runs, in-flight issues nobody is working, work waiting to be
+  released, projects holding a backlog with no pipeline at all, and projects gone quiet. Which way
+  the flow is going: twelve weeks of issues created against issues finished, and the backlog they
+  leave behind. Whether the output holds: how much closed with merge evidence, what got reopened,
+  fix work against first-pass work, which lane the failures are in, and what share of agent-session
+  failures nobody has classified.
+
+- **Every number on it opens the list behind it.** A count, a bar or a cell shows you the records it
+  was counted from — and where an exact list cannot be shown, the figure is drawn plainly and is not
+  clickable, rather than offering a door onto approximately the right rows. Where a list is longer
+  than the response carries, the panel says how many it is showing and how many exist.
+
+- **The issues list takes a `status` filter in its address.** A dashboard cell links to exactly the
+  statuses it counted rather than to the nearest tab.
+
+- **Spend has left the workspace dashboard.** It is an operational surface; money lives on Usage.
+
+
 - **The rules `forge_issues` carries now reach the model reading them, in a third fewer characters.**
   That tool's description was 6,381 characters and the largest single item in the nine-tool catalog
   every assistant turn ships — more prose than the 6,619-character schema beside it. The chat

@@ -1,191 +1,346 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from "vitest";
 import {
-  aggregateStatusDistribution,
-  groupWorkBuckets,
-  perProjectWorkload,
-  workspaceKpis,
-} from './derive';
-import { workspaceTotals } from '@/features/projects/derive';
-import type { ProjectConsoleItem, ProjectHealthRow } from '@/features/projects/types';
+  ACTION_ORDER,
+  actionQueue,
+  bucketHref,
+  formatElapsed,
+  projectSilenceRows,
+  qualityRates,
+  silenceMark,
+  waffleCells,
+} from "./derive";
+import type {
+  PulseIssueIdentity,
+  PulseProjectIdentity,
+  PulseProjectRow,
+  PulseQuality,
+  PulseResponse,
+  PulseRunIdentity,
+  PulseThresholds,
+} from "./types";
 
-function healthRow(over: Partial<ProjectHealthRow> & { id: string }): ProjectHealthRow {
+const THRESHOLDS: PulseThresholds = {
+  abandonedIssueSeconds: 3600,
+  releaseWaitingSeconds: 86_400,
+  projectSilenceSeconds: 604_800,
+  silenceWarnSeconds: 86_400,
+  silenceAlarmSeconds: 259_200,
+  identityCap: 50,
+};
+
+const NOW = Date.parse("2026-09-12T12:00:00.000Z");
+
+const issue = (ref: string, ageSeconds: number): PulseIssueIdentity => ({
+  documentId: `doc-${ref}`,
+  issueRef: ref,
+  title: `${ref} title`,
+  status: "in_progress",
+  projectSlug: "forge-dev",
+  ageSeconds,
+});
+
+const run = (id: string, ageSeconds: number): PulseRunIdentity => ({
+  runId: id,
+  projectSlug: "forge-dev",
+  issueRef: null,
+  issueDocId: null,
+  ageSeconds,
+});
+
+const project = (
+  slug: string,
+  backlog: number,
+  lastIssueRunAt: string | null,
+): PulseProjectIdentity => ({ id: `p-${slug}`, slug, name: slug, backlog, lastIssueRunAt });
+
+const projectRow = (over: Partial<PulseProjectRow> & { slug: string }): PulseProjectRow => ({
+  id: `p-${over.slug}`,
+  name: over.slug,
+  open: 0,
+  inProgress: 0,
+  awaitingRelease: 0,
+  humanBlocked: 0,
+  stuckRuns: 0,
+  abandonedIssues: 0,
+  lastIssueRunAt: null,
+  ...over,
+});
+
+const EMPTY_QUALITY: PulseQuality = {
+  finished: { merged: 0, closedUnmerged: 0, dropped: 0 },
+  reopened: { issues: 0, events: 0 },
+  rework: { fix: 0, code: 0 },
+  runFailure: {
+    pipeline: { failed: 0, total: 0 },
+    scheduler: { failed: 0, total: 0 },
+    other: { failed: 0, total: 0 },
+  },
+  sessionFailures: [],
+  pipelineFlow: [],
+};
+
+function pulse(over: {
+  stuckRuns?: { total: number; shown: PulseRunIdentity[] };
+  abandoned?: { total: number; shown: PulseIssueIdentity[] };
+  releaseWaiting?: { total: number; shown: PulseIssueIdentity[] };
+  silentProjects?: { total: number; shown: PulseProjectIdentity[] };
+  neverRanProjects?: { total: number; shown: PulseProjectIdentity[] };
+  perProject?: PulseProjectRow[];
+  quality?: PulseQuality;
+} = {}): PulseResponse {
   return {
-    id: over.id,
-    projectName: over.projectName ?? over.id,
-    projectSlug: over.projectSlug ?? over.id,
-    projectMeta: {},
-    description: over.description ?? null,
-    repoPath: over.repoPath ?? null,
-    throughput: over.throughput ?? 0,
-    totalActive: over.totalActive ?? 0,
-    statusDistribution: over.statusDistribution ?? {},
-    blockers: over.blockers ?? [],
-    pendingEscalations: over.pendingEscalations ?? 0,
-    avgCycleTimeDays: over.avgCycleTimeDays ?? 0,
-    liveRuns: over.liveRuns ?? 0,
-    runnerCount: over.runnerCount ?? 0,
-    spend24hUsd: over.spend24hUsd ?? 0,
-    memberCount: over.memberCount ?? 0,
-    members: over.members ?? [],
-    lastActivityAt: over.lastActivityAt ?? null,
+    generatedAt: new Date(NOW).toISOString(),
+    thresholds: THRESHOLDS,
+    liveness: {
+      jobsRunning: 0,
+      jobsQueued: 0,
+      jobsHeld: 0,
+      liveJobs: { total: 0, shown: [] },
+      stuckRuns: over.stuckRuns ?? { total: 0, shown: [] },
+      lastJobAt: null,
+      silenceSeconds: null,
+      heartbeat: [],
+      devices: { online: 0, draining: 0, total: 0 },
+    },
+    work: {
+      buckets: { open: 0, inProgress: 0, awaitingRelease: 0, humanBlocked: 0 },
+      abandoned: over.abandoned ?? { total: 0, shown: [] },
+      releaseWaiting: over.releaseWaiting ?? { total: 0, shown: [] },
+      silentProjects: over.silentProjects ?? { total: 0, shown: [] },
+      neverRanProjects: over.neverRanProjects ?? { total: 0, shown: [] },
+      humanBlockedAges: [],
+      perProject: over.perProject ?? [],
+    },
+    flow: [],
+    quality: over.quality ?? EMPTY_QUALITY,
   };
 }
 
-function consoleItem(over: Partial<ProjectConsoleItem> & { id: string }): ProjectConsoleItem {
-  return {
-    id: over.id,
-    slug: over.slug ?? over.id,
-    name: over.name ?? over.id,
-    orgId: over.orgId ?? 'org-1',
-    orgName: over.orgName ?? 'Org One',
-    orgIsPersonal: over.orgIsPersonal ?? true,
-    role: over.role ?? 'admin',
-    createdAt: over.createdAt ?? '2026-01-01T00:00:00.000Z',
-    description: over.description ?? null,
-    repoPath: over.repoPath ?? null,
-    health: over.health ?? 'idle',
-    liveRuns: over.liveRuns ?? 0,
-    openIssues: over.openIssues ?? 0,
-    runnerCount: over.runnerCount ?? 0,
-    spend24hUsd: over.spend24hUsd ?? 0,
-    memberCount: over.memberCount ?? 0,
-    members: over.members ?? [],
-    lastActivityAt: over.lastActivityAt ?? null,
-    pinned: over.pinned ?? false,
-  };
-}
-
-describe('aggregateStatusDistribution', () => {
-  it('sums status counts across projects', () => {
-    const rows = [
-      healthRow({ id: 'a', statusDistribution: { open: 2, in_progress: 1 } }),
-      healthRow({ id: 'b', statusDistribution: { open: 3, closed: 5 } }),
-    ];
-    expect(aggregateStatusDistribution(rows)).toEqual({ open: 5, in_progress: 1, closed: 5 });
+describe("silenceMark", () => {
+  it("reads both marks off the response and not off a constant", () => {
+    expect(silenceMark(null, THRESHOLDS)).toBe("calm");
+    expect(silenceMark(THRESHOLDS.silenceWarnSeconds - 1, THRESHOLDS)).toBe("calm");
+    expect(silenceMark(THRESHOLDS.silenceWarnSeconds, THRESHOLDS)).toBe("warn");
+    expect(silenceMark(THRESHOLDS.silenceAlarmSeconds, THRESHOLDS)).toBe("alarm");
   });
 
-  it('handles undefined / empty input', () => {
-    expect(aggregateStatusDistribution(undefined)).toEqual({});
-    expect(aggregateStatusDistribution([])).toEqual({});
+  // cm:guard the cutoffs must follow the RESPONSE, so this halves both marks and expects the verdict to move with them — a client comparing against its own constant passes every assertion above and fails only this one (ISS-988 criterion 23)
+  it("moves its verdict when the response moves its thresholds", () => {
+    const halved = {
+      ...THRESHOLDS,
+      silenceWarnSeconds: THRESHOLDS.silenceWarnSeconds / 2,
+      silenceAlarmSeconds: THRESHOLDS.silenceAlarmSeconds / 2,
+    };
+    const seconds = THRESHOLDS.silenceWarnSeconds - 1;
+    expect(silenceMark(seconds, THRESHOLDS)).toBe("calm");
+    expect(silenceMark(seconds, halved)).toBe("warn");
   });
 });
 
-describe('groupWorkBuckets', () => {
-  it('folds statuses into semantic-tone buckets and excludes closed/draft', () => {
-    const { buckets, total } = groupWorkBuckets({
-      open: 2,
-      confirmed: 1,
-      approved: 3,
-      in_progress: 4,
-      testing: 2,
-      needs_info: 1,
-      awaiting_release: 1,
-      on_hold: 1,
-      closed: 50, // excluded from the in-flight view
-      draft: 9, // excluded
+describe("bucketHref", () => {
+  it("names every status the bucket counted, comma-joined", () => {
+    expect(bucketHref("forge-dev", "humanBlocked")).toBe(
+      "/projects/forge-dev/issues?status=waiting,needs_info,on_hold",
+    );
+  });
+
+  it("narrows in-progress to the five statuses that bucket is drawn from", () => {
+    const href = bucketHref("erp", "inProgress");
+    expect(href).toContain("status=in_progress,developed,testing,tested,reopen");
+    expect(href).not.toContain("closed");
+  });
+});
+
+describe("waffleCells", () => {
+  it("carries each bucket's own count rather than a share of a fixed grid", () => {
+    const cells = waffleCells({
+      open: 342,
+      inProgress: 79,
+      awaitingRelease: 0,
+      humanBlocked: 70,
     });
-    const by = Object.fromEntries(buckets.map((b) => [b.key, b.count]));
-    expect(by.queued).toBe(6); // open + confirmed + approved (neutral)
-    expect(by.progress).toBe(6); // in_progress + testing (active)
-    expect(by.attention).toBe(1); // needs_info (a human must act)
-    expect(by.ready).toBe(1); // cm:why `ready` is the awaiting_release bucket — work that succeeded and is waiting on a person to release it
-    expect(by.blocked).toBe(1); // on_hold (calm ink, NOT red)
-    // total counts only the bucketed (in-flight) statuses — not closed/draft.
-    expect(total).toBe(15);
+    expect(cells.map((c) => c.count)).toEqual([342, 79, 0, 70]);
   });
 
-  it('always returns all five tone buckets in pipeline order', () => {
-    const { buckets } = groupWorkBuckets({});
-    expect(buckets.map((b) => b.key)).toEqual([
-      'queued',
-      'progress',
-      'attention',
-      'ready',
-      'blocked',
-    ]);
-    expect(buckets.every((b) => b.count === 0)).toBe(true);
-  });
-
-  it('never colors a benign bucket with the failure(red) tone', () => {
-    const { buckets } = groupWorkBuckets({});
-    // failure-red token is var(--red-500); no work-distribution bucket uses it.
-    expect(buckets.every((b) => !b.color.includes('red'))).toBe(true);
+  it("keeps an all-zero bucket as a cell so the reader sees the zero", () => {
+    const cells = waffleCells({ open: 0, inProgress: 0, awaitingRelease: 0, humanBlocked: 0 });
+    expect(cells).toHaveLength(4);
   });
 });
 
-describe('perProjectWorkload', () => {
-  const items = [
-    consoleItem({ id: 'a', health: 'healthy' }),
-    consoleItem({ id: 'b', health: 'attention' }),
-    consoleItem({ id: 'c', health: 'idle' }),
-    consoleItem({ id: 'd', health: 'down' }),
-  ];
-  const rows = [
-    healthRow({ id: 'a', statusDistribution: { in_progress: 1 } }), // 1 in flight
-    healthRow({ id: 'b', statusDistribution: { open: 2, waiting: 1 } }), // 3 in flight, attention
-    healthRow({ id: 'c', statusDistribution: { open: 5 } }), // 5 in flight, not attention
-    healthRow({ id: 'd', statusDistribution: {} }), // 0 in flight, attention (down)
-  ];
-
-  it('puts attention/down projects first, then most in-flight work', () => {
-    // b + d (attention) lead; among them total desc puts b (3) before d (0).
-    // Then healthy/idle by total desc: c (5) before a (1).
-    expect(perProjectWorkload(items, rows, 4).map((w) => w.project.id)).toEqual([
-      'b',
-      'd',
-      'c',
-      'a',
-    ]);
+describe("actionQueue", () => {
+  it("names one row per condition that holds records, and no row for an empty one", () => {
+    const rows = actionQueue(
+      pulse({
+        stuckRuns: { total: 2, shown: [run("r1", 600), run("r2", 60)] },
+        abandoned: { total: 1, shown: [issue("ISS-1", 100)] },
+      }),
+      NOW,
+    );
+    expect(rows.map((r) => r.key)).toEqual(["stuckRuns", "abandonedIssues"]);
   });
 
-  it('buckets each project from its OWN statusDistribution, not the workspace aggregate', () => {
-    const workload = perProjectWorkload(items, rows, 4);
-    const b = workload.find((w) => w.project.id === 'b');
-    expect(b?.total).toBe(3);
-    const byKey = Object.fromEntries(b?.buckets.map((bk) => [bk.key, bk.count]) ?? []);
-    expect(byKey.queued).toBe(2);
-    expect(byKey.attention).toBe(1);
+  it("says who ends each condition", () => {
+    const rows = actionQueue(
+      pulse({
+        stuckRuns: { total: 1, shown: [run("r1", 10)] },
+        abandoned: { total: 1, shown: [issue("ISS-1", 10)] },
+      }),
+      NOW,
+    );
+    expect(rows.find((r) => r.key === "stuckRuns")?.owner).toBe("machine");
+    expect(rows.find((r) => r.key === "abandonedIssues")?.owner).toBe("person");
   });
 
-  it('falls back to empty distribution when a project has no health row yet', () => {
-    const workload = perProjectWorkload(items, undefined, 4);
-    expect(workload.every((w) => w.total === 0)).toBe(true);
+  // cm:guard the oldest record has to WIN over the larger count, so this plants a 1-record row that is older than a 9-record one — an ordering keyed on count first passes every other assertion here and fails only this (ISS-988 criterion 33)
+  it("orders by the oldest record, oldest first, over the bigger count", () => {
+    const rows = actionQueue(
+      pulse({
+        stuckRuns: { total: 9, shown: [run("r1", 60)] },
+        abandoned: { total: 1, shown: [issue("ISS-1", 99_999)] },
+      }),
+      NOW,
+    );
+    expect(rows.map((r) => r.key)).toEqual(["abandonedIssues", "stuckRuns"]);
   });
 
-  it('caps at the limit and does not mutate input', () => {
-    const copy = [...items];
-    expect(perProjectWorkload(items, rows, 2)).toHaveLength(2);
-    expect(items).toEqual(copy);
+  it("breaks a tie on the oldest record by the larger record count", () => {
+    const rows = actionQueue(
+      pulse({
+        stuckRuns: { total: 1, shown: [run("r1", 500)] },
+        abandoned: { total: 7, shown: [issue("ISS-1", 500)] },
+      }),
+      NOW,
+    );
+    expect(rows.map((r) => r.key)).toEqual(["abandonedIssues", "stuckRuns"]);
+  });
+
+  // cm:guard two rows alike in age AND count must fall back to ACTION_ORDER, or the same response renders in a different order on each refresh — the assertion is the FIXED sequence, not merely that both rows appear (ISS-988 criterion 34)
+  it("falls back to the fixed order when age and count both tie", () => {
+    const rows = actionQueue(
+      pulse({
+        silentProjects: { total: 1, shown: [project("a", 3, "2026-09-12T11:50:00.000Z")] },
+        releaseWaiting: { total: 1, shown: [issue("ISS-1", 600)] },
+      }),
+      NOW,
+    );
+    expect(rows.map((r) => r.key)).toEqual(["releaseWaiting", "silentProjects"]);
+    expect(ACTION_ORDER.indexOf("releaseWaiting")).toBeLessThan(
+      ACTION_ORDER.indexOf("silentProjects"),
+    );
+  });
+
+  it("carries the whole count beside the records the response named", () => {
+    const rows = actionQueue(
+      pulse({ abandoned: { total: 70, shown: [issue("ISS-1", 10), issue("ISS-2", 20)] } }),
+      NOW,
+    );
+    expect(rows[0].count).toBe(70);
+    expect(rows[0].records).toHaveLength(2);
+  });
+
+  // cm:guard a never-ran project is the EXTREME of "how long since a run"; giving it a zero age sorts the worst row last, which is the inverse of what the queue is for (ISS-988 criterion 30)
+  it("sorts a project that has never run above one merely silent", () => {
+    const rows = actionQueue(
+      pulse({
+        neverRanProjects: { total: 1, shown: [project("never", 200, null)] },
+        silentProjects: { total: 1, shown: [project("quiet", 5, "2026-08-01T00:00:00.000Z")] },
+      }),
+      NOW,
+    );
+    expect(rows[0].key).toBe("neverRanProjects");
+  });
+
+  it("includes all five conditions the inbox does not carry", () => {
+    const rows = actionQueue(
+      pulse({
+        stuckRuns: { total: 1, shown: [run("r", 5)] },
+        abandoned: { total: 1, shown: [issue("ISS-1", 5)] },
+        releaseWaiting: { total: 1, shown: [issue("ISS-2", 5)] },
+        neverRanProjects: { total: 1, shown: [project("n", 1, null)] },
+        silentProjects: { total: 1, shown: [project("s", 1, "2026-08-01T00:00:00.000Z")] },
+      }),
+      NOW,
+    );
+    expect(new Set(rows.map((r) => r.key))).toEqual(new Set(ACTION_ORDER));
   });
 });
 
-describe('workspaceKpis', () => {
-  it('widens totals with summed throughput + mean cycle time over rows with data', () => {
-    const items = [
-      consoleItem({ id: 'a', health: 'attention', liveRuns: 1, openIssues: 2, runnerCount: 1, spend24hUsd: 1 }),
-      consoleItem({ id: 'b', health: 'idle', liveRuns: 0, openIssues: 0, runnerCount: 0, spend24hUsd: 0 }),
-    ];
-    const rows = [
-      healthRow({ id: 'a', throughput: 4, avgCycleTimeDays: 2 }),
-      healthRow({ id: 'b', throughput: 1, avgCycleTimeDays: 0 }), // no data → excluded from mean
-    ];
-    const kpis = workspaceKpis(workspaceTotals(items), items, rows);
-    expect(kpis.projects).toBe(2);
-    expect(kpis.throughput).toBe(5);
-    expect(kpis.avgCycleTimeDays).toBe(2); // mean over the single row with data
-    expect(kpis.attentionProjects).toBe(1);
+describe("projectSilenceRows", () => {
+  it("orders by how long each project has gone without an issue run", () => {
+    const rows = projectSilenceRows(
+      pulse({
+        perProject: [
+          projectRow({ slug: "recent", lastIssueRunAt: "2026-09-12T11:00:00.000Z" }),
+          projectRow({ slug: "old", lastIssueRunAt: "2026-08-01T00:00:00.000Z" }),
+        ],
+      }),
+      NOW,
+    );
+    expect(rows.map((r) => r.slug)).toEqual(["old", "recent"]);
   });
 
-  it('null cycle time when no project has resolved anything', () => {
-    const items = [consoleItem({ id: 'a' })];
-    const rows = [healthRow({ id: 'a', avgCycleTimeDays: 0 })];
-    expect(workspaceKpis(workspaceTotals(items), items, rows).avgCycleTimeDays).toBeNull();
+  // cm:guard a never-ran project is FLAGGED rather than given a silence figure: rendering "no pipeline has ever run here" as "silent for 103 days" is a different fact the reader would act on differently (ISS-988 criterion 30)
+  it("flags a project that has never run instead of dating it", () => {
+    const rows = projectSilenceRows(
+      pulse({
+        perProject: [
+          projectRow({ slug: "old", lastIssueRunAt: "2026-08-01T00:00:00.000Z" }),
+          projectRow({ slug: "never", lastIssueRunAt: null }),
+        ],
+      }),
+      NOW,
+    );
+    expect(rows[0].slug).toBe("never");
+    expect(rows[0].neverRan).toBe(true);
+    expect(rows[0].silenceSeconds).toBeNull();
+    expect(rows[1].neverRan).toBe(false);
+  });
+});
+
+describe("qualityRates", () => {
+  // cm:guard the rate is computed from summed COUNTS: this plants a 1-of-1 project beside a 1-of-99 one, where a mean of the two per-project rates gives ~0.5 and the honest figure is 0.02 (ISS-988 criterion 52)
+  it("is a rate over the totals, never a mean of per-project rates", () => {
+    const rates = qualityRates({
+      ...EMPTY_QUALITY,
+      finished: { merged: 2, closedUnmerged: 98, dropped: 0 },
+    });
+    expect(rates.finishedTotal).toBe(100);
+    expect(rates.mergedShare).toBeCloseTo(0.02, 5);
   });
 
-  it('tolerates undefined health rows', () => {
-    const items = [consoleItem({ id: 'a' })];
-    const kpis = workspaceKpis(workspaceTotals(items), items, undefined);
-    expect(kpis.throughput).toBe(0);
-    expect(kpis.avgCycleTimeDays).toBeNull();
+  it("reports no rework ratio where nothing was coded, rather than dividing by zero", () => {
+    const rates = qualityRates({ ...EMPTY_QUALITY, rework: { fix: 3, code: 0 } });
+    expect(rates.reworkRatio).toBeNull();
+  });
+
+  // cm:guard an unset failure reason arrives as the row `unclassified` and is counted, never dropped: 66% of failures carried no reason on 2026-09-12, and a share computed over the classified rows alone reports a third of the truth as the whole (ISS-988 criterion 21)
+  it("counts the unclassified reason into the share rather than skipping it", () => {
+    const rates = qualityRates({
+      ...EMPTY_QUALITY,
+      sessionFailures: [
+        { reason: "unclassified", count: 66 },
+        { reason: "runner_unreachable", count: 34 },
+      ],
+    });
+    expect(rates.sessionFailureTotal).toBe(100);
+    expect(rates.unclassifiedShare).toBeCloseTo(0.66, 5);
+  });
+
+  it("reports no unclassified share where nothing failed", () => {
+    expect(qualityRates(EMPTY_QUALITY).unclassifiedShare).toBeNull();
+  });
+});
+
+describe("formatElapsed", () => {
+  it("says never for an absent age rather than printing a zero", () => {
+    expect(formatElapsed(null)).toBe("never");
+  });
+
+  it("steps through seconds, minutes, hours and days", () => {
+    expect(formatElapsed(45)).toBe("45s");
+    expect(formatElapsed(120)).toBe("2m");
+    expect(formatElapsed(7200)).toBe("2h");
+    expect(formatElapsed(259_200)).toBe("3d");
   });
 });

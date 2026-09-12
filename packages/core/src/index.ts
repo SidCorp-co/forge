@@ -105,6 +105,7 @@ import { logger } from './logger.js';
 import { mcpHandler } from './mcp/handler.js';
 import { mcpRequestClass } from './mcp/request-class.js';
 import { meAttentionRoutes } from './me/attention-routes.js';
+import { mePulseRoutes } from './me/pulse-routes.js';
 import { meRecentChangesRoutes } from './me/recent-changes-routes.js';
 import { registerCandidatesDecay } from './memory/candidates-decay.js';
 import { registerCandidatesWorker } from './memory/candidates-observer.js';
@@ -378,6 +379,7 @@ app.route('/api/skill-activity', skillActivityRoutes);
 app.route('/api/update-packets', updatePacketRoutes);
 app.route('/api/notifications', notificationRoutes);
 app.route('/api/me', meAttentionRoutes);
+app.route('/api/me', mePulseRoutes);
 app.route('/api', questionRoutes);
 app.route('/api', speakerLinkProjectRoutes);
 app.route('/api', speakerLinkMeRoutes);
@@ -439,9 +441,7 @@ const isMain = import.meta.url === `file://${process.argv[1]}`;
 if (isMain) {
   const port = env.PORT;
 
-  // memory-v2 phase 0 — the memories.embedding column is vector(1536); a
-  // mismatched EMBEDDINGS_DIM would pass client-side validation and then fail
-  // (or silently corrupt) at insert time. Crash loudly at boot instead.
+  // cm:guard boot dies here rather than at insert time: `memories.embedding` is a fixed-width vector column, and a mismatched EMBEDDINGS_DIM passes client-side validation and then fails — or silently corrupts — on every write. Relaxing this to a warning trades a loud boot failure for quiet data loss.
   if (env.EMBEDDINGS_DIM !== MEMORY_EMBEDDING_DIM) {
     throw new Error(
       `EMBEDDINGS_DIM=${env.EMBEDDINGS_DIM} does not match the memories.embedding column dimension (${MEMORY_EMBEDDING_DIM}). Changing the embedding dimension requires a migration that rebuilds the column and re-embeds all rows.`,

@@ -102,7 +102,8 @@ export const issuesApi = {
     // cm:why ISS-594 — a SEPARATE param from `label`: core resolves `module` against `kind='module'` rows only, so sending a module id as `label` would match plain labels of the same name
     if (opts.module) params.set("module", opts.module);
     const { status, statusNot, origin } = filterToQueryParams(opts.filter ?? "all");
-    for (const s of status ?? []) params.append("status", s);
+    // cm:why an explicit `status` REPLACES the tab's set rather than intersecting it: a dashboard cell links to the bucket it counted, and intersecting with whatever tab the URL also carries would answer with a subset while the figure above it claimed the whole (ISS-988 criterion 47)
+    for (const s of opts.status ?? status ?? []) params.append("status", s);
     for (const s of statusNot ?? []) params.append("statusNot", s);
     if (origin) params.set("origin", origin);
     return apiClientList<IssueRow>(`/projects/${projectId}/issues/search?${params}`);

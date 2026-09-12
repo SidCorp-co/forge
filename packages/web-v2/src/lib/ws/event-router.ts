@@ -25,9 +25,9 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "issue.deleted": {
 			qc.invalidateQueries({ queryKey: ["issues", "list"] });
 			qc.invalidateQueries({ queryKey: ["issues", "search"] });
-			// ISS-307 — assignment / status edits move issues in/out of the Attention
-			// needs-review + awaiting-input buckets.
+			// cm:why an assignment or status edit moves an issue between the needs-review and awaiting-input buckets, which are derived on read and cached nowhere server-side — so nothing else tells the inbox it is stale (ISS-307)
 			qc.invalidateQueries({ queryKey: ["attention"] });
+			qc.invalidateQueries({ queryKey: ["pulse"] });
 			// ISS-665 — the Overview "Recent changes" panel is driven by
 			// `issues.updatedAt`, which every one of these events bumps.
 			qc.invalidateQueries({ queryKey: ["recent-changes"] });
@@ -40,9 +40,9 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "issue.statusChanged": {
 			qc.invalidateQueries({ queryKey: ["issues", "list"] });
 			qc.invalidateQueries({ queryKey: ["issues", "search"] });
-			// Projects console (ISS-290): open-issue counts / health derive from
-			// issue status, so refresh the batch health rollup.
+			// cm:why the console's open-issue counts and health are derived from issue status, so a transition is the only event that dates the batch rollup (ISS-290)
 			qc.invalidateQueries({ queryKey: ["projects", "health"] });
+			qc.invalidateQueries({ queryKey: ["pulse"] });
 			// cm:why every attention bucket is derived from `issues.status` on read (packages/core/src/me/attention-buckets.ts) and none of them is cached server-side, so a status event is the only signal that the cross-project inbox and its rail badge are stale — nothing else fires for an issue in a project this client is not looking at.
 			qc.invalidateQueries({ queryKey: ["attention"] });
 			// cm:why the Overview "Recent changes" panel is ordered by `issues.updatedAt`, and a status transition is the commonest writer of it — without this the panel keeps the previous ordering until something unrelated refetches (ISS-665).
@@ -77,6 +77,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "comment.deleted": {
 			// cm:why a human comment is the receipt that clears an unseen agent-filed draft (ISS-881), and an @mention arrives as a comment too; without this the row the user just acted on stays on screen until something unrelated refetches.
 			qc.invalidateQueries({ queryKey: ["attention"] });
+			qc.invalidateQueries({ queryKey: ["pulse"] });
 			if (data?.issueId) {
 				qc.invalidateQueries({ queryKey: ["comments", data.issueId] });
 				qc.invalidateQueries({ queryKey: ["activities", data.issueId] });
@@ -87,9 +88,10 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "agent-session.updated":
 		case "agent-session.status":
 		case "agent-session.deleted": {
-			// ISS-291 — the sessions index (`features/sessions`) keys its queries
-			// under ['agent-sessions']; without this the live list never refreshes.
+			// cm:why the sessions index keys its queries under ['agent-sessions'], and nothing else fires for a standalone session, so without this the live list never refreshes (ISS-291)
 			qc.invalidateQueries({ queryKey: ["agent-sessions"] });
+			// cm:why `quality.sessionFailures` counts failed sessions by reason, so a session reaching `failed` is the only event that dates that figure — the issue and job events elsewhere in this switch never fire for a standalone interactive session (ISS-988)
+			qc.invalidateQueries({ queryKey: ["pulse"] });
 			if (data?.sessionId) {
 				qc.invalidateQueries({ queryKey: ["agent-session", data.sessionId] });
 			}
@@ -143,6 +145,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			// ISS-307 — a job flipping to failed (incl. deploy) belongs in Attention's
 			// failed-jobs bucket; refresh the cross-project inbox + rail count.
 			qc.invalidateQueries({ queryKey: ["attention"] });
+			qc.invalidateQueries({ queryKey: ["pulse"] });
 			if (data?.jobId) {
 				qc.invalidateQueries({ queryKey: ["job", data.jobId] });
 			}
@@ -159,6 +162,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			qc.invalidateQueries({ queryKey: ["admin", "ops"] });
 			// Projects console (ISS-290): liveRuns / spend roll up from pipeline_runs.
 			qc.invalidateQueries({ queryKey: ["projects", "health"] });
+			qc.invalidateQueries({ queryKey: ["pulse"] });
 			if (data?.runId) {
 				qc.invalidateQueries({ queryKey: ["pipeline-run", data.runId] });
 			}
@@ -181,6 +185,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			qc.invalidateQueries({ queryKey: ["devices", "me"] });
 			// Projects console (ISS-290): online-runner counts feed per-project health.
 			qc.invalidateQueries({ queryKey: ["projects", "health"] });
+			qc.invalidateQueries({ queryKey: ["pulse"] });
 			// ISS-307 — a runner going offline/online moves it in/out of Attention.
 			qc.invalidateQueries({ queryKey: ["attention"] });
 			return;
@@ -194,6 +199,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "device.revoked": {
 			qc.invalidateQueries({ queryKey: ["devices", "me"] });
 			qc.invalidateQueries({ queryKey: ["projects", "health"] });
+			qc.invalidateQueries({ queryKey: ["pulse"] });
 			return;
 		}
 		// Workspace provisioning progress (project Runners screen live stepper).
@@ -227,6 +233,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 					queryKey: ["projects", data.projectId, "active-runners"],
 				});
 				qc.invalidateQueries({ queryKey: ["projects", "health"] });
+				qc.invalidateQueries({ queryKey: ["pulse"] });
 			}
 			return;
 		}
@@ -240,6 +247,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			qc.invalidateQueries({ queryKey: ["notifications-unread"] });
 			// ISS-307 — unread @-mentions feed Attention's mentions bucket.
 			qc.invalidateQueries({ queryKey: ["attention"] });
+			qc.invalidateQueries({ queryKey: ["pulse"] });
 			// ISS-597 — an invitation_received notification means a new pending
 			// invite; refresh the pending list so the actionable item appears live.
 			qc.invalidateQueries({ queryKey: ["invitations-pending"] });
@@ -330,6 +338,7 @@ export function replayOnReconnect(qc: QueryClient): void {
 	// ISS-307 — refresh the cross-project Attention inbox + rail count after a
 	// dropped connection (its buckets ride issue/job/notification events above).
 	qc.invalidateQueries({ queryKey: ["attention"] });
+	qc.invalidateQueries({ queryKey: ["pulse"] });
 	qc.invalidateQueries({ queryKey: ["devices", "me"] });
 	// cm:why `chat_logs` has no per-row WS broadcast in core, so this plus window-focus and the Refresh button is the whole of the cross-project Activity feed's freshness until a `chat-log.created` event lands (ISS-314).
 	qc.invalidateQueries({ queryKey: ["chat-logs"] });

@@ -1,149 +1,314 @@
-// cm:guard every function here stays PURE — no React, no I/O — because the dashboard's aggregation (status bucketing, spotlight ranking, workspace KPIs) is tested without rendering anything, and one impure helper takes the whole module out of that reach.
-import { TONE_META, type SemanticTone } from '@/design/status';
-import type { ProjectConsoleItem, ProjectHealthRow, WorkspaceTotals } from '@/features/projects/types';
-import { isAttention } from '@/features/projects/derive';
+// web-v2 feature module: workspace overview — PURE derivations over the pulse
+// response. Action-queue rows and their owners, the waffle cells, the age
+// strip, the flow series, the quality rates, and every figure's destination.
+//
+// cm:guard every function here stays PURE — no React, no clock of its own, no I/O — because each one is a rule this surface is judged on (which condition a row stands for, what order the queue reads in, where a figure's door leads) and one impure helper takes the whole module out of the reach of a test that renders nothing.
 
-/**
- * Sum a list of per-project `statusDistribution` maps into one workspace-wide
- * status→count map. Missing keys default to 0; the result only carries statuses
- * that appear in at least one project.
- */
-export function aggregateStatusDistribution(
-  rows: ProjectHealthRow[] | undefined,
-): Record<string, number> {
-  const out: Record<string, number> = {};
-  for (const r of rows ?? []) {
-    for (const [status, count] of Object.entries(r.statusDistribution ?? {})) {
-      out[status] = (out[status] ?? 0) + count;
-    }
-  }
-  return out;
+import { TONE_META } from "@/design/status";
+import {
+  PULSE_BUCKET_LABELS,
+  PULSE_BUCKET_STATUSES,
+  type PulseIssueIdentity,
+  type PulseProjectIdentity,
+  type PulseQuality,
+  type PulseResponse,
+  type PulseThresholds,
+  type PulseWorkBuckets,
+} from "./types";
+
+/** Elapsed seconds as one calm phrase. */
+export function formatElapsed(seconds: number | null): string {
+  if (seconds === null) return "never";
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 48) return `${h}h`;
+  return `${Math.floor(h / 24)}d`;
 }
 
-/** One display bucket on the work-distribution bar. */
-export interface WorkBucket {
-  key: string;
-  label: string;
-  /** CSS color token for the bar segment + legend swatch. */
-  color: string;
-  /** Issue statuses folded into this bucket. */
-  statuses: readonly string[];
-  count: number;
-}
+export type SilenceMark = "calm" | "warn" | "alarm";
 
 /**
- * Workspace work buckets, in pipeline order. ISS-509: buckets are grouped by
- * SEMANTIC TONE and colored from `TONE_META` (one source of truth) — so a status
- * lands on the SAME color here as in its chip and in the project-dashboard donut
- * (e.g. `reopen` is `active`/cobalt in all three; `on_hold` is calm `blocked`
- * ink, NOT red). The terminal `closed`/`draft` statuses are still EXCLUDED —
- * including them would let long-closed work dominate the bar and drown out the
- * in-flight signal the overview is for. `waiting`/`needs_info` (a human must act)
- * split out of the old red "Blocked" lump into their own `attention` bucket.
+ * Which of the response's two marks the silence has passed.
  */
-const BUCKET_DEFS: ReadonlyArray<Omit<WorkBucket, 'count' | 'color'> & { tone: SemanticTone }> = [
-  { key: 'queued', label: 'Queued', tone: 'neutral', statuses: ['open', 'confirmed', 'clarified', 'approved'] },
-  { key: 'progress', label: 'In progress', tone: 'active', statuses: ['in_progress', 'reopen', 'developed', 'testing'] },
-  { key: 'attention', label: 'Needs attention', tone: 'attention', statuses: ['waiting', 'needs_info'] },
-  { key: 'ready', label: 'Ready to ship', tone: 'success', statuses: ['tested', 'awaiting_release'] },
-  { key: 'blocked', label: 'On hold', tone: 'blocked', statuses: ['on_hold'] },
+// cm:guard both marks come off `thresholds` and never off a constant here — the client marking at its own cutoff is how the dashboard starts disagreeing with the figures it draws (ISS-988 criterion 27).
+export function silenceMark(
+  seconds: number | null,
+  thresholds: PulseThresholds,
+): SilenceMark {
+  if (seconds === null) return "calm";
+  if (seconds >= thresholds.silenceAlarmSeconds) return "alarm";
+  if (seconds >= thresholds.silenceWarnSeconds) return "warn";
+  return "calm";
+}
+
+/** Where a figure's records are listed. */
+export type Destination =
+  | { kind: "route"; href: string }
+  | { kind: "panel"; panel: PanelKey }
+  | { kind: "anchor"; anchorId: string };
+
+export type PanelKey = "liveJobs" | "stuckRuns" | ActionKey;
+
+export const BUCKET_ORDER: Array<keyof PulseWorkBuckets> = [
+  "open",
+  "inProgress",
+  "awaitingRelease",
+  "humanBlocked",
 ];
 
-/**
- * Fold an aggregated status distribution into the display buckets above. Always
- * returns all buckets in pipeline order (callers filter `count > 0` for
- * rendering); the `total` is the sum of bucketed counts only (closed/draft are
- * intentionally not counted).
- */
-export function groupWorkBuckets(dist: Record<string, number>): {
-  buckets: WorkBucket[];
-  total: number;
-} {
-  let total = 0;
-  const buckets = BUCKET_DEFS.map((def) => {
-    let count = 0;
-    for (const s of def.statuses) count += dist[s] ?? 0;
-    total += count;
-    const { tone, ...rest } = def;
-    return { ...rest, color: TONE_META[tone].dot, count };
-  });
-  return { buckets, total };
+const BUCKET_TONE: Record<keyof PulseWorkBuckets, keyof typeof TONE_META> = {
+  open: "neutral",
+  inProgress: "active",
+  awaitingRelease: "success",
+  humanBlocked: "attention",
+};
+
+/** The issues list URL that carries exactly the statuses a bucket counted. */
+// cm:edge contract -> packages/web-v2/src/features/issues/components/issues-list-view.tsx — that view reads `?status=` through `statusesFromParam`; a separator other than the comma it splits on silently narrows to the first status alone (ISS-988 criterion 47).
+export function bucketHref(slug: string, bucket: keyof PulseWorkBuckets): string {
+  return `/projects/${slug}/issues?status=${PULSE_BUCKET_STATUSES[bucket].join(",")}`;
 }
 
-/** One project's row on the per-project Workload panel. */
-export interface ProjectWorkload {
-  project: ProjectConsoleItem;
-  buckets: WorkBucket[];
-  total: number;
+export interface WaffleCell {
+  key: keyof PulseWorkBuckets;
+  label: string;
+  count: number;
+  color: string;
+  destination: Destination;
 }
 
+/** The four buckets as waffle categories, workspace-wide. */
+export function waffleCells(buckets: PulseWorkBuckets): WaffleCell[] {
+  return BUCKET_ORDER.map((key) => ({
+    key,
+    label: PULSE_BUCKET_LABELS[key],
+    count: buckets[key],
+    color: TONE_META[BUCKET_TONE[key]].dot,
+    // cm:why a workspace-wide bucket spans every project, and no single issues-list URL can name that set — so its door is the per-project table below it, which breaks the same figure down into rows that each DO have an exact URL (ISS-988 criterion 39)
+    destination: { kind: "anchor", anchorId: "pulse-per-project" } as const,
+  }));
+}
+
+export type ActionKey =
+  | "stuckRuns"
+  | "abandonedIssues"
+  | "releaseWaiting"
+  | "neverRanProjects"
+  | "silentProjects";
+
+export type ActionOwner = "person" | "machine";
+
 /**
- * ISS-665 — replaces the workspace-wide aggregate bar (which could not answer
- * "which project is overloaded") AND the Spotlight panel (its project-level
- * signal — attention + recency — is folded in here via the sort). Buckets
- * each in-scope project's OWN `statusDistribution` (falling back to empty when
- * its health row hasn't loaded/doesn't exist), ranks needs-attention first
- * then most in-flight work, capped at `limit`. Non-mutating.
+ * The tie-break of last resort, so one response renders in one order.
  */
-export function perProjectWorkload(
-  items: ProjectConsoleItem[],
-  healthRows: ProjectHealthRow[] | undefined,
-  limit: number,
-): ProjectWorkload[] {
-  const distByProjectId = new Map<string, Record<string, number>>();
-  for (const r of healthRows ?? []) {
-    distByProjectId.set(r.id, r.statusDistribution ?? {});
+// cm:guard this tuple IS criterion 34's fixed order and the array index is read as the rank — reordering it changes what the dashboard shows without changing a figure, so it moves only with that criterion (ISS-988).
+export const ACTION_ORDER: ActionKey[] = [
+  "stuckRuns",
+  "abandonedIssues",
+  "releaseWaiting",
+  "neverRanProjects",
+  "silentProjects",
+];
+
+const ACTION_META: Record<ActionKey, { label: string; owner: ActionOwner; hint: string }> = {
+  stuckRuns: {
+    label: "Runs claimed but empty",
+    owner: "machine",
+    hint: "The control plane still calls these open and no job is under them.",
+  },
+  abandonedIssues: {
+    label: "In-flight issues nobody is working",
+    owner: "person",
+    hint: "In progress, no live job, idle past the threshold — nothing will pick these up on its own.",
+  },
+  releaseWaiting: {
+    label: "Waiting to be released",
+    owner: "person",
+    hint: "Merged and waiting on a release nobody has run.",
+  },
+  neverRanProjects: {
+    label: "Projects holding a backlog with no pipeline",
+    owner: "person",
+    hint: "These have issues and have never started a run.",
+  },
+  silentProjects: {
+    label: "Projects gone quiet",
+    owner: "machine",
+    hint: "A backlog, and the last run is older than the threshold.",
+  },
+};
+
+export interface ActionRecord {
+  key: string;
+  label: string;
+  detail: string;
+  href: string;
+  ageSeconds: number;
+}
+
+export interface ActionRow {
+  key: ActionKey;
+  label: string;
+  hint: string;
+  owner: ActionOwner;
+  /** Every record the condition holds. */
+  count: number;
+  /** The records the response actually named — never more than `count`. */
+  records: ActionRecord[];
+  oldestSeconds: number;
+}
+
+const issueRecord = (i: PulseIssueIdentity): ActionRecord => ({
+  key: i.documentId,
+  label: i.issueRef,
+  detail: i.title,
+  href: `/projects/${i.projectSlug}/issues/${i.documentId}`,
+  ageSeconds: i.ageSeconds,
+});
+
+const projectRecord = (p: PulseProjectIdentity, now: number): ActionRecord => ({
+  key: p.id,
+  label: p.name,
+  detail: `${p.backlog} ${p.backlog === 1 ? "issue" : "issues"} waiting`,
+  href: `/projects/${p.slug}`,
+  ageSeconds: p.lastIssueRunAt
+    ? Math.max(0, Math.floor((now - new Date(p.lastIssueRunAt).getTime()) / 1000))
+    : Number.MAX_SAFE_INTEGER,
+});
+
+/**
+ * The ranked action queue: one row per condition that has records.
+ */
+// cm:guard the ordering is oldest-first on the OLDEST record, then count, then `ACTION_ORDER` — three keys, because the first two tie whenever two conditions hold the same record ages, and an unstable sort there renders the same response in a different order on every refresh (ISS-988 criteria 33-34).
+// cm:guard a project that has NEVER run takes the largest age rather than a zero: it is the extreme of "how long since a run", and sorting it as if it ran a moment ago buries the worst row at the bottom (ISS-988 criterion 30).
+export function actionQueue(pulse: PulseResponse, nowMs: number): ActionRow[] {
+  const { work } = pulse;
+  const sources: Record<ActionKey, { count: number; records: ActionRecord[] }> = {
+    stuckRuns: {
+      count: pulse.liveness.stuckRuns.total,
+      records: pulse.liveness.stuckRuns.shown.map((r) => ({
+        key: r.runId,
+        label: r.issueRef ?? "Run",
+        detail: r.projectSlug,
+        href: r.issueDocId
+          ? `/projects/${r.projectSlug}/issues/${r.issueDocId}`
+          : `/ops?run=${r.runId}`,
+        ageSeconds: r.ageSeconds,
+      })),
+    },
+    abandonedIssues: {
+      count: work.abandoned.total,
+      records: work.abandoned.shown.map(issueRecord),
+    },
+    releaseWaiting: {
+      count: work.releaseWaiting.total,
+      records: work.releaseWaiting.shown.map(issueRecord),
+    },
+    neverRanProjects: {
+      count: work.neverRanProjects.total,
+      records: work.neverRanProjects.shown.map((p) => projectRecord(p, nowMs)),
+    },
+    silentProjects: {
+      count: work.silentProjects.total,
+      records: work.silentProjects.shown.map((p) => projectRecord(p, nowMs)),
+    },
+  };
+
+  const rows: ActionRow[] = [];
+  for (const key of ACTION_ORDER) {
+    const src = sources[key];
+    if (src.count === 0) continue;
+    rows.push({
+      key,
+      ...ACTION_META[key],
+      count: src.count,
+      records: src.records,
+      oldestSeconds: src.records.reduce((max, r) => Math.max(max, r.ageSeconds), 0),
+    });
   }
-  return items
-    .map((project) => {
-      const { buckets, total } = groupWorkBuckets(distByProjectId.get(project.id) ?? {});
-      return { project, buckets, total };
+
+  return rows.sort((a, b) => {
+    if (a.oldestSeconds !== b.oldestSeconds) return b.oldestSeconds - a.oldestSeconds;
+    if (a.count !== b.count) return b.count - a.count;
+    return ACTION_ORDER.indexOf(a.key) - ACTION_ORDER.indexOf(b.key);
+  });
+}
+
+export interface ProjectSilenceRow {
+  id: string;
+  slug: string;
+  name: string;
+  buckets: PulseWorkBuckets;
+  backlog: number;
+  stuckRuns: number;
+  abandonedIssues: number;
+  lastIssueRunAt: string | null;
+  /** null where the project has never started an issue run. */
+  silenceSeconds: number | null;
+  neverRan: boolean;
+}
+
+/**
+ * Projects ordered by how long each has gone without an issue run.
+ */
+// cm:guard a project that has never run sorts ABOVE every silent one and is flagged `neverRan` rather than given a silence figure — "no pipeline has ever run here" and "the last run was 9 days ago" are different facts, and rendering the first as the second is a longer silence the reader cannot act on (ISS-988 criterion 30).
+export function projectSilenceRows(pulse: PulseResponse, nowMs: number): ProjectSilenceRow[] {
+  return pulse.work.perProject
+    .map((p) => {
+      const buckets: PulseWorkBuckets = {
+        open: p.open,
+        inProgress: p.inProgress,
+        awaitingRelease: p.awaitingRelease,
+        humanBlocked: p.humanBlocked,
+      };
+      const backlog = p.open + p.inProgress + p.awaitingRelease + p.humanBlocked;
+      return {
+        id: p.id,
+        slug: p.slug,
+        name: p.name,
+        buckets,
+        backlog,
+        stuckRuns: p.stuckRuns,
+        abandonedIssues: p.abandonedIssues,
+        lastIssueRunAt: p.lastIssueRunAt,
+        silenceSeconds: p.lastIssueRunAt
+          ? Math.max(0, Math.floor((nowMs - new Date(p.lastIssueRunAt).getTime()) / 1000))
+          : null,
+        neverRan: p.lastIssueRunAt === null,
+      };
     })
     .sort((a, b) => {
-      const aAtt = isAttention(a.project) ? 0 : 1;
-      const bAtt = isAttention(b.project) ? 0 : 1;
-      if (aAtt !== bAtt) return aAtt - bAtt;
-      return b.total - a.total;
-    })
-    .slice(0, Math.max(0, limit));
+      if (a.neverRan !== b.neverRan) return a.neverRan ? -1 : 1;
+      return (b.silenceSeconds ?? 0) - (a.silenceSeconds ?? 0);
+    });
 }
 
-/** Workspace KPIs = the stats-band totals widened with health rollups. */
-export interface WorkspaceKpis extends WorkspaceTotals {
-  /** Resolved issues in the trailing 7d window (summed across projects). */
-  throughput: number;
-  /** Mean cycle time (days) over projects that have a value, or null. */
-  avgCycleTimeDays: number | null;
-  /** Projects currently flagged needs-attention. */
-  attentionProjects: number;
+export interface QualityRates {
+  finishedTotal: number;
+  mergedShare: number;
+  reworkRatio: number | null;
+  unclassifiedShare: number | null;
+  sessionFailureTotal: number;
 }
 
 /**
- * Extend `workspaceTotals` with health-derived aggregates: summed throughput,
- * the mean cycle time over projects that actually resolved something (so a
- * fleet of zero-data projects doesn't drag the mean to a misleading 0), and the
- * needs-attention project count.
+ * The output rates, each over the whole it is a share of.
  */
-export function workspaceKpis(
-  totals: WorkspaceTotals,
-  items: ProjectConsoleItem[],
-  healthRows: ProjectHealthRow[] | undefined,
-): WorkspaceKpis {
-  const rows = healthRows ?? [];
-  let throughput = 0;
-  let cycleSum = 0;
-  let cycleN = 0;
-  for (const r of rows) {
-    throughput += r.throughput ?? 0;
-    if (Number.isFinite(r.avgCycleTimeDays) && r.avgCycleTimeDays > 0) {
-      cycleSum += r.avgCycleTimeDays;
-      cycleN += 1;
-    }
-  }
+// cm:guard every rate here is computed from summed COUNTS, never from an average of per-project rates — a mean of means weights a 3-issue project like a 300-issue one, which is exactly the figure this issue removed from the old KPI row (ISS-988 criterion 52).
+export function qualityRates(quality: PulseQuality): QualityRates {
+  const { finished, rework, sessionFailures } = quality;
+  const finishedTotal = finished.merged + finished.closedUnmerged + finished.dropped;
+  const sessionFailureTotal = sessionFailures.reduce((n, r) => n + r.count, 0);
+  const unclassified =
+    sessionFailures.find((r) => r.reason === "unclassified")?.count ?? 0;
   return {
-    ...totals,
-    throughput,
-    avgCycleTimeDays: cycleN > 0 ? cycleSum / cycleN : null,
-    attentionProjects: items.filter(isAttention).length,
+    finishedTotal,
+    mergedShare: finishedTotal > 0 ? finished.merged / finishedTotal : 0,
+    reworkRatio: rework.code > 0 ? rework.fix / rework.code : null,
+    unclassifiedShare:
+      sessionFailureTotal > 0 ? unclassified / sessionFailureTotal : null,
+    sessionFailureTotal,
   };
 }
