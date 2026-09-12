@@ -114,6 +114,43 @@
 
 ### Added
 
+- **A parked run's question now reaches a person on a chat channel, and a reply there answers it.**
+  A run that stops to ask a human was the one park with no answering surface: the box minted the
+  question, core stored its options, authorities and fingerprints — and nothing rendered them
+  anywhere. `grep` for `questionId` across the web app returned nothing, and
+  `POST /api/questions/:id/answer` had no caller. The structured question was answerable by nobody.
+  It is now posted to the Rocket.Chat room the project is bound to, naming the issue, the prompt,
+  every option with the recommended one marked, and what happens if nobody answers; replying in that
+  thread with an option's number records the answer as the Forge user the speaker maps to and wakes
+  the box through the revival path that already existed, with no runner change at all.
+
+  **The kernel write still knows nothing about a chat channel.** `questions/` imports nothing from
+  `integrations/`, and the delivery obligation is not written by the kernel either — it is *derived*:
+  an open `human` question whose latest round has no delivered row is a round still owed. So a core
+  that dies between the commit and any notification loses no delivery, and a down bot cannot slow or
+  fail the write that records the park. A round is marked delivered only after the post returns a
+  message id, which is why the outbound door now returns a receipt instead of `void` — and the round
+  is *claimed* before the post, so the drain running on every core instance cannot post the same
+  question into the same room twice.
+
+  **Four refusals, each by name, none of them guessing.** A speaker who maps to no Forge user, an
+  option whose authority their role may not choose, a reply naming a round that has been overtaken,
+  and a reply naming no option at all — each is answered in the same thread saying which rule it
+  broke, and none writes an answer. A reply matching nothing gets the options re-posted rather than
+  being read as the recommended one. All four are handled by the transport half and never fall
+  through to the conversation handler, so a refusal cannot become an LLM turn about something else.
+  A question and an issue's comments stay separate threads, because Rocket.Chat threads do not nest
+  and a shared root would make "is this an answer or a comment?" undecidable from the message alone.
+
+  A project with no bound room does not fail silently: whoever can bind one is told a decision is
+  waiting with nowhere to go, and binding a room later delivers the same question on the next sweep
+  — the run is never made to ask twice. The prompt and the option labels are written by a model, so
+  they are screened before they are posted; the stakeholder screen was the wrong instrument (its
+  lint refuses the issue key this message must carry), so an operator-directed screen sits beside it
+  and refuses channel-wide mentions, labels that would render as an option nobody offered, and
+  anything the secret scrubber would redact. ISS-978, second caller of the answer contract ISS-980
+  landed.
+
 - **A Rocket.Chat direct message is answered without being addressed by name, and a thread is its
   own conversation.** The bot used to treat every room as one shape, which cost two things. A
   person alone in a direct room with it was ignored unless they typed the bot's own name at it —

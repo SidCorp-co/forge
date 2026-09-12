@@ -26,13 +26,12 @@ function transportAuthToken(transport: ReplyTransport): string {
   return transport.kind === 'ddp' ? transport.authToken : transport.auth.authToken;
 }
 
-async function deliver(transport: ReplyTransport, text: string): Promise<void> {
+async function deliver(transport: ReplyTransport, text: string): Promise<string | null> {
   const safe = scrubLogText(clipReply(text), [transportAuthToken(transport)]);
   if (transport.kind === 'ddp') {
-    await transport.client.sendMessage(transport.rid, safe, transport.tmid);
-  } else {
-    await postRoomMessage(transport.auth, transport.rid, safe, transport.tmid);
+    return transport.client.sendMessage(transport.rid, safe, transport.tmid);
   }
+  return postRoomMessage(transport.auth, transport.rid, safe, transport.tmid);
 }
 
 export const FIXED_REPLY_CONSTANT: unique symbol = Symbol('rocketchat.outbound.fixedReplyConstant');
@@ -40,15 +39,16 @@ export const FIXED_REPLY_CONSTANT: unique symbol = Symbol('rocketchat.outbound.f
 export type ReplySendProof = typeof FIXED_REPLY_CONSTANT | { ok: true; problems: string[] };
 
 // cm:guard FIXED_REPLY_CONSTANT is for code-authored text only (an ack, an honest fallback); model text requires a ReplyScreenVerdict narrowed to ok:true for THAT exact string. There is no third way to satisfy `proof`, which is what makes a reply path that forgot to screen (B3) fail to compile rather than ship
+// cm:guard the receipt is the id of the message that was POSTED, and `null` means the transport took the text without naming one — a caller storing a thread id must treat that as an undelivered round rather than inventing one (ISS-978 criterion 8).
 export async function sendFixedReply(
   transport: ReplyTransport,
   text: string,
   proof: ReplySendProof,
-): Promise<void> {
+): Promise<{ messageId: string | null }> {
   if (proof !== FIXED_REPLY_CONSTANT && !proof.ok) {
     throw new Error(
       'outbound: sendFixedReply requires proof text is a fixed constant or passed the output guard',
     );
   }
-  await deliver(transport, text);
+  return { messageId: await deliver(transport, text) };
 }

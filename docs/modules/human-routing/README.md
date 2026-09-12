@@ -28,6 +28,7 @@ flowchart LR
 | Authority — flat roles, two scopes | `schema.ts:orgMemberRoles`, `schema.ts:projectMemberRoles`, `core/src/lib/authz.ts:effectiveProjectRole` |
 | The pull surface | `core/src/me/attention-routes.ts` (response + mapping), `core/src/me/attention-buckets.ts` (the bucket queries) |
 | Stop-and-ask | `schema.ts:waitingKinds`, `issues.reason`, status `needs_info` |
+| A structured question, and answering it from chat | `core/src/questions/`, `core/src/integrations/rocketchat/question-delivery.ts` |
 | Mentions and delivery | `core/src/notifications/` |
 | UI | web `features/attention/`, `notifications/`, `operator/` |
 
@@ -82,7 +83,7 @@ The bucket criteria are documented in one place — the header comment on
 | Expertise / capability model | nothing can pick *which* human suits a decision |
 | Decision-kind taxonomy | `waitingKinds` has exactly two values — `needs_decision`, `needs_resource`. There is no business / architecture / technical-risk / security split |
 | Availability | a stop can land on someone who is away, and nothing notices |
-| Escalation ladder | a stop that nobody answers stays stopped; only the attention pull surfaces it |
+| Escalation ladder | a stop that nobody answers stays stopped. A structured question is posted once to the project's bound chat room and is answerable there; nothing chases it after that, and a project with no bound room has only the attention pull |
 
 `VISION: route-judgment-not-bottlenecks` is the commitment; VISION §5 records that this is
 "Direction, not yet reached". Do not describe the four-way routing above as if it ships.

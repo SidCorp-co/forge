@@ -76,7 +76,7 @@
 <header class="bar">
   <span class="crumb"><a href="index.html">flows</a> / human-routing</span>
   <h1>How work reaches a person, and how their answer gets it moving again</h1>
-  <span class="pill">a deliberate pause is not a cry for help</span>
+  <span class="pill">a deliberate pause is not a cry for help · a question goes to where the people are</span>
 </header>
 
 <div class="cols">
@@ -106,6 +106,25 @@ flowchart TD
   <p class="cap">This is why answering quickly is worth something concrete: the same worker resumes
   with its own reasoning intact, instead of a new one rebuilding it from the issue. Nobody is
   penalised for a slow answer beyond that, and no question is dropped for it.</p>
+
+  <p class="stage"><b>3</b>The question goes to where the people are</p>
+  <div class="board"><pre class="mermaid">
+flowchart TD
+  A["a question is open and a person is owed it"] --> B{"has this project been<br/>given a chat room?"}
+  B -->|"no"| X["<b>nobody is told.</b> Whoever can give it a room<br/>is warned that a decision is waiting<br/>with nowhere to go. Giving it a room later<br/>delivers the same question —<br/>the work is never made to ask twice"]
+  B -->|"yes"| C["the question is posted to that room:<br/>what is being decided, every choice,<br/>which one is advised, and what<br/>happens if nobody replies"]
+  C --> D["replying in that conversation<br/>with the number of a choice<br/><b>is</b> answering it"]
+  D --> E{"does the reply say which choice,<br/>and is the replier known to us?"}
+  E -->|"yes, and they are allowed that choice"| F["it is recorded as their decision<br/>and the stopped work wakes up"]
+  E -->|"no"| G["<b>they are told exactly what was wrong</b><br/>in the same conversation, and asked again.<br/>Nothing is assumed on their behalf"]
+  C --> H["further rounds go in the <b>same</b><br/>conversation — one decision, one thread"]
+</pre></div>
+  <p class="cap">The four things that get a reply turned down are each said by name: we do not know
+  who you are on this chat server, that choice is not yours to make, you are answering a round that
+  has been overtaken, and you did not name a choice. None of them guesses, and in particular none of
+  them falls back to the advised choice — the advice exists to save a reader time, not to answer for
+  someone who did not. A person who replies with something we cannot read gets the list of choices
+  back, and the work stays stopped until they pick one.</p>
 
 </div>
 
@@ -160,8 +179,23 @@ project it is asked about? The list owed both and asked only the first until ISS
   </tr>
   <tr>
     <td>A question nobody ever answers.</td>
-    <td>Nothing escalates it. It stays open indefinitely and the work stays stopped.</td>
+    <td>It was posted to the project's room and read by nobody. Nothing escalates it beyond that
+    first posting: it stays open and the work stays stopped.</td>
     <td>Answer it or abandon the work explicitly. There is no third outcome and nothing will force one.</td>
+  </tr>
+  <tr>
+    <td>Work is stopped on a question and the room was never told.</td>
+    <td>The project has no chat room, so there was nowhere to post it. A warning went to whoever can
+    give the project one.</td>
+    <td>Give the project a room. The waiting question is posted on the next sweep — the work does not
+    have to ask again, and no second decision is created.</td>
+  </tr>
+  <tr>
+    <td>A reply in the room was turned down and the person does not know why.</td>
+    <td>This should be impossible: every refusal is answered in the same conversation, naming which
+    of the four rules it broke.</td>
+    <td>Treat a silent refusal as a defect. A reply that gets no response at all means the
+    conversation was not recognised as a question's, and the message was handled as ordinary chat.</td>
   </tr>
 </table>
 </section>
@@ -173,7 +207,10 @@ project it is asked about? The list owed both and asked only the first until ISS
 <code>packages/core/src/lib/authz.ts</code> · questions, parks and revival:
 <code>packages/core/src/pipeline/answer-resume.ts</code> and the agent-questions module beside it ·
 delivering an answer to a worker that is still alive:
-<code>packages/core/src/agent-sessions/steer-session.ts</code>.
+<code>packages/core/src/agent-sessions/steer-session.ts</code> · carrying a question to a chat room
+and taking the reply back:
+<code>packages/core/src/integrations/rocketchat/question-delivery.ts</code> and
+<code>question-inbound.ts</code> beside it.
 <a href="index.html">← all flows</a></p>
 </section>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>

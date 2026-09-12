@@ -370,12 +370,13 @@ export async function fetchThreadMessages(
  * instead. Throws on a non-ok response or an RC-level `success: false` so the
  * caller can log/report the failure; it does not retry.
  */
+// cm:guard returns the id RC assigned, because a thread is addressed by the id of its root message and the delivery record cannot be written without one — a `void` here is what made a thread registry impossible before ISS-978.
 export async function postRoomMessage(
   auth: RocketChatRestAuth,
   roomId: string,
   text: string,
   tmid?: string,
-): Promise<void> {
+): Promise<string | null> {
   const base = auth.serverUrl.replace(/\/+$/, '');
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -391,10 +392,15 @@ export async function postRoomMessage(
       signal: controller.signal,
     });
     if (!res.ok) throw new Error(`chat.postMessage failed with status ${res.status}`);
-    const body = (await res.json()) as { success?: boolean; error?: string };
+    const body = (await res.json()) as {
+      success?: boolean;
+      error?: string;
+      message?: { _id?: unknown };
+    };
     if (body?.success === false) {
       throw new Error(`chat.postMessage rejected: ${body.error ?? 'unknown error'}`);
     }
+    return typeof body?.message?._id === 'string' ? body.message._id : null;
   } finally {
     clearTimeout(timer);
   }
