@@ -33,13 +33,17 @@ export type SpeakerLookup =
 
 /**
  * The channel instance an external id belongs to, as a stable string: the
- * server's lowercased host and port, with scheme and path dropped.
+ * server's lowercased host and port, plus the base path it is served under,
+ * with the scheme and any trailing slash dropped.
  */
-// cm:guard host and port, never the whole URL — the same installation reached as `https://chat.example.com` and `https://chat.example.com/` must produce ONE namespace, or the same person links twice and the second link resolves nothing
+// cm:guard host, port AND base path — dropping the path collapses two installations sharing a host (`/team-a`, `/team-b`) onto one namespace, which hands one installation's confirmed row the other's speaker of the same id; a trailing slash is stripped so one installation spelled two ways stays ONE namespace
 export function namespaceFromServerUrl(serverUrl: string): string | null {
   try {
     const url = new URL(serverUrl);
-    return url.host.toLowerCase() || null;
+    const host = url.host.toLowerCase();
+    if (!host) return null;
+    const base = url.pathname.replace(/\/+$/, '');
+    return base ? `${host}${base}` : host;
   } catch {
     return null;
   }

@@ -10,7 +10,7 @@ describe('namespaceFromServerUrl', () => {
       'https://chat.example.com',
       'https://chat.example.com/',
       'https://CHAT.example.com',
-      'https://chat.example.com/some/path',
+      'https://chat.example.com//',
     ];
     expect(new Set(spellings.map(namespaceFromServerUrl)).size).toBe(1);
     expect(namespaceFromServerUrl(spellings[0] as string)).toBe('chat.example.com');
@@ -20,6 +20,21 @@ describe('namespaceFromServerUrl', () => {
     expect(namespaceFromServerUrl('https://chat.example.com:8443')).toBe('chat.example.com:8443');
     expect(namespaceFromServerUrl('https://chat.example.com:8443')).not.toBe(
       namespaceFromServerUrl('https://chat.example.com'),
+    );
+  });
+
+  it('keeps two installations on one host under different base paths apart', () => {
+    expect(namespaceFromServerUrl('https://chat.example.com/team-a')).toBe(
+      'chat.example.com/team-a',
+    );
+    expect(namespaceFromServerUrl('https://chat.example.com/team-b')).toBe(
+      'chat.example.com/team-b',
+    );
+    expect(namespaceFromServerUrl('https://chat.example.com/team-a')).not.toBe(
+      namespaceFromServerUrl('https://chat.example.com/team-b'),
+    );
+    expect(namespaceFromServerUrl('https://chat.example.com/team-a/')).toBe(
+      namespaceFromServerUrl('https://chat.example.com/team-a'),
     );
   });
 
