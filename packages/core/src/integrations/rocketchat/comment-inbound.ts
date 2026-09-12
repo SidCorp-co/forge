@@ -41,6 +41,8 @@ export interface MirroredComment {
   commentId: string;
   /** False when this message had already been written as a comment. */
   created: boolean;
+  /** True when nobody has announced this comment on the bus yet. */
+  announcementOwed: boolean;
 }
 
 /**
@@ -82,12 +84,15 @@ export async function writeMirroredComment(args: {
         .onConflictDoNothing()
         .returning({ commentId: rocketchatCommentMirrors.commentId });
       if (!mirror) throw new DuplicateDelivery();
-      return { commentId: row.id, created: true };
+      return { commentId: row.id, created: true, announcementOwed: true };
     });
   } catch (err) {
     if (!(err instanceof DuplicateDelivery)) throw err;
     const [existing] = await db
-      .select({ commentId: rocketchatCommentMirrors.commentId })
+      .select({
+        commentId: rocketchatCommentMirrors.commentId,
+        announcedAt: rocketchatCommentMirrors.announcedAt,
+      })
       .from(rocketchatCommentMirrors)
       .where(
         and(
@@ -97,7 +102,12 @@ export async function writeMirroredComment(args: {
       )
       .limit(1);
     if (!existing) throw err;
-    return { commentId: existing.commentId, created: false };
+    // cm:guard a redelivery still owes the announcement when the first delivery died before making it: treating `created: false` as proof the bus was told is how a committed comment never reaches the parked session it was written to wake (ISS-981 criterion 12).
+    return {
+      commentId: existing.commentId,
+      created: false,
+      announcementOwed: existing.announcedAt === null,
+    };
   }
 }
 
@@ -176,8 +186,8 @@ export async function handleIssueThreadReply(args: {
     return;
   }
 
-  // cm:guard a redelivery emits NOTHING. The comment already exists and was already announced, and emitting again would put a second answer into the session `answer-resume.ts` sends to (ISS-981 criteria 10, 11).
-  if (!written.created) return;
+  // cm:guard a redelivery of an ALREADY-ANNOUNCED comment emits nothing — emitting again would put a second answer into the session `answer-resume.ts` sends to — but one whose announcement never happened is still owed it, which is why the flag is read off the row rather than from `created` (ISS-981 criteria 10, 11, 12).
+  if (!written.announcementOwed) return;
 
   await args.hooks.emit('commentCreated', {
     issueId: issue.id,
@@ -188,6 +198,11 @@ export async function handleIssueThreadReply(args: {
     body: m.text,
     parentId: null,
   });
+  // cm:guard stamped AFTER the emit returns, so a process that dies mid-emit leaves the announcement owed and the next delivery makes it. `HooksBus.emit` awaits its subscribers, so this is reached only once they have run (ISS-981 criterion 12).
+  await db
+    .update(rocketchatCommentMirrors)
+    .set({ announcedAt: new Date() })
+    .where(eq(rocketchatCommentMirrors.commentId, written.commentId));
 }
 
 /**

@@ -93,6 +93,15 @@ export async function registerThread(
 }
 
 /**
+ * Register this issue's thread and return the one that is now authoritative.
+ */
+// cm:guard the RETURNED tmid is the one to post into, never the caller's own: two instances opening a root for the same issue at once each hold a tmid, only one row survives the partial unique, and the loser posting into its own root puts the comment in a thread no reply can resolve back to the issue (ISS-981 criterion 33).
+export async function registerIssueThread(issueId: string, ref: ThreadRef): Promise<IssueThread> {
+  await registerThread({ issueId }, ref);
+  return (await liveThreadForIssue(issueId)) ?? ref;
+}
+
+/**
  * Retire this issue's live thread, so the next comment opens a new one.
  */
 // cm:guard retirement is a timestamp and never a delete, and the partial unique is what makes the replacement registrable: the retired row keeps holding its room triple so a reply left there still resolves and is refused by name (ISS-981 criteria 35, 36).

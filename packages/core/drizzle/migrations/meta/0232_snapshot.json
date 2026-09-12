@@ -1,5 +1,5 @@
 {
-  "id": "fe38e72e-282a-4f01-ac7c-a981c0369034",
+  "id": "d3c59b5c-7780-4f2e-9687-0f50af9e67fb",
   "prevId": "55c34222-3c0f-4d06-bf01-e1bf72440d2a",
   "version": "7",
   "dialect": "postgresql",
@@ -13207,6 +13207,12 @@
         "external_message_id": {
           "name": "external_message_id",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "announced_at": {
+          "name": "announced_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },

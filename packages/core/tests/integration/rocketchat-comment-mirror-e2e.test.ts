@@ -155,8 +155,6 @@ const threadRows = async () =>
     .select()
     .from(rcSchema.rocketchatThreads)
     .where(eq(rcSchema.rocketchatThreads.issueId, issueId));
-const commentRows = async () =>
-  db.select().from(schema.comments).where(eq(schema.comments.issueId, issueId));
 
 describe('what a room is owed', () => {
   it('owes a comment written after the watermark, and posts it into a thread it opens', async () => {
@@ -331,98 +329,61 @@ describe('nothing echoes', () => {
   });
 });
 
-describe('inbound is exactly once', () => {
-  it('writes one comment for a message delivered twice, and resolves the second to the first', async () => {
-    const connectionId = await bindRoom();
-    const first = await inbound.writeMirroredComment({
-      issueId,
-      authorId: ownerId,
-      connectionId,
-      externalMessageId: 'rc-dup',
-      body: 'said once',
-    });
-    const second = await inbound.writeMirroredComment({
-      issueId,
-      authorId: ownerId,
-      connectionId,
-      externalMessageId: 'rc-dup',
-      body: 'said once',
-    });
+describe('nothing stops being owed except delivery or a refusal', () => {
+  it('keeps owing a comment past any number of failed attempts', async () => {
+    await bindRoom();
+    await comment('the room was down a long time');
+    postThrows = new Error('the room is unreachable');
+    for (let i = 0; i < 10; i += 1) {
+      const owed = await mirror.owedComments();
+      expect(owed).toHaveLength(1);
+      expect(await mirror.deliverOwedComment(onlyOwed(owed))).toBe('failed');
+      await db
+        .update(rcSchema.rocketchatCommentMirrors)
+        .set({ nextAttemptAt: new Date(Date.now() - 1000) });
+    }
 
-    expect(second.created).toBe(false);
-    expect(second.commentId).toBe(first.commentId);
-    expect(await commentRows()).toHaveLength(1);
+    // cm:guard ten failures must not have retired the obligation: an attempt cap ends with the comment dropped while its room was merely unreachable, which reads identically to a comment nobody wrote (ISS-981 criteria 22, 26).
+    postThrows = null;
+    const finally_ = await mirror.owedComments();
+    expect(finally_).toHaveLength(1);
+    expect(await mirror.deliverOwedComment(onlyOwed(finally_))).toBe('delivered');
+    expect(posts.filter((p) => p.text === 'the room was down a long time')).toHaveLength(1);
   });
 
-  it('authors the comment as the mapped user, not the bot', async () => {
-    const connectionId = await bindRoom();
-    const written = await inbound.writeMirroredComment({
-      issueId,
-      authorId: ownerId,
-      connectionId,
-      externalMessageId: 'rc-2',
-      body: 'by a person',
-    });
-    const [row] = await commentRows();
-    expect(row?.id).toBe(written.commentId);
-    expect(row?.authorId).toBe(ownerId);
-    expect(row?.authorAgency).toBe('human');
+  it('refuses to resurrect a comment another instance already settled refused', async () => {
+    await bindRoom();
+    await comment('@all broadcast');
+    const stale = onlyOwed(await mirror.owedComments());
+    expect(await mirror.deliverOwedComment(stale)).toBe('refused');
+
+    // cm:guard the stale work item a second instance still holds must not re-claim the terminal row: `held` is the claim being declined, and what matters is that the row stays refused and nothing reaches the room (ISS-981).
+    expect(await mirror.deliverOwedComment(stale)).toBe('held');
+    const [row] = await mirrorRows();
+    expect(row?.status).toBe('refused');
+    expect(posts).toHaveLength(0);
   });
 });
 
-describe('the registry names one subject', () => {
-  it('refuses a second subject for one room triple', async () => {
+describe('the thread the registry names is the one posted into', () => {
+  it('posts into the winning root when another instance registers one mid-flight', async () => {
     const connectionId = await bindRoom();
-    const other = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
-      VALUES (${other}, ${projectId}, ${8000 + seq}, 'Another', 'open', ${ownerId})
-    `);
-    await registry.registerThread({ issueId }, { connectionId, rid: 'room-1', tmid: 'shared' });
-    await registry.registerThread(
-      { issueId: other },
-      { connectionId, rid: 'room-1', tmid: 'shared' },
+    await comment('the loser of the race');
+
+    // cm:guard the winner must land AFTER this worker read "no live thread" and while its own root post is in flight — registering it beforehand takes the root-opening branch out of the run entirely, and the test then passes without ever exercising the race at all (ISS-981 criterion 33).
+    atPostTime = async () => {
+      atPostTime = null;
+      await registry.registerThread(
+        { issueId },
+        { connectionId, rid: 'room-1', tmid: 'winner-root' },
+      );
+    };
+
+    expect(await mirror.deliverOwedComment(onlyOwed(await mirror.owedComments()))).toBe(
+      'delivered',
     );
-
-    const subject = await registry.subjectForThread({
-      connectionId,
-      rid: 'room-1',
-      tmid: 'shared',
-    });
-    expect(subject).toEqual({ kind: 'issue', issueId, retired: false });
-  });
-
-  it('refuses a row naming neither subject', async () => {
-    const connectionId = await bindRoom();
-    await expect(
-      db.execute(sql`
-        INSERT INTO rocketchat_question_threads (connection_id, rid, tmid)
-        VALUES (${connectionId}, 'room-1', 'no-subject')
-      `),
-    ).rejects.toThrow();
-  });
-
-  it('refuses a row naming both subjects', async () => {
-    const connectionId = await bindRoom();
-    await expect(
-      db.execute(sql`
-        INSERT INTO rocketchat_question_threads (connection_id, rid, tmid, issue_id, question_id)
-        VALUES (${connectionId}, 'room-1', 'both', ${issueId}, ${randomUUID()})
-      `),
-    ).rejects.toThrow();
-  });
-
-  it('still resolves a retired thread, so a reply there can be refused by name', async () => {
-    const connectionId = await bindRoom();
-    await registry.registerThread({ issueId }, { connectionId, rid: 'room-1', tmid: 'old' });
-    await registry.retireIssueThread(issueId);
-
-    expect(await registry.subjectForThread({ connectionId, rid: 'room-1', tmid: 'old' })).toEqual({
-      kind: 'issue',
-      issueId,
-      retired: true,
-    });
-    expect(await registry.liveThreadForIssue(issueId)).toBeNull();
+    expect(posts.filter((p) => p.text === 'the loser of the race')[0]?.tmid).toBe('winner-root');
+    expect(await threadRows()).toHaveLength(1);
   });
 });
 

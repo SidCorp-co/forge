@@ -24,10 +24,11 @@ import { FIXED_REPLY_CONSTANT, sendFixedReply } from './outbound.js';
 import { roomForProject } from './question-delivery.js';
 import { screenCarriedComment } from './reply-guard.js';
 import { resolveRoomPostAuth } from './room-delivery.js';
-import { liveThreadForIssue, registerThread, retireIssueThread } from './thread-registry.js';
+import { liveThreadForIssue, registerIssueThread, retireIssueThread } from './thread-registry.js';
 
 const RETRY_BACKOFF_MS = 60_000;
-const MAX_ATTEMPTS = 8;
+// cm:guard the backoff is CAPPED, and the attempt count is what it feeds — never a limit on how many times a comment may be tried. A cap on attempts ends with the comment quietly ceasing to be owed while its room was merely unreachable, which is the loss this lane exists to prevent; only `delivered` and `refused` are terminal (ISS-981 criteria 22, 26).
+const MAX_BACKOFF_MS = 3_600_000;
 const DRAIN_INTERVAL_MS = 30_000;
 
 export interface OwedComment {
@@ -76,7 +77,6 @@ export async function owedComments(now: Date = new Date()): Promise<OwedComment[
           and(
             eq(rocketchatCommentMirrors.direction, 'outbound'),
             sql`${rocketchatCommentMirrors.status} not in ('delivered', 'refused')`,
-            sql`${rocketchatCommentMirrors.attempts} < ${MAX_ATTEMPTS}`,
             or(
               isNull(rocketchatCommentMirrors.nextAttemptAt),
               lte(rocketchatCommentMirrors.nextAttemptAt, now),
@@ -101,7 +101,9 @@ export async function owedComments(now: Date = new Date()): Promise<OwedComment[
 // cm:guard serialise to ISO and cast before binding — postgres-js throws on a raw `Date` param at bind time, so the claim fails rather than mis-selecting and the whole drain is lost.
 async function claimComment(owed: OwedComment, connectionId: string, now: Date): Promise<boolean> {
   const attempts = owed.attempts + 1;
-  const nextAttemptAt = new Date(now.getTime() + RETRY_BACKOFF_MS * attempts);
+  const nextAttemptAt = new Date(
+    now.getTime() + Math.min(RETRY_BACKOFF_MS * attempts, MAX_BACKOFF_MS),
+  );
   const claimed = await db
     .insert(rocketchatCommentMirrors)
     .values({
@@ -116,7 +118,7 @@ async function claimComment(owed: OwedComment, connectionId: string, now: Date):
     .onConflictDoUpdate({
       target: rocketchatCommentMirrors.commentId,
       set: { status: 'claimed', connectionId, attempts, nextAttemptAt, updatedAt: now },
-      setWhere: sql`${rocketchatCommentMirrors.direction} = 'outbound' and ${rocketchatCommentMirrors.status} <> 'delivered' and (${rocketchatCommentMirrors.nextAttemptAt} is null or ${rocketchatCommentMirrors.nextAttemptAt} <= ${now.toISOString()}::timestamptz)`,
+      setWhere: sql`${rocketchatCommentMirrors.direction} = 'outbound' and ${rocketchatCommentMirrors.status} not in ('delivered', 'refused') and (${rocketchatCommentMirrors.nextAttemptAt} is null or ${rocketchatCommentMirrors.nextAttemptAt} <= ${now.toISOString()}::timestamptz)`,
     })
     .returning({ commentId: rocketchatCommentMirrors.commentId });
   return claimed.length > 0;
@@ -205,7 +207,7 @@ export async function deliverOwedComment(
   }
 
   try {
-    let tmid = thread?.tmid ?? null;
+    let tmid: string | undefined = thread?.tmid;
     if (!tmid) {
       const [issue] = await db
         .select({ issSeq: issues.issSeq, title: issues.title })
@@ -225,12 +227,13 @@ export async function deliverOwedComment(
         await noteFailure(owed.commentId, 'the root post named no message id', now);
         return 'failed';
       }
-      tmid = root.messageId;
-      // cm:guard the thread is registered BEFORE the comment is posted into it: a comment posted under a root no row names is a message whose replies reach nothing, and this order makes that state recoverable — the retry re-opens a root rather than leaving a live thread unregistered (ISS-981 criteria 2, 33).
-      await registerThread(
-        { issueId: owed.issueId },
-        { connectionId: room.connectionId, rid: room.rid, tmid },
-      );
+      // cm:guard the thread is registered BEFORE the comment is posted into it, and the REGISTERED tmid is what the comment goes to: a comment posted under a root no row names is a message whose replies reach nothing, and when another instance won the race its root is the issue's thread rather than the one this worker just posted (ISS-981 criteria 2, 33).
+      const registered = await registerIssueThread(owed.issueId, {
+        connectionId: room.connectionId,
+        rid: room.rid,
+        tmid: root.messageId,
+      });
+      tmid = registered.tmid;
     }
 
     const receipt = await sendFixedReply({ kind: 'rest', auth, rid: room.rid, tmid }, owed.body, {

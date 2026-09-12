@@ -105,6 +105,8 @@ export const rocketchatCommentMirrors = pgTable(
     // cm:guard `claimed` is written BEFORE the post and is not a completion, so a claim whose process died is retried once its `next_attempt_at` passes rather than being read as a delivery. Outbound is at-least-once by that choice: the claim counts attempts, never Rocket.Chat's acceptance, so a post the server took whose mark never landed is re-posted. What that buys is that no comment is ever lost, which is the direction a conversation has to fail in; it ends when the outbound door can carry a client-supplied message id (ISS-981).
     status: text('status', { enum: commentMirrorStatuses }).notNull(),
     externalMessageId: text('external_message_id'),
+    // cm:guard an INBOUND row's announcement is a second obligation, not a detail of the write: the comment and its idempotency row commit together, but `commentCreated` is emitted after that commit, and a process dying in between leaves a comment nobody was told about — the parked session the reply was meant to wake never hears it, and the redelivery sees the row and stays silent. Null means still owed (ISS-981 criterion 12).
+    announcedAt: timestamp('announced_at', { withTimezone: true }),
     attempts: integer('attempts').notNull().default(0),
     lastError: text('last_error'),
     nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }),

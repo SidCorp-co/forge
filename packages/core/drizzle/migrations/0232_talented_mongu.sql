@@ -10,6 +10,7 @@ CREATE TABLE "rocketchat_comment_mirrors" (
 	"direction" text NOT NULL,
 	"status" text NOT NULL,
 	"external_message_id" text,
+	"announced_at" timestamp with time zone,
 	"attempts" integer DEFAULT 0 NOT NULL,
 	"last_error" text,
 	"next_attempt_at" timestamp with time zone,
