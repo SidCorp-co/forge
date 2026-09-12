@@ -12,12 +12,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import { ToastProvider } from "@/providers/toast-provider";
 import { BulkActionBar } from "./bulk-action-bar";
+import { IssueMobileCard } from "./issue-row-actions";
 import { StatusEdit } from "./inline-edit-cell";
 import type { IssueRow, IssueStatus } from "../types";
 
 expect.extend(matchers);
 
 const get = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), prefetch: vi.fn() }),
+}));
 
 vi.mock("../registry-api", () => ({
   registryApi: { get: () => get() },
@@ -60,7 +65,7 @@ function labels(): string[] {
 }
 
 const row = (over: Partial<IssueRow>): IssueRow =>
-  ({ id: "i1", issueId: "ISS-1", title: "t", status: "open", priority: "medium", ...over }) as IssueRow;
+  ({ id: "i1", issueId: "ISS-1", displayId: "ISS-1", title: "t", status: "open", priority: "medium", ...over }) as IssueRow;
 
 afterEach(() => {
   cleanup();
@@ -202,5 +207,48 @@ describe("BulkActionBar", () => {
     await vi.waitFor(() => expect(btn()).not.toBeDisabled());
     fireEvent.click(btn());
     expect(labels()).toEqual(["Paused", "Dropped"]);
+  });
+});
+
+// cm:guard the row overflow menu is the THIRD surface criteria 18-21 name and the only one that renders status moves beside unrelated items — proving the picker and the bulk bar leaves it read off the other two, which is how it shipped untested (ISS-982)
+describe("row overflow menu", () => {
+  const actions = { patch: vi.fn(), transition: vi.fn(), isPending: false };
+
+  function openRowMenu(status: IssueStatus) {
+    wrap(
+      <IssueMobileCard row={row({ status })} slug="p1" actions={actions} />,
+    );
+    fireEvent.click(screen.getByLabelText("Row actions"));
+  }
+
+  const statusItems = () =>
+    labels().filter((l) => l.startsWith("Status: ") || l.includes("status moves"));
+
+  it("offers no status target while the read is in flight, and says the moves are loading", () => {
+    get.mockReturnValue(new Promise(() => {}));
+    openRowMenu("open");
+    expect(statusItems()).toEqual(["Loading status moves…"]);
+  });
+
+  it("offers no status target once the read has failed, and says so", async () => {
+    get.mockRejectedValue(new Error("offline"));
+    openRowMenu("open");
+    expect(statusItems()).toEqual(["Loading status moves…"]);
+    await screen.findByText("Couldn't load status moves");
+    expect(statusItems()).toEqual(["Couldn't load status moves"]);
+  });
+
+  it("offers the rung's own row once the read has answered", async () => {
+    get.mockResolvedValue(ANSWERED);
+    openRowMenu("closed");
+    await screen.findByText("Status: Reopened");
+    expect(statusItems()).toEqual(["Status: Reopened"]);
+  });
+
+  it("offers a dropped row no status item at all", async () => {
+    get.mockResolvedValue(ANSWERED);
+    openRowMenu("dropped");
+    expect(statusItems()).toEqual(["Loading status moves…"]);
+    await vi.waitFor(() => expect(statusItems()).toEqual([]));
   });
 });
