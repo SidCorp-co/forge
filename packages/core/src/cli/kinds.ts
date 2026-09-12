@@ -45,13 +45,14 @@ export const RULES = section({
 });
 
 // cm:why `spoken` and `substantial: false` are this section's alone — refusing "nothing is out of scope" would teach a filer to satisfy the gate with an empty heading, which reads later as a scope nobody decided
+// cm:guard the spoken form needs `is|are out of scope` as the PREDICATE, not the phrase anywhere in a sentence — "nothing changed in the out-of-scope API surface" is an adjective and satisfied this section with no scope declared at all (F2, ISS-985)
 export const SCOPE = section({
   title: 'Out of scope',
   reads: 'the out-of-scope',
   bare: 'out-of-scope',
   wants: 'an out-of-scope heading, or one line saying nothing is out of scope',
   heading: /\bout[\s-]of[\s-]scope\b/iu,
-  spoken: /\bnothing\b[^.\n]{0,60}\bout[\s-]of[\s-]scope\b/iu,
+  spoken: /\bnothing\b[^.\n]{0,60}\b(?:is|are)\s+out[\s-]of[\s-]scope\b/iu,
   substantial: false,
 });
 

@@ -8,12 +8,18 @@
 import { type SectionShape, SUBSTANTIAL_WORDS } from './kinds.js';
 
 const HEADING = /^(#{1,6})[ \t]+(.*)$/gmu;
+const FENCE = /^[ \t]*(?:```|~~~).*$[\s\S]*?^[ \t]*(?:```|~~~)[ \t]*$|^[ \t]*(?:```|~~~).*$[\s\S]*/gmu;
+
+// cm:guard headings are scanned over a body whose fenced blocks are BLANKED to the same length, never over the raw text — a filing that pastes a complete-looking body inside one ``` fence carries no section at all and was read as carrying every one of them (F1, ISS-985); same-length blanking is what keeps every index below an index into the original
+function scannable(body: string): string {
+  return body.replace(FENCE, (block) => block.replace(/[^\n]/gu, ' '));
+}
 
 export type FoundSection = { readonly heading: string; readonly under: string };
 
 // cm:guard a body's own title line is the PARENT of its sections and never one of them — read as a section it let any title answer for the section named after the same word (ISS-633); what tells the two apart is being the first heading AND shallower than every other one, so a level-2 section with level-3 subsections under it is still a section
 function headingMatches(body: string): RegExpExecArray[] {
-  const found = [...body.matchAll(HEADING)] as RegExpExecArray[];
+  const found = [...scannable(body).matchAll(HEADING)] as RegExpExecArray[];
   const titled =
     found.length > 1 &&
     (found[0]?.[1]?.length ?? 0) === 1 &&

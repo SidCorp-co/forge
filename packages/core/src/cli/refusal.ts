@@ -29,6 +29,7 @@ export function duplicateRefusal(match: DuplicateMatch): string {
     `Hold — this filing reads like ${key} \`${match.title}\`, which is already open.` +
     `\n- read: the title and body of this filing, against ${key}` +
     '\n  wants: one issue per problem' +
-    `\n  clear: comment on ${key} instead, or send the filing again saying how it differs`
+    `\n  clear: comment on ${key} instead, or retitle this filing so the title names what it asks for` +
+    ` that ${key} does not`
   );
 }

@@ -109,7 +109,7 @@ const BARE = /^parts?$/iu;
 const LABEL = /\([^()]*\)/gu;
 const KEY = /\bISS-\d+\b/giu;
 const GOVERNED =
-  /^(?<link>(?:[\s`*_]*[:=]|\s+(?:are|is|both|these|the following)\b)*)[\s`*_]*(?<keys>ISS-\d+\b(?:[\s`*_]*(?:\([^()]{0,40}\))?[\s`*_]*(?:,\s*and|,|;|and|&)[\s`*_]*ISS-\d+\b)+)/iu;
+  /^(?<link>(?:[\s`*_]*[:=]|\s+(?:are|is|both|these|the following|includes?|comprises?)\b)*)[\s`*_]*(?<keys>ISS-\d+\b(?:[\s`*_]*(?:\([^()]{0,40}\))?[\s`*_]*(?:,\s*and|,|;|and|&)[\s`*_]*ISS-\d+\b)+)/iu;
 
 // cm:guard the phrase must GOVERN the keys — a line merely holding both is a cross-reference (ISS-336), and two keys rather than one because a body may legitimately cite the issue it sits beside
 export function partsIn(body: string): { line: string; keys: string[] } | null {
