@@ -13,6 +13,7 @@ vi.mock('../db/client.js', () => ({ db: {} }));
 
 const {
   CHARS_PER_TOKEN,
+  main,
   PRICING,
   costCases,
   catalogVariants,
@@ -194,5 +195,45 @@ describe('the aggregate ratio measures the history, not the catalog', () => {
   it('reports the whole prompt in cachedPromptTokens/promptTokens, which is why it diverges', () => {
     expect(rows[0]?.promptTokens).toBe(10_000);
     expect(rows[0]?.cachedPromptTokens).toBe(8000);
+  });
+});
+
+describe('every token figure the run prints says where it came from', () => {
+  const LABELS = /\((measured|estimated, chars\/\d+|chosen[^)]*|declared[^)]*)\)/;
+
+  it('labels every line that states a token count, with no provider credential', async () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', undefined);
+    const lines: string[] = [];
+    const log = vi.spyOn(console, 'log').mockImplementation((...a) => {
+      lines.push(a.join(' '));
+    });
+    await main();
+    log.mockRestore();
+    vi.unstubAllEnvs();
+
+    const tokenLines = lines
+      .flatMap((l) => l.split('\n'))
+      .filter((l) => /\btokens?\b/.test(l) && /\d/.test(l))
+      .filter((l) => !l.startsWith('every token figure below is derived'));
+    expect(tokenLines.length).toBeGreaterThan(4);
+    for (const line of tokenLines) {
+      expect(line, line).toMatch(LABELS);
+    }
+  });
+
+  it('inherits the catalog figure label onto everything derived from it', async () => {
+    const lines: string[] = [];
+    const log = vi.spyOn(console, 'log').mockImplementation((...a) => {
+      lines.push(a.join(' '));
+    });
+    await main();
+    log.mockRestore();
+    expect(
+      lines.some((l) =>
+        l.includes(
+          `every token figure below is derived from the catalog figure, so each one is estimated, chars/${CHARS_PER_TOKEN}`,
+        ),
+      ),
+    ).toBe(true);
   });
 });
