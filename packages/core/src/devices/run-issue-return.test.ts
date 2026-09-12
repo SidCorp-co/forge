@@ -24,16 +24,19 @@ vi.mock('../issues/apply-transition.js', () => ({
   },
 }));
 
-import { HUMAN_PARK_STATUSES, returnIssuesForRun } from './run-issue-return.js';
+import { HUMAN_PARK_STATUSES, RETURNABLE_FROM, returnIssuesForRun } from './run-issue-return.js';
 
 const RUN = 'run-1';
 
 /** One run row, as `readRun` reads it back. */
+const RUN_STARTED = new Date('2026-09-13T10:00:00Z');
+
 function runRow(keys: string[], statuses: Record<string, string>) {
   return [
     {
       project_id: 'proj-1',
       created_by: 'owner-1',
+      started_at: RUN_STARTED.toISOString(),
       keys,
       statuses,
     },
@@ -41,7 +44,7 @@ function runRow(keys: string[], statuses: Record<string, string>) {
 }
 
 /** The issue rows the drizzle select returns. */
-function issueRows(rows: Array<{ seq: number; status: string }>) {
+function issueRows(rows: Array<{ seq: number; status: string; mergedAt?: Date }>) {
   select.mockReturnValue({
     from: () => ({
       where: async () =>
@@ -51,6 +54,7 @@ function issueRows(rows: Array<{ seq: number; status: string }>) {
           issSeq: r.seq,
           status: r.status,
           reopenCount: 0,
+          mergedAt: r.mergedAt ?? null,
         })),
     }),
   });
@@ -99,6 +103,54 @@ describe('returnIssuesForRun', () => {
 
     expect(returned).toEqual([]);
     expect(transitionIssueStatus).not.toHaveBeenCalled();
+  });
+
+  // cm:guard the case forge-02 raised on 2026-09-13 with four hand-earned statuses live on sid-desk: an issue the dead run had ALREADY advanced keeps what it reached. Returning it would walk it back over a pushed branch and a landed verdict, and the next master would redo the work on top of a branch that is already there.
+  it.each(['developed', 'tested', 'awaiting_release', 'closed'])(
+    'leaves an issue the run had already carried to %s where it stands',
+    async (reached) => {
+      execute.mockResolvedValue(runRow(['ISS-241'], { 'ISS-241': 'open' }));
+      issueRows([{ seq: 241, status: reached }]);
+
+      expect(await returnIssuesForRun(RUN, { reason: 'box silent' })).toEqual([]);
+      expect(transitionIssueStatus).not.toHaveBeenCalled();
+    },
+  );
+
+  // cm:guard this is what keeps the park rule a RULE rather than dead code: the allowlist runs first and no park is in flight, so the park check can only start mattering again if someone adds a park to the allowlist — which is exactly what this fails on.
+  it('never lists a human park as a status to take an issue back from', () => {
+    expect(RETURNABLE_FROM.filter((s) => HUMAN_PARK_STATUSES.includes(s))).toEqual([]);
+  });
+
+  // cm:guard the sid-desk shape measured 2026-09-13: that project merges to staging BEFORE the issue leaves `testing`, so seven dead runs sat at `testing` with the merge already stamped. Returning them would have sent two to `draft` — outside the pool, where no master is ever handed the issue again — over code already on master.
+  it('leaves an issue whose run stamped a merge before dying', async () => {
+    execute.mockResolvedValue(runRow(['ISS-265'], { 'ISS-265': 'open' }));
+    issueRows([
+      {
+        seq: 265,
+        status: 'testing',
+        mergedAt: new Date(RUN_STARTED.getTime() + 60_000),
+      },
+    ]);
+
+    expect(await returnIssuesForRun(RUN, { reason: 'box silent' })).toEqual([]);
+    expect(transitionIssueStatus).not.toHaveBeenCalled();
+  });
+
+  // cm:guard the other half, and the reason the test is a COMPARISON rather than a null check: `mergedAt` survives a reopen untouched, so a mark from an earlier cycle must not protect this run's issue — that would strand every reopened issue at `in_progress`, which is the defect the module exists to fix.
+  it('returns an issue carrying a merge mark left over from an earlier cycle', async () => {
+    execute.mockResolvedValue(runRow(['ISS-500'], { 'ISS-500': 'reopen' }));
+    issueRows([
+      {
+        seq: 500,
+        status: 'in_progress',
+        mergedAt: new Date(RUN_STARTED.getTime() - 86_400_000),
+      },
+    ]);
+
+    expect(await returnIssuesForRun(RUN, { reason: 'box silent' })).toEqual([
+      { issueKey: 'ISS-500', from: 'in_progress', to: 'reopen' },
+    ]);
   });
 
   it('is a no-op when the issue never left the status it was claimed from', async () => {

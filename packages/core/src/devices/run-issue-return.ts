@@ -27,6 +27,12 @@ import { RUN_ISSUE_STATUSES_METADATA_KEY, RUN_ISSUES_METADATA_KEY } from './run-
 // cm:guard a park reached DURING the run is a human decision taken after the run started, so it is newer than the status this module remembers and must win. Without this a run dying over a question somebody just asked would pull the issue straight back into the claimable set and the next master would dispatch it, answering nothing — the same shape `recovery::reconcile` grants a park before it reads either orphan premise.
 export const HUMAN_PARK_STATUSES: readonly IssueStatus[] = ['needs_info', 'waiting', 'on_hold'];
 
+/**
+ * The only statuses a dead run's issue is taken back from.
+ */
+// cm:guard an ALLOWLIST, never "any status that differs from the opening one". These three assert an action is happening RIGHT NOW, and a dead run makes that assertion false, so retracting it is the whole job. Every other status asserts a fact the run already achieved — a pushed branch at `developed`, a verdict at `tested`, a hand-earned `awaiting_release` — and those stay true whether or not the pane survived. Returning from them would walk an issue back over landed work and hand it to the next master to do again, on top of a branch that is already there.
+export const RETURNABLE_FROM: readonly IssueStatus[] = ['in_progress', 'testing', 'releasing'];
+
 export interface ReturnedIssue {
   issueKey: string;
   from: IssueStatus;
@@ -36,6 +42,7 @@ export interface ReturnedIssue {
 interface RunRow {
   projectId: string;
   projectCreatedBy: string | null;
+  startedAt: Date;
   keys: string[];
   statuses: Record<string, string>;
 }
@@ -44,6 +51,7 @@ async function readRun(runId: string): Promise<RunRow | null> {
   const rows = (await db.execute(sql`
     SELECT r.project_id,
            p.created_by,
+           r.started_at,
            COALESCE(r.metadata -> ${RUN_ISSUES_METADATA_KEY}, '[]'::jsonb) AS keys,
            COALESCE(r.metadata -> ${RUN_ISSUE_STATUSES_METADATA_KEY}, '{}'::jsonb) AS statuses
       FROM pipeline_runs r
@@ -55,6 +63,7 @@ async function readRun(runId: string): Promise<RunRow | null> {
   return {
     projectId: String(row.project_id),
     projectCreatedBy: row.created_by == null ? null : String(row.created_by),
+    startedAt: new Date(String(row.started_at)),
     keys: (row.keys ?? []) as string[],
     statuses: (row.statuses ?? {}) as Record<string, string>,
   };
@@ -86,6 +95,7 @@ export async function returnIssuesForRun(
       issSeq: issues.issSeq,
       status: issues.status,
       reopenCount: issues.reopenCount,
+      mergedAt: issues.mergedAt,
     })
     .from(issues)
     .where(and(eq(issues.projectId, run.projectId), inArray(issues.issSeq, seqs)));
@@ -100,6 +110,24 @@ export async function returnIssuesForRun(
     const target = run.statuses[key] as IssueStatus | undefined;
     if (!target) continue;
     if (issue.status === target) continue;
+    // cm:guard the allowlist is read BEFORE the park check and subsumes it — no park is in
+    // flight — so the park check survives as a named rule rather than as the thing doing the
+    // work; `the two sets never intersect` is the test that keeps that true.
+    // cm:guard a merge stamped DURING this run outranks the rung the issue is standing on, and the comparison against `started_at` is the whole rule: `mergedAt` is never cleared on reopen (`apply-transition.ts` increments `reopenCount` and touches nothing else), so a bare `mergedAt !== null` test would refuse to return every reopened issue and strand it at `in_progress` — the exact hole this module was written to close. Measured on sid-desk 2026-09-13: seven issues died at `testing` with the merge already stamped, because that project merges to staging BEFORE the issue leaves `testing`; returning them would have sent five to `open` and two to `draft`, which is outside the pool entirely, over code that was already on master.
+    if (issue.mergedAt !== null && issue.mergedAt >= run.startedAt) {
+      logger.info(
+        { runId, issueKey: key, status: issue.status, mergedAt: issue.mergedAt },
+        'run-issue-return: left an issue whose run had already landed its code',
+      );
+      continue;
+    }
+    if (!RETURNABLE_FROM.includes(issue.status as IssueStatus)) {
+      logger.info(
+        { runId, issueKey: key, status: issue.status },
+        'run-issue-return: left a status the run had already reached',
+      );
+      continue;
+    }
     if (HUMAN_PARK_STATUSES.includes(issue.status as IssueStatus)) {
       logger.info(
         { runId, issueKey: key, status: issue.status },

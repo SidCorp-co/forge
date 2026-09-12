@@ -2100,14 +2100,25 @@
   from the session going terminal — while the issue's *status* stayed wherever the agent had left
   it. An issue an agent had moved to `in_progress` therefore read as work somebody was doing, so
   nothing claimed it and everything behind it waited: ISS-457 stood there for 18 hours with
-  ISS-410 queued behind it. A failing close now returns each issue to the status it held when the
-  run opened, recorded at open time under `pipeline_runs.metadata.runIssueStatuses` — by
+  ISS-410 queued behind it. A failing close now returns an issue to the status it held when
+  the run opened, recorded at open time under `pipeline_runs.metadata.runIssueStatuses` — by
   construction a status that project admits, since it is the one the master claimed it out of.
-  Three exceptions never move: an issue a person parked at `needs_info`, `waiting` or `on_hold`
-  during the run, because that decision is newer than the one being restored and a run dying over
-  a question just asked would otherwise be dispatched again, answering nothing; an issue whose
-  opening status was never recorded, which is left alone rather than guessed at; and every issue
-  of a run that ended cleanly, whose agent moved them deliberately.
+  What is taken back is an **allowlist**, not "anything that differs from the opening status":
+  only `in_progress`, `testing` and `releasing`, the three that assert an action is happening
+  right now, which a dead run makes false. Every other status asserts a fact the run achieved —
+  a branch at `developed`, a verdict at `tested`, a hand-earned `awaiting_release` — and walking
+  one of those back would hand the next master work that is already on a branch. Four further
+  exceptions never move: an issue a person parked at `needs_info`, `waiting` or `on_hold` during
+  the run, because that decision is newer than the one being restored; an issue whose opening
+  status was never recorded, left alone rather than guessed at; every issue of a run that ended
+  cleanly; and **any issue whose merge mark was stamped during this run**. That last one is a
+  comparison against the run's `started_at` rather than a null check, because `mergedAt` survives
+  a reopen untouched, so a bare null test would refuse to return every reopened issue and strand
+  it at `in_progress` — the very defect this closes. It matters most where a project merges
+  before the issue leaves `testing`: measured on sid-desk on 2026-09-13, seven runs died at
+  `testing` with the merge already stamped, and a rule keyed on the rung alone would have sent
+  five back to `open` and two to `draft`, which is outside the pool entirely, over code that was
+  already on master.
 - **The box now reports a dead run instead of waiting to be reaped for it.** A runner that refuted
   its own run's pid could not act on it: releasing the worktree requires the `session_terminal`
   mark, core alone writes that mark, and the only thing that wrote it was the ten-minute sweep. So
