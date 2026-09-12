@@ -9,7 +9,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createTestProject,
@@ -168,6 +168,37 @@ describe('inbound is exactly once', () => {
   });
 });
 
+describe('the announcement is claimed, not receipted', () => {
+  it('lets exactly one of two racing redeliveries announce the comment', async () => {
+    const connectionId = await bindRoom();
+    const written = await inbound.writeMirroredComment({
+      issueId,
+      authorId: ownerId,
+      connectionId,
+      externalMessageId: 'rc-race',
+      body: 'said once',
+    });
+
+    // cm:guard both claims run against the SAME null, which is the race: a receipt written after the emit lets both of them announce, and two `commentCreated` for one sentence is the agent acting twice on its own echo (ISS-981 criteria 10, 11).
+    const claim = async () =>
+      (
+        await db
+          .update(rcSchema.rocketchatCommentMirrors)
+          .set({ announcedAt: new Date() })
+          .where(
+            and(
+              eq(rcSchema.rocketchatCommentMirrors.commentId, written.commentId),
+              isNull(rcSchema.rocketchatCommentMirrors.announcedAt),
+            ),
+          )
+          .returning({ commentId: rcSchema.rocketchatCommentMirrors.commentId })
+      ).length;
+
+    const [a, b] = await Promise.all([claim(), claim()]);
+    expect((a ?? 0) + (b ?? 0)).toBe(1);
+  });
+});
+
 describe('the registry names one subject', () => {
   it('refuses a second subject for one room triple', async () => {
     const connectionId = await bindRoom();
@@ -213,7 +244,7 @@ describe('the registry names one subject', () => {
   it('still resolves a retired thread, so a reply there can be refused by name', async () => {
     const connectionId = await bindRoom();
     await registry.registerThread({ issueId }, { connectionId, rid: 'room-1', tmid: 'old' });
-    await registry.retireIssueThread(issueId);
+    await registry.retireIssueThread(issueId, { connectionId, rid: 'room-1', tmid: 'old' });
 
     expect(await registry.subjectForThread({ connectionId, rid: 'room-1', tmid: 'old' })).toEqual({
       kind: 'issue',

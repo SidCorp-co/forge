@@ -63,8 +63,11 @@ export interface IssueThread {
 
 /** The live thread this issue's comments go to, or null when none is open. */
 // cm:guard live rows only — a retired thread points into a room the project is no longer bound to, and posting a comment there sends it to people who stopped following this issue when the binding moved (ISS-981 criterion 32).
-export async function liveThreadForIssue(issueId: string): Promise<IssueThread | null> {
-  const [row] = await db
+export async function liveThreadForIssue(
+  issueId: string,
+  tx: Tx = db,
+): Promise<IssueThread | null> {
+  const [row] = await tx
     .select({
       connectionId: rocketchatThreads.connectionId,
       rid: rocketchatThreads.rid,
@@ -93,21 +96,27 @@ export async function registerThread(
 }
 
 /**
- * Register this issue's thread and return the one that is now authoritative.
- */
-// cm:guard the RETURNED tmid is the one to post into, never the caller's own: two instances opening a root for the same issue at once each hold a tmid, only one row survives the partial unique, and the loser posting into its own root puts the comment in a thread no reply can resolve back to the issue (ISS-981 criterion 33).
-export async function registerIssueThread(issueId: string, ref: ThreadRef): Promise<IssueThread> {
-  await registerThread({ issueId }, ref);
-  return (await liveThreadForIssue(issueId)) ?? ref;
-}
-
-/**
  * Retire this issue's live thread, so the next comment opens a new one.
  */
 // cm:guard retirement is a timestamp and never a delete, and the partial unique is what makes the replacement registrable: the retired row keeps holding its room triple so a reply left there still resolves and is refused by name (ISS-981 criteria 35, 36).
-export async function retireIssueThread(issueId: string): Promise<void> {
-  await db
+// cm:guard scoped to the EXACT row the caller decided about, never to the issue: two workers reading the same stale thread after a rebind would otherwise have the slower one retire the replacement the faster one just registered, leaving the issue with no live thread and its new thread's replies refused as retired (ISS-981 criterion 32).
+export async function retireIssueThread(
+  issueId: string,
+  ref: ThreadRef,
+  tx: Tx = db,
+): Promise<boolean> {
+  const retired = await tx
     .update(rocketchatThreads)
     .set({ retiredAt: sql`now()` })
-    .where(and(eq(rocketchatThreads.issueId, issueId), isNull(rocketchatThreads.retiredAt)));
+    .where(
+      and(
+        eq(rocketchatThreads.issueId, issueId),
+        eq(rocketchatThreads.connectionId, ref.connectionId),
+        eq(rocketchatThreads.rid, ref.rid),
+        eq(rocketchatThreads.tmid, ref.tmid),
+        isNull(rocketchatThreads.retiredAt),
+      ),
+    )
+    .returning({ id: rocketchatThreads.id });
+  return retired.length > 0;
 }

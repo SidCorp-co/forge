@@ -8,7 +8,7 @@
 // Every path here consumes the message. A registered thread never falls through
 // to the conversation handler, refusals included.
 
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { namespaceFromServerUrl } from '../../assistant/identity/directory.js';
 import { resolveSpeaker, unlinkedMessage } from '../../assistant/identity/speaker-link.js';
 import { insertComment } from '../../comments/service.js';
@@ -186,8 +186,20 @@ export async function handleIssueThreadReply(args: {
     return;
   }
 
-  // cm:guard a redelivery of an ALREADY-ANNOUNCED comment emits nothing — emitting again would put a second answer into the session `answer-resume.ts` sends to — but one whose announcement never happened is still owed it, which is why the flag is read off the row rather than from `created` (ISS-981 criteria 10, 11, 12).
   if (!written.announcementOwed) return;
+  // cm:guard the stamp is a CLAIM taken BEFORE the emit, not a receipt written after it: two redeliveries racing both read `announced_at IS NULL`, and both emitting puts two answers into the session `answer-resume.ts` sends to — the agent acts twice on one sentence, which the body names as the reason this lane is idempotent at all. The conditional update makes exactly one of them the announcer (ISS-981 criteria 10, 11, 12).
+  // cm:guard this trades the other way deliberately: a process dying between the claim and the emit loses that announcement, so the parked session is not woken by this reply and the comment waits on the issue where a person can see it. Announcing twice is an agent acting on its own echo; announcing zero times is a message somebody has to notice — the second is the recoverable one.
+  const claimed = await db
+    .update(rocketchatCommentMirrors)
+    .set({ announcedAt: new Date() })
+    .where(
+      and(
+        eq(rocketchatCommentMirrors.commentId, written.commentId),
+        isNull(rocketchatCommentMirrors.announcedAt),
+      ),
+    )
+    .returning({ commentId: rocketchatCommentMirrors.commentId });
+  if (claimed.length === 0) return;
 
   await args.hooks.emit('commentCreated', {
     issueId: issue.id,
@@ -198,11 +210,6 @@ export async function handleIssueThreadReply(args: {
     body: m.text,
     parentId: null,
   });
-  // cm:guard stamped AFTER the emit returns, so a process that dies mid-emit leaves the announcement owed and the next delivery makes it. `HooksBus.emit` awaits its subscribers, so this is reached only once they have run (ISS-981 criterion 12).
-  await db
-    .update(rocketchatCommentMirrors)
-    .set({ announcedAt: new Date() })
-    .where(eq(rocketchatCommentMirrors.commentId, written.commentId));
 }
 
 /**

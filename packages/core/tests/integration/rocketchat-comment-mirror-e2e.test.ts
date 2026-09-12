@@ -387,6 +387,52 @@ describe('the thread the registry names is the one posted into', () => {
   });
 });
 
+describe('one root per issue, and one live thread', () => {
+  it('opens no second root when a thread is registered while this worker holds the lock', async () => {
+    const connectionId = await bindRoom();
+    await comment('first');
+    await comment('second');
+    await mirror.drainCommentMirror();
+
+    const roots = posts.filter((p) => p.tmid === undefined);
+    expect(roots).toHaveLength(1);
+    expect(await threadRows()).toHaveLength(1);
+    const [thread] = await threadRows();
+    expect(posts.filter((p) => p.tmid !== undefined).every((p) => p.tmid === thread?.tmid)).toBe(
+      true,
+    );
+    expect(thread?.connectionId).toBe(connectionId);
+  });
+
+  it('does not retire a replacement thread on behalf of a worker holding a stale one', async () => {
+    const connectionId = await bindRoom('room-1');
+    await registry.registerThread({ issueId }, { connectionId, rid: 'room-1', tmid: 'stale' });
+    const stale = { connectionId, rid: 'room-1', tmid: 'stale' };
+    expect(await registry.retireIssueThread(issueId, stale)).toBe(true);
+
+    await registry.registerThread({ issueId }, { connectionId, rid: 'room-2', tmid: 'fresh' });
+    // cm:guard the stale worker's retirement must name its own row and find it already retired, never reach the replacement: retiring by issue alone leaves the issue with no live thread and the new thread's replies refused as retired (ISS-981 criterion 32).
+    expect(await registry.retireIssueThread(issueId, stale)).toBe(false);
+    expect((await registry.liveThreadForIssue(issueId))?.tmid).toBe('fresh');
+  });
+});
+
+describe('an unbound project costs one lookup, not one per comment', () => {
+  it('counts every comment undeliverable without resolving a room for each', async () => {
+    await comment('one');
+    await comment('two');
+    await comment('three');
+
+    const result = await mirror.drainCommentMirror();
+    expect(result.owed).toBe(3);
+    expect(result.undeliverable).toBe(3);
+    expect(posts).toHaveLength(0);
+    // cm:guard nothing was written for them, so they are all still owed the moment a room is bound — an unbound project's comments wait rather than expire (ISS-981 criterion 26).
+    expect(await mirrorRows()).toHaveLength(0);
+    expect(await mirror.owedComments()).toHaveLength(3);
+  });
+});
+
 describe('the claim is written before the post', () => {
   it('marks a comment claimed, never delivered, while its post is in flight', async () => {
     await bindRoom();

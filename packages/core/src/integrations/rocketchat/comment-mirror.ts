@@ -21,10 +21,15 @@ import { logger } from '../../logger.js';
 import type { HooksBus } from '../../pipeline/hooks.js';
 import { threadRootText } from './comment-render.js';
 import { FIXED_REPLY_CONSTANT, sendFixedReply } from './outbound.js';
-import { roomForProject } from './question-delivery.js';
+import { type RoomBinding, roomForProject } from './question-delivery.js';
 import { screenCarriedComment } from './reply-guard.js';
-import { resolveRoomPostAuth } from './room-delivery.js';
-import { liveThreadForIssue, registerIssueThread, retireIssueThread } from './thread-registry.js';
+import { type RoomPostAuth, resolveRoomPostAuth } from './room-delivery.js';
+import {
+  type IssueThread,
+  liveThreadForIssue,
+  registerThread,
+  retireIssueThread,
+} from './thread-registry.js';
 
 const RETRY_BACKOFF_MS = 60_000;
 // cm:guard the backoff is CAPPED, and the attempt count is what it feeds — never a limit on how many times a comment may be tried. A cap on attempts ends with the comment quietly ceasing to be owed while its room was merely unreachable, which is the loss this lane exists to prevent; only `delivered` and `refused` are terminal (ISS-981 criteria 22, 26).
@@ -161,6 +166,51 @@ async function noteFailure(commentId: string, lastError: string, now: Date): Pro
     .where(eq(rocketchatCommentMirrors.commentId, commentId));
 }
 
+interface ThreadFailure {
+  failure: string;
+}
+
+/**
+ * The thread this issue's comments go to in this room, opening one if needed.
+ */
+// cm:guard the whole check-and-open runs under a per-issue advisory lock, which is what makes one root per issue TRUE rather than merely likely: without it two instances delivering an issue's first two comments each find no thread, each post a root, and the loser's root stays in the room unregistered — a thread a person can reply in whose replies resolve to nothing (ISS-981 criterion 33).
+// cm:guard the lock is transaction-scoped, so it is released when this transaction ends and a process that dies holding it blocks nobody — the same property `drop-cascade.ts` and `events-routes.ts` rely on.
+// cm:guard a thread whose room is no longer this project's is RETIRED by identity before a replacement opens, which is what the partial unique on the live issue row requires; retiring by issue alone would let a stale worker retire the replacement another just registered (ISS-981 criterion 32).
+async function threadForIssueIn(
+  issueId: string,
+  room: { connectionId: string; rid: string },
+  auth: RoomPostAuth,
+): Promise<IssueThread | ThreadFailure> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${issueId}))`);
+
+    const existing = await liveThreadForIssue(issueId, tx);
+    if (existing && existing.connectionId === room.connectionId && existing.rid === room.rid) {
+      return existing;
+    }
+    if (existing) await retireIssueThread(issueId, existing, tx);
+
+    const [issue] = await tx
+      .select({ issSeq: issues.issSeq, title: issues.title })
+      .from(issues)
+      .where(eq(issues.id, issueId))
+      .limit(1);
+    if (!issue) return { failure: 'the issue is no longer on the record' };
+
+    const root = await sendFixedReply(
+      { kind: 'rest', auth, rid: room.rid },
+      threadRootText(`ISS-${issue.issSeq}`, issue.title),
+      FIXED_REPLY_CONSTANT,
+    );
+    if (!root.messageId) return { failure: 'the root post named no message id' };
+
+    const ref = { connectionId: room.connectionId, rid: room.rid, tmid: root.messageId };
+    await registerThread({ issueId }, ref, tx);
+    // cm:guard the row is READ BACK rather than the local ref returned: the insert absorbs a conflict silently, so a registration that lost to a writer outside this lock would otherwise send the comment into a root no row names (ISS-981 criterion 33).
+    return (await liveThreadForIssue(issueId, tx)) ?? ref;
+  });
+}
+
 export type CommentDeliveryOutcome = 'delivered' | 'failed' | 'undeliverable' | 'held' | 'refused';
 
 /**
@@ -171,18 +221,10 @@ export type CommentDeliveryOutcome = 'delivered' | 'failed' | 'undeliverable' | 
 export async function deliverOwedComment(
   owed: OwedComment,
   now: Date = new Date(),
+  into?: RoomBinding,
 ): Promise<CommentDeliveryOutcome> {
-  const room = await roomForProject(owed.projectId);
+  const room = into ?? (await roomForProject(owed.projectId));
   if (!room) return 'undeliverable';
-
-  const existing = await liveThreadForIssue(owed.issueId);
-  if (existing && (existing.connectionId !== room.connectionId || existing.rid !== room.rid)) {
-    await retireIssueThread(owed.issueId);
-  }
-  const thread =
-    existing && existing.connectionId === room.connectionId && existing.rid === room.rid
-      ? existing
-      : null;
 
   if (!(await claimComment(owed, room.connectionId, now))) return 'held';
 
@@ -207,34 +249,12 @@ export async function deliverOwedComment(
   }
 
   try {
-    let tmid: string | undefined = thread?.tmid;
-    if (!tmid) {
-      const [issue] = await db
-        .select({ issSeq: issues.issSeq, title: issues.title })
-        .from(issues)
-        .where(eq(issues.id, owed.issueId))
-        .limit(1);
-      if (!issue) {
-        await noteFailure(owed.commentId, 'the issue is no longer on the record', now);
-        return 'failed';
-      }
-      const root = await sendFixedReply(
-        { kind: 'rest', auth, rid: room.rid },
-        threadRootText(`ISS-${issue.issSeq}`, issue.title),
-        FIXED_REPLY_CONSTANT,
-      );
-      if (!root.messageId) {
-        await noteFailure(owed.commentId, 'the root post named no message id', now);
-        return 'failed';
-      }
-      // cm:guard the thread is registered BEFORE the comment is posted into it, and the REGISTERED tmid is what the comment goes to: a comment posted under a root no row names is a message whose replies reach nothing, and when another instance won the race its root is the issue's thread rather than the one this worker just posted (ISS-981 criteria 2, 33).
-      const registered = await registerIssueThread(owed.issueId, {
-        connectionId: room.connectionId,
-        rid: room.rid,
-        tmid: root.messageId,
-      });
-      tmid = registered.tmid;
+    const thread = await threadForIssueIn(owed.issueId, room, auth);
+    if ('failure' in thread) {
+      await noteFailure(owed.commentId, thread.failure, now);
+      return 'failed';
     }
+    const tmid = thread.tmid;
 
     const receipt = await sendFixedReply({ kind: 'rest', auth, rid: room.rid, tmid }, owed.body, {
       ok: true,
@@ -261,6 +281,7 @@ export interface CommentMirrorResult {
   refused: number;
 }
 
+// cm:guard the room is resolved ONCE per project and an unbound project's comments are counted without being visited: a project nobody has bound keeps every comment owed for ever, which is right, and re-deriving a binding lookup per comment every thirty seconds for ever is what that correctness would otherwise cost (ISS-981).
 export async function drainCommentMirror(now: Date = new Date()): Promise<CommentMirrorResult> {
   const owed = await owedComments(now);
   const result: CommentMirrorResult = {
@@ -271,8 +292,18 @@ export async function drainCommentMirror(now: Date = new Date()): Promise<Commen
     held: 0,
     refused: 0,
   };
+  const rooms = new Map<string, RoomBinding | null>();
   for (const comment of owed) {
-    result[await deliverOwedComment(comment, now)] += 1;
+    let room = rooms.get(comment.projectId);
+    if (room === undefined) {
+      room = await roomForProject(comment.projectId);
+      rooms.set(comment.projectId, room);
+    }
+    if (!room) {
+      result.undeliverable += 1;
+      continue;
+    }
+    result[await deliverOwedComment(comment, now, room)] += 1;
   }
   return result;
 }
