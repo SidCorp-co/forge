@@ -204,7 +204,6 @@ export async function fetchRoomHistory(
       const mapped = raw
         .map((m) => mapMessage(m as RawRestMessage, auth.serverUrl))
         .filter((m): m is RocketChatRestMessage => m !== null);
-      // History endpoints return newest-first; flip to chronological.
       return mapped.sort((a, b) => a.ts.localeCompare(b.ts));
     }
   }
@@ -271,6 +270,42 @@ export async function fetchOwnUsername(auth: RocketChatRestAuth): Promise<string
   const body = await rcGet(auth, 'me', {});
   const username = (body as { username?: string } | null)?.username;
   return typeof username === 'string' && username.length > 0 ? username : null;
+}
+
+/** One Rocket.Chat account as the server's own directory reports it. */
+export interface RocketChatUserProfile {
+  externalId: string;
+  username: string | null;
+  email: string | null;
+}
+
+/**
+ * ISS-977 — read a speaker's account from the server's directory, so the
+ * address a link is proposed on comes from the channel rather than from
+ * whoever is asking. Null when the bot cannot see the account: `users.info`
+ * needs `view-full-other-user-info`, and a bot without it gets a 403 that is
+ * indistinguishable here from an id that does not exist.
+ */
+// cm:guard prefer a VERIFIED address and fall back to the first only when none is verified, rather than taking `emails[0]` outright — Rocket.Chat lets an account hold several and marks which ones it has proven, and the unproven one is the one an operator can type
+export async function fetchUserProfile(
+  auth: RocketChatRestAuth,
+  externalId: string,
+): Promise<RocketChatUserProfile | null> {
+  const body = await rcGet(auth, 'users.info', { userId: externalId });
+  const user = (body as { user?: Record<string, unknown> } | null)?.user;
+  if (!user || typeof user['_id'] !== 'string') return null;
+  const emails = Array.isArray(user['emails'])
+    ? (user['emails'] as Array<{ address?: unknown; verified?: unknown }>)
+    : [];
+  const addresses = emails
+    .filter((e) => typeof e?.address === 'string' && e.address.length > 0)
+    .map((e) => ({ address: e.address as string, verified: e.verified === true }));
+  const chosen = addresses.find((e) => e.verified) ?? addresses[0];
+  return {
+    externalId: user['_id'],
+    username: typeof user['username'] === 'string' ? user['username'] : null,
+    email: chosen?.address ?? null,
+  };
 }
 
 /**

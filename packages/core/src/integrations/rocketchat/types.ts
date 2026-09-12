@@ -3,8 +3,8 @@
  *
  * Archetype: "connection-only" — core neither dispatches webhooks nor injects
  * MCP. The connection stores the bot credential + server URL; a long-lived DDP
- * bot-user connection (P2c) consumes it out-of-band. A binding maps one RC room
- * (`config.rid`) to the Forge project (`binding.project_id`).
+ * bot-user connection (P2c) consumes it out-of-band. A binding maps RC rooms
+ * (`config.rids`) to the Forge project (`binding.project_id`).
  */
 
 export interface RocketChatConfig extends Record<string, unknown> {
@@ -19,8 +19,8 @@ export interface RocketChatSecrets extends Record<string, unknown> {
   userId: string;
 }
 
-/** Per-binding config: which RC room this project listens/replies on. */
+/** Per-binding config: which RC rooms this project listens/replies on. */
 export interface RocketChatBindingConfig extends Record<string, unknown> {
-  /** Rocket.Chat room id (`rid`). */
-  rid: string;
+  /** Rocket.Chat room ids (`rid`), one binding watching any number of rooms. */
+  rids?: string[];
 }

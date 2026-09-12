@@ -22,6 +22,7 @@ import { registerAgentCronTicker, unregisterAgentCronTicker } from './agents/cro
 import { agentRoutes } from './agents/routes.js';
 import { memoryModelRoutes } from './app-config/memory-model-routes.js';
 import { appConfigRoutes } from './app-config/routes.js';
+import { speakerLinkMeRoutes, speakerLinkProjectRoutes } from './assistant/identity/routes.js';
 import { bootstrapChatProviders } from './assistant/providers/bootstrap.js';
 import { chatRoutes } from './assistant/routes.js';
 import { chatSessionRoutes } from './assistant/sessions-routes.js';
@@ -378,6 +379,8 @@ app.route('/api/update-packets', updatePacketRoutes);
 app.route('/api/notifications', notificationRoutes);
 app.route('/api/me', meAttentionRoutes);
 app.route('/api', questionRoutes);
+app.route('/api', speakerLinkProjectRoutes);
+app.route('/api', speakerLinkMeRoutes);
 app.route('/api/me', meRecentChangesRoutes);
 app.route('/api/agents', agentRoutes);
 app.route('/api/chat/sessions', chatSessionRoutes);
@@ -518,9 +521,7 @@ if (isMain) {
     logger.info({ port: info.port }, '@forge/core listening');
   });
 
-  // serve() is typed as a union that includes http2 variants, but we use the
-  // default HTTP/1 server. Narrow for ws's WebSocketServer which only accepts
-  // http/https servers.
+  // cm:why serve() returns a union including http2, and ws's WebSocketServer takes only http/https — the cast narrows to the HTTP/1 server this call actually asked for
   attachWs(server as unknown as HttpServer);
 
   // ISS-604 (P2c) — open bot-user DDP sockets for active Rocket.Chat

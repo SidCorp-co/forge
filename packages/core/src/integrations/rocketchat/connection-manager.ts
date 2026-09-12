@@ -37,7 +37,7 @@ import { createSeenTracker, decideHandling } from './inbound-gate.js';
 import { FIXED_REPLY_CONSTANT, type ReplySendProof, sendFixedReply } from './outbound.js';
 import { screenStakeholderReply } from './reply-screen.js';
 import { fetchOwnUsername } from './rest-client.js';
-import type { RocketChatConfig, RocketChatSecrets } from './types.js';
+import type { RocketChatBindingConfig, RocketChatConfig, RocketChatSecrets } from './types.js';
 
 export function rocketChatPersona(
   projectName: string,
@@ -276,7 +276,10 @@ class RocketChatConnectionManager {
     const routes = new Map<string, Route>();
     // cm:why two batched lookups, not a projects+organizations pair per binding: this was 1+2N round-trips and `reload` fires on ANY connection/binding CRUD, so a 10-binding connection paid 21 of them every reload
     const active = (await listBindingsForConnection(connectionId))
-      .map(({ binding: b }) => ({ b, rids: (b.config as { rids?: string[] } | null)?.rids ?? [] }))
+      .map(({ binding: b }) => ({
+        b,
+        rids: (b.config as RocketChatBindingConfig | null)?.rids ?? [],
+      }))
       .filter(({ b, rids }) => b.active && rids.length > 0);
     if (active.length === 0) return routes;
 
@@ -533,7 +536,7 @@ class RocketChatConnectionManager {
                 question = parsed.question.trim();
               }
             } catch {
-              // keep the raw message text
+              // cm:why a malformed tool-call argument is not worth failing the turn over — the escalation still carries the user's own message text, which is what a research agent needs
             }
             const started = await startEscalation({
               projectId: route.projectId,

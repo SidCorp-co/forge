@@ -1597,6 +1597,13 @@
       "when": 1793232000000,
       "tag": "0229_pat_permissions",
       "breakpoints": true
+    },
+    {
+      "idx": 230,
+      "version": "7",
+      "when": 1793318400000,
+      "tag": "0230_speaker_links",
+      "breakpoints": true
     }
   ]
 }
