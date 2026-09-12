@@ -7,7 +7,11 @@
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../config/env.js', () => ({
-  env: { JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef', NODE_ENV: 'test' },
+  env: {
+    JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef',
+    NODE_ENV: 'test',
+    ANTHROPIC_API_URL: 'https://proxy.example/v1',
+  },
 }));
 vi.mock('../db/client.js', () => ({ db: {} }));
 
@@ -79,6 +83,27 @@ describe('counting the catalog through the provider', () => {
     expect(await countCatalogTokens([{ name: 't' }], { apiKey: 'k', fetchImpl })).toEqual({
       ok: true,
       figure: { tokens: 100, provenance: 'measured' },
+    });
+  });
+
+  it('counts against the base ANTHROPIC_API_URL names, not the vendor host', async () => {
+    const urls: string[] = [];
+    const fetchImpl = vi.fn(async (url: string) => {
+      urls.push(url);
+      return new Response(JSON.stringify({ input_tokens: 1 }), { status: 200 });
+    }) as unknown as typeof fetch;
+    await countCatalogTokens([], { apiKey: 'k', fetchImpl });
+    expect(urls).toEqual([
+      'https://proxy.example/v1/messages/count_tokens',
+      'https://proxy.example/v1/messages/count_tokens',
+    ]);
+  });
+
+  it('reads nothing out of a body that is not JSON at all', async () => {
+    const fetchImpl = counter(() => new Response('{', { status: 200 }));
+    expect(await countCatalogTokens([], { apiKey: 'k', fetchImpl })).toEqual({
+      ok: false,
+      reason: 'unreadable',
     });
   });
 
