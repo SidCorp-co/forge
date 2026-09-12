@@ -198,10 +198,11 @@ export function activeRuns(runs: PipelineRunListItem[] | undefined): PipelineRun
   return liveRuns(runs).filter((r) => (r.liveJobs ?? 0) > 0);
 }
 
-/** Live runs with nothing working on them — open in the DB, idle in reality.
- *  Split out from `awaitingReleaseRuns`: that one names the single expected park
- *  (the release gate); this one is everything else, which is the set nobody
- *  could see before. */
+/** Live runs with no live JOB on them. Split out from `awaitingReleaseRuns`:
+ *  that one names the single expected park (the release gate); this one is
+ *  everything else, which is the set nobody could see before. */
+// cm:guard "no live job" is NOT "idle" — a master-lane run carries agent_sessions and no jobs row, so it lands here while fully live and heartbeating (14 such runs across 5 projects, 2026-09-12). This bucket is a job-liveness bucket; do not label it idle in user-facing copy, and do not reap from it.
+// cm:edge contract -> packages/core/src/pipeline/runs-rollup.ts — `liveJobs` is a job count there for the same reason; the two must keep the same meaning or the dashboard says idle about a box at capacity
 export function idleRuns(runs: PipelineRunListItem[] | undefined): PipelineRunListItem[] {
   return liveRuns(runs).filter(
     (r) => (r.liveJobs ?? 0) === 0 && r.currentStep !== AWAITING_RELEASE_STEP,

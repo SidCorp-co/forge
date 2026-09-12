@@ -1,12 +1,6 @@
 "use client";
 
-// Live runs card (ISS-379, AC#3) — pipeline runs genuinely executing a step
-// right now, with their current stage + cost-so-far. Each row links to the
-// run's issue (or the pipeline board when the run has no issue, e.g. pm/system
-// runs). Runs parked at the manual release gate are NOT live work — see
-// `AwaitingReleaseCard` — so callers must pass `activeRuns(...)`, not
-// `liveRuns(...)`, or this card silently re-absorbs the noise it was split out
-// to remove.
+// cm:guard callers pass `activeRuns(...)`, never `liveRuns(...)` — a run parked at the manual release gate is not live work (`AwaitingReleaseCard` owns those), and passing the wider set re-absorbs the exact noise this card was split out of (ISS-379)
 import { useRouter } from "next/navigation";
 import { Card, CardContent, Icon, LiveDot, StatusChip } from "@/design";
 import { stageColor } from "@/design/stages";
@@ -31,9 +25,10 @@ export function LiveRunsCard({
 }: {
   runs: PipelineRunListItem[];
   slug: string;
-  /** ISS-789 — runs still open with nothing working on them. Shown as a count
-   *  rather than hidden: they were invisible before, and a run that is open and
-   *  idle is exactly what a human needs to know to go unstick it. */
+  /** ISS-789 — runs still open with no live JOB on them. Shown as a count
+   *  rather than hidden: they were invisible before. */
+  // cm:guard this bucket is job-liveness, NOT idleness, so the copy must never invite a human to go unstick it: a master-lane run carries agent_sessions and no jobs row, so it lands here while heartbeating. This read "open with nothing running" beside 14 live sessions (2026-09-12).
+  // cm:edge contract -> packages/web-v2/src/features/project-dashboard/derive.ts — `idleRuns` fills this prop; if its predicate ever widens past `liveJobs === 0`, this wording has to move with it
   idle?: PipelineRunListItem[];
 }) {
   const router = useRouter();
@@ -100,7 +95,7 @@ export function LiveRunsCard({
           >
             <Icon name="pause" size={13} className="flex-none text-subtle" />
             <span className="min-w-0 flex-1">
-              {idle.length} {idle.length === 1 ? "run is" : "runs are"} open with nothing running
+              {idle.length} {idle.length === 1 ? "run has" : "runs have"} no job running
             </span>
             <Icon name="chevronRight" size={13} className="flex-none text-subtle" />
           </button>

@@ -30,7 +30,6 @@ const inputSchema = z
     issueId: z.uuid().optional(),
     status: z.enum(pipelineRunStatuses).optional(),
     limit: z.number().int().min(1).max(200).optional(),
-    // get/pause/resume/cancel args
     runId: z.uuid().optional(),
     parkIssue: z.boolean().optional(),
   })
@@ -40,7 +39,7 @@ export const forgeProjectPipelineRunsTool: ContextScopedMcpToolFactory = ({ prin
   name: 'forge_project_pipeline_runs',
   description:
     'Lifecycle controls for project pipeline_runs. Actions: list | get | pause | resume | cancel. ' +
-    'Every list row carries `liveJobs` — how many of its jobs are still queued/dispatched/running. READ IT before treating `status` as liveness: a run stays `running` after its last job ends, so `status:"running"` with `liveJobs: 0` means nothing is working on it and only a human can move it. Filtering on status alone cannot tell those apart. ' +
+    'Every list row carries `liveJobs` — how many of its JOBS are still queued/dispatched/running. READ IT before treating `status` as liveness: a run stays `running` after its last job ends, so `status:"running"` with `liveJobs: 0` is usually a run nothing is working on, which filtering on status alone cannot tell apart. It is NOT proof of that: a master-lane run carries agent_sessions and no jobs row at all, so it reads 0 while fully live. Check agent_sessions (`lastHeartbeatAt`) before calling a run abandoned. ' +
     'list: requires projectId; optional issueId/status/limit filters; newest-first by started_at. ' +
     'EVERY list response carries `returned`, `limit` and `hasMore` — read `hasMore` before reporting a count as complete, because a list bound by your own limit is otherwise indistinguishable from a complete one. `truncated`/`truncatedBy` say which cap bit. ' +
     'get/pause/resume/cancel: require runId. ' +

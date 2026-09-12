@@ -110,10 +110,9 @@ export interface PipelineRunSummary {
   cost: PipelineRunCostSummary;
   /**
    * ISS-789 — jobs on this run that are not yet terminal (`queued`,
-   * `dispatched`, `running`). A `running` run with `liveJobs: 0` has nothing
-   * left working on it; the status alone cannot say that, which is why
-   * filtering by `status=running` could not tell alive from dead.
+   * `dispatched`, `running`).
    */
+  // cm:guard this counts JOBS, never occupancy — `agent_sessions` has no `job_id` and hangs off `pipelineRunId`, so a master-lane run reads `liveJobs: 0` while fully live. Reading 0 as "nothing left working on it" is what made 14 heartbeating runs look like a leak (2026-09-12); confirm against `agent_sessions.lastHeartbeatAt` before any caller calls a run dead.
   liveJobs: number;
   /** ISS-411 — per-attempt device/retry timeline (jobs-sourced). */
   attempts: PipelineRunAttempt[];
