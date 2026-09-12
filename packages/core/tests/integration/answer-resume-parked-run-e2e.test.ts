@@ -149,6 +149,28 @@ describe('an answer owed to a parked run', () => {
 
     expect(await answerReachesAParkedRun(issueId)).toBe(false);
   });
+
+  // cm:guard the question is bound to its OWN `project_id`, not to the project of the issue it hangs off. The two columns are independent, so this row is representable, and on `issue_id` alone another project's question decides that this run may resume (ISS-989).
+  it('is not claimed by a question row naming a different project than its issue', async () => {
+    const elsewhere = await createTestProject(harness.db, ownerId);
+    const id = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO agent_questions (id, project_id, issue_id, status, blocker_kind, steps)
+      VALUES (${id}, ${elsewhere.id}, ${issueId}, 'open', 'human', '[]'::jsonb)
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO question_waiters (id, question_id, device_id, run_id)
+      VALUES (${randomUUID()}, ${id}, ${deviceId}, 'run-crossed')
+    `);
+
+    expect(await answerReachesAParkedRun(issueId)).toBe(false);
+  });
+
+  // cm:guard the pair of the case above: the SAME two ids still resume, so the new join narrows the crossed row alone and not every question.
+  it('is still claimed when the question names its issue own project', async () => {
+    await question({ blockerKind: 'human' });
+    expect(await answerReachesAParkedRun(issueId)).toBe(true);
+  });
 });
 
 describe('the whole episode: a person comments while a run is parked', () => {

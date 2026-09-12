@@ -10,6 +10,19 @@
 
 ### Security
 
+- **The Attention inbox no longer shows you issues from projects you were removed from.**
+  The "Awaiting input" list picked an issue because you were its assignee, or because you filed it
+  and nobody else owns it. That is a fair question to ask — is this mine to answer? — but it was the
+  only question asked, so leaving a project, or leaving the organisation that owns it, did not take
+  its rows out of your inbox. You kept seeing the title, the status, how long the work had been
+  waiting and what the wait was costing, for as long as your account existed. The list now also asks
+  the question the rest of the product asks before showing you anything: do you hold a role on this
+  project? Rows that fail it are gone rather than greyed out or blanked, because a placeholder still
+  tells you the issue exists. Nobody who holds a role loses a row — read-only members keep theirs,
+  and so do organisation owners and admins who were never added to the project by name. Separately,
+  a question recorded against one project but attached to an issue in another can no longer wake a
+  paused run in the second one.
+
 - **Every response to a personal access token now names the permission the route required.**
   Finding out what a route wants used to mean being refused on it: the name was in the body of a
   `403 PAT_PERMISSION_REQUIRED` and nowhere else, so the only way to a correct grant was to mint a
