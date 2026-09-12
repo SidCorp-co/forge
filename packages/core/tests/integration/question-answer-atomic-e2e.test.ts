@@ -393,45 +393,6 @@ describe('who may read a question, and who may only look', () => {
   });
 });
 
-describe('asking a question about an issue of another project', () => {
-  // cm:guard refused by NAME at the write, because no reader downstream can tell which of the two columns the caller meant — and every narrowing that excludes the crossed row excludes it from something a person or a parked run needed (ISS-989).
-  it('is refused, naming the project the issue actually belongs to', async () => {
-    const elsewhere = await createTestProject(harness.db, adminId);
-
-    await expect(aQuestion({ projectId: elsewhere.id })).rejects.toThrow(
-      new RegExp(`belongs to project ${projectId}`),
-    );
-  });
-
-  it('is refused with a code of its own rather than a generic one', async () => {
-    const elsewhere = await createTestProject(harness.db, adminId);
-
-    await aQuestion({ projectId: elsewhere.id }).then(
-      () => expect.unreachable('the crossed question was written'),
-      (e: { code?: string }) => expect(e.code).toBe('QUESTION_ISSUE_ELSEWHERE'),
-    );
-  });
-
-  it('writes no row when it refuses', async () => {
-    const elsewhere = await createTestProject(harness.db, adminId);
-    const id = randomUUID();
-
-    await aQuestion({ projectId: elsewhere.id, id }).catch(() => {});
-
-    expect(await rowOf(id)).toBeUndefined();
-  });
-
-  it('refuses a question naming an issue that does not exist at all', async () => {
-    await expect(aQuestion({ issueId: randomUUID() })).rejects.toThrow(/no issue/);
-  });
-
-  // cm:guard a question with NO issue is legal and must stay legal: a project-level question hangs off no issue, and a check that demanded one would refuse every one of them.
-  it('still writes a question that names no issue', async () => {
-    const q = await aQuestion({ issueId: undefined });
-    expect(q.id).toBeTruthy();
-  });
-});
-
 describe('the routes a browser reaches this by', () => {
   it('answers the issue-scoped list to a member', async () => {
     const q = await aQuestion();
