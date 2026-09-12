@@ -16,7 +16,7 @@ import { openAiCompatUrl } from '../lib/openai-compat-url.js';
 import { toRequestBody } from './providers/anthropic.js';
 import type { ChatTool } from './providers/types.js';
 import { buildChatToolContext } from './tools/principal.js';
-import { buildProjectToolset } from './tools/registry.js';
+import { buildProjectToolset, CHAT_TOOL_ALLOWLIST } from './tools/registry.js';
 
 // cm:edge naming -> packages/core/src/assistant/context-budget.ts — the same chars/4 the budget elides on, deliberately, so a token figure here and a token figure there mean one thing; an estimator that disagreed with the elider would price a request the elider had already cut
 export const CHARS_PER_TOKEN = 4;
@@ -84,11 +84,26 @@ export function measureLiveCatalog(): CatalogMeasurement {
   };
 }
 
+/** The chat door's own composition with the cap not applied — what `/mcp` serves, which sends every description whole. */
+// cm:guard this variant must be built from `CHAT_TOOL_ALLOWLIST`'s factories directly and NOT from `buildProjectToolset`, whose `buildToolset` has already truncated at `DESCRIPTION_CAP` — measuring the capped output and calling it the uncapped door is the substitution this whole module exists to refuse (ISS-983)
+export function uncappedCatalogChars(ctx: Parameters<typeof buildProjectToolset>[0]): number {
+  const whole = CHAT_TOOL_ALLOWLIST.map((spec) => {
+    const tool = spec.factory(ctx);
+    return {
+      name: tool.name,
+      description: tool.description,
+      input_schema: tool.inputSchema,
+    };
+  });
+  return JSON.stringify(whole).length;
+}
+
 /**
  * The same nine tools under every serialization anyone might have counted: the wire form this
- * module prices, the OpenAI-shaped toolset it is built from, the unbound form that keeps the
- * `projectId` a bound context strips, and the pretty-printed form. A catalog size quoted somewhere
- * else can be matched against the shape that produced it instead of argued about.
+ * module prices, the uncapped `/mcp` form the proposal's figure came from, the OpenAI-shaped
+ * toolset it is built from, the unbound form that keeps the `projectId` a bound context strips,
+ * and the pretty-printed form. A catalog size quoted somewhere else can be matched against the
+ * shape that produced it instead of argued about.
  */
 export function catalogVariants(catalog: CatalogMeasurement): [string, number][] {
   const nilUuid = '00000000-0000-0000-0000-000000000000';
@@ -105,6 +120,7 @@ export function catalogVariants(catalog: CatalogMeasurement): [string, number][]
   }).tools;
   return [
     ['wire, project-bound — what this module prices', catalog.chars],
+    ['uncapped, descriptions whole — the /mcp door', uncappedCatalogChars(boundCtx)],
     [
       'wire, unbound — projectId left in every schema',
       JSON.stringify(serializeCatalogForWire(unbound)).length,
@@ -317,6 +333,7 @@ function printCatalog(catalog: CatalogMeasurement, tokens: TokenFigure, why: str
   );
   console.log('\nper tool, serialized — description, schema, and whether the chat cap cut it:');
   let described = 0;
+  let schema = 0;
   let cut = 0;
   for (const tool of catalog.wire as {
     name?: string;
@@ -326,19 +343,25 @@ function printCatalog(catalog: CatalogMeasurement, tokens: TokenFigure, why: str
     const description = tool.description ?? '';
     const truncated = description.includes(TRUNCATION_MARK);
     described += description.length;
+    schema += JSON.stringify(tool.input_schema).length;
     if (truncated) cut += 1;
     console.log(
       `  ${tool.name ?? '(unnamed)'}: ${count(JSON.stringify(tool).length)} chars = ${count(description.length)} description${truncated ? ' (CUT by the chat cap)' : ''} + ${count(JSON.stringify(tool.input_schema).length)} schema`,
     );
   }
+  // cm:guard the three buckets must SUM to `catalog.chars` and the third is not schema — tool names, the JSON punctuation, the array framing and the `cache_control` marker live there. Reporting `chars - described` as schema overstated it by the framing and is the misclassification ISS-983 was reviewed for; a bucket that cannot be trimmed by either lever still has to be named as itself.
+  const framing = catalog.chars - described - schema;
   console.log(
-    `\ndescription served to chat: ${count(described)} chars, ${cut} of ${catalog.toolCount} tools cut at the cap. The rest of the catalog — ${count(catalog.chars - described)} chars — is schema, which no description trim reaches.`,
+    `\ndescription served to chat: ${count(described)} chars, ${cut} of ${catalog.toolCount} tools cut at the cap.`,
+  );
+  console.log(
+    `the rest: ${count(schema)} chars of schema, which no description trim reaches, and ${count(framing)} chars of wire framing — tool names, JSON punctuation, the array, and the cache_control marker — which neither lever reaches. ${count(described)} + ${count(schema)} + ${count(framing)} = ${count(catalog.chars)}.`,
   );
 }
 
 /** Every serialization of the same nine tools, so a figure quoted elsewhere can be matched against the shape that produced it. */
 function printVariants(catalog: CatalogMeasurement): void {
-  console.log('\n## The same catalog, serialized four ways');
+  console.log(`\n## The same catalog, serialized ${catalogVariants(catalog).length} ways`);
   for (const [label, chars] of catalogVariants(catalog)) {
     console.log(`  ${label}: ${count(chars)} chars`);
   }
@@ -351,12 +374,12 @@ function printCosts(catalog: TokenFigure, historyLengths: number[]): void {
     `rates: input $${PRICING.inputPerMTok}/MTok, cache write x${PRICING.cacheWriteMultiplier}, cache read x${PRICING.cacheReadMultiplier} (${PRICING.provider} ${PRICING.model})`,
   );
   console.log(
-    `every token figure below is derived from the catalog figure, so each one is ${describe(catalog)}.`,
+    `every token AND dollar figure below is derived from the catalog figure, so each one is ${describe(catalog)} — and each carries that label itself, because one provenance word at the top of a block cannot say which of the numbers under it inherited it.`,
   );
   for (const history of historyLengths) {
     console.log(`\nuncached context: ${count(history)} tokens (${CHOSEN})`);
     for (const c of costCases(catalogTokens, history)) {
-      console.log(`  ${money(c.dollars)}  ${c.label}`);
+      console.log(`  ${money(c.dollars)} (${describe(catalog)})  ${c.label}`);
     }
   }
   console.log('\n## One cached catalog, two history lengths');
@@ -365,7 +388,7 @@ function printCosts(catalog: TokenFigure, historyLengths: number[]): void {
   );
   for (const row of divergenceCase(catalogTokens, historyLengths)) {
     console.log(
-      `  history ${count(row.historyTokens)} (${CHOSEN}): promptTokens ${count(row.promptTokens)}, cachedPromptTokens ${count(row.cachedPromptTokens)} (${describe(catalog)}), ratio ${pct(row.aggregateRatio)}, prefix saving ${count(Math.round(row.prefixSavingTokens))} tokens (${describe(catalog)}) = ${money(row.prefixSavingDollars)}`,
+      `  history ${count(row.historyTokens)} (${CHOSEN}): promptTokens ${count(row.promptTokens)} (${describe(catalog)}), cachedPromptTokens ${count(row.cachedPromptTokens)} (${describe(catalog)}), ratio ${pct(row.aggregateRatio)} (${describe(catalog)}), prefix saving ${count(Math.round(row.prefixSavingTokens))} tokens (${describe(catalog)}) = ${money(row.prefixSavingDollars)} (${describe(catalog)})`,
     );
   }
 }

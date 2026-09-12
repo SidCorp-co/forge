@@ -21,8 +21,11 @@ const {
   divergenceCase,
   measureLiveCatalog,
   serializeCatalogForWire,
+  uncappedCatalogChars,
 } = await import('./tool-catalog-cost.js');
 const { CHAT_TOOL_ALLOWLIST } = await import('./tools/registry.js');
+const { DESCRIPTION_CAP } = await import('./tools/mcp-adapter.js');
+const { buildChatToolContext } = await import('./tools/principal.js');
 
 interface WireTool {
   name: string;
@@ -164,7 +167,29 @@ describe('the serialization a quoted figure came from', () => {
     for (const [label, chars] of variants) {
       expect(chars, label).toBeGreaterThan(0);
     }
-    expect(variants.size).toBe(4);
+    expect(variants.size).toBe(5);
+  });
+
+  // cm:guard the uncapped shape is the /mcp door's and MUST be derived, never carried: the report quotes a figure for it, and a variant list that cannot produce that figure leaves the quote unfalsifiable (ISS-983 F1)
+  it('derives the uncapped /mcp shape, and it is larger than the capped chat one', () => {
+    const catalog = measureLiveCatalog();
+    const variants = new Map(catalogVariants(catalog));
+    const uncapped = variants.get('uncapped, descriptions whole — the /mcp door');
+    expect(uncapped).toBeGreaterThan(catalog.chars);
+  });
+
+  it('reads the uncapped shape past the cap the chat door applies', () => {
+    const ctx = buildChatToolContext({
+      userId: '00000000-0000-0000-0000-000000000000',
+      projectId: '00000000-0000-0000-0000-000000000000',
+      projectSlug: 'measurement',
+    });
+    const whole = uncappedCatalogChars(ctx);
+    const longest = Math.max(
+      ...CHAT_TOOL_ALLOWLIST.map((spec) => spec.factory(ctx).description.length),
+    );
+    expect(longest).toBeGreaterThan(DESCRIPTION_CAP);
+    expect(whole).toBeGreaterThan(DESCRIPTION_CAP * CHAT_TOOL_ALLOWLIST.length);
   });
 });
 
@@ -225,7 +250,7 @@ describe('every token figure the run prints says where it came from', () => {
     const tokenLines = lines
       .flatMap((l) => l.split('\n'))
       .filter((l) => /\btokens?\b/.test(l) && /\d/.test(l))
-      .filter((l) => !l.startsWith('every token figure below is derived'));
+      .filter((l) => !l.startsWith('every token AND dollar figure below is derived'));
     expect(tokenLines.length).toBeGreaterThan(4);
     for (const line of tokenLines) {
       expect(line, line).toMatch(LABELS);
@@ -242,9 +267,70 @@ describe('every token figure the run prints says where it came from', () => {
     expect(
       lines.some((l) =>
         l.includes(
-          `every token figure below is derived from the catalog figure, so each one is estimated, chars/${CHARS_PER_TOKEN}`,
+          `every token AND dollar figure below is derived from the catalog figure, so each one is estimated, chars/${CHARS_PER_TOKEN}`,
         ),
       ),
     ).toBe(true);
+  });
+});
+
+describe('the catalog splits into three buckets that sum to the whole (ISS-983 F2)', () => {
+  // cm:guard `chars - described` is NOT schema — it also holds tool names, JSON punctuation, the array framing and the cache_control marker. Reporting it as schema overstates what a schema trim could ever reach, which is the one question this module is asked.
+  it('names wire framing as itself rather than folding it into schema', async () => {
+    const lines: string[] = [];
+    const log = vi.spyOn(console, 'log').mockImplementation((...a) => {
+      lines.push(a.join(' '));
+    });
+    await main();
+    log.mockRestore();
+
+    const sum = lines.flatMap((l) => l.split('\n')).find((l) => l.includes('wire framing'));
+    expect(sum, 'no bucket-sum line was printed').toBeDefined();
+    const m = (sum ?? '').match(/([\d,]+) \+ ([\d,]+) \+ ([\d,]+) = ([\d,]+)\./);
+    expect(m, `no A + B + C = D in: ${sum}`).not.toBeNull();
+    const [described, schema, framing, total] = (m ?? [])
+      .slice(1)
+      .map((n) => Number(n.replace(/,/g, ''))) as [number, number, number, number];
+    expect(described + schema + framing).toBe(total);
+    expect(framing).toBeGreaterThan(0);
+    expect(sum).toContain('wire framing');
+  });
+
+  it('measures schema as the schemas themselves, not as a remainder', () => {
+    const catalog = measureLiveCatalog();
+    const schema = (catalog.wire as { input_schema?: unknown }[]).reduce(
+      (n, t) => n + JSON.stringify(t.input_schema).length,
+      0,
+    );
+    const described = (catalog.wire as { description?: string }[]).reduce(
+      (n, t) => n + (t.description ?? '').length,
+      0,
+    );
+    expect(schema).toBeLessThan(catalog.chars - described);
+  });
+});
+
+describe('every DOLLAR figure says where it came from too (ISS-983 F3)', () => {
+  const LABELS = /\((measured|estimated, chars\/\d+|chosen[^)]*|declared[^)]*)\)/;
+
+  it('labels each dollar figure individually, not once per block', async () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', undefined);
+    const lines: string[] = [];
+    const log = vi.spyOn(console, 'log').mockImplementation((...a) => {
+      lines.push(a.join(' '));
+    });
+    await main();
+    log.mockRestore();
+    vi.unstubAllEnvs();
+
+    const dollarLines = lines
+      .flatMap((l) => l.split('\n'))
+      .filter((l) => /\$[\d.]/.test(l))
+      .filter((l) => !l.startsWith('rates:'))
+      .filter((l) => !l.includes('derived from the catalog figure'));
+    expect(dollarLines.length).toBeGreaterThan(3);
+    for (const line of dollarLines) {
+      expect(line, line).toMatch(LABELS);
+    }
   });
 });

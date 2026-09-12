@@ -19,7 +19,7 @@ below that disagrees with a fresh run means the trim landed after this.
 ```mermaid
 flowchart LR
   subgraph PREFIX["what a Messages request renders, in this order"]
-    T["tools[]<br/>9 tools · 20,134 chars<br/>cache_control on the LAST one<br/>stable across rounds AND turns"]
+    T["tools[]<br/>9 tools · 20,136 chars<br/>cache_control on the LAST one<br/>stable across rounds AND turns"]
     S["system<br/>persona + agentConfig + progressFacts<br/>cache_control on the block<br/>progressFacts recomputed EVERY turn"]
     M["messages[]<br/>history · unmarked"]
   end
@@ -49,9 +49,10 @@ catalog costs its full size every turn today — 5,034 tokens, not 790.
 
 That is not an argument for the command layer either, for two reasons the measurement turned up:
 
-1. **The saving was argued against the wrong door.** 28,343 chars is the uncapped `/mcp`
-   serialization; the chat door is served 20,134, of which only 7,157 is description and 12,977 is
-   schema. A command layer or a trim that replaces prose cannot reach the two thirds that is schema.
+1. **The saving was argued against the wrong door.** The figure was the uncapped `/mcp`
+   serialization, which measures 26,366 today; the chat door is served 20,136, of which only 7,157
+   is description, 12,318 is schema and 661 is wire framing. A command layer or a trim that replaces
+   prose cannot reach the 64% that is schema and framing.
 2. **The question the estimate rests on is still open.** Whether the Anthropic path caches costs one
    live chat turn to find out, and no amount of catalog-trimming substitutes for the answer.
 
@@ -62,22 +63,22 @@ Build nothing on a cache-hit rate until a row in `chat_logs` reports one.
 | | |
 |---|---|
 | tools | 9, the factories `assistant/tools/registry.ts:CHAT_TOOL_ALLOWLIST` names |
-| serialized | 20,134 chars (**measured**) — `toRequestBody`'s own `tools` array, `input_schema` and the `cache_control` marker included |
+| serialized | 20,136 chars (**measured**) — `toRequestBody`'s own `tools` array, `input_schema` and the `cache_control` marker included |
 | tokens | 5,034 (**estimated**, chars/4) |
 | minimum cacheable prefix | 1,024 tokens on `claude-sonnet-5` — the catalog clears it |
 
-`forge_issues` alone is 7,487 chars, 37% of the catalog — and 6,394 of those are its schema.
+`forge_issues` alone is 7,489 chars, 37% of the catalog — and 6,394 of those are its schema.
 
-### 28,343 is a different door
+### The costed figure is a different door
 
 The figure ISS-983 and ISS-986 both carry — 28,343 chars — is the **uncapped** serialization, which
-is what `/mcp` serves. The chat door is not served that. `tools/mcp-adapter.ts:buildToolset` puts
+is what `/mcp` serves, measured at `b4850a2e`; that door is 26,366 as of this run. The chat door is not served that. `tools/mcp-adapter.ts:buildToolset` puts
 every description through `truncate(..., DESCRIPTION_CAP)` at 1,024 characters, and **5 of the 9
 tools come back cut**:
 
 | Tool | Served to chat | Description | Schema |
 |---|---|---|---|
-| `forge_issues` | 7,487 | 1,037 **cut** | 6,394 |
+| `forge_issues` | 7,489 | 1,037 **cut** | 6,394 |
 | `forge_comments` | 2,876 | 1,037 **cut** | 1,779 |
 | `forge_knowledge` | 2,077 | 633 | 1,379 |
 | `forge_memory_search` | 1,603 | 1,037 **cut** | 497 |
@@ -86,9 +87,13 @@ tools come back cut**:
 | `forge_metrics_project_step_durations` | 1,143 | 619 | 440 |
 | `forge_metrics_project_timeseries` | 1,076 | 458 | 505 |
 | `forge_pipeline_runs_get` | 689 | 262 | 360 |
-| **total** | **20,134** | **7,157** | **12,977** |
+| **total** | **20,136** | **7,157** | **12,318** + 661 framing |
 
-**Two thirds of what the chat door pays for is schema, which no description trim reaches**, and the
+**61% of what the chat door pays for is schema, which no description trim reaches** — 12,318 of
+20,136 chars, with a further 661 of wire framing (tool names, JSON punctuation, the array and the
+`cache_control` marker) that neither lever reaches either. The three buckets sum to the whole and
+the script prints that sum, because a remainder reported as schema overstates what a schema trim
+could ever reach. And the
 five tools already at the cap give back nothing at all when their prose is shortened — the cap, not
 the prose, is what sets their size. A trim is worth what it moves on the four tools under the cap
 and on the `/mcp` door; on the chat door's headline it is worth close to nothing.
@@ -102,18 +107,22 @@ byte-identical to today, so moving the serialization now would corrupt the basel
 
 ### Against the other serializations
 
-Nothing lands on 28,343 under any shape the script prints, including the uncapped ones:
+Every shape below is derived by the script, including the uncapped `/mcp` one the 28,343 figure came
+from — a report that could not reproduce that door's figure would leave the quote unfalsifiable:
 
 | Serialization | Chars |
 |---|---|
-| wire, project-bound — what is priced above | 20,134 |
-| wire, unbound — `projectId` left in every schema | 21,767 |
-| OpenAI-shaped toolset, project-bound | 20,358 |
-| wire, project-bound, pretty-printed at two spaces | 35,042 |
+| wire, project-bound — what is priced above | 20,136 |
+| **uncapped, descriptions whole — the `/mcp` door** | **26,366** |
+| wire, unbound — `projectId` left in every schema | 21,769 |
+| OpenAI-shaped toolset, project-bound | 20,360 |
+| wire, project-bound, pretty-printed at two spaces | 35,044 |
 
-A size quoted somewhere else can be matched against the shape that produced it. The one that
-produced 28,343 is none of these four: it is the catalog before the chat cap, which is the `/mcp`
-door's and not this one's.
+**The `/mcp` door measures 26,366 here, not the 28,343 ISS-983 and ISS-986 both carried.** The
+difference is ISS-984, which trimmed `forge_issues`' description and landed before this measurement;
+28,343 was that door's size at `b4850a2e` and is no longer anything's size. This is the figure this
+report re-derives rather than cites, which is what ISS-984's own rule asks of whichever of the two
+lands second.
 
 ## Pricing assumptions
 
