@@ -7,10 +7,10 @@ import type { Db } from '../../db/client.js';
 import { issues } from '../../db/schema.js';
 import { logger } from '../../logger.js';
 
-const RECENT_ISSUES_LIMIT = 50;
+export const RECENT_ISSUES_LIMIT = 50;
 
 /** Score floor for a duplicate; ISS-61..64 was the motivating near-identical-title case. */
-const DUPLICATE_THRESHOLD = 0.72;
+export const DUPLICATE_THRESHOLD = 0.72;
 
 function tokenize(text: string): Set<string> {
   return new Set(
@@ -45,10 +45,21 @@ export interface DuplicateMatch {
  * weighted heavier than description — it's the surface a repeat report is
  * most likely to echo verbatim. Fails OPEN on a DB error (returns null).
  */
+export type DuplicateSearch = {
+  /** Score floor; defaults to the chat door's {@link DUPLICATE_THRESHOLD}. */
+  threshold?: number | undefined;
+  /** Rows read; defaults to the chat door's {@link RECENT_ISSUES_LIMIT}. */
+  corpusSize?: number | undefined;
+};
+
+// cm:guard both options default to the constants above — the near-duplicate policy is per-door (a terminal filing is held to a lower floor over a wider corpus than a chat message), but a defaulted call must return the verdict the chat door returned before ISS-985 or this widening moved a door it was not meant to touch
 export async function findDuplicateIssue(
   db: Db,
   args: { projectId: string; title: string; description: string },
+  search: DuplicateSearch = {},
 ): Promise<DuplicateMatch | null> {
+  const threshold = search.threshold ?? DUPLICATE_THRESHOLD;
+  const corpusSize = search.corpusSize ?? RECENT_ISSUES_LIMIT;
   let rows: Array<{ id: string; issSeq: number; title: string; description: string | null }>;
   try {
     rows = await db
@@ -61,7 +72,7 @@ export async function findDuplicateIssue(
       .from(issues)
       .where(and(eq(issues.projectId, args.projectId), inArray(issues.status, ['draft', 'open'])))
       .orderBy(desc(issues.createdAt))
-      .limit(RECENT_ISSUES_LIMIT);
+      .limit(corpusSize);
   } catch (err) {
     logger.warn({ err, projectId: args.projectId }, 'chat.issue-dedup: query failed; failing open');
     return null;
@@ -79,5 +90,5 @@ export async function findDuplicateIssue(
       best = { id: row.id, issSeq: row.issSeq, title: row.title };
     }
   }
-  return bestScore >= DUPLICATE_THRESHOLD ? best : null;
+  return bestScore >= threshold ? best : null;
 }

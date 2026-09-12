@@ -93,6 +93,24 @@
 
 ### Added
 
+- **A filing sent through the new server-side CLI layer is now held to the bar a person typing at a
+  terminal meets.** The rules that decide whether an issue is well-formed — the four kinds, the
+  sections each kind's body owes, the title that has to say what is true after the change — lived
+  only in the plugin, on the laptop. They could not be reached from the far side of the wire, so the
+  same body `forge new` refused at a terminal was filed without a word through the tracker's own
+  tool. `packages/core/src/cli/` now holds that table server-side, and `fileIssueThroughCli()` reads
+  a filing against it: a category is required, a missing section is refused naming the heading, what
+  was read there, what the shape wants and the one thing that clears it, and a near-duplicate is
+  refused naming the issue it repeats. A section a kind only suggests is not a refusal — the filing
+  goes through carrying a line that says what it left out. **Nothing beneath the layer moved**: the
+  REST create route, `forge_issues` and the chat door take exactly what they took before, and the
+  same two bodies the layer refuses are asserted still accepted through both — a required field
+  pushed down would have broken every caller that legitimately omits one. The near-duplicate check
+  is the chat door's own, asked at this door's threshold over this door's corpus, because the policy
+  is per-door even where the detector is shared. Until `forge new` reads this table over the wire
+  (forge-plugin ISS-1267), the plugin holds a second copy of it and the two must agree; the
+  `cm:hack` on `cli/kinds.ts` carries that price and the condition that ends it.
+
 - **A decision a run parked on is now readable and answerable on the issue itself.** When an agent
   stops and asks, it writes a structured question: a prompt, a set of options, which one it
   recommends, and for each option who may choose it, how far the choice reaches and who carries it

@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { Db } from '../../db/client.js';
-import { findDuplicateIssue, titleSimilarity } from './issue-dedup.js';
+import {
+  DUPLICATE_THRESHOLD,
+  findDuplicateIssue,
+  RECENT_ISSUES_LIMIT,
+  titleSimilarity,
+} from './issue-dedup.js';
 
 describe('titleSimilarity', () => {
   it('is 1 for identical titles', () => {
@@ -27,13 +32,14 @@ describe('titleSimilarity', () => {
 
 type Row = { id: string; issSeq: number; title: string; description: string | null };
 
-function fakeDb(rows: Row[] | (() => never)): Db {
+function fakeDb(rows: Row[] | (() => never), read: number[] = []): Db {
   return {
     select: () => ({
       from: () => ({
         where: () => ({
           orderBy: () => ({
-            limit: async () => {
+            limit: async (n: number) => {
+              read.push(n);
               if (typeof rows === 'function') return rows();
               return rows;
             },
@@ -119,5 +125,36 @@ describe('findDuplicateIssue', () => {
       description: 'Any description',
     });
     expect(match).toBeNull();
+  });
+});
+
+// cm:guard the DEFAULTED call is the chat door's verdict — ISS-985 gave this function an optional threshold and corpus size for the CLI door, and a default that drifted would move a door that issue promised not to touch
+describe('findDuplicateIssue: the per-door options (ISS-985)', () => {
+  const rows: Row[] = [
+    { id: 'iss-1', issSeq: 61, title: 'Category path renders too long', description: 'n/a' },
+  ];
+  const near = {
+    projectId: 'proj-1',
+    title: 'Category path renders too long on listing',
+    description: 'n/a',
+  };
+
+  it("reads the chat door's corpus size and floor when given neither", async () => {
+    const read: number[] = [];
+    const match = await findDuplicateIssue(fakeDb(rows, read), near);
+    expect(read).toEqual([RECENT_ISSUES_LIMIT]);
+    expect(match).toBeNull();
+    expect(titleSimilarity(near.title, rows[0]?.title ?? '')).toBeLessThan(DUPLICATE_THRESHOLD);
+  });
+
+  it('a lower floor matches what the default refused, so the default is doing the refusing', async () => {
+    const match = await findDuplicateIssue(fakeDb(rows), near, { threshold: 0.6 });
+    expect(match?.issSeq).toBe(61);
+  });
+
+  it('a corpus size of its own reaches the query', async () => {
+    const read: number[] = [];
+    await findDuplicateIssue(fakeDb(rows, read), near, { corpusSize: 200 });
+    expect(read).toEqual([200]);
   });
 });
