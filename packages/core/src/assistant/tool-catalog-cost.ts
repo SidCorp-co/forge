@@ -298,6 +298,10 @@ function describe(f: TokenFigure): string {
   return f.provenance === 'measured' ? 'measured' : `estimated, chars/${f.divisor}`;
 }
 
+// cm:guard every token figure this module prints carries one of these four words, and a new figure printed without one breaks ISS-983's criterion 3 — `measured` is the provider's own count and nothing else earns it, `estimated` names the divisor that produced it, `chosen` is an input this run picked, `declared` is a constant the provider states; `derived from the catalog figure` inherits whatever the catalog's own label was, which is why the figure and not the number is threaded down
+const CHOSEN = 'chosen — an input of this run, not a measurement of anything';
+const DECLARED = 'declared by the provider, not measured here';
+
 function printCatalog(catalog: CatalogMeasurement, tokens: TokenFigure, why: string | null): void {
   console.log('\n## Catalog, as the provider sees it');
   console.log(`tools: ${catalog.toolCount}`);
@@ -306,7 +310,7 @@ function printCatalog(catalog: CatalogMeasurement, tokens: TokenFigure, why: str
   if (why) console.log(why);
   const side = tokens.tokens >= PRICING.minimumCacheablePrefixTokens ? 'above' : 'BELOW';
   console.log(
-    `minimum cacheable prefix on ${PRICING.model}: ${PRICING.minimumCacheablePrefixTokens} tokens — the catalog is ${side} it`,
+    `minimum cacheable prefix on ${PRICING.model}: ${PRICING.minimumCacheablePrefixTokens} tokens (${DECLARED}) — the catalog is ${side} it`,
   );
   console.log('\nper tool, serialized:');
   for (const tool of catalog.wire as { name?: string }[]) {
@@ -322,13 +326,17 @@ function printVariants(catalog: CatalogMeasurement): void {
   }
 }
 
-function printCosts(catalogTokens: number, historyLengths: number[]): void {
+function printCosts(catalog: TokenFigure, historyLengths: number[]): void {
+  const catalogTokens = catalog.tokens;
   console.log('\n## Input-side cost of one request');
   console.log(
     `rates: input $${PRICING.inputPerMTok}/MTok, cache write x${PRICING.cacheWriteMultiplier}, cache read x${PRICING.cacheReadMultiplier} (${PRICING.provider} ${PRICING.model})`,
   );
+  console.log(
+    `every token figure below is derived from the catalog figure, so each one is ${describe(catalog)}.`,
+  );
   for (const history of historyLengths) {
-    console.log(`\nuncached context: ${count(history)} tokens`);
+    console.log(`\nuncached context: ${count(history)} tokens (${CHOSEN})`);
     for (const c of costCases(catalogTokens, history)) {
       console.log(`  ${money(c.dollars)}  ${c.label}`);
     }
@@ -339,7 +347,7 @@ function printCosts(catalogTokens: number, historyLengths: number[]): void {
   );
   for (const row of divergenceCase(catalogTokens, historyLengths)) {
     console.log(
-      `  history ${count(row.historyTokens)}: promptTokens ${count(row.promptTokens)}, cachedPromptTokens ${count(row.cachedPromptTokens)}, ratio ${pct(row.aggregateRatio)}, prefix saving ${count(row.prefixSavingTokens)} tokens = ${money(row.prefixSavingDollars)}`,
+      `  history ${count(row.historyTokens)} (${CHOSEN}): promptTokens ${count(row.promptTokens)}, cachedPromptTokens ${count(row.cachedPromptTokens)} (${describe(catalog)}), ratio ${pct(row.aggregateRatio)}, prefix saving ${count(Math.round(row.prefixSavingTokens))} tokens (${describe(catalog)}) = ${money(row.prefixSavingDollars)}`,
     );
   }
 }
@@ -389,6 +397,6 @@ export async function main(): Promise<void> {
   const tokens = counted.ok ? counted.figure : catalog.tokens;
   printCatalog(catalog, tokens, counted.ok ? null : COUNT_UNAVAILABLE[counted.reason]);
   printVariants(catalog);
-  printCosts(tokens.tokens, [2_000, 20_000]);
+  printCosts(tokens, [2_000, 20_000]);
   if (!censusAnswered) process.exitCode = 1;
 }

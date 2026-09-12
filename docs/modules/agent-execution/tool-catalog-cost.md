@@ -1,9 +1,15 @@
 # Tool catalog cost
 
-**What the chat tool catalog costs per request, separated from the context around it.** Every
-figure below is printed by `pnpm --filter @forge/core measure:catalog-cost`
-(`core/src/assistant/measure-catalog-cost.ts`, over `tool-catalog-cost.ts`), which needs no
-deployment environment of its own; a census additionally needs `FORGE_CENSUS_DATABASE_URL`.
+**What the chat tool catalog costs per request, separated from the context around it.**
+
+Three kinds of figure appear below and they are not equally strong:
+
+| | Where it comes from |
+|---|---|
+| **Printed** — the catalog's size, the four serializations, every cost and every divergence row | `pnpm --filter @forge/core measure:catalog-cost` (`core/src/assistant/measure-catalog-cost.ts`, over `tool-catalog-cost.ts`), which needs no deployment environment of its own. Run it and these come back |
+| **Cited** — the 79-row census | the same command given a `FORGE_CENSUS_DATABASE_URL` that reaches forge-beta. No host this was written from has one, so the census here is quoted at its date |
+| **Derived by hand** — the 61-char drift, the 37% share, the commit and the dates | this document. The command prints neither a comparison against an earlier run nor its own provenance |
+
 **The catalog this report measured** is the one at commit `58afbd5`, re-derived on 2026-09-12 rather
 than carried over: it had moved 61 chars since the first draft, which is why the script re-derives
 and this table does not cite. It moves again whenever a factory joins `CHAT_TOOL_ALLOWLIST` or a
