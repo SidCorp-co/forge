@@ -8,24 +8,6 @@
 
 ## [Unreleased]
 
-### Added
-
-- **A chat-channel speaker now resolves to a Forge user, or is refused by name.** A person speaking
-  in a Rocket.Chat room reached Forge as a display name and nothing else, so a reply typed there
-  could not be an authorized act of any kind: answering a parked question and authoring a comment
-  are both gated on a real Forge user, and a channel supplies none. A speaker is now mapped to
-  exactly one Forge user by a confirmed row, keyed on the channel, the installation and that
-  installation's own stable user id — never on a username, which the next holder of that name would
-  inherit. A speaker with no row is refused with what was wrong, who was not found and the step that
-  fixes it, and there is no fallback identity anywhere on the path.
-  **A person links their own account in four requests**, without anyone touching the database: a
-  proposal lists the Forge users whose address the chat server reports for that speaker and writes
-  nothing, the confirmation is made by the person being mapped while signed in themselves, and both
-  are refused before the project's chat credential is read for anyone who is not a member of it.
-  A candidate whose address merely shares a local part with the speaker's is shown and cannot be
-  confirmed. Unlinking removes the row rather than disabling it. Nothing yet reads the map — it is
-  what a question or a comment delivered to a room will be authorized against (ISS-977).
-
 ### Security
 
 - **Every response to a personal access token now names the permission the route required.**
@@ -110,6 +92,22 @@
 
 
 ### Added
+
+- **A chat-channel speaker now resolves to a Forge user, or is refused by name.** A person speaking
+  in a Rocket.Chat room reached Forge as a display name and nothing else, so a reply typed there
+  could not be an authorized act of any kind: answering a parked question and authoring a comment
+  are both gated on a real Forge user, and a channel supplies none. A speaker is now mapped to
+  exactly one Forge user by a confirmed row, keyed on the channel, the installation and that
+  installation's own stable user id — never on a username, which the next holder of that name would
+  inherit. A speaker with no row is refused with what was wrong, who was not found and the step that
+  fixes it, and there is no fallback identity anywhere on the path.
+  **A person links their own account in four requests**, without anyone touching the database: a
+  proposal lists the Forge users whose address the chat server reports for that speaker and writes
+  nothing, the confirmation is made by the person being mapped while signed in themselves, and both
+  are refused before the project's chat credential is read for anyone who is not a member of it.
+  A candidate whose address merely shares a local part with the speaker's is shown and cannot be
+  confirmed. Unlinking removes the row rather than disabling it. Nothing yet reads the map — it is
+  what a question or a comment delivered to a room will be authorized against (ISS-977).
 
 - **A decision a run parked on is now readable and answerable on the issue itself.** When an agent
   stops and asks, it writes a structured question: a prompt, a set of options, which one it

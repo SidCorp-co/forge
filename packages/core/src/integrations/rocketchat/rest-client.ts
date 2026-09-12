@@ -293,17 +293,17 @@ export async function fetchUserProfile(
 ): Promise<RocketChatUserProfile | null> {
   const body = await rcGet(auth, 'users.info', { userId: externalId });
   const user = (body as { user?: Record<string, unknown> } | null)?.user;
-  if (!user || typeof user['_id'] !== 'string') return null;
-  const emails = Array.isArray(user['emails'])
-    ? (user['emails'] as Array<{ address?: unknown; verified?: unknown }>)
+  if (!user || typeof user._id !== 'string') return null;
+  const emails = Array.isArray(user.emails)
+    ? (user.emails as Array<{ address?: unknown; verified?: unknown }>)
     : [];
   const addresses = emails
     .filter((e) => typeof e?.address === 'string' && e.address.length > 0)
     .map((e) => ({ address: e.address as string, verified: e.verified === true }));
   const chosen = addresses.find((e) => e.verified) ?? addresses[0];
   return {
-    externalId: user['_id'],
-    username: typeof user['username'] === 'string' ? user['username'] : null,
+    externalId: user._id,
+    username: typeof user.username === 'string' ? user.username : null,
     email: chosen?.address ?? null,
   };
 }
