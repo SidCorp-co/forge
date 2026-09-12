@@ -20,7 +20,14 @@ use crate::runner::ledger::{Ledger, NewRun, Run};
 /// supplies one that fails, so the crash-between-steps case is reachable.
 #[async_trait::async_trait]
 pub trait Spawner: Send + Sync {
-    async fn spawn(&self, session_name: &str, cwd: &Path, argv: &[String]) -> Result<u32>;
+    // cm:guard the run's SESSION ID travels with the spawn because a pane carries its capability in its environment and can never be told one afterwards — the same reason the master path mints on the spawn arm only. A spawner that opened the pane without it produces a session whose hooks are installed, fire, and are dropped for having no identity to report under, which is indistinguishable in every log from a session reporting nothing.
+    async fn spawn(
+        &self,
+        session_name: &str,
+        cwd: &Path,
+        argv: &[String],
+        session_id: &str,
+    ) -> Result<u32>;
     /// Whether a session of this name is ALREADY on the box.
     // cm:guard the spawner owns the pane namespace, so it is the only thing that can answer this — and `start` asks BEFORE it writes, because a refusal any later leaves a row with no pid that no sweep can classify (ISS-964 criterion 35: `pid: None` is `Unknown`, never `Dead`).
     async fn name_taken(&self, session_name: &str) -> bool;
@@ -127,7 +134,9 @@ pub async fn start(
     let (session_id, pipeline_run_id) = core.open(&run.run_id, &issue_keys, &name).await?;
     ledger.attach_session(&run.run_id, &session_id)?;
 
-    let pid = spawner.spawn(&name, &created, &req.argv).await?;
+    let pid = spawner
+        .spawn(&name, &created, &req.argv, &session_id)
+        .await?;
     ledger.attach_pid(&run.run_id, pid)?;
 
     // cm:guard the brief is sent AFTER the pid is on the ledger. A pane briefed before its run is
@@ -174,7 +183,7 @@ mod tests {
 
     #[async_trait::async_trait]
     impl Spawner for Failing {
-        async fn spawn(&self, _: &str, _: &Path, _: &[String]) -> Result<u32> {
+        async fn spawn(&self, _: &str, _: &Path, _: &[String], _: &str) -> Result<u32> {
             Err(Error::Other("tmux refused".into()))
         }
         async fn name_taken(&self, _: &str) -> bool {
@@ -186,7 +195,7 @@ mod tests {
 
     #[async_trait::async_trait]
     impl Spawner for Taken {
-        async fn spawn(&self, name: &str, _: &Path, _: &[String]) -> Result<u32> {
+        async fn spawn(&self, name: &str, _: &Path, _: &[String], _: &str) -> Result<u32> {
             self.0.lock().unwrap().push(name.to_string());
             Ok(4242)
         }
@@ -382,7 +391,7 @@ mod replay {
 
     #[async_trait::async_trait]
     impl Spawner for RealSpawner {
-        async fn spawn(&self, _name: &str, cwd: &Path, _argv: &[String]) -> Result<u32> {
+        async fn spawn(&self, _name: &str, cwd: &Path, _argv: &[String], _: &str) -> Result<u32> {
             let child = Command::new("sleep")
                 .arg("30")
                 .current_dir(cwd)

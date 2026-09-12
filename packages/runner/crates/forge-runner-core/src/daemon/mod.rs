@@ -18,6 +18,7 @@ pub mod preflight;
 pub mod recovery;
 pub mod recovery_ports;
 pub mod repo_lock;
+pub mod run_exit;
 pub mod session_tokens;
 pub mod setup_agent;
 pub mod skill_pull;
@@ -638,7 +639,10 @@ pub async fn run(
         let (client, cfg) = ((*client).clone(), (*cfg).clone());
         let cancel_rx = cancel_rx.clone();
         let masters = masters.clone();
-        tokio::spawn(async move { master::run(client, cfg, masters, cancel_rx, wake_rx).await });
+        let activity = activity.clone();
+        tokio::spawn(async move {
+            master::run(client, cfg, masters, activity, cancel_rx, wake_rx).await
+        });
     }
 
     let mut cancel_rx = cancel_rx.clone();

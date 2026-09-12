@@ -1960,6 +1960,32 @@
 
 ### Fixed
 
+- **A run pane that has finished is now ended, instead of being held open for the life of the
+  box.** A master pane is briefed again every sweep, so an idle one is between passes; a run pane
+  is briefed once and has nothing left to do after its last turn. Nothing modelled that difference.
+  The heartbeat asserts "this box still holds this run" and never progress, so a finished run pane
+  was beaten every thirty seconds, core's ten-minute reaper never fired over it, and the worktree
+  and leases it held stayed held by derivation — with `pool load` reporting `jobsRunning: 0` the
+  whole time, because that counter counts jobs and a run session is a pane and a checkout with no
+  `jobs` row. Measured on forge-vm 2026-09-12: 32 of 34 run panes idle, the oldest 22 hours,
+  sidpeak holding 20 slots and 19 checkouts against a budget of three, its master reporting "four
+  working against a budget of three" while two issues waited on nothing but capacity. The sweep now
+  reads what each session reported of itself and ends a run that has been idle past
+  `RUN_IDLE_BEFORE_EXIT` rather than beating it; the close loop it already had takes over from
+  there. **Silence is not idleness** — a session that has never reported keeps being beaten, so a
+  pane whose hooks failed to install is not mistaken for a finished one — and a run stopped on a
+  question a human owes outlives the window, because that question is answered on human time.
+
+- **A run pane's hooks were installed, fired, and were discarded for having no identity to report
+  under.** `run_session::start` wrote the hook settings into every run's worktree and logged
+  `hooks registered`, but the pane was opened with the bare pane environment, so
+  `forge-runner hook` found no capability and returned without reporting — by its own design, which
+  is to never fail the agent that ran it. Every run pane on every box therefore reported nothing
+  for its whole life, and the channel built to tell a finished session from a working one carried
+  only master panes. The run's session id now travels with the spawn and its capability is minted
+  on the daemon's side of the port, the way the master path already did it; a mint that fails
+  refuses the spawn rather than opening a pane nothing can ever decide is finished.
+
 - **Answering a decision can no longer overwrite an answer that was already there, revive one that
   was withdrawn, or apply to a round you were never shown.** The write that recorded an answer
   checked only that the option belonged to the question's latest round, then wrote unconditionally:

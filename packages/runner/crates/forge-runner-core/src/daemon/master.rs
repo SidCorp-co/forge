@@ -24,10 +24,12 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::config::Config;
+use crate::daemon::agent_activity;
 use crate::daemon::dispatch::resolve_repo;
 use crate::daemon::master_exit::{self, Verdict};
 use crate::daemon::recovery;
 use crate::daemon::recovery_ports::{CoreBeat, CoreRunState, PaneMasters, SignalProbe};
+use crate::daemon::run_exit;
 use crate::daemon::session_tokens;
 use crate::daemon::terminal;
 use crate::runner::close_loop;
@@ -264,6 +266,7 @@ pub async fn run(
     client: CoreClient,
     cfg: Config,
     masters: Arc<Masters>,
+    activity: Arc<agent_activity::Activities>,
     mut cancel: tokio::sync::watch::Receiver<bool>,
     mut wake: mpsc::Receiver<Wake>,
 ) {
@@ -280,7 +283,7 @@ pub async fn run(
     loop {
         tokio::select! {
             _ = tokio::time::sleep(delay) => {
-                delay = sweep(&client, &cfg, &masters, &mut ledger).await;
+                delay = sweep(&client, &cfg, &masters, &activity, &mut ledger).await;
                 last_sweep = Instant::now();
             }
             Some(w) = wake.recv() => {
@@ -289,7 +292,7 @@ pub async fn run(
                     tokio::time::sleep(WAKE_FLOOR - since).await;
                 }
                 tracing::info!("[master] wake ({}) — sweeping now", w.describe());
-                delay = sweep(&client, &cfg, &masters, &mut ledger).await;
+                delay = sweep(&client, &cfg, &masters, &activity, &mut ledger).await;
                 last_sweep = Instant::now();
             }
             _ = cancel.changed() => { if *cancel.borrow() { break; } }
@@ -336,6 +339,7 @@ async fn sweep(
     client: &CoreClient,
     cfg: &Config,
     masters: &Arc<Masters>,
+    activity: &agent_activity::Activities,
     ledger: &mut Option<Ledger>,
 ) -> Duration {
     let served = match runners::list_me(client).await {
@@ -431,7 +435,10 @@ async fn sweep(
         },
         &CoreRunState { client },
         &CoreRunState { client },
-        &CoreBeat { client },
+        recovery::RunWatch {
+            beat: &CoreBeat { client },
+            idle: &PaneActivity { activity },
+        },
         ledger,
     )
     .await;
@@ -513,6 +520,40 @@ async fn release_held_tree(
     }
 }
 
+/// The box's own activity map, read as the run-liveness port.
+// cm:guard reads the SHARED map the control socket writes into, never a copy. A second `Activities` here would answer `None` for every session forever, which `run_exit` reads as "never reported" — so every run would keep being beaten and the fix would be inert, green, and indistinguishable from working.
+struct PaneActivity<'a> {
+    activity: &'a agent_activity::Activities,
+}
+
+#[async_trait::async_trait]
+impl recovery::RunActivity for PaneActivity<'_> {
+    async fn reported(&self, session_id: &str) -> Option<run_exit::Reported> {
+        let a = self.activity.get(session_id)?;
+        Some(run_exit::Reported {
+            doing: a.doing(),
+            at: a.last_event_at,
+        })
+    }
+}
+
+/// End a run that reported itself finished, so its close loop can start.
+// cm:guard the process is signalled and NOTHING else is written here. The three marks are `close_loop`'s and each is set by reading the world back, so a kill that also stamped `session_terminal` would be this repo's one forbidden move — a box declaring an outcome core has not confirmed. The next sweep sees the pid refuted and takes the run through the same path a crashed run takes.
+// cm:guard `&mut` and not `&`, though nothing here writes: the borrow is held across the kill, and `&Ledger` is `Send` only if `Ledger` is `Sync` — which rusqlite's `RefCell` connection is not, so the shared borrow makes the whole master loop's future non-`Send` and the daemon stops compiling at `tokio::spawn`.
+async fn end_idle_run(led: &mut Ledger, run_id: &str, world: &Reclaim<'_>) {
+    let Ok(Some(run)) = led.run(run_id) else {
+        return;
+    };
+    let Some(pid) = run.pid else {
+        return;
+    };
+    world.killer.kill(pid).await;
+    tracing::info!(
+        "[master] run {run_id} reported idle for over {}m and its work is done — ending pid {pid}; its close loop starts on the next sweep",
+        run_exit::RUN_IDLE_BEFORE_EXIT.as_secs() / 60
+    );
+}
+
 /// Beat what this box still holds, and close the loop on what it does not.
 // cm:guard runs AFTER the per-project loop, and the order is the assertion. `ensure_master` re-registers every live master into `Masters` on each pass, and `PaneMasters` reads that map for the pane NAME — placed before the loop, a daemon restart would meet an empty map and read every live run on the box as orphaned (ISS-933 criterion 16).
 // cm:guard the beat rides in this same call and is not separable: core reaps a run session silent for ten minutes, so a sweep that reconciled without beating would take back every healthy run on the box (ISS-933 criteria 16 and 25a).
@@ -522,7 +563,7 @@ async fn give_back_lost_runs(
     world: &Reclaim<'_>,
     sessions: &dyn close_loop::SessionReader,
     leases: &dyn close_loop::LeaseKeeper,
-    beat: &dyn recovery::Heartbeat,
+    watch: recovery::RunWatch<'_>,
     ledger: &mut Option<Ledger>,
 ) {
     let Some(led) = ledger.as_mut() else { return };
@@ -531,9 +572,14 @@ async fn give_back_lost_runs(
         tracing::warn!("[master] this box reports no boot id — leaving unclosed runs alone");
         return;
     }
-    match recovery::reconcile(led, boot_id, live, world.procs, sessions, leases, beat).await {
+    match recovery::reconcile(led, boot_id, live, world.procs, sessions, leases, watch).await {
         Ok(done) => {
             for r in done {
+                // cm:guard answered FIRST and with a `continue`, because a run named for the idle exit has none of the other marks yet by construction — its process is still up, so `owed_release` is false and `is_closed` is false, and falling through to the report below would file a "partially closed" complaint about a run this sweep is in the middle of ending.
+                if r.owed_idle_exit {
+                    end_idle_run(led, &r.run_id, world).await;
+                    continue;
+                }
                 // cm:guard the release is attempted BEFORE the report and its result decides whether one is printed, because a run recovery just reclaimed is not a run an operator has anything to do about. Report first and every reclaimed run also files a complaint about the state it was reclaimed out of.
                 if r.owed_release
                     && release_held_tree(led, &r, boot_id, world, sessions, leases).await
@@ -1062,6 +1108,14 @@ mod give_back_tests {
         }
     }
 
+    struct NeverReports;
+    #[async_trait::async_trait]
+    impl recovery::RunActivity for NeverReports {
+        async fn reported(&self, _: &str) -> Option<run_exit::Reported> {
+            None
+        }
+    }
+
     #[derive(Default)]
     struct Beats(Mutex<Vec<String>>);
     #[async_trait::async_trait]
@@ -1144,7 +1198,10 @@ mod give_back_tests {
             },
             &Terminal(false),
             &Leases::default(),
-            &beats,
+            recovery::RunWatch {
+                beat: &beats,
+                idle: &NeverReports,
+            },
             &mut ledger,
         )
         .await;
@@ -1173,7 +1230,10 @@ mod give_back_tests {
             },
             &Terminal(true),
             &leases,
-            &beats,
+            recovery::RunWatch {
+                beat: &beats,
+                idle: &NeverReports,
+            },
             &mut ledger,
         )
         .await;
@@ -1209,7 +1269,10 @@ mod give_back_tests {
             },
             &Terminal(true),
             &leases,
-            &beats,
+            recovery::RunWatch {
+                beat: &beats,
+                idle: &NeverReports,
+            },
             &mut ledger,
         )
         .await;
@@ -1323,7 +1386,10 @@ mod give_back_tests {
             },
             &Terminal(true),
             &leases,
-            &Beats::default(),
+            recovery::RunWatch {
+                beat: &Beats::default(),
+                idle: &NeverReports,
+            },
             &mut ledger,
         )
         .await;
@@ -1387,7 +1453,10 @@ mod give_back_tests {
             },
             &Terminal(true),
             &Leases::default(),
-            &Beats::default(),
+            recovery::RunWatch {
+                beat: &Beats::default(),
+                idle: &NeverReports,
+            },
             &mut ledger,
         )
         .await;

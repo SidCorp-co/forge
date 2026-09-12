@@ -7,6 +7,8 @@
  * that survives losing power lives at core, keyed on the heartbeat.
  */
 
+use crate::daemon::agent_activity::now_ms;
+use crate::daemon::run_exit::{self, Reported, Verdict};
 use crate::error::Result;
 use crate::runner::close_loop::{self, CloseState, LeaseKeeper, SessionReader};
 use crate::runner::ledger::{Ledger, Liveness};
@@ -28,10 +30,26 @@ pub trait ProcessLiveness: Send + Sync {
 }
 
 /// Telling core this box still holds a run.
-// cm:edge contract -> packages/core/src/devices/run-session-reaper.ts — the beat this sends is the ONLY thing that keeps a run out of that sweep, and it asserts "this box still holds this run", never progress. A wedged-but-alive pane keeps beating on purpose; that case belongs to the close loop and the idle self-exit, not to a reaper pretending to be a liveness detector.
+// cm:edge contract -> packages/core/src/devices/run-session-reaper.ts — the beat this sends is the ONLY thing that keeps a run out of that sweep, and it asserts "this box still holds this run", never progress. A wedged-but-alive pane keeps beating on purpose; that case belongs to the close loop and to `RunActivity` below, not to a reaper pretending to be a liveness detector.
 #[async_trait::async_trait]
 pub trait Heartbeat: Send + Sync {
     async fn beat(&self, session_id: &str) -> Result<()>;
+}
+
+/// What a run's own session last reported about itself.
+// cm:guard the ONLY evidence of doneness this loop may read, and it is the session's own word rather than a screen, a byte count or a cost. Everything else the box can observe about a finished run pane is identical to a working one — same process, same pane, same prompt drawn — which is why a reader built on any of those was wrong every time (ISS-933 criteria 17 and 18).
+// cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/agent_activity.rs — `None` here MUST mean "never reported" and never "idle", because that module answers `None` for a pane whose hooks never fired and the two readings differ by whether live agents get killed.
+#[async_trait::async_trait]
+pub trait RunActivity: Send + Sync {
+    async fn reported(&self, session_id: &str) -> Option<Reported>;
+}
+
+/// What decides whether a run keeps living: what core is told, and what the
+/// session says of itself.
+// cm:guard ONE struct because the beat and the report are ONE decision, taken together every pass. Passed separately they can be wired apart, and a sweep that beats without reading the report is precisely the box that beat 32 finished panes for 22 hours (forge-vm 2026-09-12).
+pub struct RunWatch<'a> {
+    pub beat: &'a dyn Heartbeat,
+    pub idle: &'a dyn RunActivity,
 }
 
 /// One run recovery attempted, and how far its loop got.
@@ -43,6 +61,10 @@ pub struct Recovered {
     /// This run's own close loop cannot advance without someone taking its
     /// worktree back first, and nothing else on the box will.
     pub owed_release: bool,
+    /// This run reported itself finished and its process is still up. Ending
+    /// it is what starts every other mark moving; nothing here has done it.
+    // cm:guard NAMED here and performed by the caller, exactly as `owed_release` is. This module holds no port that can signal a process — `ProcessLiveness` may only ask whether a pid is gone — and giving it one would let a pass that decides a run is finished also kill it, with no separate reader between the judgement and the signal.
+    pub owed_idle_exit: bool,
 }
 
 /// One pass over what this box holds: beat what lives, close what does not.
@@ -55,7 +77,7 @@ pub async fn reconcile(
     procs: &dyn ProcessLiveness,
     sessions: &dyn SessionReader,
     leases: &dyn LeaseKeeper,
-    core: &dyn Heartbeat,
+    watch: RunWatch<'_>,
 ) -> Result<Vec<Recovered>> {
     let mut out = Vec::new();
     for run in ledger.unclosed_runs()? {
@@ -70,7 +92,7 @@ pub async fn reconcile(
             }
             // cm:guard the beat is NOT skipped by this exemption: `run-session-reaper.ts` gives back a run whose heartbeat stops for ten minutes, so a park the box preserves while going silent is one core takes anyway — the exemption would move the reaping rather than prevent it.
             if let Some(id) = run.session_id.as_deref() {
-                let _ = core.beat(id).await;
+                let _ = watch.beat.beat(id).await;
             }
             continue;
         }
@@ -84,9 +106,21 @@ pub async fn reconcile(
             || matches!(Ledger::liveness(&run, boot_id, pid_refuted), Liveness::Dead)
             || !masters.is_alive(&run.master_session_id).await;
         if !orphaned {
-            if let Some(id) = run.session_id.as_deref() {
-                let _ = core.beat(id).await;
+            let Some(id) = run.session_id.as_deref() else {
+                continue;
+            };
+            // cm:guard the verdict is read BEFORE the beat and the two are exclusive, which is the whole repair: beating a run that reported itself finished is what kept core's reaper off it, and a build that beat first and ended second would renew the ten minutes it is trying to stop. Measured forge-vm 2026-09-12 — 32 idle panes, the oldest 22 hours, every one beaten every thirty seconds.
+            if run_exit::verdict(watch.idle.reported(id).await, now_ms()) == Verdict::Exit {
+                out.push(Recovered {
+                    run_id: run.run_id.clone(),
+                    project_id: run.project_id.clone(),
+                    state: close_loop::state(ledger, &run.run_id)?,
+                    owed_release: false,
+                    owed_idle_exit: true,
+                });
+                continue;
             }
+            let _ = watch.beat.beat(id).await;
             continue;
         }
         let state = close_loop::close(ledger, &run.run_id, sessions, leases).await?;
@@ -100,6 +134,7 @@ pub async fn reconcile(
             project_id: run.project_id,
             state,
             owed_release,
+            owed_idle_exit: false,
         });
     }
     Ok(out)
@@ -179,6 +214,29 @@ mod tests {
         }
     }
 
+    struct NeverReports;
+    #[async_trait::async_trait]
+    impl RunActivity for NeverReports {
+        async fn reported(&self, _: &str) -> Option<Reported> {
+            None
+        }
+    }
+
+    struct Reports(Reported);
+    #[async_trait::async_trait]
+    impl RunActivity for Reports {
+        async fn reported(&self, _: &str) -> Option<Reported> {
+            Some(self.0)
+        }
+    }
+
+    fn finished_long_ago() -> Reports {
+        Reports(Reported {
+            doing: crate::daemon::agent_activity::Doing::Idle,
+            at: now_ms() - run_exit::RUN_IDLE_BEFORE_EXIT.as_millis() as i64 - 1,
+        })
+    }
+
     fn gone() -> PathBuf {
         PathBuf::from("/tmp/forge-recovery-absent-by-construction")
     }
@@ -236,7 +294,10 @@ mod tests {
             &Gone(refuted.iter().copied().collect()),
             &Sessions,
             &Leases(Mutex::new(HashSet::new())),
-            &Beats::default(),
+            RunWatch {
+                beat: &Beats::default(),
+                idle: &NeverReports,
+            },
         )
         .await
         .unwrap();
@@ -304,7 +365,10 @@ mod tests {
             &Gone(HashSet::from([424_245])),
             &Sessions,
             &Leases(Mutex::new(HashSet::new())),
-            &Beats::default(),
+            RunWatch {
+                beat: &Beats::default(),
+                idle: &NeverReports,
+            },
         )
         .await
         .unwrap();
@@ -325,7 +389,10 @@ mod tests {
             &nothing_refuted(),
             &Sessions,
             &Leases(Mutex::new(HashSet::new())),
-            &Beats::default(),
+            RunWatch {
+                beat: &Beats::default(),
+                idle: &NeverReports,
+            },
         )
         .await
         .unwrap();
@@ -351,7 +418,10 @@ mod tests {
             &nothing_refuted(),
             &Sessions,
             &Leases(Mutex::new(HashSet::new())),
-            &Beats::default(),
+            RunWatch {
+                beat: &Beats::default(),
+                idle: &NeverReports,
+            },
         )
         .await
         .unwrap();
@@ -373,7 +443,10 @@ mod tests {
             &nothing_refuted(),
             &Sessions,
             &Leases(Mutex::new(HashSet::new())),
-            &Beats::default(),
+            RunWatch {
+                beat: &Beats::default(),
+                idle: &NeverReports,
+            },
         )
         .await
         .unwrap();
@@ -395,7 +468,10 @@ mod tests {
             &nothing_refuted(),
             &Sessions,
             &leases,
-            &Beats::default(),
+            RunWatch {
+                beat: &Beats::default(),
+                idle: &NeverReports,
+            },
         )
         .await
         .unwrap();
@@ -406,7 +482,10 @@ mod tests {
             &nothing_refuted(),
             &Sessions,
             &leases,
-            &Beats::default(),
+            RunWatch {
+                beat: &Beats::default(),
+                idle: &NeverReports,
+            },
         )
         .await
         .unwrap();
@@ -427,7 +506,10 @@ mod tests {
             &nothing_refuted(),
             &Sessions,
             &Leases(Mutex::new(HashSet::new())),
-            &beats,
+            RunWatch {
+                beat: &beats,
+                idle: &NeverReports,
+            },
         )
         .await
         .unwrap();
@@ -435,6 +517,63 @@ mod tests {
             beats.0.lock().unwrap().as_slice(),
             ["core-sess-1"],
             "a sweep that leaves a live run alone but never tells core so has handed that run to core's ten-minute reaper — the beat and the recovery are one pass precisely so this cannot be built apart (ISS-933 criteria 16 and 25a)"
+        );
+    }
+
+    // cm:guard the two halves are asserted together because either alone is the bug: naming the run while still beating it renews the ten minutes that would have reaped it, and stopping the beat without naming it leaves a live process nobody ends.
+    #[tokio::test]
+    async fn a_run_that_reported_itself_finished_is_named_and_not_beaten() {
+        let mut led = seeded("run-1", "master-live", "boot-a", &["ISS-957"]);
+        let beats = Beats::default();
+        let done = reconcile(
+            &mut led,
+            "boot-a",
+            &Masters(HashSet::from(["master-live".to_string()])),
+            &nothing_refuted(),
+            &Sessions,
+            &Leases(Mutex::new(HashSet::new())),
+            RunWatch {
+                beat: &beats,
+                idle: &finished_long_ago(),
+            },
+        )
+        .await
+        .unwrap();
+        assert!(
+            beats.0.lock().unwrap().is_empty(),
+            "a finished run that is still beaten is held out of core's reaper by this box forever — 32 panes on forge-vm 2026-09-12, the oldest 22 hours; beats were {:?}",
+            beats.0.lock().unwrap()
+        );
+        assert_eq!(
+            done.iter().filter(|r| r.owed_idle_exit).count(),
+            1,
+            "stopping the beat without naming the run leaves its process up with nothing on the box able to end it; got {done:?}"
+        );
+    }
+
+    // cm:guard a run whose session never reported is the pane whose hooks failed to install, and it must be beaten like any other: this is the arm that decides whether an upgrade that loses the hook channel kills every live agent on the box.
+    #[tokio::test]
+    async fn a_run_that_has_reported_nothing_is_beaten_like_any_other() {
+        let mut led = seeded("run-1", "master-live", "boot-a", &["ISS-957"]);
+        let beats = Beats::default();
+        let done = reconcile(
+            &mut led,
+            "boot-a",
+            &Masters(HashSet::from(["master-live".to_string()])),
+            &nothing_refuted(),
+            &Sessions,
+            &Leases(Mutex::new(HashSet::new())),
+            RunWatch {
+                beat: &beats,
+                idle: &NeverReports,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(beats.0.lock().unwrap().as_slice(), ["core-sess-1"]);
+        assert!(
+            !done.iter().any(|r| r.owed_idle_exit),
+            "silence is not idleness; got {done:?}"
         );
     }
 
@@ -469,7 +608,10 @@ mod tests {
             &nothing_refuted(),
             &Sessions,
             &Leases(Mutex::new(HashSet::new())),
-            &Beats::default(),
+            RunWatch {
+                beat: &Beats::default(),
+                idle: &NeverReports,
+            },
         )
         .await
         .unwrap();
@@ -493,7 +635,10 @@ mod tests {
             &nothing_refuted(),
             &Sessions,
             &Leases(Mutex::new(HashSet::new())),
-            &Beats::default(),
+            RunWatch {
+                beat: &Beats::default(),
+                idle: &NeverReports,
+            },
         )
         .await
         .unwrap();
@@ -511,7 +656,10 @@ mod tests {
             &nothing_refuted(),
             &Sessions,
             &Leases(Mutex::new(HashSet::new())),
-            &Beats::default(),
+            RunWatch {
+                beat: &Beats::default(),
+                idle: &NeverReports,
+            },
         )
         .await
         .unwrap();
@@ -534,7 +682,10 @@ mod tests {
             &nothing_refuted(),
             &Sessions,
             &Leases(Mutex::new(HashSet::new())),
-            &beats,
+            RunWatch {
+                beat: &beats,
+                idle: &NeverReports,
+            },
         )
         .await
         .unwrap();
@@ -563,7 +714,10 @@ mod tests {
             &Gone(HashSet::from([4242])),
             &Sessions,
             &Leases(Mutex::new(HashSet::new())),
-            &beats,
+            RunWatch {
+                beat: &beats,
+                idle: &NeverReports,
+            },
         )
         .await
         .unwrap();
@@ -590,7 +744,10 @@ mod tests {
             &nothing_refuted(),
             &Sessions,
             &Leases(Mutex::new(HashSet::new())),
-            &beats,
+            RunWatch {
+                beat: &beats,
+                idle: &NeverReports,
+            },
         )
         .await
         .unwrap();
@@ -612,7 +769,10 @@ mod tests {
             &Gone(HashSet::from([0, 1])),
             &Sessions,
             &Leases(Mutex::new(HashSet::new())),
-            &Beats::default(),
+            RunWatch {
+                beat: &Beats::default(),
+                idle: &NeverReports,
+            },
         )
         .await
         .unwrap();
@@ -635,7 +795,10 @@ mod tests {
             &Gone(HashSet::from([4242])),
             &Sessions,
             &Leases(Mutex::new(HashSet::new())),
-            &beats,
+            RunWatch {
+                beat: &beats,
+                idle: &NeverReports,
+            },
         )
         .await
         .unwrap();
@@ -657,7 +820,10 @@ mod tests {
             &nothing_refuted(),
             &Sessions,
             &Leases(Mutex::new(HashSet::new())),
-            &Beats::default(),
+            RunWatch {
+                beat: &Beats::default(),
+                idle: &NeverReports,
+            },
         )
         .await
         .unwrap();
@@ -671,7 +837,10 @@ mod tests {
             &nothing_refuted(),
             &Sessions,
             &Leases(Mutex::new(HashSet::new())),
-            &Beats::default(),
+            RunWatch {
+                beat: &Beats::default(),
+                idle: &NeverReports,
+            },
         )
         .await
         .unwrap();
