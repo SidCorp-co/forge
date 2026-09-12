@@ -107,9 +107,6 @@ import { mcpRequestClass } from './mcp/request-class.js';
 import { meAttentionRoutes } from './me/attention-routes.js';
 import { mePulseRoutes } from './me/pulse-routes.js';
 import { meRecentChangesRoutes } from './me/recent-changes-routes.js';
-import { registerCandidatesDecay } from './memory/candidates-decay.js';
-import { registerCandidatesWorker } from './memory/candidates-observer.js';
-import { memoryCandidatesRoutes } from './memory/candidates-routes.js';
 import { registerChunkReindex } from './memory/chunk-reindex.js';
 import {
   registerMemoryConsolidation,
@@ -371,7 +368,6 @@ app.route('/api/webhooks', webhookInboundRoutes);
 app.route('/api/memory', memorySearchRoutes);
 app.route('/api/memory', memoryListRoutes);
 app.route('/api/memory', memoryWriteRoutes);
-app.route('/api/memory', memoryCandidatesRoutes);
 app.route('/api/issue-step-contexts', stepHandoffRoutes);
 app.route('/api/prompts', promptRoutes);
 app.route('/api/skill-facts', skillFactsRoutes);
@@ -482,8 +478,6 @@ if (isMain) {
   await registerMemoryDecay();
   await registerMemoryConsolidation();
   await registerMemoryReconcileWorker();
-  await registerCandidatesWorker();
-  await registerCandidatesDecay();
   await registerDevicePrune();
   await registerMasterReaper();
   await registerRunSessionReaper();
@@ -506,9 +500,7 @@ if (isMain) {
   // cm:guard ISS-238 — register AFTER registerPipelineOrchestrator: this subscriber resumes a run whose missing skill was just registered and then re-enqueues, and that re-enqueue must walk through the orchestrator's own hooks, which are not on the bus yet if it is wired first
   registerPausedRunWedgeResolve(hooks);
 
-  // ISS-196 — must run AFTER subscribers are wired so the worker's first
-  // drain hits a populated bus. Outbox worker polls the transactional
-  // outbox table; reconciler is the minute-cadence safety net.
+  // cm:guard ordering — both run AFTER the subscribers above, or the worker's first drain hits an empty bus and the outbox rows it drained are gone with nothing subscribed to act on them (ISS-196)
   registerOutboxWorker();
   await registerReconciler();
 

@@ -694,7 +694,6 @@ describe('feedbackReports table (ISS-552 C1)', () => {
         'summary',
         'detail',
         'suggestion',
-        'candidate_id',
         'signal_key',
         'session_id',
         'reviewed_at',

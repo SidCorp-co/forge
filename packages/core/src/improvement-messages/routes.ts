@@ -11,7 +11,6 @@ import {
   type ImprovementMessage,
   listImprovementMessages,
 } from '../schedules/messages/registry.js';
-import { type ImprovementMessageDraftRow, listPendingDrafts } from './drafts-service.js';
 
 const listQuerySchema = z
   .object({
@@ -56,7 +55,6 @@ improvementMessageRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     assertProjectRole(access, 'viewer', 'not a project member');
 
-    // Left-join: find any enabled schedule rows for this project that have a templateKey.
     const enabledRows = await db
       .select({
         id: schedules.id,
@@ -69,7 +67,9 @@ improvementMessageRoutes.get(
       .where(and(eq(schedules.projectId, projectId), isNotNull(schedules.templateKey)))
       .limit(1000);
 
-    const byKey = new Map(enabledRows.map((r) => [r.templateKey!, r]));
+    const byKey = new Map(
+      enabledRows.flatMap((r) => (r.templateKey === null ? [] : [[r.templateKey, r] as const])),
+    );
 
     const entries: ImprovementMessageEntry[] = catalog.map((msg) => {
       const row = byKey.get(msg.key);
@@ -87,31 +87,5 @@ improvementMessageRoutes.get(
     });
 
     return c.json(entries);
-  },
-);
-
-const draftsQuerySchema = z
-  .object({
-    projectId: z.string().uuid(),
-  })
-  .strict();
-
-// GET /api/improvement-messages/drafts?projectId=<uuid>
-// Returns pending_review drafts sourced from the given project.
-// Requires project membership (viewer+).
-improvementMessageRoutes.get(
-  '/drafts',
-  zValidator('query', draftsQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
-  }),
-  async (c) => {
-    const { projectId } = c.req.valid('query');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
-
-    const drafts: ImprovementMessageDraftRow[] = await listPendingDrafts(projectId);
-    return c.json(drafts);
   },
 );

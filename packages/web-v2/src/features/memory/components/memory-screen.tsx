@@ -2,7 +2,6 @@
 
 // Project-tier Memory (`/projects/[slug]/library?tab=memory`). Two sub-tabs:
 //   • "All Memory" — searchable list of system breadcrumbs (ISS-299)
-//   • "Curator Queue" — graduated memory candidates awaiting review (ISS-534)
 import { useEffect, useMemo, useState } from "react";
 import {
   Badge,
@@ -26,13 +25,11 @@ import { formatApiError } from "@/lib/api/error";
 import { MEMORY_PAGE_SIZE } from "../api";
 import { useMemoryList, useMemorySearch } from "../hooks";
 import { MEMORY_SOURCES, sourceTone, type MemorySource } from "../types";
-import { MemoryCandidatesTab } from "./memory-candidates-tab";
 
 type MemorySubTab = "all" | "curator";
 
 const MEMORY_SUB_TABS: TabItem[] = [
   { value: "all", label: "All Memory" },
-  { value: "curator", label: "Curator Queue" },
 ];
 
 interface MemoryScreenProps {
@@ -111,8 +108,6 @@ export function MemoryScreen({ scope }: MemoryScreenProps) {
         value={subTab}
         onChange={(v) => setSubTab(v as MemorySubTab)}
       />
-
-      {subTab === "curator" && <MemoryCandidatesTab scope={{ projectId }} />}
 
       {subTab === "all" && (
         <>

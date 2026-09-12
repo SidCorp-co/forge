@@ -9,15 +9,14 @@ flowchart TB
   MEM[Memory<br/>what was learned] --> EXEC
   KN[Project knowledge<br/>what this project is] --> EXEC
   EXEC --> EV[Evidence<br/>what actually happened]
-  EV -.signals.-> CAND[memory_candidates<br/>accruing → graduated → accepted → promoted]
-  CAND --> MEM
+  EV -.feedback.-> FB[feedback_reports<br/>agent friction, read by the owner]
   SK -.global template.-> CLONE[project-owned clone] -.only this is dispatched.-> EXEC
 ```
 
 | | Question it answers | Lifecycle |
 |---|---|---|
 | **Skills** | how does an agent do this kind of work? | authored, versioned, synced to devices |
-| **Memory** | what has this project already learned? | accrued from signals, decayed, promoted |
+| **Memory** | what has this project already learned? | written by the curator, decayed, verified |
 | **Project knowledge** | what *is* this project? | authored per project, edited when the project changes |
 | **Evidence** | what actually happened on this run? | written by execution, pruned — owned by [control-observability](../control-observability/) |
 
@@ -32,7 +31,7 @@ flowchart TB
 | Device-scoped plugin channel | `core/src/plugins/`, runner `workspace/plugin_sync.rs` |
 | Semantic memory | `core/src/memory/`, `schema.ts:memories`, `schema.ts:memorySources` |
 | Chunked memory model (per project) | `schema-memory-chunks.ts:memoryChunks`, `core/src/memory/chunker.ts`, `chunk-writer.ts`, `chunk-reindex.ts`, `core/src/app-config/memory-model-routes.ts` |
-| Candidate accrual and promotion | `schema.ts:memoryCandidates`, `core/src/memory/candidates-*.ts` |
+| Agent friction feed | `schema.ts:feedbackReports`, `core/src/feedback/` |
 | Step handoffs between stages | `core/src/memory/step-handoff-schema.ts` |
 | Project knowledge graph | `core/src/knowledge/`, `core/src/knowledge-edges/`, `schema.ts:knowledgeEntries` |
 | Embeddings | `core/src/embeddings/`, `schema.ts:MEMORY_EMBEDDING_DIM` (1536) |

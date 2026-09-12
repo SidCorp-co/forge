@@ -5,8 +5,6 @@
 // budget refused the next one. Moved verbatim: the ORDER is part of the behaviour for
 // anything reacting to the same topic.
 
-import { registerFeedbackNormalizer } from './feedback/normalizer.js';
-import { registerCandidatesObserver } from './memory/candidates-observer.js';
 import { registerMemoryReconcileTrigger } from './memory/consolidation.js';
 import { registerMemoryExtraction } from './memory/extraction.js';
 import { registerMemoryIndexer } from './memory/indexer.js';
@@ -33,8 +31,6 @@ export function registerEagerSubscribers(bus: HooksBus): void {
   registerNotifyMentionsSubscriber(bus);
   registerTransitionNotifications(bus);
   registerPmSubscribers(bus);
-  registerCandidatesObserver(bus);
-  registerFeedbackNormalizer(bus);
   registerReleaseBatchClaimSubscriber(bus);
   registerMasterWakeSubscribers(bus);
 }

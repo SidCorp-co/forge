@@ -9,7 +9,6 @@ import {
   index,
   integer,
   jsonb,
-  numeric,
   pgTable,
   primaryKey,
   real,
@@ -1620,54 +1619,6 @@ export const memories = pgTable(
   }),
 );
 
-export const memoryCandidateSignalTypes = [
-  'reopen_loop',
-  'repeated_fix_type',
-  'handoff_gap_rescue',
-  'agent_self_report',
-] as const;
-export type MemoryCandidateSignalType = (typeof memoryCandidateSignalTypes)[number];
-
-export const memoryCandidateStatuses = [
-  'accruing',
-  'graduated',
-  'accepted',
-  'rejected',
-  'promoted',
-] as const;
-export type MemoryCandidateStatus = (typeof memoryCandidateStatuses)[number];
-
-export const memoryCandidates = pgTable(
-  'memory_candidates',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    projectId: uuid('project_id')
-      .notNull()
-      .references(() => projects.id, { onDelete: 'cascade' }),
-    signalType: text('signal_type', { enum: memoryCandidateSignalTypes }).notNull(),
-    signalKey: text('signal_key').notNull(),
-    status: text('status', { enum: memoryCandidateStatuses }).notNull().default('accruing'),
-    confidence: numeric('confidence', { precision: 3, scale: 2 }).notNull().default('0.30'),
-    evidenceCount: integer('evidence_count').notNull().default(1),
-    evidence: jsonb('evidence').notNull().default([]),
-    summary: text('summary').notNull(),
-    graduatedAt: timestamp('graduated_at', { withTimezone: true }),
-    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
-    archivedAt: timestamp('archived_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    projectSignalKeyUq: uniqueIndex('memory_candidates_project_signal_key_uq').on(
-      t.projectId,
-      t.signalType,
-      t.signalKey,
-    ),
-    projectStatusIdx: index('memory_candidates_project_status_idx').on(t.projectId, t.status),
-    archivedIdx: index('memory_candidates_archived_idx').on(t.archivedAt),
-  }),
-);
-
 export const skillsRelations = relations(skills, ({ one, many }) => ({
   project: one(projects, { fields: [skills.projectId], references: [projects.id] }),
   registrations: many(skillRegistrations),
@@ -2992,10 +2943,7 @@ export const runnerEvents = pgTable(
   }),
 );
 
-// ISS-552 (C1) — append-only agent friction feed. Agents submit friction,
-// ambiguous steps, skill gaps, and learnings mid-run; the owner reads the raw
-// feed before the normalizer (C2) accrues signals into memory candidates.
-// candidate_id column present but FK-less until C2 adds the target table.
+// cm:guard append-only — nothing in this schema enforces it, and the feed is evidence: an agent's report is what it said at the time, so correct it with a NEW row rather than an UPDATE (ISS-552)
 export const feedbackKinds = [
   'friction',
   'bug',
@@ -3041,10 +2989,6 @@ export const feedbackReports = pgTable(
     summary: text('summary').notNull(),
     detail: text('detail'),
     suggestion: text('suggestion'),
-    // FK added by C2 (ISS-553).
-    candidateId: uuid('candidate_id').references(() => memoryCandidates.id, {
-      onDelete: 'set null',
-    }),
     // Server-computed `self_report:<target>:<targetRef|'-'>:<kind>`.
     // Stored for C2 signal accrual + list dedup.
     signalKey: text('signal_key').notNull(),
@@ -3090,52 +3034,6 @@ export const feedbackReportsRelations = relations(feedbackReports, ({ one }) => 
 // Stores proposals seeded by the curator's "promote" action on a graduated candidate.
 // These are global (not per-project) like the static registry, but dynamically created.
 // A human curator reviews pending_review drafts before they graduate into the static registry.
-export const improvementMessageDraftStatuses = [
-  'pending_review',
-  'published',
-  'dismissed',
-] as const;
-export type ImprovementMessageDraftStatus = (typeof improvementMessageDraftStatuses)[number];
-
-export const improvementMessageDraftSources = ['bottom_up'] as const;
-export type ImprovementMessageDraftSource = (typeof improvementMessageDraftSources)[number];
-
-export const improvementMessageDrafts = pgTable(
-  'improvement_message_drafts',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    // Stable kebab key; unique across the table (draft-<slugified-signalKey>).
-    key: text('key').notNull(),
-    title: text('title').notNull(),
-    // Message body sourced from agent feedback — content is UNTRUSTED.
-    message: text('message').notNull(),
-    rationale: text('rationale').notNull(),
-    appliesWhen: text('applies_when'),
-    appliesToSkills: jsonb('applies_to_skills').notNull().default([]),
-    category: text('category').notNull().default('general'),
-    status: text('status', { enum: improvementMessageDraftStatuses })
-      .notNull()
-      .default('pending_review'),
-    source: text('source', { enum: improvementMessageDraftSources }).notNull().default('bottom_up'),
-    // Provenance: the candidate and signal that seeded this draft.
-    candidateId: uuid('candidate_id').references(() => memoryCandidates.id, {
-      onDelete: 'set null',
-    }),
-    signalKey: text('signal_key').notNull(),
-    sourceProjectId: uuid('source_project_id').references(() => projects.id, {
-      onDelete: 'set null',
-    }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    keyUq: uniqueIndex('improvement_message_drafts_key_uq').on(t.key),
-    statusIdx: index('improvement_message_drafts_status_idx').on(t.status),
-    candidateIdx: index('improvement_message_drafts_candidate_idx').on(t.candidateId),
-    signalKeyIdx: index('improvement_message_drafts_signal_key_idx').on(t.signalKey),
-  }),
-);
-
 // ISS-574 — Foundation for the UX Completeness Contract epic.
 // `ux_contract_rules` is the source-of-truth rule set; the compiler turns
 // active rules → projectFacts['ux-contract'] prose on every mutation.

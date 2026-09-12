@@ -113,9 +113,6 @@
     "packages/core/src/memory/indexer.test.ts": {
       "lint/correctness/noUnsafeOptionalChaining": 1
     },
-    "packages/core/src/memory/signals/reopen-loop.ts": {
-      "lint/correctness/noUnusedFunctionParameters": 1
-    },
     "packages/core/src/metrics/queries.ts": {
       "lint/complexity/useOptionalChain": 1
     },
@@ -427,9 +424,6 @@
     },
     "packages/web-v2/src/features/memory/api.ts": {
       "lint/complexity/useOptionalChain": 1
-    },
-    "packages/web-v2/src/features/memory/components/memory-candidates-tab.tsx": {
-      "lint/suspicious/noArrayIndexKey": 1
     },
     "packages/web-v2/src/features/memory/components/memory-screen.tsx": {
       "lint/correctness/useExhaustiveDependencies": 1,

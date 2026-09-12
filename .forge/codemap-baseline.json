@@ -201,11 +201,6 @@
     "c87f85a00100769f",
     "cce31dbf01060ee9"
   ],
-  "packages/contracts/src/memory.ts": [
-    "70a4c3b80103e171",
-    "b:5cce8298010fa234",
-    "c33ce5800103ead6"
-  ],
   "packages/contracts/src/pipeline-registry.ts": [
     "3f9540c20104b5ff",
     "b:3f9540c20104b5ff"
@@ -2866,50 +2861,6 @@
     "b:37853826010c5a9b",
     "c1df68380102ba49"
   ],
-  "packages/core/src/feedback/normalizer.test.ts": [
-    "01606f08010156dd",
-    "1315fe3801028d60",
-    "198990c00104589d",
-    "1f79891801037b97",
-    "2d960170029cad08",
-    "41ec3a4c01005f85",
-    "6986eef002b74b52",
-    "6c390754010012a1",
-    "818c929401010551",
-    "9761e89002b44a2c",
-    "9a6fd4d60102cc0f",
-    "9ff625100102aaad",
-    "b:01606f08010156dd",
-    "b:198990c00104589d",
-    "b:1f79891801037b97",
-    "b:2d960170029cad08",
-    "b:6986eef002b74b52",
-    "b:6c390754010012a1",
-    "b:818c929401010551",
-    "b:9761e89002b44a2c",
-    "b:9a6fd4d60102cc0f",
-    "b:b1c68aca02c1138e",
-    "b:faf8e9680104635a",
-    "ee7ae39802a90089",
-    "eecd620c01007099",
-    "faf8e9680104635a"
-  ],
-  "packages/core/src/feedback/normalizer.ts": [
-    "02ab75700101ca8e",
-    "138022b201046fef",
-    "85423020010614b7",
-    "8612fcd801040abb",
-    "94050a180103d76e",
-    "98e410ea0103f7e2",
-    "9d51db8e010d0c11",
-    "b66ca896010379c4",
-    "b7d47c6c010858bb",
-    "b:02ab75700101ca8e",
-    "b:5d19cf3401232f0c",
-    "b:aff8df400123ebd6",
-    "b:c4aca48c0177f73b",
-    "f86099df01069782"
-  ],
   "packages/core/src/feedback/routes.test.ts": [
     "08340ad401135aca",
     "1895f7c801024c25",
@@ -3044,41 +2995,6 @@
     "2693095b0103a9a2",
     "b:267966360124831d",
     "bdd712d6010376f3"
-  ],
-  "packages/core/src/improvement-messages/drafts-service.test.ts": [
-    "17c65a280101c65d",
-    "8aaddbf001015b7c",
-    "b:17c65a280101c65d",
-    "b:8aaddbf001015b7c",
-    "b:e1e0b3800108b5d5",
-    "e1e0b3800108b5d5"
-  ],
-  "packages/core/src/improvement-messages/drafts-service.ts": [
-    "074cc4880101b44f",
-    "168a623e0106114b",
-    "26f9c4dc01039ca2",
-    "3eb784a20102c9d4",
-    "3fd17e3401020382",
-    "52323e3001028a63",
-    "5247fab801037ef7",
-    "6cb5908801038727",
-    "6ef279b001039516",
-    "82aae35001044061",
-    "8839e7a001032da5",
-    "99c4aabc01036d59",
-    "b:168a623e0106114b",
-    "b:26f9c4dc01039ca2",
-    "b:28ecf2420121a109",
-    "b:5247fab801037ef7",
-    "b:7b7935e001096915",
-    "b:a925088c011ad6ac",
-    "b:b242da36010c0ae5",
-    "b:d534eb7a010d21f3",
-    "b:f2c8e04e0103217a",
-    "bcff5c7a01042e88",
-    "e46f51a0010379d5",
-    "f2c8e04e0103217a",
-    "fd337fe801030506"
   ],
   "packages/core/src/improvement-messages/routes.test.ts": [
     "2ee695be010212c5",
@@ -8484,28 +8400,6 @@
     "b:39daec90014b700f",
     "cf5841060103b05d"
   ],
-  "packages/core/src/memory/candidates-accrual.test.ts": [
-    "b84ba3200106e4e8",
-    "b:b84ba3200106e4e8"
-  ],
-  "packages/core/src/memory/candidates-accrual.ts": [
-    "b:e8ad127c0108494e",
-    "e8ad127c0108494e"
-  ],
-  "packages/core/src/memory/candidates-decay.ts": [
-    "b:26fa60c101142585",
-    "edc98f2801064531"
-  ],
-  "packages/core/src/memory/candidates-observer.ts": [
-    "b:c6bd77ba0101b744",
-    "c6bd77ba0101b744"
-  ],
-  "packages/core/src/memory/candidates-routes.ts": [
-    "295d1f9f0107eed1",
-    "5d96ed6e01043a51",
-    "b:47347aaa011e1edd",
-    "e0b5a57e01011b13"
-  ],
   "packages/core/src/memory/consolidation.test.ts": [
     "061a65c00109f929",
     "0ed233520101f86b",
@@ -8758,16 +8652,6 @@
     "b:e4f6d7e801023288",
     "d079e0b601002c2a",
     "e4f6d7e801023288"
-  ],
-  "packages/core/src/memory/signals/reopen-loop.ts": [
-    "1348c14001008c2e",
-    "63b145800103816e",
-    "b:1348c14001008c2e",
-    "b:63b145800103816e"
-  ],
-  "packages/core/src/memory/signals/repeated-fix-type.ts": [
-    "1c12b93a0100fc39",
-    "b:1c12b93a0100fc39"
   ],
   "packages/core/src/memory/step-handoff-schema.test.ts": [
     "233d97140102f143",

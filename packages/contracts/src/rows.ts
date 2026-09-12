@@ -221,24 +221,6 @@ export interface ImprovementMessageEntry extends ImprovementMessage {
 export type UxContractRuleRow = typeof schema.uxContractRules.$inferSelect;
 export type UxFindingRow = typeof schema.uxFindings.$inferSelect;
 
-// ISS-554 — improvement message draft (bottom-up proposal from a graduated candidate).
-export interface ImprovementMessageDraft {
-  id: string;
-  key: string;
-  title: string;
-  message: string;
-  rationale: string;
-  appliesWhen: string | null;
-  appliesToSkills: string[];
-  category: string;
-  status: 'pending_review' | 'published' | 'dismissed';
-  source: 'bottom_up';
-  candidateId: string | null;
-  signalKey: string;
-  sourceProjectId: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
 
 // cm:why ISS-800 — Divergence Charter row type, Update Pipeline §5
 export type DivergenceCharterRow = typeof schema.divergenceCharters.$inferSelect;
