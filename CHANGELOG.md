@@ -115,7 +115,11 @@
   fills the three variables that have no default with inert placeholders, says on its own first line
   which ones it filled, and reads the census database from `FORGE_CENSUS_DATABASE_URL` and nowhere
   else — a measurement of a constant that demanded a production database to start would not be
-  re-runnable, which is the whole of what it is for.
+  re-runnable, which is the whole of what it is for. It also separates the two doors, which is where
+  the headline figure went wrong: the 28,343 characters the proposal costed is the **uncapped**
+  serialization `/mcp` serves, while the chat door truncates every description at 1,024 and is served
+  20,134 — of which only 7,157 is description at all and 12,977 is schema that no prose trim reaches,
+  with five of the nine tools already sitting at the cap and giving nothing back when shortened.
 
 - **A decision a run parked on is now readable and answerable on the issue itself.** When an agent
   stops and asks, it writes a structured question: a prompt, a set of options, which one it

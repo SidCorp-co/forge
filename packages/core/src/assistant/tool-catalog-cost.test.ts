@@ -50,6 +50,17 @@ describe('the catalog, as the provider sees it', () => {
     expect(wire[1]?.cache_control).toEqual({ type: 'ephemeral' });
   });
 
+  it('sees the chat cap in the wire it measured, by the marker the adapter appends', async () => {
+    const { DESCRIPTION_CAP, truncate } = await import('./tools/mcp-adapter.js');
+    expect(truncate('x'.repeat(DESCRIPTION_CAP + 1), DESCRIPTION_CAP)).toContain('[truncated]');
+    const { wire } = measureLiveCatalog();
+    const cut = (wire as WireTool[]).filter((t) => t.description?.includes('[truncated]'));
+    expect(cut.length).toBeGreaterThan(0);
+    for (const tool of cut) {
+      expect(tool.description?.length).toBe(DESCRIPTION_CAP + 13);
+    }
+  });
+
   it('labels an uncounted figure as an estimate and names its divisor', () => {
     const { chars, tokens } = measureLiveCatalog();
     expect(tokens.provenance).toBe('estimated');

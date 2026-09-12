@@ -35,6 +35,9 @@ export const PRICING = {
   minimumCacheablePrefixTokens: 1024,
 } as const;
 
+// cm:edge contract -> packages/core/src/assistant/tools/mcp-adapter.ts — the marker `truncate` appends at `DESCRIPTION_CAP`. Change it there and this stops seeing which tools the chat door cut, silently: the count goes to zero rather than red, which is why the census-style shortfall lines exist beside it (ISS-983)
+const TRUNCATION_MARK = '[truncated]';
+
 export interface TokenFigure {
   tokens: number;
   /** `measured` only where the provider counted it; an estimate carries the divisor that produced it. */
@@ -312,10 +315,25 @@ function printCatalog(catalog: CatalogMeasurement, tokens: TokenFigure, why: str
   console.log(
     `minimum cacheable prefix on ${PRICING.model}: ${PRICING.minimumCacheablePrefixTokens} tokens (${DECLARED}) — the catalog is ${side} it`,
   );
-  console.log('\nper tool, serialized:');
-  for (const tool of catalog.wire as { name?: string }[]) {
-    console.log(`  ${tool.name ?? '(unnamed)'}: ${count(JSON.stringify(tool).length)} chars`);
+  console.log('\nper tool, serialized — description, schema, and whether the chat cap cut it:');
+  let described = 0;
+  let cut = 0;
+  for (const tool of catalog.wire as {
+    name?: string;
+    description?: string;
+    input_schema?: unknown;
+  }[]) {
+    const description = tool.description ?? '';
+    const truncated = description.includes(TRUNCATION_MARK);
+    described += description.length;
+    if (truncated) cut += 1;
+    console.log(
+      `  ${tool.name ?? '(unnamed)'}: ${count(JSON.stringify(tool).length)} chars = ${count(description.length)} description${truncated ? ' (CUT by the chat cap)' : ''} + ${count(JSON.stringify(tool.input_schema).length)} schema`,
+    );
   }
+  console.log(
+    `\ndescription served to chat: ${count(described)} chars, ${cut} of ${catalog.toolCount} tools cut at the cap. The rest of the catalog — ${count(catalog.chars - described)} chars — is schema, which no description trim reaches.`,
+  );
 }
 
 /** Every serialization of the same nine tools, so a figure quoted elsewhere can be matched against the shape that produced it. */
