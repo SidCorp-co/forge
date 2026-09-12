@@ -148,11 +148,7 @@ const dataObject = z
     attachments: z.array(attachmentInputSchema).max(10).optional(),
     acceptanceCriteria: z.string().max(100_000).nullable().optional(),
     plan: z.string().max(200_000).nullable().optional(),
-    // sessionContext is opaque JSON the skill pipeline uses to persist
-    // accumulated context across sessions. Validated as a record here with a
-    // serialised-size ceiling matched to `plan` so a single issue cannot blow
-    // up TOAST or query plans (Postgres jsonb has no per-column limit, so we
-    // enforce one in app code). Deeper schema lives in the skill spec.
+    // cm:guard the serialised-size ceiling is app-code's alone — Postgres jsonb has no per-column limit, so nothing below this line stops one issue's accumulated context from blowing up TOAST and every query plan that reads the row. It is matched to `plan` deliberately.
     sessionContext: sessionContextSchema,
     // cm:guard ISS-959 — a PRECONDITION, not a field. It is absent from `SHARED_ISSUE_PATCH_FIELDS` on purpose; adding it there would write the value the caller read back into a column.
     expect: sessionContextExpectSchema.optional(),
@@ -164,9 +160,6 @@ const dataObject = z
     commit: mergedCommitShaSchema.optional(),
     mergedAt: z.string().optional(),
     note: z.string().max(10_000).optional(),
-    // Task fields — only consumed by the createTask/updateTask actions. Kept
-    // on the same `data` block to avoid splitting the input schema for what
-    // is conceptually one tool.
     issueId: z.uuid().optional(),
     taskTitle: z.string().trim().min(1).max(500).optional(),
     taskDescription: z.string().max(50_000).nullable().optional(),
@@ -487,89 +480,26 @@ function parseDate(value: string, field: string): Date {
 export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_issues',
   description:
-    'CRUD for project issues. Actions: list, get, create, update, transition, ' +
-    'createTask, listTasks, updateTask, deleteTask, mark_merged, unmark. ' +
-    'list returns a lightweight summary projection per issue (no description/' +
-    'plan/acceptanceCriteria/sessionContext/releaseNotes) ' +
-    'to stay under the response token cap; fetch the full body with action=get. ' +
-    'filters.search matches a literal substring of title, description, plan or acceptanceCriteria, ' +
-    'or an identifier-split token across the same four (ISS-960); each matching row names the ' +
-    'fields it matched in `matchedFields`, so a clause cited only on a criterion is findable. ' +
-    'filters.issue/filters.taskStatus belong to listTasks and list REFUSES them — use get. ' +
-    'list supports filters.label (a label name or uuid, or an array of either — ' +
-    'OR semantics; unknown names return an empty set) and filters.module (ISS-593 — the same ' +
-    'shape, matched against MODULE labels only, so a plain label name returns an empty set). ' +
-    'EVERY list response carries `returned`, `limit` and `hasMore` — read `hasMore` before reporting a count as complete, because a list bound by your own limit is otherwise indistinguishable from a complete one. `truncated`/`truncatedBy` say which cap bit. ' +
-    'Token discipline: use list (projection) to browse/triage many issues, and ' +
-    'get for the single full issue you are about to work on. When forge_step_start ' +
-    'returned a lean manifest (bodyTruncated:true), pull only the fields you need ' +
-    'via get with fields:[...] (e.g. { action:"get", documentId, fields:["plan"] }). ' +
-    'Do NOT re-get an issue whose full body you already loaded this session. ' +
-    'On create, fill title/description/priority/category — `plan` and ' +
-    '`acceptanceCriteria` are written by the clarify/plan steps; pre-filling them ' +
-    "deletes the plan step's reason to exist (red flag: plan-by-hand). Keep the " +
-    'description a requirements contract (outcome, business rules, invariants, ' +
-    'out-of-scope) — not an implementation script naming files, endpoints or ' +
-    '"follow the pattern at <path>"; those claims go stale and outrank live ' +
-    'exploration in practice. See guides pipeline-and-issue-lifecycle and writing-an-issue (body shape; mermaid fences render; ATTACH .html, never paste it into description). ' +
-    'mark_merged (data.issueId + data.target<feature|base|prod> + optional ' +
-    'data.commit sha + data.mergedAt ISO + data.note) idempotently stamps ' +
-    'issues.merged_at and issues.merged_commit_sha together (a repeat call ' +
-    'keeps the first stamp of both), and fills the commit from the recorded ' +
-    'implementation handoff when data.commit is absent, writes an audit ' +
-    'comment, broadcasts the issue update, and wakes the dispatcher so a ' +
-    'now-unblocked parent (blocks-gate) dispatches promptly. target is an ' +
-    'audit label only — all values stamp the same merged_at column. unmark ' +
-    '(data.issueId + optional data.note) clears merged_at back to NULL to ' +
-    're-block children when an epic merge is rolled back. ' +
-    'Transitioning an issue to closed auto-stamps merged_at when still NULL ' +
-    '(closed = done for the blocks-gate); if a close meant "abandoned, code ' +
-    'never landed", follow up with unmark to re-block dependents. ' +
-    'Project scope is derived from the X-Forge-Project-Slug header (or an ' +
-    'explicit projectId). Status changes route through the issue state machine. ' +
-    'Use status:on_hold for a deliberate pause, or status:waiting to park an ' +
-    'issue for human review. ' +
-    'Attachments: for anything bigger than a tiny snippet use the forge_uploads tool ' +
-    '(presigned-URL pattern) instead of base64 — base64 in data.attachments[] is slow ' +
-    'and burns context tokens. Workflow: (1) create the issue to get its id; (2) call ' +
-    'forge_uploads {action:"request", data:{target:"issue", targetId:<id>, name:"<file>"}} ' +
-    '→ get an uploadUrl; (3) `curl -X PUT -T <localPath> "<uploadUrl>"` (no auth header). ' +
-    'The PUT returns {id,name,mime,size,url}; reference the url in the body. ' +
-    'data.attachments[] (base64-inline; up to 10, total ≤ UPLOADS_MAX_BYTES) still works ' +
-    'for tiny inline files and on partial-failure returns `attachments` (succeeded) + ' +
-    '`attachmentErrors` (code/message). ' +
-    'Task sub-actions: createTask requires data.issueId + data.taskTitle; listTasks ' +
-    'requires filters.issue and accepts filters.taskStatus; updateTask/deleteTask ' +
-    'use documentId as the task UUID. Tasks inherit project membership from the ' +
-    'parent issue. ' +
-    'Relations (ISS-571, ISS-868): data.relations (optional array, max 20) is applied by ' +
-    'BOTH create and update, and works with a personal access token — unlike ' +
-    'forge_project_pm set_dependency. Edges commit before ' +
+    'Issues, tasks, merge marks and dependency edges. documentId takes a uuid or the short ISS-<n>. ' +
+    'list returns a summary projection — no description/plan/acceptanceCriteria/sessionContext/releaseNotes — and get returns the full body: browse with list, then get the one issue you will work on; never re-get a body already loaded this session. ' +
+    'Every list response carries returned/limit/hasMore, and you must read hasMore before reporting a count as complete, because a list cut short by your own limit looks exactly like a complete one; truncated/truncatedBy say which cap bit. ' +
+    'list REFUSES filters.issue and filters.taskStatus — both belong to listTasks; for one issue use get. ' +
+    'On create send title/description/priority/category and nothing more: plan and acceptanceCriteria are written by the clarify/plan steps, and pre-filling them is the plan-by-hand red flag. ' +
+    'Keep the description a requirements contract — outcome, business rules, invariants, out-of-scope — never an implementation script naming files or endpoints. ' +
+    'Guides pipeline-and-issue-lifecycle and writing-an-issue give the body shape; mermaid renders, and .html is ATTACHED, never pasted in. ' +
+    'filters.search matches a literal substring or identifier-split token across title/description/plan/acceptanceCriteria; matchedFields names which of the four hit (ISS-960). ' +
+    'filters.label and filters.module each take a name, a uuid or an array of either (OR semantics; an unknown name returns an empty set), module matching MODULE labels only (ISS-593). ' +
+    'Project scope comes from the X-Forge-Project-Slug header or an explicit projectId. transition routes through the state machine: on_hold is a deliberate pause, waiting parks the issue for human review. ' +
+    'mark_merged (data.issueId, data.target feature|base|prod, optional data.commit/data.mergedAt/data.note) idempotently stamps merged_at and merged_commit_sha together (a repeat keeps the first stamp of both), fills data.commit from the recorded implementation handoff when absent, and wakes the dispatcher for a now-unblocked parent. target is an audit label: every value stamps that same column. ' +
+    'unmark clears merged_at back to NULL, re-blocking children after a rollback; closing an issue auto-stamps merged_at when still NULL (closed = done for the blocks-gate), so a close meaning "abandoned, code never landed" is followed by unmark. ' +
+    'Tasks: createTask needs data.issueId + data.taskTitle, listTasks needs filters.issue and accepts filters.taskStatus, updateTask/deleteTask take the task UUID as documentId. ' +
+    'Relations (ISS-571, ISS-868): data.relations, max 20, is applied by both create and update and works with a personal access token, unlike forge_project_pm set_dependency; edges commit before the dispatch trigger, so the dispatcher cannot take the issue up ahead of its blocker. ' +
     // cm:edge naming -> packages/core/src/issues/relations-service.ts — this prose spells the kind vocabulary out for the agent, so it is a second copy of RELATION_KINDS that no type checks; the guard there forbids widening, and if that ever changes this sentence is the other half
-    'the dispatch trigger (issueCreated on create, the status transition on update), so ' +
-    'the dispatcher cannot pick the issue up ahead of its blocker. Each entry takes kind ' +
-    '(blocks|relates, default blocks) and exactly one of dependsOnId (THIS issue is ' +
-    'blocked-by it) or blocksId (THIS issue blocks it). The response carries a relations[] ' +
-    'array — one entry per edge with edgeId + created/updated — so you can tell the write ' +
-    'landed; re-send an existing edge with validUntil in the past to RETRACT it ' +
-    '(reported as updated:true). For the other kinds, use forge_project_pm ' +
-    'set_dependency directly. Read edges back with action=get, which ' +
-    'returns relations.blocks (this issue blocks them) and relations.blockedBy (they ' +
-    'block this issue), each entry flagged `expired` when its validUntil has passed and ' +
-    'the edge no longer gates dispatch. ' +
-    'Labels (ISS-633): data.labels (create/update) accepts an array of label NAMES or ' +
-    'UUIDs, resolved server-side against the current project — an unknown name/uuid ' +
-    '(or one from another project) throws BAD_REQUEST; labels are never auto-created. ' +
-    'On update this is a REPLACE-SET, NOT additive: it is the full desired label set for ' +
-    'the issue — [] clears every label, and omitting data.labels leaves labels unchanged. ' +
-    "Read the issue's current labels[] (present on get/create/update responses and the " +
-    'forge_step_start bundle) before sending a delta, or you will clobber the existing set. ' +
-    'Modules (ISS-593): a module is a label with kind:"module", and every labels[] entry reports ' +
-    "its kind and isPrimary. To set the issue's primary module send that entry as an object — " +
-    '{ labelId: "<module name or uuid>", isPrimary: true } — alongside the plain strings; at most ' +
-    'one entry may be primary and it must be a module, or the write is refused with ' +
-    'PRIMARY_NOT_MODULE / MULTIPLE_PRIMARY and nothing is written. A new primary replaces the old ' +
-    'one atomically; omit isPrimary everywhere to leave the issue without a primary module.',
+    'Each entry is kind (blocks|relates, default blocks) plus exactly one of dependsOnId (this issue is blocked BY it) or blocksId (this issue blocks it); other kinds go through forge_project_pm set_dependency. ' +
+    'Re-sending an edge with validUntil in the past RETRACTS it, and get returns relations.blocks and relations.blockedBy with each entry flagged expired once it no longer gates dispatch. ' +
+    "Labels (ISS-633): data.labels takes label names or uuids resolved against the current project — an unknown or foreign one throws BAD_REQUEST, and labels are never auto-created. On update it is a REPLACE-SET, not additive: it is the whole desired set — [] clears every label, omitting it changes nothing — so read the issue's current labels[] before sending a delta. " +
+    'A module is a label of kind "module"; labels[] entries report kind and isPrimary, and the primary is set by sending { labelId, isPrimary: true } among the plain strings — at most one, and it must be a module, or the write is refused whole with PRIMARY_NOT_MODULE / MULTIPLE_PRIMARY; a new primary replaces the old atomically (ISS-593). ' +
+    'Attachments: use forge_uploads past a tiny snippet; data.attachments[] base64 caps at UPLOADS_MAX_BYTES total and reports partial failure as attachments + attachmentErrors.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
@@ -645,9 +575,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         const issue = await loadIssue(input.documentId);
         await assertPrincipalIsMember(principal, issue.projectId);
         if (input.fields && input.fields.length > 0) {
-          // Field-selective projection: pick from the already-framed serialize()
-          // output so markUntrusted DATA banners are preserved on untrusted fields
-          // (description/acceptanceCriteria). Never project from the raw row.
+          // cm:guard project from `serialize()`, never from the raw row — the DATA banners `markUntrusted` puts on `description` and `acceptanceCriteria` live in its output, so a projection taken earlier hands an agent untrusted text with nothing marking it as such.
           const full = serialize(issue);
           const projected: Record<string, unknown> = {
             documentId: full.documentId,
