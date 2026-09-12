@@ -41,14 +41,22 @@ export interface StartEscalationArgs {
   botName: string;
   question: string;
   askedByUsername?: string | undefined;
+  // cm:edge contract -> packages/core/src/integrations/rocketchat/escalation-bridge.ts — the bridge fires from a terminal writer on any instance and cannot re-derive who spoke, so the shape and the resolved principal are STORED here and read back there; `askedByUsername` is not a substitute, because a display name is re-assignable and the speaker map refuses one as a key
+  shape: 'direct' | 'group';
+  principalUserId: string;
 }
 
 export type StartEscalationResult =
   | { started: true; sessionId: string }
   | { started: false; reason: 'deduped' | 'no-device' | 'dispatch-failed' };
 
-export function hasInFlightEscalation(projectId: string, rid: string): Promise<boolean> {
-  return hasInFlightRoomSession(projectId, rid, 'escalation');
+// cm:ignore CM013 — every frozen comment in this file is an `i18n-allow` lint pragma; deleting one to pay the drain would break the language gate instead of cleaning prose.
+export function hasInFlightEscalation(
+  projectId: string,
+  rid: string,
+  tmid?: string | null | undefined,
+): Promise<boolean> {
+  return hasInFlightRoomSession(projectId, rid, 'escalation', tmid);
 }
 
 // cm:guard the knowledge-curation rules are spelled out IN the prompt because the runner's forge_knowledge access has no client-side guardrail — this text is the only enforcement
@@ -71,7 +79,7 @@ export function buildEscalationPrompt(question: string): string {
 
 // cm:guard on a dispatch throw the session MUST be marked failed via applyKernelTransition — that fires the completion bridge like any other terminal writer, which is the only reason the room still gets one honest fallback
 export async function startEscalation(args: StartEscalationArgs): Promise<StartEscalationResult> {
-  if (await hasInFlightEscalation(args.projectId, args.rid)) {
+  if (await hasInFlightEscalation(args.projectId, args.rid, args.tmid)) {
     return { started: false, reason: 'deduped' };
   }
 
@@ -97,6 +105,8 @@ export async function startEscalation(args: StartEscalationArgs): Promise<StartE
         botName: args.botName,
         askedByUsername: args.askedByUsername ?? null,
         question: args.question,
+        shape: args.shape,
+        principalUserId: args.principalUserId,
         deliveredAt: null,
       },
       lensOverride: ['product'],

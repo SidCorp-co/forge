@@ -1,9 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+/**
+ * Unit tests for the escalation dispatcher — per-conversation dedup, device
+ * resolution, the authority it stores for the bridge to read back, and the
+ * dispatch-failure safety net. Mocks the exact chat-turn machinery
+ * `schedules/dispatch.ts` also drives, so behaviour stays in lockstep with
+ * that precedent without pulling in its DB/WS graph.
+ */
 
-// Unit tests for the escalation dispatcher — dedup, device resolution, and the
-// dispatch-failure safety net. Mocks the exact chat-turn machinery
-// `schedules/dispatch.ts` also drives, so behaviour stays in lockstep with
-// that precedent without pulling in its DB/WS graph.
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const selectLimit = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
@@ -39,6 +42,8 @@ const BASE_ARGS = {
   botName: 'Babo',
   question: 'How does the pipeline dispatcher work?',
   askedByUsername: 'alice',
+  shape: 'group' as const,
+  principalUserId: 'owner-1',
 };
 
 describe('hasInFlightEscalation', () => {

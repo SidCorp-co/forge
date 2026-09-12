@@ -33,10 +33,12 @@ import {
   startEscalation,
 } from './escalation.js';
 import { type FastTurnInputs, prepareFastTurn } from './images.js';
-import { createSeenTracker, decideHandling } from './inbound-gate.js';
+import { createSeenTracker, decideHandling, decideSkip } from './inbound-gate.js';
 import { FIXED_REPLY_CONSTANT, type ReplySendProof, sendFixedReply } from './outbound.js';
 import { screenStakeholderReply } from './reply-screen.js';
 import { fetchOwnUsername } from './rest-client.js';
+import { type RoomShape, resolveRoomShape } from './room-shape.js';
+import { conversationKey, resolveTurnPrincipal } from './turn-principal.js';
 import type { RocketChatBindingConfig, RocketChatConfig, RocketChatSecrets } from './types.js';
 
 export function rocketChatPersona(
@@ -170,8 +172,8 @@ interface ActiveConnection {
 
 class RocketChatConnectionManager {
   private readonly conns = new Map<string, ActiveConnection>();
-  /** rid → chat session id, so a room keeps one multi-turn conversation. */
-  private readonly sessionByRid = new Map<string, string>();
+  // cm:guard keyed by the CONVERSATION and never the room: a thread exists so a side conversation need not be followed by the room, and one key per rid put two live threads in one `chat_sessions` row reading each other's turns back as their own history (ISS-987). The room's own messages are their own conversation under the same rule.
+  private readonly sessionByConversation = new Map<string, string>();
   private started = false;
   private listenClient?: pg.Client | undefined;
   private listenRetryTimer?: NodeJS.Timeout | undefined;
@@ -398,21 +400,38 @@ class RocketChatConnectionManager {
   }
 
   private onMessage(connectionId: string, m: RocketChatIncomingMessage): void {
+    void this.route(connectionId, m).catch((err) =>
+      logger.error({ err, connectionId, rid: m.rid }, 'rocketchat: routing failed'),
+    );
+  }
+
+  // cm:guard the four steps are ordered and each one is why the next is safe: the shape-free skips first because they need no round trip; the ROUTE before anything async, so a routeless connection neither resolves a shape nor touches its tracker; the SHAPE before addressing, because addressing is what the shape decides; and the tracker LAST, so an unmentioned group message never occupies an entry it would evict a real mention with (ISS-987 rebuilt this order — the pre-ISS-987 gate tested the mention synchronously and could sit first).
+  private async route(connectionId: string, m: RocketChatIncomingMessage): Promise<void> {
     const ac = this.conns.get(connectionId);
     if (!ac) return;
-    if (!decideHandling(m, ac.botUserId).handle) return;
+    if (decideSkip(m, ac.botUserId)) return;
     // cm:guard route BEFORE dedup: the same bot user is subscribed on EVERY connection's socket via `__my_messages__`, so a connection with no route for this room must drop the message without touching its dedup tracker — a shared/global tracker let a routeless connection mark the id seen first, so the connection that owned the route dropped it as a false duplicate (root cause of the intermittent "bot ignores the message", pinned 2026-07-15)
     const route = ac.routes.get(m.rid);
     if (!route) {
       logger.debug({ connectionId, rid: m.rid }, 'rocketchat: no binding for room; ignoring');
       return;
     }
-    if (ac.seenMessage(m.id)) return; // enrichment re-emit / reconnect replay (per-connection)
+    const restAuth = { serverUrl: ac.serverUrl, authToken: ac.authToken, userId: ac.botUserId };
+    const shape = await resolveRoomShape(restAuth, m.rid);
+    // cm:guard refuse by NAME rather than assume a shape: `group` would make a direct room need a mention it never gets, and `direct` would answer unmentioned channel chatter and run it as whoever spoke. An unresolvable room is a fault to see in the log, not a default to serve (ISS-987).
+    if (!shape) {
+      const ctx = { connectionId, rid: m.rid, msgId: m.id, projectId: route.projectId };
+      logger.error(ctx, 'rocketchat: room type unresolved; refusing the message, not assuming one');
+      return;
+    }
+    if (!decideHandling(m, ac.botUserId, shape).handle) return;
+    if (ac.seenMessage(m.id)) return;
+    const logCtx = { connectionId, rid: m.rid, msgId: m.id, projectId: route.projectId };
     logger.info(
-      { connectionId, rid: m.rid, msgId: m.id, user: m.username, projectId: route.projectId },
-      'rocketchat: handling mention',
+      { ...logCtx, user: m.username, shape, threaded: Boolean(m.tmid) },
+      'rocketchat: handling message',
     );
-    void this.handle(ac, route, m, connectionId).catch((err) => {
+    void this.handle(ac, route, m, connectionId, shape).catch((err) => {
       logger.error({ err, connectionId, rid: m.rid }, 'rocketchat: message handling failed');
       Sentry.captureException(err, {
         tags: { area: 'rocketchat', phase: 'dispatch' },
@@ -426,8 +445,30 @@ class RocketChatConnectionManager {
     route: Route,
     m: RocketChatIncomingMessage,
     connectionId: string,
+    shape: RoomShape,
   ): Promise<void> {
     const restAuth = { serverUrl: ac.serverUrl, authToken: ac.authToken, userId: ac.botUserId };
+    const conversation = conversationKey(m);
+    const principal = await resolveTurnPrincipal({
+      serverUrl: ac.serverUrl,
+      routePrincipalUserId: route.principalUserId,
+      projectId: route.projectId,
+      m,
+      shape,
+      onRefusal: (d) => logger.warn(d, 'rocketchat: direct speaker unresolved; refusing the turn'),
+    });
+    // cm:guard the refusal is the deliverable and the turn does NOT run: a DM's authority is its one human, so with nobody resolved there is no identity to compute an answer under — falling back to the organization's creator would answer a stranger with the creator's read access (ISS-987, consuming ISS-977).
+    if (!principal.ok) {
+      const client = ac.client;
+      if (client) {
+        await sendFixedReply(
+          { kind: 'ddp', client, rid: m.rid, tmid: m.tmid, authToken: ac.authToken },
+          principal.refusal,
+          FIXED_REPLY_CONSTANT,
+        );
+      }
+      return;
+    }
     // cm:guard two nested guards so a stall NEVER leaves the mention in silence: `abort` cancels the provider, `withTimeout` backstops a hang the abort cannot reach; either fire sends a fallback AND captures to Sentry tagged with `phase`
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(), TURN_TIMEOUT_MS);
@@ -500,6 +541,7 @@ class RocketChatConnectionManager {
           phase = 'images';
           const fast = await prepareFastTurn({
             route,
+            principalUserId: principal.userId,
             restAuth,
             rid: m.rid,
             images: m.images,
@@ -509,7 +551,7 @@ class RocketChatConnectionManager {
           const result = await runExternalChatTurn({
             projectId: route.projectId,
             source: 'rocketchat',
-            sessionId: this.sessionByRid.get(m.rid),
+            sessionId: this.sessionByConversation.get(conversation),
             message: m.text,
             tools: fast.tools,
             userKey: m.userId,
@@ -519,7 +561,7 @@ class RocketChatConnectionManager {
             resolveImage: fast.resolveImage,
             signal: abort.signal,
           });
-          this.sessionByRid.set(m.rid, result.sessionId);
+          this.sessionByConversation.set(conversation, result.sessionId);
 
           // ISS-675 — escalation short-circuits the normal verify/reply path:
           // the model chose to hand this question to a deeper research agent
@@ -551,6 +593,8 @@ class RocketChatConnectionManager {
               botName: ac.botName,
               question,
               askedByUsername: m.username,
+              shape,
+              principalUserId: principal.userId,
             });
             if (started.started) return fixed(ESCALATION_ACK(ac.botName));
             if (started.reason === 'deduped') return fixed(ESCALATION_DEDUP_REPLY(ac.botName));
@@ -603,7 +647,7 @@ class RocketChatConnectionManager {
           user: m.username,
         },
       });
-      this.sessionByRid.delete(m.rid);
+      this.sessionByConversation.delete(conversation);
       outcome = fixed(errorFallbackReply(ac.botName));
     } finally {
       clearTimeout(timer);
@@ -658,7 +702,7 @@ class RocketChatConnectionManager {
         resolveImage: fast.resolveImage,
         signal,
       });
-      this.sessionByRid.set(m.rid, result.sessionId);
+      this.sessionByConversation.set(conversationKey(m), result.sessionId);
       verdict = result.reply.trim()
         ? await screen(result)
         : { ok: false, problems: ['empty retry reply'] };

@@ -110,6 +110,38 @@ describe('room-delivery marker queries', () => {
     });
   }
 
+  // cm:why only a real database answers the null branch: `->> 'tmid'` yields SQL NULL for a room's own messages and `= NULL` is NULL rather than true, so an equality predicate stops deduping the main channel entirely and a mocked db cannot see it (ISS-987 criteria 18, 19, 20)
+  it('does not dedup a thread against a different thread in the same room', async () => {
+    await seedSession('running', { agentChat: marker('room-1', { tmid: 'thread-a' }) });
+
+    expect(await hasInFlightRoomSession(projectId, 'room-1', 'agentChat', 'thread-b')).toBe(false);
+  });
+
+  it('dedups a thread against the same thread in the same room', async () => {
+    await seedSession('running', { agentChat: marker('room-1', { tmid: 'thread-a' }) });
+
+    expect(await hasInFlightRoomSession(projectId, 'room-1', 'agentChat', 'thread-a')).toBe(true);
+  });
+
+  it("dedups a room's own messages against a running session on that same main channel", async () => {
+    await seedSession('running', { agentChat: marker('room-1', { tmid: null }) });
+
+    expect(await hasInFlightRoomSession(projectId, 'room-1', 'agentChat', null)).toBe(true);
+    expect(await hasInFlightRoomSession(projectId, 'room-1', 'agentChat', undefined)).toBe(true);
+  });
+
+  it("does not dedup a thread against a running session on the room's main channel", async () => {
+    await seedSession('running', { agentChat: marker('room-1', { tmid: null }) });
+
+    expect(await hasInFlightRoomSession(projectId, 'room-1', 'agentChat', 'thread-a')).toBe(false);
+  });
+
+  it("does not dedup a room's own message against a running session in one of its threads", async () => {
+    await seedSession('running', { agentChat: marker('room-1', { tmid: 'thread-a' }) });
+
+    expect(await hasInFlightRoomSession(projectId, 'room-1', 'agentChat', null)).toBe(false);
+  });
+
   it('does not confuse one marker with the other', async () => {
     await seedSession('running', { agentChat: marker('room-1') });
 

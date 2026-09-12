@@ -52,6 +52,9 @@ export interface RoomReplyMeta {
   botName: string;
   askedByUsername: string;
   question: string;
+  // cm:guard null means the row STORED none — an older row, or a lane that writes no shape — and a `direct` shape with a null principal is refused rather than run as the organization's creator (escalation-bridge.ts). Do not default either field.
+  shape: 'direct' | 'group' | null;
+  principalUserId: string | null;
   deliveredAt: string | null;
 }
 
@@ -77,6 +80,8 @@ export function readRoomReplyMeta(
     botName: m.botName,
     askedByUsername: typeof m.askedByUsername === 'string' ? m.askedByUsername : '',
     question: typeof m.question === 'string' ? m.question : '',
+    shape: m.shape === 'direct' || m.shape === 'group' ? m.shape : null,
+    principalUserId: typeof m.principalUserId === 'string' ? m.principalUserId : null,
     deliveredAt: typeof m.deliveredAt === 'string' ? m.deliveredAt : null,
   };
 }
@@ -108,10 +113,13 @@ export async function claimRoomReplyDelivery(
 }
 
 // cm:guard DB-backed, never an in-memory Set — this must be instance-independent and self-clear the moment the session goes terminal via ANY writer
+// cm:guard `IS NOT DISTINCT FROM` and never `=`, because the thread is absent for a room's own messages: `->> 'tmid'` yields SQL NULL there, and `= NULL` is NULL rather than true, so an equality test silently stops deduping the main channel and lets one room run two concurrent sessions (ISS-987).
+// cm:why keyed by the CONVERSATION, not the room: a thread is a side conversation the room need not follow, and matching on `rid` alone made a second thread's mention in a busy channel look like an in-flight duplicate and vanish (ISS-987)
 export async function hasInFlightRoomSession(
   projectId: string,
   rid: string,
   marker: RoomReplyMarker,
+  tmid?: string | null | undefined,
 ): Promise<boolean> {
   const rows = await db
     .select({ id: agentSessions.id })
@@ -121,6 +129,7 @@ export async function hasInFlightRoomSession(
         eq(agentSessions.projectId, projectId),
         eq(agentSessions.status, 'running'),
         sql`${agentSessions.metadata} -> ${marker}::text ->> 'rid' = ${rid}`,
+        sql`${agentSessions.metadata} -> ${marker}::text ->> 'tmid' IS NOT DISTINCT FROM ${tmid ?? null}`,
       ),
     )
     .limit(1);
