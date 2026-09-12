@@ -9,8 +9,11 @@
  * with no process behind it, and ISS-410 queued behind it the whole time.
  *
  * So a failed run returns each issue to the status it held when the run
- * opened, which is by construction a status that project admits — it is the
- * one the master claimed it out of.
+ * opened. That floor bounds what this module can do, in both directions: it
+ * can never put an issue behind the rung it was standing on at claim time,
+ * and it can never lift one off a rung that was already stuck — a master may
+ * open a run over an issue at `testing`, and the floor is then the defect.
+ * That case is counted here and healed where run sessions are admitted.
  */
 
 import { and, eq, inArray, sql } from 'drizzle-orm';

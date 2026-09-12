@@ -171,8 +171,9 @@ describe('returnIssuesForRun', () => {
 
     expect(await returnIssuesForRun(RUN, { reason: 'r' })).toEqual([]);
     expect(transitionIssueStatus).not.toHaveBeenCalled();
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn.mock.calls[0][0]).toMatchObject({ issueKey: 'ISS-265', status: 'testing' });
+    expect(warn.mock.calls).toEqual([
+      [expect.objectContaining({ issueKey: 'ISS-265', status: 'testing' }), expect.any(String)],
+    ]);
   });
 
   // cm:guard a run opened before `runIssueStatuses` existed carries none, and a guessed `open` walks issues backwards out of statuses no run claimed them from.
