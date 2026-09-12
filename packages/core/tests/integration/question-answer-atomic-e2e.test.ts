@@ -346,6 +346,36 @@ describe('who may read a question, and who may only look', () => {
     expect(await read.readQuestionsForIssue(bare, memberId)).toEqual([]);
   });
 
+  // cm:guard the crossed row is planted with raw SQL on purpose: `askQuestion` now refuses it, and a fixture built through the writer would assert nothing about the READ. Rows like this exist in any database written before that refusal landed (ISS-989).
+  it('hides a question row naming a different project than its issue', async () => {
+    const q = await aQuestion();
+    const elsewhere = await createTestProject(harness.db, adminId);
+    const crossed = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO agent_questions (id, project_id, issue_id, status, blocker_kind, steps)
+      VALUES (${crossed}, ${elsewhere.id}, ${issueId}, 'open', 'human',
+              ${JSON.stringify([
+                {
+                  round: 1,
+                  prompt: 'the other project decision',
+                  options: [WRITER],
+                  recommendedOptionId: WRITER.id,
+                  askedAt: new Date().toISOString(),
+                },
+              ])}::jsonb)
+    `);
+
+    const seen = await read.readQuestionsForIssue(issueId, memberId);
+    expect(seen?.map((x) => x.id)).toEqual([q.id]);
+    expect(JSON.stringify(seen)).not.toContain('the other project decision');
+  });
+
+  // cm:guard the pair of the case above: the narrowing must cost the ordinary row nothing, or it would hide every question rather than the crossed one.
+  it('still lists a question whose project matches its issue', async () => {
+    const q = await aQuestion();
+    expect((await read.readQuestionsForIssue(issueId, memberId))?.map((x) => x.id)).toEqual([q.id]);
+  });
+
   it('carries the whole round history to a member', async () => {
     const q = await aQuestion();
     await answer({ questionId: q.id });
@@ -360,6 +390,45 @@ describe('who may read a question, and who may only look', () => {
     expect(seen).toHaveLength(1);
     expect(seen?.[0]?.steps.map((s) => s.round)).toEqual([1, 2]);
     expect(seen?.[0]?.options.map((o) => [o.id, o.locked])).toEqual([[WRITER.id, false]]);
+  });
+});
+
+describe('asking a question about an issue of another project', () => {
+  // cm:guard refused by NAME at the write, because no reader downstream can tell which of the two columns the caller meant — and every narrowing that excludes the crossed row excludes it from something a person or a parked run needed (ISS-989).
+  it('is refused, naming the project the issue actually belongs to', async () => {
+    const elsewhere = await createTestProject(harness.db, adminId);
+
+    await expect(aQuestion({ projectId: elsewhere.id })).rejects.toThrow(
+      new RegExp(`belongs to project ${projectId}`),
+    );
+  });
+
+  it('is refused with a code of its own rather than a generic one', async () => {
+    const elsewhere = await createTestProject(harness.db, adminId);
+
+    await aQuestion({ projectId: elsewhere.id }).then(
+      () => expect.unreachable('the crossed question was written'),
+      (e: { code?: string }) => expect(e.code).toBe('QUESTION_ISSUE_ELSEWHERE'),
+    );
+  });
+
+  it('writes no row when it refuses', async () => {
+    const elsewhere = await createTestProject(harness.db, adminId);
+    const id = randomUUID();
+
+    await aQuestion({ projectId: elsewhere.id, id }).catch(() => {});
+
+    expect(await rowOf(id)).toBeUndefined();
+  });
+
+  it('refuses a question naming an issue that does not exist at all', async () => {
+    await expect(aQuestion({ issueId: randomUUID() })).rejects.toThrow(/no issue/);
+  });
+
+  // cm:guard a question with NO issue is legal and must stay legal: a project-level question hangs off no issue, and a check that demanded one would refuse every one of them.
+  it('still writes a question that names no issue', async () => {
+    const q = await aQuestion({ issueId: undefined });
+    expect(q.id).toBeTruthy();
   });
 });
 

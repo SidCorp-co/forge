@@ -19,9 +19,17 @@
   the question the rest of the product asks before showing you anything: do you hold a role on this
   project? Rows that fail it are gone rather than greyed out or blanked, because a placeholder still
   tells you the issue exists. Nobody who holds a role loses a row — read-only members keep theirs,
-  and so do organisation owners and admins who were never added to the project by name. Separately,
-  a question recorded against one project but attached to an issue in another can no longer wake a
-  paused run in the second one.
+  and so do organisation owners and admins who were never added to the project by name.
+
+- **A question recorded against one project can no longer be read, counted, or acted on through an
+  issue in another.** A question and the issue it hangs off named their projects separately, and
+  nothing checked that the two agreed. Where they disagreed, the list of questions on an issue
+  handed the whole of the other project's decision — its wording and every option — to anyone who
+  could open that issue; the Attention row took its waiting cost and the question it links to from
+  it; and a paused run could be woken by it. Asking a question about an issue belonging to another
+  project is now refused outright, saying which project the issue is actually in, so the mismatch
+  cannot be recorded in the first place; and each of those three readers checks that the two agree,
+  so rows already stored this way reach nobody.
 
 - **Every response to a personal access token now names the permission the route required.**
   Finding out what a route wants used to mean being refused on it: the name was in the body of a

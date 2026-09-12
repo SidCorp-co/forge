@@ -50,6 +50,7 @@ export async function readQuestionFor(questionId: string, userId: string) {
  * Every question on one issue, newest first, or null when the caller cannot reach it.
  */
 // cm:guard authorised against the ISSUE's project and never against the questions it happens to carry, so an issue with no question answers an empty LIST to a member and `null` to a stranger — collapsing those two makes "you may not look" indistinguishable from "there is nothing to look at" (ISS-980 criteria 20, 22).
+// cm:guard the SELECT carries the project too, and the role check above does not stand in for it: `project_id` and `issue_id` are independent columns, so a row naming project A on an issue of project B is representable, and on `issue_id` alone this hands that row — `steps`, every prompt and option of A's decision — to the B member the role check just cleared (ISS-989).
 export async function readQuestionsForIssue(issueId: string, userId: string) {
   const [issue] = await db
     .select({ projectId: issues.projectId })
@@ -62,7 +63,7 @@ export async function readQuestionsForIssue(issueId: string, userId: string) {
   const rows = await db
     .select()
     .from(agentQuestions)
-    .where(eq(agentQuestions.issueId, issueId))
+    .where(and(eq(agentQuestions.issueId, issueId), eq(agentQuestions.projectId, issue.projectId)))
     .orderBy(desc(agentQuestions.createdAt), desc(agentQuestions.id));
   return rows.map((row) => seenBy(row, role));
 }

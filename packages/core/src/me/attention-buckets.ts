@@ -195,10 +195,12 @@ export function selectNeedsReview(userId: string): Promise<AttentionIssueRow[]> 
 
 // cm:guard the identifiers are written LITERALLY and the subquery is CORRELATED on purpose. Drizzle renders a column reference inside a raw `sql` template unqualified, which here would bind `issue_id` to the outer row and cost every issue the whole table's total; and a grouped subquery would need `groupBy`/`as`, which `attention-routes.test.ts`'s mock chain does not implement, so the unit lane would fail on a shape rather than on a claim.
 // cm:guard only `status='open'` costs anything: an answered or voided question holds no claim and no worktree, so counting it would rank a settled decision above a live one for as long as the row exists (ISS-964 criterion 19).
+// cm:guard `q.project_id = issues.project_id` as well as the issue, in BOTH this helper and `openQuestionColumn`: the two columns are independent, so a question row naming another project would otherwise supply this row's cost and — through the sibling helper — the `id` the screen opens (ISS-989).
 // cm:guard the `::int` is load-bearing now that this is SELECTED and not only ordered by: postgres `sum()` is numeric and this driver hands numerics back as STRINGS, so without the cast the reader gets "2" where it typed `number` — and `"10" < "9"` is true, so any client-side sort over these would rank ten below nine while every server-side order stayed correct.
 function openQuestionCost(column: string): SQL<number> {
   return sql<number>`coalesce((select sum(q.${sql.raw(column)}) from agent_questions q
-    where q.issue_id = issues.id and q.status = 'open'), 0)::int`;
+    where q.issue_id = issues.id and q.project_id = issues.project_id
+      and q.status = 'open'), 0)::int`;
 }
 
 // cm:guard cost FIRST and age only as the tie-break, in this order: `claims_held` denies a runner slot to every other issue, `workspaces_pinned` denies a checkout, `dependents` denies progress to issues that are merely waiting. Ordering by recency instead is what put a question costing nothing above one holding two claims since yesterday (ISS-964 criterion 19).
@@ -251,7 +253,8 @@ export function selectAwaitingInput(userId: string): Promise<AttentionAwaitingRo
 // cm:guard the identifiers are written LITERALLY and the subquery is CORRELATED, for the reason `openQuestionCost`'s own guard gives — drizzle renders a column reference inside a raw `sql` template unqualified, and a grouped subquery needs `groupBy`/`as`, which `attention-routes.test.ts`'s mock chain does not implement.
 function openQuestionColumn(column: string): SQL<string | null> {
   return sql<string | null>`(select q.${sql.raw(column)} from agent_questions q
-    where q.issue_id = issues.id and q.status = 'open'
+    where q.issue_id = issues.id and q.project_id = issues.project_id
+      and q.status = 'open'
     order by q.created_at desc, q.id desc limit 1)`;
 }
 

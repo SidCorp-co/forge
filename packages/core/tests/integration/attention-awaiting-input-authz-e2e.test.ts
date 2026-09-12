@@ -162,6 +162,23 @@ describe('awaiting input reaches only a caller with a role on the project (real 
     });
   });
 
+  // cm:guard the row's cost and its `questionId` are read by correlated subqueries of their own, and the WHERE predicate above does not reach inside them. A crossed question row would otherwise hand this caller — who may see THIS project — a cost and an id belonging to a decision of another one (ISS-989).
+  it('takes no cost and no question id from a question row naming another project', async () => {
+    await createTestProjectMember(harness.db, { projectId, userId: outsider });
+    const mine = await blockedIssue();
+    await question(mine, { claims: 1 });
+    const elsewhere = await createTestProject(harness.db, stranger);
+    await harness.db.execute(sql`
+      INSERT INTO agent_questions (id, project_id, issue_id, status, blocker_kind, steps,
+                                   claims_held, workspaces_pinned, dependents)
+      VALUES (${randomUUID()}, ${elsewhere.id}, ${mine}, 'open', 'machine', '[]'::jsonb, 9, 9, 9)
+    `);
+
+    const [row] = await bucketFor(outsider);
+    expect(row).toMatchObject({ claimsHeld: 1, workspacesPinned: 0, dependents: 0 });
+    expect(row?.blockerKind).toBe('human');
+  });
+
   // cm:guard the predicate is a WHERE term and the cap is the database's, so a permitted caller gets a FULL page. Were it a filter over the returned rows, the invisible project's rows would consume slots inside the limit and this caller would be handed a short page instead of a fenced one.
   it('fills the cap from the rows the caller may see, never a page shortened by rows they may not', async () => {
     const { AWAITING_INPUT_CAP } = await import('../../src/me/attention-buckets.js');
@@ -185,9 +202,10 @@ describe('awaiting input reaches only a caller with a role on the project (real 
     expect(rows.every((r) => visible.includes(r.id))).toBe(true);
   });
 
-  // cm:guard this change narrows ONE bucket. `needsReview` reads `assigneeId` directly and is named out of scope on the issue; asserting it here is what would catch a predicate accidentally applied to the shared `issueFields` projection instead of to this query.
+  // cm:guard asserted for a caller who DOES hold the role, so what this pins is "the predicate landed on this query and not on the shared `issueFields` projection every bucket selects through". Asserting it for a caller with NO role would pin `needsReview`'s own missing predicate as expected behaviour — the same defect this issue fixed one function up — and turn fixing that bucket into a red test somebody has to argue with (ISS-989).
   it('leaves the needs-review bucket answering exactly as it did', async () => {
     const { selectNeedsReview } = await import('../../src/me/attention-buckets.js');
+    await createTestProjectMember(harness.db, { projectId, userId: outsider });
     const reviewable = await blockedIssue({ status: 'developed' });
 
     expect((await selectNeedsReview(outsider)).map((r) => r.id)).toEqual([reviewable]);

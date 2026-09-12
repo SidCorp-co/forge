@@ -6,7 +6,7 @@
 
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import type { ProjectMemberRole } from '../db/schema.js';
+import { issues, type ProjectMemberRole } from '../db/schema.js';
 import {
   agentQuestions,
   type QuestionBlockerKind,
@@ -48,6 +48,7 @@ export const questionRefusalCodes = [
   'QUESTION_OPTION_UNKNOWN',
   'QUESTION_AUTHORITY_REQUIRED',
   'QUESTION_REASON_REQUIRED',
+  'QUESTION_ISSUE_ELSEWHERE',
 ] as const;
 export type QuestionRefusalCode = (typeof questionRefusalCodes)[number];
 
@@ -86,8 +87,31 @@ function step(
   return { round, prompt, options, recommendedOptionId, askedAt: new Date().toISOString() };
 }
 
+// cm:guard the issue must belong to the project the question names, and the refusal is here because a row whose two columns disagree is unreachable by every reader downstream: the issue-scoped list, the attention bucket's cost subqueries and `answerReachesAParkedRun` all reach a question through one column or the other, and each narrowing that excludes the crossed row silently excludes it from something a person or a parked run needed (ISS-989). Refused by name rather than absorbed, because no reader can tell which of the two columns the caller meant.
+async function checkIssueBelongsToProject(
+  issueId: string | undefined,
+  projectId: string,
+): Promise<void> {
+  if (!issueId) return;
+  const [issue] = await db
+    .select({ projectId: issues.projectId })
+    .from(issues)
+    .where(eq(issues.id, issueId))
+    .limit(1);
+  if (!issue) {
+    throw new QuestionRefused(`no issue ${issueId}`, 'QUESTION_ISSUE_ELSEWHERE');
+  }
+  if (issue.projectId !== projectId) {
+    throw new QuestionRefused(
+      `issue ${issueId} belongs to project ${issue.projectId}, not to ${projectId} — ask it under the issue's own project`,
+      'QUESTION_ISSUE_ELSEWHERE',
+    );
+  }
+}
+
 export async function askQuestion(input: AskInput) {
   checkOptions(input.options, input.recommendedOptionId);
+  await checkIssueBelongsToProject(input.issueId, input.projectId);
   const [row] = await db
     .insert(agentQuestions)
     .values({
