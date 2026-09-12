@@ -131,6 +131,16 @@ same list for everybody who can see the project.</p>
 <p>That is a real limitation and it is stated here rather than implied: on a project with several
 people, deciding who takes which question is a conversation those people have, and nothing in the
 system helps them have it.</p>
+<p><b>"Everybody who can see the project" is the whole of it, and it is two questions rather than
+one.</b> Being the person a question is addressed to — the assignee, or whoever filed an issue
+nobody else owns — is what puts a row in front of you. Holding a role on the project it belongs to
+is what permits it, and losing that role takes the row away: leaving the project, or leaving the
+organisation that owns it, empties those rows out of your list. A row you may not see is absent
+from it rather than shown blanked, because a placeholder still says the issue exists. Read-only
+members are owed their questions like anybody else, and an organisation's owners and admins reach
+every project of theirs whether or not they were added to it by name.</p>
+<p class="foot">Asked of one question at a time, that is: is this mine to answer, and may I see the
+project it is asked about? The list owed both and asked only the first until ISS-989.</p>
 </section>
 
 <section class="pane">
@@ -159,7 +169,8 @@ system helps them have it.</p>
 <section class="pane">
 <h2>Code</h2>
 <p class="foot">The attention list and what it admits:
-<code>packages/core/src/attention/</code> · questions, parks and revival:
+<code>packages/core/src/me/attention-buckets.ts</code>, and the rule it admits them against:
+<code>packages/core/src/lib/authz.ts</code> · questions, parks and revival:
 <code>packages/core/src/pipeline/answer-resume.ts</code> and the agent-questions module beside it ·
 delivering an answer to a worker that is still alive:
 <code>packages/core/src/agent-sessions/steer-session.ts</code>.
