@@ -318,7 +318,7 @@
   vanishing, and the issues carrying no module at all are their own row rather than being dropped.
   The aggregation reads `issue_labels` joined to `kind='module'` labels and nothing else: there is
   no second store of module membership. Flow:
-  [`docs/flows/issue-work-module-rollup-read.html`](docs/flows/issue-work-module-rollup-read.html).
+  [`docs/flows/issue-work.html`](docs/flows/issue-work.html).
 - **A project's four module diagrams — mindmap, context, user flow and swimlane — are now generated
   from its module taxonomy instead of drawn by hand.** `GET /api/projects/:id/module-diagrams/:kind`
   computes the Mermaid inside the request from the `kind='module'` labels and the knowledge nodes
@@ -3840,6 +3840,23 @@
 
 ### Changed
 
+- **The rules `forge_issues` carries now reach the model reading them, in a third fewer characters.**
+  That tool's description was 6,381 characters and the largest single item in the nine-tool catalog
+  every assistant turn ships — more prose than the 6,619-character schema beside it. The chat
+  front-end truncates every tool description at 1,024 characters, so most of it never arrived:
+  measured at `b4850a2e`, the cut landed mid-word inside the sentence that tells a caller to read
+  `hasMore` before calling a count complete, and everything after it — that `plan` and
+  `acceptanceCriteria` belong to the pipeline and pre-filling them is the `plan-by-hand` red flag,
+  that `data.labels` on an update is a replace-set that clobbers what you do not re-send, the whole
+  of relations and the merge mark — reached that model in no form at all. The description is now
+  4,168 characters, and the rules a caller cannot act without are ordered ahead of the cut rather
+  than left behind it. **No rule was traded for the space.** Five things were dropped and only five:
+  the upload walkthrough `forge_uploads` already carries verbatim in the same catalog, two
+  server-side effects a caller cannot act on, the `blocks|relates` vocabulary the schema declares as
+  an enum, and two error-code lists the refusals already name themselves. Everything else is still
+  there, and the four rules the issue named as must-survive are held by a test that goes red when
+  any one of them is deleted or has its meaning reversed. The input schema, the handler, the action
+  allowlist and the chat guards are byte-identical (ISS-984).
 - **The status menu offers the moves a rung actually has, instead of all fifteen.** Opening the
   status picker used to show the same fifteen choices on every issue at every stage, ordered by
   nothing a reader cares about: a closed issue was offered fourteen moves past the one that is
