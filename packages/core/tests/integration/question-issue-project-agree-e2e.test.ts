@@ -36,6 +36,9 @@ let schema: typeof import('../../src/db/schema-questions.js');
 let projectId: string;
 let issueId: string;
 let adminId: string;
+let deviceId: string;
+let deviceToken: string;
+let app: typeof import('../../src/index.js').app;
 let seq = 0;
 
 // cm:guard `bindsTo: 'session'` and a uuid id, matching the fixture in `question-answer-atomic-e2e.test.ts`: `checkOptions` runs BEFORE the project check and refuses a `this_call` option carrying no fingerprint, so an invalid option here makes every case below pass on the wrong refusal.
@@ -55,6 +58,7 @@ beforeAll(async () => {
   process.env.NODE_ENV ??= 'test';
   write = await import('../../src/questions/write.js');
   schema = await import('../../src/db/schema-questions.js');
+  ({ app } = await import('../../src/index.js'));
 }, 60_000);
 
 afterAll(async () => {
@@ -67,7 +71,19 @@ beforeEach(async () => {
   adminId = (await createTestUser(harness.db)).id;
   projectId = (await createTestProject(harness.db, adminId)).id;
   issueId = await anIssue();
+  const { pairDevice } = await import('../helpers/pair-device.js');
+  const issued = await pairDevice({ ownerId: adminId, name: 'ask-box', platform: 'linux' });
+  deviceId = issued.device.id;
+  deviceToken = issued.plaintext;
 });
+
+// cm:guard the route refuses before `askQuestion` unless the box is bound to the project it names, so every route case binds first — without it the assertion would land on `assertDeviceBoundToProject` and never reach the check it is about.
+async function bindDeviceTo(project: string): Promise<void> {
+  await harness.db.execute(sql`
+    INSERT INTO runners (device_id, project_id, name, type, status)
+    VALUES (${deviceId}, ${project}, 'ask-box', 'claude-code', 'online')
+  `);
+}
 
 async function anIssue(): Promise<string> {
   const id = randomUUID();
@@ -132,6 +148,53 @@ describe('asking a question about an issue of another project', () => {
 
   it('refuses a question naming an issue that does not exist at all', async () => {
     await expect(ask({ issueId: randomUUID() })).rejects.toThrow(/no issue/);
+  });
+});
+
+describe('the route a box reaches this by', () => {
+  // cm:guard asserted through the ROUTE and not through `askQuestion`, because the code's whole purpose is to reach the box: this handler is the only producer of the ask-time refusals and it used to flatten every one of them to `BAD_REQUEST`, leaving the per-refusal distinction alive in the type system and dead on the wire (ISS-989).
+  it('answers the crossed question with its own code, not a flattened BAD_REQUEST', async () => {
+    const elsewhere = await createTestProject(harness.db, adminId);
+    await bindDeviceTo(elsewhere.id);
+
+    const res = await app.request('/api/devices/me/questions', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${deviceToken}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        id: randomUUID(),
+        projectId: elsewhere.id,
+        issueId,
+        prompt: 'Which way?',
+        blockerKind: 'human',
+        options: [WRITER],
+        recommendedOptionId: WRITER.id,
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code?: string; message?: string };
+    expect(body.code).toBe('QUESTION_ISSUE_ELSEWHERE');
+    expect(body.message).toContain(projectId);
+  });
+
+  it('takes the same question when the issue is in the project the box names', async () => {
+    await bindDeviceTo(projectId);
+
+    const res = await app.request('/api/devices/me/questions', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${deviceToken}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        id: randomUUID(),
+        projectId,
+        issueId,
+        prompt: 'Which way?',
+        blockerKind: 'human',
+        options: [WRITER],
+        recommendedOptionId: WRITER.id,
+      }),
+    });
+
+    expect(res.status).toBe(200);
   });
 });
 

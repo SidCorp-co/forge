@@ -88,6 +88,7 @@ function step(
 }
 
 // cm:guard the issue must belong to the project the question names, and the refusal is here because a row whose two columns disagree is unreachable by every reader downstream: the issue-scoped list, the attention bucket's cost subqueries and `answerReachesAParkedRun` all reach a question through one column or the other, and each narrowing that excludes the crossed row silently excludes it from something a person or a parked run needed (ISS-989). Refused by name rather than absorbed, because no reader can tell which of the two columns the caller meant.
+// cm:guard ONE code for both faults on purpose, against the per-refusal rule above: a missing issue and an issue of another project are the same fault to the caller — the `issueId` you sent is not an issue of this project — and the caller's remedy is identical. The messages differentiate for a person reading them; the code is what a box branches on, and it has one branch. (The missing-issue case used to raise a foreign-key 500.)
 async function checkIssueBelongsToProject(
   issueId: string | undefined,
   projectId: string,

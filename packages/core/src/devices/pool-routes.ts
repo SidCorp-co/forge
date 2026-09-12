@@ -331,7 +331,13 @@ devicePoolRoutes.post('/me/questions', requireDevice(), async (c) => {
     }
     return c.json({ questionId: q.id });
   } catch (e) {
-    if (e instanceof QuestionRefused) throw badRequest(e.message);
+    // cm:guard the refusal's OWN code reaches the box, not a flattened `BAD_REQUEST`. `QuestionRefused` carries a distinct code per refusal precisely so a caller can act on it (`questions/write.ts`), and this is the only route that produces the ask-time ones — flattening them here leaves that distinction alive in the type system and dead on the wire (ISS-989).
+    if (e instanceof QuestionRefused) {
+      throw new HTTPException(400, {
+        message: e.message,
+        cause: { code: e.code, details: e.message },
+      });
+    }
     throw e;
   }
 });
