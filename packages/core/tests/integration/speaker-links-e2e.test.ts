@@ -194,16 +194,16 @@ describe('the whole walk a person makes (criterion 21)', () => {
 
     const proposed = await propose(ctx.projectA, ctx.alice, 'rc-alice');
     expect(proposed.status).toBe(200);
-    expect(proposed.json['youMayConfirm']).toBe(true);
+    expect(proposed.json.youMayConfirm).toBe(true);
     expect(await linkRowCount()).toBe(0);
 
     const confirmed = await confirm(ctx.projectA, ctx.alice, 'rc-alice');
     expect(confirmed.status).toBe(201);
-    expect((confirmed.json['link'] as Record<string, unknown>)['userId']).toBe(ctx.alice.id);
-    expect((confirmed.json['link'] as Record<string, unknown>)['externalNamespace']).toBe(NS_A);
+    expect((confirmed.json.link as Record<string, unknown>).userId).toBe(ctx.alice.id);
+    expect((confirmed.json.link as Record<string, unknown>).externalNamespace).toBe(NS_A);
 
     const listed = await call('GET', '/api/me/speaker-links', ctx.alice);
-    expect((listed.json['links'] as unknown[]).length).toBe(1);
+    expect((listed.json.links as unknown[]).length).toBe(1);
 
     const resolved = await mods.resolveSpeaker({
       source: 'rocketchat',
@@ -317,8 +317,8 @@ describe('who may confirm (criteria 6, 7, 8, 9, 10, 11, 12)', () => {
       email: ctx.alice.email,
     });
     const out = await propose(ctx.projectA, ctx.bob, 'rc-alice');
-    expect((out.json['candidates'] as unknown[]).length).toBe(1);
-    expect(out.json['youMayConfirm']).toBe(false);
+    expect((out.json.candidates as unknown[]).length).toBe(1);
+    expect(out.json.youMayConfirm).toBe(false);
     expect(await linkRowCount()).toBe(0);
   });
 
@@ -331,11 +331,11 @@ describe('who may confirm (criteria 6, 7, 8, 9, 10, 11, 12)', () => {
     });
     const proposed = await propose(ctx.projectA, ctx.alice, 'rc-alice');
     expect(
-      (proposed.json['candidates'] as Array<Record<string, unknown>>).map((c) => c['matchedOn']),
+      (proposed.json.candidates as Array<Record<string, unknown>>).map((c) => c.matchedOn),
     ).toEqual(['local-part']);
     const out = await confirm(ctx.projectA, ctx.alice, 'rc-alice');
     expect(out.status).toBe(403);
-    expect(out.json['code']).toBe('SPEAKER_ADDRESS_DIFFERS');
+    expect(out.json.code).toBe('SPEAKER_ADDRESS_DIFFERS');
     expect(await linkRowCount()).toBe(0);
   });
 
@@ -347,8 +347,8 @@ describe('who may confirm (criteria 6, 7, 8, 9, 10, 11, 12)', () => {
     });
     const out = await confirm(ctx.projectA, ctx.bob, 'rc-alice');
     expect(out.status).toBe(403);
-    expect(out.json['code']).toBe('SPEAKER_NOT_THE_TARGET');
-    expect(out.json['error']).toContain(ctx.alice.email);
+    expect(out.json.code).toBe('SPEAKER_NOT_THE_TARGET');
+    expect(out.json.error).toContain(ctx.alice.email);
     expect(await linkRowCount()).toBe(0);
   });
 
@@ -357,8 +357,8 @@ describe('who may confirm (criteria 6, 7, 8, 9, 10, 11, 12)', () => {
     directory.clear();
     const out = await confirm(ctx.projectA, ctx.outsider, 'rc-alice');
     expect(out.status).toBe(403);
-    expect(out.json['code']).toBe('FORBIDDEN');
-    expect(out.json['message']).toContain('not a project member');
+    expect(out.json.code).toBe('FORBIDDEN');
+    expect(out.json.message).toContain('not a project member');
   });
 
   it('refuses a second confirmation of the same speaker', async () => {
@@ -370,7 +370,7 @@ describe('who may confirm (criteria 6, 7, 8, 9, 10, 11, 12)', () => {
     expect((await confirm(ctx.projectA, ctx.alice, 'rc-alice')).status).toBe(201);
     const again = await confirm(ctx.projectA, ctx.alice, 'rc-alice');
     expect(again.status).toBe(409);
-    expect(again.json['code']).toBe('SPEAKER_ALREADY_LINKED');
+    expect(again.json.code).toBe('SPEAKER_ALREADY_LINKED');
     expect(await linkRowCount()).toBe(1);
   });
 
@@ -388,8 +388,8 @@ describe('who may confirm (criteria 6, 7, 8, 9, 10, 11, 12)', () => {
     await confirm(ctx.projectA, ctx.alice, 'rc-alice');
     await confirm(ctx.projectA, ctx.bob, 'rc-bob');
     const mine = await call('GET', '/api/me/speaker-links', ctx.bob);
-    const links = mine.json['links'] as Array<Record<string, unknown>>;
-    expect(links.map((l) => l['externalId'])).toEqual(['rc-bob']);
+    const links = mine.json.links as Array<Record<string, unknown>>;
+    expect(links.map((l) => l.externalId)).toEqual(['rc-bob']);
   });
 
   it("refuses to unlink a link that is not the caller's", async () => {
@@ -399,11 +399,7 @@ describe('who may confirm (criteria 6, 7, 8, 9, 10, 11, 12)', () => {
       email: ctx.alice.email,
     });
     await confirm(ctx.projectA, ctx.alice, 'rc-alice');
-    const out = await call(
-      'DELETE',
-      `/api/me/speaker-links/rocketchat/${NS_A}/rc-alice`,
-      ctx.bob,
-    );
+    const out = await call('DELETE', `/api/me/speaker-links/rocketchat/${NS_A}/rc-alice`, ctx.bob);
     expect(out.status).toBe(404);
     expect(await linkRowCount()).toBe(1);
   });
@@ -415,18 +411,23 @@ describe('channels with no directory behind them (criterion 16)', () => {
     ['widget', 'no implementation yet'],
     ['web', 'already carries a Forge userId'],
   ])('refuses %s by name', async (source, phrase) => {
-    const out = await call('POST', `/api/projects/${ctx.projectA}/speaker-links/proposals`, ctx.alice, {
-      source,
-      externalId: 'whatever',
-    });
+    const out = await call(
+      'POST',
+      `/api/projects/${ctx.projectA}/speaker-links/proposals`,
+      ctx.alice,
+      {
+        source,
+        externalId: 'whatever',
+      },
+    );
     expect(out.status).toBe(404);
-    expect(out.json['code']).toBe('SPEAKER_DIRECTORY_UNSUPPORTED');
-    expect(out.json['error']).toContain(phrase);
+    expect(out.json.code).toBe('SPEAKER_DIRECTORY_UNSUPPORTED');
+    expect(out.json.error).toContain(phrase);
   });
 
   it('refuses an address the channel does not report', async () => {
     directory.set(key(RC_A, 'rc-mute'), { externalId: 'rc-mute', username: 'mute', email: null });
     const out = await propose(ctx.projectA, ctx.alice, 'rc-mute');
-    expect(out.json['code']).toBe('SPEAKER_EMAIL_ABSENT');
+    expect(out.json.code).toBe('SPEAKER_EMAIL_ABSENT');
   });
 });

@@ -7,8 +7,8 @@ const wheres: unknown[] = [];
 
 function makeChain() {
   const chain: Record<string, unknown> & PromiseLike<unknown> = {} as never;
-  chain['from'] = () => chain;
-  chain['where'] = (clause: unknown) => {
+  chain.from = () => chain;
+  chain.where = (clause: unknown) => {
     wheres.push(clause);
     return chain;
   };
