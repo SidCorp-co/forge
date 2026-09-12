@@ -2081,6 +2081,35 @@
 
 ### Fixed
 
+- **A dead run gives back a rung, never a landing.** The return path shipped an hour earlier took
+  an issue back from any status that differed from the one at open, which walks over work the run
+  had actually landed: a run claimed at `open`, advanced to `developed`, then losing its pane would
+  have gone back to `open`, and the next master would redo it on a branch already pushed. Two gates
+  now stand in front of it. The first is an **allowlist** of statuses to return FROM —
+  `in_progress`, `testing`, `releasing` — the three that assert an action is in flight, which a
+  dead run falsifies; every other status asserts an achieved fact and stays. The second is a merge
+  stamped **during** the run, compared against `pipeline_runs.started_at` rather than tested for
+  null, because `mergedAt` is never cleared on reopen — `apply-transition.ts` increments
+  `reopenCount` and touches nothing else — so a bare null test would refuse to return every
+  reopened issue and strand it at `in_progress`, which is the defect the return path exists to fix.
+  Measured on sid-desk on 2026-09-13: seven issues died at `testing` with the merge already
+  stamped, because that project merges to staging before the issue leaves `testing`; keyed on the
+  rung alone, five would have gone back to `open` and two to `draft`, which is outside the pool
+  entirely, over code already on master. The human-park list survives as a named rule rather than
+  as the thing doing the work — no park is in flight — with a test that the two sets never
+  intersect. Neither shape ever executed: core did not deploy between the two commits.
+- **A run session that opens over an already-stuck rung is counted instead of passing in
+  silence.** Where the issue's status equals the one recorded at open, the return path returns
+  early, and that branch carried two facts while reporting neither: "this run moved nothing, all
+  well", and "this run opened over a status that already asserted work nobody was doing, so the
+  floor is itself the defect and no return can reach it". The second needs no misconfiguration —
+  `testing` is in `REGISTRY_BACKLOG_ADMISSIBLE_STATUSES`, so a master may legitimately open a run
+  over an issue standing there, and every subsequent run re-records that rung as its floor. The
+  no-op now logs when it lands on a status the allowlist names, and stays quiet otherwise, which
+  makes the rate countable. Healing it is deliberately NOT done here: the floor is by construction
+  the status the master claimed from, so the fix belongs wherever a run session is admitted rather
+  than in the path that gives one back.
+
 - **A run session now reaches terminal because the box says so, not because it stopped
   answering.** The protocol had no way for a runner to report an ending, so the only writer of a
   run session's terminal status was core's ten-minute silence sweep, and it wrote one cause for
@@ -2100,25 +2129,14 @@
   from the session going terminal — while the issue's *status* stayed wherever the agent had left
   it. An issue an agent had moved to `in_progress` therefore read as work somebody was doing, so
   nothing claimed it and everything behind it waited: ISS-457 stood there for 18 hours with
-  ISS-410 queued behind it. A failing close now returns an issue to the status it held when
-  the run opened, recorded at open time under `pipeline_runs.metadata.runIssueStatuses` — by
+  ISS-410 queued behind it. A failing close now returns each issue to the status it held when the
+  run opened, recorded at open time under `pipeline_runs.metadata.runIssueStatuses` — by
   construction a status that project admits, since it is the one the master claimed it out of.
-  What is taken back is an **allowlist**, not "anything that differs from the opening status":
-  only `in_progress`, `testing` and `releasing`, the three that assert an action is happening
-  right now, which a dead run makes false. Every other status asserts a fact the run achieved —
-  a branch at `developed`, a verdict at `tested`, a hand-earned `awaiting_release` — and walking
-  one of those back would hand the next master work that is already on a branch. Four further
-  exceptions never move: an issue a person parked at `needs_info`, `waiting` or `on_hold` during
-  the run, because that decision is newer than the one being restored; an issue whose opening
-  status was never recorded, left alone rather than guessed at; every issue of a run that ended
-  cleanly; and **any issue whose merge mark was stamped during this run**. That last one is a
-  comparison against the run's `started_at` rather than a null check, because `mergedAt` survives
-  a reopen untouched, so a bare null test would refuse to return every reopened issue and strand
-  it at `in_progress` — the very defect this closes. It matters most where a project merges
-  before the issue leaves `testing`: measured on sid-desk on 2026-09-13, seven runs died at
-  `testing` with the merge already stamped, and a rule keyed on the rung alone would have sent
-  five back to `open` and two to `draft`, which is outside the pool entirely, over code that was
-  already on master.
+  Three exceptions never move: an issue a person parked at `needs_info`, `waiting` or `on_hold`
+  during the run, because that decision is newer than the one being restored and a run dying over
+  a question just asked would otherwise be dispatched again, answering nothing; an issue whose
+  opening status was never recorded, which is left alone rather than guessed at; and every issue
+  of a run that ended cleanly, whose agent moved them deliberately.
 - **The box now reports a dead run instead of waiting to be reaped for it.** A runner that refuted
   its own run's pid could not act on it: releasing the worktree requires the `session_terminal`
   mark, core alone writes that mark, and the only thing that wrote it was the ten-minute sweep. So

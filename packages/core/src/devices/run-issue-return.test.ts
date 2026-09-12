@@ -10,8 +10,9 @@ vi.mock('../db/client.js', () => ({
     select: (...a: unknown[]) => select(...a),
   },
 }));
+const warn = vi.fn();
 vi.mock('../logger.js', () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  logger: { info: vi.fn(), warn: (...a: unknown[]) => warn(...a), error: vi.fn() },
 }));
 vi.mock('../issues/apply-transition.js', () => ({
   transitionIssueStatus: (...a: unknown[]) => transitionIssueStatus(...a),
@@ -61,6 +62,7 @@ function issueRows(rows: Array<{ seq: number; status: string; mergedAt?: Date }>
 }
 
 beforeEach(() => {
+  warn.mockReset();
   execute.mockReset();
   select.mockReset();
   transitionIssueStatus.mockReset();
@@ -159,6 +161,18 @@ describe('returnIssuesForRun', () => {
 
     expect(await returnIssuesForRun(RUN, { reason: 'r' })).toEqual([]);
     expect(transitionIssueStatus).not.toHaveBeenCalled();
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  // cm:guard the no-op branch reports the ONE case an operator can act on, and stays quiet for the healthy one. `testing` is backlog-admissible, so a master may open a run over an issue already standing there; the floor is then the stuck rung and no return can move it. Counting is all this module may do — the floor is by construction the status the master claimed from.
+  it('counts a run that opened over a rung already asserting work nobody was doing', async () => {
+    execute.mockResolvedValue(runRow(['ISS-265'], { 'ISS-265': 'testing' }));
+    issueRows([{ seq: 265, status: 'testing' }]);
+
+    expect(await returnIssuesForRun(RUN, { reason: 'r' })).toEqual([]);
+    expect(transitionIssueStatus).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toMatchObject({ issueKey: 'ISS-265', status: 'testing' });
   });
 
   // cm:guard a run opened before `runIssueStatuses` existed carries none, and a guessed `open` walks issues backwards out of statuses no run claimed them from.

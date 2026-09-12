@@ -109,10 +109,17 @@ export async function returnIssuesForRun(
     const key = `ISS-${issue.issSeq}`;
     const target = run.statuses[key] as IssueStatus | undefined;
     if (!target) continue;
-    if (issue.status === target) continue;
-    // cm:guard the allowlist is read BEFORE the park check and subsumes it — no park is in
-    // flight — so the park check survives as a named rule rather than as the thing doing the
-    // work; `the two sets never intersect` is the test that keeps that true.
+    if (issue.status === target) {
+      // cm:guard this branch carries TWO facts and used to report neither: "the run moved nothing, all well", and "this run opened over a rung that already asserted work nobody was doing, so the floor is the defect and no return can reach it". The second is ISS-457's shape standing on a rung `RETURNABLE_FROM` names — reachable because `testing` is backlog-admissible (`REGISTRY_BACKLOG_ADMISSIBLE_STATUSES`), so a master may legitimately open a run over it and re-record it as the floor every time. Counting it is what makes the rate knowable; healing it is NOT this module's to do, because the floor is by construction the status the master claimed from.
+      if (RETURNABLE_FROM.includes(issue.status as IssueStatus)) {
+        logger.warn(
+          { runId, issueKey: key, status: issue.status },
+          'run-issue-return: the run opened over an in-flight status, so the floor is the stuck rung and no return can move it',
+        );
+      }
+      continue;
+    }
+    // cm:guard the allowlist is read BEFORE the park check and subsumes it — no park is in flight — so the park check survives as a named rule rather than as the thing doing the work, kept true by the test that the two sets never intersect.
     // cm:guard a merge stamped DURING this run outranks the rung the issue is standing on, and the comparison against `started_at` is the whole rule: `mergedAt` is never cleared on reopen (`apply-transition.ts` increments `reopenCount` and touches nothing else), so a bare `mergedAt !== null` test would refuse to return every reopened issue and strand it at `in_progress` — the exact hole this module was written to close. Measured on sid-desk 2026-09-13: seven issues died at `testing` with the merge already stamped, because that project merges to staging BEFORE the issue leaves `testing`; returning them would have sent five to `open` and two to `draft`, which is outside the pool entirely, over code that was already on master.
     if (issue.mergedAt !== null && issue.mergedAt >= run.startedAt) {
       logger.info(
