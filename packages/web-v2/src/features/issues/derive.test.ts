@@ -30,6 +30,7 @@ import {
 	statusToRun,
 	statusToStage,
 	statusToTone,
+	statusesFromParam,
 } from "./derive";
 import type {
 	IssueDependencies,
@@ -1259,5 +1260,30 @@ describe("deriveBlockerState — ISS-853, the paused run the screen used to hide
 			incomingBlocks(),
 		);
 		expect(b?.blockingRefs?.[0]?.displayId).toBe("ISS-9");
+	});
+});
+
+describe("statusesFromParam", () => {
+	it("names exactly the statuses the parameter carries", () => {
+		expect(statusesFromParam("waiting,needs_info,on_hold")).toEqual([
+			"waiting",
+			"needs_info",
+			"on_hold",
+		]);
+	});
+
+	// cm:guard an unknown status is DROPPED rather than passed through: the server enumerates `status`, so one bad value 400s the whole list and a dashboard cell opens an error instead of its own records (ISS-988 criterion 47)
+	it("drops a status the lifecycle does not have, keeping the rest", () => {
+		expect(statusesFromParam("open,banana,closed")).toEqual(["open", "closed"]);
+	});
+
+	it("returns undefined where the parameter names nothing valid, leaving the tab filter in charge", () => {
+		expect(statusesFromParam("banana")).toBeUndefined();
+		expect(statusesFromParam("")).toBeUndefined();
+		expect(statusesFromParam(null)).toBeUndefined();
+	});
+
+	it("tolerates spacing and repeats without sending a status twice", () => {
+		expect(statusesFromParam(" open , open ,closed")).toEqual(["open", "closed"]);
 	});
 });

@@ -7,7 +7,10 @@ import {
 	statusesForLabels,
 	toAutonomousLabel,
 } from "@forge/contracts/issue-vocabulary";
-import type { StatusExits } from "@forge/contracts/pipeline-registry";
+import {
+	REGISTRY_ISSUE_STATUSES,
+	type StatusExits,
+} from "@forge/contracts/pipeline-registry";
 import { STAGE_INDEX, STAGES, type StageKey } from "@/design/stages";
 import {
 	type SemanticTone,
@@ -439,6 +442,27 @@ export function filterToQueryParams(filter: IssueFilter): {
 		default:
 			return {};
 	}
+}
+
+/**
+ * The statuses named by a `?status=` parameter, or undefined where it names
+ * none the lifecycle has.
+ */
+// cm:guard an unknown status is DROPPED, never passed through: the server enumerates `status`, so one bad value 400s the whole list and a dashboard cell links to an error instead of its own records. A parameter naming nothing valid returns undefined, which leaves the tab's own filter in charge rather than narrowing to the empty set (ISS-988 criterion 47).
+export function statusesFromParam(
+	raw: string | null | undefined,
+): IssueStatus[] | undefined {
+	if (!raw) return undefined;
+	const known = new Set<string>(REGISTRY_ISSUE_STATUSES);
+	const seen = new Set<string>();
+	const out: IssueStatus[] = [];
+	for (const part of raw.split(",")) {
+		const s = part.trim();
+		if (!s || seen.has(s) || !known.has(s)) continue;
+		seen.add(s);
+		out.push(s as IssueStatus);
+	}
+	return out.length > 0 ? out : undefined;
 }
 
 export interface IssueGroup {

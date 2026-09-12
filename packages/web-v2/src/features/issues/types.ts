@@ -219,6 +219,10 @@ export interface IssueSearchOpts {
   /** Module label uuid — maps to `?module=<id>` (ISS-594). Distinct from
    *  `label`: the server resolves it against `kind='module'` rows only. */
   module?: string;
+  /** Exact statuses, from the list's `?status=` parameter. When present it
+   *  REPLACES the tab filter's status set, so a dashboard figure's destination
+   *  is the bucket it was drawn from rather than the nearest tab (ISS-988). */
+  status?: IssueStatus[];
   sort?: IssueSort;
   page?: number;
   pageSize?: number;

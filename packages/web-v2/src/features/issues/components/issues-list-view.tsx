@@ -41,7 +41,12 @@ import { usePathname } from "next/navigation";
 // exact view without a remount (the old hydrate-once useState went stale).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ISSUES_PAGE_SIZE } from "../api";
-import { FORGE_AGENT_LABEL, groupRows, priorityLabel } from "../derive";
+import {
+  FORGE_AGENT_LABEL,
+  groupRows,
+  priorityLabel,
+  statusesFromParam,
+} from "../derive";
 import {
   useIssues,
   usePatchIssue,
@@ -118,7 +123,7 @@ export function IssuesListView({
   const pathname = usePathname() || `/projects/${slug}/issues`;
   const pinnedViews = usePinnedViews();
 
-  // ── URL = single source of truth for every filter (ISS-436) ───────────────
+  // cm:guard every filter is read from the URL and written back to it, never held in component state: a pinned view is just a URL (ISS-436), so a filter that lives only in state cannot be pinned, shared or restored by back/forward.
   const search = useLocationSearch();
   const sp = useMemo(() => new URLSearchParams(search), [search]);
   const q = sp.get("q") ?? "";
@@ -131,6 +136,7 @@ export function IssuesListView({
   const createdBy = sp.get("createdBy") ?? "";
   const label = sp.get("label") ?? "";
   const moduleId = sp.get("module") ?? "";
+  const statusParam = useMemo(() => statusesFromParam(sp.get("status")), [sp]);
   const rawGroupBy = decodeFilter<GroupBy>(sp, "groupBy", "none");
   const groupBy = VALID_GROUP_BY.includes(rawGroupBy) ? rawGroupBy : "none";
   const sort = decodeFilter<IssueSort>(sp, "sort", "createdAt:desc");
@@ -220,6 +226,7 @@ export function IssuesListView({
     createdBy: createdBy || undefined,
     label: label || undefined,
     module: moduleId || undefined,
+    status: statusParam,
     sort,
     page,
     pageSize: ISSUES_PAGE_SIZE,
