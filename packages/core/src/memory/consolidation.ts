@@ -4,11 +4,17 @@ import { db } from '../db/client.js';
 import { activityLog, comments, issues, memories } from '../db/schema.js';
 import { EmbeddingUnavailableError, embed } from '../embeddings/index.js';
 import { BASE_MERGE_STATE } from '../issues/merged-at.js';
+import { searchKnowledge } from '../knowledge/search.js';
 import { logger } from '../logger.js';
 import type { HooksBus } from '../pipeline/hooks.js';
 import { boss } from '../queue/boss.js';
 import { runMemoryFeedback } from './feedback-service.js';
-import { indexMemory, indexMemoryBestEffort, MAX_EMBED_CHARS } from './indexer.js';
+import {
+  indexMemory,
+  indexMemoryBestEffort,
+  MAX_EMBED_CHARS,
+  NEAR_DUPLICATE_THRESHOLD,
+} from './indexer.js';
 import { proposeKnowledgePromotions } from './knowledge-promotion.js';
 import { callFastModel, fastModelConfigured } from './llm.js';
 import { foreignScriptChars } from './script-guard.js';
@@ -164,39 +170,61 @@ export async function runConsolidationForProject(projectId: string): Promise<Con
   }
 }
 
+// cm:why the CURATED store is searched here and nowhere else — `findNearDuplicate` looks only at `memories` filtered to one source, so a nightly paraphrase of a `knowledge_entries` row was invisible to every guard and landed at roughly one a day (15 rows by 2026-09-12, at least five restating a curated entry or an injected projectFact, all of them vaguer than the record they shadowed)
+async function alreadyRecorded(projectId: string, vector: number[]): Promise<string | null> {
+  const [curated] = await searchKnowledge(projectId, vector, 1);
+  if (curated && curated.score > NEAR_DUPLICATE_THRESHOLD)
+    return `knowledge_entries:${curated.slug}`;
+  const [mem] = await searchMemories({
+    projectId,
+    queryVec: vector,
+    topK: 1,
+    sourceFilter: ['knowledge'],
+  });
+  if (mem && mem.score > NEAR_DUPLICATE_THRESHOLD) return `memory:${mem.sourceRef}`;
+  return null;
+}
+
+// cm:guard skipping is legal HERE and must never move into `indexMemory` — that probe stays report-only because ABSORBING a write onto the duplicate's ref overwrote records nobody named, destroying 4 of 6 dated rows on forge-dev (ISS-876). A skip writes nothing and overwrites nothing; a redirect is what did the damage.
 async function applyCreates(
   projectId: string,
   items: ConsolidationActions['create'],
   guard: ScriptRefuser,
-): Promise<number> {
+): Promise<{ created: number; skipped: string[] }> {
   let created = 0;
+  const skipped: string[] = [];
   for (const item of (Array.isArray(items) ? items : []).slice(0, MAX_CREATES)) {
     if (typeof item.content !== 'string' || item.content.trim().length < 5) continue;
     if (guard.refuse(item.content, 'create')) continue;
     const category = VALID_CATEGORIES.has(item.category as string)
       ? (item.category as string)
       : 'convention';
+    const text = item.content.trim();
     const refHash = crypto.createHash('sha1').update(item.content).digest('hex').slice(0, 12);
     try {
-      await indexMemory(
-        {
-          projectId,
-          source: 'knowledge',
-          sourceRef: `consolidated:${refHash}`,
-          text: item.content.trim(),
-          metadata: { category, origin: 'consolidation' },
-        },
-        { nearDuplicateProbe: true },
-      );
+      const vector = await embed(text.slice(0, MAX_EMBED_CHARS));
+      const covered = await alreadyRecorded(projectId, vector);
+      if (covered) {
+        skipped.push(covered);
+        continue;
+      }
+      await indexMemory({
+        projectId,
+        source: 'knowledge',
+        sourceRef: `consolidated:${refHash}`,
+        text,
+        metadata: { category, origin: 'consolidation' },
+      });
       created++;
     } catch (err) {
+      if (err instanceof EmbeddingUnavailableError) throw err;
       logger.warn(
         { err: (err as Error).message, projectId },
         'memory.consolidation: create failed',
       );
     }
   }
-  return created;
+  return { created, skipped };
 }
 
 async function consolidate(projectId: string): Promise<ConsolidationResult> {
@@ -299,7 +327,11 @@ async function consolidate(projectId: string): Promise<ConsolidationResult> {
     'memory.consolidation',
   );
 
-  const created = await applyCreates(projectId, actions.create, guard);
+  const { created, skipped: skippedAsRecorded } = await applyCreates(
+    projectId,
+    actions.create,
+    guard,
+  );
 
   let updated = 0;
   for (const item of (Array.isArray(actions.update) ? actions.update : []).slice(0, MAX_UPDATES)) {
@@ -352,23 +384,21 @@ async function consolidate(projectId: string): Promise<ConsolidationResult> {
     archivedRefs = rows.map((r) => r.sourceRef);
   }
 
-  const counts = `created ${created}, updated ${updated}, archived ${archived}`;
+  const counts = `created ${created}, updated ${updated}, archived ${archived}${skippedAsRecorded.length > 0 ? `, skipped ${skippedAsRecorded.length} already recorded` : ''}`;
   const summary = typeof actions.summary === 'string' && actions.summary ? actions.summary : counts;
 
   // cm:guard the ref must stay unique PER RUN — the natural key is (projectId, source, sourceRef), and while this read `consolidation:<date>` a same-day second run REPLACED the first receipt, losing a run with no trace; a timestamp is not enough either, two runs can share a second
   // cm:why archived refs are named rather than counted — "archived 3" identifies nothing, so a reader cannot check what went or put it back
-  if (created + updated + archived > 0) {
+  if (created + updated + archived + skippedAsRecorded.length > 0) {
     await indexMemoryBestEffort({
       projectId,
       source: 'decision',
       sourceRef: `consolidation:${new Date().toISOString().slice(0, 10)}-${crypto.randomBytes(4).toString('hex')}`,
-      text: `Memory consolidation: ${counts}${summary === counts ? '' : ` — ${summary}`}${archivedRefs.length > 0 ? `\narchived: ${archivedRefs.join(', ')}` : ''}`,
-      metadata: { cause: 'memory-consolidation', archivedRefs },
+      text: `Memory consolidation: ${counts}${summary === counts ? '' : ` — ${summary}`}${archivedRefs.length > 0 ? `\narchived: ${archivedRefs.join(', ')}` : ''}${skippedAsRecorded.length > 0 ? `\nskipped, already recorded by: ${skippedAsRecorded.join(', ')}` : ''}`,
+      metadata: { cause: 'memory-consolidation', archivedRefs, skippedAsRecorded },
     });
   }
 
-  // AC3 (ISS-568): propose durable lessons for knowledge promotion — best-effort,
-  // never breaks consolidation.
   try {
     await proposeKnowledgePromotions(projectId);
   } catch (err) {

@@ -27,6 +27,7 @@ const indexMemoryMock = vi.fn();
 const indexMemoryBestEffortMock = vi.fn();
 vi.mock('./indexer.js', () => ({
   MAX_EMBED_CHARS: 8192,
+  NEAR_DUPLICATE_THRESHOLD: 0.85,
   indexMemory: (input: unknown, opts?: unknown) => indexMemoryMock(input, opts),
   indexMemoryBestEffort: (input: unknown) => indexMemoryBestEffortMock(input),
 }));
@@ -41,6 +42,11 @@ vi.mock('../embeddings/index.js', () => ({
 const searchMemoriesMock = vi.fn();
 vi.mock('./search.js', () => ({
   searchMemories: (input: unknown) => searchMemoriesMock(input),
+}));
+
+const searchKnowledgeMock = vi.fn();
+vi.mock('../knowledge/search.js', () => ({
+  searchKnowledge: (...args: unknown[]) => searchKnowledgeMock(...args),
 }));
 
 const runMemoryFeedbackMock = vi.fn();
@@ -111,6 +117,7 @@ beforeEach(() => {
   insertReturningMock.mockReset();
   embedMock.mockReset();
   searchMemoriesMock.mockReset();
+  searchKnowledgeMock.mockReset();
   runMemoryFeedbackMock.mockReset();
   bossSendMock.mockReset();
   bossCreateQueueMock.mockReset();
@@ -129,6 +136,8 @@ beforeEach(() => {
   insertReturningMock.mockResolvedValue([{ id: 'issue-new' }]);
   embedMock.mockResolvedValue(new Array(8).fill(0.01));
   runMemoryFeedbackMock.mockResolvedValue({ found: true, action: 'archived' });
+  searchKnowledgeMock.mockResolvedValue([]);
+  searchMemoriesMock.mockResolvedValue([]);
   bossCreateQueueMock.mockResolvedValue(undefined);
   bossWorkMock.mockResolvedValue(undefined);
   bossSendMock.mockResolvedValue(undefined);
@@ -230,7 +239,7 @@ describe('runConsolidationForProject', () => {
         source: 'knowledge',
         sourceRef: expect.stringMatching(/^consolidated:[0-9a-f]{12}$/),
       }),
-      { nearDuplicateProbe: true },
+      undefined,
     );
     expect(indexMemoryMock).toHaveBeenCalledWith(
       expect.objectContaining({ source: 'note', sourceRef: 'n-1', text: 'merged cleaner note' }),
@@ -285,6 +294,62 @@ describe('runConsolidationForProject', () => {
     });
     const result = await runConsolidationForProject(PROJECT_ID);
     expect(result.skipped).toBe('parse-failed');
+  });
+});
+
+describe('consolidation does not re-mint what is already recorded', () => {
+  // cm:why the assertion is that indexMemory was NOT called — the old code ran the near-duplicate probe, threw the answer away, wrote anyway and counted it a create, so asserting on the count alone passes against the defect
+  it('skips a create the CURATED knowledge store already covers, and names it', async () => {
+    queueSignal();
+    llmResponds({
+      create: [
+        { content: 'a green pnpm test may be a Turbo cache replay', category: 'convention' },
+      ],
+    });
+    searchKnowledgeMock.mockResolvedValueOnce([
+      { slug: 'pnpm-test-replays-another-worktrees-turbo-cache', score: 0.93 },
+    ]);
+
+    const result = await runConsolidationForProject(PROJECT_ID);
+
+    expect(result.created).toBe(0);
+    expect(indexMemoryMock).not.toHaveBeenCalled();
+    const receipt = indexMemoryBestEffortMock.mock.calls.at(-1)?.[0];
+    expect(receipt.metadata.skippedAsRecorded).toEqual([
+      'knowledge_entries:pnpm-test-replays-another-worktrees-turbo-cache',
+    ]);
+    expect(receipt.text).toContain('skipped 1 already recorded');
+  });
+
+  it('skips a create an existing MEMORY row already covers', async () => {
+    queueSignal();
+    llmResponds({
+      create: [{ content: 'some lesson already held in memory', category: 'convention' }],
+    });
+    searchKnowledgeMock.mockResolvedValueOnce([]);
+    searchMemoriesMock.mockResolvedValueOnce([{ sourceRef: 'consolidated:deadbeef', score: 0.91 }]);
+
+    const result = await runConsolidationForProject(PROJECT_ID);
+
+    expect(result.created).toBe(0);
+    expect(indexMemoryMock).not.toHaveBeenCalled();
+  });
+
+  it('still writes a create that neither store covers', async () => {
+    queueSignal();
+    llmResponds({
+      create: [{ content: 'a genuinely new lesson nobody recorded', category: 'convention' }],
+    });
+    searchKnowledgeMock.mockResolvedValueOnce([{ slug: 'unrelated', score: 0.2 }]);
+    searchMemoriesMock.mockResolvedValueOnce([{ sourceRef: 'other', score: 0.3 }]);
+
+    const result = await runConsolidationForProject(PROJECT_ID);
+
+    expect(result.created).toBe(1);
+    expect(indexMemoryMock).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceRef: expect.stringMatching(/^consolidated:[0-9a-f]{12}$/) }),
+      undefined,
+    );
   });
 });
 
