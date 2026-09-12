@@ -35,52 +35,14 @@ import {
 import { type FastTurnInputs, prepareFastTurn } from './images.js';
 import { createSeenTracker, decideHandling, decideSkip } from './inbound-gate.js';
 import { FIXED_REPLY_CONSTANT, type ReplySendProof, sendFixedReply } from './outbound.js';
+import { rocketChatPersona } from './persona.js';
+import { questionForThread, startQuestionDrainLoop } from './question-delivery.js';
+import { consumeQuestionThreadReply } from './question-inbound.js';
 import { screenStakeholderReply } from './reply-screen.js';
 import { fetchOwnUsername } from './rest-client.js';
 import { type RoomShape, resolveRoomShape } from './room-shape.js';
 import { conversationKey, resolveTurnPrincipal } from './turn-principal.js';
 import type { RocketChatBindingConfig, RocketChatConfig, RocketChatSecrets } from './types.js';
-
-export function rocketChatPersona(
-  projectName: string,
-  authorUsername?: string,
-  opts?: {
-    projectSlug?: string | undefined;
-    webBaseUrl?: string | undefined;
-    botName?: string | undefined;
-  },
-): string {
-  return [
-    `You are the working assistant for project "${projectName}", answering inside the team's Rocket.Chat channel. You OWN the requests addressed to you — investigate and act with your tools; never hand the task back to the humans.`,
-    ...(opts?.botName
-      ? [
-          `- Your name in this channel is ${opts.botName}. Refer to yourself as "${opts.botName}" (e.g. "${opts.botName} đã kiểm tra…"), never as "hệ thống" or "the system".`, // i18n-allow: shows the Vietnamese self-reference style being mandated
-        ]
-      : []),
-    ...(authorUsername
-      ? [
-          `- The message you are answering was sent by user @${authorUsername}. When they say "tôi/mình/my/me", they mean @${authorUsername} — use that username when filtering tasks/items by person.`, // i18n-allow: quotes the Vietnamese first-person pronouns the prompt must resolve
-        ]
-      : []),
-    '- Read the conversation context first; if it references older discussion, call rocketchat_history before concluding.',
-    '- When asked to check / analyze / verify something, LEAD your reply with what you FOUND — the entity\'s status, the key facts, and any contradiction with what the channel expects — THEN the action you took. "I created an issue" alone does not answer a check request.',
-    '- When the discussion is a problem/bug report against THIS project, the reporter owes you nothing: evidence the project side can gather itself (its own logs, API/config screenshots, order ids) is the WORK — write it into the draft issue as acceptance criteria for a developer. Ask the reporter only for what only they can know (repro steps, account, time window). Never bounce the burden of proof back to the reporter.',
-    '- ISSUE QUALITY CONTRACT: an issue must stand alone — a developer must be able to identify the problem just by reading the description. Title = kind + affected feature (e.g. "[Bug] Category path quá dài trên listing"). Description MUST contain the problem/request in concrete detail — what happens, where, expected vs actual — quoting the reporter where useful, plus the source links from the context: the external task/feedback link when one exists, and the chat permalink given above. Thin issues are auto-rejected by the server; if the discussion truly lacks the substance to write this, ask the reporter the missing specifics instead of filing a hollow issue.', // i18n-allow: contains a Vietnamese example issue title
-    ...(opts?.webBaseUrl && opts.projectSlug
-      ? [
-          `- When you create or cite a Forge issue, include its web link: ${opts.webBaseUrl}/projects/${opts.projectSlug}/issues/<documentId> (forge_issues returns the documentId).`,
-        ]
-      : []),
-    "- URLs in the context carry ids: a webhook card's link (e.g. `…/tasks?projectId=53&task=12608`) names the exact entity being discussed — extract the id from the URL and query the external system BY ID before trying any keyword search. When you cite such an entity in a reply or issue, include its URL.",
-    '- INVESTIGATE before answering: use the forge_* tools instead of guessing. Search issues with SHORT keyword fragments (2-4 words) and retry with different fragments if empty — long exact titles rarely match. Cross-check forge_memory.search and forge_knowledge for project context, and read issue comments when a discussion references one.',
-    "- Tools prefixed with an external system name (e.g. `Sidcorp-Hub__…`) query that system directly. The team's day-to-day tasks usually live THERE, not in Forge. MANDATORY for ANY question about tasks/work items — a specific task, someone's pending/assigned tasks, counts, statuses: (1) call the external schema tool (e.g. `Sidcorp-Hub__graphql_schema`) to learn the available queries and filters, (2) then query (e.g. `Sidcorp-Hub__graphql_query`) filtering by the keywords/username involved. NEVER claim \"the tools cannot do this\" or ask the user for an ID before you have introspected the schema and tried a query. Schemas often expose `my*` queries (e.g. `myTasks`) scoped to the connection identity — they need NO user id; prefer them for the requester's own items, and never ask the user for an internal ID.",
-    '- ACT, do not delegate: when something needs recording or follow-up, DO it yourself — create the issue (it always enters as `draft`; a human later moves it to `open`) or add a comment via forge_comments, then report what you did. Only mention a person when the action truly requires something outside your tools (a credential, a manual test, a business decision) — and even then, first do every part you CAN do and state exactly what remains and why.',
-    '- Never reply with only "ask X to do Y" or "please provide more info" if a tool call could find the answer or capture the work as a draft issue.',
-    '- Your reply is the ONLY message the user receives — there is no follow-up turn. NEVER announce what you are about to do ("mình sẽ truy vấn…", "đang kiểm tra…"): CALL the tool now instead, and reply only when you have the result (or a concrete failure to report).', // i18n-allow: quotes the Vietnamese announcement phrases being banned
-    '- For a broad request ("check the project", "tình hình sao rồi"), do not just ask what to check — produce a brief status overview from the tools (e.g. the requester\'s open task count + any notable items from the external hub and forge issues), then offer to drill into specifics.', // i18n-allow: quotes a Vietnamese broad-request example
-    '- Reply concisely in Vietnamese (switch language only if the user clearly writes another one). Plain chat text, no markdown headers.',
-  ].join('\n');
-}
 
 // cm:guard the first CORS origin IS the web app's origin (operators must allow it for the UI to work at all); exported so the escalation bridge's Bao turn builds the same issue-link base as the sync path
 export const webBaseUrl = env.CORS_ORIGINS.split(',')[0]?.trim().replace(/\/+$/, '') || undefined;
@@ -177,12 +139,14 @@ class RocketChatConnectionManager {
   private started = false;
   private listenClient?: pg.Client | undefined;
   private listenRetryTimer?: NodeJS.Timeout | undefined;
+  private stopQuestionDrain?: (() => void) | undefined;
 
   async start(): Promise<void> {
     if (this.started) return;
     this.started = true;
     // cm:why listen even with zero connections — the first-ever connect arrives as a NOTIFY from whichever instance served the HTTP request
     this.startReloadListener();
+    this.stopQuestionDrain = startQuestionDrainLoop(() => this.started);
     const rows = await db
       .select()
       .from(integrationConnections)
@@ -334,9 +298,7 @@ class RocketChatConnectionManager {
     // cm:guard gate every callback on still being current — a slow-dying socket that triggers a second dial leaves two live sockets, i.e. duplicate deliveries
     try {
       ac.client?.close();
-    } catch {
-      // ignore
-    }
+    } catch {}
     const isCurrent = () => this.conns.get(connectionId)?.client === client;
     const client: RocketChatDdpClient = new RocketChatDdpClient({
       serverUrl: ac.serverUrl,
@@ -424,8 +386,15 @@ class RocketChatConnectionManager {
       logger.error(ctx, 'rocketchat: room type unresolved; refusing the message, not assuming one');
       return;
     }
-    if (!decideHandling(m, ac.botUserId, shape).handle) return;
+    // cm:guard the thread lookup runs BEFORE `decideHandling` because it is an input to it, and AFTER the route for the same reason the shape is: a connection with no binding for this room must touch nothing (ISS-978 criterion 22).
+    const owned = m.tmid && (await questionForThread({ connectionId, rid: m.rid, tmid: m.tmid }));
+    if (!decideHandling(m, ac.botUserId, shape, Boolean(owned)).handle) return;
     if (ac.seenMessage(m.id)) return;
+    // cm:guard a registered thread is CONSUMED here and never falls through to `this.handle` — refusals included. A refusal that fell through would reach the person who was asked to pick option 2 as a chat reply about something else, and would additionally run a provider turn nobody asked for (ISS-978 criteria 20, 21).
+    if (owned) {
+      consumeQuestionThreadReply({ questionId: owned.questionId, connectionId, ac, m });
+      return;
+    }
     const logCtx = { connectionId, rid: m.rid, msgId: m.id, projectId: route.projectId };
     logger.info(
       { ...logCtx, user: m.username, shape, threaded: Boolean(m.tmid) },
@@ -479,10 +448,7 @@ class RocketChatConnectionManager {
     try {
       outcome = await withTimeout(
         (async (): Promise<TurnOutcome> => {
-          // ISS-609 (piece A) — seed the turn with the recent room discussion
-          // (+ full thread when threaded); deeper recall stays agentic via the
-          // bounded rocketchat_history tool. The project's configured external
-          // MCP servers (task hub, …) are bridged in fresh each turn.
+          // cm:why the turn is seeded with the recent room discussion, and the full thread when threaded, because deeper recall stays agentic through the bounded history tool rather than being paid for on every turn (ISS-609).
           phase = 'context';
           const [conversationContext, projectRow] = await Promise.all([
             buildConversationContext(restAuth, {
@@ -800,6 +766,8 @@ class RocketChatConnectionManager {
 
   async stop(): Promise<void> {
     this.started = false;
+    this.stopQuestionDrain?.();
+    this.stopQuestionDrain = undefined;
     if (this.listenRetryTimer) clearTimeout(this.listenRetryTimer);
     this.listenRetryTimer = undefined;
     const listen = this.listenClient;

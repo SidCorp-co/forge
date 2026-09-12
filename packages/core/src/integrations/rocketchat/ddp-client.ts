@@ -240,7 +240,6 @@ export class RocketChatDdpClient {
         this.onResult(frame);
         return;
       case 'ready':
-        // Our single subscription is live.
         this.setState('live');
         this.connectResolve?.();
         this.connectResolve = undefined;
@@ -249,12 +248,7 @@ export class RocketChatDdpClient {
       case 'nosub':
         if (frame.id !== this.subId) return;
         if (this.state === 'live') {
-          // The subscription was TERMINATED server-side after going live (RC
-          // session eviction, load-shedding, …). The socket stays open and
-          // server pings keep flowing, so the liveness watchdog never fires —
-          // but no more room messages arrive: the bot is silently deaf. Close
-          // so the connection-manager redials with a fresh login + sub. (Was a
-          // silent no-op → the "replies once then goes quiet" incident.)
+          // cm:guard a `nosub` after the subscription went live must CLOSE the socket, never be a no-op: the socket stays open and server pings keep flowing, so the watchdog never fires while no room message arrives again — the bot goes silently deaf ("replies once then goes quiet").
           this.opts.onError?.(
             new Error(`DDP subscription lost (nosub): ${JSON.stringify(frame.error)}`),
           );
@@ -273,7 +267,7 @@ export class RocketChatDdpClient {
   }
 
   private login(): void {
-    this.setState('authenticated'); // provisional; flips to live on sub ready
+    this.setState('authenticated');
     this.loginId = this.nextId();
     this.send({
       msg: 'method',
@@ -319,18 +313,20 @@ export class RocketChatDdpClient {
     }
   }
 
-  /** Post a message to a room (optionally inside a thread). Resolves on RC ack. */
-  sendMessage(rid: string, text: string, tmid?: string): Promise<unknown> {
+  /** Post a message to a room (optionally inside a thread). Resolves on RC ack with the message id. */
+  // cm:guard the resolved id is the `_id` sent in `params`, and RC's ack is what makes it a receipt rather than a guess: a caller that stores it as a thread id before the ack would register a thread the server never accepted (ISS-978 criterion 7).
+  sendMessage(rid: string, text: string, tmid?: string): Promise<string> {
     const id = this.nextId();
+    const messageId = randomUUID().replace(/-/g, '');
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         if (this.pending.delete(id)) reject(new Error('sendMessage ack timed out'));
       }, SEND_TIMEOUT_MS);
       timer.unref?.();
       this.pending.set(id, {
-        resolve: (v) => {
+        resolve: () => {
           clearTimeout(timer);
-          resolve(v);
+          resolve(messageId);
         },
         reject: (e) => {
           clearTimeout(timer);
@@ -341,9 +337,7 @@ export class RocketChatDdpClient {
         msg: 'method',
         method: 'sendMessage',
         id,
-        params: [
-          { _id: randomUUID().replace(/-/g, ''), rid, msg: text, ...(tmid ? { tmid } : {}) },
-        ],
+        params: [{ _id: messageId, rid, msg: text, ...(tmid ? { tmid } : {}) }],
       });
     });
   }

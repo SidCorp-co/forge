@@ -47,8 +47,10 @@ vi.mock('./outbound.js', () => ({
 
 const rocketChatPersona = vi.fn((..._args: unknown[]) => 'PERSONA');
 vi.mock('./connection-manager.js', () => ({
-  rocketChatPersona: (...args: unknown[]) => rocketChatPersona(...args),
   webBaseUrl: 'https://forge.example.co',
+}));
+vi.mock('./persona.js', () => ({
+  rocketChatPersona: (...args: unknown[]) => rocketChatPersona(...args),
 }));
 
 const runExternalChatTurn = vi.fn();
@@ -170,7 +172,7 @@ describe('deliverEscalationReplyOnce', () => {
   });
 
   it('no-ops (does not post) when the CAS loses the race', async () => {
-    updateReturning.mockResolvedValue([]); // another caller already claimed it
+    updateReturning.mockResolvedValue([]);
     await deliverEscalationReplyOnce(makeSession());
     expect(sendFixedReply).not.toHaveBeenCalled();
   });

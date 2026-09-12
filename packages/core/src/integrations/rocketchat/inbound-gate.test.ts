@@ -117,3 +117,27 @@ describe('createSeenTracker', () => {
     expect(seen('m10')).toBe(true);
   });
 });
+
+describe('an owned question thread', () => {
+  it('is handled in a group room with no @-mention of the bot', () => {
+    expect(decideHandling(msg({ mentions: [] }), BOT, 'group', true)).toEqual({
+      handle: true,
+      reason: 'ok',
+    });
+  });
+
+  it('leaves the mention requirement standing everywhere else in a group room', () => {
+    expect(decideHandling(msg({ mentions: [] }), BOT, 'group', false).handle).toBe(false);
+    expect(decideHandling(msg({ mentions: [] }), BOT, 'group').handle).toBe(false);
+  });
+
+  it('does not relax a single skip — the loop guard holds inside an owned thread', () => {
+    expect(decideHandling(msg({ userId: BOT }), BOT, 'group', true)).toEqual({
+      handle: false,
+      reason: 'own-message',
+    });
+    expect(decideHandling(msg({ isSystem: true }), BOT, 'group', true).handle).toBe(false);
+    expect(decideHandling(msg({ isEdited: true }), BOT, 'group', true).handle).toBe(false);
+    expect(decideHandling(msg({ text: '  ' }), BOT, 'group', true).handle).toBe(false);
+  });
+});

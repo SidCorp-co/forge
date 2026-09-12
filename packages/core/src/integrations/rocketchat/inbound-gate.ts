@@ -10,6 +10,9 @@
  * ISS-987 split the decision in two. The skips are facts about the message and
  * need no room; addressing is a fact about the room, so it needs the shape and
  * the shape needs a round trip.
+ *
+ * ISS-978 added the one other way in: a reply inside a thread this bot opened
+ * to ask a parked run's question.
  */
 
 import type { RocketChatIncomingMessage } from './ddp-client.js';
@@ -37,11 +40,14 @@ export function decideHandling(
   msg: RocketChatIncomingMessage,
   botUserId: string,
   shape: RoomShape,
+  threadOwned = false,
 ): { handle: boolean; reason: string } {
   const skip = decideSkip(msg, botUserId);
   if (skip) return { handle: false, reason: skip };
   // cm:why a person alone in a direct room with the bot has already addressed it by opening the room; requiring the bot's own name there is the mention gate applied where there is no noise to gate. A thread inside a direct room is still a direct room for addressing — what its `tmid` decides is which conversation the turn belongs to, not whether it runs.
   if (shape === 'direct') return { handle: true, reason: 'ok' };
+  // cm:guard a thread THIS bot opened to ask a question is the one new way in, and it is addressing that has already happened: the bot posted the thread's root, so a reply in it is directed at the bot by construction. It relaxes nothing else — the skips above still run first, and a message anywhere but an owned thread still owes its mention (ISS-978 criteria 22, 23).
+  if (threadOwned) return { handle: true, reason: 'ok' };
   if (!msg.mentions.includes(botUserId)) return { handle: false, reason: 'not-mentioned' };
   return { handle: true, reason: 'ok' };
 }

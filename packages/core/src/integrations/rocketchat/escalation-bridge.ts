@@ -17,9 +17,10 @@ import {
   projects,
 } from '../../db/schema.js';
 import { logger } from '../../logger.js';
-import { rocketChatPersona, webBaseUrl } from './connection-manager.js';
+import { webBaseUrl } from './connection-manager.js';
 import { ESCALATION_FALLBACK_REPLY } from './escalation.js';
 import { FIXED_REPLY_CONSTANT, type ReplySendProof, sendFixedReply } from './outbound.js';
+import { rocketChatPersona } from './persona.js';
 import { screenStakeholderReply } from './reply-screen.js';
 import {
   claimRoomReplyDelivery,

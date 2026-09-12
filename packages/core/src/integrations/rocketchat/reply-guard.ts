@@ -3,7 +3,15 @@
  * developer detail, empty promises, self-counted progress figures. Pure string
  * analysis, no db/env imports, so it unit-tests standalone. Live incident
  * 2026-07-07: zero tool calls plus an invented `/issues/6673627998492006400`.
+ *
+ * ISS-978 added `screenOperatorMessage`, for text carried to somebody holding a
+ * role on the project rather than to a stakeholder.
  */
+
+// cm:ignore CM013 — every frozen comment in this file is an `i18n-allow` pragma carrying the Vietnamese phrasing its regex matches; deleting one to pay the drain reds the language gate instead, so this file's debt cannot be paid the ordinary way.
+
+import { scrubLogText } from '@forge/observability';
+import { OPTION_LINE_RE } from './question-render.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -266,4 +274,42 @@ export function checkProgressClaims(reply: string, facts: ProgressFacts | null):
   }
 
   return { ok: problems.size === 0, problems: [...problems] };
+}
+
+/**
+ * The screen for text a run's agent wrote that is carried to an OPERATOR —
+ * somebody holding a role on the project, being shown a decision to make.
+ */
+// cm:guard this is NOT `screenStakeholderReply` and the two are not interchangeable: that one polices a reply to a non-technical stakeholder and refuses an issue key outright, which is the one thing a parked question must name. Passing a question message through it refuses every delivery (ISS-978 criterion 1).
+// cm:guard every segment here is model-authored and reaches a room, so a verdict of ok is what `sendFixedReply`'s proof rests on — widening it to pass text unexamined is the hole `outbound.test.ts` exists to close, wearing a second name.
+export function screenOperatorMessage(segments: string[]): ProductLintResult {
+  const problems: string[] = [];
+  for (const raw of segments) {
+    const segment = raw ?? '';
+    if (!segment.trim()) {
+      problems.push('a question carries no empty prompt or option label');
+      continue;
+    }
+    // cm:guard a channel-wide mention written by a model pages everyone in the room, and the room is a channel the project bound for its own work — the notification is not the model's to send.
+    const shout = segment.match(/(^|\s)@(all|here|channel)\b/i);
+    if (shout) {
+      problems.push(
+        `text addresses the whole room ("${shout[0].trim()}") — a question is put to the people who can answer it, not broadcast`,
+      );
+    }
+    // cm:guard a newline inside a segment lets one option label render as two lines, and a line that looks like another option's is a choice the person never saw offered — the reply token resolves by line, so this is an impersonation and not a formatting nit.
+    if (/[\r\n]/.test(segment)) {
+      problems.push('text spans more than one line, which lets it render as a second option');
+    }
+    if (OPTION_LINE_RE.test(segment)) {
+      problems.push(
+        'text opens with something that reads as an option number, which collides with the list it sits in',
+      );
+    }
+    // cm:guard the scrubber is the detector, not the fixer, here: `outbound.ts` would redact this on the way out and post the redacted text, so a secret in a prompt would reach the room as `[redacted]` and the question would be unanswerable rather than refused. Compare and REFUSE instead.
+    if (scrubLogText(segment) !== segment) {
+      problems.push('text carries something the secret scrubber redacts');
+    }
+  }
+  return { ok: problems.length === 0, problems };
 }
