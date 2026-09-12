@@ -58,22 +58,29 @@ let ownerId: string;
 let issueId: string;
 let seq = 0;
 
-const OPTIONS = [
-  {
-    id: '22222222-2222-4222-8222-222222222222',
-    label: 'Take the safe path',
-    authority: 'writer' as const,
-    bindsTo: 'session' as const,
-    executedBy: 'agent' as const,
-  },
-  {
-    id: '11111111-1111-4111-8111-111111111111',
-    label: 'Drop the column',
-    authority: 'admin' as const,
-    bindsTo: 'project' as const,
-    executedBy: 'human' as const,
-  },
-];
+const SAFE = {
+  id: '22222222-2222-4222-8222-222222222222',
+  label: 'Take the safe path',
+  authority: 'writer' as const,
+  bindsTo: 'session' as const,
+  executedBy: 'agent' as const,
+};
+const RISKY = {
+  id: '11111111-1111-4111-8111-111111111111',
+  label: 'Drop the column',
+  authority: 'admin' as const,
+  bindsTo: 'project' as const,
+  executedBy: 'human' as const,
+};
+const OPTIONS = [SAFE, RISKY];
+
+/** The one owed round, or a failure naming what was found instead. */
+// cm:guard reads the round through a check rather than a non-null assertion: `a!` under `biome check --write` becomes `a?`, which turns "this test is about the owed round" into a silent pass over an empty list.
+function onlyOwed(rounds: Awaited<ReturnType<typeof delivery.owedRounds>>) {
+  const round = rounds[0];
+  if (!round) throw new Error(`expected exactly one owed round, found ${rounds.length}`);
+  return round;
+}
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
@@ -136,7 +143,7 @@ async function ask(over: { blockerKind?: 'human' | 'machine' } = {}) {
     prompt: 'The migration drops a column. Which way?',
     blockerKind: over.blockerKind ?? 'human',
     options: OPTIONS,
-    recommendedOptionId: OPTIONS[0]!.id,
+    recommendedOptionId: SAFE.id,
   });
 }
 
@@ -280,7 +287,7 @@ describe('delivering a round', () => {
       questionId: q.id,
       prompt: 'Neither worked. Which now?',
       options: OPTIONS,
-      recommendedOptionId: OPTIONS[0]!.id,
+      recommendedOptionId: SAFE.id,
     });
     nextMessageId = 'msg-2';
     await delivery.drainQuestionDeliveries();
@@ -306,10 +313,9 @@ describe('two core instances draining at once', () => {
     await bindRoom();
     await ask();
     // cm:guard both instances derive the SAME owed round BEFORE either claims, which is the only arrangement that reaches the claim: derived in sequence, the second finds nothing owed and the conflict predicate is never exercised (ISS-978 criterion 5).
-    const [owed] = await delivery.owedRounds();
-    expect(owed).toBeDefined();
-    const first = await delivery.deliverOwedRound(owed!);
-    const second = await delivery.deliverOwedRound(owed!);
+    const owed = onlyOwed(await delivery.owedRounds());
+    const first = await delivery.deliverOwedRound(owed);
+    const second = await delivery.deliverOwedRound(owed);
     expect(first).toBe('delivered');
     expect(second).toBe('held');
     expect(posts).toHaveLength(1);
@@ -318,8 +324,7 @@ describe('two core instances draining at once', () => {
   it('leaves nothing owed to a second drain once the first has claimed it', async () => {
     await bindRoom();
     await ask();
-    const [owed] = await delivery.owedRounds();
-    await delivery.deliverOwedRound(owed!);
+    await delivery.deliverOwedRound(onlyOwed(await delivery.owedRounds()));
     expect((await delivery.drainQuestionDeliveries()).owed).toBe(0);
     expect(posts).toHaveLength(1);
   });
