@@ -2,14 +2,18 @@
 
 **What the chat tool catalog costs per request, separated from the context around it.** Every
 figure below is printed by `pnpm --filter @forge/core measure:catalog-cost`
-(`core/src/assistant/tool-catalog-cost.ts`); a census additionally needs `FORGE_CENSUS_DATABASE_URL`.
-The figures here were taken 2026-09-11 and move whenever a factory joins `CHAT_TOOL_ALLOWLIST` or a
-`forge_*` description is edited.
+(`core/src/assistant/measure-catalog-cost.ts`, over `tool-catalog-cost.ts`), which needs no
+deployment environment of its own; a census additionally needs `FORGE_CENSUS_DATABASE_URL`.
+**The catalog this report measured** is the one at commit `58afbd5`, re-derived on 2026-09-12 rather
+than carried over: it had moved 61 chars since the first draft, which is why the script re-derives
+and this table does not cite. It moves again whenever a factory joins `CHAT_TOOL_ALLOWLIST` or a
+`forge_*` description is edited — ISS-984 is trimming those descriptions in parallel, so a figure
+below that disagrees with a fresh run means the trim landed after this.
 
 ```mermaid
 flowchart LR
   subgraph PREFIX["what a Messages request renders, in this order"]
-    T["tools[]<br/>9 tools · 20,073 chars<br/>cache_control on the LAST one<br/>stable across rounds AND turns"]
+    T["tools[]<br/>9 tools · 20,134 chars<br/>cache_control on the LAST one<br/>stable across rounds AND turns"]
     S["system<br/>persona + agentConfig + progressFacts<br/>cache_control on the block<br/>progressFacts recomputed EVERY turn"]
     M["messages[]<br/>history · unmarked"]
   end
@@ -20,8 +24,11 @@ flowchart LR
 
 ## The answer
 
-**Nothing in this fleet has ever cached.** Of 79 `chat_logs` rows — every logged chat request,
-2026-07-03 to 2026-09-03 — **0 carry `usage.cachedPromptTokens` at all.** Both adapters map the
+**Nothing in this fleet has ever cached.** Of 79 `chat_logs` rows on forge-beta — every logged chat
+request, 2026-07-03 to 2026-09-03 — **0 carry `usage.cachedPromptTokens` at all.** That census was
+run 2026-09-11 and is the figure on ISS-983's own record; no host this report was written from
+reaches the forge-beta database, so it is cited at its date rather than re-run, and re-running it is
+one `FORGE_CENSUS_DATABASE_URL` away. Both adapters map the
 field when a backend reports one (`anthropic.ts:toUsage` from `cache_read_input_tokens`,
 `openai.ts` from `prompt_tokens_details.cached_tokens`), so absence is a reading, not a missing
 mapping. Every one of those rows is `gemini/gemini-2.5-flash`, reached over the Completions wire
@@ -42,8 +49,8 @@ rate until a row in `chat_logs` reports one.
 | | |
 |---|---|
 | tools | 9, the factories `assistant/tools/registry.ts:CHAT_TOOL_ALLOWLIST` names |
-| serialized | 20,073 chars (**measured**) — `toRequestBody`'s own `tools` array, `input_schema` and the `cache_control` marker included |
-| tokens | 5,019 (**estimated**, chars/4) |
+| serialized | 20,134 chars (**measured**) — `toRequestBody`'s own `tools` array, `input_schema` and the `cache_control` marker included |
+| tokens | 5,034 (**estimated**, chars/4) |
 | minimum cacheable prefix | 1,024 tokens on `claude-sonnet-5` — the catalog clears it |
 
 `forge_issues` alone is 7,487 chars, 37% of the catalog.
@@ -53,10 +60,10 @@ under any shape the script prints:
 
 | Serialization | Chars |
 |---|---|
-| wire, project-bound — what is priced above | 20,073 |
-| wire, unbound — `projectId` left in every schema | 21,706 |
-| OpenAI-shaped toolset, project-bound | 20,297 |
-| wire, project-bound, pretty-printed at two spaces | 34,981 |
+| wire, project-bound — what is priced above | 20,134 |
+| wire, unbound — `projectId` left in every schema | 21,767 |
+| OpenAI-shaped toolset, project-bound | 20,358 |
+| wire, project-bound, pretty-printed at two spaces | 35,042 |
 
 Nothing lands on 28,343, which is why the script re-derives rather than cites, and why it prints
 all four: a size quoted somewhere else can be matched against the shape that produced it.
@@ -76,8 +83,8 @@ Anthropic list price for `claude-sonnet-5`, declared in `tool-catalog-cost.ts:PR
 
 | Uncached context | No cache | Cold (catalog written) | Warm (catalog read) |
 |---|---|---|---|
-| 2,000 tokens | $0.014038 | $0.016547 | $0.005004 |
-| 20,000 tokens | $0.050038 | $0.052547 | $0.041004 |
+| 2,000 tokens | $0.014068 | $0.016585 | $0.005007 |
+| 20,000 tokens | $0.050068 | $0.052585 | $0.041007 |
 
 **A cold request costs more than never caching at all** — the 1.25x write premium. Two requests
 inside the five-minute window break even (1.25x + 0.1x against 2x); one does not. A room quiet
@@ -91,8 +98,8 @@ identical cached catalog and differing only in history:
 
 | History | promptTokens | cachedPromptTokens | Ratio reported | Prefix saving |
 |---|---|---|---|---|
-| 2,000 | 7,019 | 5,019 | **71.5%** | 4,517 tokens · $0.009034 |
-| 20,000 | 25,019 | 5,019 | **20.1%** | 4,517 tokens · $0.009034 |
+| 2,000 | 7,034 | 5,034 | **71.6%** | 4,531 tokens · $0.009061 |
+| 20,000 | 25,034 | 5,034 | **20.1%** | 4,531 tokens · $0.009061 |
 
 Same catalog, same saving, ratios a factor of 3.6 apart. A report quoting that ratio has measured
 the history. `tool-catalog-cost.test.ts` asserts the divergence and the invariance together.
@@ -124,3 +131,4 @@ day a `chat_logs` row reports a cache read.
 | Cache behaviour of the Anthropic path | it has never run in this fleet | nothing. Stated as unknown rather than assumed from the markers the code sets |
 | Provider behind each logged request | `chat_logs` records `model` and no provider column (`schema.ts:chatLogs`) | the census groups by model and prints that shortfall; two backends under one model name would be one row |
 | Whether the 5-minute window is missed in real rooms | the issue gates this on caching being live, and it is not | nothing |
+| The census **at this commit** | no forge-beta database URL reaches the host this was re-derived on | the 2026-09-11 census above, cited at its date. The query itself was exercised at this commit against a seeded `chat_logs` carrying both a row with `cachedPromptTokens` and rows without, so what is unverified here is the fleet's numbers and not the census |

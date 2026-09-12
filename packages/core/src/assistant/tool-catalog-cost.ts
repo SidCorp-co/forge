@@ -1,7 +1,8 @@
 /**
  * ISS-983 — what the chat tool catalog costs per request, measured apart from the context around it.
  *
- * Run it: `pnpm --filter @forge/core measure:catalog-cost`; a census additionally needs
+ * Run it: `pnpm --filter @forge/core measure:catalog-cost` (`measure-catalog-cost.ts`); a census
+ * additionally needs
  * `FORGE_CENSUS_DATABASE_URL`. The report it feeds is
  * `docs/modules/agent-execution/tool-catalog-cost.md`.
  *
@@ -10,9 +11,7 @@
  * `toRequestBody` itself so that what is counted is what the wire carries.
  */
 
-import { pathToFileURL } from 'node:url';
 import postgres from 'postgres';
-import { env } from '../config/env.js';
 import { openAiCompatUrl } from '../lib/openai-compat-url.js';
 import { toRequestBody } from './providers/anthropic.js';
 import type { ChatTool } from './providers/types.js';
@@ -90,22 +89,17 @@ export function measureLiveCatalog(): CatalogMeasurement {
  */
 export function catalogVariants(catalog: CatalogMeasurement): [string, number][] {
   const nilUuid = '00000000-0000-0000-0000-000000000000';
-  const bound = buildProjectToolset(
-    buildChatToolContext({ userId: nilUuid, projectId: nilUuid, projectSlug: 'measurement' }),
-  ).tools;
-  const unbound = buildProjectToolset({
-    principal: {
-      kind: 'pat',
-      permissions: null,
-      agency: 'agent',
-      deviceId: null,
-      userId: nilUuid,
-      tokenId: 'measurement',
-      scopes: ['read'],
-      projectIds: [nilUuid],
-    },
+  const boundCtx = buildChatToolContext({
+    userId: nilUuid,
+    projectId: nilUuid,
     projectSlug: 'measurement',
-  } as Parameters<typeof buildProjectToolset>[0]).tools;
+  });
+  const bound = buildProjectToolset(boundCtx).tools;
+  const unbound = buildProjectToolset({
+    ...boundCtx,
+    boundProjectId: null,
+    principal: { ...boundCtx.principal, boundProjectId: null },
+  }).tools;
   return [
     ['wire, project-bound — what this module prices', catalog.chars],
     [
@@ -123,21 +117,21 @@ export function catalogVariants(catalog: CatalogMeasurement): [string, number][]
 export type CountOutcome =
   | { ok: true; figure: TokenFigure }
   | { ok: false; reason: 'no-credential' | 'provider-refused' | 'unreadable' };
-
 export interface CountOptions {
   apiKey?: string | undefined;
   baseUrl?: string;
   fetchImpl?: typeof fetch;
 }
 
-// cm:guard the base is `ANTHROPIC_API_URL` and never the vendor's own host — that variable is what points a deployment at a proxy (`config/env.ts`), so a hardcoded default would send this deployment's key to a host it was not issued for and count a path chat does not use (ISS-983)
+// cm:guard the base is `ANTHROPIC_API_URL` and never the vendor's own host — that variable is what points a deployment at a proxy, so a fixed host would send this deployment's key somewhere it was not issued for and count a path chat does not use (ISS-983)
+// cm:edge naming -> packages/core/src/config/env.ts — the same variable and the same default that file declares, read off `process.env` rather than through it: importing the validated `env` would make this script refuse to run without a DATABASE_URL, and a measurement that needs a database to size a constant is not one
 async function countRequest(
   tools: unknown[] | undefined,
   apiKey: string,
   opts: CountOptions,
 ): Promise<number | null> {
   const fetchImpl = opts.fetchImpl ?? fetch;
-  const url = `${openAiCompatUrl(opts.baseUrl ?? env.ANTHROPIC_API_URL, 'messages')}/count_tokens`;
+  const url = `${openAiCompatUrl(opts.baseUrl ?? process.env.ANTHROPIC_API_URL ?? 'https://api.anthropic.com', 'messages')}/count_tokens`;
   const res = await fetchImpl(url, {
     method: 'POST',
     headers: {
@@ -397,8 +391,4 @@ export async function main(): Promise<void> {
   printVariants(catalog);
   printCosts(tokens.tokens, [2_000, 20_000]);
   if (!censusAnswered) process.exitCode = 1;
-}
-
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  await main();
 }
