@@ -108,6 +108,33 @@
   A question aimed at another machine rather than at a person renders as a record and offers no
   button. An answered, withdrawn or expired question shows what became of it.
 
+- **The rules that decide whether an issue is well-formed now exist server-side, where more than a
+  terminal can reach them.** Until now they lived only in the Forge plugin, on whatever laptop was
+  running it: `forge new` reads a body against the four kinds — bug, enhancement, feature, review —
+  and the sections each one owes, and refuses a filing that does not carry them. Nothing on the
+  server could read any of it, so somebody typing at a terminal met one bar and an agent filing
+  through the tracker's own tool met a much thinner one. `packages/core/src/cli/` now holds the
+  same table and the same reading of a body against it, behind one call: a filing that names no
+  category, or names one nobody has defined, or arrives with an empty body, or leaves out a section
+  its kind requires, comes back refused — each refusal saying what was read, what the shape wants
+  there, and the one command that clears it. A section a kind merely suggests is still filed, with
+  a line naming what it left out. Near-duplicate detection is the detector the chat door already
+  used, asked at this door's own threshold over its own window, because the policy is per-door even
+  where the implementation is shared — and because word overlap cannot tell a real repeat from two
+  issues about different screens, the refusal names the flag that files it anyway, which is the same
+  word the chat door already uses for that act. Every way out a refusal offers is one the layer
+  reads; where the tracker answers that an issue already holds this filing's key, that too comes
+  back named rather than reported as something that was filed.
+
+  **Nothing that files an issue today changes.** The REST create route, the `forge_issues` tool and
+  the chat door behave exactly as they did: the same two bodies this new layer refuses are still
+  accepted through both API doors and still stored with no category, which is asserted rather than
+  assumed. Being stricter is this layer's own policy and not a rule pushed down into the domain,
+  so no existing caller has to start sending a field it was never asked for. What is left is the
+  plugin's half — `forge new` reading these kinds off the server instead of its own copy — which is
+  filed on that project and ships on its own clock; until it lands the same rules exist in two
+  places and are annotated as such where they live.
+
 - **An operator can now read any console glance metric as a full time series, not just its current
   value.** `GET /api/admin/metrics/:metric/timeseries` answers the history behind a glance figure
   over the console's existing `24h | 7d | 30d` windows, for the same five metrics the console

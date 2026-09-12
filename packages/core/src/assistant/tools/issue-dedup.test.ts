@@ -121,3 +121,72 @@ describe('findDuplicateIssue', () => {
     expect(match).toBeNull();
   });
 });
+
+/** The two dials a door may set for itself (ISS-985). A call naming neither has to be the call every caller made before they existed, or the chat door's verdicts moved under it. */
+function recordingDb(rows: Row[], seen: { limit?: number }): Db {
+  return {
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          orderBy: () => ({
+            limit: async (n: number) => {
+              seen.limit = n;
+              return rows;
+            },
+          }),
+        }),
+      }),
+    }),
+  } as unknown as Db;
+}
+
+const NEAR: Row[] = [
+  {
+    id: 'iss-1',
+    issSeq: 61,
+    title: '[Bug] Category path renders too long on listing',
+    description: 'The breadcrumb concatenates every ancestor level so it overflows.',
+  },
+];
+
+const ASKED = { projectId: 'proj-1', title: 'Category path renders too long on listing', description: '' };
+
+describe('the per-door dials', () => {
+  it('reads 50 rows when no corpus is named, which is what every caller got before', async () => {
+    const seen: { limit?: number } = {};
+    await findDuplicateIssue(recordingDb(NEAR, seen), ASKED);
+    expect(seen.limit).toBe(50);
+  });
+
+  it('reads the number a door names instead', async () => {
+    const seen: { limit?: number } = {};
+    await findDuplicateIssue(recordingDb(NEAR, seen), ASKED, { corpus: 200 });
+    expect(seen.limit).toBe(200);
+  });
+
+  it('holds a match to 0.72 when no threshold is named', async () => {
+    const seen: { limit?: number } = {};
+    const weak = [{ ...NEAR[0], title: 'Category path listing' } as Row];
+    expect(titleSimilarity(ASKED.title, weak[0]?.title ?? '')).toBeLessThan(0.72);
+    expect(await findDuplicateIssue(recordingDb(weak, seen), ASKED)).toBeNull();
+  });
+
+  it('lets a door widen the net below 0.72, taking the same row the default refused', async () => {
+    const seen: { limit?: number } = {};
+    const weak = [{ ...NEAR[0], title: 'Category path listing' } as Row];
+    const match = await findDuplicateIssue(recordingDb(weak, seen), ASKED, { threshold: 0.4 });
+    expect(match?.issSeq).toBe(61);
+  });
+
+  it('lets a door narrow it past a match the default would have returned', async () => {
+    const seen: { limit?: number } = {};
+    expect(await findDuplicateIssue(recordingDb(NEAR, seen), ASKED)).not.toBeNull();
+    expect(await findDuplicateIssue(recordingDb(NEAR, seen), ASKED, { threshold: 0.99 })).toBeNull();
+  });
+
+  it('reads an explicit undefined as unnamed, so a caller spreading an empty options object is unmoved', async () => {
+    const seen: { limit?: number } = {};
+    await findDuplicateIssue(recordingDb(NEAR, seen), ASKED, { threshold: undefined, corpus: undefined });
+    expect(seen.limit).toBe(50);
+  });
+});
