@@ -212,7 +212,6 @@ describe('deliverEscalationReplyOnce', () => {
       'Bao says: here is the synthesized answer.',
       { ok: true, problems: [] },
     );
-    // never posts the PM's raw answer text directly
     expect(sendFixedReply.mock.calls[0]?.[1]).not.toContain('raw PM answer');
   });
 
@@ -336,5 +335,159 @@ describe('deliverEscalationReplyOnce', () => {
     expect(sendFixedReply).toHaveBeenCalled();
     const [, postedText] = sendFixedReply.mock.calls[0] as [unknown, string];
     expect(postedText).toMatch(/Babo/);
+  });
+});
+
+// cm:why a sibling describe rather than more cases in the one above: that callback is at the 150-line function budget, and the authority rules are their own subject (ISS-987 criteria 25-27)
+describe('deliverEscalationReplyOnce turn authority', () => {
+  beforeEach(() => {
+    updateReturning.mockReset();
+    selectLimit.mockReset();
+    findConnectionById.mockReset();
+    decryptConnectionSecrets.mockReset();
+    screenStakeholderReply.mockReset();
+    sendFixedReply.mockReset();
+    rocketChatPersona.mockClear();
+    runExternalChatTurn.mockReset();
+    buildProjectToolset.mockClear();
+    buildChatToolContext.mockClear();
+  });
+
+  it('runs a direct-room synthesis as the speaker the escalation stored', async () => {
+    updateReturning.mockResolvedValue([{ id: 'session-1' }]);
+    findConnectionById.mockResolvedValue({ config: { serverUrl: 'https://chat.example.co' } });
+    decryptConnectionSecrets.mockReturnValue({ authToken: 'tok', userId: 'bot-1' });
+    mockRouteResolution();
+    runExternalChatTurn.mockResolvedValue({
+      sessionId: 'bao-session',
+      reply: 'Logged it as a draft issue.',
+      toolCalls: [{ name: 'forge_issues', arguments: '{"action":"create"}' }],
+    });
+    screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
+
+    await deliverEscalationReplyOnce(
+      makeSession({
+        metadata: {
+          escalation: {
+            connectionId: 'conn-1',
+            rid: 'room-1',
+            tmid: null,
+            botName: 'Babo',
+            askedByUsername: 'alice',
+            question: 'How does X work?',
+            shape: 'direct',
+            principalUserId: 'speaker-user-9',
+            deliveredAt: null,
+          },
+        },
+        messages: [
+          {
+            type: 'assistant',
+            content:
+              '```json\n{"answer": "found a gap", "issueProposal": {"title": "T", "description": "D", "reason": "R"}}\n```',
+          },
+        ],
+      }),
+    );
+
+    expect(buildChatToolContext).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'speaker-user-9' }),
+    );
+  });
+
+  it('runs no synthesis turn for a direct-room escalation that stored no speaker', async () => {
+    updateReturning.mockResolvedValue([{ id: 'session-1' }]);
+    findConnectionById.mockResolvedValue({ config: { serverUrl: 'https://chat.example.co' } });
+    decryptConnectionSecrets.mockReturnValue({ authToken: 'tok', userId: 'bot-1' });
+    mockRouteResolution();
+
+    await deliverEscalationReplyOnce(
+      makeSession({
+        metadata: {
+          escalation: {
+            connectionId: 'conn-1',
+            rid: 'room-1',
+            tmid: null,
+            botName: 'Babo',
+            askedByUsername: 'alice',
+            question: 'How does X work?',
+            shape: 'direct',
+            deliveredAt: null,
+          },
+        },
+        messages: [{ type: 'assistant', content: '```json\n{"answer": "found a gap"}\n```' }],
+      }),
+    );
+
+    expect(runExternalChatTurn).not.toHaveBeenCalled();
+    expect(buildChatToolContext).not.toHaveBeenCalled();
+  });
+
+  it('posts the fixed fallback for a direct-room escalation that stored no speaker', async () => {
+    updateReturning.mockResolvedValue([{ id: 'session-1' }]);
+    findConnectionById.mockResolvedValue({ config: { serverUrl: 'https://chat.example.co' } });
+    decryptConnectionSecrets.mockReturnValue({ authToken: 'tok', userId: 'bot-1' });
+    mockRouteResolution();
+
+    await deliverEscalationReplyOnce(
+      makeSession({
+        metadata: {
+          escalation: {
+            connectionId: 'conn-1',
+            rid: 'room-1',
+            tmid: null,
+            botName: 'Babo',
+            askedByUsername: 'alice',
+            question: 'How does X work?',
+            shape: 'direct',
+            deliveredAt: null,
+          },
+        },
+        messages: [{ type: 'assistant', content: '```json\n{"answer": "found a gap"}\n```' }],
+      }),
+    );
+
+    expect(sendFixedReply).toHaveBeenCalled();
+  });
+
+  it('leaves a group-room escalation on the organization creator', async () => {
+    updateReturning.mockResolvedValue([{ id: 'session-1' }]);
+    findConnectionById.mockResolvedValue({ config: { serverUrl: 'https://chat.example.co' } });
+    decryptConnectionSecrets.mockReturnValue({ authToken: 'tok', userId: 'bot-1' });
+    mockRouteResolution();
+    runExternalChatTurn.mockResolvedValue({
+      sessionId: 'bao-session',
+      reply: 'Logged it.',
+      toolCalls: [{ name: 'forge_issues', arguments: '{"action":"create"}' }],
+    });
+    screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
+
+    await deliverEscalationReplyOnce(
+      makeSession({
+        metadata: {
+          escalation: {
+            connectionId: 'conn-1',
+            rid: 'room-1',
+            tmid: null,
+            botName: 'Babo',
+            askedByUsername: 'alice',
+            question: 'How does X work?',
+            shape: 'group',
+            deliveredAt: null,
+          },
+        },
+        messages: [
+          {
+            type: 'assistant',
+            content:
+              '```json\n{"answer": "found a gap", "issueProposal": {"title": "T", "description": "D", "reason": "R"}}\n```',
+          },
+        ],
+      }),
+    );
+
+    expect(buildChatToolContext).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'owner-1' }),
+    );
   });
 });

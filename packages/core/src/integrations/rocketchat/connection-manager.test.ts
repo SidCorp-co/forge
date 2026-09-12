@@ -1,11 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+/**
+ * The ISS-675 escalation wiring, the ISS-727 answer-mode routing and the image
+ * path, all through `handle()`. The room-shape suites moved to
+ * `connection-manager-shapes.test.ts` when this file reached the size budget.
+ *
+ * Heavy dependencies (registry/embeddings graph, RC REST/DDP) are stubbed so
+ * this stays a fast, hermetic unit suite; `handle()` is private, invoked via a
+ * loose cast (TS `private` is compile-time only).
+ */
 
-// Unit tests for the ISS-675 escalation wiring inside `handle()` — the escalate
-// tool call must short-circuit the normal verify/reply path with the right
-// fixed reply, and dedup must not spawn a second concurrent escalation. Heavy
-// dependencies (registry/embeddings graph, RC REST/DDP) are stubbed so this
-// stays a fast, hermetic unit suite; `handle()` is private, invoked via a
-// loose cast (TS `private` is compile-time only).
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -73,10 +76,40 @@ vi.mock('../store.js', () => ({
   listBindingsForConnection: vi.fn(async () => []),
 }));
 
+const resolveSpeaker = vi.fn();
+vi.mock('../../assistant/identity/speaker-link.js', () => ({
+  resolveSpeaker: (...args: unknown[]) => resolveSpeaker(...args),
+  unlinkedMessage: (ref: { externalId: string }) => `UNLINKED:${ref.externalId}:link-yourself-here`,
+}));
+
+vi.mock('../../assistant/identity/directory.js', () => ({
+  namespaceFromServerUrl: (url: string) => (url.includes('broken') ? null : 'chat.example.co'),
+}));
+
+const buildChatToolContext = vi.fn((..._args: unknown[]) => ({
+  principal: {},
+  projectSlug: 'proj',
+}));
+vi.mock('../../assistant/tools/principal.js', () => ({
+  buildChatToolContext: (...args: unknown[]) => buildChatToolContext(...args),
+}));
+
+const resolveRoomShape = vi.fn();
+vi.mock('./room-shape.js', () => ({
+  resolveRoomShape: (...args: unknown[]) => resolveRoomShape(...args),
+  roomShapeFromType: (t: string) => (t === 'd' ? 'direct' : 'group'),
+}));
+
 const { rocketChatManager } = await import('./connection-manager.js');
 
 interface Loose {
-  handle(ac: unknown, route: unknown, m: unknown, connectionId: string): Promise<void>;
+  handle(
+    ac: unknown,
+    route: unknown,
+    m: unknown,
+    connectionId: string,
+    shape: 'direct' | 'group',
+  ): Promise<void>;
 }
 const handle = (rocketChatManager as unknown as Loose).handle.bind(rocketChatManager);
 
@@ -138,7 +171,7 @@ describe('connection-manager escalation wiring', () => {
     startEscalation.mockResolvedValue({ started: true, sessionId: 'escalation-session-1' });
 
     const ac = makeAc();
-    await handle(ac, ROUTE, MESSAGE, 'conn-1');
+    await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
 
     expect(startEscalation).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -166,7 +199,7 @@ describe('connection-manager escalation wiring', () => {
     startEscalation.mockResolvedValue({ started: false, reason: 'deduped' });
 
     const ac = makeAc();
-    await handle(ac, ROUTE, MESSAGE, 'conn-1');
+    await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
 
     expect(ac.client.sendMessage).toHaveBeenCalledWith('room-1', 'DEDUP:Babo', undefined);
   });
@@ -183,7 +216,7 @@ describe('connection-manager escalation wiring', () => {
     startEscalation.mockResolvedValue({ started: false, reason: 'no-device' });
 
     const ac = makeAc();
-    await handle(ac, ROUTE, MESSAGE, 'conn-1');
+    await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
 
     expect(ac.client.sendMessage).toHaveBeenCalledWith('room-1', 'NO_DEVICE:Babo', undefined);
   });
@@ -200,7 +233,7 @@ describe('connection-manager escalation wiring', () => {
     startEscalation.mockResolvedValue({ started: false, reason: 'dispatch-failed' });
 
     const ac = makeAc();
-    await handle(ac, ROUTE, MESSAGE, 'conn-1');
+    await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
 
     expect(ac.client.sendMessage).not.toHaveBeenCalled();
   });
@@ -216,7 +249,7 @@ describe('connection-manager escalation wiring', () => {
     });
 
     const ac = makeAc();
-    await handle(ac, ROUTE, MESSAGE, 'conn-1');
+    await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
 
     expect(startEscalation).not.toHaveBeenCalled();
     expect(screenStakeholderReply).toHaveBeenCalled();
@@ -244,7 +277,7 @@ describe('connection-manager ISS-727 answer-mode routing', () => {
     startAgentChat.mockResolvedValue({ started: true, sessionId: 'agent-session-1' });
 
     const ac = makeAc();
-    await handle(ac, ROUTE, MESSAGE, 'conn-1');
+    await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
 
     expect(startAgentChat).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -271,7 +304,7 @@ describe('connection-manager ISS-727 answer-mode routing', () => {
     startAgentChat.mockResolvedValue({ started: false, reason: 'deduped' });
 
     const ac = makeAc();
-    await handle(ac, ROUTE, MESSAGE, 'conn-1');
+    await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
 
     expect(ac.client.sendMessage).toHaveBeenCalledWith('room-1', 'AGENT_DEDUP:Babo', undefined);
   });
@@ -283,7 +316,7 @@ describe('connection-manager ISS-727 answer-mode routing', () => {
     startAgentChat.mockResolvedValue({ started: false, reason: 'no-device' });
 
     const ac = makeAc();
-    await handle(ac, ROUTE, MESSAGE, 'conn-1');
+    await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
 
     expect(ac.client.sendMessage).toHaveBeenCalledWith('room-1', 'AGENT_NO_DEVICE:Babo', undefined);
   });
@@ -295,7 +328,7 @@ describe('connection-manager ISS-727 answer-mode routing', () => {
     startAgentChat.mockResolvedValue({ started: false, reason: 'dispatch-failed' });
 
     const ac = makeAc();
-    await handle(ac, ROUTE, MESSAGE, 'conn-1');
+    await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
 
     expect(ac.client.sendMessage).not.toHaveBeenCalled();
   });
@@ -312,7 +345,7 @@ describe('connection-manager ISS-727 answer-mode routing', () => {
     });
 
     const ac = makeAc();
-    await handle(ac, ROUTE, MESSAGE, 'conn-1');
+    await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
 
     expect(startAgentChat).not.toHaveBeenCalled();
     expect(runExternalChatTurn).toHaveBeenCalled();
@@ -332,7 +365,7 @@ describe('connection-manager ISS-727 answer-mode routing', () => {
     });
 
     const ac = makeAc();
-    await handle(ac, ROUTE, MESSAGE, 'conn-1');
+    await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
 
     expect(startAgentChat).not.toHaveBeenCalled();
     expect(runExternalChatTurn).toHaveBeenCalled();
@@ -369,7 +402,7 @@ describe('connection-manager image handling', () => {
 
   it('shows the model the bytes of the image posted in the room', async () => {
     fetchAttachmentBytes.mockResolvedValue(Buffer.from('PNG'));
-    await handle(makeAc(), ROUTE, { ...MESSAGE, images: [IMAGE] }, 'conn-1');
+    await handle(makeAc(), ROUTE, { ...MESSAGE, images: [IMAGE] }, 'conn-1', 'group');
 
     expect(turnArgs().images).toEqual([{ ...IMAGE, dataBase64: 'UE5H' }]);
     expect(Buffer.from(turnArgs().images[0]?.dataBase64 ?? '', 'base64').toString()).toBe('PNG');
@@ -377,7 +410,7 @@ describe('connection-manager image handling', () => {
 
   it('fetches the image with the bot credential, not anonymously', async () => {
     fetchAttachmentBytes.mockResolvedValue(Buffer.from('PNG'));
-    await handle(makeAc(), ROUTE, { ...MESSAGE, images: [IMAGE] }, 'conn-1');
+    await handle(makeAc(), ROUTE, { ...MESSAGE, images: [IMAGE] }, 'conn-1', 'group');
 
     const [auth, ref, cap] = fetchAttachmentBytes.mock.calls[0] as [
       { authToken: string; userId: string; serverUrl: string },
@@ -393,7 +426,7 @@ describe('connection-manager image handling', () => {
   it('still answers the question when the image cannot be fetched', async () => {
     fetchAttachmentBytes.mockResolvedValue(null);
     const ac = makeAc();
-    await handle(ac, ROUTE, { ...MESSAGE, images: [IMAGE] }, 'conn-1');
+    await handle(ac, ROUTE, { ...MESSAGE, images: [IMAGE] }, 'conn-1', 'group');
 
     expect(turnArgs().images).toEqual([]);
     const [rid, text] = ac.client.sendMessage.mock.calls[0] as [string, string];
@@ -403,13 +436,13 @@ describe('connection-manager image handling', () => {
 
   it('offers a resolver that re-reads an image from an earlier turn', async () => {
     fetchAttachmentBytes.mockResolvedValue(Buffer.from('OLD'));
-    await handle(makeAc(), ROUTE, MESSAGE, 'conn-1');
+    await handle(makeAc(), ROUTE, MESSAGE, 'conn-1', 'group');
 
     expect(await turnArgs().resolveImage(IMAGE)).toBe('T0xE');
   });
 
   it('downloads nothing for a plain message with no images', async () => {
-    await handle(makeAc(), ROUTE, MESSAGE, 'conn-1');
+    await handle(makeAc(), ROUTE, MESSAGE, 'conn-1', 'group');
 
     expect(fetchAttachmentBytes.mock.calls).toEqual([]);
     expect(turnArgs().images).toEqual([]);

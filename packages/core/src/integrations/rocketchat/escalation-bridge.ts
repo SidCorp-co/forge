@@ -126,6 +126,15 @@ async function synthesizeViaBao(
 ): Promise<{ text: string; proof: ReplySendProof }> {
   const route = await resolveEscalationRoute(session.projectId);
   if (!route) return { text: ESCALATION_FALLBACK_REPLY(meta.botName), proof: FIXED_REPLY_CONSTANT };
+  // cm:guard a direct room whose stored principal is missing REFUSES the synthesis instead of falling through to the organization's creator: this turn can file an issue, and a DM's single human is the only authority the room grants (ISS-987). The honest fallback is already the no-route answer, so the refusal costs the room a synthesis and never an answer.
+  if (meta.shape === 'direct' && !meta.principalUserId) {
+    logger.error(
+      { sessionId: session.id, rid: meta.rid },
+      'rocketchat.escalation: direct room stored no speaker principal; refusing synthesis',
+    );
+    return { text: ESCALATION_FALLBACK_REPLY(meta.botName), proof: FIXED_REPLY_CONSTANT };
+  }
+  const principalUserId = meta.principalUserId ?? route.principalUserId;
 
   const persona = rocketChatPersona(route.name, meta.askedByUsername, {
     projectSlug: route.slug,
@@ -136,7 +145,7 @@ async function synthesizeViaBao(
   const tools = payload.issueProposal
     ? buildProjectToolset(
         buildChatToolContext({
-          userId: route.principalUserId,
+          userId: principalUserId,
           projectId: session.projectId,
           projectSlug: route.slug,
         }),

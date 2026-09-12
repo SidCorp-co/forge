@@ -85,8 +85,10 @@ export interface FastTurnInputs {
   resolveImage: ImageResolver;
 }
 
+// cm:guard the principal is the TURN's and never the route's: a direct room's turn runs as the person who spoke (ISS-987), and the route carries the organization's creator, so reading `opts.route.principalUserId` here again would quietly restore the creator for every DM. The field is off the route shape for that reason rather than merely unused.
 export async function prepareFastTurn(opts: {
-  route: { principalUserId: string; projectId: string; projectSlug: string };
+  route: { projectId: string; projectSlug: string };
+  principalUserId: string;
   restAuth: RocketChatRestAuth;
   rid: string;
   images: readonly RocketChatImageRef[];
@@ -94,7 +96,7 @@ export async function prepareFastTurn(opts: {
 }): Promise<FastTurnInputs> {
   const images = await downloadTurnImages(opts.restAuth, opts.images);
   const ctx = buildChatToolContext({
-    userId: opts.route.principalUserId,
+    userId: opts.principalUserId,
     projectId: opts.route.projectId,
     projectSlug: opts.route.projectSlug,
   });

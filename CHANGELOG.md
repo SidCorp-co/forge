@@ -93,6 +93,25 @@
 
 ### Added
 
+- **A Rocket.Chat direct message is answered without being addressed by name, and a thread is its
+  own conversation.** The bot used to treat every room as one shape, which cost two things. A
+  person alone in a direct room with it was ignored unless they typed the bot's own name at it —
+  the mention rule, which exists to gate noise and cost in a busy channel, applied where there is
+  no noise to gate. And two side conversations opened in one channel shared a single chat session,
+  so each read the other's turns back as its own history: the reply was coherent prose about the
+  wrong conversation, which is precisely the failure a thread is opened to avoid. A message is now
+  recognised as a direct, a group or a thread message before anything downstream reads it. A direct
+  room answers every real message; a group room still requires the mention, byte-identically to
+  before; and each thread carries its own conversation, in all three of the paths that hold one —
+  including the `agent` answer mode, where a second thread's mention was not merely blurred into
+  the room's history but dropped outright as a duplicate. A direct room's turn now also runs as the
+  person who spoke, resolved through the speaker map ISS-977 shipped, and tells them how to link
+  their account when it resolves to nobody rather than answering them with someone else's read
+  access. A group room deliberately keeps the organization's creator: a channel has many speakers
+  and no single authority, and what a channel binding should grant is a decision left open. A room
+  whose type cannot be read is refused by name rather than guessed at, because a wrong guess routes
+  a private conversation into a channel's buffer. ISS-987.
+
 - **The chat tool catalog now has a price, and it is re-derivable rather than quoted.**
   `pnpm --filter @forge/core measure:catalog-cost` builds the live catalog through the same call the
   chat routes make, serializes it by calling `toRequestBody` itself so what is counted is what the

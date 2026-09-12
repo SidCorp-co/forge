@@ -237,9 +237,31 @@ export async function fetchBotRooms(auth: RocketChatRestAuth): Promise<RocketCha
   return rooms.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** rid → {name, type}; a room's name/type never change in practice, and the
- *  permalink builder runs on every mention. Bounded by the rooms the bot is in. */
+/** installation+rid → {name, type}; a room's name/type never change in practice,
+ *  and the permalink builder runs on every mention. Bounded by the rooms the bot
+ *  is in. */
+// cm:guard keyed by the server as well as the room: a Rocket.Chat room id is unique only within one installation, so a rid-only key lets one server's room name build the other's permalink (same rule as `assistant_speaker_links.external_namespace`).
 const roomInfoByRid = new Map<string, { name: string; type: string }>();
+
+function roomCacheKey(auth: RocketChatRestAuth, rid: string): string {
+  return `${auth.serverUrl.replace(/\/+$/, '')} ${rid}`;
+}
+
+/**
+ * A room's own `t` — `d` direct, `p` private group, `c` channel. Separate from
+ * {@link buildMessagePermalink}'s read of the same call because that one wants a
+ * name too and gives up without one, which a direct room usually has none of.
+ */
+// cm:edge contract -> packages/core/src/integrations/rocketchat/room-shape.ts — `t`'s three values are mapped to the shapes there; a value this returns that the mapper does not know refuses the message rather than defaulting
+export async function fetchRoomType(auth: RocketChatRestAuth, rid: string): Promise<string | null> {
+  const cached = roomInfoByRid.get(roomCacheKey(auth, rid));
+  if (cached) return cached.type;
+  const body = await rcGet(auth, 'rooms.info', { roomId: rid });
+  const room = (body as { room?: { name?: string; t?: string } } | null)?.room;
+  if (typeof room?.t !== 'string' || room.t.length === 0) return null;
+  if (room.name) roomInfoByRid.set(roomCacheKey(auth, rid), { name: room.name, type: room.t });
+  return room.t;
+}
 
 /**
  * Build a web permalink to a message in a room (`…/channel/<name>?msg=<id>`
@@ -252,13 +274,13 @@ export async function buildMessagePermalink(
   rid: string,
   messageId: string,
 ): Promise<string | null> {
-  let info = roomInfoByRid.get(rid);
+  let info = roomInfoByRid.get(roomCacheKey(auth, rid));
   if (!info) {
     const body = await rcGet(auth, 'rooms.info', { roomId: rid });
     const room = (body as { room?: { name?: string; t?: string } } | null)?.room;
     if (!room?.name || typeof room.t !== 'string') return null;
     info = { name: room.name, type: room.t };
-    roomInfoByRid.set(rid, info);
+    roomInfoByRid.set(roomCacheKey(auth, rid), info);
   }
   const segment = info.type === 'p' ? 'group' : info.type === 'd' ? 'direct' : 'channel';
   return `${auth.serverUrl.replace(/\/+$/, '')}/${segment}/${info.name}?msg=${messageId}`;

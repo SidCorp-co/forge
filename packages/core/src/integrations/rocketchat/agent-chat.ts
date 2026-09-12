@@ -5,6 +5,7 @@
  * `agent-chat-bridge.ts`. Differs from `escalation.ts` only in prompt shape
  * and dedup marker.
  */
+// cm:ignore CM013 — every frozen comment in this file is an `i18n-allow` lint pragma; deleting one to pay the drain would break the language gate instead of cleaning prose.
 // cm:guard this module never posts to the room itself — the bridge is the only path its output reaches a channel
 
 import { eq } from 'drizzle-orm';
@@ -34,7 +35,7 @@ export const AGENT_CHAT_ACK = (botName: string): string =>
   `${botName} đang xử lý câu hỏi này qua trợ lý đầy đủ, lát nữa quay lại trả lời bạn nhé.`; // i18n-allow: user-facing channel reply
 
 export const AGENT_CHAT_DEDUP_REPLY = (botName: string): string =>
-  `${botName} vẫn đang xử lý câu hỏi trước đó cho phòng này, chờ thêm chút nhé.`; // i18n-allow: user-facing channel reply
+  `${botName} vẫn đang xử lý câu hỏi trước đó trong cuộc trò chuyện này, chờ thêm chút nhé.`; // i18n-allow: user-facing channel reply
 
 export const AGENT_CHAT_NO_DEVICE_REPLY = (botName: string): string =>
   `Xin lỗi, hiện không có runner nào sẵn sàng để ${botName} trả lời đầy đủ câu hỏi này — bạn thử lại sau ít phút nhé.`; // i18n-allow: user-facing channel reply
@@ -61,8 +62,12 @@ export type StartAgentChatResult =
   | { started: true; sessionId: string }
   | { started: false; reason: 'deduped' | 'no-device' | 'dispatch-failed' };
 
-export function hasInFlightAgentChat(projectId: string, rid: string): Promise<boolean> {
-  return hasInFlightRoomSession(projectId, rid, 'agentChat');
+export function hasInFlightAgentChat(
+  projectId: string,
+  rid: string,
+  tmid?: string | null | undefined,
+): Promise<boolean> {
+  return hasInFlightRoomSession(projectId, rid, 'agentChat', tmid);
 }
 
 // cm:guard the prompt must keep telling the session its reply is delivered VERBATIM — there is no synthesis turn downstream to reshape it, unlike escalation
@@ -94,7 +99,7 @@ export function buildAgentChatPrompt(args: {
 
 // cm:guard on a dispatch throw the session MUST be marked failed via applyKernelTransition — that fires the completion bridge like any other terminal writer, which is the only reason the room still gets one honest fallback
 export async function startAgentChat(args: StartAgentChatArgs): Promise<StartAgentChatResult> {
-  if (await hasInFlightAgentChat(args.projectId, args.rid)) {
+  if (await hasInFlightAgentChat(args.projectId, args.rid, args.tmid)) {
     return { started: false, reason: 'deduped' };
   }
 

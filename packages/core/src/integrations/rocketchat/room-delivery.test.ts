@@ -92,7 +92,35 @@ describe('readRoomReplyMeta', () => {
       botName: 'Babo',
       askedByUsername: '',
       question: '',
+      shape: null,
+      principalUserId: null,
       deliveredAt: null,
     });
+  });
+
+  // cm:why null and not a default: a `direct` row whose principal reads as the organization's creator is the substitution ISS-987's authority rule exists to refuse, so an absent field has to stay distinguishable from a present one
+  it('reads the shape and the stored speaker back when the row carries them', () => {
+    const meta = readRoomReplyMeta(
+      {
+        agentChat: {
+          connectionId: 'c',
+          rid: 'r',
+          botName: 'Babo',
+          shape: 'direct',
+          principalUserId: 'speaker-user-9',
+        },
+      },
+      'agentChat',
+    );
+    expect(meta?.shape).toBe('direct');
+    expect(meta?.principalUserId).toBe('speaker-user-9');
+  });
+
+  it('refuses a shape it does not know rather than carrying it through', () => {
+    const meta = readRoomReplyMeta(
+      { agentChat: { connectionId: 'c', rid: 'r', botName: 'Babo', shape: 'thread' } },
+      'agentChat',
+    );
+    expect(meta?.shape).toBeNull();
   });
 });
