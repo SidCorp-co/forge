@@ -80,7 +80,27 @@ describe("StatusEdit, once the exits have answered", () => {
     openPicker("dropped");
     await screen.findByText(/re-file instead/);
     expect(labels()).toHaveLength(1);
-    expect(screen.getByRole("menuitem")).toBeDisabled();
+    expect(screen.getByRole("menuitem")).toHaveAttribute("aria-disabled", "true");
+  });
+
+  // cm:guard focus MUST enter the panel on a rung whose every row is inert — the panel owns the key handler, so a menu that leaves focus on the trigger cannot be escaped and never announces what it opened to say. Plant it by asserting the trigger is NOT the active element (ISS-982)
+  it("puts focus on the inert row, and Escape still closes the menu", async () => {
+    get.mockResolvedValue(ANSWERED);
+    openPicker("dropped");
+    const rowItem = await screen.findByRole("menuitem");
+    expect(document.activeElement).toBe(rowItem);
+    fireEvent.keyDown(rowItem, { key: "Escape" });
+    expect(screen.queryByRole("menuitem")).toBeNull();
+  });
+
+  it("does nothing when an inert row is activated", async () => {
+    const onTransition = vi.fn();
+    get.mockResolvedValue(ANSWERED);
+    wrap(<StatusEdit status="dropped" onTransition={onTransition} />);
+    fireEvent.click(screen.getByLabelText("Change status (currently dropped)"));
+    fireEvent.click(await screen.findByRole("menuitem"));
+    expect(onTransition).not.toHaveBeenCalled();
+    expect(screen.getByRole("menuitem")).toBeInTheDocument();
   });
 
   it("puts the forward rung first and the discards last", async () => {
@@ -119,7 +139,7 @@ describe("StatusEdit, before the exits have answered", () => {
     get.mockReturnValue(new Promise(() => {}));
     openPicker("open");
     expect(labels()).toEqual(["Loading status moves…"]);
-    expect(screen.getByRole("menuitem")).toBeDisabled();
+    expect(screen.getByRole("menuitem")).toHaveAttribute("aria-disabled", "true");
   });
 
   // cm:guard assert the LOADING line first and the failure line after it: a case that only waits for the failure text passes just as well against code that shows it while the read is still in flight, which is the substitution ISS-982's criteria 12 and 14 were split apart to catch
@@ -147,29 +167,33 @@ describe("BulkActionBar", () => {
     return () => screen.getByRole("button", { name: /Set status/ });
   }
 
+  // cm:guard every one of the three refusals is asserted as RENDERED TEXT and as the button's accessible description — a `title` assertion passes against a reason no keyboard or touch user can reach, which is the shape this control shipped in (ISS-982)
+  const describedBy = (el: HTMLElement) =>
+    document.getElementById(el.getAttribute("aria-describedby") ?? "")?.textContent;
+
   it("disables Set status while the exits are unread, saying so", () => {
     get.mockReturnValue(new Promise(() => {}));
     const btn = bulk([row({ status: "open" })]);
     expect(btn()).toBeDisabled();
-    expect(btn()).toHaveAttribute("title", "Loading the status moves…");
+    expect(screen.getByText("Loading the status moves…")).toBeInTheDocument();
+    expect(describedBy(btn())).toBe("Loading the status moves…");
   });
 
   it("disables Set status once the read has failed, saying so", async () => {
     get.mockRejectedValue(new Error("offline"));
     const btn = bulk([row({ status: "open" })]);
-    await vi.waitFor(() => expect(btn()).toHaveAttribute("title", "Couldn't load the status moves"));
+    await screen.findByText("Couldn't load the status moves");
+    expect(btn()).toBeDisabled();
+    expect(describedBy(btn())).toBe("Couldn't load the status moves");
   });
 
   // cm:guard the two disabled reasons must stay distinct: one says come back in a moment, the other says re-pick the selection
   it("names the empty intersection differently from an unread read", async () => {
     get.mockResolvedValue(ANSWERED);
     const btn = bulk([row({ status: "dropped" }), row({ id: "i2", status: "open" })]);
-    await vi.waitFor(() =>
-      expect(btn()).toHaveAttribute(
-        "title",
-        "No status change is valid for every selected issue",
-      ),
-    );
+    await screen.findByText("No status change is valid for every selected issue");
+    expect(describedBy(btn())).toBe("No status change is valid for every selected issue");
+    expect(screen.queryByText("Loading the status moves…")).toBeNull();
   });
 
   it("offers the intersection once the exits have answered", async () => {

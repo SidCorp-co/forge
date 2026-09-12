@@ -8,11 +8,11 @@
 // Set-status offers only `bulkAllowedStatuses()` — the intersection, across the
 // whole selection, of the exits core declares for each row's rung — so a bulk
 // pick can't mass-409 (mirrors the per-row ISS-308 E1 guard). The control is
-// disabled, with the reason in its title, both when that intersection is empty
-// and while the exits themselves are unread. Priority has no state-machine
-// constraint, so all five values are always offered.
+// disabled, with the reason rendered beside it, both when that intersection is
+// empty and while the exits themselves are unread. Priority has no
+// state-machine constraint, so all five values are always offered.
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Button, Menu, type MenuItem } from "@/design";
 import { bulkAllowedStatuses, priorityLabel, transitionLabels } from "../derive";
 import { useStatusLabeller } from "../vocabulary";
@@ -51,6 +51,7 @@ export function BulkActionBar({
   const statusLabel = useStatusLabeller();
   const { exits, isPending: exitsPending, isError: exitsFailed } = useStatusExits();
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
+  const statusReasonId = useId();
   const count = selectedRows.length;
   if (count === 0) return null;
 
@@ -84,15 +85,21 @@ export function BulkActionBar({
         <span className="fg-body-sm font-medium text-fg">{count} selected</span>
         <span className="ml-auto flex flex-wrap items-center gap-2">
           {statusUnavailable || noCommonStatus ? (
-            <Button
-              variant="secondary"
-              size="sm"
-              icon="chevronDown"
-              disabled
-              title={statusUnavailable ?? "No status change is valid for every selected issue"}
-            >
-              Set status
-            </Button>
+            // cm:guard the reason is RENDERED, never only a `title` — a disabled button takes no focus, so a tooltip is unreachable by keyboard and absent on touch, and the three states this control refuses in are told apart by nothing else
+            <span className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="chevronDown"
+                disabled
+                aria-describedby={statusReasonId}
+              >
+                Set status
+              </Button>
+              <span id={statusReasonId} role="status" className="fg-body-sm text-subtle">
+                {statusUnavailable ?? "No status change is valid for every selected issue"}
+              </span>
+            </span>
           ) : (
             <Menu
               align="right"

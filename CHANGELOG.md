@@ -3852,11 +3852,13 @@
   each group set apart — and the retired three are not on it at all. A closed issue offers
   "Reopened" and nothing else; a dropped one says plainly that it is re-filed rather than reopened.
   Where two moves would have read as the same word, the menu now says which is which. Selecting
-  several issues and setting their status together follows the same rule, and says whether the
-  control is off because the selection has nothing in common or because the moves are still
-  loading. The list itself is no longer kept in two places: it is the one the pipeline has always
-  used, now read straight from it, so the menu and the system cannot disagree about what is
-  possible.
+  several issues and setting their status together follows the same rule, and says so in words on
+  the bar — whether the control is off because the selection has nothing in common or because the
+  moves are still loading — rather than in a tooltip a keyboard or touch user never sees. The list
+  itself is no longer kept in two places: it is the one the pipeline declares, now read straight
+  from it, so the menu cannot drift from what the pipeline says a stage does next. The API stays
+  deliberately permissive: it still accepts moves the menu no longer offers, so nothing already
+  automated against it breaks.
 
 
 - **An issue may rest at `confirmed` or `approved` again, and a master can see it there.**

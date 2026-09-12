@@ -9,7 +9,9 @@ export interface MenuItem {
   icon?: IconName;
   onSelect?: () => void;
   danger?: boolean;
-  /** Inert row — a state the menu is reporting, not a choice. Skipped by ↑/↓. */
+  /** Inert row — a state the menu is reporting, not a choice. Skipped by ↑/↓,
+   *  but still focusable, because a menu whose every row is inert has nothing
+   *  else to put focus on. */
   disabled?: boolean;
   /** Draw a rule above this item, separating it from the group before it. */
   separatorBefore?: boolean;
@@ -30,6 +32,9 @@ export interface MenuProps {
 
 /** Generic dropdown menu (row actions, overflow ⋯). Keyboard: ↑/↓ move, Enter
     select, Esc close (returns focus to trigger). Closes on outside click. */
+// cm:guard inertness is `aria-disabled` and NEVER the native `disabled` attribute — a natively disabled button cannot be focused, and every read of it here decides where focus goes
+const isInert = (el: HTMLButtonElement) => el.getAttribute("aria-disabled") === "true";
+
 export function Menu({
   trigger,
   items,
@@ -43,9 +48,11 @@ export function Menu({
   const triggerRef = useRef<HTMLSpanElement>(null);
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
+  // cm:guard focus MUST land inside the panel even when every row is inert — the panel is what carries `onKeyDown`, so a menu that leaves focus on the trigger cannot be closed with Escape and never announces the row it opened to report (ISS-982 narrowed the status menu to rungs that have no exits at all)
   useEffect(() => {
     if (!open) return;
-    itemRefs.current.find((el) => el && !el.disabled)?.focus();
+    const rows = itemRefs.current.filter(Boolean) as HTMLButtonElement[];
+    (rows.find((el) => !isInert(el)) ?? rows[0])?.focus();
     const onDoc = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
@@ -58,9 +65,19 @@ export function Menu({
     if (focusTrigger) (triggerRef.current?.firstElementChild as HTMLElement)?.focus?.();
   };
 
+  // cm:guard Escape and Tab are handled BEFORE the arrow keys ask what is focusable — they must work on an all-inert menu, which is the one a reader is most likely to want out of
   const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      close();
+      return;
+    }
+    if (e.key === "Tab") {
+      close(false);
+      return;
+    }
     const focusables = (itemRefs.current.filter(Boolean) as HTMLButtonElement[]).filter(
-      (el) => !el.disabled,
+      (el) => !isInert(el),
     );
     if (focusables.length === 0) return;
     const idx = focusables.indexOf(document.activeElement as HTMLButtonElement);
@@ -70,11 +87,6 @@ export function Menu({
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       focusables[(idx - 1 + focusables.length) % focusables.length]?.focus();
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      close();
-    } else if (e.key === "Tab") {
-      close(false);
     }
   };
 
@@ -107,8 +119,8 @@ export function Menu({
               ref={(el) => {
                 itemRefs.current[i] = el;
               }}
+              type="button"
               role="menuitem"
-              disabled={it.disabled}
               aria-disabled={it.disabled}
               onClick={() => {
                 if (it.disabled) return;
@@ -119,7 +131,7 @@ export function Menu({
                 "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13.5px] transition-colors focus-visible:outline-none",
                 it.separatorBefore && "mt-1 border-line border-t pt-2.5",
                 it.disabled
-                  ? "cursor-default text-subtle"
+                  ? "cursor-default text-subtle focus-visible:bg-hover"
                   : "hover:bg-hover focus-visible:bg-hover",
                 it.danger ? "text-[color:var(--red-600)]" : it.disabled ? "" : "text-fg",
               )}
