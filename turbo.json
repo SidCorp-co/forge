@@ -1,6 +1,7 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "globalDependencies": ["**/.env", "**/.env.local", "**/.env.*.local"],
+  "globalPassThroughEnv": ["FORGE_API", "FORGE_PAT"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

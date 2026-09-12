@@ -13,6 +13,7 @@
     "test:changed": "node scripts/test-changed.mjs",
     "typecheck": "turbo run typecheck",
     "verify": "node scripts/verify.mjs",
+    "check:memory": "node scripts/check-memory-anchors.mjs",
     "clean": "turbo run clean && rm -rf node_modules",
     "postinstall": "git config core.hooksPath .githooks 2>/dev/null || true"
   },
