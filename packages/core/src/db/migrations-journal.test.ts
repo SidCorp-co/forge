@@ -42,6 +42,17 @@ describe('drizzle migration journal', () => {
     expect(outOfOrder).toEqual([]);
   });
 
+  // cm:guard the NEWEST entry is held to the exact arithmetic, not merely to "greater than" — a real timestamp is always greater than the entry before it and still lands below the highest `created_at` in a database that has been migrated from another branch, which is the shape drizzle skips silently and forever (ISS-807)
+  it('has a head entry at exactly the previous maximum plus one day', () => {
+    const journal = JSON.parse(readFileSync(journalPath, 'utf8')) as {
+      entries: Array<{ idx: number; when: number; tag: string }>;
+    };
+    const entries = [...journal.entries].sort((a, b) => a.idx - b.idx);
+    const head = entries[entries.length - 1];
+    const prevMax = Math.max(...entries.slice(0, -1).map((e) => e.when));
+    expect(`${head?.tag}: ${head?.when}`).toBe(`${head?.tag}: ${prevMax + 86_400_000}`);
+  });
+
   // cm:guard a broken chain does not fail a deploy — it fails `drizzle-kit generate`, so the only symptom is that nobody can author a migration and everyone hand-writes SQL instead. Measured 2026-08-18: `0173` had forked off `0168`, `generate` had been dead long enough that 8 migrations were hand-authored after it, and the forked head snapshot was missing three columns the database already had — so the first `generate` that ever succeeded again would have emitted `ADD COLUMN` for all three and failed on the live database.
   // cm:guard snapshots exist for only 36 of the 182 journal entries, which is FINE and must stay allowed: drizzle-kit chains the snapshot FILES, not the journal, so a hand-authored migration legitimately adds no snapshot. Assert the links between the files that exist — never that a file exists per journal entry.
   it('has an unbroken snapshot chain', () => {

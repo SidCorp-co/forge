@@ -10,6 +10,7 @@ import * as memoryRevisionsSchema from './schema-memory-revisions.js';
 import * as questionsSchema from './schema-questions.js';
 import * as runLedgerSchema from './schema-run-ledger.js';
 import * as sessionInboxSchema from './schema-session-inbox.js';
+import * as speakerLinksSchema from './schema-speaker-links.js';
 import * as unauditedTransitionsSchema from './schema-unaudited-transitions.js';
 
 const schema = {
@@ -22,6 +23,7 @@ const schema = {
   ...memoryChunksSchema,
   ...memoryRevisionsSchema,
   ...runLedgerSchema,
+  ...speakerLinksSchema,
   ...unauditedTransitionsSchema,
 };
 
