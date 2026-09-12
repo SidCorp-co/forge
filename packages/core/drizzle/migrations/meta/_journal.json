@@ -1618,6 +1618,20 @@
       "when": 1793491200000,
       "tag": "0232_talented_mongu",
       "breakpoints": true
+    },
+    {
+      "idx": 233,
+      "version": "7",
+      "when": 1793577600000,
+      "tag": "0233_silly_doctor_faustus",
+      "breakpoints": true
+    },
+    {
+      "idx": 234,
+      "version": "7",
+      "when": 1793664000000,
+      "tag": "0234_illegal_wasp",
+      "breakpoints": true
     }
   ]
 }

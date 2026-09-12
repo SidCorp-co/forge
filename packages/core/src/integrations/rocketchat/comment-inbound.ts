@@ -8,12 +8,12 @@
 // Every path here consumes the message. A registered thread never falls through
 // to the conversation handler, refusals included.
 
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, lte, or } from 'drizzle-orm';
 import { namespaceFromServerUrl } from '../../assistant/identity/directory.js';
 import { resolveSpeaker, unlinkedMessage } from '../../assistant/identity/speaker-link.js';
 import { insertComment } from '../../comments/service.js';
 import { db } from '../../db/client.js';
-import { issues } from '../../db/schema.js';
+import { comments, issues } from '../../db/schema.js';
 import { rocketchatCommentMirrors } from '../../db/schema-rocketchat.js';
 import { logger } from '../../logger.js';
 import type { HooksBus } from '../../pipeline/hooks.js';
@@ -187,29 +187,116 @@ export async function handleIssueThreadReply(args: {
   }
 
   if (!written.announcementOwed) return;
-  // cm:guard the stamp is a CLAIM taken BEFORE the emit, not a receipt written after it: two redeliveries racing both read `announced_at IS NULL`, and both emitting puts two answers into the session `answer-resume.ts` sends to — the agent acts twice on one sentence, which the body names as the reason this lane is idempotent at all. The conditional update makes exactly one of them the announcer (ISS-981 criteria 10, 11, 12).
-  // cm:guard this trades the other way deliberately: a process dying between the claim and the emit loses that announcement, so the parked session is not woken by this reply and the comment waits on the issue where a person can see it. Announcing twice is an agent acting on its own echo; announcing zero times is a message somebody has to notice — the second is the recoverable one.
+  await announceComment(
+    { commentId: written.commentId, issueId: issue.id, projectId: issue.projectId },
+    { userId: resolution.userId, body: m.text },
+    args.hooks,
+  );
+}
+
+const ANNOUNCE_LEASE_MS = 60_000;
+
+/**
+ * Take the announcement of this comment, if nobody holds it and nobody made it.
+ */
+// cm:guard the stamp is a LEASE taken before the emit, never a receipt written after it: two redeliveries racing both read `announced_at IS NULL`, and both emitting puts two answers into the session `answer-resume.ts` sends to. The conditional update makes exactly one of them the announcer for the length of the lease (ISS-981 criteria 10, 11).
+// cm:guard and it EXPIRES, which is the other half: an announcer that died before emitting would otherwise leave the comment marked as somebody's for ever, and the reply the parked session was waiting for is never heard. The duplicate a lapsed lease can cause is absorbed by the consumer — `session-send.ts` deduplicates on `(kind, intentId)`, which is this comment id (ISS-981 criterion 12).
+async function claimAnnouncement(commentId: string, now: Date): Promise<boolean> {
   const claimed = await db
     .update(rocketchatCommentMirrors)
-    .set({ announcedAt: new Date() })
+    .set({ announceLeaseUntil: new Date(now.getTime() + ANNOUNCE_LEASE_MS) })
     .where(
       and(
-        eq(rocketchatCommentMirrors.commentId, written.commentId),
+        eq(rocketchatCommentMirrors.commentId, commentId),
         isNull(rocketchatCommentMirrors.announcedAt),
+        or(
+          isNull(rocketchatCommentMirrors.announceLeaseUntil),
+          lte(rocketchatCommentMirrors.announceLeaseUntil, now),
+        ),
       ),
     )
     .returning({ commentId: rocketchatCommentMirrors.commentId });
-  if (claimed.length === 0) return;
+  return claimed.length > 0;
+}
 
-  await args.hooks.emit('commentCreated', {
-    issueId: issue.id,
-    projectId: issue.projectId,
+interface AnnounceTarget {
+  commentId: string;
+  issueId: string;
+  projectId: string;
+}
+
+// cm:guard `announced_at` is written only AFTER the emit returned, which is what makes an interrupted announcement owed rather than done: written first, a process dying in between loses the announcement permanently, and the redelivery reads the stamp and stays silent (ISS-981 criterion 12).
+async function announceComment(
+  target: AnnounceTarget,
+  speaker: { userId: string; body: string },
+  hooks: HooksBus,
+  now: Date = new Date(),
+): Promise<void> {
+  if (!(await claimAnnouncement(target.commentId, now))) return;
+  await hooks.emit('commentCreated', {
+    issueId: target.issueId,
+    projectId: target.projectId,
     // cm:guard a `user` actor, because that is what `answer-resume.ts` requires before it will carry the words into the parked session — a device actor there is how the driver's own question would resume the issue it just parked.
-    actor: { type: 'user', id: resolution.userId, agency: 'human' },
-    commentId: written.commentId,
-    body: m.text,
+    actor: { type: 'user', id: speaker.userId, agency: 'human' },
+    commentId: target.commentId,
+    body: speaker.body,
     parentId: null,
   });
+  await db
+    .update(rocketchatCommentMirrors)
+    .set({ announcedAt: new Date() })
+    .where(eq(rocketchatCommentMirrors.commentId, target.commentId));
+}
+
+/**
+ * Announce every mirrored comment whose announcement nobody completed.
+ */
+// cm:guard the obligation is DERIVED from the row the comment was written with, so nothing extra had to be inserted for it to be findable: an inbound mirror row with no `announced_at` is a comment the bus was never told about, whatever killed the announcer. Called from the mirror's own tick, so the retry costs no second timer (ISS-981 criterion 12).
+export async function drainOwedAnnouncements(
+  hooks: HooksBus,
+  now: Date = new Date(),
+): Promise<number> {
+  const rows = await db
+    .select({
+      commentId: rocketchatCommentMirrors.commentId,
+      issueId: comments.issueId,
+      projectId: issues.projectId,
+      authorId: comments.authorId,
+      body: comments.body,
+    })
+    .from(rocketchatCommentMirrors)
+    .innerJoin(comments, eq(comments.id, rocketchatCommentMirrors.commentId))
+    .innerJoin(issues, eq(issues.id, comments.issueId))
+    .where(
+      and(
+        eq(rocketchatCommentMirrors.direction, 'inbound'),
+        isNull(rocketchatCommentMirrors.announcedAt),
+        or(
+          isNull(rocketchatCommentMirrors.announceLeaseUntil),
+          lte(rocketchatCommentMirrors.announceLeaseUntil, now),
+        ),
+      ),
+    );
+
+  let announced = 0;
+  for (const row of rows) {
+    if (!row.authorId) continue;
+    try {
+      await announceComment(
+        { commentId: row.commentId, issueId: row.issueId, projectId: row.projectId },
+        { userId: row.authorId, body: row.body },
+        hooks,
+        now,
+      );
+      announced += 1;
+    } catch (err) {
+      logger.error(
+        { err, commentId: row.commentId },
+        'rocketchat.comment-inbound: announcing a mirrored comment failed',
+      );
+    }
+  }
+  return announced;
 }
 
 /**

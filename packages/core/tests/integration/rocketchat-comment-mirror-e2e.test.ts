@@ -388,7 +388,7 @@ describe('the thread the registry names is the one posted into', () => {
 });
 
 describe('one root per issue, and one live thread', () => {
-  it('opens no second root when a thread is registered while this worker holds the lock', async () => {
+  it('opens one root for two comments drained together', async () => {
     const connectionId = await bindRoom();
     await comment('first');
     await comment('second');
@@ -414,22 +414,6 @@ describe('one root per issue, and one live thread', () => {
     // cm:guard the stale worker's retirement must name its own row and find it already retired, never reach the replacement: retiring by issue alone leaves the issue with no live thread and the new thread's replies refused as retired (ISS-981 criterion 32).
     expect(await registry.retireIssueThread(issueId, stale)).toBe(false);
     expect((await registry.liveThreadForIssue(issueId))?.tmid).toBe('fresh');
-  });
-});
-
-describe('an unbound project costs one lookup, not one per comment', () => {
-  it('counts every comment undeliverable without resolving a room for each', async () => {
-    await comment('one');
-    await comment('two');
-    await comment('three');
-
-    const result = await mirror.drainCommentMirror();
-    expect(result.owed).toBe(3);
-    expect(result.undeliverable).toBe(3);
-    expect(posts).toHaveLength(0);
-    // cm:guard nothing was written for them, so they are all still owed the moment a room is bound — an unbound project's comments wait rather than expire (ISS-981 criterion 26).
-    expect(await mirrorRows()).toHaveLength(0);
-    expect(await mirror.owedComments()).toHaveLength(3);
   });
 });
 

@@ -105,8 +105,10 @@ export const rocketchatCommentMirrors = pgTable(
     // cm:guard `claimed` is written BEFORE the post and is not a completion, so a claim whose process died is retried once its `next_attempt_at` passes rather than being read as a delivery. Outbound is at-least-once by that choice: the claim counts attempts, never Rocket.Chat's acceptance, so a post the server took whose mark never landed is re-posted. What that buys is that no comment is ever lost, which is the direction a conversation has to fail in; it ends when the outbound door can carry a client-supplied message id (ISS-981).
     status: text('status', { enum: commentMirrorStatuses }).notNull(),
     externalMessageId: text('external_message_id'),
-    // cm:guard an INBOUND row's announcement is a second obligation, not a detail of the write: the comment and its idempotency row commit together, but `commentCreated` is emitted after that commit, and a process dying in between leaves a comment nobody was told about — the parked session the reply was meant to wake never hears it, and the redelivery sees the row and stays silent. Null means still owed (ISS-981 criterion 12).
+    // cm:guard an INBOUND row's announcement is a second obligation, not a detail of the write: the comment and its idempotency row commit together, but `commentCreated` is emitted after that commit, and a process dying in between leaves a comment nobody was told about — the parked session the reply was meant to wake never hears it, and the redelivery sees the row and stays silent. Null means still owed, and the lease below is how it is retried (ISS-981 criterion 12).
     announcedAt: timestamp('announced_at', { withTimezone: true }),
+    // cm:guard the claim is a LEASE and not the announcement itself, which is what makes the emit at-least-once rather than at-most-once: an announcer that dies between claiming and emitting is released when this passes, and the drain announces the comment again. The consumer is idempotent on the comment id — `session-send.ts` deduplicates on `(kind, intentId)` and the fallback transition only matches an issue still parked — so a second emit costs nothing and a lost one costs the parked session the reply was written to wake (ISS-981 criterion 12).
+    announceLeaseUntil: timestamp('announce_lease_until', { withTimezone: true }),
     attempts: integer('attempts').notNull().default(0),
     lastError: text('last_error'),
     nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }),
@@ -129,3 +131,17 @@ export const rocketchatCommentMirrorState = pgTable(
   },
   (t) => [check('rcq_mirror_state_one_row_chk', sql`${t.only}`)],
 );
+
+// cm:guard this lease exists because the thing that must not happen twice is an HTTP POST to another host, and the exclusion therefore cannot be a transaction or an advisory lock: holding either across `sendFixedReply` parks a pooled connection on a remote server's latency, and ten of them starve a ten-wide pool while `idle_in_transaction_session_timeout` can kill the transaction after Rocket.Chat already accepted the root (ISS-981).
+// cm:guard it is claimed and COMMITTED before the post and deleted after the registration, so the window it covers is exactly the post. `expires_at` is what makes a claimer that died releasable — without it one crashed opener leaves an issue's comments undeliverable for ever, which is worse than the duplicate root the lease prevents (ISS-981 criterion 33).
+export const rocketchatThreadOpenings = pgTable('rocketchat_thread_openings', {
+  issueId: uuid('issue_id')
+    .primaryKey()
+    .references(() => issues.id, { onDelete: 'cascade' }),
+  connectionId: uuid('connection_id')
+    .notNull()
+    .references(() => integrationConnections.id, { onDelete: 'cascade' }),
+  rid: text('rid').notNull(),
+  claimedAt: timestamp('claimed_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+});

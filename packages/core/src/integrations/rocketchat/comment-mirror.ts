@@ -10,15 +10,17 @@
 // acceptance, so a post the server took whose mark never landed is posted again.
 // What that buys is that no comment is silently dropped.
 
-import { and, eq, gte, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { comments, issues } from '../../db/schema.js';
 import {
   rocketchatCommentMirrorState,
   rocketchatCommentMirrors,
+  rocketchatThreadOpenings,
 } from '../../db/schema-rocketchat.js';
 import { logger } from '../../logger.js';
 import type { HooksBus } from '../../pipeline/hooks.js';
+import { drainOwedAnnouncements } from './comment-inbound.js';
 import { threadRootText } from './comment-render.js';
 import { FIXED_REPLY_CONSTANT, sendFixedReply } from './outbound.js';
 import { type RoomBinding, roomForProject } from './question-delivery.js';
@@ -35,6 +37,14 @@ const RETRY_BACKOFF_MS = 60_000;
 // cm:guard the backoff is CAPPED, and the attempt count is what it feeds — never a limit on how many times a comment may be tried. A cap on attempts ends with the comment quietly ceasing to be owed while its room was merely unreachable, which is the loss this lane exists to prevent; only `delivered` and `refused` are terminal (ISS-981 criteria 22, 26).
 const MAX_BACKOFF_MS = 3_600_000;
 const DRAIN_INTERVAL_MS = 30_000;
+const OPENING_LEASE_MS = 60_000;
+// cm:guard the drain takes a BOUNDED slice per tick, and the bound is what keeps a backlog from becoming a single unbounded pass: an unbound project's comments stay owed for ever by design, so `owedComments` over a busy month is every one of them, materialised and walked every thirty seconds. What is left over is not lost — it is owed, and the next tick takes the next slice (ISS-981).
+const DRAIN_BATCH = 200;
+
+export interface OwedProject {
+  projectId: string;
+  owed: number;
+}
 
 export interface OwedComment {
   commentId: string;
@@ -60,9 +70,50 @@ export async function mirrorWatermark(): Promise<Date | null> {
  */
 // cm:guard bounded at the WATERMARK end only. A comment after it stays owed however long delivery takes and whichever connection ends up carrying it, because an obligation that expires with time is a comment lost in silence — which is the failure this whole lane exists to make impossible (ISS-981 criteria 22, 26, 32).
 // cm:guard an `inbound` mirror row excludes the comment, and that is the echo guard: a comment this mirror wrote FROM a room must never be posted back into it. The bot's own messages are dropped by `inbound-gate.ts`'s `own-message` branch, but that branch cannot see this direction, whose author is the mapped person rather than the bot (ISS-981 criteria 8, 9).
-export async function owedComments(now: Date = new Date()): Promise<OwedComment[]> {
+function owedWhere(since: Date, now: Date) {
+  return and(
+    gte(comments.createdAt, since),
+    or(
+      isNull(rocketchatCommentMirrors.commentId),
+      and(
+        eq(rocketchatCommentMirrors.direction, 'outbound'),
+        sql`${rocketchatCommentMirrors.status} not in ('delivered', 'refused')`,
+        or(
+          isNull(rocketchatCommentMirrors.nextAttemptAt),
+          lte(rocketchatCommentMirrors.nextAttemptAt, now),
+        ),
+      ),
+    ),
+  );
+}
+
+/**
+ * How much each project is owed, without reading a single comment body.
+ */
+// cm:guard the drain asks THIS first and reads bodies second, because an unbound project's comments are owed for ever by design: a project nobody has bound would otherwise fill every bounded slice with comments that cannot be posted, and starve the bound projects behind it for as long as the binding is missing (ISS-981).
+export async function owedProjects(now: Date = new Date()): Promise<OwedProject[]> {
   const since = await mirrorWatermark();
   if (!since) return [];
+  return db
+    .select({ projectId: issues.projectId, owed: sql<number>`count(*)::int` })
+    .from(comments)
+    .innerJoin(issues, eq(issues.id, comments.issueId))
+    .leftJoin(rocketchatCommentMirrors, eq(rocketchatCommentMirrors.commentId, comments.id))
+    .where(owedWhere(since, now))
+    .groupBy(issues.projectId);
+}
+
+export async function owedComments(
+  now: Date = new Date(),
+  projectIds?: string[],
+  limit = DRAIN_BATCH,
+): Promise<OwedComment[]> {
+  const since = await mirrorWatermark();
+  if (!since) return [];
+  if (projectIds && projectIds.length === 0) return [];
+  const scope = projectIds
+    ? and(owedWhere(since, now), inArray(issues.projectId, projectIds))
+    : owedWhere(since, now);
   const rows = await db
     .select({
       commentId: comments.id,
@@ -74,22 +125,10 @@ export async function owedComments(now: Date = new Date()): Promise<OwedComment[
     .from(comments)
     .innerJoin(issues, eq(issues.id, comments.issueId))
     .leftJoin(rocketchatCommentMirrors, eq(rocketchatCommentMirrors.commentId, comments.id))
-    .where(
-      and(
-        gte(comments.createdAt, since),
-        or(
-          isNull(rocketchatCommentMirrors.commentId),
-          and(
-            eq(rocketchatCommentMirrors.direction, 'outbound'),
-            sql`${rocketchatCommentMirrors.status} not in ('delivered', 'refused')`,
-            or(
-              isNull(rocketchatCommentMirrors.nextAttemptAt),
-              lte(rocketchatCommentMirrors.nextAttemptAt, now),
-            ),
-          ),
-        ),
-      ),
-    );
+    .where(scope)
+    // cm:guard OLDEST first, which is what makes the bounded slice a queue rather than a sample: ordered any other way a steady stream of new comments keeps the oldest one out of every batch, and the comment that waits longest is the one nobody is ever told about (ISS-981 criterion 26).
+    .orderBy(comments.createdAt)
+    .limit(limit);
   return rows.map((r) => ({
     commentId: r.commentId,
     issueId: r.issueId,
@@ -173,24 +212,42 @@ interface ThreadFailure {
 /**
  * The thread this issue's comments go to in this room, opening one if needed.
  */
-// cm:guard the whole check-and-open runs under a per-issue advisory lock, which is what makes one root per issue TRUE rather than merely likely: without it two instances delivering an issue's first two comments each find no thread, each post a root, and the loser's root stays in the room unregistered — a thread a person can reply in whose replies resolve to nothing (ISS-981 criterion 33).
-// cm:guard the lock is transaction-scoped, so it is released when this transaction ends and a process that dies holding it blocks nobody — the same property `drop-cascade.ts` and `events-routes.ts` rely on.
-// cm:guard a thread whose room is no longer this project's is RETIRED by identity before a replacement opens, which is what the partial unique on the live issue row requires; retiring by issue alone would let a stale worker retire the replacement another just registered (ISS-981 criterion 32).
+// cm:guard NO database transaction and NO lock is held across the post: `sendFixedReply` is an HTTP call to another host, the pool is ten connections wide and `idle_in_transaction_session_timeout` is set, so ten issues opening their first thread against a slow Rocket.Chat would hold ten pooled transactions and starve every other query — and a transaction Postgres then kills mid-flight loses the registration for a root the server already accepted (ISS-981).
+// cm:guard what keeps one root per issue is therefore the LEASE below, committed before the post and released after the registration, plus the partial unique and the read-back behind it. Two workers claiming different comments on the same issue in the same tick is the ordinary case, not the rare one — the drain derives the same owed set on every instance (ISS-981 criterion 33).
+// cm:guard a thread whose room is no longer this project's is RETIRED by identity before a replacement opens; retiring by issue alone would let a stale worker retire the replacement another just registered (ISS-981 criterion 32).
 async function threadForIssueIn(
   issueId: string,
   room: { connectionId: string; rid: string },
   auth: RoomPostAuth,
+  now: Date,
 ): Promise<IssueThread | ThreadFailure> {
-  return db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${issueId}))`);
+  const existing = await liveThreadForIssue(issueId);
+  if (existing && existing.connectionId === room.connectionId && existing.rid === room.rid) {
+    return existing;
+  }
 
-    const existing = await liveThreadForIssue(issueId, tx);
-    if (existing && existing.connectionId === room.connectionId && existing.rid === room.rid) {
-      return existing;
-    }
-    if (existing) await retireIssueThread(issueId, existing, tx);
+  const lease = {
+    issueId,
+    connectionId: room.connectionId,
+    rid: room.rid,
+    claimedAt: now,
+    expiresAt: new Date(now.getTime() + OPENING_LEASE_MS),
+  };
+  const held = await db
+    .insert(rocketchatThreadOpenings)
+    .values(lease)
+    .onConflictDoUpdate({
+      target: rocketchatThreadOpenings.issueId,
+      set: lease,
+      setWhere: lte(rocketchatThreadOpenings.expiresAt, now),
+    })
+    .returning({ issueId: rocketchatThreadOpenings.issueId });
+  if (held.length === 0) return { failure: "another instance is opening this issue's thread" };
 
-    const [issue] = await tx
+  try {
+    if (existing) await retireIssueThread(issueId, existing);
+
+    const [issue] = await db
       .select({ issSeq: issues.issSeq, title: issues.title })
       .from(issues)
       .where(eq(issues.id, issueId))
@@ -205,10 +262,19 @@ async function threadForIssueIn(
     if (!root.messageId) return { failure: 'the root post named no message id' };
 
     const ref = { connectionId: room.connectionId, rid: room.rid, tmid: root.messageId };
-    await registerThread({ issueId }, ref, tx);
-    // cm:guard the row is READ BACK rather than the local ref returned: the insert absorbs a conflict silently, so a registration that lost to a writer outside this lock would otherwise send the comment into a root no row names (ISS-981 criterion 33).
-    return (await liveThreadForIssue(issueId, tx)) ?? ref;
-  });
+    await registerThread({ issueId }, ref);
+    // cm:guard the row is READ BACK rather than the local ref returned: the insert absorbs a conflict silently, so a worker whose root lost a race the lease could not cover — an expired lease, a rolled-back peer — would otherwise send its comment into a root no row names, and a reply left there resolves to nothing (ISS-981 criterion 33).
+    return (await liveThreadForIssue(issueId)) ?? ref;
+  } finally {
+    await db
+      .delete(rocketchatThreadOpenings)
+      .where(
+        and(
+          eq(rocketchatThreadOpenings.issueId, issueId),
+          eq(rocketchatThreadOpenings.claimedAt, lease.claimedAt),
+        ),
+      );
+  }
 }
 
 export type CommentDeliveryOutcome = 'delivered' | 'failed' | 'undeliverable' | 'held' | 'refused';
@@ -249,7 +315,7 @@ export async function deliverOwedComment(
   }
 
   try {
-    const thread = await threadForIssueIn(owed.issueId, room, auth);
+    const thread = await threadForIssueIn(owed.issueId, room, auth, now);
     if ('failure' in thread) {
       await noteFailure(owed.commentId, thread.failure, now);
       return 'failed';
@@ -279,44 +345,56 @@ export interface CommentMirrorResult {
   undeliverable: number;
   held: number;
   refused: number;
+  deferred: number;
 }
 
-// cm:guard the room is resolved ONCE per project and an unbound project's comments are counted without being visited: a project nobody has bound keeps every comment owed for ever, which is right, and re-deriving a binding lookup per comment every thirty seconds for ever is what that correctness would otherwise cost (ISS-981).
+// cm:guard the room is resolved ONCE per project and BEFORE any comment body is read: the projects come from a grouped count, the unbound ones are counted undeliverable without being visited, and only the bound ones' comments are fetched — bounded, oldest first. Re-deriving a binding lookup per comment every thirty seconds is what the naive shape costs; materialising an unbound project's whole backlog to discard it is what it costs twice (ISS-981).
 export async function drainCommentMirror(now: Date = new Date()): Promise<CommentMirrorResult> {
-  const owed = await owedComments(now);
+  const projects = await owedProjects(now);
   const result: CommentMirrorResult = {
-    owed: owed.length,
+    owed: projects.reduce((n, p) => n + p.owed, 0),
     delivered: 0,
     failed: 0,
     undeliverable: 0,
     held: 0,
     refused: 0,
+    deferred: 0,
   };
-  const rooms = new Map<string, RoomBinding | null>();
-  for (const comment of owed) {
-    let room = rooms.get(comment.projectId);
-    if (room === undefined) {
-      room = await roomForProject(comment.projectId);
-      rooms.set(comment.projectId, room);
-    }
-    if (!room) {
-      result.undeliverable += 1;
-      continue;
-    }
+  const rooms = new Map<string, RoomBinding>();
+  for (const project of projects) {
+    const room = await roomForProject(project.projectId);
+    if (room) rooms.set(project.projectId, room);
+    else result.undeliverable += project.owed;
+  }
+
+  const batch = await owedComments(now, [...rooms.keys()]);
+  for (const comment of batch) {
+    const room = rooms.get(comment.projectId);
+    if (!room) continue;
     result[await deliverOwedComment(comment, now, room)] += 1;
   }
+  // cm:guard what the slice left behind is DEFERRED, never dropped: it is still derived as owed, so the next tick takes it. The count is here so a backlog that never shrinks is visible in the drain line rather than inferred from a room going quiet (ISS-981).
+  result.deferred = result.owed - result.undeliverable - batch.length;
   return result;
 }
 
 // cm:guard module-level and shared by the timer AND the hook nudge, never one flag per loop: two drains overlapping re-derive the same owed comments and post one twice, because a comment is not marked until its post returns.
 let draining = false;
 
-function runDrain(): void {
+// cm:guard the INBOUND announcements are drained on this same tick, and both halves run whatever the other does: an outbound room that is unreachable must not stop a comment already written from reaching the parked session it was written to wake, which is the direction that carries a person's words into a run (ISS-981 criterion 12).
+function runDrain(bus: HooksBus): void {
   if (draining) return;
   draining = true;
-  void drainCommentMirror()
-    .then((r) => {
-      if (r.owed > 0) logger.info({ ...r }, 'rocketchat: comment mirror drain');
+  void Promise.allSettled([drainCommentMirror(), drainOwedAnnouncements(bus)])
+    .then(([out, announced]) => {
+      if (out.status === 'rejected')
+        logger.error({ err: out.reason }, 'rocketchat: comment mirror drain failed');
+      else if (out.value.owed > 0)
+        logger.info({ ...out.value }, 'rocketchat: comment mirror drain');
+      if (announced.status === 'rejected')
+        logger.error({ err: announced.reason }, 'rocketchat: announcement drain failed');
+      else if (announced.value > 0)
+        logger.info({ announced: announced.value }, 'rocketchat: mirrored comments announced');
     })
     .catch((err) => logger.error({ err }, 'rocketchat: comment mirror drain failed'))
     .finally(() => {
@@ -327,9 +405,9 @@ function runDrain(): void {
 /**
  * Run the drain on a timer until the returned stopper is called.
  */
-export function startCommentMirrorLoop(alive: () => boolean): () => void {
+export function startCommentMirrorLoop(alive: () => boolean, bus: HooksBus): () => void {
   const tick = (): void => {
-    if (alive()) runDrain();
+    if (alive()) runDrain(bus);
   };
   const timer = setInterval(tick, DRAIN_INTERVAL_MS);
   timer.unref?.();
@@ -345,7 +423,7 @@ export function registerCommentMirror(bus: HooksBus): void {
   bus.on(
     'commentCreated',
     async () => {
-      runDrain();
+      runDrain(bus);
     },
     { name: 'rocketchat-comment-mirror' },
   );

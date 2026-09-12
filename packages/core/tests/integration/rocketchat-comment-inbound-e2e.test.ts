@@ -304,3 +304,79 @@ describe('an announcement is owed until it is made', () => {
     expect(again.announcementOwed).toBe(false);
   });
 });
+
+describe('an unannounced comment is announced by the drain', () => {
+  function recordingBus() {
+    const seen: Array<{ commentId: string; actor: string }> = [];
+    return {
+      seen,
+      bus: {
+        emit: async (topic: string, p: { commentId: string; actor: { type: string } }) => {
+          if (topic === 'commentCreated')
+            seen.push({ commentId: p.commentId, actor: p.actor.type });
+        },
+      } as unknown as import('../../src/pipeline/hooks.js').HooksBus,
+    };
+  }
+
+  async function unannounced(externalMessageId: string): Promise<string> {
+    const connectionId = await bindRoom();
+    const written = await inbound.writeMirroredComment({
+      issueId,
+      authorId: ownerId,
+      connectionId,
+      externalMessageId,
+      body: 'nobody was told',
+    });
+    return written.commentId;
+  }
+
+  it('announces a comment whose announcer died before emitting', async () => {
+    const commentId = await unannounced('rc-drain');
+    const { seen, bus } = recordingBus();
+
+    expect(await inbound.drainOwedAnnouncements(bus)).toBe(1);
+    // cm:guard the actor must be `user` or `answer-resume.ts` returns early and the parked session is never woken — the whole point of announcing this at all (ISS-981 criteria 5, 12).
+    expect(seen).toEqual([{ commentId, actor: 'user' }]);
+
+    const [row] = await db
+      .select()
+      .from(rcSchema.rocketchatCommentMirrors)
+      .where(eq(rcSchema.rocketchatCommentMirrors.commentId, commentId));
+    expect(row?.announcedAt).not.toBeNull();
+  });
+
+  it('leaves an announced comment alone', async () => {
+    const commentId = await unannounced('rc-done');
+    await db
+      .update(rcSchema.rocketchatCommentMirrors)
+      .set({ announcedAt: new Date() })
+      .where(eq(rcSchema.rocketchatCommentMirrors.commentId, commentId));
+
+    const { seen, bus } = recordingBus();
+    expect(await inbound.drainOwedAnnouncements(bus)).toBe(0);
+    expect(seen).toEqual([]);
+  });
+
+  it('waits out a live lease and takes over an expired one', async () => {
+    const commentId = await unannounced('rc-leased');
+    await db
+      .update(rcSchema.rocketchatCommentMirrors)
+      .set({ announceLeaseUntil: new Date(Date.now() + 60_000) })
+      .where(eq(rcSchema.rocketchatCommentMirrors.commentId, commentId));
+
+    const live = recordingBus();
+    expect(await inbound.drainOwedAnnouncements(live.bus)).toBe(0);
+    expect(live.seen).toEqual([]);
+
+    await db
+      .update(rcSchema.rocketchatCommentMirrors)
+      .set({ announceLeaseUntil: new Date(Date.now() - 1_000) })
+      .where(eq(rcSchema.rocketchatCommentMirrors.commentId, commentId));
+
+    // cm:guard the lease EXPIRING is what makes the emit at-least-once: without it an announcer that died holding the claim leaves the comment unannounced for ever, and the reply the parked session was waiting for is never heard (ISS-981 criterion 12).
+    const after = recordingBus();
+    expect(await inbound.drainOwedAnnouncements(after.bus)).toBe(1);
+    expect(after.seen.map((e) => e.commentId)).toEqual([commentId]);
+  });
+});

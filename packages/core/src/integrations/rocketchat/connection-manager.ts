@@ -152,7 +152,7 @@ class RocketChatConnectionManager {
     // cm:why listen even with zero connections — the first-ever connect arrives as a NOTIFY from whichever instance served the HTTP request
     this.startReloadListener();
     this.stopQuestionDrain = startQuestionDrainLoop(() => this.started);
-    this.stopCommentMirror = startCommentMirrorLoop(() => this.started);
+    this.stopCommentMirror = startCommentMirrorLoop(() => this.started, hooks);
     const rows = await db
       .select()
       .from(integrationConnections)

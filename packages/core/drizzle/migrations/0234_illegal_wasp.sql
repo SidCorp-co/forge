@@ -1,0 +1,1 @@
+ALTER TABLE "rocketchat_comment_mirrors" ADD COLUMN "announce_lease_until" timestamp with time zone;
