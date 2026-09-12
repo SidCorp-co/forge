@@ -108,11 +108,16 @@ async function deliverToPark(issueId: string, commentId: string, body: string): 
 // cm:guard `blocker_kind = 'human'` and nothing wider. A machine or master-or-peer park carries an open question too and KEEPS its process, so it is `deliverToPark`'s to serve — claiming it here would silence the duplex send that works today.
 // cm:guard the WAITER row is the evidence, not the question alone: it names the device and run that will come back for the answer. An open question nobody registered against is a park with nothing on the other end, and returning true for it would hold the issue at the question status forever.
 // cm:guard a comment on a parked issue is NOT the answer, and this returning true is not a dead end for the human: `recommended` is mandatory on every question (criterion 14), so their route out is one click in the bucket, which reaches the box through the question row.
+// cm:guard the question is bound to its OWN `project_id` and not only to the issue it hangs off. The two columns are independent, so a row naming project A on an issue of project B is representable, and matching on `issue_id` alone would let such a row decide that another project's parked run may resume (ISS-989).
 export async function answerReachesAParkedRun(issueId: string): Promise<boolean> {
   const [row] = await db
     .select({ id: agentQuestions.id })
     .from(agentQuestions)
     .innerJoin(questionWaiters, eq(questionWaiters.questionId, agentQuestions.id))
+    .innerJoin(
+      issues,
+      and(eq(issues.id, agentQuestions.issueId), eq(issues.projectId, agentQuestions.projectId)),
+    )
     .where(
       and(
         eq(agentQuestions.issueId, issueId),

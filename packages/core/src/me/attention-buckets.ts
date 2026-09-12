@@ -25,6 +25,7 @@ import {
   reconcileRuns,
 } from '../db/schema.js';
 import { agentChannelCondition } from '../issues/creator.js';
+import { visibleProjectsWhere } from '../lib/authz.js';
 
 /**
  * Bucket criteria for `GET /me/attention` (ISS-665 — keep this comment in sync
@@ -35,7 +36,10 @@ import { agentChannelCondition } from '../issues/creator.js';
  *   needs the caller's action (`developed` awaiting review, `reopen` awaiting
  *   a fix). Self-clearing: driven by live `issues.status`.
  * - `awaitingInput`  — issues assigned to the caller blocked on a human
- *   (`waiting`, `needs_info`). Self-clearing: live `issues.status`. `on_hold`
+ *   (`waiting`, `needs_info`) ON A PROJECT THE CALLER HOLDS A ROLE ON —
+ *   ownership says the question is yours to answer, the project predicate says
+ *   you may see the project it is asked about, and the bucket owes both
+ *   (ISS-989). Self-clearing: live `issues.status`. `on_hold`
  *   is NOT here and adding it back is the defect ISS-970 fixed: it is a pause
  *   somebody CHOSE, not a question somebody is owed, and `cancel` parks with
  *   `parkIssue: true` by default (`pipeline/runs-control.ts`) so every
@@ -191,10 +195,12 @@ export function selectNeedsReview(userId: string): Promise<AttentionIssueRow[]> 
 
 // cm:guard the identifiers are written LITERALLY and the subquery is CORRELATED on purpose. Drizzle renders a column reference inside a raw `sql` template unqualified, which here would bind `issue_id` to the outer row and cost every issue the whole table's total; and a grouped subquery would need `groupBy`/`as`, which `attention-routes.test.ts`'s mock chain does not implement, so the unit lane would fail on a shape rather than on a claim.
 // cm:guard only `status='open'` costs anything: an answered or voided question holds no claim and no worktree, so counting it would rank a settled decision above a live one for as long as the row exists (ISS-964 criterion 19).
+// cm:guard `q.project_id = issues.project_id` as well as the issue, in BOTH this helper and `openQuestionColumn`: the two columns are independent, so a question row naming another project would otherwise supply this row's cost and — through the sibling helper — the `id` the screen opens (ISS-989).
 // cm:guard the `::int` is load-bearing now that this is SELECTED and not only ordered by: postgres `sum()` is numeric and this driver hands numerics back as STRINGS, so without the cast the reader gets "2" where it typed `number` — and `"10" < "9"` is true, so any client-side sort over these would rank ten below nine while every server-side order stayed correct.
 function openQuestionCost(column: string): SQL<number> {
   return sql<number>`coalesce((select sum(q.${sql.raw(column)}) from agent_questions q
-    where q.issue_id = issues.id and q.status = 'open'), 0)::int`;
+    where q.issue_id = issues.id and q.project_id = issues.project_id
+      and q.status = 'open'), 0)::int`;
 }
 
 // cm:guard cost FIRST and age only as the tie-break, in this order: `claims_held` denies a runner slot to every other issue, `workspaces_pinned` denies a checkout, `dependents` denies progress to issues that are merely waiting. Ordering by recency instead is what put a question costing nothing above one holding two claims since yesterday (ISS-964 criterion 19).
@@ -208,6 +214,9 @@ const AWAITING_COST_ORDER = [
 
 // cm:guard this bucket's row is WIDER than `issueFields` and the widening stops here: cost is meaningful only where somebody is waiting, so putting these on the shared shape would have every other bucket carry three zeros and a null. The same correlated-subquery form as the ordering, for the reason its own guard gives — a grouped subquery needs `groupBy`/`as`, which `attention-routes.test.ts`' mock chain does not implement, so the unit lane would fail on a shape rather than on a claim.
 // cm:guard the numbers are the ones the ORDER is computed from, read through the same `openQuestionCost` helper rather than restated: a reader shown a cost that does not match the rank is worse off than one shown no cost, because the queue then looks wrong rather than unexplained (ISS-964 criteria 19, 53).
+// cm:guard `ownedForAnswer` answers "is this yours to answer" and never "may you see this project", so the project predicate is a SECOND conjunct and not a substitute for it. Without it a person removed from the project AND from its org kept receiving that project's rows — title, status, wait cost, blocker kind — for as long as their user row existed (ISS-989).
+// cm:edge contract -> packages/core/src/lib/authz.ts#visibleProjectsWhere — the joins exist to feed that predicate and must stay keyed on the CALLER, or its `project_members.user_id IS NOT NULL` term reads as "this project has any member" and admits everything. Both tables are composite-PK'd on exactly these columns, which is what makes a LEFT JOIN here incapable of multiplying a row.
+// cm:guard a WHERE term and never a filter over the returned rows: `AWAITING_INPUT_CAP` is applied by the database, so a post-filter would hand a permitted caller a page shortened by other people's rows instead of a fenced one.
 export function selectAwaitingInput(userId: string): Promise<AttentionAwaitingRow[]> {
   return db
     .select({
@@ -220,7 +229,21 @@ export function selectAwaitingInput(userId: string): Promise<AttentionAwaitingRo
     })
     .from(issues)
     .innerJoin(projects, eq(projects.id, issues.projectId))
-    .where(and(ownedForAnswer(userId), inArray(issues.status, [...AWAITING_INPUT_STATUSES])))
+    .leftJoin(
+      projectMembers,
+      and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, userId)),
+    )
+    .leftJoin(
+      organizationMembers,
+      and(eq(organizationMembers.orgId, projects.orgId), eq(organizationMembers.userId, userId)),
+    )
+    .where(
+      and(
+        ownedForAnswer(userId),
+        inArray(issues.status, [...AWAITING_INPUT_STATUSES]),
+        ...visibleProjectsWhere(),
+      ),
+    )
     .orderBy(...AWAITING_COST_ORDER)
     .limit(AWAITING_INPUT_CAP) as Promise<AttentionAwaitingRow[]>;
 }
@@ -230,7 +253,8 @@ export function selectAwaitingInput(userId: string): Promise<AttentionAwaitingRo
 // cm:guard the identifiers are written LITERALLY and the subquery is CORRELATED, for the reason `openQuestionCost`'s own guard gives — drizzle renders a column reference inside a raw `sql` template unqualified, and a grouped subquery needs `groupBy`/`as`, which `attention-routes.test.ts`'s mock chain does not implement.
 function openQuestionColumn(column: string): SQL<string | null> {
   return sql<string | null>`(select q.${sql.raw(column)} from agent_questions q
-    where q.issue_id = issues.id and q.status = 'open'
+    where q.issue_id = issues.id and q.project_id = issues.project_id
+      and q.status = 'open'
     order by q.created_at desc, q.id desc limit 1)`;
 }
 
