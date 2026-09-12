@@ -136,30 +136,7 @@ speakerLinkProjectRoutes.post('/projects/:projectId/speaker-links', async (c) =>
     );
   }
 
-  const [existing] = await db
-    .select({ userId: assistantSpeakerLinks.userId })
-    .from(assistantSpeakerLinks)
-    .where(
-      and(
-        eq(assistantSpeakerLinks.source, profile.source),
-        eq(assistantSpeakerLinks.externalNamespace, profile.namespace),
-        eq(assistantSpeakerLinks.externalId, profile.externalId),
-      ),
-    )
-    .limit(1);
-  if (existing) {
-    return c.json(
-      {
-        code: 'SPEAKER_ALREADY_LINKED',
-        error:
-          existing.userId === userId
-            ? 'that speaker is already linked to you. Unlink it first if you mean to re-make the link.'
-            : 'that speaker is already linked to another Forge user. Whoever holds the link unlinks it before it can be re-made.',
-      },
-      409,
-    );
-  }
-
+  // cm:guard let the unique index decide, never a SELECT before the INSERT — two confirmations of one speaker both read no row, and the loser of a select-then-insert reaches the constraint as a 500 instead of the 409 this route documents
   const [row] = await db
     .insert(assistantSpeakerLinks)
     .values({
@@ -170,7 +147,31 @@ speakerLinkProjectRoutes.post('/projects/:projectId/speaker-links', async (c) =>
       userId,
       confirmedVia: 'channel_email_match',
     })
+    .onConflictDoNothing()
     .returning();
+  if (!row) {
+    const [held] = await db
+      .select({ userId: assistantSpeakerLinks.userId })
+      .from(assistantSpeakerLinks)
+      .where(
+        and(
+          eq(assistantSpeakerLinks.source, profile.source),
+          eq(assistantSpeakerLinks.externalNamespace, profile.namespace),
+          eq(assistantSpeakerLinks.externalId, profile.externalId),
+        ),
+      )
+      .limit(1);
+    return c.json(
+      {
+        code: 'SPEAKER_ALREADY_LINKED',
+        error:
+          held?.userId === userId
+            ? 'that speaker is already linked to you. Unlink it first if you mean to re-make the link.'
+            : 'that speaker is already linked to another Forge user. Whoever holds the link unlinks it before it can be re-made.',
+      },
+      409,
+    );
+  }
   return c.json({ link: row }, 201);
 });
 

@@ -374,6 +374,23 @@ describe('who may confirm (criteria 6, 7, 8, 9, 10, 11, 12)', () => {
     expect(await linkRowCount()).toBe(1);
   });
 
+  it('refuses the loser of two simultaneous confirmations, and stores one row', async () => {
+    directory.set(key(RC_A, 'rc-alice'), {
+      externalId: 'rc-alice',
+      username: 'alice.rc',
+      email: ctx.alice.email,
+    });
+    const [a, b] = await Promise.all([
+      confirm(ctx.projectA, ctx.alice, 'rc-alice'),
+      confirm(ctx.projectA, ctx.alice, 'rc-alice'),
+    ]);
+    const statuses = [a.status, b.status].sort();
+    expect(statuses).toEqual([201, 409]);
+    const refused = a.status === 409 ? a : b;
+    expect(refused.json.code).toBe('SPEAKER_ALREADY_LINKED');
+    expect(await linkRowCount()).toBe(1);
+  });
+
   it("lists the caller's own links and nobody else's", async () => {
     directory.set(key(RC_A, 'rc-alice'), {
       externalId: 'rc-alice',
