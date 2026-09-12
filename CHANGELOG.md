@@ -110,7 +110,12 @@
   exist. Figures the host could not measure are labelled as estimates and named as such, and the
   census says in its own output which grouping it could not produce before it prints the narrower one
   it can — `chat_logs` records `model` and no provider column — and a census that cannot run at all
-  is said and exits non-zero rather than being skipped past.
+  is said and exits non-zero rather than being skipped past. It runs with nothing configured: sizing
+  the catalog reaches the tool registry and therefore the validated environment, so the entry point
+  fills the three variables that have no default with inert placeholders, says on its own first line
+  which ones it filled, and reads the census database from `FORGE_CENSUS_DATABASE_URL` and nowhere
+  else — a measurement of a constant that demanded a production database to start would not be
+  re-runnable, which is the whole of what it is for.
 
 - **A decision a run parked on is now readable and answerable on the issue itself.** When an agent
   stops and asks, it writes a structured question: a prompt, a set of options, which one it

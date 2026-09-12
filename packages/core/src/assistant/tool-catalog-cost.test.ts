@@ -7,11 +7,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../config/env.js', () => ({
-  env: {
-    JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef',
-    NODE_ENV: 'test',
-    ANTHROPIC_API_URL: 'https://proxy.example/v1',
-  },
+  env: { JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef', NODE_ENV: 'test' },
 }));
 vi.mock('../db/client.js', () => ({ db: {} }));
 
@@ -87,6 +83,7 @@ describe('counting the catalog through the provider', () => {
   });
 
   it('counts against the base ANTHROPIC_API_URL names, not the vendor host', async () => {
+    vi.stubEnv('ANTHROPIC_API_URL', 'https://proxy.example/v1');
     const urls: string[] = [];
     const fetchImpl = vi.fn(async (url: string) => {
       urls.push(url);
@@ -97,6 +94,19 @@ describe('counting the catalog through the provider', () => {
       'https://proxy.example/v1/messages/count_tokens',
       'https://proxy.example/v1/messages/count_tokens',
     ]);
+    vi.unstubAllEnvs();
+  });
+
+  it('falls back to the vendor host that config/env.ts defaults to', async () => {
+    vi.stubEnv('ANTHROPIC_API_URL', undefined);
+    const urls: string[] = [];
+    const fetchImpl = vi.fn(async (url: string) => {
+      urls.push(url);
+      return new Response(JSON.stringify({ input_tokens: 1 }), { status: 200 });
+    }) as unknown as typeof fetch;
+    await countCatalogTokens([], { apiKey: 'k', fetchImpl });
+    expect(urls[0]).toBe('https://api.anthropic.com/v1/messages/count_tokens');
+    vi.unstubAllEnvs();
   });
 
   it('reads nothing out of a body that is not JSON at all', async () => {

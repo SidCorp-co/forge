@@ -27,7 +27,7 @@
     "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
     "build": "tsc -p tsconfig.build.json",
     "start": "node --env-file-if-exists=.env dist/index.js",
-    "measure:catalog-cost": "tsx --env-file-if-exists=.env src/assistant/tool-catalog-cost.ts",
+    "measure:catalog-cost": "tsx --env-file-if-exists=.env src/assistant/measure-catalog-cost.ts",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage --coverage.reporter=json --coverage.reportsDirectory=coverage/unit",
