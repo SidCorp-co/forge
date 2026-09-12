@@ -66,8 +66,9 @@ DB (in `packages/core`): `pnpm db:generate` · `pnpm db:migrate` · `pnpm db:stu
 
 Each gate sits in `ci-passed`'s `needs` **and** is named in its result loop, so a violation blocks
 the merge. **That, not this file, is why they hold.** All fifteen run from `pnpm verify`, and
-`verify --ci-parity` is itself a CI step: a `- run:` in `ci.yml` that `verify` neither runs nor
-declares fails the build, so the local command and the workflow cannot drift apart.
+`verify --ci-parity` is itself a CI step: a `- run:` in `.github/workflows/ci.yml` that `verify`
+neither runs nor declares fails the build, so the local command and the workflow cannot drift
+apart.
 
 Six axes — form (gated 4×), knowledge (gated 5×), relations, behaviour (gated 3×), language, record.
 Five of them own a property of the code; `record` owns `CHANGELOG.md`, the external record of what

@@ -29,6 +29,9 @@
     "core-chat-logs": [
       "packages/core/src/chat-logs/**"
     ],
+    "core-cli": [
+      "packages/core/src/cli/**"
+    ],
     "core-comments": [
       "packages/core/src/comments/**"
     ],

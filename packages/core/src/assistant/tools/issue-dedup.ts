@@ -12,6 +12,14 @@ const RECENT_ISSUES_LIMIT = 50;
 /** Score floor for a duplicate; ISS-61..64 was the motivating near-identical-title case. */
 const DUPLICATE_THRESHOLD = 0.72;
 
+/** What a door may set for itself. Absent is the chat door's own two values, so a caller that names neither is bit-identical to every call made before ISS-985. */
+export interface DuplicateDials {
+  /** Score floor a match has to clear. */
+  threshold?: number | undefined;
+  /** How many of the project's recent draft/open issues are measured. */
+  corpus?: number | undefined;
+}
+
 function tokenize(text: string): Set<string> {
   return new Set(
     text
@@ -45,10 +53,14 @@ export interface DuplicateMatch {
  * weighted heavier than description — it's the surface a repeat report is
  * most likely to echo verbatim. Fails OPEN on a DB error (returns null).
  */
+// cm:guard the two dials are the DOOR's, never the detector's: a door that wants a wider net or a longer corpus sets them here, and one that names neither gets the chat door's 0.72 over 50 rows unchanged — moving either default moves every door at once, which is the divergence per-door policy exists to stop
 export async function findDuplicateIssue(
   db: Db,
   args: { projectId: string; title: string; description: string },
+  dials: DuplicateDials = {},
 ): Promise<DuplicateMatch | null> {
+  const threshold = dials.threshold ?? DUPLICATE_THRESHOLD;
+  const corpus = dials.corpus ?? RECENT_ISSUES_LIMIT;
   let rows: Array<{ id: string; issSeq: number; title: string; description: string | null }>;
   try {
     rows = await db
@@ -61,7 +73,7 @@ export async function findDuplicateIssue(
       .from(issues)
       .where(and(eq(issues.projectId, args.projectId), inArray(issues.status, ['draft', 'open'])))
       .orderBy(desc(issues.createdAt))
-      .limit(RECENT_ISSUES_LIMIT);
+      .limit(corpus);
   } catch (err) {
     logger.warn({ err, projectId: args.projectId }, 'chat.issue-dedup: query failed; failing open');
     return null;
@@ -79,5 +91,5 @@ export async function findDuplicateIssue(
       best = { id: row.id, issSeq: row.issSeq, title: row.title };
     }
   }
-  return bestScore >= DUPLICATE_THRESHOLD ? best : null;
+  return bestScore >= threshold ? best : null;
 }
