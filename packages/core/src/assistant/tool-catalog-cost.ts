@@ -12,6 +12,8 @@
 
 import { pathToFileURL } from 'node:url';
 import postgres from 'postgres';
+import { env } from '../config/env.js';
+import { openAiCompatUrl } from '../lib/openai-compat-url.js';
 import { toRequestBody } from './providers/anthropic.js';
 import type { ChatTool } from './providers/types.js';
 import { buildChatToolContext } from './tools/principal.js';
@@ -128,16 +130,15 @@ export interface CountOptions {
   fetchImpl?: typeof fetch;
 }
 
+// cm:guard the base is `ANTHROPIC_API_URL` and never the vendor's own host — that variable is what points a deployment at a proxy (`config/env.ts`), so a hardcoded default would send this deployment's key to a host it was not issued for and count a path chat does not use (ISS-983)
 async function countRequest(
   tools: unknown[] | undefined,
   apiKey: string,
   opts: CountOptions,
 ): Promise<number | null> {
   const fetchImpl = opts.fetchImpl ?? fetch;
-  const base = (opts.baseUrl ?? 'https://api.anthropic.com')
-    .replace(/\/+$/, '')
-    .replace(/\/v1$/, '');
-  const res = await fetchImpl(`${base}/v1/messages/count_tokens`, {
+  const url = `${openAiCompatUrl(opts.baseUrl ?? env.ANTHROPIC_API_URL, 'messages')}/count_tokens`;
+  const res = await fetchImpl(url, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -151,7 +152,12 @@ async function countRequest(
     }),
   });
   if (!res.ok) return null;
-  const json = (await res.json()) as { input_tokens?: number };
+  let json: { input_tokens?: number };
+  try {
+    json = (await res.json()) as { input_tokens?: number };
+  } catch {
+    return null;
+  }
   return typeof json.input_tokens === 'number' ? json.input_tokens : null;
 }
 
