@@ -91,6 +91,16 @@ vi.mock('../../assistant/tools/principal.js', () => ({
   buildChatToolContext: (...args: unknown[]) => buildChatToolContext(...args),
 }));
 
+const loggerError = vi.fn();
+vi.mock('../../logger.js', () => ({
+  logger: {
+    info: vi.fn(),
+    debug: vi.fn(),
+    warn: vi.fn(),
+    error: (...args: unknown[]) => loggerError(...args),
+  },
+}));
+
 const resolveRoomShape = vi.fn();
 vi.mock('./room-shape.js', () => ({
   resolveRoomShape: (...args: unknown[]) => resolveRoomShape(...args),
@@ -360,6 +370,7 @@ describe('connection-manager routing order', () => {
     selectLimit.mockResolvedValue([{ agentConfig: null, repoPath: null }]);
     screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
     resolveRoomShape.mockResolvedValue('group');
+    loggerError.mockReset();
   });
 
   function connect(
@@ -433,5 +444,18 @@ describe('connection-manager routing order', () => {
     expect(runExternalChatTurn).not.toHaveBeenCalled();
     expect(ac.seenMessage).not.toHaveBeenCalled();
     expect(ac.client.sendMessage).not.toHaveBeenCalled();
+  });
+
+  // cm:why the room has to be IN the refusal, not merely absent from the reply: an unresolvable room is a fault somebody has to find, and a log line that does not say which room leaves them the whole fleet to search
+  it('names the room it could not resolve', async () => {
+    resolveRoomShape.mockResolvedValue(null);
+    connect(new Map([['room-1', ROUTE]]));
+
+    await routeMessage('conn-1', MESSAGE);
+
+    const [ctx, message] = loggerError.mock.calls[0] as [Record<string, unknown>, string];
+    expect(ctx.rid).toBe('room-1');
+    expect(ctx.msgId).toBe('msg-1');
+    expect(message).toContain('room type unresolved');
   });
 });
