@@ -13,6 +13,7 @@ import { agentSessions } from '../db/schema.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { closeRunIfOneShot } from '../pipeline/runs.js';
+import { returnIssuesForRun } from './run-issue-return.js';
 import { RUN_ISSUES_METADATA_KEY, RUN_SESSION_TYPE } from './run-session.js';
 
 /** How long a run session may go silent before its issues are given back. */
@@ -66,9 +67,13 @@ export async function reapDeadRunSessions(): Promise<ReapedRunSession[]> {
     });
     // cm:guard the run closes only where the SESSION flip won. Two sweeps racing would otherwise both close the run and both log a release of the same group, and a release logged twice cannot be read as a fleet health signal.
     if (flipped.length === 0) continue;
+    // cm:guard the issues are RETURNED here and not merely named. Until 2026-09-12 this loop read `issueKeys`, logged them and pushed them to its caller, which is why the module header promised to give issues back while the code gave back only the lease — and the lease lapses on its own, from the session going terminal one line above. The status did not: ISS-457 stood at `in_progress` for 18 hours behind a dead run, with ISS-410 queued behind it.
+    const returned = await returnIssuesForRun(runId, {
+      reason: 'the box running this issue stopped answering',
+    });
     await closeRunIfOneShot(runId, 'failed');
     logger.warn(
-      { runSessionId: sessionId, runId, issues: issueKeys },
+      { runSessionId: sessionId, runId, issues: issueKeys, returned: returned.length },
       'run-session-reaper: released a run whose box stopped answering',
     );
     reaped.push({ sessionId, runId, issueKeys });

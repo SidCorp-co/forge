@@ -11,7 +11,7 @@ use crate::daemon::master::Masters;
 use crate::daemon::recovery::{Heartbeat, MasterLiveness, ProcessLiveness};
 use crate::daemon::terminal;
 use crate::error::Result;
-use crate::runner::close_loop::{LeaseKeeper, SessionReader};
+use crate::runner::close_loop::{LeaseKeeper, Outcome, RunCloser, SessionReader};
 use crate::transport::{run_sessions, CoreClient};
 
 /// Whether a master's pane is still on this box.
@@ -71,6 +71,13 @@ pub struct CoreRunState<'a> {
 impl SessionReader for CoreRunState<'_> {
     async fn is_terminal(&self, agent_session_id: &str) -> Result<bool> {
         run_sessions::is_terminal(self.client, agent_session_id).await
+    }
+}
+
+#[async_trait::async_trait]
+impl RunCloser for CoreRunState<'_> {
+    async fn close(&self, agent_session_id: &str, outcome: Outcome, detail: &str) -> Result<()> {
+        run_sessions::close(self.client, agent_session_id, outcome, Some(detail)).await
     }
 }
 

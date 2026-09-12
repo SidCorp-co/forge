@@ -15,11 +15,20 @@ use std::path::Path;
 
 use crate::error::Result;
 use crate::runner::ledger::Ledger;
+pub use crate::transport::run_sessions::Outcome;
 
 /// Reads back the authoritative session row. Never the ack of a write.
 #[async_trait::async_trait]
 pub trait SessionReader: Send + Sync {
     async fn is_terminal(&self, agent_session_id: &str) -> Result<bool>;
+}
+
+/// Tells core WHY a run session ended, so its row does not have to be guessed
+/// at from silence.
+// cm:guard this port reports, it does not set a mark. `session_terminal` is still earned by `SessionReader::is_terminal` reading core's row back on a later sweep — a close that answered 200 and a close whose response was dropped must be indistinguishable here (ISS-933 criterion 13).
+#[async_trait::async_trait]
+pub trait RunCloser: Send + Sync {
+    async fn close(&self, agent_session_id: &str, outcome: Outcome, detail: &str) -> Result<()>;
 }
 
 /// Returns a lease, and separately reads back whether it is actually returned.

@@ -2081,6 +2081,49 @@
 
 ### Fixed
 
+- **A run session now reaches terminal because the box says so, not because it stopped
+  answering.** The protocol had no way for a runner to report an ending, so the only writer of a
+  run session's terminal status was core's ten-minute silence sweep, and it wrote one cause for
+  three different facts: a box that lost power, a pane that died mid-turn, and — since the idle
+  exit shipped — a pane the box had deliberately and successfully ended. Measured over the seven
+  days to 2026-09-12: 198 failures on one project and 127 on another, ~95% of them
+  `runner_unreachable`, every one showing ~10 minutes between `last_heartbeat_at` and
+  `updated_at`, which is the reaper's own clock rather than any network fault. The bucket could no
+  longer be decomposed, so a real transport failure was indistinguishable from a clean shutdown.
+  `POST /api/devices/me/run-sessions/:sessionId/close` now takes one of three outcomes. `ended` and
+  `killed_idle` complete the session; `died` fails it as `agent_exited_without_result`, which
+  blames the agent rather than the transport, because a box that reached core to report a death is
+  by construction reachable. The route is device-scoped: closing another box's session answers
+  `404` and frees nothing.
+- **A run that died mid-turn no longer strands its issues for ten minutes, or forever.** The
+  reaper named the issues it was releasing and returned only the lease — which lapses by itself,
+  from the session going terminal — while the issue's *status* stayed wherever the agent had left
+  it. An issue an agent had moved to `in_progress` therefore read as work somebody was doing, so
+  nothing claimed it and everything behind it waited: ISS-457 stood there for 18 hours with
+  ISS-410 queued behind it. A failing close now returns each issue to the status it held when the
+  run opened, recorded at open time under `pipeline_runs.metadata.runIssueStatuses` — by
+  construction a status that project admits, since it is the one the master claimed it out of.
+  Three exceptions never move: an issue a person parked at `needs_info`, `waiting` or `on_hold`
+  during the run, because that decision is newer than the one being restored and a run dying over
+  a question just asked would otherwise be dispatched again, answering nothing; an issue whose
+  opening status was never recorded, which is left alone rather than guessed at; and every issue
+  of a run that ended cleanly, whose agent moved them deliberately.
+- **The box now reports a dead run instead of waiting to be reaped for it.** A runner that refuted
+  its own run's pid could not act on it: releasing the worktree requires the `session_terminal`
+  mark, core alone writes that mark, and the only thing that wrote it was the ten-minute sweep. So
+  a box that knew a run was dead within thirty seconds waited ten minutes to say so, logging
+  `partially closed` once a minute throughout — 62 such lines a minute on forge-vm on 2026-09-12.
+  The sweep now reports the death as soon as it refutes the pid, keyed on the run's *own* process
+  rather than on its master's, so a master that exited over a still-working pane cannot have that
+  run declared dead underneath it. The report sets no local mark: `session_terminal` is still
+  earned by reading core's row back on the next sweep, so a report whose response was dropped and
+  one that never landed remain indistinguishable.
+- **A deliberate idle reap is no longer recorded as a death.** The daemon ended an idle run pane
+  and told core nothing, so its own successful cleanup arrived as `runner_unreachable` ten minutes
+  later. It now closes the session as `killed_idle` — after the kill, never before, so a close
+  cannot land over a pane the kill then failed to end — and that outcome deliberately does not
+  return the run's issues, since the work of the last turn did land.
+
 - **A run pane that has finished is now ended, instead of being held open for the life of the
   box.** A master pane is briefed again every sweep, so an idle one is between passes; a run pane
   is briefed once and has nothing left to do after its last turn. Nothing modelled that difference.

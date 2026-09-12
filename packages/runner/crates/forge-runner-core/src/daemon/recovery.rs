@@ -57,6 +57,7 @@ pub struct RunWatch<'a> {
 pub struct Recovered {
     pub run_id: String,
     pub project_id: Option<String>,
+    pub session_id: Option<String>,
     pub state: CloseState,
     /// This run's own close loop cannot advance without someone taking its
     /// worktree back first, and nothing else on the box will.
@@ -65,6 +66,11 @@ pub struct Recovered {
     /// it is what starts every other mark moving; nothing here has done it.
     // cm:guard NAMED here and performed by the caller, exactly as `owed_release` is. This module holds no port that can signal a process — `ProcessLiveness` may only ask whether a pid is gone — and giving it one would let a pass that decides a run is finished also kill it, with no separate reader between the judgement and the signal.
     pub owed_idle_exit: bool,
+    /// This run is orphaned and core still reads its session as live. Only
+    /// this box knows the process is gone; nothing else will tell core before
+    /// its ten-minute silence sweep does.
+    // cm:guard this is what unwedges `owed_release`, which requires `session_terminal` — a mark core alone writes. Until the box reports the death, the only writer is the silence sweep, so every orphan waits ten minutes and lands in `runner_unreachable` whether or not the box was reachable. Reporting does NOT set the mark: the next sweep reads core's row back through `SessionReader`, exactly as criterion 13 requires.
+    pub owed_death_report: bool,
 }
 
 /// One pass over what this box holds: beat what lives, close what does not.
@@ -114,9 +120,11 @@ pub async fn reconcile(
                 out.push(Recovered {
                     run_id: run.run_id.clone(),
                     project_id: run.project_id.clone(),
+                    session_id: Some(id.to_string()),
                     state: close_loop::state(ledger, &run.run_id)?,
                     owed_release: false,
                     owed_idle_exit: true,
+                    owed_death_report: false,
                 });
                 continue;
             }
@@ -129,12 +137,17 @@ pub async fn reconcile(
         // cm:edge protocol -> packages/runner/crates/forge-runner-core/src/runner/terminate.rs — this only NAMES the runs owed a release; performing it is `force_terminal`'s (preserve → remove → close → `end_run`, in that order), and it belongs to the caller because resolving a project's repo path is `resolve_repo`'s alone.
         let owed_release =
             pid_refuted && run.boot_id == boot_id && state.session_terminal && !state.worktree_gone;
+        // cm:guard keyed on the run's OWN process being refuted within THIS boot, never on the master being gone: a master that exited over a run whose pane is still working would otherwise have that run reported dead, and core returns a `died` run's issues to the claimable set while the agent is still writing to the worktree.
+        let owed_death_report = pid_refuted && run.boot_id == boot_id && !state.session_terminal;
+        let session_id = run.session_id.clone();
         out.push(Recovered {
             run_id: run.run_id,
             project_id: run.project_id,
+            session_id,
             state,
             owed_release,
             owed_idle_exit: false,
+            owed_death_report,
         });
     }
     Ok(out)

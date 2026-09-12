@@ -45,6 +45,7 @@ import { clearMasterLimit, recordMasterLimit } from './master-limit.js';
 import { closeMasterSession, ensureMasterSession } from './master-session.js';
 import { readPool } from './pool.js';
 import {
+  closeRunSession,
   isIssueLeaseHeld,
   openRunSession,
   readRunSessionTerminal,
@@ -122,6 +123,36 @@ devicePoolRoutes.post(
 );
 
 const sessionParamsSchema = z.object({ sessionId: z.string().uuid() });
+
+// cm:guard the outcome is a CLOSED set and an unknown one is refused, never coerced to a default. A box one version ahead sending a name this build does not know must be told so: coercing it to `died` would return issues an agent had deliberately advanced, and coercing it to `ended` would leave a dead run's issues held.
+const closeBodySchema = z.object({
+  outcome: z.enum(['ended', 'killed_idle', 'died']),
+  detail: z.string().max(500).optional(),
+});
+
+// cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/run_sessions.rs — `close` is this route's only caller. It is what lets a run session reach terminal by being REPORTED rather than by going silent for ten minutes, which is the difference between a box that died, a pane that crashed and a pane that finished — three facts the reaper's one `runner_unreachable` could not tell apart.
+devicePoolRoutes.post(
+  '/me/run-sessions/:sessionId/close',
+  requireDevice(),
+  zValidator('param', sessionParamsSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('json', closeBodySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { sessionId } = c.req.valid('param');
+    const body = c.req.valid('json');
+    const closed = await closeRunSession({
+      deviceId: c.get('device').id,
+      sessionId,
+      outcome: body.outcome,
+      ...(body.detail === undefined ? {} : { detail: body.detail }),
+    });
+    if (closed === null) throw notFound('run session');
+    return c.json(closed);
+  },
+);
 const leaseParamsSchema = z.object({ issueKey: z.string().min(1).max(64) });
 
 // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/recovery_ports.rs — `CoreRunState` reads these back; the close loop sets a mark ONLY from what they answer, never from the ack of the write it just made (ISS-933 criterion 13).

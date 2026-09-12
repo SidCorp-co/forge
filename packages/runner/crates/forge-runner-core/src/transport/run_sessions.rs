@@ -70,6 +70,62 @@ pub async fn beat(client: &CoreClient, session_id: &str) -> Result<()> {
     .await
 }
 
+/// Why a run session ended, as core's `close` verb names the three cases.
+// cm:edge contract -> packages/core/src/devices/pool-routes.ts — `closeBodySchema` is a zod enum of exactly these three wire strings; a fourth added here without a matching variant there is a 400 the daemon reads as "core refused the close" and retries forever.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Outcome {
+    Ended,
+    KilledIdle,
+    Died,
+}
+
+impl Outcome {
+    fn wire(self) -> &'static str {
+        match self {
+            Outcome::Ended => "ended",
+            Outcome::KilledIdle => "killed_idle",
+            Outcome::Died => "died",
+        }
+    }
+}
+
+/// Tell core this box finished with the run, and WHICH of the three ways.
+// cm:guard the reason this verb exists: without it the only way a run session reaches terminal is core's ten-minute silence sweep, which writes `runner_unreachable` over a box that was never unreachable — 203 sessions across two projects in 7 days, ~95% of them in that bucket, of which the genuine transport failures can no longer be told apart.
+// cm:edge contract -> packages/core/src/devices/pool-routes.ts — `POST /me/run-sessions/:sessionId/close` is the other half, and it is device-scoped: closing another box's session answers 404 rather than freeing its issues.
+// cm:guard a 404 is SUCCESS, for `is_terminal`'s reason: core not having the session means its reaper already closed it, and raising would make the caller retry a close that can never land.
+pub async fn close(
+    client: &CoreClient,
+    session_id: &str,
+    outcome: Outcome,
+    detail: Option<&str>,
+) -> Result<()> {
+    let url = client.url(&format!("/api/devices/me/run-sessions/{session_id}/close"));
+    let mut body = serde_json::json!({ "outcome": outcome.wire() });
+    if let Some(d) = detail {
+        body["detail"] = serde_json::Value::String(d.to_string());
+    }
+    let resp = client
+        .http()
+        .post(&url)
+        .bearer_auth(client.device_token())
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| Error::Other(format!("run-session close: {e}")))?;
+    if resp.status().as_u16() == 401 {
+        return Err(Error::Unauthorized);
+    }
+    if resp.status().as_u16() == 404 {
+        return Ok(());
+    }
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(Error::Other(format!("run-session close: {status}: {text}")));
+    }
+    Ok(())
+}
+
 /// Is this box's run session terminal? Read from core's own row.
 // cm:edge contract -> packages/core/src/devices/pool-routes.ts — `GET /me/run-sessions/:sessionId` is the other half, and it is device-scoped: a box asking about another box's session gets a 404, not an answer.
 // cm:guard a 404 answers TERMINAL rather than raising. Core no longer having the session means its own reaper got there first or an operator cancelled it; raising would park the ledger row forever on a run nothing else will ever close, where this lets the local marks land and the row retire.

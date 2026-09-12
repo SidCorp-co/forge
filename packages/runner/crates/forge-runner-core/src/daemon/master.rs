@@ -432,6 +432,7 @@ async fn sweep(
             cfg,
             procs: &SignalProbe,
             killer: &terminate::SystemProcesses,
+            closer: &CoreRunState { client },
         },
         &CoreRunState { client },
         &CoreRunState { client },
@@ -453,6 +454,7 @@ struct Reclaim<'a> {
     cfg: &'a Config,
     procs: &'a dyn recovery::ProcessLiveness,
     killer: &'a dyn terminate::ProcessGroup,
+    closer: &'a dyn close_loop::RunCloser,
 }
 
 /// Give back the worktree a dead run still holds, so its close loop can finish.
@@ -520,6 +522,29 @@ async fn release_held_tree(
     }
 }
 
+/// Tell core a run's process is gone, so its session stops being guessed at.
+// cm:guard `Died` is the outcome, and `closeRunSession` returns this run's issues to the status they were claimed from on exactly that value — which is the point: the work stopped mid-turn, so leaving the issues at `in_progress` strands them behind a run nothing is doing (ISS-457 stood there 18 hours).
+// cm:guard this sets NO local mark. `session_terminal` is still earned by `close_loop` reading core's row back on the next sweep, so a report whose response was dropped and one that never landed are indistinguishable here, as criterion 13 requires.
+async fn report_run_death(r: &recovery::Recovered, world: &Reclaim<'_>) {
+    let Some(session_id) = r.session_id.as_deref() else {
+        return;
+    };
+    if let Err(e) = world
+        .closer
+        .close(
+            session_id,
+            close_loop::Outcome::Died,
+            "the run's process is gone from this box",
+        )
+        .await
+    {
+        tracing::warn!(
+            "[master] run {} is gone but core was not told ({e}) — its session falls to the ten-minute sweep",
+            r.run_id
+        );
+    }
+}
+
 /// The box's own activity map, read as the run-liveness port.
 // cm:guard reads the SHARED map the control socket writes into, never a copy. A second `Activities` here would answer `None` for every session forever, which `run_exit` reads as "never reported" — so every run would keep being beaten and the fix would be inert, green, and indistinguishable from working.
 struct PaneActivity<'a> {
@@ -540,6 +565,8 @@ impl recovery::RunActivity for PaneActivity<'_> {
 /// End a run that reported itself finished, so its close loop can start.
 // cm:guard the process is signalled and NOTHING else is written here. The three marks are `close_loop`'s and each is set by reading the world back, so a kill that also stamped `session_terminal` would be this repo's one forbidden move — a box declaring an outcome core has not confirmed. The next sweep sees the pid refuted and takes the run through the same path a crashed run takes.
 // cm:guard `&mut` and not `&`, though nothing here writes: the borrow is held across the kill, and `&Ledger` is `Send` only if `Ledger` is `Sync` — which rusqlite's `RefCell` connection is not, so the shared borrow makes the whole master loop's future non-`Send` and the daemon stops compiling at `tokio::spawn`.
+// cm:guard the KILL happens first and the close is told afterwards, never the reverse. A close that lands over a pane the kill then fails to end leaves core reading `completed` while the agent is still writing to the worktree; this order's failure mode is the one this box already survives — the close does not land, and core's ten-minute sweep closes the row as it did before this verb existed.
+// cm:guard the outcome is `KilledIdle` and NOT `Died`: this box decided to end a run whose work was finished, so returning its issues would undo whatever the last turn landed. `closeRunSession` keys the issue return off exactly this distinction.
 async fn end_idle_run(led: &mut Ledger, run_id: &str, world: &Reclaim<'_>) {
     let Ok(Some(run)) = led.run(run_id) else {
         return;
@@ -552,6 +579,22 @@ async fn end_idle_run(led: &mut Ledger, run_id: &str, world: &Reclaim<'_>) {
         "[master] run {run_id} reported idle for over {}m and its work is done — ending pid {pid}; its close loop starts on the next sweep",
         run_exit::RUN_IDLE_BEFORE_EXIT.as_secs() / 60
     );
+    let Some(session_id) = run.session_id.as_deref() else {
+        return;
+    };
+    if let Err(e) = world
+        .closer
+        .close(
+            session_id,
+            close_loop::Outcome::KilledIdle,
+            "idle past the run's exit boundary; the box ended it",
+        )
+        .await
+    {
+        tracing::warn!(
+            "[master] run {run_id} was ended but core was not told why ({e}) — its session falls to the ten-minute sweep"
+        );
+    }
 }
 
 /// Beat what this box still holds, and close the loop on what it does not.
@@ -579,6 +622,10 @@ async fn give_back_lost_runs(
                 if r.owed_idle_exit {
                     end_idle_run(led, &r.run_id, world).await;
                     continue;
+                }
+                // cm:guard reported BEFORE the release is attempted and WITHOUT a `continue`: `owed_release` needs `session_terminal`, core alone writes that mark, and until this report lands the only writer is core's ten-minute silence sweep — so every orphan on this box waited it out and landed in `runner_unreachable` whether or not the box was reachable (forge-vm 2026-09-12, ~95% of 203 sessions over 7 days on two projects). The release still waits for the next sweep to read the row back, which is criterion 13 and not a delay worth trading away.
+                if r.owed_death_report {
+                    report_run_death(&r, world).await;
                 }
                 // cm:guard the release is attempted BEFORE the report and its result decides whether one is printed, because a run recovery just reclaimed is not a run an operator has anything to do about. Report first and every reclaimed run also files a complaint about the state it was reclaimed out of.
                 if r.owed_release
@@ -1108,6 +1155,17 @@ mod give_back_tests {
         }
     }
 
+    struct ReportsIdleSince(i64);
+    #[async_trait::async_trait]
+    impl recovery::RunActivity for ReportsIdleSince {
+        async fn reported(&self, _: &str) -> Option<run_exit::Reported> {
+            Some(run_exit::Reported {
+                doing: crate::daemon::agent_activity::Doing::Idle,
+                at: self.0,
+            })
+        }
+    }
+
     struct NeverReports;
     #[async_trait::async_trait]
     impl recovery::RunActivity for NeverReports {
@@ -1152,6 +1210,24 @@ mod give_back_tests {
     }
 
     #[derive(Default)]
+    struct Closes(Mutex<Vec<(String, close_loop::Outcome)>>);
+    #[async_trait::async_trait]
+    impl close_loop::RunCloser for Closes {
+        async fn close(
+            &self,
+            agent_session_id: &str,
+            outcome: close_loop::Outcome,
+            _detail: &str,
+        ) -> R<()> {
+            self.0
+                .lock()
+                .unwrap()
+                .push((agent_session_id.to_string(), outcome));
+            Ok(())
+        }
+    }
+
+    #[derive(Default)]
     struct Leases(Mutex<Vec<String>>);
     #[async_trait::async_trait]
     impl LeaseKeeper for Leases {
@@ -1181,6 +1257,45 @@ mod give_back_tests {
         led
     }
 
+    // cm:guard the discriminating assertion is that core is TOLD, not that the pid was killed. A build that kills the pane and says nothing still passes every other test in this file, and that build is what this box shipped for weeks: core's ten-minute sweep then wrote `runner_unreachable` over a box that had ended the run deliberately, which is ~95% of a 203-session failure bucket nobody can now decompose.
+    #[tokio::test]
+    async fn ending_an_idle_run_tells_core_the_box_did_it() {
+        let mut led = a_ledger_holding_one_run();
+        led.attach_pid("run-1", 424_248).unwrap();
+        let mut ledger = Some(led);
+        let killed = CountedKill(std::sync::atomic::AtomicUsize::new(0));
+        let closes = Closes::default();
+        let idle_since = crate::daemon::agent_activity::now_ms()
+            - run_exit::RUN_IDLE_BEFORE_EXIT.as_millis() as i64;
+
+        give_back_lost_runs(
+            BOOT,
+            &Alive(true),
+            &Reclaim {
+                served: &[],
+                cfg: &Config::default(),
+                procs: &NoPids,
+                killer: &killed,
+                closer: &closes,
+            },
+            &Terminal(false),
+            &Leases::default(),
+            recovery::RunWatch {
+                beat: &Beats::default(),
+                idle: &ReportsIdleSince(idle_since),
+            },
+            &mut ledger,
+        )
+        .await;
+
+        assert_eq!(
+            closes.0.lock().unwrap().as_slice(),
+            &[("core-sess-1".to_string(), close_loop::Outcome::KilledIdle)],
+            "an idle reap must reach core as its own outcome, not as silence"
+        );
+        assert_eq!(killed.0.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
     // cm:guard the discriminating assertion is the BEAT, not that a run was closed. Core reaps a run session silent for ten minutes, so a sweep that reconciled without beating would take every healthy run on this box back after ten minutes — a test that only watched the closing half would go green on exactly that build (ISS-933 criteria 16 and 25a).
     #[tokio::test]
     async fn a_sweep_beats_the_runs_this_box_still_holds() {
@@ -1195,6 +1310,7 @@ mod give_back_tests {
                 cfg: &Config::default(),
                 procs: &NoPids,
                 killer: &NoKill,
+                closer: &Closes::default(),
             },
             &Terminal(false),
             &Leases::default(),
@@ -1227,6 +1343,7 @@ mod give_back_tests {
                 cfg: &Config::default(),
                 procs: &NoPids,
                 killer: &NoKill,
+                closer: &Closes::default(),
             },
             &Terminal(true),
             &leases,
@@ -1266,6 +1383,7 @@ mod give_back_tests {
                 cfg: &Config::default(),
                 procs: &NoPids,
                 killer: &NoKill,
+                closer: &Closes::default(),
             },
             &Terminal(true),
             &leases,
@@ -1345,6 +1463,64 @@ mod give_back_tests {
         (repo, wt)
     }
 
+    // cm:guard the assertion is that core hears it FROM THE BOX. Without this call the only thing that ever flips the session is core's ten-minute silence sweep, which writes `runner_unreachable` over a box that is plainly reachable — it is talking to core in this very sweep — and holds the run's issues for those ten minutes (forge-vm 2026-09-12: every failure on two projects showed ~10 minutes between `last_heartbeat_at` and `updated_at`, ~95% of 203 sessions in that one bucket).
+    #[tokio::test]
+    async fn reclaiming_a_dead_run_tells_core_it_died_rather_than_waiting_to_be_reaped() {
+        let (repo, wt) = a_repo_with_a_live_worktree().await;
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(NewRun {
+            run_id: "run-1".into(),
+            project_id: "proj-1".into(),
+            master_session_id: "master-dead".into(),
+            worktree_path: wt.clone(),
+            boot_id: BOOT.into(),
+            issue_keys: vec!["ISS-957".into()],
+        })
+        .unwrap();
+        led.attach_session("run-1", "core-sess-1").unwrap();
+        led.attach_pid("run-1", 424_249).unwrap();
+
+        let mut cfg = Config::default();
+        cfg.bindings.insert(
+            "proj-1".into(),
+            crate::config::Binding {
+                repo_path: repo.clone(),
+                branch: None,
+                project_id: Some("proj-1".into()),
+            },
+        );
+        let closes = Closes::default();
+        let mut ledger = Some(led);
+
+        give_back_lost_runs(
+            BOOT,
+            &Alive(false),
+            &Reclaim {
+                served: &[],
+                cfg: &cfg,
+                procs: &GonePid(424_249),
+                killer: &CountedKill(std::sync::atomic::AtomicUsize::new(0)),
+                closer: &closes,
+            },
+            &Terminal(false),
+            &Leases::default(),
+            recovery::RunWatch {
+                beat: &Beats::default(),
+                idle: &NeverReports,
+            },
+            &mut ledger,
+        )
+        .await;
+
+        assert_eq!(
+            closes.0.lock().unwrap().as_slice(),
+            &[("core-sess-1".to_string(), close_loop::Outcome::Died)],
+            "a run whose process this box refuted must reach core as a death, from the box, now"
+        );
+        let _ = std::fs::remove_dir_all(&repo);
+        let _ = std::fs::remove_dir_all(repo.with_extension("remote.git"));
+    }
+
     // cm:guard the assertions are the CHECKOUT off the disk and `ended_by` written, never that a warning changed: the deadlock this closes is invisible to every mark-level assertion, because all three marks are exactly what a stuck run already has. `close_loop::close` alone leaves this run untouched forever — it observes, and the tree is still there to observe (forge-vm 2026-09-10: 24 runs, 24 trees, every lease held under them).
     #[tokio::test]
     async fn a_dead_runs_worktree_is_given_back_and_its_run_ended() {
@@ -1383,6 +1559,7 @@ mod give_back_tests {
                 cfg: &cfg,
                 procs: &GonePid(424_246),
                 killer: &killed,
+                closer: &Closes::default(),
             },
             &Terminal(true),
             &leases,
@@ -1450,6 +1627,7 @@ mod give_back_tests {
                 cfg: &cfg,
                 procs: &GonePid(424_247),
                 killer: &CountedKill(std::sync::atomic::AtomicUsize::new(0)),
+                closer: &Closes::default(),
             },
             &Terminal(true),
             &Leases::default(),
