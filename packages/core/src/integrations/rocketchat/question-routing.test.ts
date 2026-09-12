@@ -152,14 +152,23 @@ const MESSAGE = {
   images: [],
 };
 
-const questionForThread = vi.fn();
+const subjectForThread = vi.fn();
 const consumeQuestionThreadReply = vi.fn();
+const consumeIssueThreadReply = vi.fn();
 vi.mock('./question-delivery.js', () => ({
-  questionForThread: (...args: unknown[]) => questionForThread(...args),
   startQuestionDrainLoop: vi.fn(() => () => {}),
+}));
+vi.mock('./comment-mirror.js', () => ({
+  startCommentMirrorLoop: vi.fn(() => () => {}),
+}));
+vi.mock('./thread-registry.js', () => ({
+  subjectForThread: (...args: unknown[]) => subjectForThread(...args),
 }));
 vi.mock('./question-inbound.js', () => ({
   consumeQuestionThreadReply: (...args: unknown[]) => consumeQuestionThreadReply(...args),
+}));
+vi.mock('./comment-inbound.js', () => ({
+  consumeIssueThreadReply: (...args: unknown[]) => consumeIssueThreadReply(...args),
 }));
 
 // cm:guard `route` fires the conversation handler unawaited (`void this.handle(...)`), so a fall-through is only observable after the microtask queue drains — asserting straight after `route` returns reads every fall-through as a consumption.
@@ -173,7 +182,7 @@ describe('a reply inside a question thread', () => {
     selectLimit.mockResolvedValue([{ agentConfig: null, repoPath: null }]);
     screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
     resolveRoomShape.mockResolvedValue('group');
-    questionForThread.mockResolvedValue(null);
+    subjectForThread.mockResolvedValue(null);
     consumeQuestionThreadReply.mockReturnValue(undefined);
   });
 
@@ -186,32 +195,59 @@ describe('a reply inside a question thread', () => {
 
   it('hands an owned thread to the question handler and runs no turn', async () => {
     connected();
-    questionForThread.mockResolvedValue({ questionId: 'q-1' });
+    subjectForThread.mockResolvedValue({ kind: 'question', questionId: 'q-1' });
     await routeMessage('conn-1', { ...MESSAGE, tmid: 'thread-1', mentions: [] });
     // cm:guard the flush is what makes the fall-through representable: `route` fires the conversation handler unawaited, so asserting `runExternalChatTurn` straight after `route` returns passes whether or not the owned-thread branch returns.
     await flush();
-    expect(consumeQuestionThreadReply).toHaveBeenCalledTimes(1);
     expect(consumeQuestionThreadReply.mock.calls[0]?.[0]).toMatchObject({
       questionId: 'q-1',
       connectionId: 'conn-1',
     });
+    expect(consumeQuestionThreadReply.mock.calls[0]?.[0]?.m?.tmid).toBe('thread-1');
     // cm:guard the conversation handler is what must NOT have run: a refusal that fell through to it would reach the person as a chat reply about something else, and would additionally spend a provider turn (ISS-978 criterion 20).
     expect(runExternalChatTurn).not.toHaveBeenCalled();
     expect(startEscalation).not.toHaveBeenCalled();
     expect(startAgentChat).not.toHaveBeenCalled();
   });
 
+  it('hands an issue thread to the comment handler, and never to the question one', async () => {
+    connected();
+    subjectForThread.mockResolvedValue({ kind: 'issue', issueId: 'iss-1', retired: false });
+    await routeMessage('conn-1', { ...MESSAGE, tmid: 'thread-2', mentions: [] });
+    await flush();
+    expect(consumeIssueThreadReply.mock.calls[0]?.[0]).toMatchObject({
+      issueId: 'iss-1',
+      retired: false,
+      connectionId: 'conn-1',
+    });
+    // cm:guard the question handler is what must NOT have run: prose routed there would be read as choosing an option, which grants a permission nobody selected (ISS-981 criteria 18, 29).
+    expect(consumeQuestionThreadReply).not.toHaveBeenCalled();
+    expect(runExternalChatTurn).not.toHaveBeenCalled();
+  });
+
+  it('consumes a retired issue thread rather than letting it reach a model', async () => {
+    connected();
+    subjectForThread.mockResolvedValue({ kind: 'issue', issueId: 'iss-1', retired: true });
+    await routeMessage('conn-1', { ...MESSAGE, tmid: 'thread-2', mentions: [] });
+    await flush();
+    expect(consumeIssueThreadReply.mock.calls[0]?.[0]).toMatchObject({ retired: true });
+    expect(runExternalChatTurn).not.toHaveBeenCalled();
+  });
+
   it('needs no @-mention inside an owned thread', async () => {
     connected();
-    questionForThread.mockResolvedValue({ questionId: 'q-1' });
+    subjectForThread.mockResolvedValue({ kind: 'question', questionId: 'q-1' });
     await routeMessage('conn-1', { ...MESSAGE, tmid: 'thread-1', mentions: [] });
     await flush();
-    expect(consumeQuestionThreadReply).toHaveBeenCalledTimes(1);
+    expect(consumeQuestionThreadReply.mock.calls[0]?.[0]).toMatchObject({
+      questionId: 'q-1',
+      connectionId: 'conn-1',
+    });
   });
 
   it('leaves a thread it does not own to the conversation handler', async () => {
     connected();
-    questionForThread.mockResolvedValue(null);
+    subjectForThread.mockResolvedValue(null);
     runExternalChatTurn.mockResolvedValue({
       sessionId: 's',
       reply: 'an answer',
@@ -223,7 +259,12 @@ describe('a reply inside a question thread', () => {
     await routeMessage('conn-1', { ...MESSAGE, tmid: 'someone-elses-thread' });
     await flush();
     expect(consumeQuestionThreadReply).not.toHaveBeenCalled();
-    expect(runExternalChatTurn).toHaveBeenCalledTimes(1);
+    // cm:guard the fall-through carries the person's own words and their identity, which is what makes it a conversation turn rather than a routing event — a turn built from anything else answers somebody who did not speak.
+    expect(runExternalChatTurn.mock.calls[0]?.[0]).toMatchObject({
+      message: MESSAGE.text,
+      userKey: MESSAGE.userId,
+      projectId: ROUTE.projectId,
+    });
   });
 
   it('asks nothing about a message carrying no thread at all', async () => {
@@ -238,8 +279,11 @@ describe('a reply inside a question thread', () => {
     });
     await routeMessage('conn-1', MESSAGE);
     await flush();
-    expect(questionForThread).not.toHaveBeenCalled();
-    expect(runExternalChatTurn).toHaveBeenCalledTimes(1);
+    expect(subjectForThread).not.toHaveBeenCalled();
+    expect(runExternalChatTurn.mock.calls[0]?.[0]).toMatchObject({
+      message: MESSAGE.text,
+      source: 'rocketchat',
+    });
   });
 
   it('asks nothing when the connection has no route for the room', async () => {
@@ -248,13 +292,13 @@ describe('a reply inside a question thread', () => {
     await routeMessage('conn-routeless', { ...MESSAGE, tmid: 'thread-1' });
     await flush();
     // cm:guard the thread lookup sits AFTER the route for the reason the shape does: the same bot is subscribed on every connection's socket, so a routeless connection must touch nothing (ISS-978 criterion 22).
-    expect(questionForThread).not.toHaveBeenCalled();
+    expect(subjectForThread).not.toHaveBeenCalled();
     expect(consumeQuestionThreadReply).not.toHaveBeenCalled();
   });
 
   it('drops the bot own message in an owned thread rather than answering it', async () => {
     connected();
-    questionForThread.mockResolvedValue({ questionId: 'q-1' });
+    subjectForThread.mockResolvedValue({ kind: 'question', questionId: 'q-1' });
     await routeMessage('conn-1', { ...MESSAGE, tmid: 'thread-1', userId: 'bot-1' });
     await flush();
     expect(consumeQuestionThreadReply).not.toHaveBeenCalled();
@@ -265,11 +309,15 @@ describe('a reply inside a question thread', () => {
     const ac = connected('conn-dead');
     ac.routes.set('room-1', ROUTE);
     (ac as { client?: unknown }).client = undefined;
-    questionForThread.mockResolvedValue({ questionId: 'q-1' });
+    subjectForThread.mockResolvedValue({ kind: 'question', questionId: 'q-1' });
     await routeMessage('conn-dead', { ...MESSAGE, tmid: 'thread-1', mentions: [] });
     await flush();
     // cm:guard the message is consumed even with no socket to answer on: falling through to the conversation handler instead would run a provider turn for a reply that is an answer to a question (ISS-978 criterion 20).
-    expect(consumeQuestionThreadReply).toHaveBeenCalledTimes(1);
+    expect(consumeQuestionThreadReply.mock.calls[0]?.[0]).toMatchObject({
+      questionId: 'q-1',
+      connectionId: 'conn-dead',
+    });
+    expect(consumeQuestionThreadReply.mock.calls[0]?.[0]?.ac?.client).toBeUndefined();
     expect(runExternalChatTurn).not.toHaveBeenCalled();
   });
 });

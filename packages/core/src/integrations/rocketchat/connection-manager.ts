@@ -17,6 +17,7 @@ import { db } from '../../db/client.js';
 import { integrationConnections, organizations, projects } from '../../db/schema.js';
 import { logger } from '../../logger.js';
 import { Sentry } from '../../observability/sentry.js';
+import { hooks } from '../../pipeline/hooks.js';
 import { decryptConnectionSecrets, listBindingsForConnection } from '../store.js';
 import {
   AGENT_CHAT_DEDUP_REPLY,
@@ -24,6 +25,8 @@ import {
   startAgentChat,
 } from './agent-chat.js';
 import { readRocketChatAnswerMode } from './answer-mode.js';
+import { consumeIssueThreadReply } from './comment-inbound.js';
+import { startCommentMirrorLoop } from './comment-mirror.js';
 import { buildConversationContext } from './context.js';
 import { RocketChatDdpClient, type RocketChatIncomingMessage } from './ddp-client.js';
 import {
@@ -36,11 +39,12 @@ import { type FastTurnInputs, prepareFastTurn } from './images.js';
 import { createSeenTracker, decideHandling, decideSkip } from './inbound-gate.js';
 import { FIXED_REPLY_CONSTANT, type ReplySendProof, sendFixedReply } from './outbound.js';
 import { rocketChatPersona } from './persona.js';
-import { questionForThread, startQuestionDrainLoop } from './question-delivery.js';
+import { startQuestionDrainLoop } from './question-delivery.js';
 import { consumeQuestionThreadReply } from './question-inbound.js';
 import { screenStakeholderReply } from './reply-screen.js';
 import { fetchOwnUsername } from './rest-client.js';
 import { type RoomShape, resolveRoomShape } from './room-shape.js';
+import { subjectForThread } from './thread-registry.js';
 import { conversationKey, resolveTurnPrincipal } from './turn-principal.js';
 import type { RocketChatBindingConfig, RocketChatConfig, RocketChatSecrets } from './types.js';
 
@@ -140,6 +144,7 @@ class RocketChatConnectionManager {
   private listenClient?: pg.Client | undefined;
   private listenRetryTimer?: NodeJS.Timeout | undefined;
   private stopQuestionDrain?: (() => void) | undefined;
+  private stopCommentMirror?: (() => void) | undefined;
 
   async start(): Promise<void> {
     if (this.started) return;
@@ -147,6 +152,7 @@ class RocketChatConnectionManager {
     // cm:why listen even with zero connections — the first-ever connect arrives as a NOTIFY from whichever instance served the HTTP request
     this.startReloadListener();
     this.stopQuestionDrain = startQuestionDrainLoop(() => this.started);
+    this.stopCommentMirror = startCommentMirrorLoop(() => this.started);
     const rows = await db
       .select()
       .from(integrationConnections)
@@ -387,12 +393,26 @@ class RocketChatConnectionManager {
       return;
     }
     // cm:guard the thread lookup runs BEFORE `decideHandling` because it is an input to it, and AFTER the route for the same reason the shape is: a connection with no binding for this room must touch nothing (ISS-978 criterion 22).
-    const owned = m.tmid && (await questionForThread({ connectionId, rid: m.rid, tmid: m.tmid }));
+    const owned = m.tmid
+      ? await subjectForThread({ connectionId, rid: m.rid, tmid: m.tmid })
+      : null;
     if (!decideHandling(m, ac.botUserId, shape, Boolean(owned)).handle) return;
     if (ac.seenMessage(m.id)) return;
     // cm:guard a registered thread is CONSUMED here and never falls through to `this.handle` — refusals included. A refusal that fell through would reach the person who was asked to pick option 2 as a chat reply about something else, and would additionally run a provider turn nobody asked for (ISS-978 criteria 20, 21).
+    // cm:guard the SUBJECT decides which handler, and the two are not interchangeable: a question thread answers an option under `answerAs`'s authority gate, an issue thread writes a comment — routing a prose reply to the first would grant a permission nobody chose, and a chosen option to the second would resume the run twice (ISS-981 criteria 18, 29).
     if (owned) {
-      consumeQuestionThreadReply({ questionId: owned.questionId, connectionId, ac, m });
+      if (owned.kind === 'question') {
+        consumeQuestionThreadReply({ questionId: owned.questionId, connectionId, ac, m });
+      } else {
+        consumeIssueThreadReply({
+          issueId: owned.issueId,
+          retired: owned.retired,
+          connectionId,
+          ac,
+          m,
+          hooks,
+        });
+      }
       return;
     }
     const logCtx = { connectionId, rid: m.rid, msgId: m.id, projectId: route.projectId };
@@ -469,12 +489,7 @@ class RocketChatConnectionManager {
             botName: ac.botName,
           });
 
-          // ISS-727 — per-project answer-mode switch: `agent` routes the
-          // ENTIRE turn through a runner-hosted Claude session (Ask Agent
-          // path) instead of the fast provider-chat model below. No MCP
-          // toolset build, no fast turn — the dispatched session's reply
-          // lands later via the completion bridge, so an ack (or dedup/
-          // no-device reply) is all this turn sends synchronously.
+          // cm:guard `agent` mode routes the WHOLE turn to a runner-hosted session and sends nothing but an ack synchronously — the reply lands later through the completion bridge, so code added below this branch runs only on the fast path and a reply written there is never seen in agent mode (ISS-727).
           if (readRocketChatAnswerMode(projectRow[0]?.agentConfig) === 'agent') {
             phase = 'agent-chat';
             const started = await startAgentChat({
@@ -768,6 +783,8 @@ class RocketChatConnectionManager {
     this.started = false;
     this.stopQuestionDrain?.();
     this.stopQuestionDrain = undefined;
+    this.stopCommentMirror?.();
+    this.stopCommentMirror = undefined;
     if (this.listenRetryTimer) clearTimeout(this.listenRetryTimer);
     this.listenRetryTimer = undefined;
     const listen = this.listenClient;

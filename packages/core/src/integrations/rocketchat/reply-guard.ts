@@ -313,3 +313,21 @@ export function screenOperatorMessage(segments: string[]): ProductLintResult {
   }
   return { ok: problems.length === 0, problems };
 }
+
+/**
+ * A comment being carried into a room, screened for the one thing carrying it
+ * can do that writing it could not.
+ */
+// cm:guard a comment is CARRIED text and not generated text, so the promise and progress lints above do not apply to it — what does apply is the broadcast: `@all` in a comment nobody paged is harmless on an issue page and pages the whole room the moment this mirror posts it, and the comment's author may be an agent (ISS-981).
+// cm:guard multi-line is LEGAL here, unlike `screenOperatorMessage`, whose single-line rule exists because a question's reply token resolves by line. A comment has no options to impersonate.
+export function screenCarriedComment(body: string): ProductLintResult {
+  const problems: string[] = [];
+  if (!body.trim()) problems.push('a comment with no text carries nothing to say');
+  const shout = body.match(/(^|\s)@(all|here|channel)\b/i);
+  if (shout) {
+    problems.push(
+      `the comment addresses the whole room ("${shout[0].trim()}") — carrying it would page everyone in a room that did not write it`,
+    );
+  }
+  return { ok: problems.length === 0, problems };
+}

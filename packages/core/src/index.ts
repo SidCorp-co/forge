@@ -72,6 +72,7 @@ import { registerIntegrationsHealthSweep } from './integrations/health-sweep.js'
 import { registerPostmanAdapter } from './integrations/postman/adapter.js';
 import { registerIntegrationsWorker } from './integrations/queue.js';
 import { registerRocketChatAdapter } from './integrations/rocketchat/adapter.js';
+import { registerCommentMirror } from './integrations/rocketchat/comment-mirror.js';
 import {
   startRocketChatManager,
   stopRocketChatManager,
@@ -502,13 +503,12 @@ if (isMain) {
   registerWebhookSubscribers(hooks);
   registerPipelineOrchestrator(hooks);
   registerAnswerResume(hooks);
+  registerCommentMirror(hooks);
   registerPhaseJournalClose(hooks);
   // cm:guard ISS-238 — register AFTER registerPipelineOrchestrator: this subscriber resumes a run whose missing skill was just registered and then re-enqueues, and that re-enqueue must walk through the orchestrator's own hooks, which are not on the bus yet if it is wired first
   registerPausedRunWedgeResolve(hooks);
 
-  // ISS-196 — must run AFTER subscribers are wired so the worker's first
-  // drain hits a populated bus. Outbox worker polls the transactional
-  // outbox table; reconciler is the minute-cadence safety net.
+  // cm:guard both run AFTER every subscriber above is on the bus: the outbox worker drains immediately on start, and a drain against a half-wired bus delivers those rows to nobody and marks them done (ISS-196).
   registerOutboxWorker();
   await registerReconciler();
 

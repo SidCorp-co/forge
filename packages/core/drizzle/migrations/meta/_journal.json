@@ -1611,6 +1611,13 @@
       "when": 1793404800000,
       "tag": "0231_overrated_bloodstrike",
       "breakpoints": true
+    },
+    {
+      "idx": 232,
+      "version": "7",
+      "when": 1793491200000,
+      "tag": "0232_parched_colossus",
+      "breakpoints": true
     }
   ]
 }

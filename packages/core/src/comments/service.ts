@@ -16,7 +16,7 @@ import {
   refuseMissingComponent,
   resolveStageBodyPolicy,
 } from '../body/stage-policy.js';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { comments, issues, projects } from '../db/schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { type CommentCursor, encodeCommentCursor } from './cursor.js';
@@ -229,8 +229,9 @@ async function loadStageContext(
   };
 }
 
+// cm:guard the `tx` handle exists for ONE reason: a caller that must commit this comment together with another row passes its transaction, and `rocketchat/comment-inbound.ts` is that caller — a room reply whose comment committed without its idempotency row is written a second time on the next redelivery, which is two resume intents at `answer-resume.ts` and the agent run twice (ISS-981). It defaults to the pool, so every other door is unchanged.
 // cm:guard ISS-898 — the caller-supplied body is validated HERE, not at each transport, because REST and MCP create both reach this one function and a gate on one of them is a gate on neither. ISS-969 collapsed REST's own `db.insert(comments)` copy into this call for that same reason, so there is now exactly one insert site for a body somebody sent us. The ~11 kernel-authored `db.insert(comments)` sites (apply-transition, budget-check, merge-marker, stage-stall-guard, pm/routes, release-batch) deliberately do NOT come through here: they take the `markdown` column default, which is right for text core formats itself, and they store no stage because no stage asked them for a record. `agent-sessions/steer-session.ts` is the one kernel caller that DOES come through here, and correctly: a steer is a person's typed body written at a stage, and it passes `authorDeviceId: null`, so the mandate exempts it while the stage is still recorded.
-export async function insertComment(input: NewComment): Promise<WrittenComment> {
+export async function insertComment(input: NewComment, tx: Tx = db): Promise<WrittenComment> {
   const prepared = prepareBody({ raw: input.body, format: input.format });
   const context = await loadStageContext(input.issueId);
   const refusal = refuseMissingComponent({
@@ -242,7 +243,7 @@ export async function insertComment(input: NewComment): Promise<WrittenComment> 
   if (refusal) throw refusal;
 
   const { format: _ignored, ...rest } = input;
-  const [row] = await db
+  const [row] = await tx
     .insert(comments)
     .values({
       ...rest,

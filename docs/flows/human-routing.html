@@ -126,6 +126,29 @@ flowchart TD
   someone who did not. A person who replies with something we cannot read gets the list of choices
   back, and the work stays stopped until they pick one.</p>
 
+  <p class="stage"><b>4</b>The comments on a piece of work and the room are one conversation</p>
+  <div class="board"><pre class="mermaid">
+flowchart TD
+  A["somebody writes a comment on a piece of work"] --> B{"has this project been<br/>given a chat room?"}
+  B -->|"no"| X["it stays owed. Nothing is dropped and<br/>nothing expires — give the project a room<br/>later and the comment is carried then"]
+  B -->|"yes"| C["the room is opened a conversation<br/>for that piece of work, named after it,<br/>and the comment is put inside it"]
+  C --> D["every later comment goes in the<br/><b>same</b> conversation — one piece of work,<br/>one thread"]
+  D --> E["replying there writes a comment<br/>on the work, <b>as the person who typed it</b>"]
+  E --> F{"do we know who that is<br/>on this chat server?"}
+  F -->|"no"| G["<b>they are told so by name</b>, and told how to<br/>link themselves. Nothing is written as the bot"]
+  F -->|"yes"| H["the comment is theirs, and if the work was<br/>stopped waiting on a person, it wakes up —<br/>by the same route a comment typed in Forge takes"]
+  C --> Y["a comment that came <b>from</b> the room<br/>is never carried back into it"]
+</pre></div>
+  <p class="cap">The two conversations a room may hold about one piece of work are kept apart on
+  purpose: the one where a choice is being decided, and the one where people are talking. A chat
+  thread cannot be told apart from the message alone otherwise, and "is this reply a decision or a
+  remark?" has to be answerable before anything acts on it. So prose never becomes a decision —
+  someone who types an opinion into the talking thread has not chosen an option, and the work that
+  is waiting on a choice stays waiting. The same message arriving twice, which chat servers do,
+  writes one comment and not two; a comment that could not be carried is carried later rather than
+  forgotten, and the price of that promise is that a crash can put the same comment in the room
+  twice. It is the right way round: a repeated sentence is visible, a lost one is not.</p>
+
 </div>
 
 <aside class="rail">

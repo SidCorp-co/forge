@@ -42,6 +42,9 @@ export const db = drizzle(queryClient, { schema });
 
 export type Db = typeof db;
 
+// cm:guard the transaction handle a write joins rather than the pool: a caller that has to commit two rows together passes this, and defaulting a parameter to `db` is what keeps the single-door writes single while letting one of them enlist (ISS-981).
+export type Tx = Db | Parameters<Parameters<Db['transaction']>[0]>[0];
+
 export async function closeDb(): Promise<void> {
   await queryClient.end({ timeout: 5 });
 }
