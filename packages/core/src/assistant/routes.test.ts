@@ -74,9 +74,9 @@ vi.mock('./conversation-turn.js', () => ({
       .map((m) => ({ role: m.role, content: m.content })),
 }));
 
-const addPerson = vi.fn(async () => undefined);
+const addPerson = vi.fn(async (..._a: unknown[]) => undefined);
 vi.mock('../conversations/participants.js', () => ({
-  addPerson: (...args: unknown[]) => addPerson(...(args as [never])),
+  addPerson: (...args: unknown[]) => addPerson(...args),
 }));
 
 // cm:guard a chat turn must NOT broadcast over WS — the chat.message publisher was deleted because no client listened to it (the widget streams over the SSE response body, not WS), so a roomManager.publish re-introduced in assistant/routes.ts or run-turn.ts is caught by this mock and fails the success-path test's assertion (ISS-71)
@@ -331,18 +331,16 @@ describe('POST /api/chat (mounted)', () => {
     });
 
     expect(res.status).toBe(200);
-    // Drain the SSE body so the streamSSE callback completes (post-loop persist
-    // + chat_logs insert run after the stream is fully read).
+    // cm:guard the SSE body is drained because the persist and the audit row run AFTER the stream is
+    // fully read — assert without this and both writes are still in flight.
     await res.text();
 
-    // system + 2 prior turns + the new user message = 4
     expect(captured).toHaveLength(4);
     expect(captured[0]?.role).toBe('system');
     expect(captured[1]).toEqual({ role: 'user', content: 'first' });
     expect(captured[2]).toEqual({ role: 'assistant', content: 'reply-1' });
     expect(captured[3]).toEqual({ role: 'user', content: 'second' });
 
-    // exactly one chat_logs row per request
     const logsCalls = insertValues.mock.calls.filter((c) => {
       const v = c[0] as { query?: string };
       return typeof v?.query === 'string';

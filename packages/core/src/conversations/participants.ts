@@ -68,31 +68,63 @@ export interface AddHandleArgs {
   conversationId: string;
   handleUserId: string;
   /** Who is doing the adding; their roles are what the door checks. */
-  actorUserId: string | null | undefined;
+  actorUserId: string;
   tx?: Executor;
 }
 
-/**
- * Put a handle in a room. This is the moment a room's scope widens, so it is
- * the moment the authorization is checked.
- */
-// cm:guard checked at the DOOR and per PROJECT: a handle carries its projects with it, so admitting one a caller holds no role on hands them a room whose answers are computed with an access they do not have. The refusal names the project rather than saying no, because "which of its projects" is the whole of what the caller has to fix (ISS-1001 criteria 8, 9).
-export async function addHandle(args: AddHandleArgs): Promise<void> {
-  const tx = args.tx ?? defaultDb;
+async function loadHandle(
+  tx: Executor,
+  handleUserId: string,
+): Promise<{ id: string; email: string }> {
   const [handle] = await tx
     .select({ id: users.id, kind: users.kind, email: users.email })
     .from(users)
-    .where(eq(users.id, args.handleUserId))
+    .where(eq(users.id, handleUserId))
     .limit(1);
   if (!handle) {
-    throw badRequest(`no user ${args.handleUserId}, so it is no handle`, 'HANDLE_NOT_FOUND');
+    throw badRequest(`no user ${handleUserId}, so it is no handle`, 'HANDLE_NOT_FOUND');
   }
   if (handle.kind !== 'agent') {
     throw badRequest(
-      `user ${args.handleUserId} is a person, not an agent; a handle is an agent account and a person joins as a person`,
+      `user ${handleUserId} is a person, not an agent; a handle is an agent account and a person joins as a person`,
       'HANDLE_NOT_AN_AGENT',
     );
   }
+  return { id: handle.id, email: handle.email };
+}
+
+/**
+ * Put a handle in a room with NO authorization check, because there is nobody
+ * to check: the room is being opened by a message arriving, not by a person.
+ */
+// cm:guard the ONLY caller is `store.ts:openConversation`, in the same transaction that inserts the conversation, and that is what keeps this unchecked path safe: the handle it attaches is the one the venue's own project resolves to, never one a caller named. A route, a tool or an adapter reaching for this instead of `addHandle` is a handle admitted with nobody's role behind it — which is the door standing open (ISS-1001 criteria 8, 9, 13).
+export async function attachOpeningHandle(
+  tx: Executor,
+  conversationId: string,
+  handleUserId: string,
+): Promise<void> {
+  const handle = await loadHandle(tx, handleUserId);
+  await tx
+    .insert(conversationParticipants)
+    .values({
+      conversationId,
+      kind: 'handle',
+      userId: handle.id,
+      addedBy: null,
+      label: handleFromAgentEmail(handle.email),
+    })
+    .onConflictDoNothing();
+}
+
+/**
+ * Put a handle in a live room on somebody's behalf. This is the moment a room's
+ * scope widens, so it is the moment the authorization is checked.
+ */
+// cm:guard checked at the DOOR and per PROJECT: a handle carries its projects with it, so admitting one a caller holds no role on hands them a room whose answers are computed with an access they do not have. The refusal names the project rather than saying no, because "which of its projects" is the whole of what the caller has to fix (ISS-1001 criteria 8, 9).
+// cm:guard `actorUserId` is REQUIRED and not nullable, because the check is `effectiveProjectRole(actor, …)` and an absent actor holds no role anywhere: made optional, every caller that forgets to pass one is refused on a room it owns, and the obvious fix — skipping the loop when it is absent — turns the door into a formality. The opening path has `attachOpeningHandle` instead, which says out loud that it checks nothing.
+export async function addHandle(args: AddHandleArgs): Promise<void> {
+  const tx = args.tx ?? defaultDb;
+  const handle = await loadHandle(tx, args.handleUserId);
 
   const handleProjects = await projectsOfHandle(args.handleUserId, tx);
   for (const projectId of handleProjects) {
@@ -111,7 +143,7 @@ export async function addHandle(args: AddHandleArgs): Promise<void> {
       conversationId: args.conversationId,
       kind: 'handle',
       userId: args.handleUserId,
-      addedBy: args.actorUserId ?? null,
+      addedBy: args.actorUserId,
       label: handleFromAgentEmail(handle.email),
     })
     .onConflictDoNothing();

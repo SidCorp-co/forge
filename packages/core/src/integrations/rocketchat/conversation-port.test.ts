@@ -16,7 +16,7 @@ vi.mock('./room-shape.js', async (importOriginal) => {
   return { ...actual, resolveRoomShape: (...a: unknown[]) => fetchRoomShape(...a) };
 });
 
-const sendFixedReply = vi.fn(async () => ({ messageId: 'rc-msg-1' }));
+const sendFixedReply = vi.fn(async (..._a: unknown[]) => ({ messageId: 'rc-msg-1' }));
 vi.mock('./outbound.js', async (importOriginal) => {
   const actual = await importOriginal<object>();
   return { ...actual, sendFixedReply: (...a: unknown[]) => sendFixedReply(...a) };
@@ -180,7 +180,7 @@ describe('deliver', () => {
     const message = screened('answer', { ok: true, problems: ['tone'] });
     expect(message).not.toBeNull();
     await rocketChatConversationPorts.deliver(venue, message as never);
-    expect(sendFixedReply.mock.calls[0]?.[2]).toEqual({ ok: true, problems: ['tone'] });
+    expect((sendFixedReply.mock.calls[0] as unknown[])[2]).toEqual({ ok: true, problems: ['tone'] });
   });
 
   it('refuses by name when no active connection serves the venue server', async () => {

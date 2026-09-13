@@ -19,7 +19,7 @@ import {
 } from '../db/schema-conversations.js';
 import type { Executor } from './db-executor.js';
 import { resolveProjectHandle } from './handles.js';
-import { addHandle } from './participants.js';
+import { attachOpeningHandle } from './participants.js';
 import { derivedScope } from './scope.js';
 
 const conflict = (message: string, code: string) =>
@@ -158,13 +158,8 @@ export async function openConversation(
       return raced;
     }
 
-    await addHandle({
-      conversationId: inserted.id,
-      handleUserId: handle.userId,
-      // cm:guard the OPENING is not a person's act and takes no actor: a room opens because a message arrived, and there is nobody yet whose roles could be checked. The door check in `addHandle` guards a handle somebody ADDS to a live room, which is the only case with an actor to check.
-      actorUserId: null,
-      tx,
-    });
+    // cm:guard the OPENING is not a person's act and takes no actor: a room opens because a message arrived, and there is nobody yet whose roles could be checked. `addHandle`'s door check guards a handle somebody ADDS to a live room, which is the only case with an actor to check — routing the open through it refuses every first message instead, which is what this call used to do.
+    await attachOpeningHandle(tx, inserted.id, handle.userId);
     return inserted;
   });
 }

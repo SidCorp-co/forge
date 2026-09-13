@@ -87,11 +87,10 @@ async function plantProject(sql: Sql, slug: string): Promise<{ orgId: string; pr
     `INSERT INTO users (id, email, kind, email_verified_at) VALUES ($1, $2, 'human', now())`,
     [ownerId, `owner-${ownerId.slice(0, 8)}@example.com`],
   );
-  await sql.unsafe(`INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3)`, [
-    orgId,
-    `org ${slug}`,
-    `org-${orgId.slice(0, 8)}`,
-  ]);
+  await sql.unsafe(
+    `INSERT INTO organizations (id, name, slug, created_by) VALUES ($1, $2, $3, $4)`,
+    [orgId, `org ${slug}`, `org-${orgId.slice(0, 8)}`, ownerId],
+  );
   await sql.unsafe(
     `INSERT INTO projects (id, slug, name, created_by, org_id) VALUES ($1, $2, $3, $4, $5)`,
     [projectId, slug, slug, ownerId, orgId],
@@ -115,7 +114,7 @@ async function plantSession(sql: Sql, row: Partial<PlantedSession> & { projectId
   };
   await sql.unsafe(
     `INSERT INTO chat_sessions (id, project_id, user_id, user_key, title, source, messages)
-     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7::text::jsonb)`,
     [
       planted.id,
       planted.projectId,
@@ -210,7 +209,7 @@ describe('0238 forward — what every legacy row becomes', () => {
         [projectId],
       );
       expect(agents).toHaveLength(1);
-      const handle = agents[0] as { id: string; email: string; password_hash: string | null };
+      const handle = agents[0] as unknown as { id: string; email: string; password_hash: string | null };
       expect(handle.email).toMatch(/^forge-dev\.[0-9a-f]{12}@agents\.forge\.invalid$/);
       expect(handle.password_hash).toBeNull();
 
@@ -259,7 +258,7 @@ describe('0238 forward — what every legacy row becomes', () => {
       expect(agents.map((a) => a.id)).toEqual([existing]);
 
       const [c] = await db.sql.unsafe(`SELECT origin FROM conversations WHERE id = $1`, [session.id]);
-      const origin = (c as { origin: Record<string, unknown> }).origin;
+      const origin = (c as unknown as { origin: Record<string, unknown> }).origin;
       expect(origin.mintedHandleUserId).toBeNull();
     } finally {
       await db.drop();
@@ -422,7 +421,7 @@ describe('0238 forward — the assertion is the thing that says no', () => {
         projectId,
         messages: [{ role: 'user', content: 'x' }],
       });
-      await expect(runForward(db.sql, without('WITH ORDINALITY AS t(step, ord)\n'))).rejects.toThrow(
+      await expect(runForward(db.sql, without('INSERT INTO conversation_messages\n'))).rejects.toThrow(
         new RegExp(session.id),
       );
     } finally {
@@ -443,7 +442,7 @@ describe('0238 forward — the assertion is the thing that says no', () => {
       });
       // cm:why the same copy with the ordinal read backwards — the transcript survives, its order does not
       const reordered = conversations.map((s) =>
-        s.includes('WITH ORDINALITY AS t(step, ord)\n')
+        s.includes('INSERT INTO conversation_messages\n')
           ? s.replace('(t.ord - 1)::int,', '(jsonb_array_length(cs.messages) - t.ord)::int,')
           : s,
       );
@@ -462,7 +461,7 @@ describe('0238 forward — the assertion is the thing that says no', () => {
         messages: [{ role: 'user', content: 'first' }],
       });
       const smuggled = conversations.flatMap((s) =>
-        s.includes('WITH ORDINALITY AS t(step, ord)\n')
+        s.includes('INSERT INTO conversation_messages\n')
           ? [
               s,
               `INSERT INTO conversation_messages (conversation_id, seq, role, content)
@@ -525,7 +524,7 @@ describe('0238 reverse — the forward drop is a relocation', () => {
       const [restored] = await db.sql.unsafe(`SELECT messages FROM chat_sessions WHERE id = $1`, [
         session.id,
       ]);
-      const messages = (restored as { messages: Array<Record<string, unknown>> }).messages;
+      const messages = (restored as unknown as { messages: Array<Record<string, unknown>> }).messages;
       expect(messages.map((m) => [m.role, m.content])).toEqual([
         ['user', 'first'],
         ['assistant', 'second'],
@@ -555,7 +554,7 @@ describe('0238 reverse — the forward drop is a relocation', () => {
       );
       await db.sql.unsafe(
         `INSERT INTO conversation_participants (conversation_id, kind, user_id) VALUES ($1, 'handle', $2)`,
-        [opened, (handle as { id: string }).id],
+        [opened, (handle as unknown as { id: string }).id],
       );
       await db.sql.unsafe(
         `INSERT INTO conversation_messages (conversation_id, seq, role, content)
@@ -570,7 +569,7 @@ describe('0238 reverse — the forward drop is a relocation', () => {
         [opened],
       );
       expect(row).toMatchObject({ project_id: projectId, title: 'since the deploy', source: 'rocketchat' });
-      expect((row as { messages: Array<{ content: string }> }).messages[0]?.content).toBe(
+      expect((row as unknown as { messages: Array<{ content: string }> }).messages[0]?.content).toBe(
         'spoken after the deploy',
       );
     } finally {
@@ -610,7 +609,7 @@ describe('0238 reverse — the forward drop is a relocation', () => {
 
       const survivors = await db.sql.unsafe(`SELECT id FROM users WHERE kind = 'agent'`);
       expect(survivors.map((s) => s.id)).toEqual([existing]);
-      expect((mintedHandle as { id: string }).id).not.toBe(existing);
+      expect((mintedHandle as unknown as { id: string }).id).not.toBe(existing);
     } finally {
       await db.drop();
     }
@@ -627,10 +626,10 @@ describe('0238 reverse — the forward drop is a relocation', () => {
          WHERE u.kind = 'agent' AND pm.project_id = $1`,
         [projectId],
       );
-      const handleId = (handle as { id: string }).id;
+      const handleId = (handle as unknown as { id: string }).id;
       await db.sql.unsafe(
-        `INSERT INTO personal_access_tokens (user_id, name, token_hash, scopes)
-         VALUES ($1, 'given since', $2, '{}')`,
+        `INSERT INTO personal_access_tokens (user_id, name, token_hash, token_prefix)
+         VALUES ($1, 'given since', $2, 'forge_pat_given')`,
         [handleId, `hash-${randomUUID()}`],
       );
 
