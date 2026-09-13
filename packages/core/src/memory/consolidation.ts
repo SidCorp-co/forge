@@ -3,7 +3,7 @@ import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { activityLog, comments, issues, memories } from '../db/schema.js';
 import { EmbeddingUnavailableError, embed } from '../embeddings/index.js';
-import { issueRefFormatter } from '../issues/issue-prefix-read.js';
+import { canonicalIssueKey, issueRefFormatter } from '../issues/issue-prefix-read.js';
 import { BASE_MERGE_STATE } from '../issues/merged-at.js';
 import { searchKnowledge } from '../knowledge/search.js';
 import { logger } from '../logger.js';
@@ -571,7 +571,8 @@ async function reconcile(projectId: string, issueId: string): Promise<ReconcileR
   if (!issueRow) return emptyReconcileResult('issue-not-found', 'issue not found');
 
   const issRef = (await issueRefFormatter(projectId))(issueRow.issSeq);
-  const decisionRef = `reconcile:${issRef}`;
+  // cm:guard the decision's `sourceRef` is CANONICAL and never the rendered reference — it is the idempotency key of a durable row, so a project that adopts a prefix after one reconcile would otherwise miss its own record, spend a second LLM pass and re-archive the same memories (codex review of ISS-992). `issRef` is presentation only, for the prompt and the evidence.
+  const decisionRef = `reconcile:${canonicalIssueKey(issueRow.issSeq)}`;
 
   // Idempotency: skip if this issue was already reconciled (reopen → re-release
   // re-fires the transition hook; don't double-spend LLM cost or re-archive).
@@ -790,7 +791,7 @@ let reconcileWorkerRegistered = false;
  *  transition (enqueued by `registerMemoryReconcileTrigger`). */
 export async function registerMemoryReconcileWorker(): Promise<void> {
   if (reconcileWorkerRegistered) return;
-  // pg-boss v10 requires explicit createQueue before schedule/work can reference it.
+  // cm:guard pg-boss v10 refuses a `schedule`/`work` naming a queue that was never created, so this call is not setup noise — drop it and the worker registers against nothing and the pass silently never runs
   // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
   await (boss as any).createQueue(MEMORY_RECONCILE_QUEUE);
   // biome-ignore lint/suspicious/noExplicitAny: pg-boss handler arg type varies across versions
@@ -825,7 +826,7 @@ let registered = false;
 
 export async function registerMemoryConsolidation(): Promise<void> {
   if (registered) return;
-  // pg-boss v10 requires explicit createQueue before schedule/work can reference it.
+  // cm:guard the queue is created HERE before the schedule names it — pg-boss v10 refuses a schedule against a queue that does not exist, and the failure is a pass that silently never fires rather than a startup error
   // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
   await (boss as any).createQueue(MEMORY_CONSOLIDATION_QUEUE);
   // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions

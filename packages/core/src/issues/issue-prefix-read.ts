@@ -7,6 +7,9 @@ import { db as defaultDb } from '../db/client.js';
 import { issuePrefixAliases, projects } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 
+// cm:why re-exported so a db-bearing caller reaches the whole reference layer through this one door: `memory/consolidation.ts` needs the canonical key beside `issueRefFormatter`, and importing the pure module directly for it puts that file over its archmap fan-out limit, which the gate says to fix at the source rather than by widening `.arch.json`
+export { canonicalIssueKey } from '../lib/issue-ref.js';
+
 export type IssueRefReader = Pick<typeof defaultDb, 'select'>;
 
 /** The active prefix, for building a reference. NULL where the project renders the legacy one. */

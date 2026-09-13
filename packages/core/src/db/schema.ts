@@ -266,6 +266,7 @@ export const organizationMembersRelations = relations(organizationMembers, ({ on
 }));
 
 // cm:guard a prefix is a claim on the whole deployment and is NEVER given up: this table is only ever inserted into, and `project_id` goes NULL when its project is deleted rather than the row going with it. Freeing a dead project's prefix would let a second project claim it and silently re-point every published `FD-977` at a different issue 977, which is the one failure ISS-992 exists to prevent.
+// cm:edge sideeffect -> packages/core/drizzle/migrations/0233_issue_prefix.sql — `issue_prefix_aliases_immutable_trg` refuses every DELETE, every prefix change and every owner change but the `project_id` -> NULL tombstone, in Postgres where a restore and a psql session are held to it too. Drizzle cannot model a trigger, so this comment is the only place in TypeScript that says it exists.
 // cm:guard `prefix` is stored UPPER CASE and compared as stored — a `lower(prefix)` expression index cannot back a foreign key, and `projects.issue_prefix` needs one (see `projectsIssuePrefixFk`)
 export const issuePrefixAliases = pgTable(
   'issue_prefix_aliases',
@@ -281,6 +282,11 @@ export const issuePrefixAliases = pgTable(
     prefixUq: uniqueIndex('issue_prefix_aliases_prefix_uq').on(t.prefix),
     // cm:guard the target of `projects_issue_prefix_fk`, so it is a UNIQUE CONSTRAINT and not an index — drop it and a project can be pointed at a prefix another project holds
     projectPrefixUq: unique('issue_prefix_aliases_project_prefix_uq').on(t.projectId, t.prefix),
+    // cm:edge contract -> packages/core/src/lib/issue-ref.ts#PREFIX_SHAPE — the same shape in two languages and nothing type-checks the pair: widen one and a value the parser accepts is refused by Postgres, or the reverse
+    prefixShape: check(
+      'issue_prefix_aliases_prefix_shape',
+      sql`${t.prefix} ~ '^[A-Z][A-Z0-9]{1,5}$' AND ${t.prefix} <> 'ISS'`,
+    ),
   }),
 );
 
@@ -562,9 +568,7 @@ export const jobTypes = [
   'fix',
   'custom',
   'pm',
-  // ISS-455 — skill smoke-verify canary (tier-2). Issue-less one-shot job on a
-  // 'system' pipeline_run; PASS/FAIL is read from the job's terminal status
-  // (which still flips only via applyKernelTransition, like every job).
+  // cm:guard the ONE job type that carries no issue: it runs on a 'system' pipeline_run and its PASS/FAIL IS its terminal status, so a reader that keys the outcome on anything else reads a canary that never reports (ISS-455)
   'smoke',
   // cm:edge naming -> packages/core/src/release-batch/service.ts — a release_batch job's run has metadata.source==='release-batch', not type-checked
   'release_batch',

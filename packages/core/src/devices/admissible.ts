@@ -170,7 +170,7 @@ export async function readAdmissibleIssues(args: {
             -- cm:guard CANONICAL on purpose: runIssues holds the form openRunSession
             -- canonicalised, never the project's own prefix, so this containment must not take
             -- issue_prefix into account or a run's issues silently stop being seen (ISS-992)
-            AND rs.metadata -> 'runIssues' @> to_jsonb('ISS-' || i.iss_seq)
+            AND rs.metadata -> 'runIssues' @> to_jsonb('ISS-' || i.iss_seq) -- ISS-992:canonical
         )
       ORDER BY i.created_at ASC
       LIMIT ${a.limit}

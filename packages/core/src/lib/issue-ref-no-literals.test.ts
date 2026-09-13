@@ -21,15 +21,13 @@ const SRC = new URL('..', import.meta.url).pathname;
 const OWNERS = ['lib/issue-ref.ts', 'lib/issue-ref.test.ts'];
 
 /**
- * Sites where the CANONICAL `ISS-` form is deliberate, because the value is a storage key matched
- * by string containment rather than a reference anybody reads. Each one carries a `cm:guard`
- * saying so; this list is the second half of that pair.
+ * The marker a CANONICAL `ISS-` expression carries: a storage key matched by string containment,
+ * not a reference anybody reads. It exempts the EXPRESSION and never the file, because the line
+ * between storage and presentation runs per expression — a file holding a canonical key may still
+ * gain a user-facing reference, and exempting it whole is how that one would land unseen (codex
+ * review of ISS-992).
  */
-const CANONICAL_SITES = [
-  'devices/admissible.ts',
-  'devices/run-session.ts',
-  'devices/run-issue-return.ts',
-];
+const CANONICAL_MARK = 'ISS-992:canonical';
 
 /**
  * Sites that name the shape for a reason that is not an issue reference at all. Each needs a
@@ -43,6 +41,8 @@ const NOT_A_REFERENCE = {
 };
 
 const TEMPLATE = /`[^`]*\$\{[^}]*\}[^`]*`/g;
+// cm:guard a hand-built reference is read over a WINDOW of lines and never one line at a time — `[prefix, seq]` and `.join('-')` on separate lines is the same defect written by a formatter, and a line-at-a-time scan is green on it (codex review of ISS-992)
+const WINDOW = 3;
 const SEQ_BEARING = /iss[_ ]?seq/i;
 
 function walk(dir: string, out: string[] = []): string[] {
@@ -57,7 +57,7 @@ function walk(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-/** Every way this repo knows of to assemble a reference by hand, from one line of source. */
+/** Every way this repo knows of to assemble a reference by hand, from a span of source. */
 function handBuiltReferencesIn(line: string): string[] {
   const found: string[] = [];
   for (const lit of line.match(TEMPLATE) ?? []) {
@@ -70,10 +70,25 @@ function handBuiltReferencesIn(line: string): string[] {
   return found;
 }
 
+/** Comment lines are blanked rather than dropped, so a window never joins prose to code. */
+function offendersIn(source: string): string[] {
+  const lines = source.split('\n').map((line) => {
+    const t = line.trim();
+    return t.startsWith('//') || t.startsWith('*') || t.startsWith('--') ? '' : line;
+  });
+  const found = new Set<string>();
+  for (let i = 0; i < lines.length; i++) {
+    const span = lines.slice(i, i + WINDOW);
+    if (span.some((l) => l.includes(CANONICAL_MARK))) continue;
+    for (const hit of handBuiltReferencesIn(span.join(' '))) found.add(hit.trim());
+  }
+  return [...found];
+}
+
 describe('issue references are built in one place (ISS-992)', () => {
   const files = walk(SRC).filter((f) => {
     const rel = relative(SRC, f);
-    return !OWNERS.includes(rel) && !CANONICAL_SITES.includes(rel) && !(rel in NOT_A_REFERENCE);
+    return !OWNERS.includes(rel) && !(rel in NOT_A_REFERENCE);
   });
 
   it('scans the whole source tree, so an empty result means clean and not unrun', () => {
@@ -84,14 +99,8 @@ describe('issue references are built in one place (ISS-992)', () => {
     const offenders: string[] = [];
     for (const file of files) {
       const rel = relative(SRC, file);
-      for (const [i, line] of readFileSync(file, 'utf8').split('\n').entries()) {
-        const trimmed = line.trim();
-        if (trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('--')) {
-          continue;
-        }
-        for (const hit of handBuiltReferencesIn(line)) {
-          offenders.push(`${rel}:${i + 1} — ${hit.slice(0, 100)}`);
-        }
+      for (const hit of offendersIn(readFileSync(file, 'utf8'))) {
+        offenders.push(`${rel} — ${hit.slice(0, 100)}`);
       }
     }
     expect(offenders).toEqual([]);
@@ -109,6 +118,21 @@ describe('issue references are built in one place (ISS-992)', () => {
     ['a join with double quotes', 'const ref = [prefix, row.issSeq].join("-");'],
   ])('refuses %s', (_name, line) => {
     expect(handBuiltReferencesIn(line)).not.toEqual([]);
+  });
+
+  // cm:why The same three forms a formatter has broken across lines — the defect a line-at-a-time scan cannot see.
+  it.each([
+    ['a join wrapped onto the next line', "const ref = [prefix, row.issSeq]\n  .join('-');"],
+    ['a concatenation wrapped onto the next line', "const ref =\n  'ISS-' + row.issSeq;"],
+  ])('refuses %s', (_name, span) => {
+    expect(offendersIn(span)).not.toEqual([]);
+  });
+
+  it('exempts a canonical expression by its marker, and only within its window', () => {
+    const canonical = "const key = 'ISS-' + issue.issSeq; // ISS-992:canonical the run key";
+    expect(offendersIn(canonical)).toEqual([]);
+    const both = `${canonical}\n\n\n\nconst ref = 'ISS-' + issue.issSeq;`;
+    expect(offendersIn(both)).not.toEqual([]);
   });
 
   it.each([

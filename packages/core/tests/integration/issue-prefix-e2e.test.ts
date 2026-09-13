@@ -10,6 +10,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
+import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   createTestDevice,
@@ -26,6 +27,10 @@ let assignIssuePrefix: typeof import('../../src/issues/issue-prefix-service.js')
 let heldIssuePrefixes: typeof import('../../src/issues/issue-prefix-read.js').heldIssuePrefixes;
 let parseIssueRef: typeof import('../../src/lib/issue-ref.js').parseIssueRef;
 let openRunSession: typeof import('../../src/devices/run-session.js').openRunSession;
+let loadIssueDependencyEdges: typeof import('../../src/issues/dependency-read.js').loadIssueDependencyEdges;
+let signUserToken: typeof import('../../src/auth/jwt.js')['signUserToken'];
+// biome-ignore lint/suspicious/noExplicitAny: test-only mount
+let app: any;
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
@@ -40,6 +45,13 @@ beforeAll(async () => {
   ({ heldIssuePrefixes } = await import('../../src/issues/issue-prefix-read.js'));
   ({ parseIssueRef } = await import('../../src/lib/issue-ref.js'));
   ({ openRunSession } = await import('../../src/devices/run-session.js'));
+  ({ loadIssueDependencyEdges } = await import('../../src/issues/dependency-read.js'));
+  ({ signUserToken } = await import('../../src/auth/jwt.js'));
+  const { projectRoutes } = await import('../../src/projects/routes.js');
+  const { errorHandler } = await import('../../src/middleware/error.js');
+  app = new Hono();
+  app.onError(errorHandler);
+  app.route('/api/projects', projectRoutes);
 }, 300_000);
 
 afterAll(async () => {
@@ -48,7 +60,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await truncateAll(harness.db);
-  userId = (await createTestUser(harness.db)).id;
+  userId = (await createTestUser(harness.db, { emailVerifiedAt: new Date() })).id;
 });
 
 async function project() {
@@ -179,6 +191,106 @@ describe('what the database refuses on its own', () => {
     if (!refused || refused.ok) throw new Error('expected exactly one refusal');
     expect(refused.reason).toBe('taken');
   });
+
+  // cm:why the same project on both sides is NOT a conflict: the state the loser asked for is the state that now holds, and reporting `taken` against its own holder refuses a request that has already succeeded (codex review of ISS-992).
+  it('answers both callers ok when ONE project races itself for a free prefix', async () => {
+    const a = await project();
+    const results = await Promise.all([assign(a.id, 'FD'), assign(a.id, 'FD')]);
+    expect(results.filter((r) => r.ok)).toHaveLength(2);
+    expect(await activePrefixOf(a.id)).toBe('FD');
+  });
+});
+
+// cm:guard Postgres's own words are on `err.cause`, not on the DrizzleQueryError that wraps it — a `rejects.toThrow(/…/)` here matches the wrapper's generic "Failed query" and passes for ANY database error, which is a green that says nothing about which rule refused.
+async function refusedBy(run: Promise<unknown>, pattern: RegExp): Promise<void> {
+  let caught: unknown;
+  try {
+    await run;
+  } catch (err) {
+    caught = err;
+  }
+  if (caught === undefined) throw new Error(`expected a refusal matching ${pattern}`);
+  const err = caught as { message?: string; cause?: { message?: string } };
+  expect(`${err.cause?.message ?? ''} ${err.message ?? ''}`).toMatch(pattern);
+}
+
+describe('what the database refuses on its own, so a restore and a psql session are held to it too', () => {
+  async function aliasOf(projectId: string): Promise<string> {
+    const rows = (await harness.db.execute(
+      sql`SELECT id FROM issue_prefix_aliases WHERE project_id = ${projectId} LIMIT 1`,
+    )) as unknown as Array<{ id: string }>;
+    const id = rows[0]?.id;
+    if (!id) throw new Error('no alias row');
+    return id;
+  }
+
+  // cm:why the trigger, not the application: the guard on `issuePrefixAliases` says the table is insert-only, and until this ran nothing but that sentence enforced it (codex review of ISS-992).
+  it('refuses a DELETE of an alias, spent or active', async () => {
+    const a = await project();
+    await assign(a.id, 'FD');
+    const id = await aliasOf(a.id);
+    await refusedBy(
+      harness.db.execute(sql`DELETE FROM issue_prefix_aliases WHERE id = ${id}`),
+      /insert-only/,
+    );
+  });
+
+  it('refuses a change of an alias prefix', async () => {
+    const a = await project();
+    await assign(a.id, 'FD');
+    const id = await aliasOf(a.id);
+    await refusedBy(
+      harness.db.execute(sql`UPDATE issue_prefix_aliases SET prefix = 'FX' WHERE id = ${id}`),
+      /immutable/,
+    );
+  });
+
+  it('refuses handing an alias to another project', async () => {
+    const a = await project();
+    const b = await project();
+    await assign(a.id, 'FD');
+    const id = await aliasOf(a.id);
+    await refusedBy(
+      harness.db.execute(
+        sql`UPDATE issue_prefix_aliases SET project_id = ${b.id} WHERE id = ${id}`,
+      ),
+      /only go NULL/,
+    );
+  });
+
+  // cm:why the tombstone is the ONE mutation the design needs, so the trigger has to let it through — a trigger that refused it would break project deletion instead.
+  it('still lets the project FK tombstone the alias on delete', async () => {
+    const a = await project();
+    await assign(a.id, 'FD');
+    await harness.db.execute(sql`DELETE FROM projects WHERE id = ${a.id}`);
+    const rows = (await harness.db.execute(
+      sql`SELECT project_id FROM issue_prefix_aliases WHERE prefix = 'FD'`,
+    )) as unknown as Array<{ project_id: string | null }>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.project_id).toBeNull();
+  });
+
+  // cm:why a direct write of `fd` coexists with `FD` under the case-sensitive unique index, and both projects then answer to the same apparent FD-977.
+  it.each(['fd', 'ISS', 'F', 'TOOLONG', 'F-D', '1FD'])(
+    'refuses the stored prefix %s',
+    async (p) => {
+      const a = await project();
+      await refusedBy(
+        harness.db.execute(
+          sql`INSERT INTO issue_prefix_aliases (project_id, prefix) VALUES (${a.id}, ${p})`,
+        ),
+        /prefix_shape/,
+      );
+    },
+  );
+
+  it.each(['FD', 'FP2', 'ABCDEF'])('accepts the stored prefix %s', async (p) => {
+    const a = await project();
+    await harness.db.execute(
+      sql`INSERT INTO issue_prefix_aliases (project_id, prefix) VALUES (${a.id}, ${p})`,
+    );
+    expect(await heldIssuePrefixes(a.id)).toContain(p);
+  });
 });
 
 describe('a reference under a prefix', () => {
@@ -201,6 +313,82 @@ describe('a reference under a prefix', () => {
     expect(out.ok).toBe(false);
     if (out.ok) throw new Error('expected a refusal');
     expect(out.code).toBe('FOREIGN_PREFIX');
+  });
+});
+
+describe('an edge whose two ends sit in different projects', () => {
+  async function issueIn(projectId: string, issSeq: number): Promise<string> {
+    const id = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id)
+      VALUES (${id}, ${projectId}, ${issSeq}, ${`Issue ${issSeq}`}, 'open', 'medium', ${userId})
+    `);
+    return id;
+  }
+
+  // cm:guard `issue_dependencies.project_id` scopes the EDGE and constrains NEITHER endpoint, so a cross-project edge is representable — naming the far end under the near end's prefix reports a reference that exists and points somewhere else (codex review of ISS-992)
+  it("names each end with its own project's prefix", async () => {
+    const fd = await project();
+    const fx = await project();
+    await assign(fd.id, 'FD');
+    await assign(fx.id, 'FX');
+    const blocker = await issueIn(fd.id, 7);
+    const dependent = await issueIn(fx.id, 9);
+    await harness.db.execute(sql`
+      INSERT INTO issue_dependencies (project_id, from_issue_id, to_issue_id, kind)
+      VALUES (${fx.id}, ${blocker}, ${dependent}, 'blocks')
+    `);
+
+    const edges = await loadIssueDependencyEdges(dependent, fx.id);
+    expect(edges.incoming).toHaveLength(1);
+    expect(edges.incoming[0]?.fromDisplayId).toBe('FD-7');
+    expect(edges.incoming[0]?.toDisplayId).toBe('FX-9');
+  });
+});
+
+describe('the project PATCH that sets a prefix', () => {
+  async function patch(projectId: string, body: Record<string, unknown>) {
+    const res = await app.request(`/api/projects/${projectId}`, {
+      method: 'PATCH',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${await signUserToken(userId)}`,
+      },
+      body: JSON.stringify(body),
+    });
+    return {
+      status: res.status,
+      body: (await res.json().catch(() => null)) as Record<string, unknown> | null,
+    };
+  }
+
+  // cm:why criterion 2, through the door a person actually uses — every other prefix case arranges the row itself, so none of them proves the write works.
+  it('persists a prefix named on its own and returns it', async () => {
+    const a = await project();
+    const out = await patch(a.id, { issuePrefix: 'FD' });
+    expect(out.status).toBe(200);
+    expect(out.body?.issuePrefix).toBe('FD');
+    expect(await activePrefixOf(a.id)).toBe('FD');
+  });
+
+  // cm:guard the prefix is written through a SECOND table, so it has to move in the same transaction as the rest of the patch — applied outside it, a request that then fails on a sibling field renames the project and answers the caller with an error (codex review of ISS-992)
+  it('leaves the prefix unset when a later field in the same patch fails', async () => {
+    const a = await project();
+    const out = await patch(a.id, { issuePrefix: 'FD', defaultDeviceId: randomUUID() });
+    expect(out.status).toBeGreaterThanOrEqual(400);
+    expect(await activePrefixOf(a.id)).toBeNull();
+    expect(await heldIssuePrefixes(a.id)).toEqual([]);
+  });
+
+  it('refuses a prefix another project holds without naming a project the caller cannot see', async () => {
+    const other = (await createTestUser(harness.db)).id;
+    const theirs = await createTestProject(harness.db, other);
+    await assign(theirs.id, 'FD');
+    const mine = await project();
+    const out = await patch(mine.id, { issuePrefix: 'FD' });
+    expect(out.status).toBe(409);
+    expect(JSON.stringify(out.body)).not.toContain(theirs.slug);
+    expect(JSON.stringify(out.body)).not.toContain(theirs.name);
   });
 });
 

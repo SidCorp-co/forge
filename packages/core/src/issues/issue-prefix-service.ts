@@ -5,6 +5,9 @@ import { isUniqueViolation } from '../lib/db-errors.js';
 import { type IssuePrefixShapeError, validateIssuePrefix } from '../lib/issue-ref.js';
 import { issuePrefixHolder } from './issue-prefix-read.js';
 
+// cm:guard a caller inside a transaction passes it here, and `dbi.transaction()` is then a SAVEPOINT: the unique-violation recovery below runs after a rollback to that savepoint, so the caller's own transaction survives a losing race instead of being poisoned by it
+export type PrefixWriter = Pick<typeof db, 'transaction' | 'select' | 'insert' | 'update'>;
+
 export type AssignPrefixResult =
   | { ok: true; prefix: string }
   | IssuePrefixShapeError
@@ -16,13 +19,14 @@ export type AssignPrefixResult =
 export async function assignIssuePrefix(
   projectId: string,
   raw: string,
+  dbi: PrefixWriter = db,
 ): Promise<AssignPrefixResult> {
   const shape = validateIssuePrefix(raw);
   if (!shape.ok) return shape;
   const prefix = shape.prefix;
 
   try {
-    return await db.transaction(async (tx) => {
+    return await dbi.transaction(async (tx) => {
       const [held] = await tx
         .select({ projectId: issuePrefixAliases.projectId })
         .from(issuePrefixAliases)
@@ -42,12 +46,17 @@ export async function assignIssuePrefix(
     // cm:guard the losing side of two callers claiming one free prefix at once: both reads found it free, the index refused the second insert, and without this the caller gets a 500 on what is an ordinary conflict. Re-reading names the winner rather than guessing it.
     if (!isUniqueViolation(err)) throw err;
     const holder = await issuePrefixHolder(prefix);
+    // cm:guard the winner may be THIS project — two callers assigning one free prefix to the same project is not a conflict, and reporting `taken` against its own holder refuses a request whose state has already been reached (codex review of ISS-992). The pointer still has to move: the losing transaction rolled back before it did.
+    if (holder?.projectId === projectId) {
+      await dbi.update(projects).set({ issuePrefix: prefix }).where(eq(projects.id, projectId));
+      return { ok: true, prefix };
+    }
     return { ok: false, reason: 'taken', holderProjectId: holder?.projectId ?? null };
   }
 }
 
 /** Send a project back to the legacy `ISS`. The alias it held is NOT released — see the guard on
  *  `issuePrefixAliases`. */
-export async function retireIssuePrefix(projectId: string): Promise<void> {
-  await db.update(projects).set({ issuePrefix: null }).where(eq(projects.id, projectId));
+export async function retireIssuePrefix(projectId: string, dbi: PrefixWriter = db): Promise<void> {
+  await dbi.update(projects).set({ issuePrefix: null }).where(eq(projects.id, projectId));
 }

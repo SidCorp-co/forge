@@ -59,8 +59,7 @@ export const createProjectSchema = z.object({
   description: z.string().trim().max(2000).nullable().optional(),
   // cm:why ISS-387 — project kind. `standard` (default) = code repo project; `website` = an Epodsystem storefront project (git repo optional).
   kind: z.enum(projectKinds).optional(),
-  // Org tier — every project belongs to exactly one org. Omitted = the
-  // caller's personal org. Any org role (incl. member) may create projects.
+  // cm:guard omitted means the caller's PERSONAL org and never "no org" — every project belongs to exactly one, and any org role including plain member may create one here
   orgId: z.uuid().optional(),
 });
 
@@ -130,6 +129,27 @@ export type UpdateProjectInput = z.infer<typeof updateProjectSchema>;
 const idParamSchema = z.object({
   id: z.uuid(),
 });
+
+const PATCHED_PROJECT = {
+  id: projects.id,
+  slug: projects.slug,
+  name: projects.name,
+  orgId: projects.orgId,
+  createdBy: projects.createdBy,
+  description: projects.description,
+  kind: projects.kind,
+  repoPath: projects.repoPath,
+  repoUrl: projects.repoUrl,
+  workspaceSetup: projects.workspaceSetup,
+  baseBranch: projects.baseBranch,
+  productionBranch: projects.productionBranch,
+  defaultDeviceId: projects.defaultDeviceId,
+  agentConfig: projects.agentConfig,
+  previewDeploy: projects.previewDeploy,
+  webhookSecret: projects.webhookSecret,
+  issuePrefix: projects.issuePrefix,
+  createdAt: projects.createdAt,
+};
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, {
@@ -421,9 +441,6 @@ projectRoutes.patch(
     if (patch.workspaceSetup !== undefined) updates.workspaceSetup = patch.workspaceSetup;
     if (patch.productionBranch !== undefined) updates.productionBranch = patch.productionBranch;
     if (patch.defaultDeviceId !== undefined) updates.defaultDeviceId = patch.defaultDeviceId;
-    if (patch.issuePrefix !== undefined) {
-      await applyIssuePrefixPatch(id, patch.issuePrefix, userId);
-    }
     if (patch.stateContext !== undefined) {
       // Read-modify-write rather than Postgres's `jsonb || jsonb` (shallow
       // merge) so a `stateContext`-only patch can't wipe sibling keys
@@ -477,25 +494,16 @@ projectRoutes.patch(
     if (patch.previewDeploy !== undefined) updates.previewDeploy = patch.previewDeploy;
     if (patch.webhookSecret !== undefined) updates.webhookSecret = patch.webhookSecret;
 
-    const [updated] = await db.update(projects).set(updates).where(eq(projects.id, id)).returning({
-      id: projects.id,
-      slug: projects.slug,
-      name: projects.name,
-      orgId: projects.orgId,
-      createdBy: projects.createdBy,
-      description: projects.description,
-      kind: projects.kind,
-      repoPath: projects.repoPath,
-      repoUrl: projects.repoUrl,
-      workspaceSetup: projects.workspaceSetup,
-      baseBranch: projects.baseBranch,
-      productionBranch: projects.productionBranch,
-      defaultDeviceId: projects.defaultDeviceId,
-      agentConfig: projects.agentConfig,
-      previewDeploy: projects.previewDeploy,
-      webhookSecret: projects.webhookSecret,
-      issuePrefix: projects.issuePrefix,
-      createdAt: projects.createdAt,
+    // cm:guard the prefix moves in the SAME transaction as the rest of the patch — it is written through a second table and its own savepoint, so applying it outside this block would leave a project renamed by a request that then failed on a sibling field and answered the caller with an error (codex review of ISS-992)
+    const [updated] = await db.transaction(async (tx) => {
+      if (patch.issuePrefix !== undefined) {
+        await applyIssuePrefixPatch(id, patch.issuePrefix, userId, tx);
+      }
+      // cm:guard a patch naming ONLY `issuePrefix` leaves `updates` empty, and drizzle refuses `set({})` — the row is read back instead, because the write it asked for has already happened above
+      if (Object.keys(updates).length === 0) {
+        return tx.select(PATCHED_PROJECT).from(projects).where(eq(projects.id, id)).limit(1);
+      }
+      return tx.update(projects).set(updates).where(eq(projects.id, id)).returning(PATCHED_PROJECT);
     });
     if (!updated) throw notFound();
 

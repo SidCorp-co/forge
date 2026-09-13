@@ -9,6 +9,7 @@ import { projects } from '../db/schema.js';
 import {
   type AssignPrefixResult,
   assignIssuePrefix,
+  type PrefixWriter,
   retireIssuePrefix,
 } from '../issues/issue-prefix-service.js';
 import { loadProjectAccess } from '../lib/authz.js';
@@ -49,11 +50,12 @@ export async function applyIssuePrefixPatch(
   projectId: string,
   value: string | null,
   userId: string,
+  dbi: PrefixWriter,
 ): Promise<void> {
   if (value === null || value === '') {
-    await retireIssuePrefix(projectId);
+    await retireIssuePrefix(projectId, dbi);
     return;
   }
-  const assigned = await assignIssuePrefix(projectId, value);
+  const assigned = await assignIssuePrefix(projectId, value, dbi);
   if (!assigned.ok) throw await issuePrefixRefusal(assigned, userId);
 }

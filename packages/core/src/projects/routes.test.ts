@@ -41,7 +41,14 @@ const txInsertMembers = vi.fn(() => ({ values: txInsertMembersValues }));
 const txInsert = vi.fn();
 
 const transaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
-  const tx = { insert: txInsert, execute: vi.fn(async () => []), delete: dbDelete };
+  // cm:why the PATCH now writes through the transaction, so the tx carries the same update/select doubles the bare db does (ISS-992)
+  const tx = {
+    insert: txInsert,
+    execute: vi.fn(async () => []),
+    delete: dbDelete,
+    update: dbUpdate,
+    select: vi.fn(() => ({ from: selectFrom })),
+  };
   return fn(tx);
 });
 
@@ -74,9 +81,7 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-// Org-level authz: db-touching resolvers are stubbed; the pure helpers
-// (assertProjectRole, assertOrgRoleOnProject, maxProjectRole, …) stay real so
-// the tests exercise the production role logic on the mocked access shape.
+// cm:guard only the db-touching authz resolvers are stubbed — `assertProjectRole`, `assertOrgRoleOnProject` and `maxProjectRole` stay REAL, so these cases exercise the production role logic rather than a mock of the decision under test
 const projectAccess = vi.fn();
 const personalOrg = vi.fn();
 vi.mock('../lib/authz.js', async (importOriginal) => ({
