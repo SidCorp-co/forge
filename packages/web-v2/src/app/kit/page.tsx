@@ -7,7 +7,7 @@ import {
   CardHeader, CardTitle, Checkbox, Collapsible, CommandPalette, Divider, EmptyState,
   ErrorState, Field, Highlight, HealthDot, Icon, IconButton, Input,
   KanbanBoard, KanbanCardSkeleton, KanbanColumn, KanbanColumnSkeleton, Kicker, KanbanCard, LiveDot, Menu,
-  MonoTag, NavRail, NotificationsMenu, Pagination, PipelineTracker, ProgressBar,
+  MonoTag, NavRail, NotificationsMenu, Pagination, ProgressBar,
   NativeSelect, ProjectCardSkeleton, ProjectMark, Radio, RadioGroup,
   SegmentedControl, Select, SessionRowSkeleton, Skeleton, SlideOver, Spinner,
   STAGES, Stat, StatusChip,
@@ -19,6 +19,7 @@ import {
 import {
   ForgeMascot, ProjectLoader, ColdBoot, AgentWorking, ReconnectingBanner,
 } from "@/design";
+import { TONE_META } from "@/design/status";
 import {
   NavRailCompact, PROJECT_ITEMS, WORKSPACE_ITEMS,
   type RailItem, type SwitcherProject,
@@ -63,7 +64,6 @@ const PROJECT_NAV: RailItem[] = PROJECT_ITEMS.map(({ key, label, icon }) => ({
   key, label, icon, ...(key === "proj-issues" ? { badge: 12 } : {}),
 }));
 
-// Sample switcher rows for the compact rail's hover flyout (pinned-first).
 const RAIL_SWITCHER: SwitcherProject[] = [
   { id: "p1", slug: "forge-core", name: "forge-core", initials: "FRG", tint: "var(--flame-50)", ink: "var(--flame-700)", liveRuns: 3, pinned: true },
   { id: "p2", slug: "forge-web", name: "forge-web", initials: "FWB", tint: "var(--cobalt-50)", ink: "var(--cobalt-700)", liveRuns: 1, pinned: true },
@@ -89,11 +89,13 @@ const NOTES: NotificationItem[] = [
   { id: "FRG-230", label: "STATUS", text: "Release agent opened PR #1284", sub: "ready to merge", time: "1h", unread: false, hue: "green" },
 ];
 
-const TRACKER_CASES: { stage: StageKey; status: "running" | "done" | "failed" | "blocked"; label: string }[] = [
-  { stage: "code", status: "running", label: "running · code" },
-  { stage: "review", status: "failed", label: "failed · review" },
-  { stage: "release", status: "done", label: "done" },
-  { stage: "test", status: "blocked", label: "blocked · test" },
+/** The kit's own sample columns — the lane's own labels and their tones, which is what a real
+ *  board draws (`features/pipeline/derive.ts:boardColumns`). */
+const KANBAN_COLUMNS: { title: string; color: string }[] = [
+  { title: "Open", color: TONE_META.neutral.dot },
+  { title: "Running", color: TONE_META.active.dot },
+  { title: "Needs a human", color: TONE_META.attention.dot },
+  { title: "Awaiting release", color: TONE_META.shipped.dot },
 ];
 
 const NAV_ANCHORS = [
@@ -359,7 +361,6 @@ function SlideOverDemo() {
         Open run detail
       </Button>
       <SlideOver open={open} onClose={() => setOpen(false)} title={<span className="font-mono">FRG-241</span>}>
-        <PipelineTracker stage="code" status="running" variant="full" />
         <p className="fg-body-sm mt-5">Sweep orphaned runner jobs on reconnect. Code agent is editing the reconnect handler.</p>
       </SlideOver>
     </>
@@ -567,45 +568,29 @@ export default function KitPage() {
             </div>
           </Section>
 
-          <Section id="pipeline" title="Pipeline tracker" hint="The hero motif — full (run header), compact (board rows), mini (dense lists).">
-            <div className="flex flex-col gap-7">
-              {TRACKER_CASES.map((c) => (
-                <div key={c.label} className="flex flex-col gap-2">
-                  <span className="fg-caption">{c.label}</span>
-                  <PipelineTracker stage={c.stage} status={c.status} variant="full" />
-                </div>
-              ))}
-              <div className="my-1 h-px bg-[var(--border-subtle)]" />
-              <div className="flex items-center gap-6">
-                <span className="fg-caption w-16">compact</span>
-                <div className="max-w-xs flex-1"><PipelineTracker stage="code" status="running" variant="compact" /></div>
-              </div>
-              <div className="flex items-center gap-6">
-                <span className="fg-caption w-16">mini</span>
-                <PipelineTracker stage="code" status="running" variant="mini" />
-                <PipelineTracker stage="release" status="done" variant="mini" />
-                <PipelineTracker stage="review" status="failed" variant="mini" />
-              </div>
-            </div>
-          </Section>
-
           <Section id="kanban" title="Kanban card">
             <div className="grid max-w-3xl gap-3 sm:grid-cols-3">
-              <KanbanCard id="FRG-241" title="Sweep orphaned runner jobs on reconnect" stage="code" status="running" cost="$0.42" assignee={{ initials: "SK", hue: "cobalt" }} />
-              <KanbanCard id="FRG-229" title="Retry policy for failed test stage handoff" stage="code" status="blocked" cost="$0.39" assignee={{ initials: "MJ", hue: "green" }} />
-              <KanbanCard id="FRG-230" title="Per-step cost analytics on the run timeline" stage="release" status="done" cost="$2.14" assignee={{ initials: "AR", hue: "flame" }} />
+              <KanbanCard id="FRG-241" title="Sweep orphaned runner jobs on reconnect" status="running" cost="$0.42" assignee={{ initials: "SK", hue: "cobalt" }} />
+              <KanbanCard id="FRG-229" title="Retry policy for failed test stage handoff" status="blocked" cost="$0.39" assignee={{ initials: "MJ", hue: "green" }} />
+              <KanbanCard id="FRG-230" title="Per-step cost analytics on the run timeline" status="done" cost="$2.14" assignee={{ initials: "AR", hue: "flame" }} />
             </div>
           </Section>
 
-          <Section id="kanban-board" title="Kanban board" hint="7 stage columns; the pipeline as a board. Horizontal snap-scroll when narrow.">
+          <Section id="kanban-board" title="Kanban board" hint="One column per state, in no order. Horizontal snap-scroll when narrow.">
             <div className="flex h-[320px]">
               <KanbanBoard>
-                {STAGES.map((s) => (
-                  <KanbanColumn key={s.key} stage={s.key} count={s.key === "code" ? 2 : 0}>
-                    {s.key === "code" && (
+                {KANBAN_COLUMNS.map((c) => (
+                  <KanbanColumn
+                    key={c.title}
+                    title={c.title}
+                    color={c.color}
+                    count={c.title === "Running" ? 2 : 0}
+                    emptyHint={`No issues are ${c.title.toLowerCase()}.`}
+                  >
+                    {c.title === "Running" && (
                       <>
-                        <KanbanCard id="FRG-241" title="Sweep orphaned runner jobs on reconnect" stage="code" status="running" cost="$0.42" assignee={{ initials: "SK", hue: "cobalt" }} />
-                        <KanbanCard id="FRG-229" title="Retry policy for failed test stage handoff" stage="code" status="blocked" cost="$0.39" assignee={{ initials: "MJ", hue: "green" }} />
+                        <KanbanCard id="FRG-241" title="Sweep orphaned runner jobs on reconnect" status="running" cost="$0.42" assignee={{ initials: "SK", hue: "cobalt" }} />
+                        <KanbanCard id="FRG-229" title="Retry policy for failed test stage handoff" status="blocked" cost="$0.39" assignee={{ initials: "MJ", hue: "green" }} />
                       </>
                     )}
                   </KanbanColumn>
@@ -759,10 +744,6 @@ export default function KitPage() {
                 <div className="flex items-center gap-3">
                   <Spinner /> <Spinner size={22} /> <span className="fg-body-sm">inline spinners</span>
                 </div>
-              </div>
-              <div className="flex items-center gap-6">
-                <span className="fg-caption w-24">running mini</span>
-                <PipelineTracker stage="code" status="running" variant="mini" />
               </div>
             </div>
           </Section>

@@ -166,7 +166,6 @@ export default function ProjectOverviewPage() {
             )}
           </div>
         </div>
-        {/* Gear affordance → per-project settings (ISS-316). */}
         <IconButton
           icon="settings"
           aria-label="Project settings"
@@ -181,7 +180,6 @@ export default function ProjectOverviewPage() {
           onlineRunners={runners.onlineCount}
           needsYou={attention.length}
           openIssues={health?.totalActive ?? donut.total}
-          activeStages={donut.activeStageCount}
           spendTodayUsd={health?.spend24hUsd ?? 0}
           inFlightUsd={inFlight}
         />

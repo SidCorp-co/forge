@@ -1,37 +1,12 @@
-import type { StageKey } from "@/design/stages";
 import type { StatusKey, AvatarHue } from "@/design/status";
 import { MonoTag } from "@/design/primitives/mono-tag";
 import { Avatar } from "@/design/primitives/avatar";
 import { Stat } from "@/design/primitives/stat";
 import { StatusChip } from "@/design/primitives/status-chip";
-import { PipelineTracker } from "./pipeline-tracker";
-
-/** StatusKey → tracker run-state, so the card's bead reflects the REAL status
- *  (failed/blocked/done/paused…) instead of collapsing everything that isn't
- *  `running` into `queued` (ISS-436 — failed and queued cards looked identical
- *  until opened). */
-const TRACKER_STATUS: Record<StatusKey, "running" | "done" | "failed" | "blocked" | "queued" | "review"> = {
-  running: "running",
-  done: "done",
-  passed: "done",
-  // ISS-511 — released/closed split off `done` for chip color but are still
-  // terminal-good for the pipeline bead.
-  shipped: "done",
-  archived: "done",
-  failed: "failed",
-  blocked: "blocked",
-  review: "review",
-  waiting: "queued",
-  paused: "queued",
-  queued: "queued",
-  zombie: "failed",
-  swept: "queued",
-};
 
 export interface KanbanCardProps {
   id: string;
   title: string;
-  stage: StageKey;
   status: StatusKey;
   /** Exact chip text override — e.g. the issue's TRUE lifecycle label
    *  ("Approved" / "Needs info") instead of the collapsed bucket label. */
@@ -54,7 +29,6 @@ export interface KanbanCardProps {
 export function KanbanCard({
   id,
   title,
-  stage,
   status,
   statusLabel,
   statusDomain = "issue",
@@ -96,7 +70,6 @@ export function KanbanCard({
         </span>
         {cost && <Stat icon="dollar">{cost}</Stat>}
       </div>
-      <PipelineTracker stage={stage} status={TRACKER_STATUS[status] ?? "queued"} variant="compact" />
     </button>
   );
 }

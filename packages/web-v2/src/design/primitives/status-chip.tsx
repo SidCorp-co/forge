@@ -43,8 +43,8 @@ export function StatusChip({ status, stage, size = "md", domain = "issue", label
   const isSession = domain === "session";
   const baseLabel = isSession ? (label ?? SESSION_LABELS[status] ?? m.label) : (label ?? m.label);
   const text = stage && isRunning ? `running · ${stage}` : baseLabel;
-  // Session chips always read in mono (execution telemetry); issue chips use the
-  // sans label unless they're showing the live `running · stage` band.
+  // cm:guard the text is BOUNDED and carries its full self in `title`, because `stage` is the step a session recorded and that is untyped jsonb the server writes — not one of a fixed seven. Until ISS-999 the caller folded every value onto a seven-word vocabulary, which bounded the width by accident; the truthful value has no such bound and a long one widened the sessions table and overflowed the mobile card.
+  // cm:why mono is EXECUTION telemetry — a session chip always reads that way, and an issue chip only while it is showing the live `running · step` band, so the two vocabularies never look like one
   const mono = isSession || (stage && isRunning);
   return (
     <span
@@ -79,7 +79,9 @@ export function StatusChip({ status, stage, size = "md", domain = "issue", label
           }}
         />
       )}
-      {text}
+      <span className="max-w-[16ch] truncate" title={text}>
+        {text}
+      </span>
     </span>
   );
 }

@@ -1,9 +1,10 @@
-// web-v2 feature module: sessions (agent-sessions queue). Types are re-typed
-// to match the exact FLAT `agent_sessions` rows returned by
-// `packages/core/src/agent-sessions/routes.ts` (verified for ISS-291 — the row
-// uses `id`, NOT `documentId`, and carries no per-session dollar cost / model).
-// The display-status derivation + status vocabulary are ported from the v1
-// `packages/web/src/features/agent/api.ts` so both UIs agree.
+// web-v2 feature module: sessions (agent-sessions queue) — the flat `agent_sessions` row as the
+// route serves it, plus the display-status derivation and the status vocabulary over it.
+//
+// cm:guard the row is keyed `id` and NOT `documentId`, and carries no per-session dollar cost or model (measured against the route for ISS-291)
+// cm:edge contract -> packages/core/src/agent-sessions/routes.ts — a hand-mirror of that route's row, not an import, so a field added there is invisible here until it is added here too
+// cm:guard until ISS-999 this header ended "ported from the v1 `packages/web/src/features/agent/api.ts` so both UIs agree" — `packages/web` has been deleted, so a reader was told to keep this in step with a package that is not there
+
 import {
   FAILURE_CAUSE_PRESENTATION,
   type FailureCause,
@@ -11,7 +12,6 @@ import {
   resolveFailureCause,
 } from "@forge/contracts/failure-causes";
 import type { StatusKey } from "@/design/status";
-import type { StageKey } from "@/design/stages";
 
 /**
  * Real persisted status enum (`agentSessionStatuses` in core schema). The
@@ -489,7 +489,7 @@ export function classifySessionOutcome(
     };
   }
 
-  // Non-terminal (running / stalled / queued / idle): defer to the plain mapping.
+  // cm:guard the non-terminal tail defers to the plain mapping and adds no bucket of its own — a status that needs its own presentation gets a branch ABOVE this, never a second table beside it
   return {
     bucket: "active",
     statusKey: statusToChip(display),
@@ -530,33 +530,17 @@ export function statusToRun(display: AgentSessionDisplayStatus): RunStatus {
   }
 }
 
-const STEP_TO_STAGE: Record<string, StageKey> = {
-  triage: "triage",
-  clarify: "clarify",
-  plan: "plan",
-  code: "code",
-  fix: "code",
-  develop: "code",
-  development: "code",
-  review: "review",
-  test: "test",
-  testing: "test",
-  deploy: "test",
-  verify: "test",
-  release: "release",
-};
-
-/**
- * Best-effort pipeline stage for the per-row mini tracker. The row has no clean
- * stage field, so derive from `metadata.step`/`stage`/`type`; default to `code`
- * (the running mini bar sweeps indeterminately, so an exact stage isn't needed).
- */
-export function deriveStage(metadata: SessionMetadata | null): StageKey {
-  const raw = (metadata?.step || metadata?.stage || metadata?.type || "").toString().toLowerCase();
-  for (const [key, stage] of Object.entries(STEP_TO_STAGE)) {
-    if (raw.includes(key)) return stage;
+/** The step this session RECORDED, verbatim — or `null`, for a session that recorded none. */
+// cm:guard the recorded value, never a projection of it onto the seven staged names. Its predecessor `deriveStage` matched `metadata.step` as a SUBSTRING against a 13-key table and answered `code` for anything left over, so every `drive` session — which is every session the autonomous lane runs — showed "running · code" beside a step nobody ran, and its own doc named the mini tracker ISS-999 deleted as the reason it existed.
+// cm:guard each candidate must be a NONBLANK STRING before it wins. `step ?? stage` let a blank `step` beat a real `stage`, and `.toString()` on a jsonb object rendered a step named "[object Object]" — this is untyped jsonb the server writes, so a value that is not a string is not a step.
+// cm:guard `metadata.type` is deliberately NOT a fallback here: `pipeline` and `pm` say what KIND of session this is, and the old chain read one of them as a step whenever `step` and `stage` were both absent.
+export function sessionStep(metadata: SessionMetadata | null): string | null {
+  for (const value of [metadata?.step, metadata?.stage]) {
+    if (typeof value !== "string") continue;
+    const trimmed = value.trim();
+    if (trimmed !== "") return trimmed;
   }
-  return "code";
+  return null;
 }
 
 /** Whether a session can be retried (pipeline/pm sessions tied to an issue). */

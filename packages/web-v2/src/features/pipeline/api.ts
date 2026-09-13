@@ -6,6 +6,7 @@
 //   - `packages/core/src/pipeline/analytics-routes.ts`  (throughput/durations)
 //   - `packages/core/src/issues/search` route           (kanban cards)
 import { apiClient, apiClientList } from "@/lib/api/client";
+import { BOARD_EXCLUDED_STATUSES } from "./types";
 import type {
   AnalyticsOpts,
   PipelineIssueRow,
@@ -81,8 +82,7 @@ export const pipelineApi = {
       withPipelineHealth: "1",
       sort: "updatedAt:desc",
     });
-    // Hide drafts + closed from the board (matches the issues table default).
-    for (const s of ["draft", "closed"]) params.append("statusNot", s);
+    for (const s of BOARD_EXCLUDED_STATUSES) params.append("statusNot", s);
     return apiClientList<PipelineIssueRow>(`/projects/${projectId}/issues/search?${params}`);
   },
 };

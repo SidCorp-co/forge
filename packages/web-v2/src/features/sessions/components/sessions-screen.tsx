@@ -53,7 +53,7 @@ import {
 import {
   deriveLiveness,
   deriveSessionDisplayStatus,
-  deriveStage,
+  sessionStep,
   isAwaitingReply,
   isRetryable,
   sessionKind,
@@ -233,7 +233,7 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
   const rowById = useMemo(() => new Map(rows.map((r) => [r.id, r] as const)), [rows]);
   const openRow = openSessionId ? rowById.get(openSessionId) : undefined;
 
-  // Derive once per render so display status, stats, and filters all agree.
+  // cm:guard one `now` per render, read once and passed down: deriving it inside each consumer lets the tab counts, the row chips and the filter disagree about which sessions are stalled within a single paint
   const now = Date.now();
   const displays = useMemo(
     () => rows.map((r) => deriveSessionDisplayStatus(r, now)),
@@ -684,7 +684,7 @@ function StatusCell({
 }: {
   row: SessionRow;
   display: AgentSessionDisplayStatus;
-  stage: ReturnType<typeof deriveStage>;
+  stage: string | undefined;
   now: number;
 }) {
   const liveness = deriveLiveness(row, now);
@@ -765,7 +765,7 @@ function SessionTableRow({
   const router = useRouter();
   const display = deriveSessionDisplayStatus(row, now);
   const duration = useRowDuration(row, display);
-  const stage = deriveStage(row.metadata);
+  const stage = sessionStep(row.metadata) ?? undefined;
   // ISS-664 — tier-aware open: project tier keeps the existing route
   // navigation; workspace tier opens the inline reply panel instead (no
   // navigation, list stays visible).
@@ -828,7 +828,7 @@ function SessionMobileCard({
   const router = useRouter();
   const display = deriveSessionDisplayStatus(row, now);
   const duration = useRowDuration(row, display);
-  const stage = deriveStage(row.metadata);
+  const stage = sessionStep(row.metadata) ?? undefined;
   const open = projectId
     ? slug
       ? () => router.push(`/projects/${slug}/agents/${row.id}`)

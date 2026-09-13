@@ -1,6 +1,6 @@
 "use client";
 
-// Context rail for the run thread: compact PipelineTracker + run stats + a
+// Context rail for the run thread: the session's status chip + run stats + a
 // files-changed list derived from edit-tool blocks across turns (no diff REST
 // endpoint exists). Collapses into a SlideOver below `lg` (handled by the
 // parent). Kit-only tokens; cost/model are not on the session row → show "—".
@@ -9,14 +9,14 @@
 // `GET /agent-sessions/:id` row): cache tokens + lifecycle timings + repoPath,
 // an "Agents & tasks" list (derived from Task/Skill transcript blocks), and a
 // "Sessions for this issue" list (sibling sessions via the existing list API).
+
 import { useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Banner, HealthDot, Icon, MonoTag, PipelineTracker, Stat, StatusChip, useElapsed } from "@/design";
+import { Banner, HealthDot, Icon, MonoTag, Stat, StatusChip, useElapsed } from "@/design";
 import {
   deriveSessionDisplayStatus,
-  deriveStage,
+  sessionStep,
   statusToChip,
-  statusToRun,
   failureReasonAction,
   failureReasonLabel,
   type SessionRow,
@@ -90,7 +90,9 @@ export function ContextRail({
 }) {
   const router = useRouter();
   const display = deriveSessionDisplayStatus(session);
-  const stage = deriveStage(session.metadata);
+  // cm:guard the Pipeline section is the status chip and nothing else — a tracker there draws beads for steps no row records, and `drive` is none of the seven, so it read bead 1 of 7 for every live session (ISS-999)
+  // cm:guard the chip names the step the session RECORDED or no step at all; `deriveStage` used to fold `drive` onto `code` here, which replaced the false tracker with a false word (ISS-999)
+  const stage = sessionStep(session.metadata) ?? undefined;
   const live = display === "running" || display === "stalled";
   const startMs = session.startedAt ? new Date(session.startedAt).getTime() : undefined;
   const elapsed = useElapsed(startMs, live);
@@ -113,11 +115,8 @@ export function ContextRail({
     ? devicesQ.data?.find((d) => d.id === session.deviceId)
     : undefined;
 
-  // "Sessions for this issue": the other pipeline steps (triage/plan/code/…)
-  // that worked the same issue — the honest "multiple agents" view. Reuses the
-  // existing list endpoint (WS-invalidated, shared cache with the queue screen)
-  // and filters client-side on `metadata.issueId`, exactly as sessions-screen
-  // does. No new endpoint / no parentSessionId column needed.
+  // cm:why filtered client-side on `metadata.issueId` off the existing list endpoint rather than through a new one: the rows are already in the shared cache the queue screen fills, so this costs no request and no `parentSessionId` column.
+  // cm:guard this list is EVERY session that worked the issue, in no order and with no total — it used to be described as "the other pipeline steps (triage/plan/code/…)", and an autonomous issue has one session that does all of it (ISS-999)
   const issueId = session.metadata?.issueId;
   const siblingsQ = useSessions({ projectId: session.projectId });
   const siblings = useMemo(() => {
@@ -190,10 +189,7 @@ export function ContextRail({
 
       {isPipeline && (
         <Section title="Pipeline">
-          <PipelineTracker stage={stage} status={statusToRun(display)} variant="compact" />
-          <div className="mt-3">
-            <StatusChip status={statusToChip(display)} stage={stage} size="sm" domain="session" />
-          </div>
+          <StatusChip status={statusToChip(display)} stage={stage} size="sm" domain="session" />
         </Section>
       )}
 
@@ -327,7 +323,7 @@ export function ContextRail({
  *  chip, links to its own detail when a project slug is known. */
 function SiblingRow({ row, onOpen }: { row: SessionRow; onOpen?: () => void }) {
   const display = deriveSessionDisplayStatus(row);
-  const stage = deriveStage(row.metadata);
+  const stage = sessionStep(row.metadata) ?? undefined;
   const label =
     (row.metadata?.step as string | undefined) ??
     (row.metadata?.stage as string | undefined) ??

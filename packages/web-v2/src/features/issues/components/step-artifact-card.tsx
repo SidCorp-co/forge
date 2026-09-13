@@ -1,32 +1,31 @@
 "use client";
 
-// ISS-377 Tier-2 per-stage artifact card. One compact, expandable card per
-// pipeline stage assembled from the step-handoff payload + that stage's summed
-// duration/cost (AC#4/#6). The payload is free-form jsonb, so EVERYTHING here
-// is rendered defensively — known string fields become paragraphs, string
-// arrays become lists, and anything else (objects, ids) lives in the operator
-// JSON expand. Never throws on a missing/odd field; degrades to a "no handoff"
-// note. `open` is controlled by the screen so the tracker can expand a card.
+// ISS-377 Tier-2 artifact card, one per step an issue ACTUALLY RAN, assembled from that step's
+// handoff payload and its summed duration/cost. The payload is free-form jsonb, so EVERYTHING here
+// is rendered defensively — known string fields become paragraphs, string arrays become lists, and
+// anything else (objects, ids) lives in the operator JSON expand. Never throws on a missing/odd
+// field; degrades to a "no handoff" note.
+//
+// ISS-999: the card used to be keyed by one of seven fixed stages and could read `Pending`, which
+// meant "this stage has not happened yet" about a ladder the kernel does not have. It is keyed by
+// the job type the kernel recorded now, and a step with no row gets no card.
+
 import { useState } from "react";
 import { Icon } from "@/design";
-import type { StageKey } from "@/design/stages";
-import type { StageCell, StageCellState } from "../derive";
+import { stageColor } from "@/design/stages";
+import type { StepOutcome, StepState } from "../derive";
 
 interface StepArtifactCardProps {
-  stage: StageKey;
-  label: string;
-  cell: StageCell;
+  outcome: StepOutcome;
   open: boolean;
   onToggle: () => void;
 }
 
-const STATE_META: Record<StageCellState, { dot: string; label: string }> = {
+const STATE_META: Record<StepState, { dot: string; label: string }> = {
   done: { dot: "var(--green-500)", label: "Done" },
-  // ISS-509 — current stage uses the pipeline-active (cobalt) token, not flame.
-  current: { dot: "var(--pipeline-active)", label: "Current" },
-  pending: { dot: "var(--border-default)", label: "Pending" },
-  error: { dot: "var(--red-500)", label: "Failed" },
-  blocked: { dot: "var(--ink-500)", label: "Blocked" },
+  // cm:guard cobalt --pipeline-active, never the flame --accent that primary buttons own (ISS-509)
+  running: { dot: "var(--pipeline-active)", label: "Running" },
+  failed: { dot: "var(--red-500)", label: "Failed" },
 };
 
 // Payload keys handled specially / hidden from the generic body (ids + envelope).
@@ -74,10 +73,10 @@ function toListItems(value: unknown): ArtifactListItem[] {
   return items;
 }
 
-export function StepArtifactCard({ stage, label, cell, open, onToggle }: StepArtifactCardProps) {
+export function StepArtifactCard({ outcome, open, onToggle }: StepArtifactCardProps) {
   const [showRaw, setShowRaw] = useState(false);
-  const meta = STATE_META[cell.state];
-  const payload = cell.handoff?.payload ?? null;
+  const meta = STATE_META[outcome.state];
+  const payload = outcome.handoff?.payload ?? null;
 
   // Partition payload into string paragraphs vs string-array lists for the body.
   const paragraphs: { key: string; text: string }[] = [];
@@ -97,7 +96,7 @@ export function StepArtifactCard({ stage, label, cell, open, onToggle }: StepArt
 
   return (
     <div
-      id={`stage-card-${stage}`}
+      id={`step-card-${outcome.step}`}
       className="rounded-lg border border-line-subtle bg-surface scroll-mt-24"
       style={open ? { borderColor: "var(--accent)" } : undefined}
     >
@@ -113,27 +112,31 @@ export function StepArtifactCard({ stage, label, cell, open, onToggle }: StepArt
           className="inline-block size-2 flex-none rounded-full"
           style={{ background: meta.dot }}
         />
-        {cell.state === "blocked" && <Icon name="pause" size={14} />}
-        <span className="fg-label font-mono">{label}</span>
+        <span
+          aria-hidden
+          className="inline-block h-3 w-0.5 flex-none rounded-pill"
+          style={{ background: stageColor(outcome.step) }}
+        />
+        <span className="fg-label font-mono">{outcome.step}</span>
         <span className="fg-caption text-muted">{meta.label}</span>
         <span className="ml-auto flex items-center gap-3">
-          {cell.durationSeconds != null && (
+          {outcome.durationSeconds != null && (
             <span className="fg-caption inline-flex items-center gap-1 text-muted">
               <Icon name="clock" size={12} />
-              {fmtDuration(cell.durationSeconds)}
+              {fmtDuration(outcome.durationSeconds)}
             </span>
           )}
           <span className="fg-caption inline-flex items-center gap-0.5 text-muted">
             <Icon name="dollar" size={12} />
-            {cell.costUsd != null ? cell.costUsd.toFixed(2) : "—"}
+            {outcome.costUsd != null ? outcome.costUsd.toFixed(2) : "—"}
           </span>
         </span>
       </button>
 
       {open && (
         <div className="forge-fade space-y-3 border-t border-line-subtle px-3 py-3">
-          {!cell.handoff && !hasBody && (
-            <p className="fg-body-sm text-muted">No handoff recorded for this stage.</p>
+          {!outcome.handoff && !hasBody && (
+            <p className="fg-body-sm text-muted">This step recorded no handoff.</p>
           )}
           {paragraphs.map((p) => (
             <div key={p.key}>
@@ -154,7 +157,7 @@ export function StepArtifactCard({ stage, label, cell, open, onToggle }: StepArt
             </div>
           ))}
 
-          {cell.handoff && (
+          {outcome.handoff && (
             <div className="border-t border-line-subtle pt-2">
               <button
                 type="button"
@@ -168,11 +171,11 @@ export function StepArtifactCard({ stage, label, cell, open, onToggle }: StepArt
               {showRaw && (
                 <div className="mt-2 space-y-2">
                   <p className="fg-caption text-muted">
-                    attempt {cell.handoff.attempt}
-                    {cell.handoff.pipelineRunId ? ` · run ${cell.handoff.pipelineRunId}` : ""}
+                    attempt {outcome.handoff.attempt}
+                    {outcome.handoff.pipelineRunId ? ` · run ${outcome.handoff.pipelineRunId}` : ""}
                   </p>
                   <pre className="max-h-72 overflow-auto rounded-md bg-app/60 p-2 text-[11px] leading-snug">
-                    {JSON.stringify(cell.handoff.payload ?? {}, null, 2)}
+                    {JSON.stringify(outcome.handoff.payload ?? {}, null, 2)}
                   </pre>
                 </div>
               )}

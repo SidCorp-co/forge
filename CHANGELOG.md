@@ -1770,6 +1770,62 @@
 
 ### Removed
 
+- **Issues no longer show you how far along a seven-stage pipeline they are, because there is no
+  such pipeline.** Every issue row carried a small "4 / 7" and a progress bar. The issue's own page
+  opened with a row of seven beads — triage, clarify, plan, code, review, test, release — with the
+  ones on the left ticked off and the ones on the right waiting, and under it seven cards, one per
+  stage. The board had seven columns. The Insights tab had seven cards counting how many issues sat
+  in each stage. The run drawer drew the same seven beads above a run, and so did the rail beside a
+  run's conversation. None of it was measured. The seven stages were removed from the product months ago,
+  when one agent took over an issue end to end instead of seven jobs passing it along; the screens
+  kept drawing the old shape by translating an issue's status into a position on it. So a closed
+  issue read "release", an issue nobody had picked up read "triage", and a bar sat at 4 / 7 for work
+  that had never been divided into sevenths.
+
+  **What you see instead.** An issue's row and its page say what state the issue is in, in the words
+  the rest of the product already uses — Open, Running, Needs a human, Paused, Awaiting release,
+  Reopened, Done, Dropped. Where the progress bar was there is now nothing; the chips beside it that
+  say something real — a live agent, a step waiting on a gate — are all still there. The board has one column per one of those states, so a
+  card sits under the word its own chip says; an issue that is releasing, or one that was dropped,
+  now has a column of its own instead of being filed under "triage" with issues nobody had read yet.
+  The issue page lists the steps that actually ran, under the names they ran as, oldest first, with
+  what each one produced, how long it took and what it cost — and an issue nothing has run on says
+  so plainly instead of showing seven empty stages. The Insights tab keeps what was real: how much
+  shipped each day, and which step takes the longest and costs the most. The project dashboard's
+  "Open issues" tile no longer says "across N stages"; the ring beside it already shows how the open
+  work is spread, over states that exist.
+
+  **What is not gone.** Steps still have their names and their colours — triage, clarify, plan,
+  code, review, test, release are real things a job can be, and thirty thousand past jobs are
+  recorded as one of them. What went is the claim that an issue is somewhere along them.
+
+  **One colour per state.** The board's column headings and the chips on the cards beneath them were
+  coloured from two separate hand-written tables, so a reopened issue sat under an amber heading
+  wearing a blue chip, and a closed issue sat under a green heading wearing a grey one. A column
+  takes its colour from the state it names now, by the same route the chip does. Reopened reads as
+  work in progress and Done reads the way a closed issue has always read everywhere else — those two
+  columns hold one state each, so the heading and every card under it are the same colour. The wider
+  columns still are not: Running holds everything from approved to testing, and a card there keeps
+  its own colour, because an issue that is approved has no agent on it and a chip that said
+  otherwise would be the same kind of claim this release is removing.
+
+  **A step nobody has started no longer reads "Running".** The Steps list on an issue's page called
+  a step running as soon as a job for it was queued, which on a retry meant a step that had already
+  finished once flipped back to Running before anything picked it up. It says Running only while a
+  session is actually running it.
+
+  The run drawer keeps its Steps tab, which lists the run's own steps and always did; the rail beside
+  a conversation keeps the session's status chip.
+
+  **A running session names the step it is on, or no step at all.** "running · code" appeared beside
+  every live agent on the sessions list, the fleet strip, the session screen, the chat header and the
+  run thread's rail — including the ones running `drive`, which is every agent an autonomous project
+  starts. The word was not read from the session: it was guessed by looking for one of the seven
+  stage names inside whatever the session had recorded, and answering "code" when none was there. A
+  session that recorded `drive` now reads "running · drive", one that recorded `verify` reads
+  "running · verify" rather than being filed under "test", and one that recorded no step at all says
+  only "running".
+
 - **A runner no longer keeps a job pool, and a run is no longer a second terminal.** A box used to
   ask Forge which jobs it could take, hold one while its master decided, start it in a tmux session
   of its own, and give the hold back if the decision went the other way. Seven verbs on a local

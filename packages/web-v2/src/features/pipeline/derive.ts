@@ -1,48 +1,29 @@
-// cm:guard PURE derivations only — no React, no fetching. This module holds the status→stage/chip/tracker mappings and the money/duration formatters used by the kanban, run detail and ops views, so one import with a side effect reaches all three at once.
+// cm:guard PURE derivations only — no React, no fetching. This module holds the board's column derivation, the status→chip mapping and the money/duration formatters used by the kanban, run detail and ops views, so one import with a side effect reaches all three at once.
+// cm:guard this file's own STATUS_TO_STAGE went in ISS-999, with its 15 keys against the issues module's 17 — `releasing` and `dropped` were in neither, so both fell through `?? "triage"` and the same issue read `release` on its row and `triage` on the board. The columns are the lane's labels now and the lane is the kernel's: a map from status to a position does not come back here under another name.
+import {
+  AUTONOMOUS_LABELS,
+  type AutonomousLabel,
+  toAutonomousLabel,
+} from "@forge/contracts/issue-vocabulary";
+import { REGISTRY_ISSUE_STATUSES } from "@forge/contracts/pipeline-registry";
 import { deriveQueuedStep, hasLiveAgentSession, queuedChipStatus } from "@/features/issues/waiting";
-import { type StageKey, STAGES } from "@/design/stages";
-import type { StatusKey } from "@/design/status";
+import { LABEL_VIEW, statusToChip } from "@/features/issues/derive";
+import { type SemanticTone, type StatusKey, TONE_META } from "@/design/status";
 import type { IssueStatus } from "@/features/issues/types";
-import type {
-  PipelineIssueRow,
-  PipelineRunListItem,
-  PipelineRunStatus,
-  StepDurationRow,
+import { type StageKey, stageColor } from "@/design/stages";
+import {
+  BOARD_EXCLUDED_STATUSES,
+  type PipelineIssueRow,
+  type PipelineRunListItem,
+  type PipelineRunStatus,
+  type StepDurationRow,
 } from "./types";
 
-/** Tracker run-state vocabulary (see `PipelineTracker`). */
-export type TrackerRunState = "running" | "done" | "failed" | "blocked" | "queued" | "review";
-
-/**
- * Map a core issue status to a pipeline stage. Ported from the project
- * overview's STATUS_TO_STAGE (`projects/[slug]/page.tsx`) and extended to cover
- * every status so no issue ever falls off the board.
- */
-export const STATUS_TO_STAGE: Record<string, StageKey> = {
-  open: "triage",
-  needs_info: "triage",
-  confirmed: "clarify",
-  clarified: "plan",
-  draft: "triage",
-  waiting: "plan",
-  approved: "plan",
-  in_progress: "code",
-  reopen: "code",
-  on_hold: "code",
-  developed: "review",
-  testing: "test",
-  tested: "test",
-  awaiting_release: "release",
-  closed: "release",
-};
-
-export function statusToStage(status: string): StageKey {
-  return STATUS_TO_STAGE[status] ?? "triage";
-}
-
-/** A run's `currentStep` (a `jobType`) → pipeline stage. `fix` folds onto
- *  `code`; `custom`/`pm` have no board column, so default to `triage`. */
-export function jobTypeToStage(jobType: string | null | undefined): StageKey {
+/** A run's `currentStep` (a `jobType`) → one of the seven staged names, for COLOUR. `fix` folds
+ *  onto `code`; anything else — `drive`, `pm`, `custom` — is not one of the seven and answers
+ *  `null`, so a caller shows the job type's own name rather than a seven's. */
+// cm:guard the `default` used to answer `triage`, which is why every autonomous run (whose only job type is `drive`) painted the first bead of a seven-bead tracker as its position. ISS-999 deleted that tracker and this answers `null` instead: a name outside the seven is reported as outside the seven, never folded onto the first one.
+export function jobTypeToStage(jobType: string | null | undefined): StageKey | null {
   switch (jobType) {
     case "triage":
     case "clarify":
@@ -55,7 +36,7 @@ export function jobTypeToStage(jobType: string | null | undefined): StageKey {
     case "fix":
       return "code";
     default:
-      return "triage";
+      return null;
   }
 }
 
@@ -72,50 +53,6 @@ export function runStatusToStatusKey(status: PipelineRunStatus): StatusKey {
       return "failed";
     case "cancelled":
       return "blocked";
-  }
-}
-
-/** Map a run status to the `PipelineTracker` run-state. */
-export function runStatusToTracker(status: PipelineRunStatus): TrackerRunState {
-  switch (status) {
-    case "running":
-      return "running";
-    case "paused":
-      return "queued";
-    case "completed":
-      return "done";
-    case "failed":
-      return "failed";
-    case "cancelled":
-      return "blocked";
-  }
-}
-
-/**
- * Resting chip status for an issue with no active run — mirrors the issues
- * table's `statusToChip` so the board and the table agree.
- */
-export function issueStatusToStatusKey(status: string): StatusKey {
-  switch (status) {
-    case "in_progress":
-    case "testing":
-      return "running";
-    case "developed":
-      return "review";
-    case "tested":
-      return "passed";
-    case "awaiting_release":
-    case "closed":
-      return "done";
-    case "waiting":
-    case "needs_info":
-      return "waiting";
-    case "reopen":
-      return "blocked";
-    case "on_hold":
-      return "paused";
-    default:
-      return "queued";
   }
 }
 
@@ -160,18 +97,57 @@ export function runsByIssue(
   return map;
 }
 
-export interface StageGroup {
-  stage: StageKey;
+/** One column of the board: a lane label, the word and colour it reads in, and its issues. */
+export interface LabelGroup {
+  label: AutonomousLabel;
+  title: string;
+  color: string;
   issues: PipelineIssueRow[];
 }
 
-/** Group issues into the 7 ordered `STAGES` columns via `STATUS_TO_STAGE`. */
-export function groupIssuesByStage(issues: PipelineIssueRow[] | undefined): StageGroup[] {
-  const buckets = new Map<StageKey, PipelineIssueRow[]>(STAGES.map((s) => [s.key, []]));
-  for (const issue of issues ?? []) {
-    buckets.get(statusToStage(issue.status))?.push(issue);
+/**
+ * The board's columns: every lane label that a status the board's own query CAN RETURN maps to,
+ * kept in `AUTONOMOUS_LABELS`' order.
+ *
+ * Derived forward from the returnable statuses, never by subtracting the excluded ones' labels.
+ * The two are different relations: `toAutonomousLabel` is many-to-one, so the moment an excluded
+ * status shares a label with an included one, subtraction deletes a column full of live issues.
+ */
+// cm:edge contract -> packages/contracts/src/issue-vocabulary.ts#KERNEL_TO_LABEL — the kernel owns which label a status reads as, and this owns only which of those labels the board can show. A label added there reaches the board with no edit here, provided some returnable status maps to it.
+// cm:why `excluded` is a parameter and not read straight off the import: with today's enum the forward derivation and a subtract-the-excluded-labels one agree, because `draft` and `closed` each wear a label no other status wears — so a test over the real set cannot tell a correct implementation from the wrong one, and measured nothing. Passing an excluded set where one excluded status SHARES a label with an included one (`waiting` and `needs_info` are both `needs_human`) separates them, and `board-columns.test.ts` does exactly that.
+export function boardColumns(
+  excluded: readonly string[] = BOARD_EXCLUDED_STATUSES,
+): AutonomousLabel[] {
+  const reachable = new Set<AutonomousLabel>();
+  for (const status of REGISTRY_ISSUE_STATUSES) {
+    if (excluded.includes(status)) continue;
+    reachable.add(toAutonomousLabel(status));
   }
-  return STAGES.map((s) => ({ stage: s.key, issues: buckets.get(s.key) ?? [] }));
+  return AUTONOMOUS_LABELS.filter((l) => reachable.has(l));
+}
+
+/** The colour a lane label reads in — the same `SemanticTone` its status chip resolves through. */
+export function labelTone(label: AutonomousLabel): SemanticTone {
+  return LABEL_VIEW[label].tone;
+}
+
+/** Group issues into the board's columns by the label their status reads as. */
+export function groupIssuesByLabel(issues: PipelineIssueRow[] | undefined): LabelGroup[] {
+  const columns = boardColumns();
+  const buckets = new Map<AutonomousLabel, PipelineIssueRow[]>(columns.map((l) => [l, []]));
+  for (const issue of issues ?? []) {
+    // cm:guard a status with no column gets one rather than being dropped — reachable only if the query's `statusNot` and BOARD_EXCLUDED_STATUSES drift apart, and a silently missing row is the worse failure
+    const label = toAutonomousLabel(issue.status as (typeof REGISTRY_ISSUE_STATUSES)[number]);
+    const bucket = buckets.get(label);
+    if (bucket) bucket.push(issue);
+    else buckets.set(label, [issue]);
+  }
+  return [...buckets.entries()].map(([label, list]) => ({
+    label,
+    title: LABEL_VIEW[label].label,
+    color: TONE_META[LABEL_VIEW[label].tone].dot,
+    issues: list,
+  }));
 }
 
 /** Median of a numeric list (`null` for an empty list). Used by the Issues
@@ -183,52 +159,39 @@ export function median(values: number[]): number | null {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
-/** One per-stage row for the Issues Insights funnel. `count` is how many issues
- *  currently sit in the stage; `medianSec`/`cost`/`samples` come from the
- *  `step-durations` window (null median when the window has no rows for it). */
-export interface StageInsight {
-  stage: StageKey;
-  label: string;
+/** One row of the Insights view's "Where time goes" — a REAL job type over the window. */
+export interface StepCost {
+  /** The job type exactly as the `step_durations` rows carry it. */
+  step: string;
+  /** The seven-name colour when this job type is one of them, a neutral token when it is not. */
   color: string;
-  count: number;
-  medianSec: number | null;
+  medianSec: number;
   cost: number;
   samples: number;
 }
 
 /**
- * Combine the per-stage issue counts (from `groupIssuesByStage`) with the
- * `step-durations` window (median duration + summed cost per stage) into the 7
- * ordered `STAGES` rows the Insights view renders. Step rows are folded onto a
- * stage via `jobTypeToStage` (so `fix` rolls into `code`).
+ * Fold the `step-durations` window onto the job types it actually contains, slowest median first.
  */
-export function aggregateStageInsights(
-  groups: StageGroup[],
-  durations: StepDurationRow[] | undefined,
-): StageInsight[] {
-  const byStage = new Map<StageKey, { secs: number[]; cost: number }>();
+// cm:guard keyed on the row's own `step` and NOT on a stage. Its predecessor (aggregateStageInsights, ISS-999) returned one row per seven fixed stages whichever of them had run, with an issue count taken from a status→stage map beside it; a `drive` step landed on `triage` and a stage nothing had run still drew a card. A job type with no row here has no row here.
+export function aggregateStepCosts(durations: StepDurationRow[] | undefined): StepCost[] {
+  const byStep = new Map<string, { secs: number[]; cost: number }>();
   for (const r of durations ?? []) {
-    const stage = jobTypeToStage(r.step);
-    const cur = byStage.get(stage) ?? { secs: [], cost: 0 };
+    const cur = byStep.get(r.step) ?? { secs: [], cost: 0 };
     cur.secs.push(r.durationSeconds);
     cur.cost += r.costUsd;
-    byStage.set(stage, cur);
+    byStep.set(r.step, cur);
   }
-  const countByStage = new Map(groups.map((g) => [g.stage, g.issues.length]));
-  return STAGES.map((s) => {
-    const agg = byStage.get(s.key);
-    return {
-      stage: s.key,
-      label: s.label,
-      color: s.color,
-      count: countByStage.get(s.key) ?? 0,
-      medianSec: agg ? median(agg.secs) : null,
-      cost: agg?.cost ?? 0,
-      samples: agg?.secs.length ?? 0,
-    };
-  });
+  return [...byStep.entries()]
+    .map(([step, agg]) => ({
+      step,
+      color: stageColor(step),
+      medianSec: median(agg.secs) ?? 0,
+      cost: agg.cost,
+      samples: agg.secs.length,
+    }))
+    .sort((a, b) => b.medianSec - a.medianSec || a.step.localeCompare(b.step));
 }
-
 
 /** Everything a kanban card's status chip needs, from the three signals that
  *  can claim it: a queued step, the issue's live run, and the issue's own
@@ -266,7 +229,7 @@ export function cardStatus(
     };
   }
   return {
-    status: issueStatusToStatusKey(issue.status),
+    status: statusToChip(issue.status as IssueStatus),
     label: labelStatus(issue.status as IssueStatus),
     domain: "issue",
     waitingReason: "",

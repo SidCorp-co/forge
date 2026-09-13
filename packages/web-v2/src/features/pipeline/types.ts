@@ -32,7 +32,7 @@ export const PIPELINE_JOB_TYPES = [
   "fix",
   "custom",
   "pm",
-  // ISS-455 — skill smoke-verify canary (issue-less, one-shot 'system' run).
+  // cm:guard `smoke` is the one job type that runs with NO issue, as a one-shot `system` run, so anything keying a job to an issue id must tolerate its absence (ISS-455)
   "smoke",
   "release_batch",
 ] as const satisfies readonly (typeof REGISTRY_JOB_TYPES)[number][];
@@ -209,3 +209,15 @@ export interface AnalyticsOpts {
   projectId?: string;
   step?: PipelineJobType;
 }
+
+/** The statuses the board's own query will not return: a draft has not started and a closed issue
+ *  is filed away, and the issues table hides both by default too.
+ *
+ *  Exported because `boardColumns` in `./derive` derives the board's columns FORWARD from the
+ *  statuses this query CAN return. A board that listed its columns by hand instead is what ISS-999
+ *  deleted; one that subtracted these statuses' labels from the full tuple would be wrong a
+ *  different way, because a label is shared by several statuses and `closed` shares none of its
+ *  own — but `draft` does not gate `open`, and the moment one excluded status shares a label with
+ *  an included one, subtraction drops a column that holds live rows. */
+// cm:guard this constant and the `statusNot` params are ONE fact. Adding a `statusNot` to the query without adding it here leaves the board with a column nothing can ever fill, and removing one here without removing the param hides live issues with no column to show them in.
+export const BOARD_EXCLUDED_STATUSES = ["draft", "closed"] as const;

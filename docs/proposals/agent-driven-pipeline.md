@@ -1,6 +1,6 @@
 # Agent-driven pipeline
 
-- Status: **Phases 0–4 shipped; phase 5 instrumented and awaiting evidence** — owner sessions 2026-08-19/20. **Two of those phases were reversed on 2026-09-02 — see the section directly below before reading anything else here as current.**
+- Status: **Phases 0–4 shipped; phase 5 measured and closed** — owner sessions 2026-08-19/20. Phase 5's own close is at the end of this document: the evidence bar is met and the verdict on that evidence is *do not ship*, driven by getcontent. **Two of those phases were reversed on 2026-09-02 — see the section directly below before reading anything else here as current.**
 - Upgrade path: this becomes an RFC once the mode switch and the status vocabulary are agreed — both are cross-surface (REST, MCP, web, runner).
 - Related: `packages/runner/README.md` · skill delivery: `runner/crates/forge-runner-core/src/workspace/skill_sync.rs`
 
@@ -27,8 +27,9 @@ agent decides its own next step, declares phases into a journal, forks a clean-c
 and merges into the base branch it checked out. The cloud stops being the controller and becomes
 the ledger plus two gates.
 
-The seven-stage process is **policy**. It currently lives in the **kernel**, which is what
-principle `VISION: kernel-hard-policy-soft` forbids.
+The seven-stage process is **policy**. At the time of writing it lived in the **kernel**, which is
+what principle `VISION: kernel-hard-policy-soft` forbids. ISS-895 and ISS-897 took it out, and
+ISS-999 took out the last two hand-written copies of it in the web UI.
 
 ## Motivation
 
@@ -86,7 +87,8 @@ Two hard boundaries:
   driver's transcript. Self-review is kept as a cheaper first pass, but it is not the gate.
 - **The verdict is written by the runner from a structured result, never narrated by the driver.**
   A driver that authors its own review record can launder `request_changes` into "reviewed, fine",
-  and with no job boundary left there is nothing to expose it.
+  and with no job boundary left there is nothing to expose it. **Reversed 2026-09-02** — this
+  boundary no longer exists; the reversal section at the top of this document states the price.
 
 ### Six statuses
 
@@ -393,7 +395,7 @@ paid for themselves.
 > It also fixed a case nobody had named: discarding a **draft** to `closed` stamped `merged_at` on
 > an issue whose work never existed. `draft → dropped` is now legal and is the right discard.
 
-### Phase 5 — measured, then decided — **instrument built, evidence pending**
+### Phase 5 — measured, then decided — **measured and closed: do not ship**
 
 - The measurement exists: `pipeline/driver-comparison.ts` and
   `GET /api/pipeline/driver-comparison` report both metrics per project **and per driver**, where

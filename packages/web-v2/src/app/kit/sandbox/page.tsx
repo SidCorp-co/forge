@@ -1,8 +1,7 @@
 import Link from "next/link";
-import { Button, Card, CardContent, CardHeader, CardTitle, Kicker, PipelineTracker } from "@/design";
+import { Button, Kicker } from "@/design";
 
-// Artificial delay so the route's loading.tsx (Suspense) + the top RouteProgress
-// bar are both demonstrable when navigating here from /kit.
+// cm:guard the delay is the point — without it neither this route's loading.tsx (Suspense) nor the top RouteProgress bar is demonstrable when navigating here from /kit
 async function slowData() {
   await new Promise((r) => setTimeout(r, 1100));
   return { ok: true };
@@ -18,14 +17,6 @@ export default async function Sandbox() {
         This is a real async route. Getting here showed the top progress bar, the Suspense
         skeleton (loading.tsx), and the page enter transition.
       </p>
-      <Card className="mt-6">
-        <CardHeader>
-          <CardTitle>Loaded</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <PipelineTracker stage="release" status="done" variant="full" />
-        </CardContent>
-      </Card>
       <div className="mt-6">
         <Link href="/kit">
           <Button variant="secondary" icon="arrowRight">Back to kit</Button>
