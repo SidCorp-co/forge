@@ -1,6 +1,6 @@
 "use client";
 
-// Context rail for the run thread: compact PipelineTracker + run stats + a
+// Context rail for the run thread: the session's status chip + run stats + a
 // files-changed list derived from edit-tool blocks across turns (no diff REST
 // endpoint exists). Collapses into a SlideOver below `lg` (handled by the
 // parent). Kit-only tokens; cost/model are not on the session row → show "—".
@@ -9,14 +9,14 @@
 // `GET /agent-sessions/:id` row): cache tokens + lifecycle timings + repoPath,
 // an "Agents & tasks" list (derived from Task/Skill transcript blocks), and a
 // "Sessions for this issue" list (sibling sessions via the existing list API).
+
 import { useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Banner, HealthDot, Icon, MonoTag, PipelineTracker, Stat, StatusChip, useElapsed } from "@/design";
+import { Banner, HealthDot, Icon, MonoTag, Stat, StatusChip, useElapsed } from "@/design";
 import {
   deriveSessionDisplayStatus,
   deriveStage,
   statusToChip,
-  statusToRun,
   failureReasonAction,
   failureReasonLabel,
   type SessionRow,
@@ -90,6 +90,7 @@ export function ContextRail({
 }) {
   const router = useRouter();
   const display = deriveSessionDisplayStatus(session);
+  // cm:guard the Pipeline section is the status chip and nothing else — a tracker there draws beads for steps no row records, and `drive` is none of the seven, so it read bead 1 of 7 for every live session (ISS-999)
   const stage = deriveStage(session.metadata);
   const live = display === "running" || display === "stalled";
   const startMs = session.startedAt ? new Date(session.startedAt).getTime() : undefined;
@@ -190,10 +191,7 @@ export function ContextRail({
 
       {isPipeline && (
         <Section title="Pipeline">
-          <PipelineTracker stage={stage} status={statusToRun(display)} variant="compact" />
-          <div className="mt-3">
-            <StatusChip status={statusToChip(display)} stage={stage} size="sm" domain="session" />
-          </div>
+          <StatusChip status={statusToChip(display)} stage={stage} size="sm" domain="session" />
         </Section>
       )}
 

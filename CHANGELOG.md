@@ -1770,6 +1770,33 @@
 
 ### Removed
 
+- **Issues no longer show you how far along a seven-stage pipeline they are, because there is no
+  such pipeline.** Every issue row carried a small "4 / 7" and a progress bar. The issue's own page
+  opened with a row of seven beads — triage, clarify, plan, code, review, test, release — with the
+  ones on the left ticked off and the ones on the right waiting, and under it seven cards, one per
+  stage. The board had seven columns. The Insights tab had seven cards counting how many issues sat
+  in each stage. None of it was measured. The seven stages were removed from the product months ago,
+  when one agent took over an issue end to end instead of seven jobs passing it along; the screens
+  kept drawing the old shape by translating an issue's status into a position on it. So a closed
+  issue read "release", an issue nobody had picked up read "triage", and a bar sat at 4 / 7 for work
+  that had never been divided into sevenths.
+
+  **What you see instead.** An issue's row and its page say what state the issue is in, in the words
+  the rest of the product already uses — Open, Running, Needs a human, Paused, Awaiting release,
+  Reopened, Done, Dropped — and nothing more. The board has one column per one of those states, so a
+  card sits under the word its own chip says; an issue that is releasing, or one that was dropped,
+  now has a column of its own instead of being filed under "triage" with issues nobody had read yet.
+  The issue page lists the steps that actually ran, under the names they ran as, oldest first, with
+  what each one produced, how long it took and what it cost — and an issue nothing has run on says
+  so plainly instead of showing seven empty stages. The Insights tab keeps what was real: how much
+  shipped each day, and which step takes the longest and costs the most. The project dashboard's
+  "Open issues" tile no longer says "across N stages"; the ring beside it already shows how the open
+  work is spread, over states that exist.
+
+  **What is not gone.** Steps still have their names and their colours — triage, clarify, plan,
+  code, review, test, release are real things a job can be, and thirty thousand past jobs are
+  recorded as one of them. What went is the claim that an issue is somewhere along them.
+
 - **A runner no longer keeps a job pool, and a run is no longer a second terminal.** A box used to
   ask Forge which jobs it could take, hold one while its master decided, start it in a tmux session
   of its own, and give the hold back if the decision went the other way. Seven verbs on a local

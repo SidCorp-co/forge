@@ -1,0 +1,128 @@
+// The board's columns, ISS-999.
+//
+// Before this change the board had seven columns — triage → clarify → plan → code → review → test
+// → release — filled by a hand-written 15-key `STATUS_TO_STAGE` against a pipeline ISS-897 deleted
+// from the kernel. `releasing` and `dropped` were in neither that map nor the issues module's
+// 17-key copy, so both fell through `?? "triage"`: the same issue read `release` on its row and
+// `triage` on the board.
+//
+// The columns are the lane's labels now, and the lane belongs to `@forge/contracts`. These
+// assertions are against the CONTRACTS tuples rather than against anything this module declares,
+// so a column that stops tracking the kernel goes red here.
+
+import { describe, expect, it } from "vitest";
+import {
+  AUTONOMOUS_LABELS,
+  toAutonomousLabel,
+} from "@forge/contracts/issue-vocabulary";
+import { REGISTRY_ISSUE_STATUSES } from "@forge/contracts/pipeline-registry";
+import { boardColumns, groupIssuesByLabel, labelTone } from "./derive";
+import { BOARD_EXCLUDED_STATUSES, type PipelineIssueRow } from "./types";
+
+function issue(id: string, status: string): PipelineIssueRow {
+  return {
+    id,
+    projectId: "p1",
+    displayId: `ISS-${id}`,
+    title: `issue ${id}`,
+    status,
+    priority: "medium",
+    assigneeId: null,
+  } as PipelineIssueRow;
+}
+
+/** Every status the board's own query can return — the same set `boardColumns` derives from. */
+const RETURNABLE = REGISTRY_ISSUE_STATUSES.filter(
+  (s) => !(BOARD_EXCLUDED_STATUSES as readonly string[]).includes(s),
+);
+
+describe("boardColumns", () => {
+  it("draws a column for exactly the labels a returnable status maps to", () => {
+    expect([...boardColumns()].sort()).toEqual(
+      [...new Set(RETURNABLE.map(toAutonomousLabel))].sort(),
+    );
+  });
+
+  it("keeps the contracts tuple's order, so the column order is not this module's to choose", () => {
+    const cols = boardColumns();
+    const positions = cols.map((l) => AUTONOMOUS_LABELS.indexOf(l));
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    expect(positions).not.toContain(-1);
+  });
+
+  it("omits the labels only an excluded status reaches, and no others", () => {
+    // cm:why `draft` and `closed` are the two the query filters out, and each is the only status wearing its label, so exactly those two columns are absent
+    expect(boardColumns()).not.toContain("draft");
+    expect(boardColumns()).not.toContain("done");
+    for (const label of AUTONOMOUS_LABELS) {
+      const reachedByALiveStatus = RETURNABLE.some((s) => toAutonomousLabel(s) === label);
+      expect(boardColumns().includes(label)).toBe(reachedByALiveStatus);
+    }
+  });
+
+  // cm:guard the only case separating the forward derivation from subtract-the-excluded-labels — with the real set the two agree exactly, so every other case here passes under both and measures nothing (ISS-999)
+  it("keeps a label whose other statuses are still returnable, where subtraction would drop it", () => {
+    expect(toAutonomousLabel("waiting")).toBe(toAutonomousLabel("needs_info"));
+    expect(boardColumns(["waiting"])).toContain("needs_human");
+  });
+
+  it("drops a label only when EVERY status wearing it is excluded", () => {
+    expect(boardColumns(["waiting", "needs_info"])).not.toContain("needs_human");
+  });
+
+  it("gives every column a tone, and no column an invented one", () => {
+    for (const label of boardColumns()) {
+      expect(typeof labelTone(label)).toBe("string");
+    }
+  });
+});
+
+describe("groupIssuesByLabel", () => {
+  it("puts every returnable status in a column, so nothing the board fetched is dropped", () => {
+    const rows = RETURNABLE.map((s, i) => issue(String(i), s));
+    const landed = groupIssuesByLabel(rows).flatMap((g) => g.issues.map((i) => i.id));
+    expect(landed.sort()).toEqual(rows.map((r) => r.id).sort());
+  });
+
+  it("puts each issue in exactly one column", () => {
+    const rows = RETURNABLE.map((s, i) => issue(String(i), s));
+    const landed = groupIssuesByLabel(rows).flatMap((g) => g.issues.map((i) => i.id));
+    expect(new Set(landed).size).toBe(landed.length);
+  });
+
+  it("gives `releasing` and `dropped` the column their own status chip names", () => {
+    // cm:why both fell into `triage` before — neither was a key of the board's 15-entry map (ISS-999)
+    const groups = groupIssuesByLabel([issue("r", "releasing"), issue("d", "dropped")]);
+    const columnOf = (id: string) => groups.find((g) => g.issues.some((i) => i.id === id))?.label;
+    expect(columnOf("r")).toBe(toAutonomousLabel("releasing"));
+    expect(columnOf("d")).toBe(toAutonomousLabel("dropped"));
+    expect(columnOf("r")).toBe("running");
+    expect(columnOf("d")).toBe("dropped");
+  });
+
+  it("names each column with the same word the issue's own status chip shows", () => {
+    const groups = groupIssuesByLabel([issue("a", "in_progress"), issue("b", "needs_info")]);
+    expect(groups.find((g) => g.label === "running")?.title).toBe("Running");
+    expect(groups.find((g) => g.label === "needs_human")?.title).toBe("Needs a human");
+  });
+
+  it("never names a column after one of the seven deleted stages", () => {
+    const stageNames = ["triage", "clarify", "plan", "code", "review", "test", "release"];
+    for (const g of groupIssuesByLabel([])) {
+      expect(stageNames).not.toContain(g.title.toLowerCase());
+      expect(stageNames).not.toContain(g.label);
+    }
+  });
+
+  it("keeps an empty column rather than hiding it, so a reader can see nothing needs them", () => {
+    const groups = groupIssuesByLabel([issue("a", "in_progress")]);
+    expect(groups.map((g) => g.label)).toEqual(boardColumns());
+    expect(groups.find((g) => g.label === "needs_human")?.issues).toEqual([]);
+  });
+
+  it("gives a status outside the column set a column instead of dropping the row", () => {
+    // cm:guard losing the row silently is the failure this branch refuses; reachable only if the query's `statusNot` params and BOARD_EXCLUDED_STATUSES drift apart
+    const groups = groupIssuesByLabel([issue("x", "draft")]);
+    expect(groups.find((g) => g.issues.some((i) => i.id === "x"))?.label).toBe("draft");
+  });
+});

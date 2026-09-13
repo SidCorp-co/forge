@@ -1,6 +1,7 @@
 // 5-KPI band for the per-project dashboard (ISS-379, AC#1). Active runs, Needs
 // you, Open issues, Spend today, and a deferred Pass-rate slot (ISS-380 Part 2).
-// All values come from already-fetched hooks — this is presentational only.
+// Presentational only: every value arrives from a hook the page already called.
+
 import { Card, CardContent, Icon, type IconName } from "@/design";
 import { Badge } from "@/design/primitives/badge";
 
@@ -8,7 +9,9 @@ interface Kpi {
   icon: IconName;
   label: string;
   value: string;
-  caption: string;
+  /** Omitted where a tile has nothing true to say under its figure — the row keeps its rhythm
+      because every tile is a Card of the same height, and a blank line beats an invented one. */
+  caption?: string;
   /** Render the value in the accent color (a live signal worth the eye). */
   accent?: boolean;
   /** Deferred metric — dims the value and shows a "soon" badge instead. */
@@ -21,7 +24,6 @@ export interface KpiBandProps {
   onlineRunners: number;
   needsYou: number;
   openIssues: number;
-  activeStages: number;
   spendTodayUsd: number;
   inFlightUsd: number;
 }
@@ -47,10 +49,10 @@ export function KpiBand(props: KpiBandProps) {
       accent: props.needsYou > 0,
     },
     {
+      // cm:why no caption. It read "across N stages" until ISS-999, counting distinct values of a status→stage map against a seven-stage pipeline the kernel deleted in ISS-897. The donut beside this tile already shows how the open issues are distributed, and it does so over statuses that exist.
       icon: "board",
       label: "Open issues",
       value: String(props.openIssues),
-      caption: `across ${props.activeStages} stage${props.activeStages === 1 ? "" : "s"}`,
     },
     {
       icon: "dollar",
@@ -85,7 +87,7 @@ export function KpiBand(props: KpiBandProps) {
             >
               {k.value}
             </p>
-            <p className="fg-caption mt-0.5 text-subtle">{k.caption}</p>
+            {k.caption && <p className="fg-caption mt-0.5 text-subtle">{k.caption}</p>}
           </CardContent>
         </Card>
       ))}

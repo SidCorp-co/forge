@@ -12,7 +12,6 @@ import {
   Menu,
   type MenuItem,
   MonoTag,
-  PipelineTracker,
   Spinner,
   StatusChip,
   TD,
@@ -29,8 +28,6 @@ import {
   priorityLabel,
   statusLabel,
   statusToChip,
-  statusToRun,
-  statusToStage,
 } from "../derive";
 import {
   deriveQueuedStep,
@@ -117,34 +114,25 @@ function AgentChip({
   );
 }
 
-/** ISS-436 merged status cell: lifecycle chip (+ live agent chip) over the
- *  mini stage tracker — replaces the old separate Pipeline/Status columns,
- *  which rendered the same `status`+`agentStatus` pair twice. */
+/** ISS-436 merged status cell: the issue's lifecycle chip, the live agent's chip, and the gate
+ *  holding a queued step — three chips, each carrying a fact something recorded. */
 // cm:guard the queued step is derived from `hasLiveAgentSession`, NOT this file's `hasLiveAgent` — the latter counts `failed` as live so the failure chip keeps its tooltip, and a deferred retry's `agentStatus` IS `failed`, so reusing it here hid the gate on the very row ISS-903 was filed about
-// cm:guard when a queued step is showing, the mini tracker must read `queued` and NOT `statusToRun` — that function answers `running` for an `in_progress` issue with no session, which is precisely the queued-but-undispatched row ISS-903 stopped painting as actively worked
+// cm:guard no progress figure belongs in this cell. Until ISS-999 it carried a mini tracker reading "N / 7" over a bar, positioned by a hand-written status→stage map against a seven-stage pipeline ISS-897 had already deleted from the kernel — on every row of every issues table, which is the widest audience any lie in this app had.
 export function StatusCell({ row }: { row: IssueRow }) {
   const statusLabel = useStatusLabeller();
-  const stage = statusToStage(row.status);
   const queuedStep = deriveQueuedStep(
     row.pipelineHealth,
     hasLiveAgentSession(row.agentStatus),
   );
   return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex flex-wrap items-center gap-1.5">
-        <StatusChip
-          status={statusToChip(row.status)}
-          label={statusLabel(row.status)}
-          size="sm"
-        />
-        <AgentChip agentStatus={row.agentStatus} failureInfo={row.failureInfo} />
-        {queuedStep && <QueuedChip step={queuedStep} />}
-      </div>
-      <PipelineTracker
-        stage={stage}
-        status={queuedStep ? "queued" : statusToRun(row.status, row.agentStatus)}
-        variant="mini"
+    <div className="flex flex-wrap items-center gap-1.5">
+      <StatusChip
+        status={statusToChip(row.status)}
+        label={statusLabel(row.status)}
+        size="sm"
       />
+      <AgentChip agentStatus={row.agentStatus} failureInfo={row.failureInfo} />
+      {queuedStep && <QueuedChip step={queuedStep} />}
     </div>
   );
 }
@@ -169,7 +157,6 @@ function QueuedChip({ step }: { step: QueuedStepView }) {
   );
 }
 
-// Priority badge tone — quiet for low/none, warm for the urgent end.
 const PRIORITY_TONE: Record<IssuePriority, "red" | "amber" | "neutral"> = {
   critical: "red",
   high: "amber",

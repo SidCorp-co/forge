@@ -54,10 +54,16 @@ describe("statusDonut", () => {
 		expect(d.segments.reduce((n, s) => n + s.count, 0)).toBe(4);
 	});
 
-	it("drops empty buckets and reports active stage count", () => {
+	it("drops empty buckets", () => {
 		const d = statusDonut({ open: 2, in_progress: 1 });
 		expect(d.segments.map((s) => s.key)).toEqual(["active", "queued"]);
-		expect(d.activeStageCount).toBe(2); // triage + code stages
+	});
+
+	// cm:guard the donut reports no stage count and the KPI shows no "across N stages" caption — both counted values of a status→stage map against a ladder ISS-897 deleted (ISS-999)
+	it("reports no stage count, because a status has no stage", () => {
+		expect(statusDonut({ open: 2, in_progress: 1 })).not.toHaveProperty(
+			"activeStageCount",
+		);
 	});
 
 	it("never paints an issue-status segment with the failure(red) tone", () => {
@@ -68,16 +74,8 @@ describe("statusDonut", () => {
 	});
 
 	it("handles empty/undefined distribution", () => {
-		expect(statusDonut(undefined)).toEqual({
-			segments: [],
-			total: 0,
-			activeStageCount: 0,
-		});
-		expect(statusDonut({})).toEqual({
-			segments: [],
-			total: 0,
-			activeStageCount: 0,
-		});
+		expect(statusDonut(undefined)).toEqual({ segments: [], total: 0 });
+		expect(statusDonut({})).toEqual({ segments: [], total: 0 });
 	});
 });
 

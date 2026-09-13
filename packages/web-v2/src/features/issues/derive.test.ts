@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { StatusExits } from "@forge/contracts/pipeline-registry";
+import {
+	REGISTRY_ISSUE_STATUSES,
+	type StatusExits,
+} from "@forge/contracts/pipeline-registry";
 import { STATUS_KEY_TONE } from "@/design/status";
 import {
 	allowedTransitions,
@@ -11,7 +14,7 @@ import {
 	depCounts,
 	deriveBlockerState,
 	deriveCommentKind,
-	deriveStageOutcomes,
+	deriveStepOutcomes,
 	FORGE_AGENT_LABEL,
 	filterToQueryParams,
 	groupRows,
@@ -27,8 +30,6 @@ import {
 	statusLabel,
 	statusLabelFor,
 	statusToChip,
-	statusToRun,
-	statusToStage,
 	statusToTone,
 	statusesFromParam,
 } from "./derive";
@@ -68,32 +69,6 @@ function row(over: Partial<IssueRow> & { id: string }): IssueRow {
 		agentStatus: over.agentStatus,
 	};
 }
-
-describe("statusToStage", () => {
-	it("maps lifecycle statuses to pipeline stages", () => {
-		expect(statusToStage("open")).toBe("triage");
-		expect(statusToStage("approved")).toBe("plan");
-		expect(statusToStage("in_progress")).toBe("code");
-		expect(statusToStage("developed")).toBe("review");
-		expect(statusToStage("testing")).toBe("test");
-		expect(statusToStage("awaiting_release")).toBe("release");
-	});
-});
-
-describe("statusToRun", () => {
-	it("prefers a live agent status over the lifecycle status", () => {
-		expect(statusToRun("approved", "running")).toBe("running");
-		expect(statusToRun("approved", "queued")).toBe("queued");
-		expect(statusToRun("developed", "failed")).toBe("failed");
-	});
-	it("falls back to a status-derived run state with no agent", () => {
-		expect(statusToRun("awaiting_release")).toBe("done");
-		expect(statusToRun("developed")).toBe("review");
-		expect(statusToRun("on_hold")).toBe("blocked");
-		expect(statusToRun("in_progress")).toBe("running");
-		expect(statusToRun("open")).toBe("queued");
-	});
-});
 
 describe("statusToChip", () => {
 	it("maps live agent status first", () => {
@@ -377,6 +352,14 @@ describe("label helpers", () => {
 		for (const p of ISSUE_PRIORITIES) expect(PRIORITY_LABELS[p]).toBeTruthy();
 		for (const c of ISSUE_COMPLEXITIES)
 			expect(COMPLEXITY_LABELS[c]).toBeTruthy();
+	});
+
+	// cm:guard STATUS_LABELS stays total over the kernel's tuple — the lane drives five rungs, humans and masters reach the rest, and an unlabelled one renders blank (ISS-999)
+	it("labels every one of the kernel's statuses and invents none of its own", () => {
+		expect(Object.keys(STATUS_LABELS).sort()).toEqual(
+			[...REGISTRY_ISSUE_STATUSES].sort(),
+		);
+		expect(REGISTRY_ISSUE_STATUSES).toHaveLength(17);
 	});
 });
 
@@ -1001,11 +984,12 @@ describe("deriveBlockerState", () => {
 	});
 });
 
-describe("deriveStageOutcomes", () => {
+describe("deriveStepOutcomes — the steps an issue actually ran (ISS-999)", () => {
 	const handoff = (
 		step: string,
 		attempt: number,
 		payload: Record<string, unknown>,
+		over: Partial<StepHandoffRow> = {},
 	): StepHandoffRow => ({
 		id: `${step}-${attempt}`,
 		projectId: "p1",
@@ -1017,6 +1001,7 @@ describe("deriveStageOutcomes", () => {
 		payload,
 		createdAt: "2026-01-01T00:00:00.000Z",
 		updatedAt: "2026-01-01T00:00:00.000Z",
+		...over,
 	});
 	const dur = (
 		step: string,
@@ -1035,133 +1020,118 @@ describe("deriveStageOutcomes", () => {
 		costUsd,
 	});
 
-	it("marks done / current / pending around the current stage", () => {
-		const cells = deriveStageOutcomes("plan", "running", [], []);
-		expect(cells.triage.state).toBe("done");
-		expect(cells.clarify.state).toBe("done");
-		expect(cells.plan.state).toBe("current");
-		expect(cells.code.state).toBe("pending");
-		expect(cells.release.state).toBe("pending");
+	it("lists only the steps that have a row, and never one that has not run", () => {
+		const out = deriveStepOutcomes([handoff("plan", 1, { summary: "s" })], [dur("code", 10, 1)]);
+		expect(out.map((o) => o.step).sort()).toEqual(["code", "plan"]);
 	});
 
-	it("pulls a short outcome label + sums duration/cost from a full payload", () => {
-		const cells = deriveStageOutcomes(
-			"code",
-			"running",
+	it("returns nothing at all for an issue with no handoffs and no durations", () => {
+		expect(deriveStepOutcomes([], [])).toEqual([]);
+		expect(deriveStepOutcomes(undefined, undefined)).toEqual([]);
+	});
+
+	it("keeps a job type outside the seven staged names under its own name", () => {
+		// cm:why `drive` is the only job type an autonomous run has and none of the seven; its predecessor folded it onto `triage`, reporting the one step that ran as a stage that never did (ISS-999)
+		const out = deriveStepOutcomes([handoff("drive", 1, { outcome: "shipped it" })], []);
+		expect(out.map((o) => o.step)).toEqual(["drive"]);
+		expect(out[0].outcomeLabel).toBe("shipped it");
+	});
+
+	it("gives `fix` a row of its own rather than folding it onto `code`", () => {
+		const out = deriveStepOutcomes(
+			[handoff("code", 1, { summary: "wrote it" }), handoff("fix", 1, { summary: "patched" })],
+			[],
+		);
+		expect(out.map((o) => o.step).sort()).toEqual(["code", "fix"]);
+		expect(out.find((o) => o.step === "fix")?.outcomeLabel).toBe("patched");
+	});
+
+	it("orders by when a step last ran, not by any stage order", () => {
+		const out = deriveStepOutcomes(
+			[],
+			[
+				dur("release", 1, 0, "r1", "2026-01-03T00:00:00.000Z"),
+				dur("triage", 1, 0, "r1", "2026-01-01T00:00:00.000Z"),
+				dur("code", 1, 0, "r1", "2026-01-02T00:00:00.000Z"),
+			],
+		);
+		expect(out.map((o) => o.step)).toEqual(["triage", "code", "release"]);
+	});
+
+	it("reads `running` from the active step's own name and from nothing else", () => {
+		const rows = [handoff("plan", 1, {}), handoff("code", 1, {})];
+		const out = deriveStepOutcomes(rows, [], { activeStep: "code" });
+		expect(out.find((o) => o.step === "code")?.state).toBe("running");
+		expect(out.find((o) => o.step === "plan")?.state).toBe("done");
+	});
+
+	it("reads `failed` from the failed step's own name, and it outranks running", () => {
+		const out = deriveStepOutcomes([handoff("test", 1, {})], [], {
+			activeStep: "test",
+			failedStep: "test",
+		});
+		expect(out[0].state).toBe("failed");
+	});
+
+	it("leaves every step `done` when neither field names one", () => {
+		const out = deriveStepOutcomes([handoff("plan", 1, {}), handoff("code", 1, {})], [], {
+			activeStep: null,
+			failedStep: null,
+		});
+		expect(out.map((o) => o.state)).toEqual(["done", "done"]);
+	});
+
+	it("pulls a short outcome label and sums duration/cost across a run's attempts", () => {
+		const out = deriveStepOutcomes(
 			[handoff("plan", 1, { summary: "wrote the plan" })],
 			[dur("plan", 120, 0.25), dur("plan", 60, 0.1)],
 		);
-		expect(cells.plan.outcomeLabel).toBe("wrote the plan");
-		expect(cells.plan.durationSeconds).toBe(180);
-		expect(cells.plan.costUsd).toBeCloseTo(0.35);
-		expect(cells.plan.handoff?.step).toBe("plan");
+		expect(out[0].outcomeLabel).toBe("wrote the plan");
+		expect(out[0].durationSeconds).toBe(180);
+		expect(out[0].costUsd).toBeCloseTo(0.35);
+		expect(out[0].handoff?.step).toBe("plan");
 	});
 
 	it("keeps the latest attempt and never throws on an empty/odd payload", () => {
-		const cells = deriveStageOutcomes(
-			"review",
-			"running",
+		const out = deriveStepOutcomes(
 			[handoff("plan", 1, {}), handoff("plan", 2, { outcome: "v2" })],
 			undefined,
 		);
-		expect(cells.plan.handoff?.attempt).toBe(2);
-		expect(cells.plan.outcomeLabel).toBe("v2");
-		const empty = deriveStageOutcomes(
-			"plan",
-			"running",
-			[handoff("plan", 1, {})],
-			[],
-		);
-		expect(empty.plan.outcomeLabel).toBeUndefined();
-	});
-
-	it("marks the failing stage as error", () => {
-		const cells = deriveStageOutcomes("code", "failed", [], [], "code");
-		expect(cells.code.state).toBe("error");
-	});
-
-	it("keeps special test outcomes as handoff evidence without assigning current wait provenance", () => {
-		const cells = deriveStageOutcomes(
-			"plan",
-			"queued",
-			[
-				handoff("test", 1, {
-					result: "blocked_fixture",
-					resultReason: "The shared fixture is unavailable.",
-				}),
-			],
-			[],
-		);
-		expect(cells.plan.state).toBe("current");
-		expect(cells.test.state).toBe("pending");
-		expect(cells.test.outcomeLabel).toBe("blocked_fixture");
-	});
-
-	it("retains verified-by-test evidence on the test artifact", () => {
-		const cells = deriveStageOutcomes(
-			"plan",
-			"queued",
-			[handoff("test", 1, { result: "verified_by_test" })],
-			[],
-		);
-		expect(cells.test.outcomeLabel).toBe("verified_by_test");
-	});
-
-	it("keeps a real failed run above a special test handoff", () => {
-		const cells = deriveStageOutcomes(
-			"test",
-			"failed",
-			[handoff("test", 1, { result: "blocked_fixture" })],
-			[],
-			"test",
-		);
-		expect(cells.test.state).toBe("error");
+		expect(out[0].handoff?.attempt).toBe(2);
+		expect(out[0].outcomeLabel).toBe("v2");
+		expect(deriveStepOutcomes([handoff("plan", 1, {})], [])[0].outcomeLabel).toBeUndefined();
 	});
 
 	it("uses a newer run's handoff instead of a prior attempt", () => {
 		const old = handoff("test", 2, { result: "blocked_fixture" });
-		const current = {
-			...handoff("test", 1, { result: "pass" }),
+		const current = handoff("test", 1, { result: "pass" }, {
 			pipelineRunId: "run-2",
 			updatedAt: "2026-02-01T00:00:00.000Z",
-		};
-		const cells = deriveStageOutcomes("release", "running", [old, current], []);
-		expect(cells.test.handoff?.pipelineRunId).toBe("run-2");
-		expect(cells.test.state).toBe("done");
-	});
-
-	it("does not retain fixture-blocked state after completion", () => {
-		const cells = deriveStageOutcomes(
-			"release",
-			"done",
-			[handoff("test", 1, { result: "blocked_fixture" })],
-			[],
-		);
-		expect(cells.test.state).toBe("done");
+		});
+		const out = deriveStepOutcomes([old, current], []);
+		expect(out[0].handoff?.pipelineRunId).toBe("run-2");
+		expect(out[0].outcomeLabel).toBe("pass");
 	});
 
 	it("uses only the most-recent run's duration/cost (no double-count on reopen)", () => {
-		const cells = deriveStageOutcomes(
-			"code",
-			"running",
+		const out = deriveStepOutcomes(
 			[],
 			[
 				dur("plan", 100, 1.0, "run-old", "2026-01-01T00:05:00.000Z"),
 				dur("plan", 200, 2.0, "run-new", "2026-02-01T00:05:00.000Z"),
 			],
 		);
-		expect(cells.plan.durationSeconds).toBe(200);
-		expect(cells.plan.costUsd).toBeCloseTo(2.0);
+		expect(out[0].durationSeconds).toBe(200);
+		expect(out[0].costUsd).toBeCloseTo(2.0);
 	});
 
-	it("folds fix handoffs into the code stage", () => {
-		const cells = deriveStageOutcomes(
-			"review",
-			"running",
-			[handoff("fix", 1, { summary: "patched" })],
+	it("keeps a special test outcome as handoff evidence without it becoming a state", () => {
+		const out = deriveStepOutcomes(
+			[handoff("test", 1, { result: "blocked_fixture", resultReason: "no fixture" })],
 			[],
 		);
-		expect(cells.code.outcomeLabel).toBe("patched");
+		expect(out[0].outcomeLabel).toBe("blocked_fixture");
+		expect(out[0].state).toBe("done");
 	});
 });
 

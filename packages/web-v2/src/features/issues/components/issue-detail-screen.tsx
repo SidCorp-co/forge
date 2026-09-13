@@ -22,14 +22,12 @@ import {
   type MenuItem,
   MonoTag,
   PageContainer,
-  PipelineTracker,
   ProjectLoader,
   Skeleton,
   StatusChip,
   type TabItem,
   Tabs,
 } from "@/design";
-import { STAGES, type StageKey } from "@/design/stages";
 import type { StatusKey } from "@/design/status";
 import { useResumeRun } from "@/features/pipeline/hooks";
 import { useProjects } from "@/features/projects/hooks";
@@ -44,12 +42,10 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   deriveBlockerState,
-  deriveStageOutcomes,
+  deriveStepOutcomes,
   parseChecklist,
   statusLabelFor,
   statusToChip,
-  statusToRun,
-  statusToStage,
 } from "../derive";
 import { deriveQueuedStep } from "../waiting";
 import {
@@ -116,7 +112,9 @@ export function IssueDetailScreen({
   const { toast } = useToast();
   const { push: pushRecent } = useRecents();
   const [tab, setTab] = useState("comments");
-  const [expandedStage, setExpandedStage] = useState<StageKey | null>(null);
+  // ISS-377 — which stage's artifact card is expanded (driven by tracker clicks
+  // + manual toggles). `null` = all collapsed.
+  const [expandedStep, setExpandedStep] = useState<string | null>(null);
 
   useRoom(projectRoom(projectId));
 
@@ -202,7 +200,6 @@ export function IssueDetailScreen({
     );
   }
 
-  const stage = statusToStage(issue.status);
   const onTransition = (toStatus: IssueStatus) => requestTransition(id, toStatus);
   const onPatch = (body: Parameters<typeof patch.mutate>[0]["body"]) =>
     patch.mutate({ id, body });
@@ -212,17 +209,15 @@ export function IssueDetailScreen({
     requestTransition(id, "reopen", { successMessage: "Issue resumed" });
 
   // cm:guard the derivations below sit AFTER the loading/error early-returns on purpose — they are plain function calls, not hooks, so no hook order changes with them; moving a real hook down here is what would break
-  const runStatus = statusToRun(issue.status, issue.agentStatus);
   const blocker = deriveBlockerState(issue, issue.pipelineHealth, depsQ.data);
-  const stageCells = deriveStageOutcomes(
-    stage,
-    runStatus,
-    handoffsQ.data,
-    durationsQ.data,
-    runStatus === "failed" ? stage : null,
-  );
+  // cm:guard the step named beside the status chip is this same `liveStep`, never a stage derived from the status — that projection made a closed issue read "release" (ISS-999)
+  // cm:guard both arguments are fields the KERNEL recorded — the active session's own skill and the latest failed job's own step. ISS-999 replaced `deriveStageOutcomes`, whose state came from a stage's index against a status-derived position, so a step read `done` because it sat left of another one.
+  const liveStep = issue.pipelineHealth?.activeSession?.skill ?? null;
+  const stepOutcomes = deriveStepOutcomes(handoffsQ.data, durationsQ.data, {
+    activeStep: liveStep,
+    failedStep: issue.failureInfo?.failedStep ?? null,
+  });
   const liveSession = pickActiveSession(issue.agentSessions);
-  const liveStep = issue.pipelineHealth?.activeSession?.skill ?? stage;
   // cm:why a queued job has no agent_sessions row, so this is the only signal the panel has that a next step exists at all; the live session outranks it
   const queuedStep = deriveQueuedStep(issue.pipelineHealth, !!liveSession);
   const agentState: LiveAgentState | null = liveSession
@@ -230,17 +225,6 @@ export function IssueDetailScreen({
     : queuedStep
       ? { kind: "queued", step: queuedStep }
       : null;
-
-  const focusStage = (s: StageKey) => {
-    setExpandedStage(s);
-    if (typeof window !== "undefined") {
-      requestAnimationFrame(() =>
-        document
-          .getElementById(`stage-card-${s}`)
-          ?.scrollIntoView({ behavior: "smooth", block: "start" }),
-      );
-    }
-  };
 
   // cm:guard "Provide info" moves the reader to the DECISION PANEL and not to the comment box: since ISS-996 a park at `needs_info` is settled by answering its question row, and an answer typed into the thread resumes nothing (ISS-996).
   const focusDecisions = () => {
@@ -341,11 +325,11 @@ export function IssueDetailScreen({
             {runChip && (
               <StatusChip
                 status={runChip}
-                stage={runChip === "running" ? stage : undefined}
+                stage={runChip === "running" ? (liveStep ?? undefined) : undefined}
                 domain="session"
               />
             )}
-            <span className="fg-caption font-mono">{stage}</span>
+            {liveStep && <span className="fg-caption font-mono">{liveStep}</span>}
           </div>
           <h1 className="fg-h3 mt-1.5 truncate">{issue.title}</h1>
         </div>
@@ -440,25 +424,10 @@ export function IssueDetailScreen({
 
           {reasonDialog}
 
-          <Card>
-            <CardContent>
-              {/* Tracker is the spine: per-stage state + outcome, click to focus
-                  the matching artifact card (ISS-377 AC#5). */}
-              <PipelineTracker
-                stage={stage}
-                status={runStatus}
-                variant="full"
-                cells={stageCells}
-                selected={expandedStage ?? undefined}
-                onSelect={focusStage}
-              />
-            </CardContent>
-          </Card>
-
           {agentState && (
             <LiveAgentPanel
               state={agentState}
-              step={liveStep}
+              step={liveStep ?? "—"}
               slug={slug}
               issueId={id}
             />
@@ -470,23 +439,34 @@ export function IssueDetailScreen({
 
           <Card>
             <CardHeader>
-              <CardTitle>Pipeline stages</CardTitle>
+              <CardTitle>Steps</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-2">
-                {STAGES.map((s) => (
-                  <StepArtifactCard
-                    key={s.key}
-                    stage={s.key}
-                    label={s.label}
-                    cell={stageCells[s.key]}
-                    open={expandedStage === s.key}
-                    onToggle={() =>
-                      setExpandedStage((cur) => (cur === s.key ? null : s.key))
-                    }
-                  />
-                ))}
-              </div>
+              {handoffsQ.isLoading || durationsQ.isLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-10 rounded-lg" />
+                  <Skeleton className="h-10 rounded-lg" />
+                </div>
+              ) : stepOutcomes.length === 0 ? (
+                <EmptyState
+                  title="No steps yet"
+                  message="Nothing has run on this issue. Steps appear here as agents record them."
+                  mascot={false}
+                />
+              ) : (
+                <div className="space-y-2">
+                  {stepOutcomes.map((outcome) => (
+                    <StepArtifactCard
+                      key={outcome.step}
+                      outcome={outcome}
+                      open={expandedStep === outcome.step}
+                      onToggle={() =>
+                        setExpandedStep((cur) => (cur === outcome.step ? null : outcome.step))
+                      }
+                    />
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 

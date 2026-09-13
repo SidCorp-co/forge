@@ -1,10 +1,13 @@
 "use client";
 
-// Pipeline kanban screen (`/projects/[slug]/pipeline`, ISS-295). 7 stage
-// columns (triage→…→release); cards are issues grouped by STATUS_TO_STAGE with
-// the live run status overlaid by issueId. Live via WS (the project room
-// invalidates `['issues','search']` + `['pipeline-runs','list']`). Mirrors the
-// prototype `web-redesign-plan/ui-kit/PipelineScreen.jsx`.
+// Pipeline kanban screen (`/projects/[slug]/pipeline`, ISS-295), and the Issues screen's Board tab.
+//
+// One column per LANE LABEL — the same word the issue's own status chip says — with the live run
+// status overlaid by issueId. Until ISS-999 the columns were the seven stages of a pipeline the
+// kernel deleted in ISS-897, filled from a 15-key status→stage map that answered `triage` for
+// `releasing` and `dropped`. Live via WS (the project room invalidates `['issues','search']` +
+// `['pipeline-runs','list']`).
+
 import { useMemo, useState } from "react";
 import {
   ErrorState,
@@ -14,14 +17,13 @@ import {
   KanbanColumn,
   KanbanColumnSkeleton,
   LiveDot,
-  STAGES,
   Tooltip,
 } from "@/design";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { formatApiError } from "@/lib/api/error";
 import { useStatusLabeller } from "@/features/issues/vocabulary";
-import { cardStatus, formatUsd, groupIssuesByStage, runsByIssue } from "../derive";
+import { boardColumns, cardStatus, formatUsd, groupIssuesByLabel, runsByIssue } from "../derive";
 import { useProjectIssues, useProjectRuns } from "../hooks";
 import type { PipelineIssueRow } from "../types";
 import { RunDetail } from "./run-detail";
@@ -56,7 +58,7 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
   const runsQ = useProjectRuns(projectId);
 
   const runIndex = useMemo(() => runsByIssue(runsQ.data?.items), [runsQ.data]);
-  const groups = useMemo(() => groupIssuesByStage(issuesQ.data?.items), [issuesQ.data]);
+  const groups = useMemo(() => groupIssuesByLabel(issuesQ.data?.items), [issuesQ.data]);
 
   // Keep the open drawer's issue snapshot in sync with the live list: editing
   // status/priority/assignee from the quick-action bar invalidates `['issues']`,
@@ -78,7 +80,7 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
       <header className={`mb-3 flex flex-none items-center gap-3${embedded ? " hidden" : ""}`}>
         <h1 className="fg-h2">Pipeline</h1>
         <p className="fg-body-sm hidden text-muted sm:block">
-          Issues flow left → right; a stage starts once the previous finishes.
+          One column per state an issue can be in. There is no order between them.
         </p>
         <div className="ml-auto flex items-center gap-3">
           <LiveDot state="live" />
@@ -101,8 +103,8 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
         />
       ) : issuesQ.isLoading ? (
         <KanbanBoard>
-          {STAGES.map((s) => (
-            <div key={s.key} className="w-[248px] flex-none">
+          {boardColumns().map((label) => (
+            <div key={label} className="w-[248px] flex-none">
               <KanbanColumnSkeleton />
             </div>
           ))}
@@ -110,7 +112,13 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
       ) : (
         <KanbanBoard>
           {groups.map((group) => (
-            <KanbanColumn key={group.stage} stage={group.stage} count={group.issues.length}>
+            <KanbanColumn
+              key={group.label}
+              title={group.title}
+              color={group.color}
+              count={group.issues.length}
+              emptyHint={`No issues are ${group.title.toLowerCase()}.`}
+            >
               {group.issues.map((issue) => {
                 const run = issue.id ? runIndex.get(issue.id) : undefined;
                 const card = cardStatus(issue, run, labelStatus);
@@ -119,7 +127,6 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
                     key={issue.id}
                     id={issue.displayId}
                     title={issue.title}
-                    stage={group.stage}
                     status={card.status}
                     statusLabel={card.label}
                     statusDomain={card.domain}

@@ -1,18 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { aggregateStageInsights, cardStatus, groupIssuesByStage, median } from "./derive";
+import { aggregateStepCosts, cardStatus, median } from "./derive";
 import type { PipelineIssueRow, StepDurationRow } from "./types";
-
-function issue(over: Partial<PipelineIssueRow> & { id: string; status: string }): PipelineIssueRow {
-  return {
-    id: over.id,
-    projectId: over.projectId ?? "p1",
-    displayId: over.displayId ?? "ISS-1",
-    title: over.title ?? "t",
-    status: over.status,
-    priority: over.priority ?? "medium",
-    assigneeId: over.assigneeId ?? null,
-  };
-}
 
 function step(over: Partial<StepDurationRow> & { step: string }): StepDurationRow {
   return {
@@ -39,42 +27,58 @@ describe("median", () => {
   });
 });
 
-describe("aggregateStageInsights", () => {
-  it("returns one row per stage in STAGES order with live counts", () => {
-    const groups = groupIssuesByStage([
-      issue({ id: "a", status: "open" }), // → triage
-      issue({ id: "b", status: "confirmed" }), // → clarify (hosts the clarify step)
-      issue({ id: "c", status: "in_progress" }), // → code
-    ]);
-    const rows = aggregateStageInsights(groups, []);
-    expect(rows.map((r) => r.stage)).toEqual([
-      "triage",
-      "clarify",
-      "plan",
-      "code",
-      "review",
-      "test",
-      "release",
-    ]);
-    expect(rows.find((r) => r.stage === "triage")?.count).toBe(1);
-    expect(rows.find((r) => r.stage === "clarify")?.count).toBe(1);
-    expect(rows.find((r) => r.stage === "code")?.count).toBe(1);
-    // No durations → null median, zero cost.
-    expect(rows.find((r) => r.stage === "triage")?.medianSec).toBeNull();
-    expect(rows.find((r) => r.stage === "triage")?.cost).toBe(0);
-  });
+describe("aggregateStepCosts — the job types that actually ran (ISS-999)", () => {
+	it("returns one row per job type on the rows, and none for a job type with no row", () => {
+		const rows = aggregateStepCosts([step({ step: "code" }), step({ step: "test" })]);
+		expect(rows.map((r) => r.step).sort()).toEqual(["code", "test"]);
+	});
 
-  it("folds step durations onto stages (median + summed cost), with fix → code", () => {
-    const rows = aggregateStageInsights(groupIssuesByStage([]), [
-      step({ step: "code", durationSeconds: 10, costUsd: 0.01 }),
-      step({ step: "code", durationSeconds: 30, costUsd: 0.02 }),
-      step({ step: "fix", durationSeconds: 20, costUsd: 0.03 }), // rolls into code
-    ]);
-    const code = rows.find((r) => r.stage === "code");
-    expect(code?.samples).toBe(3);
-    expect(code?.medianSec).toBe(20); // median of [10,20,30]
-    expect(code?.cost).toBeCloseTo(0.06, 5);
-  });
+	it("keeps a job type outside the seven staged names under its own name", () => {
+		// cm:why the predecessor folded every step through jobTypeToStage, whose `default` was `triage`, so a `drive` row drew a triage row for work that never happened (ISS-999)
+		const rows = aggregateStepCosts([step({ step: "drive", durationSeconds: 9 })]);
+		expect(rows.map((r) => r.step)).toEqual(["drive"]);
+		expect(rows[0].medianSec).toBe(9);
+	});
+
+	it("gives `fix` a row of its own rather than summing it into `code`", () => {
+		const rows = aggregateStepCosts([
+			step({ step: "code", durationSeconds: 10, costUsd: 0.01 }),
+			step({ step: "fix", durationSeconds: 20, costUsd: 0.03 }),
+		]);
+		expect(rows.find((r) => r.step === "code")?.samples).toBe(1);
+		expect(rows.find((r) => r.step === "fix")?.samples).toBe(1);
+	});
+
+	it("takes the median duration and the summed cost per job type", () => {
+		const rows = aggregateStepCosts([
+			step({ step: "code", durationSeconds: 10, costUsd: 0.01 }),
+			step({ step: "code", durationSeconds: 30, costUsd: 0.02 }),
+			step({ step: "code", durationSeconds: 20, costUsd: 0.03 }),
+		]);
+		expect(rows[0].samples).toBe(3);
+		expect(rows[0].medianSec).toBe(20);
+		expect(rows[0].cost).toBeCloseTo(0.06, 5);
+	});
+
+	it("orders slowest median first, so the caller's `[0]` IS the bottleneck", () => {
+		const rows = aggregateStepCosts([
+			step({ step: "code", durationSeconds: 10 }),
+			step({ step: "test", durationSeconds: 90 }),
+			step({ step: "plan", durationSeconds: 50 }),
+		]);
+		expect(rows.map((r) => r.step)).toEqual(["test", "plan", "code"]);
+	});
+
+	it("colours one of the seven from its own token and anything else neutrally", () => {
+		const rows = aggregateStepCosts([step({ step: "code" }), step({ step: "drive" })]);
+		expect(rows.find((r) => r.step === "code")?.color).toBe("var(--stage-code)");
+		expect(rows.find((r) => r.step === "drive")?.color).toBe("var(--fg-subtle)");
+	});
+
+	it("returns nothing for an empty or absent window", () => {
+		expect(aggregateStepCosts([])).toEqual([]);
+		expect(aggregateStepCosts(undefined)).toEqual([]);
+	});
 });
 
 describe("cardStatus", () => {

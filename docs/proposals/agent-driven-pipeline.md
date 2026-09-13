@@ -27,8 +27,9 @@ agent decides its own next step, declares phases into a journal, forks a clean-c
 and merges into the base branch it checked out. The cloud stops being the controller and becomes
 the ledger plus two gates.
 
-The seven-stage process is **policy**. It currently lives in the **kernel**, which is what
-principle `VISION: kernel-hard-policy-soft` forbids.
+The seven-stage process is **policy**. At the time of writing it lived in the **kernel**, which is
+what principle `VISION: kernel-hard-policy-soft` forbids. ISS-895 and ISS-897 took it out, and
+ISS-999 took out the last two hand-written copies of it in the web UI.
 
 ## Motivation
 

@@ -4,10 +4,9 @@
 import { useRouter } from "next/navigation";
 import { Card, CardContent, Icon, LiveDot, StatusChip } from "@/design";
 import { stageColor } from "@/design/stages";
-import { formatUsd, jobTypeToStage } from "@/features/pipeline/derive";
+import { formatUsd } from "@/features/pipeline/derive";
 import type { PipelineRunKind, PipelineRunListItem } from "@/features/pipeline/types";
 
-// ISS-460 — humanized label for runs with no issue (pm/system/interactive).
 const KIND_LABEL: Record<PipelineRunKind, string> = {
   issue: "Issue run",
   pm: "PM run",
@@ -52,7 +51,7 @@ export function LiveRunsCard({
         ) : (
           <ul className="flex flex-col gap-2">
             {runs.map((run) => {
-              const stage = jobTypeToStage(run.currentStep);
+              // cm:why the run's OWN `currentStep` is the dot's colour and the chip's word. It used to go through `jobTypeToStage`, whose `default` answered `triage`, so a `drive` run — the only kind an autonomous project has — showed a triage-coloured dot for a step named nothing like triage (ISS-999).
               return (
                 <li key={run.id}>
                   <button
@@ -60,10 +59,10 @@ export function LiveRunsCard({
                     onClick={() => open(run)}
                     className="flex w-full items-center gap-2.5 rounded-md border border-line bg-surface px-2.5 py-2 text-left transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
                   >
-                    <span className="size-2 flex-none rounded-full" style={{ background: stageColor(stage) }} />
+                    <span className="size-2 flex-none rounded-full" style={{ background: stageColor(run.currentStep ?? "") }} />
                     <StatusChip
                       status={run.status === "paused" ? "paused" : "running"}
-                      stage={run.status === "paused" ? undefined : (run.currentStep ?? stage)}
+                      stage={run.status === "paused" ? undefined : (run.currentStep ?? undefined)}
                       domain="session"
                       size="sm"
                     />

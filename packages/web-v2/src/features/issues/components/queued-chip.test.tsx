@@ -89,12 +89,28 @@ describe("issue list row · queued chip", () => {
     expect(screen.queryByText("Waiting for me")).not.toBeInTheDocument();
   });
 
-  it("drops the running sweep from the mini tracker while a step is queued", () => {
-    const { container, unmount } = render(<StatusCell row={row(health("runner_stale"))} />);
+  // cm:guard ISS-903's rule, re-anchored by ISS-999: the cell used to carry a mini tracker whose indeterminate sweep had to be suppressed while a step sat queued, and the tracker is gone. The rule survives on the chips — an `in_progress` issue with nothing dispatched shows its lifecycle label and the gate, and NOTHING claiming a live session.
+  it("adds no session chip while a step is only queued", () => {
+    const { container } = render(<StatusCell row={row(health("runner_stale"))} />);
+    expect(screen.getByText("No runner online")).toBeInTheDocument();
+    // cm:why one "Running" and not zero — the issue's own lifecycle label, which is true, since it IS at `in_progress`; what must be absent is a SECOND chip claiming a live session
+    expect(screen.getAllByText("Running")).toHaveLength(1);
     expect(container.querySelector(".forge-indeterminate")).toBeNull();
+  });
+
+  it("adds the session chip on a row that IS being worked", () => {
+    render(<StatusCell row={row(undefined, "running")} />);
+    // cm:why two — the lifecycle label and the live agent's own session chip beside it, which is the ISS-436 split this row's cell exists to keep
+    expect(screen.getAllByText("Running")).toHaveLength(2);
+    expect(screen.queryByText("Queued")).not.toBeInTheDocument();
+  });
+
+  it("renders no progress figure on any row, queued or live", () => {
+    const { container, unmount } = render(<StatusCell row={row(health("runner_stale"))} />);
+    expect(container.textContent).not.toMatch(/\d+\s*\/\s*7/);
     unmount();
-    const live = render(<StatusCell row={row()} />);
-    expect(live.container.querySelector(".forge-indeterminate")).not.toBeNull();
+    const live = render(<StatusCell row={row(undefined, "running")} />);
+    expect(live.container.textContent).not.toMatch(/\d+\s*\/\s*7/);
   });
 });
 
@@ -104,7 +120,6 @@ describe("board card · queued chip", () => {
       <KanbanCard
         id="ISS-903"
         title="A queued issue"
-        stage="code"
         status="waiting"
         statusDomain="session"
         statusLabel="No runner online"
@@ -121,7 +136,6 @@ describe("board card · queued chip", () => {
       <KanbanCard
         id="ISS-903"
         title="A queued issue"
-        stage="code"
         status="waiting"
         statusDomain="session"
         statusLabel="No runner online"

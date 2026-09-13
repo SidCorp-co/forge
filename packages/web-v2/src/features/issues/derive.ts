@@ -1,6 +1,9 @@
 // web-v2 feature module: issues — PURE derivations (unit-tested in
-// `derive.test.ts`). No React, no IO: status → stage / chip / run, dependency
-// counts, filter → server params, client grouping, comment-kind heuristic.
+// `derive.test.ts`). No React, no IO: status → label / chip / tone, the steps an
+// issue actually ran, dependency counts, filter → server params, client
+// grouping, comment-kind heuristic.
+//
+// cm:guard nothing here maps a status to a position. ISS-897 deleted the staged ladder from the kernel and ISS-999 deleted the two hand-written STATUS_TO_STAGE copies that still drew one — 17 keys here and 15 in features/pipeline/derive.ts, the second silently answering `triage` for `releasing` and `dropped`. A status says what is true of an issue now; it does not say how far along anything is, and any function here that answers "how far" is that projection coming back.
 
 import {
 	type AutonomousLabel,
@@ -11,7 +14,6 @@ import {
 	REGISTRY_ISSUE_STATUSES,
 	type StatusExits,
 } from "@forge/contracts/pipeline-registry";
-import { STAGE_INDEX, STAGES, type StageKey } from "@/design/stages";
 import {
 	type SemanticTone,
 	STATUS_KEY_TONE,
@@ -64,19 +66,26 @@ export const STATUS_LABELS: Record<IssueStatus, string> = {
 };
 
 /**
- * The autonomous vocabulary's own labels. The map from kernel status to label
- * lives in `@forge/contracts` so every client relabels the same way.
+ * How each lane label is shown: its word and its colour, in one entry.
+ *
+ * The map from kernel status to label lives in `@forge/contracts` so every client relabels the
+ * same way; this is the presentation of the label and nothing else. It carries no order — the
+ * order is `AUTONOMOUS_LABELS`' own, in contracts — and no position.
  */
-export const AUTONOMOUS_STATUS_LABELS: Record<AutonomousLabel, string> = {
-	draft: "Draft",
-	open: "Open",
-	running: "Running",
-	needs_human: "Needs a human",
-	reopened: "Reopened",
-	paused: "Paused",
-	awaiting_release: "Awaiting release",
-	done: "Done",
-	dropped: "Dropped",
+// cm:guard label and tone stay in ONE record over this key set, not two beside each other. ISS-999 folded them together because the previous shape (a labels map here, a colour picked per surface) is how the same meaning got different colours in seven places, which is what ISS-509 spent a release undoing.
+export const LABEL_VIEW: Record<
+	AutonomousLabel,
+	{ label: string; tone: SemanticTone }
+> = {
+	draft: { label: "Draft", tone: "neutral" },
+	open: { label: "Open", tone: "neutral" },
+	running: { label: "Running", tone: "active" },
+	needs_human: { label: "Needs a human", tone: "attention" },
+	reopened: { label: "Reopened", tone: "attention" },
+	paused: { label: "Paused", tone: "blocked" },
+	awaiting_release: { label: "Awaiting release", tone: "shipped" },
+	done: { label: "Done", tone: "success" },
+	dropped: { label: "Dropped", tone: "archived" },
 };
 
 export const PRIORITY_LABELS: Record<IssuePriority, string> = {
@@ -103,81 +112,12 @@ export const statusLabel = (s: IssueStatus): string => STATUS_LABELS[s] ?? s;
  */
 // cm:edge contract -> packages/contracts/src/issue-vocabulary.ts — the kernel→label map lives there so web, dev and the MCP surface cannot disagree about what `in_progress` is called
 export const statusLabelFor = (s: IssueStatus): string =>
-	AUTONOMOUS_STATUS_LABELS[toAutonomousLabel(s)] ?? statusLabel(s);
+	LABEL_VIEW[toAutonomousLabel(s)]?.label ?? statusLabel(s);
 export const priorityLabel = (p: IssuePriority): string =>
 	PRIORITY_LABELS[p] ?? p;
 export const complexityLabel = (
 	c: IssueComplexity | null | undefined,
 ): string => (c ? (COMPLEXITY_LABELS[c] ?? c) : "—");
-
-/**
- * Map a core issue status to a pipeline stage so the per-row mini tracker
- * reflects where the issue sits. Ported from the project overview page's
- * `STATUS_TO_STAGE` (`(workspace)/projects/[slug]/page.tsx`).
- */
-export const STATUS_TO_STAGE: Record<IssueStatus, StageKey> = {
-	open: "triage",
-	needs_info: "triage",
-	confirmed: "clarify",
-	clarified: "plan",
-	draft: "triage",
-	waiting: "plan",
-	approved: "plan",
-	in_progress: "code",
-	reopen: "code",
-	developed: "review",
-	testing: "test",
-	tested: "test",
-	awaiting_release: "release",
-	releasing: "release",
-	closed: "release",
-	on_hold: "code",
-	// cm:guard `dropped` has no stage — the work never happened, so pinning it to one draws a progress tracker for an issue that made none
-	dropped: "triage",
-};
-
-export function statusToStage(status: IssueStatus): StageKey {
-	return STATUS_TO_STAGE[status] ?? "triage";
-}
-
-type RunStatus =
-	| "running"
-	| "done"
-	| "failed"
-	| "blocked"
-	| "queued"
-	| "review";
-
-/**
- * Run-status for the mini PipelineTracker. Prefer the live agent status (the
- * search endpoint hydrates `agentStatus` with `withAgentSessions=1`); when no
- * agent is active fall back to a status-derived bead state.
- */
-export function statusToRun(
-	status: IssueStatus,
-	agentStatus?: IssueAgentStatus,
-): RunStatus {
-	if (agentStatus === "running") return "running";
-	if (agentStatus === "queued") return "queued";
-	if (agentStatus === "failed") return "failed";
-	switch (status) {
-		// cm:guard `releasing` is NOT done: the batch is executing, and rendering it beside `closed` would tell a reader the release finished while it is still in flight.
-		case "releasing":
-			return "running";
-		case "awaiting_release":
-		case "closed":
-			return "done";
-		case "developed":
-			return "review";
-		case "on_hold":
-			return "blocked";
-		case "in_progress":
-		case "reopen":
-			return "running";
-		default:
-			return "queued";
-	}
-}
 
 /**
  * Map an issue lifecycle status (+ optional live agent status) to a design-kit
@@ -880,32 +820,19 @@ export function deriveBlockerState(
 	return null;
 }
 
-/** Pipeline step name (job type) → one of the 7 design stages. `fix` folds into
- *  `code`; `pm`/`custom` have no stage and are dropped. */
-const STEP_TO_STAGE: Record<string, StageKey> = {
-	triage: "triage",
-	clarify: "clarify",
-	plan: "plan",
-	code: "code",
-	fix: "code",
-	review: "review",
-	test: "test",
-	release: "release",
-};
+export type StepState = "done" | "running" | "failed";
 
-export function stepToStage(step: string): StageKey | null {
-	return STEP_TO_STAGE[step] ?? null;
-}
-
-export type StageCellState = "done" | "current" | "pending" | "error" | "blocked";
-
-/** One stage's rolled-up view for the tracker spine + artifact card (AC#4/#5). */
-export interface StageCell {
-	state: StageCellState;
+/** One step an issue ACTUALLY ran, rolled up for the detail screen's steps card. */
+export interface StepOutcome {
+	/** The job type exactly as the kernel recorded it — never folded onto another name. */
+	step: string;
+	state: StepState;
 	outcomeLabel?: string;
 	durationSeconds?: number;
 	costUsd?: number;
 	handoff?: StepHandoffRow;
+	/** When this step last ran, for ordering. */
+	ranAt: string;
 }
 
 function truncate(s: string, max: number): string {
@@ -939,45 +866,38 @@ export function handoffOutcomeLabel(
 }
 
 /**
- * Build the per-stage cells for all 7 stages. Stage state derives from the
- * SINGLE `statusToStage` projection (passed in as `currentStage`) — no second
- * mapping (AC#5). Durations/cost are summed across attempts of that stage from
- * the step-durations rows (AC#6); the latest-attempt handoff is attached.
+ * The steps this issue ran, from the rows that record them.
+ *
+ * One entry per job type carried on a `step_handoffs` or `step_durations` row, ordered by when it
+ * last ran. A job type outside the seven staged names keeps its own name; `drive` is one, and on an
+ * autonomous project it is the only one. Durations and cost are summed across the attempts of the
+ * most recent RUN of that step, and the latest attempt's handoff is attached.
  */
-export function deriveStageOutcomes(
-	currentStage: StageKey,
-	runStatus: "running" | "done" | "failed" | "blocked" | "queued" | "review",
+// cm:guard a state is read from the field that records it and NEVER from a step's position beside another. This replaced deriveStageOutcomes (ISS-999), whose state came from `i < currentIdx ? "done" : "pending"` over seven fixed stages, so a `code` issue asserted that triage, clarify and plan had happened and that review, test and release were coming — six claims with no row behind any of them. There is deliberately no `pending`: a step with no row has not been skipped or scheduled, it does not exist.
+// cm:why scoped to the most-recent run per step, then summed across that run's attempts — a reopened issue has several runs of the same step, and summing all of them double-counts every earlier attempt into the figure a reader takes for this one
+export function deriveStepOutcomes(
 	handoffs: StepHandoffRow[] | undefined,
 	durations: StepDurationRow[] | undefined,
-	failureStep?: string | null,
-): Record<StageKey, StageCell> {
-	const currentIdx = STAGE_INDEX[currentStage] ?? 0;
-	const allDone = runStatus === "done";
-	const failureStage = failureStep ? stepToStage(failureStep) : null;
-
-	const handoffByStage = new Map<StageKey, StepHandoffRow>();
+	live?: { activeStep?: string | null; failedStep?: string | null },
+): StepOutcome[] {
+	const handoffByStep = new Map<string, StepHandoffRow>();
 	for (const row of handoffs ?? []) {
-		const stage = stepToStage(row.step);
-		if (!stage) continue;
-		const prev = handoffByStage.get(stage);
+		const prev = handoffByStep.get(row.step);
 		if (
 			!prev ||
 			row.updatedAt > prev.updatedAt ||
 			(row.updatedAt === prev.updatedAt && row.attempt > prev.attempt)
 		) {
-			handoffByStage.set(stage, row);
+			handoffByStep.set(row.step, row);
 		}
 	}
 
-	// cm:why scoped to the most-recent run per stage, then summed across that run's attempts — a reopened issue has several runs of the same step, and summing all of them double-counts every earlier attempt into the figure a reader takes for this one
-	const byStageRun = new Map<
-		StageKey,
+	const byStepRun = new Map<
+		string,
 		Map<string, { durationSeconds: number; costUsd: number; latest: string }>
 	>();
 	for (const row of durations ?? []) {
-		const stage = stepToStage(row.step);
-		if (!stage) continue;
-		const runs = byStageRun.get(stage) ?? new Map();
+		const runs = byStepRun.get(row.step) ?? new Map();
 		const acc = runs.get(row.runId) ?? {
 			durationSeconds: 0,
 			costUsd: 0,
@@ -988,59 +908,38 @@ export function deriveStageOutcomes(
 		if ((row.finishedAt ?? row.startedAt ?? "") > acc.latest)
 			acc.latest = row.finishedAt ?? row.startedAt ?? "";
 		runs.set(row.runId, acc);
-		byStageRun.set(stage, runs);
+		byStepRun.set(row.step, runs);
 	}
-	const durByStage = new Map<
-		StageKey,
-		{ durationSeconds: number; costUsd: number }
-	>();
-	for (const [stage, runs] of byStageRun) {
+
+	const outcomes: StepOutcome[] = [];
+	for (const step of new Set([...handoffByStep.keys(), ...byStepRun.keys()])) {
+		const handoff = handoffByStep.get(step);
 		let pick:
 			| { durationSeconds: number; costUsd: number; latest: string }
 			| undefined;
-		for (const acc of runs.values()) {
+		for (const acc of byStepRun.get(step)?.values() ?? []) {
 			if (!pick || acc.latest > pick.latest) pick = acc;
 		}
-		if (pick)
-			durByStage.set(stage, {
-				durationSeconds: pick.durationSeconds,
-				costUsd: pick.costUsd,
-			});
-	}
-
-	const cells = {} as Record<StageKey, StageCell>;
-	for (const { key } of STAGES) {
-		const i = STAGE_INDEX[key];
-		const handoff = handoffByStage.get(key);
-			let state: StageCellState;
-			if (
-				failureStage === key &&
-				(runStatus === "failed" || runStatus === "blocked")
-			) {
-				state = "error";
-			} else if (allDone) {
-				state = "done";
-			} else if (i < currentIdx) {
-				state = "done";
-			} else if (i === currentIdx) {
-				state =
-					runStatus === "failed" || runStatus === "blocked" ? "error" : "current";
-			} else {
-				state = "pending";
-			}
-			const dur = durByStage.get(key);
-		cells[key] = {
+		const state: StepState =
+			live?.failedStep === step
+				? "failed"
+				: live?.activeStep === step
+					? "running"
+					: "done";
+		outcomes.push({
+			step,
 			state,
+			ranAt: pick?.latest || handoff?.updatedAt || "",
 			...(handoff
 				? { handoff, outcomeLabel: handoffOutcomeLabel(handoff.payload) }
 				: {}),
-			...(dur && dur.durationSeconds > 0
-				? { durationSeconds: dur.durationSeconds }
+			...(pick && pick.durationSeconds > 0
+				? { durationSeconds: pick.durationSeconds }
 				: {}),
-			...(dur && dur.costUsd > 0 ? { costUsd: dur.costUsd } : {}),
-		};
+			...(pick && pick.costUsd > 0 ? { costUsd: pick.costUsd } : {}),
+		});
 	}
-	return cells;
+	return outcomes.sort((a, b) => a.ranAt.localeCompare(b.ranAt));
 }
 
 /** Known session-group keys → humanized labels. The label set is data-driven:
