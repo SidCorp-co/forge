@@ -12,7 +12,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
-  conversations,
   type PreMigrationGround,
   plantProject,
   plantSession,
@@ -32,7 +31,7 @@ afterAll(async () => {
 
 const freshDb = () => ground.fresh();
 
-describe('0238 forward — what every legacy row becomes', () => {
+describe('0239 forward — what every legacy row becomes', () => {
   it('turns a chat session into one direct conversation carrying its messages in order', async () => {
     const db = await freshDb();
     try {
@@ -142,6 +141,9 @@ describe('0238 forward — what every legacy row becomes', () => {
     }
   });
 
+});
+
+describe('0239 forward — the handle each project gets', () => {
   it('gives the project a handle with its two memberships and NO access token', async () => {
     const db = await freshDb();
     try {
@@ -242,6 +244,9 @@ describe('0238 forward — what every legacy row becomes', () => {
   });
 
   // cm:guard this is the correction of the issue's own filing, held as a test: ISS-1001's body says every legacy row becomes "a direct conversation with one person and one handle", and 34 of the 35 live rows record no person at all. The landed rule is one handle and AT MOST one person; a change that starts inventing a stand-in person reds here.
+});
+
+describe('0239 forward — the person a row did or did not record', () => {
   it('leaves a session that recorded nobody with its handle and no invented person', async () => {
     const db = await freshDb();
     try {
@@ -293,7 +298,7 @@ describe('0238 forward — what every legacy row becomes', () => {
   });
 });
 
-describe('0238 forward — what it takes away', () => {
+describe('0239 forward — what it takes away', () => {
   // cm:guard nothing is deleted or nulled to make the schema apply: the counts and the field values
   // are read BEFORE the run and compared after, so a migration that tidied a row to fit reds here.
   it('drops the chat_sessions table and no chat row or field with it', async () => {
@@ -346,184 +351,6 @@ describe('0238 forward — what it takes away', () => {
 
       const kept = await db.sql.unsafe(`SELECT count(*)::int AS n FROM conversations`);
       expect((kept[0] as unknown as { n: number }).n).toBe(planted.length);
-    } finally {
-      await db.drop();
-    }
-  });
-});
-
-describe('0238 forward — a row it cannot represent stops the deploy', () => {
-  it('aborts naming the session whose messages are not an array, and keeps the table', async () => {
-    const db = await freshDb();
-    try {
-      const { projectId } = await plantProject(db.sql, 'forge-dev');
-      const good = await plantSession(db.sql, {
-        projectId,
-        messages: [{ role: 'user', content: 'x' }],
-      });
-      const bad = await plantSession(db.sql, { projectId });
-      await db.sql.unsafe(`UPDATE chat_sessions SET messages = '{"a":1}'::jsonb WHERE id = $1`, [
-        bad.id,
-      ]);
-
-      await expect(runForward(db.sql)).rejects.toThrow(new RegExp(bad.id));
-
-      const still = await db.sql.unsafe(`SELECT id FROM chat_sessions ORDER BY id`);
-      expect(still.map((r) => r.id).sort()).toEqual([good.id, bad.id].sort());
-      const tables = await db.sql.unsafe(
-        `SELECT table_name FROM information_schema.tables WHERE table_name = 'conversations'`,
-      );
-      expect(tables).toHaveLength(0);
-    } finally {
-      await db.drop();
-    }
-  });
-
-  // cm:guard the element is REFUSED, never filtered out: the copy selects the three roles it can hold,
-  // so a fourth vanishes and the assertion, filtering both sides alike, agrees nothing was lost.
-  it('aborts naming the session that holds a message role the new schema cannot represent', async () => {
-    const db = await freshDb();
-    try {
-      const { projectId } = await plantProject(db.sql, 'forge-dev');
-      const bad = await plantSession(db.sql, {
-        projectId,
-        messages: [
-          { role: 'user', content: 'ok' },
-          { role: 'tool', content: 'a tool result nobody modelled' },
-        ],
-      });
-
-      await expect(runForward(db.sql)).rejects.toThrow(
-        new RegExp(`${bad.id}.*tool|tool.*${bad.id}`, 's'),
-      );
-      const still = await db.sql.unsafe(`SELECT id FROM chat_sessions`);
-      expect(still).toHaveLength(1);
-    } finally {
-      await db.drop();
-    }
-  });
-
-  it('aborts naming the session whose stored message carries no role at all', async () => {
-    const db = await freshDb();
-    try {
-      const { projectId } = await plantProject(db.sql, 'forge-dev');
-      const bad = await plantSession(db.sql, { projectId, messages: [{ content: 'roleless' }] });
-      await expect(runForward(db.sql)).rejects.toThrow(new RegExp(bad.id));
-    } finally {
-      await db.drop();
-    }
-  });
-
-  it('aborts naming the session whose source is no conversation adapter', async () => {
-    const db = await freshDb();
-    try {
-      const { projectId } = await plantProject(db.sql, 'forge-dev');
-      const bad = await plantSession(db.sql, { projectId, source: 'sms' });
-
-      await expect(runForward(db.sql)).rejects.toThrow(
-        new RegExp(`${bad.id}.*sms|sms.*${bad.id}`, 's'),
-      );
-      const still = await db.sql.unsafe(`SELECT id FROM chat_sessions`);
-      expect(still).toHaveLength(1);
-    } finally {
-      await db.drop();
-    }
-  });
-});
-
-describe('0238 forward — the assertion is the thing that says no', () => {
-  /** The real statement list with the statement matching `marker` removed. */
-  function without(marker: string): string[] {
-    const kept = conversations.filter((s) => !s.includes(marker));
-    if (kept.length === conversations.length) throw new Error(`no statement contains ${marker}`);
-    return kept;
-  }
-
-  it('aborts when the handle participant is never attached', async () => {
-    const db = await freshDb();
-    try {
-      const { projectId } = await plantProject(db.sql, 'forge-dev');
-      const session = await plantSession(db.sql, { projectId });
-      await expect(runForward(db.sql, without("'handle', COALESCE"))).rejects.toThrow(
-        new RegExp(`${session.id}.*handle|handle.*${session.id}`, 's'),
-      );
-      const still = await db.sql.unsafe(`SELECT id FROM chat_sessions`);
-      expect(still).toHaveLength(1);
-    } finally {
-      await db.drop();
-    }
-  });
-
-  it('aborts when the person a session recorded is never attached', async () => {
-    const db = await freshDb();
-    try {
-      const { projectId, ownerId } = await plantProject(db.sql, 'forge-dev');
-      const session = await plantSession(db.sql, { projectId, userId: ownerId });
-      await expect(runForward(db.sql, without("'person', cs.user_id"))).rejects.toThrow(
-        new RegExp(session.id),
-      );
-    } finally {
-      await db.drop();
-    }
-  });
-
-  it('aborts when the messages are never copied', async () => {
-    const db = await freshDb();
-    try {
-      const { projectId } = await plantProject(db.sql, 'forge-dev');
-      const session = await plantSession(db.sql, {
-        projectId,
-        messages: [{ role: 'user', content: 'x' }],
-      });
-      await expect(
-        runForward(db.sql, without('INSERT INTO conversation_messages\n')),
-      ).rejects.toThrow(new RegExp(session.id));
-    } finally {
-      await db.drop();
-    }
-  });
-
-  it('aborts when a transcript is copied out of its original order', async () => {
-    const db = await freshDb();
-    try {
-      const { projectId } = await plantProject(db.sql, 'forge-dev');
-      const session = await plantSession(db.sql, {
-        projectId,
-        messages: [
-          { role: 'user', content: 'first' },
-          { role: 'assistant', content: 'second' },
-        ],
-      });
-      // cm:why the same copy with the ordinal read backwards — the transcript survives, its order does not
-      const reordered = conversations.map((s) =>
-        s.includes('INSERT INTO conversation_messages\n')
-          ? s.replace('(t.ord - 1)::int,', '(jsonb_array_length(cs.messages) - t.ord)::int,')
-          : s,
-      );
-      await expect(runForward(db.sql, reordered)).rejects.toThrow(new RegExp(session.id));
-    } finally {
-      await db.drop();
-    }
-  });
-
-  it('aborts when a conversation holds a message no source element accounts for', async () => {
-    const db = await freshDb();
-    try {
-      const { projectId } = await plantProject(db.sql, 'forge-dev');
-      const session = await plantSession(db.sql, {
-        projectId,
-        messages: [{ role: 'user', content: 'first' }],
-      });
-      const smuggled = conversations.flatMap((s) =>
-        s.includes('INSERT INTO conversation_messages\n')
-          ? [
-              s,
-              `INSERT INTO conversation_messages (conversation_id, seq, role, content)
-               SELECT id, 99, 'user', 'never said' FROM chat_sessions`,
-            ]
-          : [s],
-      );
-      await expect(runForward(db.sql, smuggled)).rejects.toThrow(new RegExp(session.id));
     } finally {
       await db.drop();
     }

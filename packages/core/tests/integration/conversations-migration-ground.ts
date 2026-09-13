@@ -1,9 +1,9 @@
 /**
  * ISS-1001 — the ground both migration suites stand on: a database at the
- * schema `0238_conversations.sql` expects to FIND, which the harness's own
+ * schema `0239_conversations.sql` expects to FIND, which the harness's own
  * database no longer has because it is already migrated.
  *
- * Every migration below 0238 goes into one template once per file; each case
+ * Every migration below 0239 goes into one template once per file; each case
  * clones it. That is the only way to plant the row the migration must refuse —
  * after the forward run there is nothing left to plant into.
  */
@@ -15,11 +15,11 @@ import postgres, { type Sql } from 'postgres';
 
 const MIGRATIONS = fileURLToPath(new URL('../../drizzle/migrations', import.meta.url));
 
-/** The statement list of 0238, and everything below it, split at the seam drizzle splits. */
+/** The statement list of 0239, and everything below it, split at the seam drizzle splits. */
 function migrationParts(): { below: string[]; conversations: string[] } {
   const files = readMigrationFiles({ migrationsFolder: MIGRATIONS });
   const target = files.find((f) => f.sql.join('\n').includes('_iss1001_handles'));
-  if (!target) throw new Error('0238_conversations.sql is not in the migrations folder');
+  if (!target) throw new Error('0239_conversations.sql is not in the migrations folder');
   const below = files
     .filter((f) => f.folderMillis < target.folderMillis)
     .sort((a, b) => a.folderMillis - b.folderMillis)
@@ -85,8 +85,15 @@ export async function preMigrationGround(): Promise<PreMigrationGround> {
 }
 
 /** Run the forward migration as drizzle runs it: every statement, one transaction. */
-export async function runForward(sql: Sql, statements: string[] = conversations): Promise<void> {
+export async function runForward(
+  sql: Sql,
+  statements: string[] = conversations,
+  /** Statements run inside the migration's OWN transaction, before it — the only
+   *  place a temp relation can be planted where the migration will meet it. */
+  prelude: string[] = [],
+): Promise<void> {
   await sql.begin(async (tx) => {
+    for (const stmt of prelude) await tx.unsafe(stmt, []);
     for (const stmt of statements) await tx.unsafe(stmt, []);
   });
 }

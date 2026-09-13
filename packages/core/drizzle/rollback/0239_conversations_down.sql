@@ -24,10 +24,16 @@
 -- would mean deleting those audit rows, and an audit row is not ours to discard
 -- to tidy a column. The reverted code writes a value into it either way.
 
-CREATE TABLE IF NOT EXISTS "chat_sessions" (
+-- The same search_path pin the forward migration carries, for the same reason:
+-- `pg_temp` is searched before `public` for relations unless it is named, and
+-- this file is run BY HAND in a session whose path nobody controls. Naming it
+-- last demotes it; every relation below is schema-qualified as well.
+SET LOCAL search_path = public, pg_temp;
+
+CREATE TABLE IF NOT EXISTS public.chat_sessions (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  "project_id" uuid NOT NULL REFERENCES "projects"("id") ON DELETE cascade,
-  "user_id" uuid REFERENCES "users"("id") ON DELETE set null,
+  "project_id" uuid NOT NULL REFERENCES public.projects("id") ON DELETE cascade,
+  "user_id" uuid REFERENCES public.users("id") ON DELETE set null,
   "user_key" text,
   "title" text,
   "source" text DEFAULT 'web' NOT NULL,
@@ -36,11 +42,11 @@ CREATE TABLE IF NOT EXISTS "chat_sessions" (
   "updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS "chat_sessions_project_updated_idx" ON "chat_sessions" ("project_id","updated_at");
-CREATE INDEX IF NOT EXISTS "chat_sessions_user_idx" ON "chat_sessions" ("user_id");
+CREATE INDEX IF NOT EXISTS "chat_sessions_project_updated_idx" ON public.chat_sessions ("project_id","updated_at");
+CREATE INDEX IF NOT EXISTS "chat_sessions_user_idx" ON public.chat_sessions ("user_id");
 
 -- Half one: the consumed rows, off `origin` alone.
-INSERT INTO chat_sessions (id, project_id, user_id, user_key, title, source, messages, created_at, updated_at)
+INSERT INTO public.chat_sessions (id, project_id, user_id, user_key, title, source, messages, created_at, updated_at)
 SELECT
   (c.origin ->> 'chatSessionId')::uuid,
   (c.origin ->> 'projectId')::uuid,
@@ -57,28 +63,28 @@ SELECT
   COALESCE(c.origin -> 'messages', '[]'::jsonb),
   (c.origin ->> 'createdAt')::timestamptz,
   (c.origin ->> 'updatedAt')::timestamptz
-FROM conversations c
+FROM public.conversations c
 WHERE c.origin IS NOT NULL
 ON CONFLICT (id) DO NOTHING;
 
 -- Half two: everything opened since, from the row itself.
-INSERT INTO chat_sessions (id, project_id, user_id, user_key, title, source, messages, created_at, updated_at)
+INSERT INTO public.chat_sessions (id, project_id, user_id, user_key, title, source, messages, created_at, updated_at)
 SELECT
   c.id,
   (
-    SELECT pm.project_id FROM conversation_participants cp
-    JOIN project_members pm ON pm.user_id = cp.user_id
+    SELECT pm.project_id FROM public.conversation_participants cp
+    JOIN public.project_members pm ON pm.user_id = cp.user_id
     WHERE cp.conversation_id = c.id AND cp.kind = 'handle' AND cp.removed_at IS NULL
     ORDER BY pm.created_at, pm.project_id
     LIMIT 1
   ),
   (
-    SELECT cp.user_id FROM conversation_participants cp
+    SELECT cp.user_id FROM public.conversation_participants cp
     WHERE cp.conversation_id = c.id AND cp.kind = 'person' AND cp.removed_at IS NULL AND cp.user_id IS NOT NULL
     ORDER BY cp.added_at LIMIT 1
   ),
   (
-    SELECT cp.external_key FROM conversation_participants cp
+    SELECT cp.external_key FROM public.conversation_participants cp
     WHERE cp.conversation_id = c.id AND cp.kind = 'person' AND cp.removed_at IS NULL AND cp.external_key IS NOT NULL
     ORDER BY cp.added_at LIMIT 1
   ),
@@ -93,16 +99,16 @@ SELECT
         'images', m.images
       )) ORDER BY m.seq
     )
-    FROM conversation_messages m
+    FROM public.conversation_messages m
     WHERE m.conversation_id = c.id AND m.silence_reason IS NULL
   ), '[]'::jsonb),
   c.created_at,
   c.updated_at
-FROM conversations c
+FROM public.conversations c
 WHERE c.origin IS NULL
   AND EXISTS (
-    SELECT 1 FROM conversation_participants cp
-    JOIN project_members pm ON pm.user_id = cp.user_id
+    SELECT 1 FROM public.conversation_participants cp
+    JOIN public.project_members pm ON pm.user_id = cp.user_id
     WHERE cp.conversation_id = c.id AND cp.kind = 'handle' AND cp.removed_at IS NULL
   )
 ON CONFLICT (id) DO NOTHING;
@@ -110,15 +116,15 @@ ON CONFLICT (id) DO NOTHING;
 -- The principals this migration minted, and no others: a handle that predated it
 -- is indistinguishable from one it created on every signal EXCEPT this marker,
 -- which is why the forward migration writes it.
-DELETE FROM users u
+DELETE FROM public.users u
 WHERE u.kind = 'agent'
   AND u.id IN (
     SELECT DISTINCT NULLIF(c.origin ->> 'mintedHandleUserId', '')::uuid
-    FROM conversations c
+    FROM public.conversations c
     WHERE c.origin IS NOT NULL AND c.origin ->> 'mintedHandleUserId' IS NOT NULL
   )
-  AND NOT EXISTS (SELECT 1 FROM personal_access_tokens t WHERE t.user_id = u.id);
+  AND NOT EXISTS (SELECT 1 FROM public.personal_access_tokens t WHERE t.user_id = u.id);
 
-DROP TABLE IF EXISTS "conversation_messages";
-DROP TABLE IF EXISTS "conversation_participants";
-DROP TABLE IF EXISTS "conversations";
+DROP TABLE IF EXISTS public.conversation_messages;
+DROP TABLE IF EXISTS public.conversation_participants;
+DROP TABLE IF EXISTS public.conversations;
