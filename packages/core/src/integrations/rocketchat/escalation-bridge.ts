@@ -187,6 +187,7 @@ export async function deliverEscalationReplyOnce(session: SessionRow): Promise<v
   if (meta.deliveredAt) return;
   // cm:guard the room is checked against THIS session's project before anything is posted: an escalation is minutes or hours long, and a room rebound in the meantime is not this project's to answer into (ISS-1001).
   // cm:guard and BEFORE the claim, not after it: a transient failure in this lookup throws, and a throw after the claim spends the one stamp this delivery has — the answer is then lost to a database blip with every later sweep reading it as already delivered. An UNBOUND room is terminal and takes the claim on purpose, so the sweeper stops retrying what can never succeed.
+  // cm:guard FIRST of a pair — the second read sits immediately before `sendFixedReply` below, because the synthesis turn between them is long enough for a binding to move: this one decides whether to spend a model turn at all, that one whether its answer may still be delivered (ISS-1001).
   const bound = await roomStillBoundTo({
     connectionId: meta.connectionId,
     projectId: session.projectId,
@@ -227,6 +228,22 @@ export async function deliverEscalationReplyOnce(session: SessionRow): Promise<v
       );
       reply = ESCALATION_FALLBACK_REPLY(meta.botName);
     }
+  }
+
+  // cm:guard the binding is read a SECOND time, here, because `synthesizeViaBao` above is a whole model turn and a rebind fits easily inside it — the first read, taken before the claim, cannot know what happened during the synthesis (ISS-1001).
+  // cm:why no claim is touched here: the claim above is already spent and that is right, since a rebound room is terminal for THIS delivery; the answer is not re-queued, because the project that would retry it is no longer the room's.
+  if (
+    !(await roomStillBoundTo({
+      connectionId: meta.connectionId,
+      projectId: session.projectId,
+      rid: meta.rid,
+    }))
+  ) {
+    logger.error(
+      { sessionId: session.id, rid: meta.rid, projectId: session.projectId },
+      'rocketchat.escalation-bridge: the room was rebound while this answer was prepared; the answer is not posted',
+    );
+    return;
   }
 
   try {

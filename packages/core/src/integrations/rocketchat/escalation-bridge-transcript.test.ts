@@ -29,10 +29,19 @@ const findConnectionById = vi.fn();
 const decryptConnectionSecrets = vi.fn();
 /** Whether the room is still the session project's; flipped by the rebind case. */
 let roomBound = true;
+/** Answers of the successive `roomStillBoundTo` reads, when a case needs them to differ. */
+let roomBoundSequence: boolean[] | null = null;
+const roomStillBoundToCalls = vi.fn();
 // cm:why stubbed: this file's fake db answers only the subject's own queries, and the room-is-still-ours check has its cases in room-delivery.test.ts.
 vi.mock('./room-delivery.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./room-delivery.js')>()),
-  roomStillBoundTo: async () => roomBound,
+  roomStillBoundTo: async () => {
+    const n = roomStillBoundToCalls.mock.calls.length;
+    roomStillBoundToCalls();
+    return roomBoundSequence
+      ? (roomBoundSequence[n] ?? roomBoundSequence.at(-1) ?? true)
+      : roomBound;
+  },
 }));
 
 vi.mock('../store.js', () => ({
@@ -100,6 +109,9 @@ function makeSession(overrides: Record<string, unknown> = {}) {
 
 describe(`the room transcript after an escalated answer`, () => {
   beforeEach(() => {
+    roomBound = true;
+    roomBoundSequence = null;
+    roomStillBoundToCalls.mockReset();
     findConversation.mockReset();
     appendMessage.mockClear();
     handleForProject.mockClear();
@@ -190,6 +202,19 @@ describe(`the room transcript after an escalated answer`, () => {
     // cm:guard an unbound room is TERMINAL, so the claim is spent on purpose and the sweeper stops
     // retrying a delivery that can never succeed — the opposite of a lookup that merely failed.
     expect(updateReturning).toHaveBeenCalled();
+  });
+
+  // cm:guard the first read happens before the claim and the synthesis, and the synthesis is a whole model turn — so the binding is read AGAIN immediately before the post, without which this case posts the old project's answer into a room that moved during it (ISS-1001).
+  it('posts nothing when the room was rebound during the synthesis turn', async () => {
+    findConversation.mockResolvedValue({ id: 'conv-9' });
+    roomBoundSequence = [true, false];
+
+    await escalated();
+
+    expect(runExternalChatTurn.mock.calls).toHaveLength(1);
+    expect(roomStillBoundToCalls.mock.calls).toHaveLength(2);
+    expect(sendFixedReply.mock.calls).toHaveLength(0);
+    expect(appendMessage.mock.calls).toHaveLength(0);
   });
 
   it('does not record an answer the room never received', async () => {
