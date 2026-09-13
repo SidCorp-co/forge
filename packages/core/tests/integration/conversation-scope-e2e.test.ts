@@ -138,12 +138,18 @@ describe('who may read a conversation', () => {
     const [handle] = await participants.listParticipants(room.id);
     await harness.db.execute(sql`DELETE FROM project_members WHERE user_id = ${handle?.userId}`);
     const stranger = await createTestUser(harness.db);
-    for (const reader of [ownerId, stranger.id, null]) {
+    for (const reader of [ownerId, stranger.id]) {
       await expect(scope.assertConversationReadable(room.id, reader)).rejects.toMatchObject({
         status: 403,
         cause: { code: 'CONVERSATION_NO_SCOPE' },
       });
     }
+    // cm:why a caller naming NO user is refused one step earlier and by its own code — it forgot,
+    // rather than being a person without a role; both are 403 and neither reads the room
+    await expect(scope.assertConversationReadable(room.id, null)).rejects.toMatchObject({
+      status: 403,
+      cause: { code: 'CONVERSATION_NO_AUTHORITY' },
+    });
   });
 
   it('refuses a reader who holds a role on only one of two projects in the room', async () => {
@@ -384,6 +390,100 @@ describe('a turn continuing a conversation by id', () => {
         readerUserId: ownerId,
       }),
     ).rejects.toMatchObject({ cause: { code: 'CONVERSATION_ADAPTER_CONFLICT' } });
+  });
+
+  // cm:guard a turn naming NO authority is refused as that and never as an anonymous caller: one
+  // omitted argument in an adapter's runtime silenced every room while the unit suites stayed green
+  it('refuses a turn that names no authority at all, by name', async () => {
+    const room = await openRoom(projectA);
+    await expect(
+      turns.openTurn({
+        projectId: projectA,
+        adapter: 'rocketchat',
+        conversationId: room.id,
+        readerUserId: null,
+      }),
+    ).rejects.toMatchObject({ cause: { code: 'CONVERSATION_NO_AUTHORITY' } });
+  });
+
+  // cm:guard a persisted turn APPENDS to the room, so it takes `member` and not `viewer` — the
+  // threshold the same room's rename and delete already take
+  it('refuses a viewer continuing a conversation, and admits a member', async () => {
+    const room = await openRoom(projectA);
+    const viewer = await createTestUser(harness.db);
+    await createTestProjectMember(harness.db, {
+      userId: viewer.id,
+      projectId: projectA,
+      role: 'viewer',
+    });
+
+    await expect(
+      turns.openTurn({
+        projectId: projectA,
+        adapter: 'rocketchat',
+        conversationId: room.id,
+        readerUserId: viewer.id,
+      }),
+    ).rejects.toMatchObject({ cause: { code: 'CONVERSATION_OUT_OF_SCOPE' } });
+
+    await harness.db.execute(
+      sql`UPDATE project_members SET role = 'member' WHERE user_id = ${viewer.id}`,
+    );
+    const turn = await turns.openTurn({
+      projectId: projectA,
+      adapter: 'rocketchat',
+      conversationId: room.id,
+      readerUserId: viewer.id,
+    });
+    expect(turn.conversationId).toBe(room.id);
+  });
+
+  // cm:guard the assistant row is BY the room's handle: the account that spoke is known here, and a
+  // transcript whose assistant rows are all by nobody cannot say which handle answered
+  it('names the room handle as the author of what the assistant said', async () => {
+    const room = await openRoom(projectA);
+    const turn = await turns.openTurn({
+      projectId: projectA,
+      adapter: 'rocketchat',
+      conversationId: room.id,
+      readerUserId: ownerId,
+    });
+    const [handle] = await participants.listParticipants(room.id);
+    expect(turn.handleUserId).toBe(handle?.userId);
+
+    turns.appendUserMessage(turn, 'asked');
+    turns.appendAssistantMessage(turn, 'answered');
+    const written = await turns.persistMessages(turn);
+    expect(written.map((m) => m.authorUserId)).toEqual([null, handle?.userId]);
+  });
+
+  // cm:guard a turn is its question AND its answer or neither: committing the user row and failing
+  // on the assistant one leaves a transcript ending on a person waiting (ISS-1001 invariant 7)
+  it('commits a turn whole or not at all', async () => {
+    const room = await openRoom(projectA);
+    const turn = await turns.openTurn({
+      projectId: projectA,
+      adapter: 'rocketchat',
+      conversationId: room.id,
+      readerUserId: ownerId,
+    });
+    turns.appendUserMessage(turn, 'asked');
+    // cm:why the CHECK constraint refuses this role, and only the SECOND message carries it
+    turn.pending.push({
+      role: 'nonsense' as never,
+      content: 'answered',
+      authorUserId: null,
+      authorLabel: null,
+      images: [],
+      deliveryProof: null,
+      silenceReason: null,
+    });
+
+    await expect(turns.persistMessages(turn)).rejects.toThrow();
+
+    expect(await store.countMessages(room.id)).toBe(0);
+    // cm:guard still retryable: the queue is cleared by the commit and not by the attempt
+    expect(turn.pending).toHaveLength(2);
   });
 
   it('refuses a turn that names neither a conversation nor a venue', async () => {

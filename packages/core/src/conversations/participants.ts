@@ -16,7 +16,7 @@ import {
   conversations,
 } from '../db/schema-conversations.js';
 import { effectiveProjectRole } from '../lib/authz.js';
-import type { Executor } from './db-executor.js';
+import type { Executor, TxOnly } from './db-executor.js';
 
 const forbidden = (message: string, code: string) =>
   new HTTPException(403, { message, cause: { code } });
@@ -63,6 +63,33 @@ export async function projectsOfHandle(
     .from(projectMembers)
     .where(eq(projectMembers.userId, handleUserId));
   return rows.map((r) => r.projectId).sort();
+}
+
+/**
+ * The live handle in this room that carries `projectId`, or null where none does.
+ */
+// cm:guard who an assistant message in this room is BY: a room may hold several handles, and the one
+// that speaks is the one carrying the project the turn arrived under (ISS-1001 criterion 14)
+export async function handleForProject(
+  conversationId: string,
+  projectId: string,
+  tx: Executor = defaultDb,
+): Promise<string | null> {
+  const [row] = await tx
+    .select({ userId: conversationParticipants.userId })
+    .from(conversationParticipants)
+    .innerJoin(projectMembers, eq(projectMembers.userId, conversationParticipants.userId))
+    .where(
+      and(
+        eq(conversationParticipants.conversationId, conversationId),
+        eq(conversationParticipants.kind, 'handle'),
+        isNull(conversationParticipants.removedAt),
+        eq(projectMembers.projectId, projectId),
+      ),
+    )
+    .orderBy(conversationParticipants.addedAt)
+    .limit(1);
+  return row?.userId ?? null;
 }
 
 export interface AddHandleArgs {
@@ -184,8 +211,12 @@ export async function addPerson(args: AddPersonArgs): Promise<void> {
 export interface RemoveParticipantArgs {
   conversationId: string;
   participantId: string;
-  /** Join the caller's transaction — the caller is then the one serializing. */
-  tx?: Executor;
+  /**
+   * Join the caller's OPEN transaction — the caller is then the one serializing. Typed `TxOnly`
+   * and not `Executor` on purpose: handing a pool to a parameter named `tx` compiles, and then the
+   * `FOR UPDATE` below holds its lock for one statement instead of for the check it guards.
+   */
+  tx?: TxOnly;
   /** Or open one of this module's own, on this pool. */
   db?: typeof defaultDb;
 }

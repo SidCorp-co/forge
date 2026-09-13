@@ -213,6 +213,44 @@ describe('0241 forward — the assertion is the thing that says no', () => {
       await db.drop();
     }
   });
+
+  // cm:guard the person assertion counts AND identifies: a copy that kept the cardinality and wrote
+  // somebody else's user id passes a count, and the source table is dropped three statements later
+  it('aborts when the copied person is not the person the session recorded', async () => {
+    const db = await freshDb();
+    try {
+      const { projectId, ownerId } = await plantProject(db.sql, 'forge-dev');
+      const session = await plantSession(db.sql, { projectId, userId: ownerId });
+      const mistranslated = edited("'person', cs.user_id", (s) => [
+        s,
+        `UPDATE public.conversation_participants SET user_id = NULL, external_key = 'someone else'
+         WHERE kind = 'person'`,
+      ]);
+      await expect(runForward(db.sql, mistranslated)).rejects.toThrow(new RegExp(session.id));
+    } finally {
+      await db.drop();
+    }
+  });
+
+  // cm:guard and the handle's membership is checked too: a second one widens the room's derived
+  // scope to a project the session it came from was never about
+  it('aborts when the handle it minted carries a membership beyond its own project', async () => {
+    const db = await freshDb();
+    try {
+      const { projectId } = await plantProject(db.sql, 'forge-dev');
+      const other = await plantProject(db.sql, 'other-project');
+      const session = await plantSession(db.sql, { projectId });
+      const widened = edited("'handle', COALESCE", (s) => [
+        s,
+        `INSERT INTO public.project_members (user_id, project_id, role)
+         SELECT cp.user_id, '${other.projectId}', 'member'
+         FROM public.conversation_participants cp WHERE cp.kind = 'handle'`,
+      ]);
+      await expect(runForward(db.sql, widened)).rejects.toThrow(new RegExp(session.id));
+    } finally {
+      await db.drop();
+    }
+  });
 });
 
 describe('0241 forward — a temp relation of the same name is not the source', () => {

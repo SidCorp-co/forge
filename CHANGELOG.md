@@ -134,8 +134,11 @@
   moment somebody reads the room, so a revoked role takes the room with it with no write anywhere
   and nothing to remember to clean up. A room with no agent left in it is refused to everybody by
   name rather than opened to anybody, and removing the last agent is refused for the same reason.
-  Rocket.Chat is now one adapter over that store rather than the place the store lives, so a second
-  channel is four functions and no new copy of the machinery. Rooms that existed before this keep
+  Rocket.Chat now implements four named things a channel has to do — find the room, say who spoke,
+  deliver, fetch history — and the store itself knows about no channel at all, which is what a
+  second one will stand on. Its own runtime still drives that store directly rather than through
+  those four, so a second channel is not four functions yet: the part that would make it so is the
+  turn runner, and it is not in this change. Rooms that existed before this keep
   every message they held, with one loss stated rather than glossed: which Rocket.Chat room a
   migrated transcript belonged to only ever lived in that in-process Map, so a migrated transcript
   is readable under its own name and the room it came from starts a fresh one.

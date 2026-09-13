@@ -9,9 +9,10 @@
 
 import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { assertConversationReadable } from '../conversations/scope.js';
+import { handleForProject } from '../conversations/participants.js';
+import { assertConversationWritable } from '../conversations/scope.js';
 import {
-  appendMessage,
+  appendMessages,
   type ConversationImage,
   openConversation,
   readMessages,
@@ -45,6 +46,8 @@ export interface PendingMessage {
 export interface ConversationTurn {
   conversationId: string;
   adapter: ConversationAdapter;
+  /** The handle speaking here — the one carrying this turn's project. An assistant row is BY it. */
+  handleUserId: string | null;
   /** The window read back at load, oldest first. */
   history: StoredConversationMessage[];
   /** Appended this turn, not yet written. */
@@ -61,7 +64,10 @@ export interface OpenTurnOptions {
   externalId?: string | undefined;
   shape?: ConversationShape;
   title?: string | null;
-  /** Who is reading. A conversation is readable only by someone the derived scope admits. */
+  /**
+   * The authority this turn runs as. A persisted turn APPENDS, so it takes `member` on every
+   * project the room is about — not `viewer`, which is permission to look at one.
+   */
   readerUserId?: string | null;
   db?: typeof defaultDb;
 }
@@ -93,7 +99,7 @@ export async function openTurn(opts: OpenTurnOptions): Promise<ConversationTurn>
       .where(eq(conversations.id, opts.conversationId))
       .limit(1);
     if (!row) throw notFound('conversation not found');
-    const scope = await assertConversationReadable(row.id, opts.readerUserId ?? null);
+    const scope = await assertConversationWritable(row.id, opts.readerUserId ?? null);
     // cm:guard being ALLOWED to read a room is not the same as this turn belonging to it: naming
     // project B and conversation A passes the read check while the tools are built for B.
     // cm:why `openConversation` refuses the same mismatch on the venue path; this is the other door.
@@ -112,6 +118,7 @@ export async function openTurn(opts: OpenTurnOptions): Promise<ConversationTurn>
     return {
       conversationId: row.id,
       adapter: row.adapter,
+      handleUserId: await handleForProject(row.id, opts.projectId, dbi),
       history: await readMessages(row.id, CONVERSATION_READ_WINDOW, dbi),
       pending: [],
     };
@@ -137,6 +144,7 @@ export async function openTurn(opts: OpenTurnOptions): Promise<ConversationTurn>
   return {
     conversationId: conversation.id,
     adapter: conversation.adapter,
+    handleUserId: await handleForProject(conversation.id, opts.projectId, dbi),
     history: await readMessages(conversation.id, CONVERSATION_READ_WINDOW, dbi),
     pending: [],
   };
@@ -162,6 +170,8 @@ export function appendUserMessage(
   });
 }
 
+// cm:guard the author defaults to the room's own handle and not to null: a transcript whose assistant
+// rows are all by nobody cannot say which handle answered in a room holding two (ISS-1001)
 export function appendAssistantMessage(
   turn: ConversationTurn,
   content: string,
@@ -170,7 +180,7 @@ export function appendAssistantMessage(
   turn.pending.push({
     role: 'assistant',
     content,
-    authorUserId: opts.authorUserId ?? null,
+    authorUserId: opts.authorUserId ?? turn.handleUserId,
     authorLabel: null,
     images: [],
     deliveryProof: opts.deliveryProof ?? null,
@@ -193,28 +203,28 @@ export function appendSilence(turn: ConversationTurn, reason: string): void {
 }
 
 /** Write everything this turn appended, in order, clear the queue, and hand back the rows. */
+// cm:guard ONE write for the turn, and the queue is cleared by the COMMIT never the attempt: row by
+// row committed the question and could fail on the answer, unretryably (ISS-1001)
 export async function persistMessages(
   turn: ConversationTurn,
   opts: { db?: typeof defaultDb } = {},
 ): Promise<StoredConversationMessage[]> {
-  const dbi = opts.db ?? defaultDb;
-  const written: StoredConversationMessage[] = [];
-  while (turn.pending.length > 0) {
-    const next = turn.pending.shift() as PendingMessage;
-    const stored = await appendMessage({
-      conversationId: turn.conversationId,
-      role: next.role,
-      content: next.content,
-      authorUserId: next.authorUserId,
-      authorLabel: next.authorLabel,
-      images: next.images,
-      deliveryProof: next.deliveryProof,
-      silenceReason: next.silenceReason,
-      db: dbi,
-    });
-    turn.history.push(stored);
-    written.push(stored);
-  }
+  if (turn.pending.length === 0) return [];
+  const written = await appendMessages({
+    conversationId: turn.conversationId,
+    messages: turn.pending.map((m) => ({
+      role: m.role,
+      content: m.content,
+      authorUserId: m.authorUserId,
+      authorLabel: m.authorLabel,
+      images: m.images,
+      deliveryProof: m.deliveryProof,
+      silenceReason: m.silenceReason,
+    })),
+    ...(opts.db ? { db: opts.db } : {}),
+  });
+  turn.pending.length = 0;
+  turn.history.push(...written);
   return written;
 }
 

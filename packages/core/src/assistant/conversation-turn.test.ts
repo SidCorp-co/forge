@@ -8,6 +8,8 @@
  * prompt, and the model answers as if it had never been sent.
  */
 
+import { readdirSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../db/client.js', () => ({ db: {} }));
@@ -104,5 +106,34 @@ describe('toProviderMessages', () => {
     expect(out[0]?.content).toEqual([
       { type: 'image_url', image_url: { url: 'https://example.test/shot.png' } },
     ]);
+  });
+});
+
+// cm:guard a persisted turn names the authority it runs as — structural, because the call sites are
+// what regress: `connection-manager.ts` omitted it and every mocked suite stayed green (ISS-1001)
+describe('every persisted turn names its authority', () => {
+  it('passes a userId wherever it passes a conversation or a venue', () => {
+    const root = fileURLToPath(new URL('../', import.meta.url));
+    const offences: string[] = [];
+    const walk = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory()
+          ? walk(`${dir}${e.name}/`)
+          : e.name.endsWith('.ts') && !e.name.endsWith('.test.ts')
+            ? [`${dir}${e.name}`]
+            : [],
+      );
+    for (const file of walk(root)) {
+      const text = readFileSync(file, 'utf8');
+      for (const call of text.matchAll(/runExternalChatTurn\(\{([\s\S]*?)\n\s*\}\)/g)) {
+        const body = call[1] ?? '';
+        const addressed = /\b(conversationId|externalId):/.test(body);
+        if (!addressed) continue;
+        if (!/\buserId:/.test(body)) {
+          offences.push(`${file.slice(root.length)} names a room and no userId`);
+        }
+      }
+    }
+    expect(offences).toEqual([]);
   });
 });

@@ -234,8 +234,14 @@ SELECT
     -- re-synthesized rather than as it was written. This is the field that makes
     -- the reverse exact instead of merely equivalent.
     'messages', cs.messages,
-    'createdAt', to_char(cs.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
-    'updatedAt', to_char(cs.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+    -- `US` and not `MS`: a timestamptz carries MICROseconds, and formatting to
+    -- milliseconds silently drops three digits — a forward-then-reverse cycle would
+    -- then change a timestamp it promised to restore field-for-field. The explicit
+    -- UTC conversion stays rather than letting jsonb render the value, because that
+    -- rendering follows the deploying session's TimeZone the way an unqualified
+    -- relation follows its search_path.
+    'createdAt', to_char(cs.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
+    'updatedAt', to_char(cs.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
     'mintedHandleUserId', h.minted_user_id::text
   ),
   cs.created_at,
@@ -310,6 +316,29 @@ BEGIN
         <> (CASE WHEN cs.user_id IS NOT NULL OR cs.user_key IS NOT NULL THEN 1 ELSE 0 END)
   LIMIT 1;
   IF FOUND THEN RAISE EXCEPTION 'conversation for chat_sessions row % carries a person it did not record, or lost the one it did', bad.id; END IF;
+
+  -- and it is the person that row recorded, not merely A person. Counting alone
+  -- passes a copy that kept the cardinality and mistranslated the identity —
+  -- somebody else's user id, or a key dropped — and the source table is dropped
+  -- immediately after this block, so a wrong identity here is unrecoverable.
+  SELECT cs.id INTO bad FROM public.chat_sessions cs
+  JOIN public.conversation_participants cp
+    ON cp.conversation_id = cs.id AND cp.kind = 'person'
+  WHERE cp.user_id IS DISTINCT FROM cs.user_id
+     OR cp.external_key IS DISTINCT FROM cs.user_key
+  LIMIT 1;
+  IF FOUND THEN RAISE EXCEPTION 'the person on the conversation for chat_sessions row % is not the person that row recorded', bad.id; END IF;
+
+  -- the same for the handle: exactly one project membership, on the source row's
+  -- own project. The count above proves a membership on that project exists; this
+  -- proves there is no SECOND one, which would widen the room's derived scope to a
+  -- project the session it came from was never about.
+  SELECT cs.id INTO bad FROM public.chat_sessions cs
+  JOIN public.conversation_participants cp
+    ON cp.conversation_id = cs.id AND cp.kind = 'handle' AND cp.removed_at IS NULL
+  WHERE (SELECT count(*) FROM public.project_members pm WHERE pm.user_id = cp.user_id) <> 1
+  LIMIT 1;
+  IF FOUND THEN RAISE EXCEPTION 'the handle on the conversation for chat_sessions row % holds a membership beyond its own project', bad.id; END IF;
 
   -- every source element has a row at its own ordinal with its own role and text
   SELECT cs.id INTO bad FROM public.chat_sessions cs

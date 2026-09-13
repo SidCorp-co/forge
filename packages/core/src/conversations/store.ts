@@ -179,7 +179,30 @@ export interface AppendMessageArgs {
 /** Append one turn. Every row already in the conversation is left alone. */
 // cm:guard the row is locked and the sequence read inside the same transaction: two turns that each read `max(seq)` and each write it plus one lose one of the two, which is exactly what the jsonb blob did on a concurrent write and what the unique index on `(conversation_id, seq)` now refuses outright.
 export async function appendMessage(args: AppendMessageArgs): Promise<StoredConversationMessage> {
+  const [only] = await appendMessages({
+    conversationId: args.conversationId,
+    messages: [args],
+    ...(args.db ? { db: args.db } : {}),
+  });
+  if (!only) throw new Error('conversation_messages: insert returned no row');
+  return only;
+}
+
+export interface AppendMessagesArgs {
+  conversationId: string;
+  messages: ReadonlyArray<Omit<AppendMessageArgs, 'conversationId' | 'db'>>;
+  db?: typeof defaultDb;
+}
+
+/**
+ * Append a whole turn's messages, in order, as ONE write.
+ */
+// cm:guard all of them or none, under one lock: committing the question while the answer's insert fails leaves a transcript whose last row is a person waiting — which reads as a turn still running (ISS-1001 invariant 7).
+export async function appendMessages(
+  args: AppendMessagesArgs,
+): Promise<StoredConversationMessage[]> {
   const dbi = args.db ?? defaultDb;
+  if (args.messages.length === 0) return [];
   return dbi.transaction(async (tx) => {
     const [live] = await tx
       .select({ id: conversations.id })
@@ -201,28 +224,32 @@ export async function appendMessage(args: AppendMessageArgs): Promise<StoredConv
       .orderBy(desc(conversationMessages.seq))
       .limit(1);
 
-    const [row] = await tx
+    const rows = await tx
       .insert(conversationMessages)
-      .values({
-        conversationId: args.conversationId,
-        seq: (top?.seq ?? -1) + 1,
-        role: args.role,
-        authorUserId: args.authorUserId ?? null,
-        authorLabel: args.authorLabel ?? null,
-        content: args.content,
-        images: (args.images && args.images.length > 0 ? [...args.images] : null) as never,
-        deliveryProof: (args.deliveryProof ?? null) as never,
-        silenceReason: args.silenceReason ?? null,
-      })
+      .values(
+        args.messages.map((m, i) => ({
+          conversationId: args.conversationId,
+          seq: (top?.seq ?? -1) + 1 + i,
+          role: m.role,
+          authorUserId: m.authorUserId ?? null,
+          authorLabel: m.authorLabel ?? null,
+          content: m.content,
+          images: (m.images && m.images.length > 0 ? [...m.images] : null) as never,
+          deliveryProof: (m.deliveryProof ?? null) as never,
+          silenceReason: m.silenceReason ?? null,
+        })),
+      )
       .returning();
-    if (!row) throw new Error('conversation_messages: insert returned no row');
+    if (rows.length !== args.messages.length) {
+      throw new Error('conversation_messages: insert returned fewer rows than it was given');
+    }
 
     await tx
       .update(conversations)
       .set({ updatedAt: new Date() })
       .where(eq(conversations.id, args.conversationId));
 
-    return toStored(row);
+    return rows.map(toStored);
   });
 }
 

@@ -554,6 +554,8 @@ class RocketChatConnectionManager {
             conversationId: conversation.id,
             message: m.text,
             tools: fast.tools,
+            // cm:guard the room is read under the authority its TOOLS run as; omitting it silenced every room
+            userId: principal.userId,
             userKey: m.userId,
             persona,
             conversationContext,
@@ -606,6 +608,7 @@ class RocketChatConnectionManager {
             route,
             m,
             botName: ac.botName,
+            principalUserId: principal.userId,
             first: result,
             fast,
             persona,
@@ -664,6 +667,8 @@ class RocketChatConnectionManager {
     route: Route;
     m: RocketChatIncomingMessage;
     botName: string;
+    /** The first turn's own authority: a retry is that turn again, not a new one. */
+    principalUserId: string;
     first: ExternalChatTurnResult;
     fast: FastTurnInputs;
     persona: string;
@@ -692,6 +697,7 @@ class RocketChatConnectionManager {
         conversationId: result.conversationId ?? undefined,
         message: correctiveMessage(verdict.problems),
         tools: fast.tools,
+        userId: args.principalUserId,
         userKey: m.userId,
         persona,
         conversationContext,
@@ -755,7 +761,8 @@ class RocketChatConnectionManager {
    * so it runs on every instance, not just the one that served the request.
    */
   async reload(connectionId: string): Promise<void> {
-    this.started = true; // an idle manager (no connections at boot) can start owning one now
+    // cm:why an idle manager — no connections at boot — may start owning one at a reload
+    this.started = true;
     await this.teardown(connectionId);
     await this.acquire(connectionId).catch((err) =>
       logger.error({ err, connectionId }, 'rocketchat: reload failed'),
@@ -787,7 +794,8 @@ class RocketChatConnectionManager {
   }
 
   private restartReloadListener(failed: pg.Client): void {
-    if (this.listenClient !== failed) return; // stale event from a replaced client
+    // cm:guard a stale event from a client this manager already replaced restarts nothing
+    if (this.listenClient !== failed) return;
     this.listenClient = undefined;
     void failed.end().catch(() => {});
     if (!this.started || this.listenRetryTimer) return;

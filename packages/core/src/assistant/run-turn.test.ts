@@ -52,7 +52,7 @@ function fakeCtx() {
 }
 
 function turn(): ConversationTurn {
-  return { conversationId: 'c1', adapter: 'web', history: [], pending: [] };
+  return { conversationId: 'c1', adapter: 'web', handleUserId: null, history: [], pending: [] };
 }
 
 describe('runChatTurn tool loop', () => {
@@ -60,7 +60,7 @@ describe('runChatTurn tool loop', () => {
     captured.length = 0;
     appended.length = 0;
 
-    // Turn 1 → asks for a tool. Turn 2 → plain answer.
+    // cm:why two provider turns: the first asks for a tool, the second answers with it done
     let call = 0;
     const provider: ChatProvider = {
       id: 'mock',
@@ -105,15 +105,14 @@ describe('runChatTurn tool loop', () => {
       adapter: 'web',
     });
 
-    // The tool ran with the model's arguments.
     expect(executedWith).toEqual({ name: 'forge_issues', args: '{"action":"list"}' });
 
     const kinds = captured.map((e) => e.event);
     expect(kinds).toContain('tool_call');
     expect(kinds).toContain('tool_result');
-    // Exactly one terminal `done` for the whole loop.
     expect(kinds.filter((k) => k === 'done')).toHaveLength(1);
-    // Only the final (post-tool) assistant text is persisted.
+    // cm:guard the PRE-tool assistant text is not persisted: a turn that called a tool and then
+    // answered is one answer, and storing the intermediate text replays it as a second one
     expect(appended).toEqual(['You have 2 open issues.']);
 
     const provider_called_twice = call === 2;

@@ -68,6 +68,14 @@ async function assertConversationRole(
   userId: string | null | undefined,
   min: ProjectMemberRole,
 ): Promise<string[]> {
+  // cm:guard a caller naming NO user forgot to, and is refused as that rather than as "you hold no
+  // role": reading null as an anonymous reader made one missing argument silence every room
+  if (!userId) {
+    throw forbidden(
+      `conversation ${conversationId} was reached with no authority named; a turn or a read names the user it runs as, and nothing here is anonymous`,
+      'CONVERSATION_NO_AUTHORITY',
+    );
+  }
   const scope = await derivedScope(conversationId);
   if (scope.length === 0) {
     throw forbidden(
