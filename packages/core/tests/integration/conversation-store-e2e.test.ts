@@ -150,6 +150,17 @@ describe('two writers opening the same unseen venue', () => {
     expect(opened.id).toBe(planted);
   });
 
+  it('answers the same conversation on a second resolve of one venue key', async () => {
+    const key = `chat.example.co ${randomUUID()}`;
+    const first = await store.openConversation(venue(key));
+    const again = await store.openConversation(venue(key));
+    expect(again.id).toBe(first.id);
+    const rows = await harness.db.execute(
+      sql`SELECT count(*)::int AS n FROM conversations WHERE external_id = ${key}`,
+    );
+    expect((rows[0] as unknown as { n: number }).n).toBe(1);
+  });
+
   it('refuses the same venue arriving under a second project rather than widening it', async () => {
     const key = `chat.example.co ${randomUUID()}`;
     await store.openConversation(venue(key));
@@ -224,6 +235,25 @@ describe('appending turns', () => {
     const rows = await store.readMessages(room.id, 50);
     expect(rows.map((r) => r.seq)).toEqual([0, 1, 2, 3]);
     expect(new Set(rows.map((r) => r.content)).size).toBe(4);
+  });
+
+  // cm:guard an append TOUCHES no row already there: the blob it replaced was rewritten whole on every
+  // turn, which is how a concurrent write lost one, and the ids and timestamps here are what say so.
+  it('leaves every row already in the conversation exactly as it was', async () => {
+    const room = await store.openConversation(venue(`chat.example.co ${randomUUID()}`));
+    const first = await store.appendMessage({
+      conversationId: room.id,
+      role: 'user',
+      content: 'first',
+    });
+    const before = await store.readMessages(room.id, 10);
+
+    await store.appendMessage({ conversationId: room.id, role: 'assistant', content: 'second' });
+
+    const after = await store.readMessages(room.id, 10);
+    expect(after[0]).toEqual(before[0]);
+    expect(after[0]?.id).toBe(first.id);
+    expect(after).toHaveLength(2);
   });
 
   it('refuses an append to a conversation that is not there', async () => {

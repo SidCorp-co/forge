@@ -74,6 +74,74 @@ describe('0238 forward — what every legacy row becomes', () => {
     }
   });
 
+  it('leaves the conversation row with no project column to carry', async () => {
+    const db = await freshDb();
+    try {
+      const { projectId } = await plantProject(db.sql, 'forge-dev');
+      await plantSession(db.sql, { projectId });
+      await runForward(db.sql);
+      const columns = await db.sql.unsafe(
+        `SELECT column_name FROM information_schema.columns WHERE table_name = 'conversations'`,
+      );
+      const names = columns.map((c) => (c as unknown as { column_name: string }).column_name);
+      expect(names).not.toContain('project_id');
+      expect(names.filter((n) => n.includes('project'))).toEqual([]);
+    } finally {
+      await db.drop();
+    }
+  });
+
+  // cm:guard the author of each migrated row, all three cases at once: the handle on an assistant
+  // turn, the recorded person on a user turn, and NOBODY where the session recorded nobody.
+  it('names the handle on an assistant turn, the person on a user turn, and nobody where nobody was', async () => {
+    const db = await freshDb();
+    try {
+      const { projectId, ownerId } = await plantProject(db.sql, 'forge-dev');
+      const named = await plantSession(db.sql, {
+        projectId,
+        userId: ownerId,
+        messages: [
+          { role: 'user', content: 'asked' },
+          { role: 'assistant', content: 'answered' },
+        ],
+      });
+      const anonymous = await plantSession(db.sql, {
+        projectId,
+        messages: [{ role: 'user', content: 'asked by nobody recorded' }],
+      });
+
+      await runForward(db.sql);
+
+      const [handle] = await db.sql.unsafe(
+        `SELECT user_id FROM conversation_participants WHERE conversation_id = $1 AND kind = 'handle'`,
+        [named.id],
+      );
+      const handleId = (handle as unknown as { user_id: string }).user_id;
+
+      const rows = await db.sql.unsafe(
+        `SELECT seq, role, author_user_id FROM conversation_messages WHERE conversation_id = $1 ORDER BY seq`,
+        [named.id],
+      );
+      expect(
+        rows.map((r) => [
+          (r as unknown as { role: string }).role,
+          (r as unknown as { author_user_id: string | null }).author_user_id,
+        ]),
+      ).toEqual([
+        ['user', ownerId],
+        ['assistant', handleId],
+      ]);
+
+      const [orphan] = await db.sql.unsafe(
+        `SELECT author_user_id, author_label FROM conversation_messages WHERE conversation_id = $1`,
+        [anonymous.id],
+      );
+      expect(orphan).toMatchObject({ author_user_id: null, author_label: null });
+    } finally {
+      await db.drop();
+    }
+  });
+
   it('gives the project a handle with its two memberships and NO access token', async () => {
     const db = await freshDb();
     try {

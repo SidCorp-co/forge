@@ -38,11 +38,22 @@ vi.mock('../../assistant/identity/speaker-link.js', () => ({
   resolveSpeaker: (...a: unknown[]) => resolveForgeSpeaker(...a),
 }));
 
-/** The active `rocketchat` connections `authForNamespace` scans. */
-let connections: Array<{ config: { serverUrl: string }; secrets: unknown }> = [];
+/** The active `rocketchat` connections and bindings `authForVenue` scans, in that query order. */
+let connections: Array<{ id: string; config: { serverUrl: string }; secrets: unknown }> = [];
+let bindings: Array<{ connectionId: string; config: { rids?: string[] } }> = [];
 vi.mock('../../db/client.js', () => ({
   db: {
-    select: () => ({ from: () => ({ where: async () => connections }) }),
+    select: () => ({
+      from: (table: unknown) => ({
+        // cm:why the mock answers by TABLE and not by call order: `authForVenue` skips the binding
+        // query when one connection serves the server, so a counter drifts between tests.
+        where: async () =>
+          String((table as { [k: symbol]: unknown })[Symbol.for('drizzle:Name')]) ===
+          'integration_bindings'
+            ? bindings
+            : connections,
+      }),
+    }),
   },
 }));
 vi.mock('../store.js', () => ({
@@ -70,7 +81,11 @@ function frame(over: Record<string, unknown> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   connections = [
-    { config: { serverUrl: AUTH.serverUrl }, secrets: { authToken: 't', userId: 'bot' } },
+    {
+      id: 'conn-1',
+      config: { serverUrl: AUTH.serverUrl },
+      secrets: { authToken: 't', userId: 'bot' },
+    },
   ];
 });
 
@@ -192,6 +207,51 @@ describe('deliver', () => {
     connections = [];
     await expect(rocketChatConversationPorts.deliver(venue, codeAuthored('x'))).rejects.toThrow(
       /no active connection serves chat\.example\.co/,
+    );
+    expect(sendFixedReply).not.toHaveBeenCalled();
+  });
+
+  // cm:guard one installation can be served by TWO Forge connections under two bot accounts: posting
+  // as whichever matched the server first posts as a bot the room may not even hold.
+  it('posts as the bot whose binding names the room, not the first bot on the server', async () => {
+    connections = [
+      {
+        id: 'conn-1',
+        config: { serverUrl: AUTH.serverUrl },
+        secrets: { authToken: 'wrong', userId: 'bot-a' },
+      },
+      {
+        id: 'conn-2',
+        config: { serverUrl: AUTH.serverUrl },
+        secrets: { authToken: 'right', userId: 'bot-b' },
+      },
+    ];
+    bindings = [{ connectionId: 'conn-2', config: { rids: ['ROOM1'] } }];
+
+    await rocketChatConversationPorts.deliver(venue, codeAuthored('answer'));
+
+    expect(sendFixedReply.mock.calls[0]?.[0]).toMatchObject({
+      auth: { authToken: 'right', userId: 'bot-b' },
+    });
+  });
+
+  it('refuses when two connections share the server and neither binding names the room', async () => {
+    connections = [
+      {
+        id: 'conn-1',
+        config: { serverUrl: AUTH.serverUrl },
+        secrets: { authToken: 'a', userId: 'bot-a' },
+      },
+      {
+        id: 'conn-2',
+        config: { serverUrl: AUTH.serverUrl },
+        secrets: { authToken: 'b', userId: 'bot-b' },
+      },
+    ];
+    bindings = [{ connectionId: 'conn-2', config: { rids: ['SOMEWHERE-ELSE'] } }];
+
+    await expect(rocketChatConversationPorts.deliver(venue, codeAuthored('x'))).rejects.toThrow(
+      /no active connection serves chat\.example\.co room ROOM1/,
     );
     expect(sendFixedReply).not.toHaveBeenCalled();
   });

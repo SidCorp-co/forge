@@ -49,6 +49,13 @@ const rocketChatPersona = vi.fn((..._args: unknown[]) => 'PERSONA');
 vi.mock('./connection-manager.js', () => ({
   webBaseUrl: 'https://forge.example.co',
 }));
+const findConversation = vi.fn(async (..._a: unknown[]) => null as unknown);
+const appendMessage = vi.fn(async (..._a: unknown[]) => ({ id: 'row-1' }));
+vi.mock('../../conversations/store.js', () => ({
+  findConversation: (...a: unknown[]) => findConversation(...a),
+  appendMessage: (...a: unknown[]) => appendMessage(...a),
+}));
+
 vi.mock('./persona.js', () => ({
   rocketChatPersona: (...args: unknown[]) => rocketChatPersona(...args),
 }));
@@ -148,6 +155,10 @@ describe('deliverEscalationReplyOnce', () => {
     runExternalChatTurn.mockReset();
     buildProjectToolset.mockClear();
     buildChatToolContext.mockClear();
+    findConversation.mockReset();
+    findConversation.mockResolvedValue(null);
+    appendMessage.mockClear();
+    sendFixedReply.mockResolvedValue({ messageId: 'rc-msg-7' });
   });
 
   it('is a no-op for a session with no escalation metadata', async () => {
@@ -353,6 +364,10 @@ describe('deliverEscalationReplyOnce turn authority', () => {
     runExternalChatTurn.mockReset();
     buildProjectToolset.mockClear();
     buildChatToolContext.mockClear();
+    findConversation.mockReset();
+    findConversation.mockResolvedValue(null);
+    appendMessage.mockClear();
+    sendFixedReply.mockResolvedValue({ messageId: 'rc-msg-7' });
   });
 
   it('runs a direct-room synthesis as the speaker the escalation stored', async () => {
@@ -491,5 +506,69 @@ describe('deliverEscalationReplyOnce turn authority', () => {
     expect(buildChatToolContext).toHaveBeenCalledWith(
       expect.objectContaining({ userId: 'owner-1' }),
     );
+  });
+});
+
+describe(`the room transcript after an escalated answer`, () => {
+  beforeEach(() => {
+    updateReturning.mockResolvedValue([{ id: 'session-1' }]);
+    findConnectionById.mockResolvedValue({ config: { serverUrl: 'https://chat.example.co' } });
+    decryptConnectionSecrets.mockReturnValue({ authToken: 'tok', userId: 'bot-1' });
+    mockRouteResolution();
+    runExternalChatTurn.mockResolvedValue({
+      conversationId: null,
+      assistantMessageId: null,
+      reply: 'the synthesized answer',
+      toolCalls: [],
+    });
+    screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
+  });
+
+  const escalated = () =>
+    deliverEscalationReplyOnce(
+      makeSession({
+        messages: [{ type: 'assistant', content: '```json\n{"answer": "raw PM answer"}\n```' }],
+      }),
+    );
+
+  // cm:guard the room SAW this answer, so the room's transcript holds it — with the receipt the send
+  // returned, which is the same rule the fast reply path obeys and the escalated one used to skip.
+  it('records the answer in the room conversation with the receipt the send returned', async () => {
+    findConversation.mockResolvedValue({ id: 'conv-9' });
+
+    await escalated();
+
+    expect(findConversation).toHaveBeenCalledWith('rocketchat', 'chat.example.co room-1');
+    expect(appendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: 'conv-9',
+        role: 'assistant',
+        content: 'the synthesized answer',
+        deliveryProof: { messageId: 'rc-msg-7' },
+      }),
+    );
+  });
+
+  // cm:guard the synthesis TURN'S OWN input is an instruction the room never saw, so it must not be
+  // run against the room's conversation — only its answer goes in.
+  it('runs the synthesis turn against no conversation of its own', async () => {
+    findConversation.mockResolvedValue({ id: 'conv-9' });
+    await escalated();
+    const args = runExternalChatTurn.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(args.conversationId).toBeUndefined();
+    expect(args.externalId).toBeUndefined();
+  });
+
+  it('invents no conversation for a room that has none', async () => {
+    findConversation.mockResolvedValue(null);
+    await escalated();
+    expect(appendMessage).not.toHaveBeenCalled();
+  });
+
+  it('does not record an answer the room never received', async () => {
+    findConversation.mockResolvedValue({ id: 'conv-9' });
+    sendFixedReply.mockRejectedValue(new Error('chat.postMessage failed'));
+    await escalated();
+    expect(appendMessage).not.toHaveBeenCalled();
   });
 });

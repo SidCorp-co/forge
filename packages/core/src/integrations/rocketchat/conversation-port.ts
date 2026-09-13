@@ -20,7 +20,7 @@ import type {
 } from '../../conversations/ports.js';
 import type { ConversationVenue } from '../../conversations/store.js';
 import { db } from '../../db/client.js';
-import { integrationConnections } from '../../db/schema.js';
+import { integrationBindings, integrationConnections } from '../../db/schema.js';
 import { decryptConnectionSecrets } from '../store.js';
 import type { RocketChatIncomingMessage } from './ddp-client.js';
 import { FIXED_REPLY_CONSTANT, type ReplySendProof, sendFixedReply } from './outbound.js';
@@ -31,7 +31,7 @@ import {
   type RocketChatRestMessage,
 } from './rest-client.js';
 import { type RoomShape, resolveRoomShape } from './room-shape.js';
-import type { RocketChatConfig, RocketChatSecrets } from './types.js';
+import type { RocketChatBindingConfig, RocketChatConfig, RocketChatSecrets } from './types.js';
 
 /** What Rocket.Chat hands the ports: the message, the credential it arrived on, and the room's binding. */
 export interface RocketChatFrame {
@@ -61,7 +61,8 @@ export function parseRocketChatVenueId(externalId: string): RocketChatVenueParts
   return { namespace, rid, tmid: tmid ?? null };
 }
 
-async function authForNamespace(namespace: string): Promise<RocketChatRestAuth | null> {
+// cm:guard the ROOM decides the credential, not the server: one installation can be served by two Forge connections under two bot accounts, and the first-match answer posts as a bot the room may not hold and reads history under the wrong bot id — which silently relabels that bot's own messages as a person's. A connection with no binding naming this room is not this room's connection.
+async function authForVenue(namespace: string, rid: string): Promise<RocketChatRestAuth | null> {
   const rows = await db
     .select()
     .from(integrationConnections)
@@ -71,10 +72,39 @@ async function authForNamespace(namespace: string): Promise<RocketChatRestAuth |
         eq(integrationConnections.active, true),
       ),
     );
-  for (const row of rows) {
+
+  const onServer = rows.filter((row) => {
     const config = (row.config ?? {}) as RocketChatConfig;
-    if (!config.serverUrl) continue;
-    if (namespaceFromServerUrl(config.serverUrl) !== namespace) continue;
+    return Boolean(config.serverUrl) && namespaceFromServerUrl(config.serverUrl) === namespace;
+  });
+  if (onServer.length === 0) return null;
+
+  const bindings =
+    onServer.length === 1
+      ? []
+      : await db
+          .select({
+            connectionId: integrationBindings.connectionId,
+            config: integrationBindings.config,
+          })
+          .from(integrationBindings)
+          .where(
+            and(
+              eq(integrationBindings.provider, 'rocketchat'),
+              eq(integrationBindings.active, true),
+            ),
+          );
+  const watching = new Set(
+    bindings
+      .filter((b) => ((b.config ?? {}) as RocketChatBindingConfig).rids?.includes(rid))
+      .map((b) => b.connectionId),
+  );
+
+  // cm:why a single connection on the server is used without consulting a binding: there is no other
+  // candidate to be wrong about, and a room the bot is in but no binding names is still that bot's.
+  const ordered = onServer.length === 1 ? onServer : onServer.filter((r) => watching.has(r.id));
+  for (const row of ordered) {
+    const config = (row.config ?? {}) as RocketChatConfig;
     const secrets = decryptConnectionSecrets<RocketChatSecrets>(row);
     if (!secrets.authToken || !secrets.userId) continue;
     return {
@@ -145,10 +175,10 @@ export const rocketChatConversationPorts: ConversationAdapterPorts<RocketChatFra
     if (!parts) {
       throw new Error(`rocketchat: "${venue.externalId}" is not a Rocket.Chat venue id`);
     }
-    const auth = await authForNamespace(parts.namespace);
+    const auth = await authForVenue(parts.namespace, parts.rid);
     if (!auth) {
       throw new Error(
-        `rocketchat: no active connection serves ${parts.namespace}, so ${venue.externalId} cannot be posted to`,
+        `rocketchat: no active connection serves ${parts.namespace} room ${parts.rid}, so ${venue.externalId} cannot be posted to`,
       );
     }
     const proof: ReplySendProof =
@@ -168,7 +198,7 @@ export const rocketChatConversationPorts: ConversationAdapterPorts<RocketChatFra
   ): Promise<ConversationHistoryMessage[]> {
     const parts = parseRocketChatVenueId(venue.externalId);
     if (!parts) return [];
-    const auth = await authForNamespace(parts.namespace);
+    const auth = await authForVenue(parts.namespace, parts.rid);
     if (!auth) return [];
     const messages = parts.tmid
       ? await fetchThreadMessages(auth, parts.tmid, limit)

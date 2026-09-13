@@ -39,6 +39,22 @@ describe('the conversation store knows no transport', () => {
     expect(offences).toEqual([]);
   });
 
+  // cm:guard the OTHER direction, and the one criterion 35 is about: three named files in the
+  // Rocket.Chat tree reach the store — its ports, its inbound runtime, its escalation runtime.
+  // cm:why a FOURTH is the thing to stop: each of these is this transport's own runtime reaching its
+  // own room, and the day the list grows for any other reason is the day it stops meaning anything.
+  it('is reached from the Rocket.Chat tree by its three runtime files and nothing else', () => {
+    const rc = fileURLToPath(new URL('../integrations/rocketchat/', import.meta.url));
+    const reaching = readdirSync(rc)
+      .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'))
+      .filter((f) => /from '(\.\.\/)+conversations\//.test(readFileSync(`${rc}${f}`, 'utf8')));
+    expect(reaching.sort()).toEqual([
+      'connection-manager.ts',
+      'conversation-port.ts',
+      'escalation-bridge.ts',
+    ]);
+  });
+
   it('imports nothing from the integrations tree', () => {
     const offences: string[] = [];
     for (const file of readdirSync(dir).filter((f) => f.endsWith('.ts'))) {
