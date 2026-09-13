@@ -67,3 +67,16 @@ The decision that is not the ISS-992 run's to make: whether pinning `search_path
 for every function this repo defines from here, enforced by a gate over
 `drizzle/migrations/*.sql`, or whether the six are fixed case by case and the pattern left to
 review. A gate is the only form that stops the seventh arriving.
+
+## Honest costs
+
+The price of adopting the fix, not of the defect it closes.
+
+| Cost | What it takes |
+|---|---|
+| One migration replaces six live guards at once | Each is a `CREATE OR REPLACE` against a function the database is already enforcing. A mistake in one is not a red test but an invariant that quietly stops holding — and two of the six are defences of the `pipeline_run`/`jobs` terminal invariant and the comment-depth bound. |
+| `SET search_path` blinds the function to temporary tables | That is the point, and it is not free: any function that legitimately resolves a relation through the caller — a dynamic `%I` target, a session-scoped staging table — breaks when pinned. Each of the six must be read for that before it is pinned, which is the work, not the one-line edit. |
+| A per-call GUC save and restore | `SET` on a function costs a context save on every invocation. `pipeline_outbox_on_status_change` fires on every issue status change and `enforce_comment_depth` on every comment write, so the overhead lands on the hottest paths rather than the rare ones. Unmeasured here; whoever adopts this should measure rather than assume it is noise. |
+| Six regression cases, each needing a real Postgres | The only test that proves the fix is one that creates a shadow relation and asserts the guard still refuses. That is an integration case per function, on the suite that is already the slowest thing CI runs. |
+| The history keeps the wrong pattern | The fix is a new migration; the fourteen existing files still show the unqualified form, so the next author greps history and copies it. This is the cost a gate removes and case-by-case fixes do not. |
+| A gate over `drizzle/migrations/*.sql` taxes every future migration | It must permit the dynamically-qualified `%I` form and functions that read no relation, or it refuses correct code — and a gate with a wrong refusal is worse than none, because the way around it is a waiver nobody revisits. |
