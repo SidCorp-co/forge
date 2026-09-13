@@ -266,7 +266,7 @@ export const organizationMembersRelations = relations(organizationMembers, ({ on
 }));
 
 // cm:guard a prefix is a claim on the whole deployment and is NEVER given up: this table is only ever inserted into, and `project_id` goes NULL when its project is deleted rather than the row going with it. Freeing a dead project's prefix would let a second project claim it and silently re-point every published `FD-977` at a different issue 977, which is the one failure ISS-992 exists to prevent.
-// cm:edge sideeffect -> packages/core/drizzle/migrations/0239_issue_prefix_search_path.sql — `issue_prefix_aliases_immutable_trg` refuses every DELETE, every prefix change, every owner change, and a `project_id` -> NULL written by ANYTHING but the project FK's own cascade, which it tells apart by whether the project row is still there. Drizzle cannot model a trigger, so this comment is the only place in TypeScript that says it exists.
+// cm:edge sideeffect -> packages/core/drizzle/migrations/0240_issue_prefix_search_path.sql — `issue_prefix_aliases_immutable_trg` refuses every DELETE, every prefix change, every owner change, and a `project_id` -> NULL written by ANYTHING but the project FK's own cascade, which it tells apart by whether the project row is still there. Drizzle cannot model a trigger, so this comment is the only place in TypeScript that says it exists.
 // cm:guard `prefix` is stored UPPER CASE and compared as stored — a `lower(prefix)` expression index cannot back a foreign key, and `projects.issue_prefix` needs one (see `projectsIssuePrefixFk`)
 export const issuePrefixAliases = pgTable(
   'issue_prefix_aliases',

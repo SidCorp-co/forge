@@ -125,6 +125,15 @@ describe("StagePermissionsSection · edit", () => {
     }
   });
 
+  // cm:guard ISS-1000 — the editor used to append a row for any OTHER stored status, and the row it drew was editable and unsaveable: core's `statesConfigSchema` is a `strictObject`, so `states.clarified` makes the whole document unparseable and the save it offers is a 400. Deleting that fall-through is what this asserts, and it goes red the moment one comes back.
+  it("offers no row for a status core would refuse to store", () => {
+    renderEditable({ states: { clarified: { disallowedTools: DENYLIST_FULL } } });
+    expect(screen.queryByText("clarified")).toBeNull();
+    for (const status of ["open", "in_progress", "needs_info", "awaiting_release"]) {
+      expect(screen.getByText(status)).toBeInTheDocument();
+    }
+  });
+
   it("removing a denied tool sends the stage without it and keeps the rest", () => {
     renderEditable();
     expandRow("open");

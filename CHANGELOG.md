@@ -1890,6 +1890,31 @@
   session that recorded `drive` now reads "running · drive", one that recorded `verify` reads
   "running · verify" rather than being filed under "test", and one that recorded no step at all says
   only "running".
+- **Two project settings that saved and then decided nothing are gone.** Under Pipeline, the
+  "Per-job context" section let you set a model override and a spend cap per kind of job. The save
+  succeeded, the value came back when you reloaded the page, and no work ever ran on it: nothing in
+  the dispatcher read that setting, and nothing ever had. Beside it, a per-stage `skillName` could be
+  written through the API with exactly the same result — it picked no skill, at any stage, because
+  every autonomous run uses the one driver skill your project's plugin list designates. A setting
+  that persists and decides nothing is worse than one that does not exist, because it tells you it
+  took.
+
+  **What replaces the per-job section.** The model and the spend cap that DO decide are per stage,
+  not per job type, and they live on the pipeline config as `states[*].model` and `states[*].budget`
+  — read before a job is dispatched and enforced while it runs. The settings screen lists both under
+  "Configured elsewhere" and says why each is set through the API rather than a form.
+
+  **If you send either one now, you are told so** rather than getting a success and a silent drop.
+  Saving a project, patching the pipeline config, or calling `forge_config` with one of these keys
+  answers with an error naming the key, saying nothing reads it, and pointing at the per-stage
+  setting that does. That refusal also covers the whole-document escape hatch, which had let both
+  keys — and the stage gate mode retired before them — past every check.
+
+  **Stored values are cleared on upgrade.** One project on the beta deployment had a per-job model
+  and a $7-per-run cap saved; both are removed, along with every stored `skillName`, so what the API
+  hands back is what the system actually consults. Nothing else in a project's configuration is
+  touched, and no project behaves differently: these keys were read by nothing before they were
+  deleted.
 
 - **A runner no longer keeps a job pool, and a run is no longer a second terminal.** A box used to
   ask Forge which jobs it could take, hold one while its master decided, start it in a tmux session

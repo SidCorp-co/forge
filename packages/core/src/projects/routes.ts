@@ -35,10 +35,11 @@ import {
   type PipelineConfig,
   pipelineConfigPatchSchema,
   pipelineConfigSchema,
+  refuseRetiredStageKeys,
 } from '../pipeline/pipeline-config-schema.js';
 import { updatePipelineConfig } from '../pipeline/pipeline-config-service.js';
 import { pluginDesignationsPatchSchema } from '../plugins/designation.js';
-import { readAgentConfig } from './agent-config.js';
+import { RETIRED_STATE_CONTEXT_MESSAGE, readAgentConfig } from './agent-config.js';
 import { applyIssuePrefixPatch } from './issue-prefix-patch.js';
 import { projectOnboardRoutes } from './onboard-routes.js';
 import { pipelineConfigHttpError } from './pipeline-config-http.js';
@@ -46,7 +47,6 @@ import { pipelineConfigHttpError } from './pipeline-config-http.js';
 import { projectFactsRoutes } from './project-facts-routes.js';
 import { projectRunnerRoutes } from './runners-routes.js';
 import { createProject, generateApiKey, ProjectSlugTakenError } from './service.js';
-import { mergeStateContext, stateContextSchema } from './state-context.js';
 
 export const createProjectSchema = z.object({
   slug: z
@@ -107,9 +107,7 @@ export const updateProjectSchema = z
     issuePrefix: z.string().trim().max(16).nullable().optional(),
     defaultDeviceId: z.uuid().nullable().optional(),
     agentConfig: z.record(z.string(), z.unknown()).nullable().optional(),
-    // ISS-609 follow-up — scoped write for `agentConfig.personaStyle` (the
-    // chat/RC-bot reply-style knob) so the UI never round-trips the whole
-    // agentConfig jsonb. null/'' clears the style.
+    // cm:why ISS-609 follow-up — a scoped write for the chat/RC-bot reply-style knob, so the UI never round-trips the whole `agentConfig` jsonb to change one string; `null` and `''` both clear it
     personaStyle: z.string().trim().max(4000).nullable().optional(),
     // ISS-727 — scoped write for `agentConfig.rocketChatAnswerMode` (the RC
     // bot answer-engine knob: `fast` provider-chat vs `agent` runner Claude).
@@ -117,12 +115,42 @@ export const updateProjectSchema = z
     rocketChatAnswerMode: z.enum(['fast', 'agent']).nullable().optional(),
     previewDeploy: previewDeployPatchSchema.nullable().optional(),
     webhookSecret: z.string().min(16).max(128).nullable().optional(),
-    stateContext: stateContextSchema.nullable().optional(),
     // Move the project to another org. Requires org owner/admin on BOTH the
     // current org (route gate) and the target org (checked in the handler).
     orgId: z.uuid().optional(),
   })
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
+
+/**
+ * ISS-1000 — the retired keys, refused on the RAW body before the object above
+ * strips them.
+ *
+ * `updateProjectSchema` drops an unknown key silently, so deleting
+ * `stateContext` from it would answer the operator's save with a 200 and no
+ * write, which is the same defect the retirement removes. And `agentConfig` on
+ * this route is an untyped record assigned straight onto the column, so it is a
+ * door past every refusal `pipelineConfigPatchSchema` makes — checked here for
+ * the two retired stage keys and for nothing else, because typing the whole
+ * blob is a different change.
+ */
+// cm:guard the walk refuses ONLY what has been retired. Widening it to validate `agentConfig` generally closes an escape hatch four other settings surfaces write through, and none of them is declared on this schema.
+function refuseRetiredProjectKeys(raw: unknown, ctx: z.RefinementCtx): void {
+  if (!raw || typeof raw !== 'object') return;
+  const retired = (path: (string | number)[]) =>
+    ctx.addIssue({ code: 'custom', path, message: RETIRED_STATE_CONTEXT_MESSAGE });
+  const body = raw as { stateContext?: unknown; agentConfig?: unknown };
+  if ('stateContext' in body) retired(['stateContext']);
+  const ac = body.agentConfig as { pipelineConfig?: unknown } | null | undefined;
+  if (!ac || typeof ac !== 'object') return;
+  if ('stateContext' in ac) retired(['agentConfig', 'stateContext']);
+  const states = (ac.pipelineConfig as { states?: unknown } | null | undefined)?.states;
+  refuseRetiredStageKeys(states, ctx, ['agentConfig', 'pipelineConfig', 'states']);
+}
+
+export const updateProjectPatchSchema = z
+  .unknown()
+  .superRefine(refuseRetiredProjectKeys)
+  .pipe(updateProjectSchema);
 
 export type UpdateProjectInput = z.infer<typeof updateProjectSchema>;
 
@@ -414,7 +442,7 @@ projectRoutes.patch(
   zValidator('param', idParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
-  zValidator('json', updateProjectSchema, (result) => {
+  zValidator('json', updateProjectPatchSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
   async (c) => {
@@ -441,31 +469,11 @@ projectRoutes.patch(
     if (patch.workspaceSetup !== undefined) updates.workspaceSetup = patch.workspaceSetup;
     if (patch.productionBranch !== undefined) updates.productionBranch = patch.productionBranch;
     if (patch.defaultDeviceId !== undefined) updates.defaultDeviceId = patch.defaultDeviceId;
-    if (patch.stateContext !== undefined) {
-      // Read-modify-write rather than Postgres's `jsonb || jsonb` (shallow
-      // merge) so a `stateContext`-only patch can't wipe sibling keys
-      // (`pipelineConfig`, `repoPath`, `categories`, …). Per-state merge
-      // granularity is intentional — see `mergeStateContext` JSDoc. The write
-      // is deferred to the single UPDATE below, so only the read is shared.
-      const currentAc = (await readAgentConfig(id)) ?? {};
-      const baseAc =
-        patch.agentConfig !== undefined
-          ? ((patch.agentConfig ?? {}) as Record<string, unknown>)
-          : { ...currentAc };
-      const existingSc = patch.agentConfig !== undefined ? undefined : currentAc.stateContext;
-      const mergedSc = mergeStateContext(existingSc, patch.stateContext);
-      if (mergedSc === null) {
-        baseAc.stateContext = undefined;
-      } else {
-        baseAc.stateContext = mergedSc;
-      }
-      updates.agentConfig = baseAc;
-    } else if (patch.agentConfig !== undefined) {
+    if (patch.agentConfig !== undefined) {
       updates.agentConfig = patch.agentConfig;
     }
     if (patch.personaStyle !== undefined) {
-      // Scoped agentConfig.personaStyle write — read-modify-write (like
-      // stateContext above) so a style-only patch can't wipe sibling keys.
+      // cm:why read-modify-write rather than Postgres's `jsonb || jsonb`, whose shallow merge would let a style-only patch wipe the sibling keys of the blob (`pipelineConfig`, `repoPath`, `categories`, …)
       let baseAc = updates.agentConfig as Record<string, unknown> | undefined;
       if (baseAc === undefined) {
         baseAc = { ...((await readAgentConfig(id)) ?? {}) };
