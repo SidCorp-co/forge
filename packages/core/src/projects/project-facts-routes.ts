@@ -100,15 +100,11 @@ projectFactsRoutes.patch(
     const access = await loadProjectAccess(id, userId);
     assertOrgRoleOnProject(access, 'admin', 'org admin required');
 
-    // A `null` merge result drops the key entirely (via filter rather than
-    // `delete` to match the stateContext branch + satisfy lint/noDelete).
+    // cm:why a `null` merge result drops the key entirely, and the filter does what `delete` would because lint's noDelete refuses that operator
     const dropKey = (obj: Record<string, unknown>, key: string) =>
       Object.fromEntries(Object.entries(obj).filter(([k]) => k !== key));
 
-    // Atomic read-modify-write of agentConfig — only the projectFacts /
-    // projectFactsConfig sub-keys are touched; sibling keys (pipelineConfig,
-    // stateContext, …) survive. Reserved (derived) keys are dropped by the
-    // mergers, so a caller can't shadow base-branch/test-creds/etc.
+    // cm:guard the read-modify-write touches the `projectFacts` / `projectFactsConfig` sub-keys ONLY, so the blob's siblings (`pipelineConfig`, `plugins`, …) survive; the reserved derived keys are dropped by the mergers, so a caller cannot shadow base-branch / test-creds through here
     const ac = await mergeAgentConfig(id, (current) => {
       let next = current;
       if (patch.projectFacts !== undefined) {

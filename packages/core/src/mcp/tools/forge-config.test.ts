@@ -28,6 +28,8 @@ vi.mock('../../db/client.js', () => ({
 }));
 
 const { forgeConfigTool } = await import('./forge-config.js');
+const { getGuide } = await import('../../guides/registry.js');
+const { FORGE_FACTS } = await import('../../prompt/facts/registry.js');
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const OTHER_PROJECT_ID = '99999999-9999-4999-8999-999999999999';
@@ -193,7 +195,8 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
     });
   });
 
-  it('action=get exposes stateContext on the config response', async () => {
+  // cm:guard ISS-1000 — this is the surface an AGENT reaches project config through, so the refusal is NAMED rather than left to `.strict()` answering `Unrecognized key`, which says the argument is gone and nothing about what replaced it.
+  it('action=get no longer carries a stateContext key', async () => {
     const tool = forgeConfigTool({
       principal: fakePrincipal,
       projectSlug: null,
@@ -206,80 +209,31 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
         name: 'My Project',
         baseBranch: 'develop',
         productionBranch: 'release',
-        agentConfig: {
-          stateContext: {
-            code: { budget: { perRunUsd: 2, perMonthUsd: 100, action: 'pause' } },
-          },
-        },
+        agentConfig: { stateContext: { code: { modelOverride: 'opus' } } },
       },
     ]);
 
     const result = (await tool.handler({ action: 'get', projectId: PROJECT_ID })) as {
-      config: { stateContext: Record<string, unknown> | null };
+      config: Record<string, unknown>;
     };
 
-    expect(result.config.stateContext).toEqual({
-      code: { budget: { perRunUsd: 2, perMonthUsd: 100, action: 'pause' } },
-    });
+    expect(result.config).not.toHaveProperty('stateContext');
   });
 
-  it('action=update merges a stateContext patch (preserves untouched states)', async () => {
-    const tool = forgeConfigTool({
-      principal: fakePrincipal,
-      projectSlug: null,
-    });
+  // cm:guard ISS-1000 — an agent never reads this tool's zod schema; it reads the three DESCRIPTIONS below, and a retirement that leaves any of them promising `stateContext` sends a session to ask for a field it will be refused. This is the assertion that goes red when a key is removed from the code and left in the prose.
+  it('no agent-facing description of forge_config names stateContext', () => {
+    const tool = forgeConfigTool({ principal: fakePrincipal, projectSlug: null });
+    const factText = FORGE_FACTS.find((f) => f.id === 'mcp-tool-reference')?.render() ?? '';
+    const guideText = getGuide('project-settings-and-test-credentials')?.body ?? '';
 
-    selectLimit
-      .mockResolvedValueOnce([adminAccessRow]) // assertPrincipalIsAdmin: effective-role lookup
-      .mockResolvedValueOnce([
-        {
-          agentConfig: {
-            pipelineConfig: { enabled: true },
-            stateContext: { plan: { blocks: { tip: 'keep' } } },
-          },
-        },
-      ]) // read current agentConfig for merge
-      .mockResolvedValueOnce([
-        {
-          id: PROJECT_ID,
-          slug: 'my-proj',
-          name: 'My Project',
-          baseBranch: 'develop',
-          productionBranch: 'release',
-          agentConfig: {
-            pipelineConfig: { enabled: true },
-            stateContext: {
-              plan: { blocks: { tip: 'keep' } },
-              code: { budget: { perRunUsd: 1, perMonthUsd: 50, action: 'pause' } },
-            },
-          },
-        },
-      ]); // readProjectConfig for response
-
-    const result = (await tool.handler({
-      action: 'update',
-      projectId: PROJECT_ID,
-      stateContext: {
-        code: { budget: { perRunUsd: 1, perMonthUsd: 50, action: 'pause' } },
-      },
-    })) as { config: { stateContext: Record<string, unknown> } };
-
-    expect(updateSet).toHaveBeenCalledWith({
-      agentConfig: {
-        pipelineConfig: { enabled: true },
-        stateContext: {
-          plan: { blocks: { tip: 'keep' } },
-          code: { budget: { perRunUsd: 1, perMonthUsd: 50, action: 'pause' } },
-        },
-      },
-    });
-    expect(result.config.stateContext).toEqual({
-      plan: { blocks: { tip: 'keep' } },
-      code: { budget: { perRunUsd: 1, perMonthUsd: 50, action: 'pause' } },
-    });
+    expect(factText).toContain('forge_config');
+    expect(guideText).toContain('forge_config');
+    for (const text of [tool.description, factText, guideText]) {
+      expect(text).not.toContain('stateContext');
+    }
   });
 
-  it('action=update rejects an invalid budget (negative perRunUsd)', async () => {
+  it('action=update refuses a stateContext argument by name, and writes nothing', async () => {
     const tool = forgeConfigTool({
       principal: fakePrincipal,
       projectSlug: null,
@@ -289,11 +243,9 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
       tool.handler({
         action: 'update',
         projectId: PROJECT_ID,
-        stateContext: {
-          code: { budget: { perRunUsd: -1, perMonthUsd: 50, action: 'pause' } },
-        },
+        stateContext: { code: { budget: { perRunUsd: 1, perMonthUsd: 50, action: 'pause' } } },
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/pipelineConfig\.states\[\*\]\.model/);
     expect(updateSet).not.toHaveBeenCalled();
   });
 

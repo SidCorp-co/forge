@@ -56,7 +56,7 @@ describe('migration 0234 removes the phantom pipelineConfig keys (ISS-994)', () 
     await truncateAll(harness.db);
     const user = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, user.id, {
-      agentConfig: { pipelineConfig: STORED, stateContext: { code: { note: 'kept' } } },
+      agentConfig: { pipelineConfig: STORED, personaStyle: 'kept' },
     });
     projectId = project.id;
     const untouched = await createTestProject(harness.db, user.id, { agentConfig: {} });
@@ -116,6 +116,6 @@ describe('migration 0234 removes the phantom pipelineConfig keys (ISS-994)', () 
     const rows = (await harness.db.execute(
       sql`SELECT agent_config FROM projects WHERE id = ${projectId}`,
     )) as unknown as { agent_config: Record<string, unknown> }[];
-    expect(rows[0]?.agent_config.stateContext).toEqual({ code: { note: 'kept' } });
+    expect(rows[0]?.agent_config.personaStyle).toEqual('kept');
   });
 });

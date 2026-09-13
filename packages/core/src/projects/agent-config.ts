@@ -5,8 +5,8 @@ import { projects } from '../db/schema.js';
 /**
  * Shared helpers for the `projects.agentConfig` jsonb blob.
  *
- * Several settings surfaces (stateContext, personaStyle, pipeline-config,
- * project-facts, skills bootstrap) each need the same read-modify-write dance:
+ * Several settings surfaces (personaStyle, pipeline-config, project-facts,
+ * skills bootstrap) each need the same read-modify-write dance:
  * read the whole blob, touch only their own sub-key(s), write the whole blob
  * back — Postgres's `jsonb || jsonb` shallow merge is deliberately avoided so
  * a scoped patch can never wipe sibling keys. These helpers centralise that
@@ -50,7 +50,7 @@ export async function mergeAgentConfig(
   return merged;
 }
 
-// cm:guard the key is DELETED when `mutate` answers null, never written as `key: null`. Every reader here treats an absent key and a null one differently — `stateContext` null means "no override", a null-valued key means "an override that is null" — and the four settings surfaces that used to inline this dance each got that right by hand, which is exactly the arrangement that stops being true on the fifth.
+// cm:guard the key is DELETED when `mutate` answers null, never written as `key: null`. Every reader here treats an absent key and a null one differently — an absent `personaStyle` means "no style", a null-valued key means "a style that is null" — and the settings surfaces that used to inline this dance each got that right by hand, which is exactly the arrangement that stops being true on the next one.
 export async function patchAgentConfigKey(
   projectId: string,
   key: string,
@@ -65,3 +65,18 @@ export async function patchAgentConfigKey(
   });
   if (merged === null) throw new Error('NOT_FOUND: project not found');
 }
+
+/**
+ * ISS-1000 — `agentConfig.stateContext` was a model override and a spend cap
+ * per jobType, validated and persisted through three doors and read by no
+ * dispatcher. It is retired, and a caller that still sends it is told so by
+ * name: removing the field from the schemas alone would answer the same write
+ * with a 200 and a silent drop, which is the defect the retirement is for.
+ *
+ * One message, because there were three doors — the scoped field on
+ * `PATCH /projects/:id`, the same key inside that route's wholesale
+ * `agentConfig`, and MCP `forge_config`.
+ */
+// cm:edge contract -> packages/core/src/jobs/stage-overrides.ts — `resolveStageOverrides` resolves the `model` and `budget` this message names; a rename there leaves this text pointing at a path that no longer exists
+export const RETIRED_STATE_CONTEXT_MESSAGE =
+  'agentConfig.stateContext decides nothing and has been removed — a model override and a spend cap per jobType were stored there and consulted by no dispatch. The per-stage keys that DO decide are pipelineConfig.states[*].model and pipelineConfig.states[*].budget, resolved by resolveStageOverrides and enforced by jobs/budget-check.ts. Set those instead, and remove stateContext from this request.';

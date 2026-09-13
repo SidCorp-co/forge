@@ -19,7 +19,6 @@ import type {
 	PluginDesignation,
 	ProjectFactsPatch,
 	ProjectUpdateInput,
-	StateContextEntry,
 	UxContractRulePatch,
 } from "./types";
 
@@ -139,29 +138,6 @@ export function useUpdatePlugins(id: string | undefined) {
 		onError: (err) =>
 			toast({
 				title: "Couldn't save plugins",
-				description: formatApiError(err),
-				tone: "error",
-			}),
-	});
-}
-
-/** Per-jobType `agentConfig.stateContext`, through the scoped field on
- *  `PATCH /api/projects/:id`. The server merges per jobType — an entry sent as
- *  `null` is removed, one omitted is untouched — so a patch carries only the
- *  jobTypes it changes and sibling agentConfig keys survive server-side. */
-export function useUpdateStateContext(id: string | undefined) {
-	const qc = useQueryClient();
-	const { toast } = useToast();
-	return useMutation({
-		mutationFn: (stateContext: Record<string, StateContextEntry | null>) =>
-			projectSettingsApi.update(id as string, { stateContext }),
-		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: ["project", id] });
-			toast({ title: "Per-job context saved", tone: "success" });
-		},
-		onError: (err) =>
-			toast({
-				title: "Couldn't save per-job context",
 				description: formatApiError(err),
 				tone: "error",
 			}),

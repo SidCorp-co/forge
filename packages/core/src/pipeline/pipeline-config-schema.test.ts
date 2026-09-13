@@ -117,11 +117,10 @@ describe('statesConfigSchema (ISS-110)', () => {
 });
 
 describe('stageConfigSchema per-state overrides', () => {
-  it('accepts skillName, model, allowedTools, permissionMode, timeoutSeconds', () => {
+  it('accepts model, allowedTools, permissionMode, timeoutSeconds', () => {
     const parsed = pipelineConfigSchema.parse({
       states: {
         open: {
-          skillName: 'forge-review',
           model: 'sonnet',
           allowedTools: ['Bash', 'mcp__forge__forge_issues'],
           permissionMode: 'acceptEdits',
@@ -129,11 +128,30 @@ describe('stageConfigSchema per-state overrides', () => {
         },
       },
     });
-    expect(parsed.states?.open?.skillName).toBe('forge-review');
     expect(parsed.states?.open?.model).toBe('sonnet');
     expect(parsed.states?.open?.allowedTools).toEqual(['Bash', 'mcp__forge__forge_issues']);
     expect(parsed.states?.open?.permissionMode).toBe('acceptEdits');
     expect(parsed.states?.open?.timeoutSeconds).toBe(1800);
+  });
+
+  // cm:guard ISS-1000 — the pair below is the whole retirement and neither half stands alone: the WRITE is refused by name so the removal is not a silent drop, and the stored document is still READ, because a canonical schema that refused a stored `skillName` would make every project holding one parse to `cfg = null` and dispatch nothing in silence. Same asymmetry ISS-994 established for `mode`.
+  for (const stage of ['open', 'in_progress', 'needs_info', 'awaiting_release']) {
+    it(`refuses a PATCH carrying states.${stage}.skillName`, () => {
+      const result = pipelineConfigPatchSchema.safeParse({
+        states: { [stage]: { skillName: 'forge-review' } },
+      });
+      expect(result.success).toBe(false);
+      const issue = result.error?.issues.find((i) => i.path.join('.') === `states.${stage}.skillName`);
+      expect(issue?.message).toContain('skillName selects nothing');
+      expect(issue?.message).toContain('issue-flow');
+    });
+  }
+
+  it('still parses a STORED document that carries skillName, dropping the key', () => {
+    const parsed = pipelineConfigSchema.parse({
+      states: { open: { skillName: 'forge-review', model: 'sonnet' } },
+    });
+    expect(parsed.states?.open).toEqual({ model: 'sonnet' });
   });
 
   it('accepts systemPrompt append/replace + extras', () => {

@@ -25,7 +25,6 @@ import { PoolBacklogSection } from "./pool-backlog-section";
 import { KnowledgePromotionSection } from "./knowledge-promotion-section";
 import { StagePermissionsSection } from "./stage-permissions-section";
 import { RunnerPoolsSection } from "./runner-pools-section";
-import { AgentConfigSection } from "./agent-config-section";
 import { PluginsSection } from "./plugins-section";
 import { ReleaseSection } from "./release-section";
 import { API_ONLY_KEYS, type PipelineConfig } from "../types";
@@ -232,8 +231,6 @@ export function PipelineTab({
         <PoolBacklogSection projectId={projectId} config={server} canEdit={canEdit} />
 
         <KnowledgePromotionSection projectId={projectId} config={server} canEdit={canEdit} />
-
-        <AgentConfigSection projectId={projectId} canEdit={canEdit} />
 
         <div className="mt-6 border-t border-line pt-5">
           <Collapsible title={`Configured elsewhere — ${API_ONLY_KEYS.length} keys this screen doesn't edit`}>
