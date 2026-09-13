@@ -44,7 +44,7 @@ const WINDOW_DAYS = 7;
 export function IssuesInsightsView({ scope }: IssuesInsightsViewProps) {
   const { projectId } = scope;
 
-  // The board issues + throughput refresh live with the rest of the screen.
+  // cm:guard the project room and NOT a poll: the throughput and duration rows are invalidated by the same WS events the list screen listens to, so this card cannot show a window the list has already moved past
   useRoom(projectRoom(projectId));
 
   const durationsQ = useStepDurations({ projectId, days: WINDOW_DAYS });
@@ -191,14 +191,15 @@ export function ThroughputChart({ rows }: { rows: ThroughputRow[] | undefined })
     );
   }
 
+  // cm:guard each bar is positioned against its own box and NOT sized by a percentage height inside a flex item: a percent height on an item whose height comes from `flex-1` resolves to zero in the browser, so every bar rendered invisible and the card drew an empty chart under the sentence "108 shipped over the last 7 days" — measured on forge-beta 2026-09-14 (ISS-999)
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-end gap-2" style={{ height: 120 }}>
         {ordered.map((r) => (
-          <div key={r.date} className="flex flex-1 flex-col items-center gap-1.5">
-            <div className="flex w-full flex-1 items-end">
+          <div key={r.date} className="flex h-full flex-1 flex-col items-center gap-1.5">
+            <div className="relative w-full min-h-0 flex-1">
               <span
-                className="block w-full rounded-t bg-[var(--stage-release)]"
+                className="absolute inset-x-0 bottom-0 block rounded-t bg-[var(--stage-release)]"
                 style={{ height: `${Math.max(4, (r.count / max) * 100)}%` }}
                 title={`${r.count} shipped`}
               />

@@ -1815,7 +1815,13 @@
   session is actually running it.
 
   The run drawer keeps its Steps tab, which lists the run's own steps and always did; the rail beside
-  a conversation keeps the session's status chip.
+  a conversation keeps the session's status chip. The Issues screen's own subtitle, "One strict
+  pipeline, left to right", is gone too — it described the same ladder in one sentence and outlived
+  every screen that drew it.
+
+  **The Throughput chart draws its bars.** It never has. The card counted correctly — "108 shipped
+  over the last 7 days" was right — and drew an empty box above the sentence, because each bar's
+  height was a percentage of a box the browser gave no height to.
 
   **A running session names the step it is on, or no step at all.** "running · code" appeared beside
   every live agent on the sessions list, the fleet strip, the session screen, the chat header and the
