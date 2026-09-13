@@ -73,6 +73,8 @@ export interface ExternalChatTurnArgs {
 export interface ExternalChatTurnResult {
   /** The conversation this turn joined, or null when it belonged to none. */
   conversationId: string | null;
+  /** The row this turn's answer became, for the caller to stamp with its delivery receipt. */
+  assistantMessageId: string | null;
   reply: string;
   terminal: 'done' | 'error';
   error: string | null;
@@ -185,6 +187,7 @@ export async function runExternalChatTurn(
     );
   }
 
+  let assistantMessageId: string | null = null;
   if (turn) {
     if (result.terminal === 'done' && result.finalText.length > 0) {
       appendAssistantMessage(turn, result.finalText);
@@ -194,7 +197,9 @@ export async function runExternalChatTurn(
         result.errorMessage ?? (result.terminal === 'done' ? 'empty-reply' : result.terminal),
       );
     }
-    await persistMessages(turn, { db: dbi });
+    const written = await persistMessages(turn, { db: dbi });
+    assistantMessageId =
+      written.find((m) => m.role === 'assistant' && !m.silenceReason)?.id ?? null;
   }
 
   try {
@@ -218,6 +223,7 @@ export async function runExternalChatTurn(
 
   return {
     conversationId: turn?.conversationId ?? null,
+    assistantMessageId,
     reply: result.finalText,
     terminal: result.terminal,
     error: result.errorMessage,

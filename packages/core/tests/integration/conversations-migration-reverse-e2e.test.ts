@@ -93,6 +93,35 @@ describe('0238 reverse — the forward drop is a relocation', () => {
     }
   });
 
+  // cm:guard byte equality on the BLOB, not equivalence: an element with no `ts`, or a key the schema
+  // models nothing for, is what a rebuild from the rows re-synthesizes — the reverse reads `origin`.
+  it('rebuilds the stored transcript exactly, keys the new schema models and keys it does not', async () => {
+    const db = await freshDb();
+    try {
+      const { projectId, ownerId } = await plantProject(db.sql, 'forge-dev');
+      const blob = [
+        { role: 'user', content: 'no timestamp on this one' },
+        {
+          role: 'assistant',
+          content: 'and this one carries a key nothing reads',
+          ts: '2026-04-01T00:00:01.000Z',
+          citations: [{ issue: 'ISS-1' }],
+        },
+      ];
+      const session = await plantSession(db.sql, { projectId, userId: ownerId, messages: blob });
+
+      await runForward(db.sql);
+      await db.sql.unsafe(rollback);
+
+      const [row] = await db.sql.unsafe(`SELECT messages FROM chat_sessions WHERE id = $1`, [
+        session.id,
+      ]);
+      expect((row as unknown as { messages: unknown }).messages).toEqual(blob);
+    } finally {
+      await db.drop();
+    }
+  });
+
   it('rebuilds a conversation opened AFTER the forward run rather than dropping it', async () => {
     const db = await freshDb();
     try {

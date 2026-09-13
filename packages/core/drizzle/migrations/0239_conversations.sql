@@ -113,6 +113,28 @@ BEGIN
     RAISE EXCEPTION 'chat_sessions row % carries source "%" which is no conversation adapter',
       bad.id, (SELECT source FROM chat_sessions WHERE id = bad.id);
   END IF;
+
+  -- A stored element whose role `conversation_messages` cannot hold. The copy
+  -- below selects the three roles it can represent, so without this the element
+  -- is dropped in silence and the assertion — which applies the same filter to
+  -- both sides — agrees that nothing was lost. The old create route inserted a
+  -- caller-supplied array verbatim past its own validation, so a role outside
+  -- the three is a shape this table really can hold.
+  SELECT cs.id, cs.project_id INTO bad
+  FROM chat_sessions cs
+  CROSS JOIN LATERAL jsonb_array_elements(cs.messages) AS e(step)
+  WHERE COALESCE(e.step ->> 'role', '') NOT IN ('user','assistant','system')
+  LIMIT 1;
+  IF FOUND THEN
+    RAISE EXCEPTION 'chat_sessions row % holds a message with role "%", which conversation_messages cannot represent; it is not being dropped to make the schema apply',
+      bad.id,
+      (SELECT COALESCE(e.step ->> 'role', '(none)')
+       FROM chat_sessions cs2
+       CROSS JOIN LATERAL jsonb_array_elements(cs2.messages) AS e(step)
+       WHERE cs2.id = bad.id
+         AND COALESCE(e.step ->> 'role', '') NOT IN ('user','assistant','system')
+       LIMIT 1);
+  END IF;
 END $$;--> statement-breakpoint
 
 -- One handle per project that owns chat rows: reused where the project already
@@ -179,6 +201,12 @@ SELECT
     'userId', cs.user_id::text,
     'userKey', cs.user_key,
     'source', cs.source,
+    -- the blob VERBATIM. Every other field of the reverse is reconstructible from
+    -- the message rows, but the rows keep only what this schema models: an element
+    -- that carried its own `ts`, or a key nothing here reads, would come back
+    -- re-synthesized rather than as it was written. This is the field that makes
+    -- the reverse exact instead of merely equivalent.
+    'messages', cs.messages,
     'createdAt', to_char(cs.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
     'updatedAt', to_char(cs.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
     'mintedHandleUserId', h.minted_user_id::text

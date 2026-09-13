@@ -48,18 +48,13 @@ SELECT
   c.origin ->> 'userKey',
   c.title,
   c.origin ->> 'source',
-  COALESCE((
-    SELECT jsonb_agg(
-      jsonb_strip_nulls(jsonb_build_object(
-        'role', m.role,
-        'content', m.content,
-        'ts', to_char(m.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
-        'images', m.images
-      )) ORDER BY m.seq
-    )
-    FROM conversation_messages m
-    WHERE m.conversation_id = c.id AND m.silence_reason IS NULL
-  ), '[]'::jsonb),
+  -- the blob comes back from `origin`, not from the message rows: the rows keep
+  -- what this schema models, and rebuilding from them would re-synthesize a `ts`
+  -- the element may never have carried and drop any key nothing here reads. Turns
+  -- SPOKEN SINCE the forward migration are not in it and are not meant to be —
+  -- this half restores the row as it was consumed; half two rebuilds what came
+  -- after from the rows, which is the only source those have.
+  COALESCE(c.origin -> 'messages', '[]'::jsonb),
   (c.origin ->> 'createdAt')::timestamptz,
   (c.origin ->> 'updatedAt')::timestamptz
 FROM conversations c

@@ -10,6 +10,8 @@
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import postgres, { type Sql } from 'postgres';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   createTestProject,
@@ -27,6 +29,7 @@ let scope: typeof import('../../src/conversations/scope.js');
 let participants: typeof import('../../src/conversations/participants.js');
 let store: typeof import('../../src/conversations/store.js');
 let handles: typeof import('../../src/conversations/handles.js');
+let turns: typeof import('../../src/assistant/conversation-turn.js');
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
@@ -38,9 +41,19 @@ beforeAll(async () => {
   participants = await import('../../src/conversations/participants.js');
   store = await import('../../src/conversations/store.js');
   handles = await import('../../src/conversations/handles.js');
+  turns = await import('../../src/assistant/conversation-turn.js');
 }, 120_000);
 
+/** Independent pools, so a writer here is a writer Postgres sees as a stranger. */
+const clients: Sql[] = [];
+function independent(): ReturnType<typeof drizzle> {
+  const client = postgres(harness.url, { max: 2, onnotice: () => {} });
+  clients.push(client);
+  return drizzle(client, {});
+}
+
 afterAll(async () => {
+  for (const c of clients) await c.end({ timeout: 5 }).catch(() => {});
   if (harness) await harness.cleanup();
 });
 
@@ -225,6 +238,58 @@ describe('the door a handle comes through', () => {
     expect(await scope.derivedScope(room.id)).toEqual([projectA]);
   });
 
+  // cm:guard two callers removing a DIFFERENT handle each count two live and each pass `live <= 1`,
+  // so an unserialized check commits both and leaves the unreadable room it exists to prevent.
+  // cm:why a third connection holds the row until BOTH are waiting: two removals started from
+  // JavaScript alone interleave as the event loop pleases and can pass without ever racing.
+  it('refuses one of two concurrent removals that would empty the room between them', async () => {
+    const room = await openRoom(projectA);
+    const second = await harness.db.transaction(async (tx) =>
+      handles.resolveProjectHandle(tx as never, projectB),
+    );
+    await participants.addHandle({
+      conversationId: room.id,
+      handleUserId: second.userId,
+      actorUserId: ownerId,
+    });
+    const live = (await participants.listParticipants(room.id)).filter((p) => p.kind === 'handle');
+    expect(live).toHaveLength(2);
+
+    const gate = postgres(harness.url, { max: 1, onnotice: () => {} });
+    clients.push(gate);
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const holding = gate.begin(async (tx) => {
+      await tx.unsafe(`SELECT id FROM conversations WHERE id = $1 FOR UPDATE`, [room.id]);
+      await held;
+    });
+    await new Promise((r) => setTimeout(r, 100));
+
+    const a = independent();
+    const b = independent();
+    const outcomes = Promise.allSettled([
+      participants.removeParticipant({
+        conversationId: room.id,
+        participantId: live[0]?.id ?? '',
+        db: a as never,
+      }),
+      participants.removeParticipant({
+        conversationId: room.id,
+        participantId: live[1]?.id ?? '',
+        db: b as never,
+      }),
+    ]);
+    await new Promise((r) => setTimeout(r, 250));
+    release();
+    await holding;
+
+    const settled = await outcomes;
+    expect(settled.filter((o) => o.status === 'rejected')).toHaveLength(1);
+    expect(await scope.derivedScope(room.id)).toHaveLength(1);
+  });
+
   it('allows a handle to leave once a second one is in the room', async () => {
     const room = await openRoom(projectA);
     const [first] = await participants.listParticipants(room.id);
@@ -280,5 +345,50 @@ describe("a project's handle", () => {
     await expect(
       harness.db.transaction(async (tx) => handles.resolveProjectHandle(tx as never, randomUUID())),
     ).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+describe('a turn continuing a conversation by id', () => {
+  it('continues one its own project is in', async () => {
+    const room = await openRoom(projectA);
+    const turn = await turns.openTurn({
+      projectId: projectA,
+      adapter: 'rocketchat',
+      conversationId: room.id,
+      readerUserId: ownerId,
+    });
+    expect(turn.conversationId).toBe(room.id);
+  });
+
+  // cm:guard being allowed to READ a room is not the same as a turn belonging to it: naming project B
+  // and conversation A passes the read check on A while the toolset is built for B.
+  it('refuses a turn arriving under a project the conversation is not about', async () => {
+    const room = await openRoom(projectA);
+    await expect(
+      turns.openTurn({
+        projectId: projectB,
+        adapter: 'rocketchat',
+        conversationId: room.id,
+        readerUserId: ownerId,
+      }),
+    ).rejects.toMatchObject({ cause: { code: 'CONVERSATION_PROJECT_CONFLICT' } });
+  });
+
+  it('refuses a turn arriving as a different adapter than the room was opened with', async () => {
+    const room = await openRoom(projectA);
+    await expect(
+      turns.openTurn({
+        projectId: projectA,
+        adapter: 'web',
+        conversationId: room.id,
+        readerUserId: ownerId,
+      }),
+    ).rejects.toMatchObject({ cause: { code: 'CONVERSATION_ADAPTER_CONFLICT' } });
+  });
+
+  it('refuses a turn that names neither a conversation nor a venue', async () => {
+    await expect(
+      turns.openTurn({ projectId: projectA, adapter: 'web', readerUserId: ownerId }),
+    ).rejects.toMatchObject({ cause: { code: 'CONVERSATION_UNADDRESSED' } });
   });
 });

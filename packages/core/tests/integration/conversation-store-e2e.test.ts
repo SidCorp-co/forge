@@ -241,6 +241,25 @@ describe('appending turns', () => {
     expect(await store.countMessages(room.id)).toBe(5);
   });
 
+  it('stamps a delivered message with the receipt, and leaves the text alone', async () => {
+    const room = await store.openConversation(venue(`chat.example.co ${randomUUID()}`));
+    const written = await store.appendMessage({
+      conversationId: room.id,
+      role: 'assistant',
+      content: 'the answer',
+    });
+    expect(written.deliveryProof).toBeNull();
+
+    await store.recordDelivery(written.id, { messageId: 'rc-server-id-9' });
+
+    const [back] = await store.readMessages(room.id, 10);
+    expect(back).toMatchObject({
+      id: written.id,
+      content: 'the answer',
+      deliveryProof: { messageId: 'rc-server-id-9' },
+    });
+  });
+
   it('keeps a silence as a row rather than as an empty turn', async () => {
     const room = await store.openConversation(venue(`chat.example.co ${randomUUID()}`));
     await store.appendMessage({

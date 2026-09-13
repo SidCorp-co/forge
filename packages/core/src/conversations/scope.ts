@@ -8,9 +8,10 @@
 import { and, eq, isNull } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db as defaultDb } from '../db/client.js';
+import type { ProjectMemberRole } from '../db/schema.js';
 import { projectMembers } from '../db/schema.js';
 import { conversationParticipants } from '../db/schema-conversations.js';
-import { effectiveProjectRole } from '../lib/authz.js';
+import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
 import type { Executor } from './db-executor.js';
 
 const forbidden = (message: string, code: string) =>
@@ -48,6 +49,25 @@ export async function assertConversationReadable(
   conversationId: string,
   userId: string | null | undefined,
 ): Promise<string[]> {
+  return assertConversationRole(conversationId, userId, 'viewer');
+}
+
+/**
+ * The caller may CHANGE this conversation — rename it, delete it — or a refusal.
+ */
+// cm:guard writing takes `member` on every project in the room, and reading takes `viewer`: a viewer is somebody who may look at a project, and renaming or deleting a shared room is not looking. Opening one already takes `member`, so a read-level write check would make the rules disagree with each other — the cheaper one winning (ISS-1001).
+export async function assertConversationWritable(
+  conversationId: string,
+  userId: string | null | undefined,
+): Promise<string[]> {
+  return assertConversationRole(conversationId, userId, 'member');
+}
+
+async function assertConversationRole(
+  conversationId: string,
+  userId: string | null | undefined,
+  min: ProjectMemberRole,
+): Promise<string[]> {
   const scope = await derivedScope(conversationId);
   if (scope.length === 0) {
     throw forbidden(
@@ -57,9 +77,9 @@ export async function assertConversationReadable(
   }
   for (const projectId of scope) {
     const access = await effectiveProjectRole(userId, projectId);
-    if (!access?.role) {
+    if (!projectRoleAtLeast(access?.role ?? null, min)) {
       throw forbidden(
-        `conversation ${conversationId} is about project ${projectId} and you hold no role on it; a room is readable only by someone who holds a role on every project in it`,
+        `conversation ${conversationId} is about project ${projectId} and you hold no ${min} role on it; a room is reached only by someone who holds one on every project in it`,
         'CONVERSATION_OUT_OF_SCOPE',
       );
     }

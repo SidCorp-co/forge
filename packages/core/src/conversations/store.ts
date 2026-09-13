@@ -226,6 +226,21 @@ export async function appendMessage(args: AppendMessageArgs): Promise<StoredConv
   });
 }
 
+/**
+ * Stamp what the adapter's own server said when it took this message.
+ */
+// cm:guard the receipt is written AFTER the send returns and is never predicted before it: a proof stamped at append time says the row was written, which is the one thing the row already proves. What `delivery_proof` is for is the other question — did the room actually receive it — and only the transport's answer can settle that (ISS-1001 criterion 15).
+export async function recordDelivery(
+  messageId: string,
+  proof: unknown,
+  dbi: Executor = defaultDb,
+): Promise<void> {
+  await dbi
+    .update(conversationMessages)
+    .set({ deliveryProof: (proof ?? null) as never })
+    .where(eq(conversationMessages.id, messageId));
+}
+
 /** The last `limit` turns, oldest first. */
 export async function readMessages(
   conversationId: string,
@@ -252,13 +267,19 @@ export async function countMessages(
   return row?.n ?? 0;
 }
 
-/** The conversations one project's handle speaks in, newest first. */
+/**
+ * The conversations one project's handle speaks in, newest first.
+ *
+ * Bounded by `limit`/`offset` where the caller has a page; unbounded where it
+ * must authorize each row before it knows what a page contains.
+ */
+// cm:guard an UNBOUNDED read is deliberate and priced: a room's readability is a per-project role question this join cannot ask, so paginating first hands back a short page and a total that counts rooms the caller may not see. The set is one project's rooms — 35 across the whole fleet on 2026-09-14 — so reading them to authorize them is cheap today. When a single project's rooms reach the thousands, this becomes a keyset walk that authorizes as it goes, and the condition that says so is this sentence (ISS-1001 criterion 10).
 export async function listConversationsInProject(
   projectId: string,
-  opts: { limit: number; offset: number },
+  opts: { limit?: number; offset?: number } = {},
   tx: Executor = defaultDb,
 ): Promise<ConversationRow[]> {
-  return tx
+  const bounded = tx
     .selectDistinct({ ...selection, updatedAt: conversations.updatedAt })
     .from(conversations)
     .innerJoin(
@@ -276,9 +297,9 @@ export async function listConversationsInProject(
         eq(projectMembers.projectId, projectId),
       ),
     )
-    .orderBy(desc(conversations.updatedAt))
-    .limit(opts.limit)
-    .offset(opts.offset);
+    .orderBy(desc(conversations.updatedAt));
+  if (opts.limit === undefined) return bounded;
+  return bounded.limit(opts.limit).offset(opts.offset ?? 0);
 }
 
 export async function countConversationsInProject(

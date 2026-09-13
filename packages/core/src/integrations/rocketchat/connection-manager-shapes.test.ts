@@ -114,8 +114,10 @@ const openConversation = vi.fn(async (venue: { adapter: string; externalId: stri
   shape: 'direct',
   title: null,
 }));
+const recordDelivery = vi.fn(async (..._a: unknown[]) => undefined);
 vi.mock('../../conversations/store.js', () => ({
   openConversation: (...args: unknown[]) => openConversation(...(args as [never])),
+  recordDelivery: (...args: unknown[]) => recordDelivery(...(args as [never])),
 }));
 vi.mock('../../conversations/ports.js', () => ({
   registerConversationTransport: vi.fn(),
@@ -190,6 +192,28 @@ describe('connection-manager conversation identity', () => {
     selectLimit.mockResolvedValue([{ agentConfig: null, repoPath: null }]);
     screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
     resolveRoomShape.mockResolvedValue('group');
+  });
+
+  // cm:guard the receipt is stamped on the row the turn wrote, from what the SEND returned: the row
+  // already proves the answer was composed, and only the server's id proves the room received it.
+  it('stamps the delivered message with the receipt its adapter returned', async () => {
+    const ac = makeAc();
+    ac.client.sendMessage.mockResolvedValue('rc-server-id-9');
+    runExternalChatTurn.mockResolvedValue({ ...answered, assistantMessageId: 'row-7' });
+
+    await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
+
+    expect(recordDelivery).toHaveBeenCalledWith('row-7', { messageId: 'rc-server-id-9' });
+  });
+
+  it('stamps nothing when the turn wrote no message row to stamp', async () => {
+    const ac = makeAc();
+    ac.client.sendMessage.mockResolvedValue('rc-server-id-9');
+    runExternalChatTurn.mockResolvedValue({ ...answered, assistantMessageId: null });
+
+    await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
+
+    expect(recordDelivery).not.toHaveBeenCalled();
   });
 
   const conversationSentOn = (call: number) =>

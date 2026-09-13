@@ -14,7 +14,7 @@ import {
 } from '../../assistant/tools/external-mcp.js';
 import { env } from '../../config/env.js';
 import { registerConversationTransport } from '../../conversations/ports.js';
-import { openConversation } from '../../conversations/store.js';
+import { openConversation, recordDelivery } from '../../conversations/store.js';
 import { db } from '../../db/client.js';
 import { integrationConnections, organizations, projects } from '../../db/schema.js';
 import { logger } from '../../logger.js';
@@ -110,7 +110,9 @@ const correctiveMessage = (problems: string[]): string =>
   `[SYSTEM CHECK — not from the user] Your previous reply cannot be sent as-is: ${problems.join('; ')}. Rewrite it now, keep only verified facts, actually CALL the tools if work is needed, cite issue ids/links only exactly as tools returned them, and reply in the user's language.`;
 
 // cm:guard `send: false` is the explicit "this turn posts nothing" case — the completion bridge delivers that reply asynchronously, so posting here too double-replies
-type TurnOutcome = { send: false } | { send: true; text: string; proof: ReplySendProof };
+type TurnOutcome =
+  | { send: false }
+  | { send: true; text: string; proof: ReplySendProof; messageId?: string | null };
 
 const fixed = (text: string): TurnOutcome => ({ send: true, text, proof: FIXED_REPLY_CONSTANT });
 
@@ -598,13 +600,8 @@ class RocketChatConnectionManager {
             return { send: false };
           }
 
-          // Kernel guards: a reply citing issues that don't exist (or claiming
-          // a creation that never ran), leaking developer detail to a
-          // non-technical stakeholder, or promising work with no follow-up
-          // turn never reaches the channel — one corrective retry, then an
-          // honest fallback. See reply-guard.ts (live incident 2026-07-07:
-          // zero tool calls + fabricated issue link; ISS-672: kernel-hard
-          // product-lint + empty-promise guards).
+          // cm:guard a reply citing an issue that does not exist, leaking developer detail, or
+          // promising work no turn will do never reaches the room (`reply-guard.ts`, ISS-672).
           return await this.screenWithRetry({
             route,
             m,
@@ -645,11 +642,20 @@ class RocketChatConnectionManager {
     }
     // cm:why delivery only, never a second guard pass: every branch above already screened its text or replaced it with a code-authored constant, and the proof rides along on the outcome
     if (outcome.send && ac.client) {
-      await sendFixedReply(
+      const receipt = await sendFixedReply(
         { kind: 'ddp', client: ac.client, rid: m.rid, tmid: m.tmid, authToken: ac.authToken },
         outcome.text,
         outcome.proof,
       );
+      // cm:guard stamped AFTER the send returns, on the row the turn already wrote: the message row proves what was composed and only the server's own receipt proves the room received it, which is the difference a person reading the transcript cannot otherwise see (ISS-1001 criterion 15). A failure to stamp is logged and never thrown — the room HAS the message by then, and turning a delivered answer into an error would be a lie in the other direction.
+      if (outcome.messageId) {
+        await recordDelivery(outcome.messageId, receipt).catch((err) =>
+          logger.warn(
+            { err, rid: m.rid, messageId: outcome.messageId },
+            'rocketchat: delivered, but the receipt could not be recorded',
+          ),
+        );
+      }
     }
   }
 
@@ -710,7 +716,12 @@ class RocketChatConnectionManager {
       );
     }
     // cm:guard the verdict travels WITH the text as its proof — the only shape sendFixedReply accepts for model-generated output, so no later branch can send unscreened text under a stale proof
-    return { send: true, text: trimmedReply, proof: { ok: true, problems: verdict.problems } };
+    return {
+      send: true,
+      text: trimmedReply,
+      proof: { ok: true, problems: verdict.problems },
+      messageId: result.assistantMessageId,
+    };
   }
 
   private async teardown(connectionId: string): Promise<void> {

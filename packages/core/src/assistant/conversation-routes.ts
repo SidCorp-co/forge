@@ -18,10 +18,13 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { addPerson, listParticipants } from '../conversations/participants.js';
-import { assertConversationReadable, derivedScope } from '../conversations/scope.js';
+import {
+  assertConversationReadable,
+  assertConversationWritable,
+  derivedScope,
+} from '../conversations/scope.js';
 import {
   type ConversationRow,
-  countConversationsInProject,
   deleteConversation,
   getConversation,
   listConversationsInProject,
@@ -70,6 +73,14 @@ async function readable(id: string, userId: string): Promise<ConversationRow> {
   return row;
 }
 
+/** Renaming and deleting are writes, and a write takes more than a look. */
+async function writable(id: string, userId: string): Promise<ConversationRow> {
+  const row = await getConversation(id);
+  if (!row) throw notFound('conversation not found');
+  await assertConversationWritable(row.id, userId);
+  return row;
+}
+
 conversationRoutes.get(
   '/',
   zValidator('query', listQuerySchema, (r) => {
@@ -82,12 +93,11 @@ conversationRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     assertProjectRole(access, 'viewer', 'not a project member');
 
-    const rows = await listConversationsInProject(projectId, {
-      limit: pageSize,
-      offset: (page - 1) * pageSize,
-    });
+    const rows = await listConversationsInProject(projectId);
 
-    // cm:guard the page is filtered by the DERIVED scope and not by the project asked for: a room this project's handle shares with another project's handle is about both, and a caller holding a role on only one of them may not read it. The role lookups are memoized per request because the page's rooms share their projects (ISS-1001 criterion 10).
+    // cm:guard the rooms are filtered by the DERIVED scope BEFORE the page is cut and `total` counts
+    // what survived: paginating first returns a short page, hides the rooms behind it, and over-counts.
+    // cm:why the role lookups are memoized per request because the rooms share their projects.
     const roleByProject = new Map<string, boolean>();
     const visible: ConversationRow[] = [];
     for (const row of rows) {
@@ -104,8 +114,15 @@ conversationRoutes.get(
       if (ok) visible.push(row);
     }
 
-    const total = await countConversationsInProject(projectId);
-    return c.json(listResponse(c, visible, total, fromPage(page, pageSize)));
+    const offset = (page - 1) * pageSize;
+    return c.json(
+      listResponse(
+        c,
+        visible.slice(offset, offset + pageSize),
+        visible.length,
+        fromPage(page, pageSize),
+      ),
+    );
   },
 );
 
@@ -164,7 +181,7 @@ conversationRoutes.patch(
     const { id } = c.req.valid('param');
     const { title } = c.req.valid('json');
     const userId = c.get('userId');
-    await readable(id, userId);
+    await writable(id, userId);
     const updated = await renameConversation(id, title);
     if (!updated) throw notFound('conversation not found');
     return c.json(updated);
@@ -179,7 +196,7 @@ conversationRoutes.delete(
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
-    await readable(id, userId);
+    await writable(id, userId);
     await deleteConversation(id);
     return c.body(null, 204);
   },

@@ -23,7 +23,9 @@ vi.mock('./conversation-turn.js', () => ({
     silences.push(reason);
     t.pending.push({ role: 'assistant', content: '', images: [], silenceReason: reason });
   },
-  persistMessages: async () => undefined,
+  persistMessages: async (t: {
+    pending: Array<{ role: string; content: string; silenceReason?: string }>;
+  }) => t.pending.splice(0).map((m, i) => ({ ...m, id: `msg-${i}` })),
   toProviderMessages: (
     t: {
       history: Array<{ role: string; content: string; images?: Array<{ ref: string }> }>;

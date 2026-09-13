@@ -13,6 +13,7 @@ import { projectMembers, users } from '../db/schema.js';
 import {
   type ConversationParticipantKind,
   conversationParticipants,
+  conversations,
 } from '../db/schema-conversations.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import type { Executor } from './db-executor.js';
@@ -183,13 +184,29 @@ export async function addPerson(args: AddPersonArgs): Promise<void> {
 export interface RemoveParticipantArgs {
   conversationId: string;
   participantId: string;
+  /** Join the caller's transaction — the caller is then the one serializing. */
   tx?: Executor;
+  /** Or open one of this module's own, on this pool. */
+  db?: typeof defaultDb;
 }
 
 /** Stamp a participant as gone. */
 // cm:guard the LAST handle may not leave: a room with none derives an empty scope, and `scope.ts` then refuses every reader — so the removal does not fail loudly, it makes the room silently unreachable for everybody including the person who removed it. Atomic creation holds the invariant only until the first removal; this is the other half (ISS-1001 criterion 42).
+// cm:guard the count and the update are ONE transaction behind a `FOR UPDATE` on the conversation, because the check is a read-then-write across two handles: two callers removing a different handle each count two, each pass `live <= 1`, and both commit — leaving exactly the unreadable room this guard exists to prevent, with neither caller told.
 export async function removeParticipant(args: RemoveParticipantArgs): Promise<void> {
-  const tx = args.tx ?? defaultDb;
+  if (args.tx) return removeWithin(args.tx, args);
+  const dbi = args.db ?? defaultDb;
+  return dbi.transaction((tx) => removeWithin(tx as unknown as Executor, args));
+}
+
+async function removeWithin(tx: Executor, args: RemoveParticipantArgs): Promise<void> {
+  await tx
+    .select({ id: conversations.id })
+    .from(conversations)
+    .where(eq(conversations.id, args.conversationId))
+    .for('update')
+    .limit(1);
+
   const [row] = await tx
     .select({ id: conversationParticipants.id, kind: conversationParticipants.kind })
     .from(conversationParticipants)

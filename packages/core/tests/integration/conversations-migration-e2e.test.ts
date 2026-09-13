@@ -225,6 +225,65 @@ describe('0238 forward — what every legacy row becomes', () => {
   });
 });
 
+describe('0238 forward — what it takes away', () => {
+  // cm:guard nothing is deleted or nulled to make the schema apply: the counts and the field values
+  // are read BEFORE the run and compared after, so a migration that tidied a row to fit reds here.
+  it('drops the chat_sessions table and no chat row or field with it', async () => {
+    const db = await freshDb();
+    try {
+      const { projectId, ownerId } = await plantProject(db.sql, 'forge-dev');
+      const planted = [
+        await plantSession(db.sql, {
+          projectId,
+          userId: ownerId,
+          title: 'kept',
+          source: 'rocketchat',
+          messages: [{ role: 'user', content: 'one' }],
+        }),
+        await plantSession(db.sql, { projectId, userKey: 'widget:abc', messages: [] }),
+        await plantSession(db.sql, {
+          projectId,
+          messages: [{ role: 'assistant', content: 'two' }],
+        }),
+      ];
+
+      await runForward(db.sql);
+
+      const gone = await db.sql.unsafe(
+        `SELECT table_name FROM information_schema.tables WHERE table_name = 'chat_sessions'`,
+      );
+      expect(gone).toHaveLength(0);
+
+      // cm:why every planted row is read back field for field off the conversation it became
+      for (const row of planted) {
+        const [c] = await db.sql.unsafe(
+          `SELECT title, adapter, origin FROM conversations WHERE id = $1`,
+          [row.id],
+        );
+        const seen = c as unknown as {
+          title: string | null;
+          adapter: string;
+          origin: Record<string, unknown>;
+        };
+        expect(seen.title).toBe(row.title);
+        expect(seen.adapter).toBe(row.source);
+        expect(seen.origin).toMatchObject({
+          chatSessionId: row.id,
+          projectId: row.projectId,
+          userId: row.userId,
+          userKey: row.userKey,
+          source: row.source,
+        });
+      }
+
+      const kept = await db.sql.unsafe(`SELECT count(*)::int AS n FROM conversations`);
+      expect((kept[0] as unknown as { n: number }).n).toBe(planted.length);
+    } finally {
+      await db.drop();
+    }
+  });
+});
+
 describe('0238 forward — a row it cannot represent stops the deploy', () => {
   it('aborts naming the session whose messages are not an array, and keeps the table', async () => {
     const db = await freshDb();
@@ -247,6 +306,41 @@ describe('0238 forward — a row it cannot represent stops the deploy', () => {
         `SELECT table_name FROM information_schema.tables WHERE table_name = 'conversations'`,
       );
       expect(tables).toHaveLength(0);
+    } finally {
+      await db.drop();
+    }
+  });
+
+  // cm:guard the element is REFUSED, never filtered out: the copy selects the three roles it can hold,
+  // so a fourth vanishes and the assertion, filtering both sides alike, agrees nothing was lost.
+  it('aborts naming the session that holds a message role the new schema cannot represent', async () => {
+    const db = await freshDb();
+    try {
+      const { projectId } = await plantProject(db.sql, 'forge-dev');
+      const bad = await plantSession(db.sql, {
+        projectId,
+        messages: [
+          { role: 'user', content: 'ok' },
+          { role: 'tool', content: 'a tool result nobody modelled' },
+        ],
+      });
+
+      await expect(runForward(db.sql)).rejects.toThrow(
+        new RegExp(`${bad.id}.*tool|tool.*${bad.id}`, 's'),
+      );
+      const still = await db.sql.unsafe(`SELECT id FROM chat_sessions`);
+      expect(still).toHaveLength(1);
+    } finally {
+      await db.drop();
+    }
+  });
+
+  it('aborts naming the session whose stored message carries no role at all', async () => {
+    const db = await freshDb();
+    try {
+      const { projectId } = await plantProject(db.sql, 'forge-dev');
+      const bad = await plantSession(db.sql, { projectId, messages: [{ content: 'roleless' }] });
+      await expect(runForward(db.sql)).rejects.toThrow(new RegExp(bad.id));
     } finally {
       await db.drop();
     }

@@ -72,6 +72,9 @@ const notFound = (message: string) =>
 const badRequest = (message: string, code: string) =>
   new HTTPException(400, { message, cause: { code } });
 
+const conflict = (message: string, code: string) =>
+  new HTTPException(409, { message, cause: { code } });
+
 /**
  * The conversation this turn belongs to, with its window read back.
  */
@@ -81,12 +84,31 @@ export async function openTurn(opts: OpenTurnOptions): Promise<ConversationTurn>
 
   if (opts.conversationId) {
     const [row] = await dbi
-      .select({ id: conversations.id, adapter: conversations.adapter })
+      .select({
+        id: conversations.id,
+        adapter: conversations.adapter,
+        externalId: conversations.externalId,
+      })
       .from(conversations)
       .where(eq(conversations.id, opts.conversationId))
       .limit(1);
     if (!row) throw notFound('conversation not found');
-    await assertConversationReadable(row.id, opts.readerUserId ?? null);
+    const scope = await assertConversationReadable(row.id, opts.readerUserId ?? null);
+    // cm:guard being ALLOWED to read a room is not the same as this turn belonging to it: naming
+    // project B and conversation A passes the read check while the tools are built for B.
+    // cm:why `openConversation` refuses the same mismatch on the venue path; this is the other door.
+    if (!scope.includes(opts.projectId)) {
+      throw conflict(
+        `conversation ${row.id} is about ${scope.join(', ')} and this turn arrives under project ${opts.projectId}; a turn runs in a room its own project is in`,
+        'CONVERSATION_PROJECT_CONFLICT',
+      );
+    }
+    if (row.adapter !== opts.adapter) {
+      throw conflict(
+        `conversation ${row.id} (${row.adapter} ${row.externalId}) is a ${row.adapter} room and this turn arrives as ${opts.adapter}; a venue's adapter is settled when it is first seen`,
+        'CONVERSATION_ADAPTER_CONFLICT',
+      );
+    }
     return {
       conversationId: row.id,
       adapter: row.adapter,
@@ -170,12 +192,13 @@ export function appendSilence(turn: ConversationTurn, reason: string): void {
   });
 }
 
-/** Write everything this turn appended, in order, and clear the queue. */
+/** Write everything this turn appended, in order, clear the queue, and hand back the rows. */
 export async function persistMessages(
   turn: ConversationTurn,
   opts: { db?: typeof defaultDb } = {},
-): Promise<void> {
+): Promise<StoredConversationMessage[]> {
   const dbi = opts.db ?? defaultDb;
+  const written: StoredConversationMessage[] = [];
   while (turn.pending.length > 0) {
     const next = turn.pending.shift() as PendingMessage;
     const stored = await appendMessage({
@@ -190,7 +213,9 @@ export async function persistMessages(
       db: dbi,
     });
     turn.history.push(stored);
+    written.push(stored);
   }
+  return written;
 }
 
 /**
@@ -198,26 +223,35 @@ export async function persistMessages(
  * messages on the end so the model sees what was just said.
  */
 // cm:guard a message carrying a `silenceReason` is NOT sent to the provider: it is the record that a turn said nothing, and replaying it as an empty assistant turn teaches the model that empty answers are a shape it may produce.
+// cm:guard a message with NO text but a resolved image IS sent: a screenshot pasted with no caption is the commonest way a person asks about one, and a length test on the text alone drops the whole message, so the model is asked about a picture it was never shown (ISS-1001).
 export function toProviderMessages(
   turn: ConversationTurn,
   resolvedImages?: ReadonlyMap<string, string>,
 ): ChatMessage[] {
+  const resolve = (images: ConversationImage[]) =>
+    images.map((i) => resolvedImages?.get(i.ref)).filter((u): u is string => !!u);
+  const carried = (m: {
+    silenceReason: string | null;
+    content: string;
+    images: ConversationImage[];
+  }) => m.silenceReason === null && (m.content.length > 0 || resolve(m.images).length > 0);
   const all: Array<{
     role: ConversationMessageRole;
     content: string;
     images: ConversationImage[];
   }> = [
     ...turn.history
-      .filter((m) => m.silenceReason === null && m.content.length > 0)
+      .filter(carried)
       .map((m) => ({ role: m.role, content: m.content, images: m.images })),
     ...turn.pending
-      .filter((m) => m.silenceReason === null && m.content.length > 0)
+      .filter(carried)
       .map((m) => ({ role: m.role, content: m.content, images: m.images })),
   ];
   return all.map(({ role, content, images }) => {
-    const urls = images.map((i) => resolvedImages?.get(i.ref)).filter((u): u is string => !!u);
+    const urls = resolve(images);
     if (urls.length === 0) return { role, content };
-    const parts: ChatContentPart[] = [{ type: 'text', text: content }];
+    const parts: ChatContentPart[] = [];
+    if (content.length > 0) parts.push({ type: 'text', text: content });
     for (const url of urls) parts.push({ type: 'image_url', image_url: { url } });
     return { role, content: parts };
   });
