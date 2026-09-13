@@ -288,7 +288,7 @@ let filesChecked = 0;
 
 const covered = (path) => prefixes.some((p) => path === p || path.startsWith(`${p}/`));
 
-// cm:guard the filter is per ROUTE and never per MOUNT, because a router mounted at an ANCESTOR of a covered prefix serves it just the same: `questionRoutes` is mounted bare at `/api` and declares `/questions`, so a mount-level filter walked none of its routes and reported a green over `/api/questions` the moment that prefix joined the menu (ISS-993). Three more routers are mounted bare at `/api` today, so this is the shape, not the exception.
+// cm:guard the filter is per ROUTE and never per MOUNT, because a router mounted at an ANCESTOR of a covered prefix serves it just the same: three routers are mounted bare at `/api` today and declare paths under it, so a mount-level filter walks none of their routes. Measured on `questionRoutes`, then mounted bare at `/api`: the mount-level filter reported a green over `/api/questions` the moment that prefix joined the menu, with an unfenced handler planted under it (ISS-993). That router is mounted at its own prefix now; the other three are why this stays per route.
 const relevant = mounts.filter(
   (m) => covered(m.mount) || prefixes.some((p) => p.startsWith(`${m.mount}/`) || m.mount === '/'),
 );
