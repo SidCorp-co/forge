@@ -31,7 +31,7 @@ const BEHIND: Record<(typeof PARK_PROTECTIONS)[number], { file: string; proof: R
   },
   'answer-resume-park': {
     file: 'pipeline/answer-resume.ts',
-    proof: /answerReachesAParkedRun/,
+    proof: /aBoxWillReadThisAnswer/,
   },
 };
 

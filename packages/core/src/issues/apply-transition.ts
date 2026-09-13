@@ -22,11 +22,16 @@ import { recordDropUnblock } from './drop-unblock.js';
 import { resolveDeclaredEntryCriteria } from './entry-criteria.js';
 import type { EntryCriterionKey } from './entry-criteria-keys.js';
 import { markMergedIfLeavingBase, markMergedOnClose } from './merged-at.js';
+import { mintParkQuestion } from './park-question.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
 import { resolveAgentCloseTarget } from './release-gate-hold.js';
 import { refuseUnrecordedClose } from './release-record-required.js';
 import { checkTransitionEvidence } from './transition-evidence.js';
-import { postTransitionReasonComment, requiresAuthoredReason } from './transition-reason.js';
+import {
+  parkReasonFault,
+  postTransitionReasonComment,
+  requiresAuthoredReason,
+} from './transition-reason.js';
 
 /**
  * Issue statuses that free a `kind='blocks'` dependent (Layer 2) and fire the
@@ -126,6 +131,13 @@ export interface ApplyStatusTransitionOptions {
    */
   // cm:guard required, not advisory (RFC 0002 INV-8) — every guard deleted with the reopen cap was an attempt to detect a missing rationale AFTER the fact, and each detected it by stranding the issue; rejecting the write is the only version that cannot strand anything
   transitionReason?: string | undefined;
+  /**
+   * What would settle this park, in the agent's own words. When present, the
+   * park mints a free-text question and the reason becomes its prompt.
+   */
+  // cm:guard OPTIONAL on purpose, and the absence is not a default: a park without it keeps exactly today's behaviour — a reason comment and no question row. Making it required would refuse every park the moment this deploys, because the driver that writes them ships from github.com/SidCorp-co/forge-plugin on its own clock (ISS-996).
+  // cm:guard how often it is absent is a QUERY, not a counter: a `needs_info` park with no `agent_questions` row on its issue is one, and building a column for it would be a second copy of a number the rows already hold.
+  needs?: string | undefined;
   /**
    * Which flavour of "a human is needed" this park is. REQUIRED entering
    * `waiting`.
@@ -333,22 +345,12 @@ export async function transitionIssueStatus(
 
   // cm:guard the reason is posted BEFORE the status write, and a failed post must reject the whole transition — a park that commits without its reason is the unexplained park every guard deleted with the reopen cap tried to detect afterwards
   // cm:guard `skip: true` is exempt ON PURPOSE — it marks a transition the system made rather than one an actor chose (the park rewrites), and each of those paths posts its own comment; requiring a second one would double-comment, and refusing the write would freeze the cascade mid-flight
-  if (requiresAuthoredReason(fromStatus, requestedStatus) && options.skip !== true) {
-    const reason = options.transitionReason?.trim();
-    if (!reason) {
-      throw new TransitionError(
-        'TRANSITION_REASON_REQUIRED',
-        `a transition to \`${requestedStatus}\` must carry a reason saying what is needed or what is wrong`,
-        { from: fromStatus, to: requestedStatus },
-      );
-    }
-    if (requestedStatus === 'waiting' && !options.waitingKind) {
-      throw new TransitionError(
-        'WAITING_KIND_REQUIRED',
-        'a `waiting` park must say which kind it is: `needs_decision` or `needs_resource`',
-        { from: fromStatus, to: requestedStatus },
-      );
-    }
+  const parkFault = parkReasonFault(fromStatus, requestedStatus, options);
+  if (parkFault) {
+    throw new TransitionError(parkFault.code, parkFault.detail, {
+      from: fromStatus,
+      to: requestedStatus,
+    });
   }
 
   const reopening = isReopenEntry(fromStatus, requestedStatus);
@@ -514,6 +516,7 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
           },
           tx,
         );
+        await mintParkQuestion({ issue, toStatus, actor, options }, tx);
       }
       const violation = await checkTransitionEvidence({
         issue: { id: issue.id, projectId: issue.projectId },

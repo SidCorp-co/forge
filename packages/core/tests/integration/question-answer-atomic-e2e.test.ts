@@ -12,6 +12,7 @@ import { randomUUID } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { chosenOptionIdOf } from '../../src/db/schema-questions.js';
 import {
   createTestProject,
   createTestProjectMember,
@@ -113,8 +114,7 @@ async function aQuestion(over: Record<string, unknown> = {}) {
     issueId,
     prompt: 'Which way?',
     blockerKind: 'human',
-    options: [WRITER, ADMIN],
-    recommendedOptionId: WRITER.id,
+    answer: { shape: 'choice', options: [WRITER, ADMIN], recommendedOptionId: WRITER.id },
     ...over,
   });
 }
@@ -150,7 +150,7 @@ const answer = (args: {
 }) =>
   write.answerQuestion({
     questionId: args.questionId,
-    optionId: args.optionId ?? WRITER.id,
+    answer: { kind: 'option', optionId: args.optionId ?? WRITER.id },
     round: args.round ?? 1,
     by: args.by ?? memberId,
     role: args.role === undefined ? 'member' : args.role,
@@ -163,7 +163,7 @@ describe('one winner, and the row is untouched by every loser', () => {
 
     const row = await rowOf(q.id);
     expect(row?.status).toBe('answered');
-    expect(row?.steps.at(-1)?.chosenOptionId).toBe(WRITER.id);
+    expect(chosenOptionIdOf(row?.steps.at(-1))).toBe(WRITER.id);
     expect(row?.steps.at(-1)?.answeredBy).toBe(memberId);
   });
 
@@ -215,8 +215,7 @@ describe('one winner, and the row is untouched by every loser', () => {
     await write.askFollowUp({
       questionId: q.id,
       prompt: 'And the tag?',
-      options: [WRITER],
-      recommendedOptionId: WRITER.id,
+      answer: { shape: 'choice', options: [WRITER], recommendedOptionId: WRITER.id },
     });
     const before = snapshot(await rowOf(q.id));
 
@@ -313,9 +312,9 @@ describe('one winner, and the row is untouched by every loser', () => {
 
     const winner = attempts[settled.findIndex((s) => s.status === 'fulfilled')];
     const row = await rowOf(q.id);
-    const answered = row?.steps.filter((s) => s.chosenOptionId) ?? [];
+    const answered = row?.steps.filter((s) => chosenOptionIdOf(s)) ?? [];
     expect(answered).toHaveLength(1);
-    expect(answered[0]?.chosenOptionId).toBe(winner?.optionId);
+    expect(chosenOptionIdOf(answered[0])).toBe(winner?.optionId);
     expect(answered[0]?.answeredBy).toBe(winner?.by);
     expect(row?.status).toBe('answered');
   });
@@ -332,7 +331,12 @@ describe('who may read a question, and who may only look', () => {
   it('refuses a stranger the answer as well as the read', async () => {
     const q = await aQuestion();
     await expect(
-      read.answerAs({ questionId: q.id, optionId: WRITER.id, round: 1, userId: strangerId }),
+      read.answerAs({
+        questionId: q.id,
+        answer: { kind: 'option', optionId: WRITER.id },
+        round: 1,
+        userId: strangerId,
+      }),
     ).rejects.toThrow(/no question/);
     expect((await rowOf(q.id))?.status).toBe('open');
   });
@@ -359,6 +363,7 @@ describe('who may read a question, and who may only look', () => {
                 {
                   round: 1,
                   prompt: 'the other project decision',
+                  answerShape: 'choice',
                   options: [WRITER],
                   recommendedOptionId: WRITER.id,
                   askedAt: new Date().toISOString(),
@@ -383,8 +388,7 @@ describe('who may read a question, and who may only look', () => {
     await write.askFollowUp({
       questionId: q.id,
       prompt: 'And the tag?',
-      options: [WRITER],
-      recommendedOptionId: WRITER.id,
+      answer: { shape: 'choice', options: [WRITER], recommendedOptionId: WRITER.id },
     });
 
     const seen = await read.readQuestionsForIssue(issueId, memberId);
@@ -441,8 +445,7 @@ describe('the routes a browser reaches this by', () => {
     await write.askFollowUp({
       questionId: q.id,
       prompt: 'And the tag?',
-      options: [WRITER],
-      recommendedOptionId: WRITER.id,
+      answer: { shape: 'choice', options: [WRITER], recommendedOptionId: WRITER.id },
     });
 
     const res = await app.request(`/api/questions/${q.id}/answer`, {
@@ -480,6 +483,6 @@ describe('the routes a browser reaches this by', () => {
     });
 
     expect(res.status).toBe(200);
-    expect((await rowOf(q.id))?.steps.at(-1)?.chosenOptionId).toBe(ADMIN.id);
+    expect(chosenOptionIdOf((await rowOf(q.id))?.steps.at(-1))).toBe(ADMIN.id);
   });
 });

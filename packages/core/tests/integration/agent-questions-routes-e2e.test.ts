@@ -8,6 +8,7 @@
 
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { chosenOptionIdOf } from '../../src/db/schema-questions.js';
 import {
   createTestDevice,
   createTestProject,
@@ -86,8 +87,11 @@ async function aQuestion(over: Record<string, unknown> = {}) {
     projectId: ctx.projectId,
     prompt: 'Which way?',
     blockerKind: 'human',
-    options: [writerOption, adminOption],
-    recommendedOptionId: writerOption.id,
+    answer: {
+      shape: 'choice',
+      options: [writerOption, adminOption],
+      recommendedOptionId: writerOption.id,
+    },
     ...over,
   });
 }
@@ -123,7 +127,12 @@ describe('who may see a question, and which of its options', () => {
   it('refuses to answer with an option the caller may not choose', async () => {
     const q = await aQuestion();
     await expect(
-      read.answerAs({ questionId: q.id, optionId: adminOption.id, round: 1, userId: ctx.memberId }),
+      read.answerAs({
+        questionId: q.id,
+        answer: { kind: 'option', optionId: adminOption.id },
+        round: 1,
+        userId: ctx.memberId,
+      }),
       'a locked option that answers anyway is a lock drawn on the screen and nowhere else (ISS-964 criterion 15)',
     ).rejects.toThrow(/authority|not allowed/i);
   });
@@ -134,14 +143,14 @@ describe('an answer belongs to the question, not to the waiter', () => {
     const q = await aQuestion();
     await read.answerAs({
       questionId: q.id,
-      optionId: writerOption.id,
+      answer: { kind: 'option', optionId: writerOption.id },
       round: 1,
       userId: ctx.memberId,
     });
 
     const after = await write.getQuestion(q.id);
     expect(
-      after?.steps.at(-1)?.chosenOptionId,
+      chosenOptionIdOf(after?.steps.at(-1)),
       'an answer consumed by the waiter that read it leaves the next continuation with nothing, and the human is asked the same thing again (ISS-964 criterion 18)',
     ).toBe(writerOption.id);
     expect(await read.answerOf(q.id)).toMatchObject({ optionId: writerOption.id });
@@ -157,7 +166,7 @@ describe('an answer belongs to the question, not to the waiter', () => {
 
     await read.answerAs({
       questionId: q.id,
-      optionId: writerOption.id,
+      answer: { kind: 'option', optionId: writerOption.id },
       round: 1,
       userId: ctx.memberId,
     });
@@ -174,7 +183,7 @@ describe('the connection is a doorbell', () => {
     const q = await aQuestion();
     await read.answerAs({
       questionId: q.id,
-      optionId: writerOption.id,
+      answer: { kind: 'option', optionId: writerOption.id },
       round: 1,
       userId: ctx.memberId,
     });
@@ -251,7 +260,7 @@ describe('a master reading its own question', () => {
 
     await write.answerQuestion({
       questionId: q.id,
-      optionId: writerOption.id,
+      answer: { kind: 'option', optionId: writerOption.id },
       round: 1,
       by: ctx.memberId,
       role: 'member',

@@ -9,7 +9,7 @@ import { eq } from 'drizzle-orm';
 import { namespaceFromServerUrl } from '../../assistant/identity/directory.js';
 import { resolveSpeaker, unlinkedMessage } from '../../assistant/identity/speaker-link.js';
 import { db } from '../../db/client.js';
-import { agentQuestions } from '../../db/schema-questions.js';
+import { agentQuestions, isChoiceStep } from '../../db/schema-questions.js';
 import { logger } from '../../logger.js';
 import { answerAs } from '../../questions/read.js';
 import { QuestionRefused } from '../../questions/write.js';
@@ -68,38 +68,56 @@ export async function handleQuestionThreadReply(args: {
     return;
   }
 
-  const choice = parseChoice(m.text, rounds);
-  if (!choice.ok) {
-    if (choice.reason === 'ambiguous') {
-      await say(transport, AMBIGUOUS_ROUND_REPLY);
+  // cm:guard a free-text round is answered by the WHOLE message and never goes through the token parser: prose is what that round asked for, and reading it for an option number re-posts a list the person was never shown (ISS-996).
+  const choiceRound = isChoiceStep(current);
+  let chosenOptionId: string | null = null;
+  let token = '';
+  if (!choiceRound) {
+    if (!m.text.trim()) {
+      await say(
+        transport,
+        ANSWER_FAILED('that reply carries no text, and this round asks for some.'),
+      );
       return;
     }
-    // cm:guard the options are re-posted rather than inferred from, and never defaulted to the recommended one — a reply nobody can read is a person who has not chosen yet, and choosing for them is the failure a locked option exists to prevent (ISS-978 criterion 18).
-    const verdict = screenOperatorMessage(agentAuthoredSegments(current));
-    await (verdict.ok
-      ? sendFixedReply(transport, renderOptionsAgain(current, rounds), {
-          ok: true,
-          problems: verdict.problems,
-        }).catch((err) =>
-          logger.error({ err, rid: transport.rid }, 'rocketchat.question-inbound: re-post failed'),
-        )
-      : say(
-          transport,
-          ANSWER_FAILED('that reply named no option, and the options cannot be shown here.'),
-        ));
-    return;
-  }
+  } else {
+    const choice = parseChoice(m.text, rounds);
+    if (!choice.ok) {
+      if (choice.reason === 'ambiguous') {
+        await say(transport, AMBIGUOUS_ROUND_REPLY);
+        return;
+      }
+      // cm:guard the options are re-posted rather than inferred from, and never defaulted to the recommended one — a reply nobody can read is a person who has not chosen yet, and choosing for them is the failure a locked option exists to prevent (ISS-978 criterion 18).
+      const verdict = screenOperatorMessage(agentAuthoredSegments(current));
+      await (verdict.ok
+        ? sendFixedReply(transport, renderOptionsAgain(current, rounds), {
+            ok: true,
+            problems: verdict.problems,
+          }).catch((err) =>
+            logger.error(
+              { err, rid: transport.rid },
+              'rocketchat.question-inbound: re-post failed',
+            ),
+          )
+        : say(
+            transport,
+            ANSWER_FAILED('that reply named no option, and the options cannot be shown here.'),
+          ));
+      return;
+    }
 
-  // cm:guard the round is taken from the REPLY and compared here, so a token naming a superseded round is refused as stale before any option is looked up — resolving it against the latest step would hand somebody an action they never saw offered (ISS-978 criterion 16).
-  if (choice.round !== current.round) {
-    await say(transport, STALE_ROUND_REPLY(choice.round, current.round));
-    return;
-  }
-  const option = current.options[choice.index];
-  const token = optionToken(current.round, choice.index, rounds);
-  if (!option) {
-    await say(transport, UNKNOWN_OPTION_REPLY(token));
-    return;
+    // cm:guard the round is taken from the REPLY and compared here, so a token naming a superseded round is refused as stale before any option is looked up — resolving it against the latest step would hand somebody an action they never saw offered (ISS-978 criterion 16).
+    if (choice.round !== current.round) {
+      await say(transport, STALE_ROUND_REPLY(choice.round, current.round));
+      return;
+    }
+    const option = current.options[choice.index];
+    token = optionToken(current.round, choice.index, rounds);
+    if (!option) {
+      await say(transport, UNKNOWN_OPTION_REPLY(token));
+      return;
+    }
+    chosenOptionId = option.id;
   }
 
   const namespace = namespaceFromServerUrl(args.serverUrl);
@@ -133,7 +151,9 @@ export async function handleQuestionThreadReply(args: {
   try {
     await answerAs({
       questionId: args.questionId,
-      optionId: option.id,
+      answer: chosenOptionId
+        ? { kind: 'option', optionId: chosenOptionId }
+        : { kind: 'text', text: m.text },
       round: current.round,
       userId: resolution.userId,
     });

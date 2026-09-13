@@ -1,14 +1,15 @@
 // web-v2 feature module: project-dashboard — PURE derivations (no React, no
 // fetching) for the per-project operator dashboard (`/projects/[slug]`,
-// mockup `01 Dashboard.html`). Everything here re-composes data already fetched
+// see `design/draft-screen/01 Dashboard.html`). Everything re-composes data already fetched
 // by the existing `useProjectHealth` / `useAttention` / `useProjectRuns` /
 // `useStepDurations` / `useDevices` + `useQueueStats` / `useSchedules` hooks —
 // NO new data sources (ISS-379). Kept pure so the aggregation is unit-tested in
 // `derive.test.ts` without rendering anything.
+
 import { type StageKey, stageColor } from "@/design/stages";
 import { TONE_META, type SemanticTone } from "@/design/status";
 import type { AttentionView } from "@/features/attention/types";
-import { jobTypeToStage, statusToStage } from "@/features/pipeline/derive";
+import { jobTypeToStage } from "@/features/pipeline/derive";
 import type { PipelineRunListItem, StepDurationRow } from "@/features/pipeline/types";
 import type { ProjectHealthRow } from "@/features/projects/types";
 import {
@@ -79,9 +80,6 @@ export interface StatusDonutData {
   /** Non-empty buckets only, in legend order. */
   segments: DonutSegment[];
   total: number;
-  /** Distinct pipeline stages (of 7) that hold ≥1 issue — the "across N stages"
-   *  subtext on the Open-issues KPI. */
-  activeStageCount: number;
 }
 
 export function statusDonut(dist: Record<string, number> | undefined): StatusDonutData {
@@ -96,11 +94,7 @@ export function statusDonut(dist: Record<string, number> | undefined): StatusDon
     return { key: b.key, label: b.label, color: TONE_META[b.tone].dot, count, pct: total > 0 ? (count / total) * 100 : 0 };
   }).filter((s) => s.count > 0);
 
-  const stages = new Set<StageKey>();
-  for (const [status, count] of Object.entries(d)) {
-    if (count > 0 && !NON_OPEN_STATUSES.has(status)) stages.add(statusToStage(status));
-  }
-  return { segments, total, activeStageCount: stages.size };
+  return { segments, total };
 }
 
 /** Build a CSS `conic-gradient(...)` from ordered segments. Returns a flat fill
@@ -130,9 +124,10 @@ const SPEND_GROUPS: ReadonlyArray<{ key: SpendGroupKey; label: string; color: st
   { key: "other", label: "other", color: "var(--ink-400)" },
 ];
 
-/** Fold a pipeline stage into one of the four mockup spend groups. `fix` already
- *  folds onto `code` via `jobTypeToStage`; triage/clarify/review/release → other. */
-function stageToSpendGroup(stage: StageKey): SpendGroupKey {
+/** Fold a pipeline stage into one of the four spend groups. `fix` already folds onto `code` via
+ *  `jobTypeToStage`; triage/clarify/review/release, and any job type outside the seven staged
+ *  names (`drive`, `pm`, `custom`) for which `jobTypeToStage` answers `null`, go to `other`. */
+function stageToSpendGroup(stage: StageKey | null): SpendGroupKey {
   if (stage === "test") return "test";
   if (stage === "code") return "code";
   if (stage === "plan") return "plan";

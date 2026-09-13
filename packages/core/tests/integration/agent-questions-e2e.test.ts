@@ -8,6 +8,11 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
+  isChoiceStep,
+  type QuestionOption,
+  type QuestionStep,
+} from '../../src/db/schema-questions.js';
+import {
   createTestProject,
   createTestUser,
   setupTestDatabase,
@@ -45,7 +50,15 @@ function opt(list: { id: string }[], i: number) {
   return o.id;
 }
 
-function anOption(over: Partial<Parameters<typeof mods.askQuestion>[0]['options'][number]> = {}) {
+function aChoice(options: QuestionOption[]) {
+  return { shape: 'choice' as const, options, recommendedOptionId: opt(options, 0) };
+}
+
+function optionsOf(step: QuestionStep | undefined): QuestionOption[] {
+  return step && isChoiceStep(step) ? step.options : [];
+}
+
+function anOption(over: Partial<QuestionOption> = {}) {
   return {
     id: crypto.randomUUID(),
     label: 'Take it',
@@ -56,34 +69,42 @@ function anOption(over: Partial<Parameters<typeof mods.askQuestion>[0]['options'
   };
 }
 
-function aQuestion(over: Partial<Parameters<typeof mods.askQuestion>[0]> = {}) {
-  const options = over.options ?? [
-    anOption(),
-    anOption({ id: crypto.randomUUID(), label: 'Stop' }),
-  ];
+type Over = Partial<Omit<Parameters<typeof mods.askQuestion>[0], 'answer'>> & {
+  options?: QuestionOption[];
+  recommendedOptionId?: string;
+};
+
+function aQuestion(over: Over = {}) {
+  const { options: overOptions, recommendedOptionId, ...rest } = over;
+  const options = overOptions ?? [anOption(), anOption({ id: crypto.randomUUID(), label: 'Stop' })];
+  // cm:guard `in` and not `??`: a caller passing `recommendedOptionId: undefined` is asserting the refusal, and a nullish default would silently hand it a valid one and assert nothing.
+  const recommended = 'recommendedOptionId' in over ? recommendedOptionId : opt(options, 0);
   return {
     id: crypto.randomUUID(),
     projectId: ctx.projectId,
     prompt: 'Push to a shared branch?',
     blockerKind: 'human' as const,
-    options,
-    recommendedOptionId: opt(options, 0),
+    answer: {
+      shape: 'choice' as const,
+      options,
+      recommendedOptionId: recommended as string,
+    },
     cost: { claimsHeld: 1, workspacesPinned: 1, dependents: 0 },
-    ...over,
+    ...rest,
   };
 }
 
 describe('a question has one shape', () => {
   it('refuses a question with no recommended option', async () => {
     await expect(
-      mods.askQuestion({ ...aQuestion(), recommendedOptionId: undefined as unknown as string }),
+      mods.askQuestion(aQuestion({ recommendedOptionId: undefined as unknown as string })),
       'without a default the human owes a decision rather than a click, which is the whole reason the field is mandatory (ISS-964 criterion 14)',
     ).rejects.toThrow(/recommended/i);
   });
 
   it('refuses a recommendation that is not one of this question own options', async () => {
     await expect(
-      mods.askQuestion({ ...aQuestion(), recommendedOptionId: crypto.randomUUID() }),
+      mods.askQuestion(aQuestion({ recommendedOptionId: crypto.randomUUID() })),
       'a recommendation pointing at nothing renders as no recommendation at all, which is criterion 14 failing silently instead of loudly',
     ).rejects.toThrow(/recommended/i);
   });
@@ -92,20 +113,17 @@ describe('a question has one shape', () => {
   it('refuses an option bound to one call that does not name the call', async () => {
     const options = [anOption({ bindsTo: 'this_call' })];
     await expect(
-      mods.askQuestion({ ...aQuestion({ options }), recommendedOptionId: opt(options, 0) }),
+      mods.askQuestion(aQuestion({ options, recommendedOptionId: opt(options, 0) })),
       'a permission with no fingerprint allows whatever the agent does next rather than the call that was blocked (ISS-964 criterion 16)',
     ).rejects.toThrow(/fingerprint/i);
   });
 
   it('refuses a permission answer presented for a DIFFERENT call, by name', async () => {
     const options = [anOption({ bindsTo: 'this_call', fingerprint: 'git push origin main' })];
-    const q = await mods.askQuestion({
-      ...aQuestion({ options }),
-      recommendedOptionId: opt(options, 0),
-    });
+    const q = await mods.askQuestion(aQuestion({ options, recommendedOptionId: opt(options, 0) }));
     await mods.answerQuestion({
       questionId: q.id,
-      optionId: opt(options, 0),
+      answer: { kind: 'option', optionId: opt(options, 0) },
       round: 1,
       by: ctx.userId,
       role: 'admin',
@@ -126,7 +144,7 @@ describe('a chain is one thread', () => {
     const q = await mods.askQuestion(aQuestion());
     await mods.answerQuestion({
       questionId: q.id,
-      optionId: q.recommendedOptionId,
+      answer: { kind: 'option', optionId: q.recommendedOptionId },
       round: 1,
       by: ctx.userId,
       role: 'admin',
@@ -134,7 +152,7 @@ describe('a chain is one thread', () => {
     const again = await mods.askFollowUp({
       questionId: q.id,
       prompt: 'And the tag?',
-      options: [anOption()],
+      answer: aChoice([anOption()]),
     });
 
     expect(
@@ -150,7 +168,7 @@ describe('a chain is one thread', () => {
     for (let round = 0; round < 2; round++) {
       await mods.answerQuestion({
         questionId: q.id,
-        optionId: opt(q.steps.at(-1)?.options ?? [], 0),
+        answer: { kind: 'option', optionId: opt(optionsOf(q.steps.at(-1)), 0) },
         round: q.steps.length,
         by: ctx.userId,
         role: 'admin',
@@ -158,19 +176,19 @@ describe('a chain is one thread', () => {
       q = await mods.askFollowUp({
         questionId: q.id,
         prompt: `round ${round}`,
-        options: [anOption()],
+        answer: aChoice([anOption()]),
       });
     }
     await mods.answerQuestion({
       questionId: q.id,
-      optionId: opt(q.steps.at(-1)?.options ?? [], 0),
+      answer: { kind: 'option', optionId: opt(optionsOf(q.steps.at(-1)), 0) },
       round: q.steps.length,
       by: ctx.userId,
       role: 'admin',
     });
 
     await expect(
-      mods.askFollowUp({ questionId: q.id, prompt: 'once more', options: [anOption()] }),
+      mods.askFollowUp({ questionId: q.id, prompt: 'once more', answer: aChoice([anOption()]) }),
       'a fourth question is the same conversation wearing a new row; the record is the thread (ISS-964 criterion 21)',
     ).rejects.toThrow(/max_rounds/);
 

@@ -11,12 +11,12 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { runnerLimitReasons } from '../db/schema.js';
-import type { QuestionBlockerKind, QuestionOption } from '../db/schema-questions.js';
+import type { AnswerShape, QuestionBlockerKind, QuestionOption } from '../db/schema-questions.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { PARK_PROTECTIONS } from '../questions/protections.js';
 import { answerOf, registerWaiter, waiterFor } from '../questions/read.js';
-import { askQuestion, QuestionRefused } from '../questions/write.js';
+import { type AskAnswer, askQuestion, QuestionRefused } from '../questions/write.js';
 import { assertDeviceBoundToProject } from './device-project.js';
 
 type AskBody = {
@@ -27,8 +27,10 @@ type AskBody = {
   runId?: string;
   prompt?: string;
   blockerKind?: QuestionBlockerKind;
+  answerShape?: AnswerShape;
   options?: QuestionOption[];
   recommendedOptionId?: string;
+  needed?: string;
   assumed?: Record<string, unknown>;
   cost?: { claimsHeld?: number; workspacesPinned?: number; dependents?: number };
 };
@@ -339,6 +341,16 @@ devicePoolRoutes.get('/me/protections', requireDevice(), async (c) =>
   c.json({ protections: PARK_PROTECTIONS }),
 );
 
+// cm:guard an ABSENT `answerShape` means `choice` and means it for exactly one caller: a box built before ISS-996, which had no other shape to ask for. A body that names `free_text` and sends no `needed` is refused by name rather than falling back here — the fallback covers a missing FIELD, never a wrong value.
+function askAnswerOf(body: AskBody): AskAnswer {
+  if (body.answerShape === 'free_text') return { shape: 'free_text', needed: body.needed ?? '' };
+  return {
+    shape: 'choice',
+    options: body.options ?? [],
+    recommendedOptionId: body.recommendedOptionId ?? '',
+  };
+}
+
 // cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/questions.rs — `ask` posts this shape and the box has already committed its own half; `id` is the join key and the runner mints it.
 // cm:guard the box MINTS the question id and sends it; core never allocates one. The box has already written its own half of the park in a local transaction before this call, and a server-allocated id would make the two halves unjoinable across the window where the box has parked and core has not heard (ISS-964 criterion 10).
 devicePoolRoutes.post('/me/questions', requireDevice(), async (c) => {
@@ -354,8 +366,7 @@ devicePoolRoutes.post('/me/questions', requireDevice(), async (c) => {
       projectId: body.projectId,
       prompt: body.prompt,
       blockerKind: body.blockerKind ?? 'human',
-      options: body.options ?? [],
-      recommendedOptionId: body.recommendedOptionId ?? '',
+      answer: askAnswerOf(body),
     });
     if (body.runId) {
       await registerWaiter({ questionId: q.id, deviceId: c.get('device').id, runId: body.runId });

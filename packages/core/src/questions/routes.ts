@@ -81,6 +81,8 @@ const REFUSAL_STATUS: Record<QuestionRefusalCode, ContentfulStatusCode> = {
   QUESTION_OPTIONS_REQUIRED: 400,
   QUESTION_RECOMMENDED_UNKNOWN: 400,
   QUESTION_OPTION_IDS_DUPLICATE: 400,
+  QUESTION_SHAPE_INVALID: 400,
+  QUESTION_ANSWER_WRONG_SHAPE: 400,
 };
 
 // cm:guard answering and voiding stay a SESSION's, and the test is the credential rather than `agency`: `middleware/auth.ts` carries the measurement that an agent holding a person's token reads `human`, so an agency test would refuse some agents and wave the rest through. Putting `/api/questions` on the PAT menu (`auth/pat-permissions.ts`) made these two reachable by every token holding no explicit grant, since an absent grant array reads as the whole menu — this is what keeps that widening to asking, listing and reading back.
@@ -162,18 +164,24 @@ questionRoutes.get('/:id', async (c) => {
 
 // cm:guard the refusal is a coded status carrying the option's authority, never a silent no-op or a 200 with nothing written. A locked option that answers anyway is a lock drawn on the screen and nowhere else (ISS-964 criterion 15).
 // cm:guard `round` is REQUIRED and is never defaulted to the question's current round: the answer binds to the round the person was shown, and defaulting it applies a choice made about round 1 to a round 3 they never read (ISS-980 criterion 39).
+// cm:guard exactly ONE of `optionId` and `text` is read, and a body carrying both is refused here rather than resolved by precedence: a caller that sent both does not know which round it is answering, and picking one for them answers a question they did not read (ISS-996).
 questionRoutes.post('/:id/answer', async (c) => {
   if (c.get('principal') === 'pat') throw sessionOnly('answered');
   const body = await c.req
-    .json<{ optionId?: string; round?: number }>()
-    .catch(() => ({}) as { optionId?: string; round?: number });
-  if (!body.optionId) throw badRequest('optionId is required');
+    .json<{ optionId?: string; text?: string; round?: number }>()
+    .catch(() => ({}) as { optionId?: string; text?: string; round?: number });
+  const hasOption = typeof body.optionId === 'string' && body.optionId.length > 0;
+  const hasText = typeof body.text === 'string' && body.text.trim().length > 0;
+  if (hasOption && hasText) throw badRequest('send optionId or text, never both');
+  if (!hasOption && !hasText) throw badRequest('optionId or text is required');
   if (!Number.isInteger(body.round)) throw badRequest('round is required, as an integer');
   try {
     return c.json(
       await answerAs({
         questionId: questionId(c),
-        optionId: body.optionId,
+        answer: hasOption
+          ? { kind: 'option', optionId: body.optionId as string }
+          : { kind: 'text', text: body.text as string },
         round: body.round as number,
         userId: c.get('userId'),
       }),

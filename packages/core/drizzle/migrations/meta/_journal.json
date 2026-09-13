@@ -1644,7 +1644,14 @@
       "idx": 236,
       "version": "7",
       "when": 1793836800000,
-      "tag": "0236_issue_prefix_tombstone",
+      "tag": "0236_question_answer_shape",
+      "breakpoints": true
+    },
+    {
+      "idx": 237,
+      "version": "7",
+      "when": 1793923200000,
+      "tag": "0237_issue_prefix_tombstone",
       "breakpoints": true
     }
   ]

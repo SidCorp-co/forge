@@ -30,6 +30,8 @@ const transitionBodySchema = z
     reason: z.string().trim().min(1).max(2000).optional(),
     // cm:guard optional here on purpose (RFC 0002 INV-5) — a UI that cannot ask the user which kind must send nothing rather than a default, because a wrong kind renders a wrong banner and only a human can correct it
     waitingKind: z.enum(waitingKinds).optional(),
+    // cm:guard what would SETTLE the park, distinct from `reason`, which is why the work stopped. Sending it mints a free-text question; the mint is refused for a human actor, so this route accepting it changes nothing for a person moving an issue by hand (ISS-996).
+    needs: z.string().trim().min(1).max(2000).optional(),
   })
   .strict();
 
@@ -97,15 +99,19 @@ export async function triggerTerminalDispatch(
   if (terminal.length === 0) return;
   const parentProjectIds = new Set(terminal.map((t) => t.projectId));
 
-  const childTargets = new Map<string, string>();
+  const blockerIssueIdByChildProject = new Map<string, string>();
   try {
     const byBlocker = new Map<
       string,
       Array<{ issueId: string; issSeq: number; displayId: string }>
     >();
     const noteChild = (depProjectId: string | null, blockerId: string) => {
-      if (depProjectId && !parentProjectIds.has(depProjectId) && !childTargets.has(depProjectId)) {
-        childTargets.set(depProjectId, blockerId);
+      if (
+        depProjectId &&
+        !parentProjectIds.has(depProjectId) &&
+        !blockerIssueIdByChildProject.has(depProjectId)
+      ) {
+        blockerIssueIdByChildProject.set(depProjectId, blockerId);
       }
     };
 
@@ -218,7 +224,7 @@ transitionRoutes.post(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const { toStatus, reason, waitingKind } = c.req.valid('json');
+    const { toStatus, reason, waitingKind, needs } = c.req.valid('json');
     const userId = c.get('userId');
 
     const [issue] = await db
@@ -250,7 +256,7 @@ transitionRoutes.post(
         },
         toStatus,
         restActor(c),
-        { reason, transitionReason: reason, waitingKind },
+        { reason, transitionReason: reason, waitingKind, needs },
       );
     } catch (err) {
       if (err instanceof TransitionError) throw transitionErrorToHttp(err);

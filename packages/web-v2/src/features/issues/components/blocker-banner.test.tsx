@@ -84,3 +84,45 @@ describe("BlockerBanner — a paused run on an issue that looks healthy", () => 
     expect(screen.getByText(/stage_stalled/)).toBeInTheDocument();
   });
 });
+
+// cm:guard the needs_info banner points a blocked reader at the DECISION PANEL and never at the comment thread: since ISS-996 a park is settled by answering its question row, and an answer typed into the comments resumes nothing.
+describe("BlockerBanner — an issue parked for information", () => {
+  it("points at the decision below rather than the comment thread", () => {
+    const blocker = deriveBlockerState({ status: "needs_info" }, undefined, undefined);
+    if (!blocker) throw new Error("needs_info must produce a blocker state");
+    render(
+      <BlockerBanner
+        blocker={blocker}
+        slug="forge-dev"
+        pending={false}
+        onApprove={vi.fn()}
+        onResume={vi.fn()}
+        onResumeRun={vi.fn()}
+        onProvideInfo={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/what the run is waiting on is below/i)).toBeInTheDocument();
+    expect(screen.queryByText(/comment/i)).toBeNull();
+  });
+
+  it("hands the Provide info CTA to its caller", () => {
+    const onProvideInfo = vi.fn();
+    const blocker = deriveBlockerState({ status: "needs_info" }, undefined, undefined);
+    if (!blocker) throw new Error("needs_info must produce a blocker state");
+    render(
+      <BlockerBanner
+        blocker={blocker}
+        slug="forge-dev"
+        pending={false}
+        onApprove={vi.fn()}
+        onResume={vi.fn()}
+        onResumeRun={vi.fn()}
+        onProvideInfo={onProvideInfo}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /provide info/i }));
+    expect(onProvideInfo).toHaveBeenCalled();
+  });
+});

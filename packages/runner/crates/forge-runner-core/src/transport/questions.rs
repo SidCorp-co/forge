@@ -11,12 +11,19 @@ use serde::Deserialize;
 use crate::error::{Error, Result};
 use crate::transport::CoreClient;
 
-/// What a human chose, once they have.
+/// What a human answered, once they have: an option they chose, or words they wrote.
+// cm:edge lockstep -> packages/core/src/questions/read.ts — `answerOf` builds this payload and `answerShape` is what says which of the two fields carries the answer. Reading `optionId` without the tag is how a text answer becomes an empty choice (ISS-996).
+// cm:guard `option_id` is OPTIONAL and must stay so: core sends it as `null` on a free-text answer, and a required `String` here fails the whole decode — the box then reports a fault on a question a person answered correctly.
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct Answer {
     pub question_id: String,
-    pub option_id: String,
+    #[serde(default)]
+    pub answer_shape: Option<String>,
+    #[serde(default)]
+    pub option_id: Option<String>,
+    #[serde(default)]
+    pub text: Option<String>,
     pub answered_at: Option<String>,
     pub answered_by: Option<String>,
     pub round: Option<i64>,
@@ -43,8 +50,11 @@ pub struct Ask<'a> {
     pub agent_session_id: Option<&'a str>,
     pub prompt: &'a str,
     pub blocker_kind: &'a str,
+    /// `None` means a choice round, which is what every box asked for before ISS-996.
+    pub answer_shape: Option<&'a str>,
     pub options: serde_json::Value,
     pub recommended_option_id: &'a str,
+    pub needed: Option<&'a str>,
     pub assumed: Option<serde_json::Value>,
     pub cost: Option<serde_json::Value>,
 }
@@ -64,6 +74,12 @@ pub async fn ask(client: &CoreClient, req: Ask<'_>) -> Result<String> {
         "options": req.options,
         "recommendedOptionId": req.recommended_option_id,
     });
+    if let Some(v) = req.answer_shape {
+        body["answerShape"] = serde_json::json!(v);
+    }
+    if let Some(v) = req.needed {
+        body["needed"] = serde_json::json!(v);
+    }
     if let Some(v) = req.issue_id {
         body["issueId"] = serde_json::json!(v);
     }
@@ -147,7 +163,7 @@ mod tests {
         let body = r#"{"answer":{"questionId":"q-1","optionId":"opt-b","answeredAt":"2026-09-08T10:00:00.000Z","answeredBy":"u-1","round":3}}"#;
         let parsed: AnswerReply = serde_json::from_str(body).expect("core's own shape must decode");
         let a = parsed.answer.expect("an answer was sent");
-        assert_eq!(a.option_id, "opt-b");
+        assert_eq!(a.option_id.as_deref(), Some("opt-b"));
         assert_eq!(a.round, Some(3));
         assert_eq!(a.answered_by.as_deref(), Some("u-1"));
     }
@@ -165,8 +181,19 @@ mod tests {
         let parsed: AnswerReply =
             serde_json::from_str(r#"{"answer":{"questionId":"q","optionId":"o"}}"#).unwrap();
         let a = parsed.answer.unwrap();
-        assert_eq!(a.option_id, "o");
+        assert_eq!(a.option_id.as_deref(), Some("o"));
         assert_eq!(a.answered_at, None);
+    }
+
+    // cm:guard a text answer arrives with `optionId: null`, and this is the decode that proves the box reads it rather than failing: a required `option_id` fails the whole payload, so the park never ends and the fault the box reports names a decode rather than the answer it was handed (ISS-996).
+    #[test]
+    fn a_text_answer_decodes_with_no_option() {
+        let body = r#"{"answer":{"questionId":"q-1","answerShape":"free_text","optionId":null,"text":"the second reading","answeredAt":"2026-09-13T10:00:00.000Z","answeredBy":"u-1","round":1}}"#;
+        let parsed: AnswerReply = serde_json::from_str(body).expect("core's own shape must decode");
+        let a = parsed.answer.expect("an answer was sent");
+        assert_eq!(a.answer_shape.as_deref(), Some("free_text"));
+        assert_eq!(a.option_id, None);
+        assert_eq!(a.text.as_deref(), Some("the second reading"));
     }
 
     #[test]
@@ -240,8 +267,10 @@ mod tests {
                 agent_session_id: None,
                 prompt: "",
                 blocker_kind: "human",
+                answer_shape: None,
                 options: serde_json::json!([]),
                 recommended_option_id: "",
+                needed: None,
                 assumed: None,
                 cost: None,
             },

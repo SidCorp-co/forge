@@ -17,7 +17,7 @@ import {
 import { useProjects } from "@/features/projects/hooks";
 import {
   deriveSessionDisplayStatus,
-  deriveStage,
+  sessionStep,
   statusToChip,
 } from "@/features/sessions/types";
 import { buildShareLink, useRecents } from "@/features/shell";
@@ -263,7 +263,7 @@ export function SessionScreen({
             <div className="mt-1 flex items-center gap-2">
               <StatusChip
                 status={statusToChip(display)}
-                stage={deriveStage(session.metadata)}
+                stage={sessionStep(session.metadata) ?? undefined}
                 size="sm"
                 domain="session"
               />
@@ -347,7 +347,6 @@ export function SessionScreen({
         />
       ) : (
         <>
-      {/* Body */}
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
           <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto">

@@ -10,6 +10,7 @@
 import { randomUUID } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { chosenOptionIdOf, type QuestionStep } from '../../src/db/schema-questions.js';
 import {
   createTestProject,
   createTestProjectMember,
@@ -135,16 +136,15 @@ async function ask() {
     issueId,
     prompt: 'The migration drops a column. Which way?',
     blockerKind: 'human',
-    options: [SAFE, RISKY],
-    recommendedOptionId: SAFE.id,
+    answer: { shape: 'choice', options: [SAFE, RISKY], recommendedOptionId: SAFE.id },
   });
 }
 
 const reload = async (id: string) =>
   (await db.select().from(qSchema.agentQuestions).where(eq(qSchema.agentQuestions.id, id)))[0];
 
-const answerOn = (row: { steps: Array<{ chosenOptionId?: string }> } | undefined) =>
-  row?.steps.map((s) => s.chosenOptionId ?? null) ?? [];
+const answerOn = (row: { steps: QuestionStep[] } | undefined) =>
+  row?.steps.map((s) => chosenOptionIdOf(s)) ?? [];
 
 describe('a reply that names an option', () => {
   it('records it against the Forge user the speaker maps to', async () => {
@@ -158,7 +158,7 @@ describe('a reply that names an option', () => {
     });
     const row = await reload(q.id);
     expect(row?.status).toBe('answered');
-    expect(row?.steps[0]?.chosenOptionId).toBe(SAFE.id);
+    expect(chosenOptionIdOf(row?.steps[0])).toBe(SAFE.id);
     expect(row?.steps[0]?.answeredBy).toBe(memberId);
     expect(said.join(' ')).toContain('Recorded');
     expect(said.join(' ')).toContain('@member.one');
@@ -207,7 +207,7 @@ describe('a reply that names an option', () => {
     });
     const row = await reload(q.id);
     expect(row?.status).toBe('answered');
-    expect(row?.steps[0]?.chosenOptionId).toBe(RISKY.id);
+    expect(chosenOptionIdOf(row?.steps[0])).toBe(RISKY.id);
   });
 });
 
@@ -239,8 +239,7 @@ describe('the four refusals, each by name and none of them guessing', () => {
     await write.askFollowUp({
       questionId: q.id,
       prompt: 'Neither worked. Which now?',
-      options: [SAFE, RISKY],
-      recommendedOptionId: SAFE.id,
+      answer: { shape: 'choice', options: [SAFE, RISKY], recommendedOptionId: SAFE.id },
     });
     await inbound.handleQuestionThreadReply({
       questionId: q.id,
@@ -261,8 +260,7 @@ describe('the four refusals, each by name and none of them guessing', () => {
     await write.askFollowUp({
       questionId: q.id,
       prompt: 'Neither worked. Which now?',
-      options: [SAFE, RISKY],
-      recommendedOptionId: SAFE.id,
+      answer: { shape: 'choice', options: [SAFE, RISKY], recommendedOptionId: SAFE.id },
     });
     await inbound.handleQuestionThreadReply({
       questionId: q.id,

@@ -64,10 +64,6 @@ export function BlockerBanner({
       <div className="space-y-1">
         <p className="font-medium">{blocker.reason}</p>
         <p className="opacity-90">{blocker.whoMustAct}</p>
-        {blocker.question && (
-          // cm:why the body is deliberately NOT rendered here — it is a full agent comment that already renders in the thread below; duplicating it into the banner buried the one thing a banner is for, which is naming the next action. `question` survives as a presence signal only.
-          <p className="opacity-90">The agent left a question in the comments below.</p>
-        )}
         {blocker.detail && <p className="opacity-80">{blocker.detail}</p>}
         {blocker.blockingRefs && blocker.blockingRefs.length > 0 && (
           <div className="mt-1 flex flex-wrap items-center gap-1.5">

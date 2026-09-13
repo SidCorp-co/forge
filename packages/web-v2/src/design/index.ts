@@ -2,7 +2,7 @@
    touch data; features wire data into them. Import from "@/design". */
 
 export { Icon, type IconName, type IconProps } from "./icons/icon";
-export { STAGES, STAGE_INDEX, stageColor, type StageKey } from "./stages";
+export { STAGES, stageColor, type StageKey } from "./stages";
 export {
   STATUS_META, HEALTH_META, AVATAR_HUE,
   type StatusKey, type HealthKey, type AvatarHue, type ColorMeta,
@@ -62,11 +62,6 @@ export {
   HelpButton, type HelpButtonProps, type HelpContent, type HelpShortcut,
 } from "./primitives/help-button";
 
-export {
-  PipelineTracker,
-  type PipelineTrackerProps,
-  type PipelineTrackerCell,
-} from "./patterns/pipeline-tracker";
 export { KanbanCard, type KanbanCardProps } from "./patterns/kanban-card";
 export { KanbanBoard, type KanbanBoardProps } from "./patterns/kanban-board";
 export { KanbanColumn, type KanbanColumnProps } from "./patterns/kanban-column";

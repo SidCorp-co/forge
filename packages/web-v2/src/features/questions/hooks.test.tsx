@@ -35,6 +35,7 @@ function aQuestion(round: number): AgentQuestion {
     steps: [
       {
         round,
+        answerShape: "choice",
         prompt: `round ${round}`,
         options: [],
         recommendedOptionId: "",
@@ -47,8 +48,11 @@ function aQuestion(round: number): AgentQuestion {
     parkDeadlineAt: null,
     createdAt: "2026-09-11T09:00:00.000Z",
     updatedAt: "2026-09-11T09:00:00.000Z",
+    answerShape: "choice",
     options: [],
     recommendedOptionId: "",
+    needed: "",
+    locked: false,
   };
 }
 

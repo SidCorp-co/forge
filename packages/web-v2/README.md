@@ -4,7 +4,7 @@ The Forge cloud UI — canonical at root `/` since ISS-397 (2026-06-07; legacy
 `packages/web` retired).
 
 - **Brand:** light-first "calm, bright workshop" — warm paper neutrals, flame-orange
-  action accent, cobalt structure, the 7-stage pipeline hue motif. Hanken Grotesk +
+  action accent, cobalt structure, one hue per staged job type. Hanken Grotesk +
   JetBrains Mono.
 - **Stack:** Next.js 16 (App Router) · React 19 · Tailwind v4 (CSS `@theme`, no config
   file) · custom primitives (no shadcn) · lucide-react · TanStack Query. Consumes the
@@ -39,11 +39,11 @@ src/
 │  └─ kit/page.tsx          # ← component gallery (preview everything)
 ├─ design/                  # presentational, data-agnostic
 │  ├─ icons/icon.tsx        # semantic name → lucide-react
-│  ├─ stages.ts · status.ts # stage + status/health/avatar meta
+│  ├─ stages.ts · status.ts # job-type hues + status/health/avatar meta
 │  ├─ primitives/           # Button, StatusChip, MonoTag, Avatar, ProjectMark,
 │  │                        #   HealthDot, Stat, Card, Kicker, Spinner, EmptyState,
 │  │                        #   Input, Field, Toggle, SegmentedControl
-│  ├─ patterns/             # PipelineTracker, KanbanCard, NavRail, TopBar,
+│  ├─ patterns/             # KanbanCard, KanbanColumn, NavRail, TopBar,
 │  │                        #   CommandPalette, NotificationsMenu
 │  └─ index.ts              # barrel — import from "@/design"
 ├─ features/                # ← every screen lives here, one module per domain

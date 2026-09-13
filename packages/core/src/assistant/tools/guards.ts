@@ -49,6 +49,8 @@ export const CHAT_TOLERATED_DATA_KEYS: readonly string[] = [
   'issueId',
   'labels',
   'mergedAt',
+  // cm:why TOLERATED (ISS-996): on its own it writes nothing — it takes effect only on a park an AGENT actor makes, and what it adds there is a question row on the issue, not a change to what dispatches. It rides the same claim `reason` already carries from chat, and a chat write that could not park before still cannot.
+  'needs',
   'note',
   'plan',
   'priority',

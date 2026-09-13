@@ -2,11 +2,12 @@
 
 // RunDetail SlideOver (ISS-295) — an issue's pipeline run opens here rather
 // than navigating away. Reordered for ISS-436 so it reads top-down as a
-// status panel: header (title + issue meta) → full PipelineTracker → run
+// status panel: header (title + issue meta) → run
 // controls → Timeline / Tasks / Cost tabs, all driven by
 // `GET /api/pipeline-runs/:id` (`useRun`, WS-live via key
 // `['pipeline-run', id]`). Pause/Resume/Cancel hit real endpoints; Rerun/Fork
 // have NO backend (info toast, no phantom call).
+
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -18,7 +19,6 @@ import {
   type MenuItem,
   Menu,
   MonoTag,
-  PipelineTracker,
   ProgressBar,
   Spinner,
   Stat,
@@ -31,17 +31,9 @@ import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { useRecents, buildShareLink } from "@/features/shell";
 import { IssueQuickActions } from "@/features/issues/components/issue-quick-actions";
-import { priorityLabel } from "@/features/issues/derive";
+import { priorityLabel, statusToChip } from "@/features/issues/derive";
 import type { IssuePriority, IssueStatus } from "@/features/issues/types";
-import {
-  formatDurationMs,
-  formatUsd,
-  issueStatusToStatusKey,
-  jobTypeToStage,
-  runStatusToStatusKey,
-  runStatusToTracker,
-  statusToStage,
-} from "../derive";
+import { formatDurationMs, formatUsd, runStatusToStatusKey } from "../derive";
 import { useCancelRun, useIssueTasks, usePauseRun, useResumeRun, useRun } from "../hooks";
 import { ActivityTab } from "./activity-feed";
 import type {
@@ -73,7 +65,7 @@ const TABS = [
   { value: "cost", label: "Cost" },
 ];
 
-// Priority badge tone — mirrors the issues table's PriorityCell.
+// cm:edge naming -> packages/web-v2/src/features/issues/components/issue-row-actions.tsx — its PriorityCell holds this same priority→tone table, so a priority recoloured on one side leaves the drawer and the row disagreeing about one issue
 const PRIORITY_TONE: Record<string, "red" | "amber" | "neutral"> = {
   critical: "red",
   high: "amber",
@@ -115,14 +107,14 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
       () => toast({ title: "Couldn't copy link", tone: "error" }),
     );
   }
+  // cm:guard the RUN's own currentStep, never a stage derived from the issue's status — that fallback named a pipeline stage on a drawer opened where no run existed (ISS-999)
+  const chipStep = run?.currentStep ?? undefined;
   const label = issue?.displayId ?? (runId ? `run ${runId.slice(0, 8)}` : "run");
   const title = issue?.title ?? "Pipeline run";
   const branch = issue?.metadata?.branchConfig?.branch ?? null;
-  const stage = run?.currentStep ? jobTypeToStage(run.currentStep) : statusToStage(issue?.status ?? "open");
-  const trackerStatus = run ? runStatusToTracker(run.status) : "queued";
   const chipStatus = run
     ? runStatusToStatusKey(run.status)
-    : issueStatusToStatusKey(issue?.status ?? "open");
+    : statusToChip((issue?.status ?? "open") as IssueStatus);
   const isActive = run?.status === "running" || run?.status === "paused";
   // Pause is a "finish the in-flight step, then halt" gate (it does NOT abort
   // the running agent — only Cancel does). So a paused run with a step still
@@ -187,7 +179,7 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
       title={
         <span className="flex items-center gap-2.5">
           <MonoTag>{label}</MonoTag>
-          <StatusChip status={chipStatus} stage={stage} size="sm" domain="session" />
+          <StatusChip status={chipStatus} stage={chipStep} size="sm" domain="session" />
         </span>
       }
     >
@@ -233,12 +225,6 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
               )}
               {run && <Stat icon="dollar">{formatUsd(run.cost.estimatedCost)} this run</Stat>}
             </div>
-          </div>
-
-          {/* Full tracker — where the pipeline stands, ahead of the controls
-              that act on it (ISS-436 panel reorder). */}
-          <div className="rounded-lg border border-line-subtle bg-sunken p-4">
-            <PipelineTracker stage={stage} status={trackerStatus} variant="full" />
           </div>
 
           {/* Controls — Pause (finish-then-halt) and Stop now (abort) are
