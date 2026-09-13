@@ -395,7 +395,7 @@ paid for themselves.
 > It also fixed a case nobody had named: discarding a **draft** to `closed` stamped `merged_at` on
 > an issue whose work never existed. `draft → dropped` is now legal and is the right discard.
 
-### Phase 5 — measured, then decided — **instrument built, evidence pending**
+### Phase 5 — measured, then decided — **measured and closed: do not ship**
 
 - The measurement exists: `pipeline/driver-comparison.ts` and
   `GET /api/pipeline/driver-comparison` report both metrics per project **and per driver**, where
