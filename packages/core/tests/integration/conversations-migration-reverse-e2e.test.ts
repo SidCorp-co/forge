@@ -34,7 +34,7 @@ const ROLLBACK = fileURLToPath(
   new URL('../../drizzle/rollback/0241_conversations_down.sql', import.meta.url),
 );
 
-describe('0238 reverse — the forward drop is a relocation', () => {
+describe('0241 reverse — the forward drop is a relocation', () => {
   const rollback = readFileSync(ROLLBACK, 'utf8');
 
   it('rebuilds a consumed row exactly, from `origin` and not from a membership', async () => {
