@@ -1,7 +1,11 @@
 import { z } from 'zod';
 import { issueStatuses } from '../db/schema.js';
 import { ENTRY_CRITERION_KEYS } from '../issues/entry-criteria-keys.js';
-import { AUTONOMOUS_ENTRY_STATUS, BACKLOG_ADMISSIBLE_STATUSES } from './autonomous-mode.js';
+import {
+  AUTONOMOUS_ENTRY_STATUS,
+  AUTONOMOUS_SKILL_NAME,
+  BACKLOG_ADMISSIBLE_STATUSES,
+} from './autonomous-mode.js';
 import {
   INTEGRATION_SERVER_NAMES,
   isKnownMcpServerName,
@@ -136,9 +140,9 @@ export type BudgetConfig = z.infer<typeof budgetConfigSchema>;
 
 // cm:why every field is optional so a PATCH may send one stage key without resending the rest, and there is no `.passthrough()`: `mergePipelineConfig` round-trips legacy TOP-LEVEL keys by spread, while a stage-level key this object does not name is dropped on purpose
 // cm:guard `mode` is NOT here — it lives on `entryStageConfigSchema` alone, because `isEntryGateClosed` is its only consumer and reads `states.open`. On any other stage it parsed, persisted and displayed while gating nothing, which is the affordance ISS-994 removed. Adding it back here re-creates a knob an operator sets to hold work and that holds none.
+// cm:guard `skillName` is NOT here either, at ANY stage, and that is a stronger statement than `mode`'s: `mode` has one reader and this key had none. `StageOverrides` never carried it, `autonomousStepFor` fixes the driver skill at `AUTONOMOUS_SKILL_NAME`, and the only other `skillName` in the tree is the `skill_registrations` column. It parsed, validated and persisted for every project while selecting nothing (ISS-1000). Re-adding it does not widen a knob, it re-creates a phantom.
 export const stageConfigSchema = z.object({
   enabled: z.boolean().optional(),
-  skillName: z.string().min(1).max(128).optional(),
   model: z.string().min(1).max(64).optional(),
   allowedTools: z.array(z.string().min(1).max(128)).max(100).nullable().optional(),
   // cm:guard ISS-531 — forwarded as Claude Code's `--disallowed-tools`, which is a real DENYLIST: it removes the tool from the available SET even under `--permission-mode bypassPermissions` (verified on claude v2.1.185), so this is the only knob that hard-denies rather than merely un-approving. It is independent of `allowedTools` and the CLI applies allow THEN deny, so a name in both is denied — putting a tool on the allow list does not rescue it from here.
@@ -340,31 +344,45 @@ export type PipelineConfig = z.infer<typeof pipelineConfigSchema>;
  * Patch payload for `PATCH /pipeline-config` and MCP `forge_config` action
  * `update`.
  *
- * It is the canonical schema plus one refusal that runs on the RAW body,
+ * It is the canonical schema plus the refusals that run on the RAW body,
  * before the parse strips anything: a `states[X].mode` at any status other
- * than the entry status. The two schemas differ in exactly that, and each
- * caller wants the one it has — a WRITE is told what does not reach, a READ of
- * a stored document must never be refused.
+ * than the entry status, and a `states[X].skillName` at any status at all. The
+ * two schemas differ in exactly that, and each caller wants the one it has — a
+ * WRITE is told what does not reach, a READ of a stored document must never be
+ * refused.
  */
-// cm:guard the pair must stay asymmetric, and in this direction only. Make the canonical schema refuse a non-entry `mode` and every project storing one (sidpeak stores `needs_info.mode` and `awaiting_release.mode`) reads back as `cfg = null`, `isAutonomous` false, and dispatches nothing in silence — the ISS-897 shape measured on 2026-09-10. Drop the refusal from this side and an operator setting `in_progress.mode: 'manual'` gets a 200 and no gate, which is the affordance ISS-994 was filed for.
-function refuseNonEntryStageMode(raw: unknown, ctx: z.RefinementCtx): void {
-  const states = (raw as { states?: unknown } | null | undefined)?.states;
+// cm:guard the pair must stay asymmetric, and in this direction only. Make the canonical schema refuse a retired key and every project storing one (sidpeak stores `needs_info.mode` and `awaiting_release.mode`) reads back as `cfg = null`, `isAutonomous` false, and dispatches nothing in silence — the ISS-897 shape measured on 2026-09-10. Drop the refusal from this side and an operator setting `in_progress.mode: 'manual'` gets a 200 and no gate, which is the affordance ISS-994 was filed for, and `skillName` the same for ISS-1000.
+// cm:edge contract -> packages/core/src/projects/routes.ts — `PATCH /projects/:id` calls this over `agentConfig.pipelineConfig.states`, because that route takes `agentConfig` as an untyped record and would otherwise be a door past every refusal here
+export function refuseRetiredStageKeys(
+  states: unknown,
+  ctx: z.RefinementCtx,
+  at: (string | number)[] = ['states'],
+): void {
   if (!states || typeof states !== 'object') return;
   for (const [stage, stageCfg] of Object.entries(states as Record<string, unknown>)) {
     if (!stageCfg || typeof stageCfg !== 'object') continue;
-    if (!('mode' in stageCfg)) continue;
-    if (stage === AUTONOMOUS_ENTRY_STATUS) continue;
-    ctx.addIssue({
-      code: 'custom',
-      path: ['states', stage, 'mode'],
-      message: `states.${stage}.mode does not gate anything — \`mode\` is read only at the entry status \`${AUTONOMOUS_ENTRY_STATUS}\`, where it decides whether a human releases work. To hold work at ${stage}, there is no such gate; to hold it before it starts, set states.${AUTONOMOUS_ENTRY_STATUS}.mode = "manual". Remove states.${stage}.mode and resend.`,
-    });
+    if ('mode' in stageCfg && stage !== AUTONOMOUS_ENTRY_STATUS) {
+      ctx.addIssue({
+        code: 'custom',
+        path: [...at, stage, 'mode'],
+        message: `states.${stage}.mode does not gate anything — \`mode\` is read only at the entry status \`${AUTONOMOUS_ENTRY_STATUS}\`, where it decides whether a human releases work. To hold work at ${stage}, there is no such gate; to hold it before it starts, set states.${AUTONOMOUS_ENTRY_STATUS}.mode = "manual". Remove states.${stage}.mode and resend.`,
+      });
+    }
+    if ('skillName' in stageCfg) {
+      ctx.addIssue({
+        code: 'custom',
+        path: [...at, stage, 'skillName'],
+        message: `states.${stage}.skillName selects nothing, at this or any stage — no dispatcher reads it. Every autonomous dispatch runs the one driver skill \`${AUTONOMOUS_SKILL_NAME}\`, which reaches a runner through this project's \`plugins\` designation rather than through a per-stage name. Remove states.${stage}.skillName and resend.`,
+      });
+    }
   }
 }
 
 export const pipelineConfigPatchSchema = z
   .unknown()
-  .superRefine(refuseNonEntryStageMode)
+  .superRefine((raw, ctx) =>
+    refuseRetiredStageKeys((raw as { states?: unknown } | null | undefined)?.states, ctx),
+  )
   .pipe(pipelineConfigSchema);
 
 export type PipelineConfigPatchInput = z.infer<typeof pipelineConfigPatchSchema>;

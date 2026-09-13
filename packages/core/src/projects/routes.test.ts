@@ -16,7 +16,7 @@ const innerJoin = vi.fn(() => ({ on: selectOn, where: selectWhere }));
 const selectFrom = vi.fn(() => ({
   where: selectWhere,
   innerJoin,
-  // chained without limit/where (e.g. project_members for /:id detail)
+  // cm:why the `innerJoin` arm ends here with no `limit`/`where`, because the queries that take it (project_members for the /:id detail) chain neither
 }));
 
 // GET / visibility query:
@@ -740,116 +740,80 @@ describe('PATCH /api/projects/:id', () => {
     expect(res.status).toBe(400);
   });
 
-  // ISS-188 — token budget schema persistence (W2.3.1).
-  it('200 stateContext: writes the patch merged under agentConfig (preserves siblings)', async () => {
-    const token = await signUserToken('uuid-owner');
-    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
-    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]).mockResolvedValueOnce([
-      {
-        agentConfig: {
-          pipelineConfig: { enabled: true },
-          stateContext: { plan: { blocks: { tip: 'keep' } } },
-        },
-      },
-    ]);
-    updateReturning.mockResolvedValueOnce([
-      patchedRow({
-        agentConfig: {
-          pipelineConfig: { enabled: true },
-          stateContext: {
-            plan: { blocks: { tip: 'keep' } },
-            code: { budget: { perRunUsd: 1, perMonthUsd: 50, action: 'pause' } },
-          },
-        },
-      }),
-    ]);
+  // cm:guard ISS-1000 — each case below is a DOOR and not a repetition: the scoped field, the same key inside the wholesale `agentConfig` record this route still accepts, and the two stage keys that record could otherwise carry past `pipelineConfigPatchSchema`. Drop any one refusal and that door answers 200 and writes a phantom back.
+  // cm:guard each case asserts the MESSAGE as well as the status, and that is the whole value of it: with the refusal removed, a body naming only `stateContext` is stripped to `{}` and refused 400 by the schema's own `no fields to update` — so a case testing the status alone stays green against the defect it exists to catch.
+  const RETIRED_BODIES: [string, Record<string, unknown>, string][] = [
+    [
+      'the scoped stateContext field',
+      { stateContext: { code: { modelOverride: 'opus' } } },
+      'agentConfig.stateContext decides nothing',
+    ],
+    [
+      'a null scoped stateContext',
+      { stateContext: null },
+      'agentConfig.stateContext decides nothing',
+    ],
+    [
+      'stateContext inside a wholesale agentConfig',
+      { agentConfig: { stateContext: { code: {} } } },
+      'agentConfig.stateContext decides nothing',
+    ],
+    [
+      'a stage skillName inside a wholesale agentConfig',
+      { agentConfig: { pipelineConfig: { states: { open: { skillName: 'forge-review' } } } } },
+      'skillName selects nothing',
+    ],
+    [
+      'a non-entry stage mode inside a wholesale agentConfig',
+      { agentConfig: { pipelineConfig: { states: { in_progress: { mode: 'manual' } } } } },
+      'mode does not gate anything',
+    ],
+  ];
 
-    const res = await req('/11111111-1111-4111-8111-111111111111', {
-      method: 'PATCH',
-      body: JSON.stringify({
-        stateContext: {
-          code: { budget: { perRunUsd: 1, perMonthUsd: 50, action: 'pause' } },
-        },
-      }),
-      token,
-    });
-    expect(res.status).toBe(200);
-    expect(updateSet).toHaveBeenCalledWith({
-      agentConfig: {
-        pipelineConfig: { enabled: true },
-        stateContext: {
-          plan: { blocks: { tip: 'keep' } },
-          code: { budget: { perRunUsd: 1, perMonthUsd: 50, action: 'pause' } },
-        },
-      },
-    });
-  });
+  for (const [label, body, names] of RETIRED_BODIES) {
+    it(`400 BAD_REQUEST naming the retired key for ${label}, and writes nothing`, async () => {
+      const token = await signUserToken('uuid-owner');
+      selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
 
-  // cm:guard `null` is `mergeStateContext`'s removal sentinel, and until ISS-814 the schema refused it — so the merge documented a deletion no REST or MCP caller could reach, and web-v2's editor got a 400 for sending exactly this. Drop the `.nullable()` in state-context.ts and this goes red at the status line.
-  it('200 stateContext: a null entry REMOVES that jobType and leaves the others', async () => {
-    const token = await signUserToken('uuid-owner');
-    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
-    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]).mockResolvedValueOnce([
-      {
-        agentConfig: {
-          personaStyle: 'keep',
-          stateContext: {
-            plan: { blocks: { tip: 'keep' } },
-            code: { modelOverride: 'drop-me' },
-          },
-        },
-      },
-    ]);
-    updateReturning.mockResolvedValueOnce([
-      patchedRow({
-        agentConfig: {},
-      }),
-    ]);
-
-    const res = await req('/11111111-1111-4111-8111-111111111111', {
-      method: 'PATCH',
-      body: JSON.stringify({ stateContext: { code: null } }),
-      token,
+      const res = await req('/11111111-1111-4111-8111-111111111111', {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+        token,
+      });
+      expect(res.status).toBe(400);
+      expect(await res.text()).toContain(names);
+      expect(updateSet).not.toHaveBeenCalled();
     });
-    expect(res.status).toBe(200);
-    expect(updateSet).toHaveBeenCalledWith({
-      agentConfig: {
-        personaStyle: 'keep',
-        stateContext: { plan: { blocks: { tip: 'keep' } } },
-      },
-    });
-  });
+  }
 
-  it('400 BAD_REQUEST when stateContext budget is negative', async () => {
+  it('names the per-stage path that does decide when it refuses stateContext', async () => {
     const token = await signUserToken('uuid-owner');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
 
     const res = await req('/11111111-1111-4111-8111-111111111111', {
       method: 'PATCH',
-      body: JSON.stringify({
-        stateContext: {
-          code: { budget: { perRunUsd: -1, perMonthUsd: 50, action: 'pause' } },
-        },
-      }),
+      body: JSON.stringify({ stateContext: { code: { modelOverride: 'opus' } } }),
       token,
     });
-    expect(res.status).toBe(400);
+    const text = await res.text();
+    expect(text).toContain('pipelineConfig.states[*].model');
+    expect(text).toContain('pipelineConfig.states[*].budget');
   });
 
-  it('400 BAD_REQUEST when stateContext uses an unknown state name', async () => {
+  // cm:guard the positive control, and it is what stops the refusal above from growing into a validation of the whole blob: `agentConfig` is the escape hatch four other settings surfaces write through, and only the retired keys are refused in it.
+  it('200: a wholesale agentConfig carrying some other key still goes through', async () => {
     const token = await signUserToken('uuid-owner');
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    updateReturning.mockResolvedValueOnce([patchedRow({ agentConfig: { plugins: [] } })]);
 
     const res = await req('/11111111-1111-4111-8111-111111111111', {
       method: 'PATCH',
-      body: JSON.stringify({
-        stateContext: {
-          unknown_state: { budget: { perRunUsd: 1, perMonthUsd: 50, action: 'pause' } },
-        },
-      }),
+      body: JSON.stringify({ agentConfig: { plugins: [] } }),
       token,
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(200);
+    expect(updateSet).toHaveBeenCalledWith({ agentConfig: { plugins: [] } });
   });
 
   // ISS-727 — RC bot answer-mode knob (agentConfig.rocketChatAnswerMode).

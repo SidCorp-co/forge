@@ -56,19 +56,15 @@ function namesOf(names: string[]): string {
 }
 
 /** The stages an editor offers: every ladder status, so a stage with no
- *  override yet can be given one, plus any extra status already stored. */
+ *  override yet can be given one. */
+// cm:guard `PIPELINE_STATUS_ROWS` and nothing else — the same guard `summarizeStageConfig` carries. The extra-status row this used to append was unreachable (core's `statesConfigSchema` is a `strictObject`, so such a document fails to parse at all) and, had one arrived, it was an editable row whose save 400s (ISS-1000).
 function editableRows(config: PipelineConfig): StagePermissionRow[] {
   const states = (config.states ?? {}) as Record<string, PipelineStateConfig | undefined>;
-  const rows = PIPELINE_STATUS_ROWS.map(({ status, label }) => ({
+  return PIPELINE_STATUS_ROWS.map(({ status, label }) => ({
     status,
     label,
     config: states[status] ?? {},
   }));
-  const seen = new Set(rows.map((r) => r.status));
-  for (const [status, sc] of Object.entries(states)) {
-    if (!seen.has(status)) rows.push({ status, label: pipelineStatusLabel(status), config: sc ?? {} });
-  }
-  return rows;
 }
 
 // cm:guard this is the editor's React key, and it must change whenever the STORED stage does: `useState` initialisers do not re-run, so an identity key leaves the form showing pre-save values after a successful write.

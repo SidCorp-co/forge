@@ -76,10 +76,6 @@ export interface ProjectUpdateInput {
 	/** ISS-727 — RC bot answer-engine knob; scoped server-side write into
 	 *  `agentConfig.rocketChatAnswerMode`. null clears it (reverts to `fast`). */
 	rocketChatAnswerMode?: "fast" | "agent" | null;
-	/** ISS-814 — per-jobType agent context; scoped server-side write into
-	 *  `agentConfig.stateContext`. Merged per key: a `null` entry removes that
-	 *  jobType, an omitted one is untouched, `null` for the map wipes it. */
-	stateContext?: Record<string, StateContextEntry | null> | null;
 }
 
 /** One `previewDeploy.testingUrls` row — mirrors `testingUrlSchema` in core. */
@@ -181,7 +177,6 @@ export interface PipelineStateConfig {
 	 * alone — see `withEntryGate` in `components/pipeline-tab.tsx`.
 	 */
 	mode?: "auto" | "manual";
-	skillName?: string;
 	model?: string;
 	allowedTools?: string[] | null;
 	disallowedTools?: string[] | null;
@@ -231,24 +226,14 @@ export interface ReleaseReadiness {
 	)[];
 }
 
-/** One `agentConfig.stateContext[<jobType>]` entry — mirrors
- *  `stateContextEntrySchema` in core `projects/state-context.ts`. */
-export interface StateContextEntry {
-	modelOverride?: string | null;
-	budget?: { perRunUsd?: number; perMonthUsd?: number; action?: "warn" | "pause" };
-	blocks?: Record<string, unknown>;
-	[key: string]: unknown;
-}
-
 /**
- * The `agentConfig` jsonb blob on a project — read-only surface for plugins +
- * stateContext (ISS-813). `Project.agentConfig` is untyped jsonb (`unknown`),
- * same reason `previewDeploy` needs `PreviewDeployConfig` — cast through this,
- * as `rocketchat-section.tsx:89` already does for `agentConfig.rocketChatAnswerMode`.
+ * The `agentConfig` jsonb blob on a project — read-only surface for plugins
+ * (ISS-813). `Project.agentConfig` is untyped jsonb (`unknown`), same reason
+ * `previewDeploy` needs `PreviewDeployConfig` — cast through this, as
+ * `rocketchat-section.tsx:89` already does for `agentConfig.rocketChatAnswerMode`.
  */
 export interface ProjectAgentConfig {
 	plugins?: PluginDesignation[];
-	stateContext?: Record<string, StateContextEntry> | null;
 	/** ISS-578 stack profile, persisted by `POST .../ux-contract/apply-preset`. */
 	uxContractProfile?: UxStackProfile;
 	[key: string]: unknown;
@@ -489,21 +474,16 @@ function stageHasOverride(sc: PipelineStateConfig): boolean {
 }
 
 /** Every `states[status]` that carries a permission-relevant override, in
- *  ladder order — a status outside `PIPELINE_STATUS_ROWS` still renders,
- *  labelled with its raw key, so a future `StageName` is never silently dropped. */
+ *  ladder order. */
+// cm:guard the rows are `PIPELINE_STATUS_ROWS` and nothing else. Both readers here used to append a row for any OTHER stored status, labelled with its raw key — but core's `statesConfigSchema` has been a `strictObject` since ISS-994, so such a key fails the whole document parse and no such row could ever render; what it could do, if one somehow arrived, was offer an editable row whose save 400s (ISS-1000). A new stage is added HERE, next to core's `STAGE_NAMES`.
+// cm:edge naming -> packages/core/src/pipeline/pipeline-config-schema.ts — `STAGE_NAMES`; a stage added there and not here is a stage no operator can see or edit
 export function summarizeStageConfig(cfg: PipelineConfig): StagePermissionRow[] {
 	const states = (cfg.states ?? {}) as Record<string, PipelineStateConfig>;
 	const rows: StagePermissionRow[] = [];
-	const seen = new Set<string>();
 
 	for (const { status, label } of PIPELINE_STATUS_ROWS) {
-		seen.add(status);
 		const sc = states[status];
 		if (sc && stageHasOverride(sc)) rows.push({ status, label, config: sc });
-	}
-	for (const [status, sc] of Object.entries(states)) {
-		if (seen.has(status) || !stageHasOverride(sc)) continue;
-		rows.push({ status, label: status, config: sc });
 	}
 	return rows;
 }
@@ -542,56 +522,6 @@ export function denylistBaseline(rows: StagePermissionRow[]): DenylistDiff[] {
 		const extra = [...tools].filter((t) => !baseline.has(t));
 		return { status: row.status, isOutlier: missing.length > 0 || extra.length > 0, extra, missing };
 	});
-}
-
-// cm:edge naming -> packages/core/src/db/schema.ts — `jobTypes`, mirrored so the jobType picker offers what `stateContextSchema` (a partialRecord over that enum) accepts; a value added there and not here is a jobType no operator can configure, and one removed there but left here 400s the save
-export const STATE_CONTEXT_JOB_TYPES = [
-	"triage",
-	"clarify",
-	"plan",
-	"code",
-	"review",
-	"test",
-	"staging",
-	"release",
-	"fix",
-	"custom",
-	"pm",
-	"smoke",
-	"release_batch",
-	"reconcile",
-	"verify_skill",
-	"drive",
-] as const;
-
-// cm:edge naming -> packages/core/src/projects/state-context.ts — `budgetSchema` bounds; a cap raised there and not here refuses in the browser a value the server would have taken
-export const BUDGET_PER_RUN_MAX = 1000;
-export const BUDGET_PER_MONTH_MAX = 100_000;
-
-export type BudgetAction = "warn" | "pause";
-export interface StateContextBudget {
-	perRunUsd?: number;
-	perMonthUsd?: number;
-	action?: BudgetAction;
-}
-
-/**
- * Reasons core would refuse a budget, or `[]` when it would take it. Its
- * `budgetSchema` is `.strict()` with all three keys REQUIRED, so a budget
- * carrying only `perRunUsd` is not a smaller budget — it is a 400.
- */
-export function validateBudget(b: StateContextBudget): string[] {
-	const errors: string[] = [];
-	const present = [b.perRunUsd, b.perMonthUsd, b.action].filter((v) => v != null).length;
-	if (present === 0) return errors;
-	if (present < 3) errors.push("A budget needs all three of per-run, per-month and action.");
-	if (b.perRunUsd != null && (b.perRunUsd < 0 || b.perRunUsd > BUDGET_PER_RUN_MAX)) {
-		errors.push(`Per-run must be between 0 and ${BUDGET_PER_RUN_MAX}.`);
-	}
-	if (b.perMonthUsd != null && (b.perMonthUsd < 0 || b.perMonthUsd > BUDGET_PER_MONTH_MAX)) {
-		errors.push(`Per-month must be between 0 and ${BUDGET_PER_MONTH_MAX}.`);
-	}
-	return errors;
 }
 
 // cm:guard the ONLY writer of a single stage. `statesConfigSchema` has no passthrough and the PATCH replaces `states` wholesale, so anything building a `states` map from less than the fetched one DELETES the stages it left out — spread cfg, spread cfg.states, spread the stage, override nothing else.
@@ -648,7 +578,7 @@ export const API_ONLY_KEYS: ApiOnlyKey[] = [
 	{
 		key: "states[*].budget",
 		reason:
-			"Per-stage spend caps. Distinct from the per-jobType budget below, which IS editable — two caps on one screen read as one, so this one stays with the API until the pair is designed together.",
+			"Per-stage spend caps, read before dispatch and enforced in flight. Deferred with the model above rather than given a form: a cap set wrong stops a stage dispatching, and the number belongs with a view of what the stage actually spends.",
 	},
 	{
 		key: "states[*].systemPrompt",

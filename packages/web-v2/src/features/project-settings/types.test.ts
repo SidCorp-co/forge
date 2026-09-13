@@ -1,4 +1,8 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import * as projectSettingsTypes from "./types";
 import {
   API_ONLY_KEYS,
   denylistBaseline,
@@ -6,8 +10,8 @@ import {
   humanizeToolName,
   knownToolIds,
   type PipelineConfig,
+  type ProjectUpdateInput,
   summarizeStageConfig,
-  validateBudget,
   withStagePatch,
 } from "./types";
 
@@ -44,11 +48,8 @@ describe("summarizeStageConfig / denylistBaseline", () => {
   const FORGE_DEV_SHAPED: PipelineConfig = {
     states: {
       open: { disallowedTools: DENYLIST_FULL },
-      approved: { disallowedTools: DENYLIST_FULL },
-      developed: { disallowedTools: DENYLIST_FULL },
-      testing: { disallowedTools: DENYLIST_FULL.filter((t) => t !== "mcp__forge__forge_uploads") },
-      clarified: { disallowedTools: DENYLIST_FULL.filter((t) => t !== "mcp__forge__forge_pm_set_dependency") },
-      confirmed: { disallowedTools: DENYLIST_FULL.filter((t) => t !== "mcp__forge__forge_uploads") },
+      in_progress: { disallowedTools: DENYLIST_FULL },
+      awaiting_release: { disallowedTools: DENYLIST_FULL.filter((t) => t !== "mcp__forge__forge_uploads") },
       needs_info: {},
     },
   };
@@ -58,19 +59,27 @@ describe("summarizeStageConfig / denylistBaseline", () => {
     expect(rows.some((r) => r.status === "needs_info")).toBe(false);
   });
 
-  it("flags exactly the three stages that drift from the modal baseline", () => {
+  it("flags exactly the stage that drifts from the modal baseline", () => {
     const rows = summarizeStageConfig(FORGE_DEV_SHAPED);
     const diffs = denylistBaseline(rows);
     const outliers = diffs.filter((d) => d.isOutlier).map((d) => d.status);
-    expect(outliers.sort()).toEqual(["clarified", "confirmed", "testing"]);
+    expect(outliers).toEqual(["awaiting_release"]);
   });
 
   it("names the tool an outlier is allowed to use that the baseline denies", () => {
     const rows = summarizeStageConfig(FORGE_DEV_SHAPED);
     const diffs = denylistBaseline(rows);
-    const testingDiff = diffs.find((d) => d.status === "testing")!;
-    expect(testingDiff.missing).toEqual(["mcp__forge__forge_uploads"]);
-    expect(testingDiff.extra).toEqual([]);
+    const drifted = diffs.find((d) => d.status === "awaiting_release")!;
+    expect(drifted.missing).toEqual(["mcp__forge__forge_uploads"]);
+    expect(drifted.extra).toEqual([]);
+  });
+
+  // cm:guard ISS-1000 — this used to be a fixture of `approved` / `developed` / `testing` / `clarified` / `confirmed` rows, and it passed: the summary appended a row for ANY stored status. Core deleted those stages with ISS-897 and made `statesConfigSchema` a `strictObject` with ISS-994, so a document carrying one fails to parse and reaches no screen. The assertion below is what goes red if the fall-through comes back.
+  it("renders no row for a status core would refuse to store", () => {
+    const rows = summarizeStageConfig({
+      states: { ...FORGE_DEV_SHAPED.states, clarified: { disallowedTools: DENYLIST_FULL } },
+    });
+    expect(rows.map((r) => r.status)).toEqual(["open", "in_progress", "awaiting_release"]);
   });
 });
 
@@ -95,35 +104,6 @@ describe("knownToolIds", () => {
         },
       }),
     ).toEqual(["Bash", "CronCreate", "Workflow"]);
-  });
-});
-
-describe("validateBudget", () => {
-  it("takes an entirely absent budget", () => {
-    expect(validateBudget({})).toEqual([]);
-  });
-
-  it("takes a complete budget inside the caps", () => {
-    expect(validateBudget({ perRunUsd: 5, perMonthUsd: 100, action: "warn" })).toEqual([]);
-  });
-
-  // cm:guard core's budgetSchema is `.strict()` with all three keys required, so a partial budget is a 400 rather than a smaller cap — this is the assertion that would go red if the all-or-nothing check were relaxed to per-field.
-  it("refuses a budget carrying only some of its three keys", () => {
-    expect(validateBudget({ perRunUsd: 5 })).toContain(
-      "A budget needs all three of per-run, per-month and action.",
-    );
-    expect(validateBudget({ perRunUsd: 5, perMonthUsd: 10 })).toContain(
-      "A budget needs all three of per-run, per-month and action.",
-    );
-  });
-
-  it("refuses values outside the caps core would take", () => {
-    expect(validateBudget({ perRunUsd: 1001, perMonthUsd: 10, action: "warn" })).toEqual([
-      "Per-run must be between 0 and 1000.",
-    ]);
-    expect(validateBudget({ perRunUsd: 1, perMonthUsd: 100001, action: "pause" })).toEqual([
-      "Per-month must be between 0 and 100000.",
-    ]);
   });
 });
 
@@ -168,6 +148,31 @@ describe("API_ONLY_KEYS", () => {
       expect(row.reason).not.toMatch(/ISS-814/);
       expect(row.key).not.toMatch(/recovery/i);
       expect(row.key).not.toMatch(/skipComplexities/);
+      // cm:guard ISS-1000 — a retired key may not be listed as "set through the API" either, because the API refuses it: the row would send an operator to a door that answers 400.
+      expect(row.key).not.toMatch(/skillName/);
+      expect(row.key).not.toMatch(/stateContext/);
+      expect(row.reason).not.toMatch(/per-jobType/i);
+    }
+  });
+});
+
+describe("the two retired knobs", () => {
+  it("offers no stateContext on the update payload", () => {
+    // @ts-expect-error ISS-1000 — core's PATCH /projects/:id refuses `stateContext` by name, so a payload type that still offered the field would compile a request that can only answer 400. This directive goes unused, and the build red, if the field comes back.
+    const payload: ProjectUpdateInput = { stateContext: { code: { modelOverride: "opus" } } };
+    expect(payload).toBeDefined();
+  });
+
+  it("exports no state-context value", () => {
+    const exported = Object.keys(projectSettingsTypes).filter((k) => /state_?context/i.test(k));
+    expect(exported).toEqual([]);
+  });
+
+  // cm:guard this one reads the SOURCE because the type system cannot represent the failure: `PipelineStateConfig` and `ProjectAgentConfig` both end in `[key: string]: unknown`, so a restored `skillName?: string` or `stateContext?: StateContextEntry` typechecks everywhere and a `@ts-expect-error` placed on it would be the thing that goes red, by being unused. A declared field is what invites the next editor control, which is the knob ISS-1000 removed.
+  it("declares neither retired field, nor the type that described one", () => {
+    const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "types.ts"), "utf8");
+    for (const gone of [/\bskillName\b/, /\bstateContext\b/, /\bStateContextEntry\b/, /\bSTATE_CONTEXT_JOB_TYPES\b/]) {
+      expect(source).not.toMatch(gone);
     }
   });
 });

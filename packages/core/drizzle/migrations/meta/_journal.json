@@ -1660,6 +1660,13 @@
       "when": 1794009600000,
       "tag": "0238_drop_body_template",
       "breakpoints": true
+    },
+    {
+      "idx": 239,
+      "version": "7",
+      "when": 1794096000000,
+      "tag": "0239_state_context_and_stage_skill_name",
+      "breakpoints": true
     }
   ]
 }
