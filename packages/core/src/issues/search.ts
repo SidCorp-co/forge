@@ -14,6 +14,7 @@ import {
 } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { listResponse } from '../lib/pagination.js';
+import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import {
@@ -170,8 +171,9 @@ searchRoutes.get(
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
+  // cm:edge contract -> packages/core/src/issues/routes.ts — the two project issue lists refuse an unknown parameter in ONE shape; this route was already strict while its sibling silently stripped, and a caller reading two refusal vocabularies on one surface is what made ISS-991's wrong inference reasonable
   zValidator('query', searchQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw queryBadRequest(searchQuerySchema, r.error);
   }),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
@@ -260,9 +262,7 @@ searchRoutes.get(
       ...(q.q ? { matchedFields: issueSearchMatchedFields(q.q, r) } : {}),
     }));
 
-    // ISS-437 — attach `estimatedCost` when requested. Issues with no usage
-    // (never ran, or sessions produced no usage rows) report 0, so the field
-    // is always numeric when `withCost=1`.
+    // cm:guard an issue with no usage rows carries `estimatedCost: 0` and never a missing key — under `withCost=1` the field is always numeric, so a client cannot read "never ran" as "cost unknown" (ISS-437)
     if (q.withCost && serialized.length > 0) {
       const costMap = await sumCostByIssue(serialized.map((r) => r.id as string));
       serialized = serialized.map((r) => ({
@@ -271,10 +271,7 @@ searchRoutes.get(
       }));
     }
 
-    // ISS-700 — attach the latest failed job's step/reason/time when
-    // requested, so the row's Failed-badge tooltip has data without a
-    // per-row/hover fetch. Runs before the withAgentSessions early-return so
-    // it applies whether or not agent sessions are also requested.
+    // cm:guard this block stays ABOVE the `withAgentSessions` early-return — move it below and the Failed-badge tooltip loses its data on exactly the callers that also ask for sessions (ISS-700)
     if (q.withFailureInfo && serialized.length > 0) {
       const failMap = await latestFailedJobByIssue(serialized.map((r) => r.id as string));
       serialized = serialized.map((r) => ({
