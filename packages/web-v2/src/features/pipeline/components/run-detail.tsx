@@ -65,7 +65,7 @@ const TABS = [
   { value: "cost", label: "Cost" },
 ];
 
-// cm:edge naming -> packages/web-v2/src/features/issues/components/issue-row-actions.tsx:PriorityCell — the issues table holds this same priority→tone table, so a priority recoloured on one side leaves the drawer and the row disagreeing about one issue
+// cm:edge naming -> packages/web-v2/src/features/issues/components/issue-row-actions.tsx — its PriorityCell holds this same priority→tone table, so a priority recoloured on one side leaves the drawer and the row disagreeing about one issue
 const PRIORITY_TONE: Record<string, "red" | "amber" | "neutral"> = {
   critical: "red",
   high: "amber",
