@@ -207,14 +207,18 @@ describe('asking through the token door', () => {
     const res = await post('/api/questions', writeToken, askBody({ issueId: randomUUID() }));
 
     expect(res.status).toBe(404);
+    // cm:guard the refusal names the ISSUE, which is what the caller got wrong — this route takes an issue id and mints the question, so `question not found` sends them looking at the id they never sent.
+    expect(await res.json()).toMatchObject({ message: 'issue not found' });
     expect(await countQuestions()).toBe(0);
   });
 
-  // cm:guard a stranger gets the SAME 404 as a missing issue: the two must stay indistinguishable, or the refusal enumerates which issue ids exist.
+  // cm:guard a stranger gets the SAME 404 as a missing issue, asserted body and all: the two must stay indistinguishable, or the pair enumerates which issue ids exist to whoever can read both.
   it('answers 404 to a token whose owner holds no role on the project, and writes no row', async () => {
+    const missing = await post('/api/questions', writeToken, askBody({ issueId: randomUUID() }));
     const res = await post('/api/questions', strangerToken, askBody());
 
     expect(res.status).toBe(404);
+    expect(await res.json()).toEqual(await missing.json());
     expect(await countQuestions()).toBe(0);
   });
 

@@ -57,8 +57,8 @@ const askSchema = z
 const badRequest = (message: string) =>
   new HTTPException(400, { message, cause: { code: 'BAD_REQUEST' } });
 
-const notFound = () =>
-  new HTTPException(404, { message: 'question not found', cause: { code: 'NOT_FOUND' } });
+const notFound = (what: 'question' | 'issue' = 'question') =>
+  new HTTPException(404, { message: `${what} not found`, cause: { code: 'NOT_FOUND' } });
 
 // cm:guard EVERY `:id` handler reads the question id through here, for the reason the list route's own uuid guard states: `agent_questions.id` is a uuid column and a malformed literal raises 22P02, which leaves the handler as a 500 — a caller's typo must not read as a server fault, and the read-back door an agent uses is `GET /questions/:id`.
 function questionId(c: { req: { param: (k: string) => string } }): string {
@@ -145,7 +145,8 @@ questionRoutes.post('/', async (c) => {
       parkDeadlineAt: parkDeadlineAt ? new Date(parkDeadlineAt) : undefined,
       userId: c.get('userId'),
     });
-    if (!asked) throw notFound();
+    // cm:guard what is missing here is the ISSUE, and the refusal says so: `askAs` answers null both for an issue nothing names and for one whose project this caller holds no role on, which must stay indistinguishable — naming the issue keeps them so while telling the caller which of the two ids it got wrong.
+    if (!asked) throw notFound('issue');
     return c.json(asked, 201);
   } catch (e) {
     if (e instanceof QuestionRefused) throw refused(e);
