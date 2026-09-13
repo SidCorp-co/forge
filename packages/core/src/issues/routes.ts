@@ -130,13 +130,14 @@ export const issuePatchSchema = z
 
 export type IssuePatchInput = z.infer<typeof issuePatchSchema>;
 
-// cm:why 9 digits rather than an unbounded run: `issSeq` is int4, and a longer literal reaches Postgres as an out-of-range integer — a 500 on what is a caller's typo and belongs in the 400 beside every other bad `key`
+// cm:guard the bound is int4's own range and NOT a digit count — `issSeq` is int4, an out-of-range literal reaches Postgres as a 500 on what is a caller's typo, and a 9-digit cap refuses the 1.1 billion sequence numbers from 1000000000 up that the column can actually hold
+const ISS_SEQ_MAX = 2_147_483_647;
 const issueKeyFilterSchema = z
   .string()
   .trim()
-  .regex(/^(?:ISS-)?\d{1,9}$/i, 'expected a display id like `ISS-42`, or its bare sequence number')
+  .regex(/^(?:ISS-)?\d{1,10}$/i, 'expected a display id like `ISS-42`, or its bare sequence number')
   .transform((v) => Number(v.replace(/^ISS-/i, '')))
-  .refine((n) => n >= 1, 'a display id counts from 1');
+  .refine((n) => n >= 1 && n <= ISS_SEQ_MAX, `a display id runs from 1 to ${ISS_SEQ_MAX}`);
 
 // cm:guard `.strict()` is the whole point of this schema, not a flourish: without it zod STRIPS an unregistered key, the handler builds its WHERE from the four it knows, and a filtered ask is answered with the project's unfiltered list at 200 (ISS-991). `list-query-strict.test.ts` is the case that goes red if it is removed.
 export const issueFiltersSchema = paginationSchema

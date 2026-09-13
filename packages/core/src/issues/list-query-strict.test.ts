@@ -150,11 +150,17 @@ describe('GET /api/projects/:id/issues — unregistered query parameters', () =>
     expect(res.status).toBe(400);
   });
 
-  // cm:why an out-of-range int reaches Postgres as a 500, so the digit bound in the schema is what keeps a caller's typo a 400
-  it('refuses a `key` too long to be an int4', async () => {
-    const { res } = await list('key=99999999999999');
+  // cm:why an out-of-range int reaches Postgres as a 500, so the int4 bound in the schema is what keeps a caller's typo a 400
+  it('refuses a `key` past int4', async () => {
+    const { res } = await list('key=2147483648');
 
     expect(res.status).toBe(400);
+  });
+
+  it('accepts the largest sequence number int4 holds', async () => {
+    const { res } = await list('key=2147483647');
+
+    expect(res.status).toBe(200);
   });
 
   it('accepts a registered parameter', async () => {

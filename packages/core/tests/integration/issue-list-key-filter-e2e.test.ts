@@ -167,6 +167,30 @@ describe('GET /api/projects/:id/issues — the `key` filter (ISS-991)', () => {
     expect(body.total).toBe(1);
   });
 
+  // cm:guard the bound this pins is int4's, not a digit count — a 9-digit cap reads as generous and silently refuses every sequence number from 1000000000 up, which the column holds perfectly well
+  it('returns a ten-digit sequence number the column can hold', async () => {
+    const { user, project } = await member();
+    await seedIssue({
+      projectId: project.id,
+      createdById: user.id,
+      issSeq: 1_000_000_000,
+      title: 'a big one',
+    });
+
+    const { res, body } = await get(project.id, user.id, 'key=ISS-1000000000');
+
+    expect(res.status).toBe(200);
+    expect(body.items.map((i) => i.issSeq)).toEqual([1_000_000_000]);
+  });
+
+  it('refuses a sequence number past int4 rather than handing it to Postgres', async () => {
+    const { user, project } = await member();
+
+    const { res } = await get(project.id, user.id, 'key=2147483648');
+
+    expect(res.status).toBe(400);
+  });
+
   it('refuses a malformed key rather than ignoring it', async () => {
     const { user, project } = await member();
     await seedIssue({ projectId: project.id, createdById: user.id, issSeq: 1, title: 'the only' });
