@@ -6,7 +6,9 @@
 // cm:guard nothing here maps a status to a position. ISS-897 deleted the staged ladder from the kernel and ISS-999 deleted the two hand-written STATUS_TO_STAGE copies that still drew one — 17 keys here and 15 in features/pipeline/derive.ts, the second silently answering `triage` for `releasing` and `dropped`. A status says what is true of an issue now; it does not say how far along anything is, and any function here that answers "how far" is that projection coming back.
 
 import {
+	AUTONOMOUS_LABELS,
 	type AutonomousLabel,
+	LABEL_TO_KERNEL,
 	statusesForLabels,
 	toAutonomousLabel,
 } from "@forge/contracts/issue-vocabulary";
@@ -66,27 +68,42 @@ export const STATUS_LABELS: Record<IssueStatus, string> = {
 };
 
 /**
- * How each lane label is shown: its word and its colour, in one entry.
+ * The lane vocabulary's own words. A label is not its kernel status renamed: `running` is written
+ * "Running" where `in_progress` is written "In progress", and `needs_human` is written "Needs a
+ * human" where `needs_info` is written "Needs info". Only the WORD is written here.
+ */
+const LABEL_WORDS: Record<AutonomousLabel, string> = {
+	draft: "Draft",
+	open: "Open",
+	running: "Running",
+	needs_human: "Needs a human",
+	reopened: "Reopened",
+	paused: "Paused",
+	awaiting_release: "Awaiting release",
+	done: "Done",
+	dropped: "Dropped",
+};
+
+/**
+ * How each lane label is shown: its word, its `StatusKey` and its colour, in one entry.
  *
  * The map from kernel status to label lives in `@forge/contracts` so every client relabels the
  * same way; this is the presentation of the label and nothing else. It carries no order — the
  * order is `AUTONOMOUS_LABELS`' own, in contracts — and no position.
  */
-// cm:guard label and tone stay in ONE record over this key set, not two beside each other. ISS-999 folded them together because the previous shape (a labels map here, a colour picked per surface) is how the same meaning got different colours in seven places, which is what ISS-509 spent a release undoing.
+// cm:guard a label's COLOUR is derived, never written here: `LABEL_TO_KERNEL` says which kernel status the label is written as, and `statusToChip` colours that status exactly as the chip on the card does. A hand-written tone column is what this file had until the review of ISS-999 found `reopen` amber in the board's column head and blue on the card inside it, and `closed` green in one place and grey in the other — the same drift ISS-999 deletes elsewhere, in the colour axis.
 export const LABEL_VIEW: Record<
 	AutonomousLabel,
-	{ label: string; tone: SemanticTone }
-> = {
-	draft: { label: "Draft", tone: "neutral" },
-	open: { label: "Open", tone: "neutral" },
-	running: { label: "Running", tone: "active" },
-	needs_human: { label: "Needs a human", tone: "attention" },
-	reopened: { label: "Reopened", tone: "attention" },
-	paused: { label: "Paused", tone: "blocked" },
-	awaiting_release: { label: "Awaiting release", tone: "shipped" },
-	done: { label: "Done", tone: "success" },
-	dropped: { label: "Dropped", tone: "archived" },
-};
+	{ label: string; status: StatusKey; tone: SemanticTone }
+> = Object.fromEntries(
+	AUTONOMOUS_LABELS.map((label) => {
+		const status = statusToChip(LABEL_TO_KERNEL[label]);
+		return [
+			label,
+			{ label: LABEL_WORDS[label], status, tone: STATUS_KEY_TONE[status] },
+		];
+	}),
+) as Record<AutonomousLabel, { label: string; status: StatusKey; tone: SemanticTone }>;
 
 export const PRIORITY_LABELS: Record<IssuePriority, string> = {
 	critical: "Critical",
@@ -863,6 +880,19 @@ export function handoffOutcomeLabel(
 		if (typeof v === "string" && v.trim()) return truncate(v, 90);
 	}
 	return undefined;
+}
+
+/**
+ * The step an issue is RUNNING right now, read off the kernel's own active session — or `null`.
+ *
+ * A session the kernel calls `queued` names a step nobody has started, so it names no running step.
+ */
+// cm:guard `queued` is not `running` and must not be flattened onto it here. The screen passed `activeSession.skill` unconditionally, so a queued retry of a step that already had a handoff row rendered "Running" in the Steps card while the kernel said queued — the same shape as the ladder ISS-999 deletes: a state asserted from something next to the state rather than from the field that records it.
+export function runningStepOf(
+	health: PipelineHealth | null | undefined,
+): string | null {
+	const session = health?.activeSession;
+	return session?.status === "running" ? session.skill : null;
 }
 
 /**

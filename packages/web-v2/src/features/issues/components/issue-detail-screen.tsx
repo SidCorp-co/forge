@@ -43,6 +43,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   deriveBlockerState,
   deriveStepOutcomes,
+  runningStepOf,
   parseChecklist,
   statusLabelFor,
   statusToChip,
@@ -112,8 +113,6 @@ export function IssueDetailScreen({
   const { toast } = useToast();
   const { push: pushRecent } = useRecents();
   const [tab, setTab] = useState("comments");
-  // ISS-377 — which stage's artifact card is expanded (driven by tracker clicks
-  // + manual toggles). `null` = all collapsed.
   const [expandedStep, setExpandedStep] = useState<string | null>(null);
 
   useRoom(projectRoom(projectId));
@@ -214,7 +213,7 @@ export function IssueDetailScreen({
   // cm:guard both arguments are fields the KERNEL recorded — the active session's own skill and the latest failed job's own step. ISS-999 replaced `deriveStageOutcomes`, whose state came from a stage's index against a status-derived position, so a step read `done` because it sat left of another one.
   const liveStep = issue.pipelineHealth?.activeSession?.skill ?? null;
   const stepOutcomes = deriveStepOutcomes(handoffsQ.data, durationsQ.data, {
-    activeStep: liveStep,
+    activeStep: runningStepOf(issue.pipelineHealth),
     failedStep: issue.failureInfo?.failedStep ?? null,
   });
   const liveSession = pickActiveSession(issue.agentSessions);

@@ -7,7 +7,7 @@ import {
 } from "@forge/contracts/issue-vocabulary";
 import { REGISTRY_ISSUE_STATUSES } from "@forge/contracts/pipeline-registry";
 import { deriveQueuedStep, hasLiveAgentSession, queuedChipStatus } from "@/features/issues/waiting";
-import { LABEL_VIEW } from "@/features/issues/derive";
+import { LABEL_VIEW, statusToChip } from "@/features/issues/derive";
 import { type SemanticTone, type StatusKey, TONE_META } from "@/design/status";
 import type { IssueStatus } from "@/features/issues/types";
 import { type StageKey, stageColor } from "@/design/stages";
@@ -53,34 +53,6 @@ export function runStatusToStatusKey(status: PipelineRunStatus): StatusKey {
       return "failed";
     case "cancelled":
       return "blocked";
-  }
-}
-
-/**
- * Resting chip status for an issue with no active run — mirrors the issues
- * table's `statusToChip` so the board and the table agree.
- */
-export function issueStatusToStatusKey(status: string): StatusKey {
-  switch (status) {
-    case "in_progress":
-    case "testing":
-      return "running";
-    case "developed":
-      return "review";
-    case "tested":
-      return "passed";
-    case "awaiting_release":
-    case "closed":
-      return "done";
-    case "waiting":
-    case "needs_info":
-      return "waiting";
-    case "reopen":
-      return "blocked";
-    case "on_hold":
-      return "paused";
-    default:
-      return "queued";
   }
 }
 
@@ -257,7 +229,7 @@ export function cardStatus(
     };
   }
   return {
-    status: issueStatusToStatusKey(issue.status),
+    status: statusToChip(issue.status as IssueStatus),
     label: labelStatus(issue.status as IssueStatus),
     domain: "issue",
     waitingReason: "",

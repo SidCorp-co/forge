@@ -15,6 +15,7 @@ import {
 	deriveBlockerState,
 	deriveCommentKind,
 	deriveStepOutcomes,
+	runningStepOf,
 	FORGE_AGENT_LABEL,
 	filterToQueryParams,
 	groupRows,
@@ -1253,5 +1254,61 @@ describe("statusesFromParam", () => {
 
 	it("tolerates spacing and repeats without sending a status twice", () => {
 		expect(statusesFromParam(" open , open ,closed")).toEqual(["open", "closed"]);
+	});
+});
+
+describe("runningStepOf — a queued session names no running step (ISS-999)", () => {
+	const row = (step: string): StepHandoffRow => ({
+		id: `${step}-1`,
+		projectId: "p1",
+		issueId: "me",
+		pipelineRunId: "run-1",
+		kind: "handoff",
+		step,
+		attempt: 1,
+		payload: { summary: "first attempt" },
+		createdAt: "2026-01-01T00:00:00.000Z",
+		updatedAt: "2026-01-01T00:00:00.000Z",
+	});
+	const health = (
+		session?: { status: "queued" | "running"; skill: string },
+	): PipelineHealth =>
+		({
+			stage: "code",
+			...(session ? { activeSession: { id: "s1", ...session } } : {}),
+		}) as PipelineHealth;
+
+	it("names the skill of a session the kernel calls running", () => {
+		expect(runningStepOf(health({ status: "running", skill: "drive" }))).toBe(
+			"drive",
+		);
+	});
+
+	// cm:guard the case the Steps card got wrong: a queued retry of a step that already ran has a handoff row, so passing its skill as the active step painted a row "Running" that the kernel called queued
+	it("names nothing for a session the kernel calls queued", () => {
+		expect(runningStepOf(health({ status: "queued", skill: "drive" }))).toBeNull();
+	});
+
+	it("names nothing when there is no session, and survives a missing health", () => {
+		expect(runningStepOf(health())).toBeNull();
+		expect(runningStepOf(undefined)).toBeNull();
+		expect(runningStepOf(null)).toBeNull();
+	});
+
+	it("keeps a queued step out of the outcomes the card renders", () => {
+		const queued = health({ status: "queued", skill: "drive" });
+		const out = deriveStepOutcomes(
+			[row("drive")],
+			undefined,
+			{ activeStep: runningStepOf(queued), failedStep: null },
+		);
+		expect(out.map((o) => [o.step, o.state])).toEqual([["drive", "done"]]);
+		const running = health({ status: "running", skill: "drive" });
+		const live = deriveStepOutcomes(
+			[row("drive")],
+			undefined,
+			{ activeStep: runningStepOf(running), failedStep: null },
+		);
+		expect(live.map((o) => [o.step, o.state])).toEqual([["drive", "running"]]);
 	});
 });

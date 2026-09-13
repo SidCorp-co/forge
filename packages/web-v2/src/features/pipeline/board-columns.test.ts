@@ -13,9 +13,12 @@
 import { describe, expect, it } from "vitest";
 import {
   AUTONOMOUS_LABELS,
+  type AutonomousLabel,
   toAutonomousLabel,
 } from "@forge/contracts/issue-vocabulary";
 import { REGISTRY_ISSUE_STATUSES } from "@forge/contracts/pipeline-registry";
+import { statusToTone } from "@/features/issues/derive";
+import type { IssueStatus } from "@/features/issues/types";
 import { boardColumns, groupIssuesByLabel, labelTone } from "./derive";
 import { BOARD_EXCLUDED_STATUSES, type PipelineIssueRow } from "./types";
 
@@ -124,5 +127,34 @@ describe("groupIssuesByLabel", () => {
     // cm:guard losing the row silently is the failure this branch refuses; reachable only if the query's `statusNot` params and BOARD_EXCLUDED_STATUSES drift apart
     const groups = groupIssuesByLabel([issue("x", "draft")]);
     expect(groups.find((g) => g.issues.some((i) => i.id === "x"))?.label).toBe("draft");
+  });
+});
+
+// cm:guard a column's dot and the chips on the cards inside it are two renderings of ONE fact and must agree. ISS-999's review found `reopen` amber in the column head and blue on the card, and `closed` green in one place and grey in the other, because LABEL_VIEW carried a hand-written tone beside statusToChip; the colour is derived from LABEL_TO_KERNEL now and these assertions are what hold it there.
+describe("a column is coloured by the statuses it holds", () => {
+  /** The kernel statuses a label buckets, among the ones the board's query can return. */
+  const bucket = (label: AutonomousLabel): string[] =>
+    RETURNABLE.filter((s) => toAutonomousLabel(s) === label);
+
+  it("gives a label with ONE status exactly that status's chip colour", () => {
+    const single = boardColumns().filter((l) => bucket(l).length === 1);
+    // cm:guard reopened, paused, done and dropped are all single-status labels, so this is not a vacuous set
+    expect(single.length).toBeGreaterThanOrEqual(4);
+    for (const label of single) {
+      const status = bucket(label)[0] as IssueStatus;
+      expect([label, labelTone(label)]).toEqual([label, statusToTone(status)]);
+    }
+  });
+
+  it("never colours a label with a tone no status in its bucket wears", () => {
+    for (const label of boardColumns()) {
+      const tones = bucket(label).map((s) => statusToTone(s as IssueStatus));
+      expect([label, tones.includes(labelTone(label))]).toEqual([label, true]);
+    }
+  });
+
+  it("colours `reopened` and `done` as their own status is coloured, not as a bucket word suggests", () => {
+    expect(labelTone("reopened")).toBe(statusToTone("reopen"));
+    expect(labelTone("done")).toBe(statusToTone("closed"));
   });
 });

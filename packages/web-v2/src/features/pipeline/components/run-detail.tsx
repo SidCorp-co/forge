@@ -31,14 +31,9 @@ import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { useRecents, buildShareLink } from "@/features/shell";
 import { IssueQuickActions } from "@/features/issues/components/issue-quick-actions";
-import { priorityLabel } from "@/features/issues/derive";
+import { priorityLabel, statusToChip } from "@/features/issues/derive";
 import type { IssuePriority, IssueStatus } from "@/features/issues/types";
-import {
-  formatDurationMs,
-  formatUsd,
-  issueStatusToStatusKey,
-  runStatusToStatusKey,
-} from "../derive";
+import { formatDurationMs, formatUsd, runStatusToStatusKey } from "../derive";
 import { useCancelRun, useIssueTasks, usePauseRun, useResumeRun, useRun } from "../hooks";
 import { ActivityTab } from "./activity-feed";
 import type {
@@ -70,7 +65,7 @@ const TABS = [
   { value: "cost", label: "Cost" },
 ];
 
-// Priority badge tone — mirrors the issues table's PriorityCell.
+// cm:edge naming -> packages/web-v2/src/features/issues/components/issue-row-actions.tsx:PriorityCell — the issues table holds this same priority→tone table, so a priority recoloured on one side leaves the drawer and the row disagreeing about one issue
 const PRIORITY_TONE: Record<string, "red" | "amber" | "neutral"> = {
   critical: "red",
   high: "amber",
@@ -119,7 +114,7 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
   const branch = issue?.metadata?.branchConfig?.branch ?? null;
   const chipStatus = run
     ? runStatusToStatusKey(run.status)
-    : issueStatusToStatusKey(issue?.status ?? "open");
+    : statusToChip((issue?.status ?? "open") as IssueStatus);
   const isActive = run?.status === "running" || run?.status === "paused";
   // Pause is a "finish the in-flight step, then halt" gate (it does NOT abort
   // the running agent — only Cancel does). So a paused run with a step still
