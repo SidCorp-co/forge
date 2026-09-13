@@ -2296,6 +2296,18 @@
 
 ### Fixed
 
+- **The guard protecting a project's issue prefix can no longer be switched off by the session that
+  calls it.** The rule that a prefix is never taken from a live project is enforced inside the
+  database, by asking whether the project being orphaned is still there. It asked using an
+  unqualified table name, and Postgres resolves those against whatever the calling session can see —
+  including its own temporary tables, which are searched first and do not show up when you ask a
+  session what its search path is. So any caller holding a temporary table named `projects` was
+  answered "that project is gone" and allowed to do the one thing the guard exists to refuse:
+  orphan a live project's prefix, which stops every reference already published under it from
+  resolving. The same gap worked in reverse, where a session that could not see the table at all
+  failed a legitimate project deletion. The lookup now names the real table outright, and the guard
+  pins its own resolution so nothing it reads later can be shadowed either. ISS-992.
+
 - **An issue prefix a live project holds can no longer be taken from it by a hand-written database
   write.** A prefix belongs to one project for good, and the only mutation the design allows is the
   tombstone a project's deletion leaves behind — the row stays, pointing at nobody, so the prefix is

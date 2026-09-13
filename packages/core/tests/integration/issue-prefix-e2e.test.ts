@@ -262,6 +262,21 @@ describe('what the database refuses on its own, so a restore and a psql session 
     expect(await heldIssuePrefixes(a.id)).toEqual(['FD']);
   });
 
+  // cm:guard the lookup names `public.projects` and the function pins its own search_path: PL/pgSQL resolves an unqualified name against the CALLING session at execution, and `pg_temp` is searched ahead of `public` without appearing in `SHOW search_path`, so a session holding a temp table of that name read an empty relation, answered "the project is gone" and admitted the one write this trigger exists to refuse (codex review of ISS-992, measured against Postgres 16 on 2026-09-13).
+  it('refuses a hand-written tombstone from a session shadowing projects', async () => {
+    const a = await project();
+    await assign(a.id, 'FD');
+    const id = await aliasOf(a.id);
+    await refusedBy(
+      harness.db.transaction(async (tx) => {
+        await tx.execute(sql`CREATE TEMP TABLE projects (id uuid PRIMARY KEY) ON COMMIT DROP`);
+        await tx.execute(sql`UPDATE issue_prefix_aliases SET project_id = NULL WHERE id = ${id}`);
+      }),
+      /tombstone belongs to the project FK/,
+    );
+    expect(await heldIssuePrefixes(a.id)).toEqual(['FD']);
+  });
+
   it.each(['id', 'created_at'])('refuses a change to %s', async (col) => {
     const a = await project();
     await assign(a.id, 'FD');
@@ -272,6 +287,52 @@ describe('what the database refuses on its own, so a restore and a psql session 
       harness.db.execute(sql`UPDATE issue_prefix_aliases SET ${set} WHERE id = ${id}`),
       /id and created_at never change/,
     );
+  });
+
+  // cm:guard every case above assigns ONE prefix, so `projects_issue_prefix_fk` is holding the row as much as the trigger is — a trigger narrowed to the project's ACTIVE alias would pass all of them while leaving every RETIRED alias free to be deleted, handed on or orphaned, and a retired prefix is precisely the one whose references are already published (codex review of ISS-992).
+  describe('a retired alias, which the composite foreign key does not cover', () => {
+    async function retired(): Promise<{ projectId: string; aliasId: string }> {
+      const a = await project();
+      await assign(a.id, 'FD');
+      await assign(a.id, 'FX');
+      const rows = (await harness.db.execute(
+        sql`SELECT id FROM issue_prefix_aliases WHERE project_id = ${a.id} AND prefix = 'FD'`,
+      )) as unknown as Array<{ id: string }>;
+      const aliasId = rows[0]?.id;
+      if (!aliasId) throw new Error('no retired alias row');
+      return { projectId: a.id, aliasId };
+    }
+
+    it('refuses deleting it', async () => {
+      const { projectId, aliasId } = await retired();
+      await refusedBy(
+        harness.db.execute(sql`DELETE FROM issue_prefix_aliases WHERE id = ${aliasId}`),
+        /insert-only/,
+      );
+      expect(await heldIssuePrefixes(projectId)).toEqual(['FD', 'FX']);
+    });
+
+    it('refuses handing it to another project', async () => {
+      const { aliasId } = await retired();
+      const b = await project();
+      await refusedBy(
+        harness.db.execute(
+          sql`UPDATE issue_prefix_aliases SET project_id = ${b.id} WHERE id = ${aliasId}`,
+        ),
+        /only go NULL/,
+      );
+    });
+
+    it('refuses a hand-written tombstone on it while the project is still here', async () => {
+      const { projectId, aliasId } = await retired();
+      await refusedBy(
+        harness.db.execute(
+          sql`UPDATE issue_prefix_aliases SET project_id = NULL WHERE id = ${aliasId}`,
+        ),
+        /tombstone belongs to the project FK/,
+      );
+      expect(await heldIssuePrefixes(projectId)).toEqual(['FD', 'FX']);
+    });
   });
 
   // cm:why the tombstone is the ONE mutation the design needs, so the trigger has to let it through — a trigger that refused it would break project deletion instead.
