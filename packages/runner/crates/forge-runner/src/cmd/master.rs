@@ -74,7 +74,6 @@ pub async fn run(_ctx: Ctx, args: Args) -> anyhow::Result<()> {
             terminal::send_line(&name, &a.text).await?;
             println!("typed into {name}");
         }
-        // cm:guard killing a master returns NOTHING to the pool by itself — the daemon's next sweep sees the pane gone and releases its holds. An operator who kills a master and then stops the daemon leaves those holds for core's three-minute reaper, which is the backstop and not a regression, but it is the reason this prints the sentence rather than implying the pool is already clean.
         Command::Kill(a) => {
             let Some(slug) = a.slug else {
                 anyhow::bail!("name the project whose master should end");
@@ -82,7 +81,7 @@ pub async fn run(_ctx: Ctx, args: Args) -> anyhow::Result<()> {
             let name = terminal::session_name(terminal::MASTER_PREFIX, &slug);
             terminal::kill(&name).await?;
             println!(
-                "killed {name}; the daemon's next sweep returns its holds and starts a fresh one"
+                "killed {name}; its runs died with it and their leases lapse — the daemon's next sweep starts a fresh master"
             );
         }
     }

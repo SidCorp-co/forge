@@ -1728,6 +1728,35 @@
 
 ### Removed
 
+- **A runner no longer keeps a job pool, and a run is no longer a second terminal.** A box used to
+  ask Forge which jobs it could take, hold one while its master decided, start it in a tmux session
+  of its own, and give the hold back if the decision went the other way. Seven verbs on a local
+  socket carried that — `prepare`, `start`, `discard`, `release`, `run_open`, `ask`, `decide` — and
+  the `forge-runner pool` command was how a master reached them. All of it is gone, along with the
+  per-run tmux session, the worktree lock that serialised jobs sharing a checkout, and the
+  preparation reaper that existed to hand back holds nobody started.
+
+  **What replaces it.** A master dispatches each run as a subagent inside its own session, through
+  one of the shipped roles, in a worktree of its own. The lease `forge claim` takes on the issue is
+  the whole record of a run: a run that ends leaves the lease for the next one to read or reclaim,
+  and nothing about it is remembered on the box. The daemon still asks Forge which issues are
+  admissible — that is what tells it a project is worth keeping a resident master up for — and
+  still carries the one socket verb that never acted, a session reporting its own turn boundaries.
+
+  **What you will see.** `forge-runner pool` is not a command any more; nothing on a box answers it.
+  A project's runs no longer appear as separate panes, so `tmux ls` on a runner shows one session
+  per project rather than one per run, and a box's run count is bounded by how wide its master
+  dispatches rather than by `duplex_max_sessions`. Runs already open when a box is upgraded are
+  closed by the existing reapers on their usual schedule; no run is orphaned by the upgrade, and no
+  lease is stranded by it.
+
+  **Why.** The two models were both live: the runner spawned a session per run because the master
+  skill told it to, while the plugin's own dispatch method — the one every role and every guide is
+  written against — was never reached. A box that ran out of tmux slots looked exactly like a box
+  with no work, and on forge-vm on 2026-09-12 one project sat at 10 of 10 slots with nine of them
+  idle and nothing saying so. One record of a run beats two, and the lease is the one the rest of
+  Forge already reads.
+
 - **Forge no longer issues a separate credential for each job and each unattended session. A paired
   box holds one credential, and that is what its agents use.** Until now a dispatched job was handed
   a token minted for that job alone, and an unattended chat or schedule session got one of its own;

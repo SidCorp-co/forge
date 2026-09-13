@@ -771,7 +771,7 @@ mod tests {
         assert_eq!(beats.0.lock().unwrap().as_slice(), ["core-sess-1"]);
     }
 
-    // cm:guard `pid: None` is the mid-start window — the row exists, the pane does not yet — and it must read as UNKNOWN, never dead. `run_session::start` writes the ledger first on purpose, so a sweep landing in that window would close the loop over a run about to spawn (ISS-964 criterion 35).
+    // cm:guard `pid: None` is the mid-start window — the row exists, the process does not yet — and it must read as UNKNOWN, never dead. A sweep landing in that window would close the loop over a run about to spawn (ISS-964 criterion 35).
     #[tokio::test]
     async fn a_run_that_has_not_recorded_a_pid_yet_is_left_to_finish_starting() {
         let mut led = seeded("run-1", "master-live", "boot-a", &["ISS-957"]);

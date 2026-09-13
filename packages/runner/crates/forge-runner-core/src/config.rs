@@ -154,15 +154,17 @@ fn default_skill_auto_pull() -> bool {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunnerSettings {
-    /// Max live claude PROCESSES this device runs for PIPELINE jobs. Chat is not
-    /// counted here and has no ceiling of its own — a chat process is bounded by
-    /// its residency timeout alone. Clamped to >= 1 at use.
+    /// Size of the box's session-permit pool. Clamped to >= 1 at use.
     ///
-    /// The name kept its `duplex_` prefix through ISS-873 phase 6, which deleted
-    /// the mode the prefix distinguished. Renaming it is a config-file break for
-    /// every box that sets it, for no behaviour: there is one process model now,
-    /// so the prefix reads as redundant rather than as wrong.
-    // cm:edge contract -> packages/runner/crates/forge-runner-core/src/runner/claude_code.rs — this number sizes `session_sem`, whose permit is taken only when a spec sets `counts_against_session_cap`. Renamed from `chat_max_concurrent` on 2026-09-04 because chat stopped taking permits and the old name then described nothing the number does.
+    /// It bounds NOTHING today: a permit is taken only by a spawn that opts in
+    /// with `counts_against_session_cap`, and the only spawn left on a box is a
+    /// chat turn, which opts out. Jobs used to be the caller that opted in; a run
+    /// is a subagent inside a master's own session now and never reaches this
+    /// process. The field stays because the pool is the mechanism a future
+    /// opt-in would use, and because removing it is a config-file break for
+    /// every box that sets it, for no behaviour.
+    // cm:guard do NOT read this as the box's process ceiling — it is not one. A master is bounded one-per-project and by its own residency, and how wide a master dispatches is the project's `parallel runs`, read by the plugin and invisible here. An operator told to raise this number to run more work is being sent to a knob that decides nothing.
+    // cm:edge contract -> packages/runner/crates/forge-runner-core/src/runner/claude_code.rs — this number sizes `session_sem`, whose permit is taken only when a spec sets `counts_against_session_cap`.
     #[serde(default = "default_duplex_max_sessions")]
     pub duplex_max_sessions: u32,
     /// Send `runner:register` (gated behind core `runnerFramework` flag).
@@ -196,7 +198,7 @@ fn default_duplex_max_sessions() -> u32 {
 /// `device_max_concurrent = 0`, and warning the whole fleet about its own
 /// defaults is noise nobody reads.
 // cm:guard warn, NEVER refuse to start. These keys were serialized into every config file this tool has ever written, so a hard failure here is a fleet-wide outage on upgrade — the opposite of the loud break, which is meant to stop a WRONG action, not every action.
-// cm:edge contract -> packages/core/src/devices/claim.ts — this warning text tells the operator WHERE the ceiling now lives, and it must name this box, not core: core stopped deciding a box's job count when the master began claiming from the pool, so a message pointing at core sends them to a knob that decides nothing. The guard on that claim is the record of why.
+// cm:edge contract -> packages/core/src/devices/claim.ts — this warning text tells the operator WHERE the ceiling now lives, and it must name this box, not core: core stopped deciding a box's session count when the master began dispatching its own runs, so a message pointing at core sends them to a knob that decides nothing. The guard on that claim is the record of why.
 fn warn_on_retired_concurrency_keys(raw: &str, path: &std::path::Path) {
     const RUNNER_OWNS_IT: &str =
         "pipeline concurrency is decided by this runner — see `duplex_max_sessions`";

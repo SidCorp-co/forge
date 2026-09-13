@@ -8,9 +8,9 @@
 //! - `runners`        — GET `/api/devices/me/runners` discovery + self PATCH (ISS-271)
 //! - `skills`         — device skill sync: manifest/content pull + install report (ISS-278)
 //! - `agent_sessions` — GET/PATCH `/api/agent-sessions/:id` for interactive chat (ISS-321)
-//! - `pool`           — `/api/devices/me/pool|load`: what work exists, taking it, box load
 //! - `git_credential` — POST `/api/devices/me/git-credential`: one git ask, one token
 
+pub mod admissible;
 pub mod agent_sessions;
 pub mod events;
 pub mod frames;
@@ -20,7 +20,6 @@ pub mod inbox;
 pub mod lifecycle;
 pub mod master;
 pub mod plugins;
-pub mod pool;
 pub mod protections;
 pub mod provision;
 pub mod questions;

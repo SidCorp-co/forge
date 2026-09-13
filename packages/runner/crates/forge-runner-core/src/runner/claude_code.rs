@@ -87,13 +87,12 @@ const RESULT_EXIT_GRACE: Duration = Duration::from_secs(5);
 const SESSION_IDLE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 
 /// Whether this spawn must hold one of the box's session permits.
-// cm:guard the cap covers PIPELINE jobs ONLY. Chat opts out at the spec (`counts_against_session_cap: false`) and must keep doing so. The reason is the SWEEPER, not the shape of the wait: core kills a chat turn that has not acked in 90s, and `SESSION_PERMIT_WAIT` is 600s, so a chat turn queued behind parked pipeline sessions dies before it ever spawns whether the wait is bounded or not (session 1af837da, 2026-09-04). ISS-920 gave the wait a bound and that argument did not move — dropping this field and capping every spawn restores the defect.
+// cm:guard NO caller opts in today — chat builds the only `JobSpec` on the box and sets this false — so the ceiling currently bounds nothing and `duplex_max_sessions` sizes a pool nobody draws from. Keep the field rather than capping every spawn: the reason chat opts out is the SWEEPER, not the shape of the wait — core kills a chat turn that has not acked in 90s while `SESSION_PERMIT_WAIT` is 600s, so a chat turn queued behind a parked session dies before it ever spawns (session 1af837da, 2026-09-04). A future caller that spawns processes worth bounding opts in here.
 fn takes_session_permit(spec: &JobSpec) -> bool {
     spec.counts_against_session_cap
 }
 
 /// How long a spawn may wait for one of the box's session permits.
-// cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs — `PRE_SPAWN_BEAT_BUDGET` is derived from this plus `REPO_LOCK_WAIT`, so the runner still gives up before core condemns the session. Change this and that budget moves with it; the `const _: () = assert!` over there fails the build if it stops.
 // cm:guard equal to `SESSION_IDLE_TIMEOUT` on purpose: a permit is released by a session ending or by its residency deadline, so a wait shorter than a residency window fails jobs a parked session was about to release, and a longer one learns nothing.
 // cm:hack ISS-920 until:`sessionResidencySeconds` is set above 600 on any project — that value is per-project and `pipeline-config-schema.ts` allows up to 3600, so this bound is only the DEFAULT residency window, not every one. Priced: a project that raises the key gets jobs failing `session_permit_saturated` after 600s that would have got a permit at 900s. Nothing sets the key today; the first project that does moves this number or derives it from the resolved value.
 pub const SESSION_PERMIT_WAIT: Duration = SESSION_IDLE_TIMEOUT;
@@ -104,7 +103,7 @@ pub const SESSION_PERMIT_WAIT: Duration = SESSION_IDLE_TIMEOUT;
 /// `claude`: the wait is the whole behaviour, and the only way to exercise it
 /// through `start` is to hold real sessions. What that seam does NOT pin is the
 /// wiring — that `start` passes `SESSION_PERMIT_WAIT` and not something else.
-// cm:guard the failure text is the ONLY routing lever this has. `session_permit_saturated` is matched by `packages/core/src/pipeline/failure-patterns.ts`, which names the cause `box_session_saturated` and the action `failover`; rewording the prefix silently returns it to `unclassified` and the job goes back to the pool carrying nothing. What `failover` does NOT do, on this project's pool path, is move the job: `readPool` selects on `status`/`held_by`/`retry_after_at` and its own guard forbids adding routing, so `_autoRetry.target` is read only by `resume-policy.ts` on the push dispatcher, and the saturated box may claim the clone again. What this buys is a NAMED cause on the job row where `repo_lock_timeout` + `unclassified` used to be — B3's "distinguishable by whoever re-claims", not B3's "cannot spin". Making a master act on it is the pool-routing work the issue puts out of scope.
+// cm:guard the failure text is the ONLY routing lever this has. `session_permit_saturated` is matched by `packages/core/src/pipeline/failure-patterns.ts`, which names the cause `box_session_saturated`; rewording the prefix silently returns it to `unclassified` and the session's death is recorded as nothing in particular.
 // cm:guard `holders` is a SNAPSHOT taken by the caller BEFORE the wait, never re-read from inside, and both halves are deliberate: reading `self.sessions` while parked on `self.session_sem` would order the two locks against every path that takes them the other way. The rendered text says `at wait start` for the same reason — ten minutes later the set can be entirely different, and an operator reading it as "now" would go looking for the wrong jobs.
 async fn acquire_session_permit(
     sem: Arc<tokio::sync::Semaphore>,
@@ -523,7 +522,7 @@ pub struct ClaudeCodeRunner {
     core_url: String,
     device_token: String,
     sessions: Sessions,
-    // cm:edge contract -> packages/runner/crates/forge-runner-core/src/config.rs — sized from `duplex_max_sessions`, and it counts live duplex PROCESSES spawned by PIPELINE jobs only. Chat is exempt (`counts_against_session_cap: false`) since 2026-09-04, so this number no longer bounds the box's total claude processes — an abandoned chat session is reaped by its residency ceiling and by nothing else.
+    // cm:edge contract -> packages/runner/crates/forge-runner-core/src/config.rs — sized from `duplex_max_sessions`, and it counts only spawns that opt in with `counts_against_session_cap`. Nothing opts in now that jobs no longer reach this box, so it bounds the box's claude processes not at all: a resident master and an abandoned chat session are each reaped by a residency ceiling and by nothing else.
     session_sem: Arc<tokio::sync::Semaphore>,
     session_cap: usize,
     // cm:guard a permit is taken well before its `Session` row lands — `mcp::config::write`, `cmd.spawn` and the first stdin write all sit between them — so `self.sessions` ALONE under-reports the ceiling exactly when it matters. On 2026-09-05 three jobs were claimed within 24 seconds of each other; every one of them would have been invisible here, and the loser would have been told `holders at wait start: no session this runner still tracks` while the box was full. This map is the other half, and `permit_holders` reads both.

@@ -85,7 +85,7 @@ pub async fn close(
         return state(ledger, run_id);
     };
 
-    // cm:guard a missing session id reads as "never started", and that is only true because `run_session::start` opens the session BEFORE it spawns anything. Reverse that order and this arm closes the loop over a live agent core cannot name.
+    // cm:guard a missing session id reads as "never started", and that was only ever true because the run's row was written BEFORE anything spawned. Any future writer that reverses that order makes this arm close the loop over a live agent core cannot name.
     let session_terminal = match run.session_id.as_deref() {
         Some(id) => matches!(sessions.is_terminal(id).await, Ok(true)),
         None => true,

@@ -32,7 +32,7 @@ pub fn default_path() -> Option<PathBuf> {
 }
 
 /// The environment variable a pane carries its capability in.
-// cm:edge contract -> packages/runner/crates/forge-runner/src/cmd/pool.rs — the CLI reads this name and puts the value on every frame; the master never sees a session id to send.
+// cm:edge contract -> packages/runner/crates/forge-runner/src/cmd/hook.rs — the CLI reads this name and puts the value on every frame; a session never sees an id to send.
 pub const TOKEN_ENV: &str = "FORGE_CONTROL_TOKEN";
 
 /// The capability this process was spawned with, for the CLI side of the socket.

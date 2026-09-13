@@ -30,7 +30,7 @@ pub async fn register(client: &CoreClient, project_id: &str, name: &str) -> Resu
 }
 
 /// Tell core a master this box was hosting is gone, and why.
-// cm:guard this closes the ROW only. The holds are given back by `pool::release`, which the caller runs alongside it — see the guard on the route. Reporting the death without the release leaves claimable work parked for three minutes on a master everyone already knows is dead.
+// cm:guard this closes the ROW only, and there is nothing left to give back with it: a run is a subagent of the master's own session, so the leases its runs hold lapse with the pane rather than being held on this box.
 pub async fn close(client: &CoreClient, session_id: &str, reason: &str) -> Result<()> {
     let url = client.url("/api/devices/me/master-session/close");
     let body = serde_json::json!({ "sessionId": session_id, "reason": reason });
