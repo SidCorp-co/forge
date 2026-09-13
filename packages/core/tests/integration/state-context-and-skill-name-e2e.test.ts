@@ -9,7 +9,7 @@
  * operator still reads on those two.
  *
  * This is also the only place the pair of criteria about a STORED retired key
- * can be judged. Once 0236 has run on the deployment there is no such key left
+ * can be judged. Once 0237 has run on the deployment there is no such key left
  * to read a permissive parse against, and no pre-migration row left to compare a
  * preserved sibling to, so the fixture below is seeded rather than found.
  *
@@ -62,6 +62,7 @@ describe('migration 0237 removes stateContext and the stage skillName (ISS-1000)
   let harness: TestDatabase;
   let projectId: string;
   let untouchedId: string;
+  let malformedId: string;
   let afterAc: Record<string, unknown>;
 
   beforeAll(async () => {
@@ -79,6 +80,11 @@ describe('migration 0237 removes stateContext and the stage skillName (ISS-1000)
     projectId = project.id;
     const untouched = await createTestProject(harness.db, user.id, { agentConfig: {} });
     untouchedId = untouched.id;
+    // cm:guard a `states` that is not an object is what aborts a migration rather than skipping a row: `jsonb_each` RAISES on an array, a string or a JSON null, and one raise inside the DO block rolls the whole deploy back. Nothing on the fleet stores this today, which is exactly why only a planted row can prove the guard.
+    const malformed = await createTestProject(harness.db, user.id, {
+      agentConfig: { pipelineConfig: { states: ['open'], enabled: true } },
+    });
+    malformedId = malformed.id;
 
     await harness.db.execute(sql.raw(readFileSync(migrationPath, 'utf8')));
 
@@ -125,6 +131,23 @@ describe('migration 0237 removes stateContext and the stage skillName (ISS-1000)
     expect(afterAc.personaStyle).toBe('kept');
     expect(afterAc.plugins).toEqual([{ marketplace: 'SidCorp-co/forge-plugin', name: 'forge' }]);
     expect(Object.keys(afterAc).sort()).toEqual(['personaStyle', 'pipelineConfig', 'plugins']);
+  });
+
+  // cm:guard the row fixture below CANNOT tell the guarded traversal from the unguarded one — Postgres happens to evaluate the `jsonb_typeof` conjunct first here, so the unguarded form passes too. `AND` promises no order, so what is actually being defended is a plan this server did not choose, and only reading the statement can assert it. Both assertions stand: one says the migration survives such a row, the other says it is not surviving by luck.
+  it('hands no unguarded jsonb_each a states value it has not proved is an object', () => {
+    const sqlText = readFileSync(migrationPath, 'utf8');
+    const traversals = sqlText.match(/jsonb_each\(\s*[^)]*?'states'[^)]*?\)/gs) ?? [];
+    expect(traversals.length).toBeGreaterThan(0);
+    for (const traversal of traversals) {
+      expect(traversal).toContain('CASE');
+    }
+  });
+
+  it('runs to completion over a project whose stored states is not an object, leaving it alone', async () => {
+    const rows = (await harness.db.execute(
+      sql`SELECT agent_config FROM projects WHERE id = ${malformedId}`,
+    )) as unknown as { agent_config: Record<string, unknown> }[];
+    expect(rows[0]?.agent_config.pipelineConfig).toEqual({ states: ['open'], enabled: true });
   });
 
   it('leaves a project with no pipelineConfig and no stateContext alone', async () => {

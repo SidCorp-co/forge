@@ -54,6 +54,12 @@ BEGIN
 
   GET DIAGNOSTICS changed_ac = ROW_COUNT;
 
+  -- EVERY `jsonb_each` over a stored `states` carries the same CASE, with no
+  -- exception for one an earlier clause looks like it has already proved: a
+  -- `states` that is an array, a string or a JSON null makes `jsonb_each` RAISE,
+  -- and one raise inside this block rolls the whole deploy back. `AND` promises
+  -- no evaluation order, so a guard that depends on a sibling conjunct running
+  -- first is depending on a plan rather than on the statement.
   UPDATE projects p
   SET agent_config = jsonb_set(
     p.agent_config,
@@ -63,15 +69,26 @@ BEGIN
         e.stage,
         CASE WHEN jsonb_typeof(e.cfg) = 'object' THEN e.cfg - 'skillName' ELSE e.cfg END
       )
-      FROM jsonb_each(p.agent_config -> 'pipelineConfig' -> 'states') AS e(stage, cfg)
+      FROM jsonb_each(
+        CASE
+          WHEN jsonb_typeof(p.agent_config -> 'pipelineConfig' -> 'states') = 'object'
+            THEN p.agent_config -> 'pipelineConfig' -> 'states'
+          ELSE '{}'::jsonb
+        END
+      ) AS e(stage, cfg)
     )
   )
-  WHERE jsonb_typeof(p.agent_config -> 'pipelineConfig' -> 'states') = 'object'
-    AND EXISTS (
-      SELECT 1
-      FROM jsonb_each(p.agent_config -> 'pipelineConfig' -> 'states') AS e(stage, cfg)
-      WHERE jsonb_typeof(cfg) = 'object' AND cfg ? 'skillName'
-    );
+  WHERE EXISTS (
+    SELECT 1
+    FROM jsonb_each(
+      CASE
+        WHEN jsonb_typeof(p.agent_config -> 'pipelineConfig' -> 'states') = 'object'
+          THEN p.agent_config -> 'pipelineConfig' -> 'states'
+        ELSE '{}'::jsonb
+      END
+    ) AS e(stage, cfg)
+    WHERE jsonb_typeof(e.cfg) = 'object' AND e.cfg ? 'skillName'
+  );
 
   GET DIAGNOSTICS changed_pc = ROW_COUNT;
 
