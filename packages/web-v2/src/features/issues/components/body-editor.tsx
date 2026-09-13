@@ -1,24 +1,20 @@
 "use client";
 
-// The textarea a body is written in, plus the two things ISS-967 gives an
-// author: a menu that inserts a component without typing markup, and a pane
-// showing what the kernel would store — both answered by `/api/body`, so the
-// menu offers exactly what a save accepts and the pane draws exactly what a
-// save would keep. Used by the description editor and by the comment composer.
+// The textarea a body is written in, plus a pane showing what the kernel would
+// store. Used by the description editor and by the comment composer.
+//
+// ISS-967 also gave this toolbar a menu that inserted a `forge-*` component
+// skeleton; the owner cut it on 2026-09-14 as the wrong direction. The pane
+// stays because it answers a question the menu did not: `/api/body/preview`
+// runs the same `prepareBody` a save runs, so it draws the bytes that would be
+// stored and reports the refusal that would be answered — for a body written
+// or pasted by hand as well as for the markdown that is nearly all of them.
 
 import { useQuery } from "@tanstack/react-query";
-import { type ReactNode, useMemo, useRef, useState } from "react";
-import {
-  BodyView,
-  Button,
-  Menu,
-  PreviewPane,
-  Spinner,
-  Textarea,
-  useDebounced,
-} from "@/design";
+import { type ReactNode, useState } from "react";
+import { BodyView, PreviewPane, Spinner, Textarea, useDebounced } from "@/design";
 import { formatApiError } from "@/lib/api/error";
-import { bodyApi, componentSkeleton } from "../body-api";
+import { bodyApi } from "../body-api";
 
 const PREVIEW_DEBOUNCE_MS = 300;
 
@@ -29,7 +25,7 @@ export interface BodyEditorProps {
   placeholder?: string;
   disabled?: boolean;
   label: string;
-  /** Drawn on the toolbar row beside Insert — the caller's Save/Cancel. */
+  /** Drawn on the toolbar row beside Preview — the caller's Save/Cancel. */
   actions?: ReactNode;
 }
 
@@ -43,14 +39,7 @@ export function BodyEditor({
   actions,
 }: BodyEditorProps) {
   const [showPreview, setShowPreview] = useState(false);
-  const ref = useRef<HTMLTextAreaElement>(null);
   const debounced = useDebounced(value, PREVIEW_DEBOUNCE_MS);
-
-  const registry = useQuery({
-    queryKey: ["body", "components"],
-    queryFn: () => bodyApi.components(),
-    staleTime: Number.POSITIVE_INFINITY,
-  });
 
   const preview = useQuery({
     queryKey: ["body", "preview", debounced],
@@ -59,30 +48,9 @@ export function BodyEditor({
     retry: false,
   });
 
-  const insertItems = useMemo(() => {
-    const specs = registry.data ?? [];
-    const byName = new Map(specs.map((s) => [s.name, s]));
-    return specs
-      .filter((s) => s.root)
-      .map((spec) => ({
-        label: spec.name,
-        onSelect: () => {
-          const snippet = componentSkeleton(spec, byName);
-          const el = ref.current;
-          const at = el ? el.selectionStart : value.length;
-          const before = value.slice(0, at);
-          const after = value.slice(at);
-          const pad = before && !before.endsWith("\n") ? "\n\n" : "";
-          onChange(`${before}${pad}${snippet}${after}`);
-          el?.focus();
-        },
-      }));
-  }, [registry.data, value, onChange]);
-
   return (
     <div className="space-y-2">
       <Textarea
-        ref={ref}
         rows={rows}
         value={value}
         placeholder={placeholder}
@@ -93,20 +61,6 @@ export function BodyEditor({
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Menu
-            align="left"
-            // cm:guard the trigger must be a real interactive element: `Menu` deliberately wraps it in a plain `<span>` carrying only the popup semantics, so a `<span>` here is a menu no keyboard can open.
-            trigger={
-              <Button variant="ghost" size="sm" disabled={disabled}>
-                Insert component
-              </Button>
-            }
-            items={
-              insertItems.length > 0
-                ? insertItems
-                : [{ label: registry.isError ? "Couldn't load components" : "Loading…" }]
-            }
-          />
           <PreviewPane
             open={showPreview}
             onToggle={() => setShowPreview((p) => !p)}

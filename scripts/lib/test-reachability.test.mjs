@@ -48,6 +48,18 @@ describe('judge', () => {
     expect(judge({ ...base, declaredSkips: null }).code).toBe(2);
   });
 
+  // cm:guard a tracked file missing from disk is exit 2 NAMING the file, and it is judged before coverage: `git ls-files` answers the index, so a deletion nobody staged is tracked and absent, and the unguarded read this replaced exited 2 with a `node:fs` stack that named neither the file nor the remedy (2026-09-14).
+  it('is exit 2 naming the file when a tracked test file is not on disk', () => {
+    const v = judge({ ...base, unreadable: ['packages/web-v2/src/gone.test.ts'] });
+    expect(v.code).toBe(2);
+    expect(v.reason).toContain('packages/web-v2/src/gone.test.ts');
+    expect(v.reason).toMatch(/git rm/);
+  });
+
+  it('judges normally when nothing is missing from disk', () => {
+    expect(judge({ ...base, unreadable: [] }).code).toBe(0);
+  });
+
   it('fails on a whole-suite skip nobody declared', () => {
     const v = judge({ ...base, skipHits: ['a.test.ts'] });
     expect(v.code).toBe(1);

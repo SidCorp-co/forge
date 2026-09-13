@@ -91,11 +91,20 @@ if (missingDeps.length > 0) {
 
 const collectedPerRunner = Object.fromEntries(configs.map((cfg) => [cfg, collect(cfg)]));
 const declaredSkips = readSkips();
-const skipHits = testFiles.filter((f) =>
-  readFileSync(join(ROOT, f), 'utf8').split('\n').some(isSuiteSkip),
-);
+// cm:guard the read is guarded and the miss is COLLECTED rather than thrown: `git ls-files` answers the index, so a test file deleted from the working tree and not yet staged is tracked and absent, and an unguarded read made that ordinary state exit 2 with a `node:fs` stack naming nothing a reader could act on (2026-09-14).
+const unreadable = [];
+const skipHits = testFiles.filter((f) => {
+  let src;
+  try {
+    src = readFileSync(join(ROOT, f), 'utf8');
+  } catch {
+    unreadable.push(f);
+    return false;
+  }
+  return src.split('\n').some(isSuiteSkip);
+});
 
-const verdict = judge({ testFiles, collectedPerRunner, declaredSkips, skipHits });
+const verdict = judge({ testFiles, collectedPerRunner, declaredSkips, skipHits, unreadable });
 if (verdict.code === 2) {
   console.error(`test-reachability: ${verdict.reason} — cannot judge coverage`);
   process.exit(2);

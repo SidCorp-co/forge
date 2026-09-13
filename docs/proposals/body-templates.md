@@ -5,7 +5,8 @@ attributes and slots, plus a fixed set of plain text tags. Markdown stays for ex
 
 **Status:** P1 shipped by ISS-898 (2026-09-03) — the registry, the kernel gate, the columns,
 `forge_comments.update`, and the read projection. P2 shipped by ISS-967 (2026-09-07) — the web
-renderer, the fallback card, the composer's insert menu and preview, and description editing.
+renderer, the fallback card, the composer's insert menu and preview, and description editing;
+**the insert menu was cut on 2026-09-14** (see *What the composer's insert menu was for* below).
 P3 (ISS-968) landed 1 and 2 on 2026-09-07 — readers accept both forms, writers switched — and its
 landing 3 is open, held until `forge-plugin` ISS-728. P4 shipped by ISS-969 (2026-09-07) — the
 per-stage `bodyPolicy` switch and the adoption metric, with no stage mandated anywhere.
@@ -45,6 +46,32 @@ rather than in a comment:
 Real adoption is therefore **zero rows written by anyone doing real work**. P2 (ISS-967) is what
 gives a human an entry path at all — the composer's insert menu and preview — and it is the thing
 that can move this count off zero before P3 switches the writers.
+
+## 1a. What the composer's insert menu was for, and why it is gone
+
+Cut on 2026-09-14 by the owner. The purpose this whole document serves is **the agent's** output:
+one format, screenable before it reaches a person, and countable afterwards. §1 is the evidence for
+it and stands unchanged. What P2 built on the human side does not serve that purpose — a person
+picking `<forge-blocked on="decision">` out of a dropdown and filling the blanks is not what makes
+an agent's comment consistent, and nobody did it: the adoption tables below read 7 of 13,564
+fleet comments, and 0 of 0 agent-authored ones.
+
+A person writing on the issue screen needs an ordinary text editor. The format belongs on the
+agent's side of the wire, as a guide the agent is given and a refusal it is held to — which is
+ISS-997, and which is why §1's measurement is the part of this document that carries forward.
+
+**What was removed:** the `Insert component` menu in `features/issues/components/body-editor.tsx`
+and `componentSkeleton` in `features/issues/body-api.ts`, with its tests.
+
+**What stayed, and why each:**
+
+| Kept | Because |
+|---|---|
+| `BodyView` and the read paths | rows already hold components, and `<forge-artifact>` is how an attachment is placed in a body. Removing the renderer breaks stored rows |
+| the kernel gate — `prepareBody`, `validate`, the registry | the refusal is the mechanism §1 measures at 100 %, and it is on the agent's side |
+| `GET /api/body/components` | the Pipeline settings tab's `requireComponent` select is now its only caller |
+| `POST /api/body/preview` and the pane | a dry-run of the same write door, which is the shape a repair round needs |
+| `comments.stage`, `comments.author_agency`, `body/adoption.ts` | the denominator. §4's problem is that nothing could be counted |
 
 ## 2. Two kinds of HTML, two paths
 

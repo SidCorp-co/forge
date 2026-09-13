@@ -22,13 +22,14 @@ export function isSuiteSkip(line) {
 
 /**
  * `collectedPerRunner` maps config path -> collected file list, or `null` for a
- * runner that could not answer.
+ * runner that could not answer. `unreadable` names tracked test files the CLI
+ * could not open.
  *
  * Returns `{ code: 0 }`, `{ code: 1, unreachable, undeclaredSkips }`, or
  * `{ code: 2, reason }`.
  */
 // cm:guard order matters: a runner that could not answer is exit 2 BEFORE any coverage is computed. Judging the remainder would report every file that runner owns as unreachable — a real-looking violation list produced by a broken measurement, which is worse than no measurement, because someone will act on it.
-export function judge({ testFiles, collectedPerRunner, declaredSkips, skipHits }) {
+export function judge({ testFiles, collectedPerRunner, declaredSkips, skipHits, unreadable }) {
   for (const [cfg, files] of Object.entries(collectedPerRunner)) {
     if (files === null) return { code: 2, reason: `\`vitest list\` failed for ${cfg}` };
   }
@@ -36,6 +37,13 @@ export function judge({ testFiles, collectedPerRunner, declaredSkips, skipHits }
     return { code: 2, reason: 'found no vitest config — nothing could collect anything' };
   }
   if (declaredSkips === null) return { code: 2, reason: `${SKIPS_PATH} is not readable JSON` };
+  // cm:guard a tracked test file missing from disk is a NAMED refusal, never an unhandled ENOENT: the file is in the index and not in the tree, which is a deletion nobody staged, and the raw `readFileSync` stack that used to escape here named `node:fs` as the thing that broke while the remedy — `git rm` the file you deleted — appeared nowhere (2026-09-14).
+  if (unreadable?.length) {
+    return {
+      code: 2,
+      reason: `tracked but not on disk, so its skips could not be read: ${unreadable.join(', ')} — stage the deletion (\`git rm\`) or restore the file`,
+    };
+  }
 
   const collected = new Set(Object.values(collectedPerRunner).flat());
   const unreachable = testFiles.filter((f) => !collected.has(f));
