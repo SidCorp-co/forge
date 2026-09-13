@@ -102,10 +102,15 @@ flowchart TD
   B -->|"yes"| C["the answer goes straight back to it,<br/>with everything it already knew"]
   B -->|"no — it timed out or the box died"| D["the answer is recorded on the issue,<br/>and the work is <b>started fresh</b><br/>by whoever picks it up next"]
   D --> E["so an answer is never lost —<br/>but the context that raised it can be"]
+  A2["an agent that is not running on a box<br/>asks the same question"] --> D2["nothing is waiting to be woken,<br/>so it reads the answer back itself<br/>whenever it next looks"]
 </pre></div>
   <p class="cap">This is why answering quickly is worth something concrete: the same worker resumes
   with its own reasoning intact, instead of a new one rebuilding it from the issue. Nobody is
   penalised for a slow answer beyond that, and no question is dropped for it.</p>
+  <p class="cap">The second asker is the newer one, and it is the same question either way — same
+  choices, same advised one, same room, same reply. What it does not have is a live worker holding
+  the context, so nothing is woken for it and nothing is lost when nobody is: it comes back and
+  looks.</p>
 
   <p class="stage"><b>3</b>The question goes to where the people are</p>
   <div class="board"><pre class="mermaid">

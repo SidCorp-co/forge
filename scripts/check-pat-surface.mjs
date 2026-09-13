@@ -286,8 +286,11 @@ const exemptHit = new Set();
 let routesChecked = 0;
 let filesChecked = 0;
 
-const relevant = mounts.filter((m) =>
-  prefixes.some((p) => m.mount === p || m.mount.startsWith(`${p}/`)),
+const covered = (path) => prefixes.some((p) => path === p || path.startsWith(`${p}/`));
+
+// cm:guard the filter is per ROUTE and never per MOUNT, because a router mounted at an ANCESTOR of a covered prefix serves it just the same: `questionRoutes` is mounted bare at `/api` and declares `/questions`, so a mount-level filter walked none of its routes and reported a green over `/api/questions` the moment that prefix joined the menu (ISS-993). Three more routers are mounted bare at `/api` today, so this is the shape, not the exception.
+const relevant = mounts.filter(
+  (m) => covered(m.mount) || prefixes.some((p) => p.startsWith(`${m.mount}/`) || m.mount === '/'),
 );
 
 for (const mount of relevant) {
@@ -315,6 +318,7 @@ for (const mount of relevant) {
   }
   filesChecked += 1;
   for (const r of routes) {
+    if (r.path !== null && !covered(`${mount.mount}${r.path}`)) continue;
     routesChecked += 1;
     if (r.path === null) {
       findings.push({

@@ -49,6 +49,9 @@ export const questionRefusalCodes = [
   'QUESTION_AUTHORITY_REQUIRED',
   'QUESTION_REASON_REQUIRED',
   'QUESTION_ISSUE_ELSEWHERE',
+  'QUESTION_OPTIONS_REQUIRED',
+  'QUESTION_RECOMMENDED_UNKNOWN',
+  'QUESTION_OPTION_IDS_DUPLICATE',
 ] as const;
 export type QuestionRefusalCode = (typeof questionRefusalCodes)[number];
 
@@ -60,10 +63,22 @@ export function mayChoose(option: QuestionOption, role: ProjectMemberRole | null
   return false;
 }
 
+// cm:guard these three refusals carry codes of their OWN and must keep them: they are malformed BODIES, and the generic `QUESTION_REFUSED` is mapped to 403 in `routes.ts`, which tells a caller whose options array is empty to go and ask somebody for access.
 // cm:guard `binds_to: this_call` REQUIRES a fingerprint, and that pair is the whole of the permission shape — there is no `kind` column saying an option is a permission. An option that binds to one call without naming it is a standing allowance wearing the label of a single decision (ISS-964 criteria 13, 16).
 function checkOptions(options: QuestionOption[], recommendedOptionId: string) {
-  if (options.length === 0)
-    throw new QuestionRefused('a question with no options is not a question');
+  if (options.length === 0) {
+    throw new QuestionRefused(
+      'a question with no options is not a question',
+      'QUESTION_OPTIONS_REQUIRED',
+    );
+  }
+  // cm:guard option ids are UNIQUE within a round, because every reader resolves one by `find` and takes the first: two options sharing an id leave `chosenOptionId` naming a decision nobody can recover, and `checkPermission` reads the authority and fingerprint of whichever was listed first rather than the one the person picked.
+  if (new Set(options.map((o) => o.id)).size !== options.length) {
+    throw new QuestionRefused(
+      'two options on this round carry the same id — an answer names an option by id, so a repeated one records a choice nobody can read back',
+      'QUESTION_OPTION_IDS_DUPLICATE',
+    );
+  }
   for (const o of options) {
     if (o.bindsTo === 'this_call' && !o.fingerprint?.trim()) {
       throw new QuestionRefused(
@@ -74,6 +89,7 @@ function checkOptions(options: QuestionOption[], recommendedOptionId: string) {
   if (!recommendedOptionId || !options.some((o) => o.id === recommendedOptionId)) {
     throw new QuestionRefused(
       'every question carries a recommended option, and it must be one of this question own options — a human facing a queue owes a click, not a decision',
+      'QUESTION_RECOMMENDED_UNKNOWN',
     );
   }
 }

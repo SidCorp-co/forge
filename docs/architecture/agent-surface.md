@@ -54,6 +54,15 @@ Two command-line surfaces reach the same data plane:
 | `forge-runner api` | this repo | REST, `$FORGE_PAT` | **the runner's own work.** It must never depend on the plugin — a daemon that cannot reach core until a Claude Code plugin is installed is a worse daemon |
 | `forge` | [forge-plugin](https://github.com/SidCorp-co/forge-plugin) | REST, `$FORGE_PAT` | **the agent.** Skills call its verbs; it is the agent's whole surface |
 
+**A surface an agent needs lands on `/api`, and `POST /api/questions` is the worked example.**
+ISS-993 asked for an MCP tool on the measurement that `tools/list` carries no question tool; that
+measurement is right and is not a reason, because this table is. An agent asks a question against
+an issue with `POST /api/questions`, lists a project's open ones with
+`GET /api/questions?projectId=…&status=open`, and reads the answer back from
+`GET /api/questions/:id`, all on a PAT holding `questions:read`/`questions:write`. Answering and
+voiding stay a session's: `docs/proposals/answering-a-question-on-a-token-is-undecided.md` carries
+why, and it is the price the menu entry had to pay.
+
 The plugin was the spine until `ISS-508` closed on 2026-09-06: every `forge` verb now goes to a
 path under `/api`, keyed by a declared route table in `src/tracker/rest.mjs`, except what goes
 through `forge_uploads` — which stays on `/mcp` by design, not by lag. **The fleet has not caught up** — the copy installed on `forge-vm` is

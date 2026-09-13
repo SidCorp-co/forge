@@ -129,6 +129,19 @@
   carried back out, and the same message delivered twice is still one comment, so the agent is not
   run twice on one sentence.
 
+- **An agent can now put a decision to a person as real choices, without being a runner box.**
+  Asking a structured question — a prompt, the options, which one is advised — was something only a
+  box could do. Every other agent wrote a heading and a few lines of prose into a comment instead:
+  no choices anybody could click, no round, nothing that could wake the work back up, and a person
+  answering in prose on one end and an agent parsing prose back out on the other. An agent holding a
+  token now asks against an issue directly, and the question it creates is the same one a box
+  creates — it goes to the project's chat room with its options numbered and the advised one marked,
+  and a reply there answers it and restarts the work. Two things come with it: the open questions of
+  a project can be listed in one go, so anyone can see what is waiting instead of needing an
+  identifier nobody handed them, and the answer can be read back whenever the agent next looks.
+  Answering and voiding are still a person's, from a browser or the room — a token can ask and read,
+  and is told so by name if it tries to decide.
+
 - **A parked run's question now reaches a person on a chat channel, and a reply there answers it.**
   A run that stops to ask a human was the one park with no answering surface: the box minted the
   question, core stored its options, authorities and fingerprints — and nothing rendered them

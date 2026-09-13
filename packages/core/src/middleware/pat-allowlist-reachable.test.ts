@@ -26,6 +26,7 @@ const { PAT_ALLOWED_PREFIXES } = await import('./pat-rest-surface.js');
 
 const PAT_CAPABLE = ['requireAuth()', 'requireAnyAuth()'];
 
+// cm:guard the resolution is EXACT, and the rule it holds is that every allowlisted prefix has a router mounted at exactly it. A router mounted at an ancestor serves the prefix just as well, and a version of this that went looking for one had to decide whether a route-like line in a file was a registration — a question about JavaScript's grammar that a gate test has no business answering (ISS-993 spent six review rounds on it). So a prefix nothing mounts at fails here BY NAME: mount the router at the prefix, which is what every one of them already does.
 function routersMountedAt(prefix: string): string[] {
   const index = readFileSync('src/index.ts', 'utf8');
   const mounts = [...index.matchAll(/app\.route\(\s*'([^']+)',\s*(\w+)\s*\)/g)];

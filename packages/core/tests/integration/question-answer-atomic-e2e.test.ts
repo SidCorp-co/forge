@@ -67,7 +67,8 @@ beforeAll(async () => {
   const { requestId } = await import('../../src/middleware/request-id.js');
   app = new Hono<{ Variables: import('../../src/middleware/request-id.js').RequestIdVars }>();
   app.use('*', requestId());
-  app.route('/api', questionRoutes);
+  // cm:edge lockstep -> packages/core/src/index.ts — the mount is `/api/questions`, and this file builds its own app rather than importing the real one, so the two can disagree about where the router sits. Every URL below is absolute; mount it anywhere else and they answer from the wrong route with the right status (ISS-993 moved it here from `/api`).
+  app.route('/api/questions', questionRoutes);
   app.onError(errorHandler);
 }, 60_000);
 
