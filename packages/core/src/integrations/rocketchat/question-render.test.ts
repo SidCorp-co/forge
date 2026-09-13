@@ -1,7 +1,7 @@
 // The message a parked question becomes, and the only reply grammar it accepts.
 
 import { describe, expect, it } from 'vitest';
-import type { QuestionOption, QuestionStep } from '../../db/schema-questions.js';
+import type { ChoiceStep, FreeTextStep, QuestionOption } from '../../db/schema-questions.js';
 import {
   AMBIGUOUS_ROUND_REPLY,
   ANSWER_RECORDED,
@@ -21,11 +21,21 @@ const option = (over: Partial<QuestionOption> = {}): QuestionOption => ({
   ...over,
 });
 
-const step = (over: Partial<QuestionStep> = {}): QuestionStep => ({
+const step = (over: Partial<ChoiceStep> = {}): ChoiceStep => ({
   round: 1,
   prompt: 'The migration drops a column. Which way?',
+  answerShape: 'choice',
   options: [option(), option({ id: 'opt-2', label: 'Drop it' })],
   recommendedOptionId: 'opt-1',
+  askedAt: new Date('2026-09-12T00:00:00Z').toISOString(),
+  ...over,
+});
+
+const textStep = (over: Partial<FreeTextStep> = {}): FreeTextStep => ({
+  round: 1,
+  prompt: 'Which of the two readings did you mean?',
+  answerShape: 'free_text',
+  needed: 'the sentence you meant, in your own words',
   askedAt: new Date('2026-09-12T00:00:00Z').toISOString(),
   ...over,
 });
@@ -142,5 +152,35 @@ describe('optionToken', () => {
   it('is bare at one round and round-qualified beyond it', () => {
     expect(optionToken(1, 0, 1)).toBe('1');
     expect(optionToken(2, 0, 2)).toBe('2-1');
+  });
+});
+
+describe('a free-text round in a room', () => {
+  const rendered = () =>
+    renderRound({ issueKey: 'ISS-996', step: textStep(), rounds: 1, parkDeadlineAt: null });
+
+  // cm:guard the round must NOT read like a choice one: a free-text round carrying an option-style instruction invites a bare number, and a bare number is the one reply that round has nothing to resolve against.
+  it('states what would settle it and that the whole reply is the answer', () => {
+    const text = rendered();
+    expect(text).toContain('the sentence you meant, in your own words');
+    expect(text).toContain('The whole reply is taken.');
+    expect(text, 'no option list means no option token to offer').not.toMatch(/^1[.)]/m);
+  });
+
+  it('offers the needed line to the screen as agent-authored text', () => {
+    expect(agentAuthoredSegments(textStep())).toEqual([
+      'Which of the two readings did you mean?',
+      'the sentence you meant, in your own words',
+    ]);
+  });
+
+  // cm:guard the re-post of an option list has nothing to say about a text round, and must not print a bare heading claiming options are about to follow.
+  it('names no options when asked to show them again', () => {
+    expect(renderOptionsAgain(textStep(), 1)).not.toMatch(/\n\d[.)]/);
+  });
+
+  it('confirms a text answer as an answer rather than as an empty option', () => {
+    expect(ANSWER_RECORDED('', 'someone', 'u-1')).toContain('the answer as written');
+    expect(ANSWER_RECORDED('', 'someone', 'u-1')).not.toContain('option ``');
   });
 });

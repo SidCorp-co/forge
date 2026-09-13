@@ -101,8 +101,7 @@ function ask(over: Record<string, unknown> = {}) {
     issueId,
     prompt: 'Which way?',
     blockerKind: 'human',
-    options: [WRITER],
-    recommendedOptionId: WRITER.id,
+    answer: { shape: 'choice', options: [WRITER], recommendedOptionId: WRITER.id },
     ...over,
   });
 }

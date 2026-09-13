@@ -11,6 +11,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { QuestionStep } from '../db/schema-questions.js';
+import { chosenOptionIdOf } from '../db/schema-questions.js';
 
 type WakeArgs = { projectId: string; questionId: string };
 const wakeMastersForAnswer = vi.fn(async (_a: WakeArgs) => ({ boxes: 1, delivered: 1 }));
@@ -71,7 +72,7 @@ const { answerQuestion, QuestionRefused } = await import('./write.js');
 const answer = (over: Partial<Parameters<typeof answerQuestion>[0]> = {}) =>
   answerQuestion({
     questionId: 'q-1',
-    optionId: 'o-1',
+    answer: { kind: 'option', optionId: 'o-1' },
     round: 1,
     by: 'u-1',
     role: 'member',
@@ -106,7 +107,7 @@ describe('answering a question', () => {
   it('records the chosen option on the round it was answered on', async () => {
     releaseCommit();
     const out = await answer();
-    expect(out.steps.at(-1)?.chosenOptionId).toBe('o-1');
+    expect(chosenOptionIdOf(out.steps.at(-1))).toBe('o-1');
     expect(out.steps.at(-1)?.answeredBy).toBe('u-1');
     expect(out.status).toBe('answered');
   });
@@ -177,11 +178,16 @@ describe('a refusal writes nothing and wakes nobody', () => {
         /park deadline passed/,
       ],
       ['the round has moved on', () => {}, { round: 2 }, /round 2 and the question is on round 1/],
-      ['the option is not on this round', () => {}, { optionId: 'o-9' }, /o-9 is not on round 1/],
+      [
+        'the option is not on this round',
+        () => {},
+        { answer: { kind: 'option' as const, optionId: 'o-9' } },
+        /o-9 is not on round 1/,
+      ],
       [
         'the option needs an authority this caller lacks',
         () => {},
-        { optionId: 'o-2' },
+        { answer: { kind: 'option' as const, optionId: 'o-2' } },
         /authority admin/,
       ],
       ['the caller holds no role at all', () => {}, { role: null }, /authority writer/],

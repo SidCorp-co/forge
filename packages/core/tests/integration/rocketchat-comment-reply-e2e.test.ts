@@ -232,6 +232,7 @@ describe('who may author, and what a refusal costs', () => {
         {
           round: 1,
           prompt: 'Which way?',
+          answerShape: 'choice' as const,
           options: [
             {
               id: 'a',

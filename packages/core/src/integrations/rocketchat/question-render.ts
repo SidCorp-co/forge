@@ -4,7 +4,7 @@
 // this reaches a room; the bodies below that carry no agent text are fixed
 // constants and say so at their call site.
 
-import type { QuestionOption, QuestionStep } from '../../db/schema-questions.js';
+import { isChoiceStep, type QuestionOption, type QuestionStep } from '../../db/schema-questions.js';
 
 // cm:guard the ONE shape an option line takes, and `screenOperatorMessage` refuses agent text matching it — a label that renders as its own option line offers a choice nobody wrote (ISS-978 criterion 28).
 export const OPTION_LINE_RE = /^\s*\d+(-\d+)?\s*[.)]/;
@@ -47,7 +47,9 @@ function optionSuffix(option: QuestionOption, recommended: boolean): string {
 
 /** Every agent-authored string in a round, for the screen to read before anything is posted. */
 export function agentAuthoredSegments(step: QuestionStep): string[] {
-  return [step.prompt, ...step.options.map((o) => o.label)];
+  return isChoiceStep(step)
+    ? [step.prompt, ...step.options.map((o) => o.label)]
+    : [step.prompt, step.needed];
 }
 
 export function renderRound(args: {
@@ -61,12 +63,18 @@ export function renderRound(args: {
     ? `**${args.issueKey}** — a run is parked on a decision.`
     : 'A run is parked on a decision.';
   const lines = [head, '', step.prompt, ''];
-  step.options.forEach((o, i) => {
-    const token = optionToken(step.round, i, rounds);
-    lines.push(`${token}. ${o.label}${optionSuffix(o, o.id === step.recommendedOptionId)}`);
-  });
-  const example = optionToken(step.round, 0, rounds);
-  lines.push('', `Reply in this thread with the option, like \`${example}\`.`);
+  if (isChoiceStep(step)) {
+    step.options.forEach((o, i) => {
+      const token = optionToken(step.round, i, rounds);
+      lines.push(`${token}. ${o.label}${optionSuffix(o, o.id === step.recommendedOptionId)}`);
+    });
+    const example = optionToken(step.round, 0, rounds);
+    lines.push('', `Reply in this thread with the option, like \`${example}\`.`);
+  } else {
+    // cm:guard the round says what would SETTLE it, and the instruction says the whole reply is the answer — a free-text round that reads like a choice round invites a bare number, which this round has nothing to resolve against (ISS-996).
+    lines.push(`What would settle it: ${step.needed}`);
+    lines.push('', 'Reply in this thread with the answer itself. The whole reply is taken.');
+  }
   lines.push(
     args.parkDeadlineAt
       ? `Unanswered by ${args.parkDeadlineAt.toISOString()}, this question expires and the run stays parked.`
@@ -78,6 +86,7 @@ export function renderRound(args: {
 /** The options again, when a reply named none of them. */
 export function renderOptionsAgain(step: QuestionStep, rounds: number): string {
   const lines = ['That reply named no option on this round. The options are:', ''];
+  if (!isChoiceStep(step)) return lines.join('\n');
   step.options.forEach((o, i) => {
     lines.push(`${optionToken(step.round, i, rounds)}. ${o.label}`);
   });
@@ -97,9 +106,11 @@ export const UNKNOWN_OPTION_REPLY = (token: string): string =>
 // cm:guard the handle is matched against Rocket.Chat's own alphabet before it is interpolated, and anything else is reported as the mapped Forge user instead: a display name is user-supplied text, and this line is posted under FIXED_REPLY_CONSTANT, which promises the string is code-authored (ISS-978 criterion 10).
 const RC_HANDLE_RE = /^[a-zA-Z0-9._-]{1,60}$/;
 
+// cm:guard a free-text answer is confirmed as an ANSWER and never as `option \`\``: the empty token is what a text round leaves behind, and a receipt naming an option nobody chose tells the person the wrong thing about what was just recorded (ISS-996).
 export const ANSWER_RECORDED = (token: string, username: string, userId: string): string => {
   const who = RC_HANDLE_RE.test(username) ? `@${username}` : `the linked account ${userId}`;
-  return `Recorded: option \`${token}\`, answered by ${who}. The run has been woken.`;
+  const what = token ? `option \`${token}\`` : 'the answer as written';
+  return `Recorded: ${what}, answered by ${who}. The run has been woken.`;
 };
 
 export const ANSWER_FAILED = (reason: string): string => `That answer was not recorded — ${reason}`;

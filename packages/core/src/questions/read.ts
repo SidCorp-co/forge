@@ -9,7 +9,9 @@ import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, type ProjectMemberRole } from '../db/schema.js';
 import {
+  type AnswerShape,
   agentQuestions,
+  isChoiceStep,
   type QuestionBlockerKind,
   type QuestionOption,
   type QuestionStatus,
@@ -17,7 +19,14 @@ import {
   questionWaiters,
 } from '../db/schema-questions.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
-import { answerQuestion, askQuestion, mayChoose, QuestionRefused } from './write.js';
+import {
+  answerQuestion,
+  askQuestion,
+  type GivenAnswer,
+  mayAnswerFreeText,
+  mayChoose,
+  QuestionRefused,
+} from './write.js';
 
 export type VisibleOption = QuestionOption & { locked: boolean };
 
@@ -28,13 +37,22 @@ async function roleOn(projectId: string, userId: string): Promise<ProjectMemberR
 }
 
 // cm:guard visibility and choosability are SEPARATE. Any member of the project opens the question and reads every option; `authority: admin` locks the CHOICE alone. A question hidden from a writer is the failure criterion 15 names, and it is the one that leaves a queue of decisions only one person can even look at.
+// cm:guard the shape reaches the reader as its own field and is never inferred from an empty option list: a free-text round and a choice round whose options failed to write both present as zero options, and a screen that guesses draws an answer box over a decision (ISS-996).
 function seenBy<T extends { steps: QuestionStep[] }>(row: T, role: ProjectMemberRole | null) {
   const current = row.steps[row.steps.length - 1];
-  const options: VisibleOption[] = (current?.options ?? []).map((o) => ({
-    ...o,
-    locked: !mayChoose(o, role),
-  }));
-  return { ...row, options, recommendedOptionId: current?.recommendedOptionId ?? '' };
+  const choice = current ? isChoiceStep(current) : true;
+  const options: VisibleOption[] =
+    current && isChoiceStep(current)
+      ? current.options.map((o) => ({ ...o, locked: !mayChoose(o, role) }))
+      : [];
+  return {
+    ...row,
+    answerShape: (choice ? 'choice' : 'free_text') satisfies AnswerShape as AnswerShape,
+    options,
+    recommendedOptionId: current && isChoiceStep(current) ? current.recommendedOptionId : '',
+    needed: current && !isChoiceStep(current) ? current.needed : '',
+    locked: choice ? false : !mayAnswerFreeText(role),
+  };
 }
 
 /**
@@ -75,8 +93,12 @@ export async function askAs(args: AskAsInput) {
     issueId: args.issueId,
     prompt: args.prompt,
     blockerKind: args.blockerKind,
-    options: args.options,
-    recommendedOptionId: args.recommendedOptionId,
+    // cm:guard this door asks a CHOICE and only a choice: `askSchema` requires an option list, and a free-text round reaches the table through `askParkQuestion` (a park) or the box door, never through a person's ask (ISS-996).
+    answer: {
+      shape: 'choice',
+      options: args.options,
+      recommendedOptionId: args.recommendedOptionId,
+    },
     ...(args.assumed ? { assumed: args.assumed } : {}),
     ...(args.maxRounds === undefined ? {} : { maxRounds: args.maxRounds }),
     ...(args.parkDeadlineAt ? { parkDeadlineAt: args.parkDeadlineAt } : {}),
@@ -144,7 +166,7 @@ export async function readQuestionsForIssue(issueId: string, userId: string) {
 // cm:guard the ROLE is resolved here and handed down; the option it governs is read inside `answerQuestion`'s row lock. Authorization stays request-time, as on every other route — locking `agent_questions` does not lock `project_members`, so resolving the role under that lock would buy nothing and cost a join under it.
 export async function answerAs(args: {
   questionId: string;
-  optionId: string;
+  answer: GivenAnswer;
   round: number;
   userId: string;
 }) {
@@ -160,7 +182,7 @@ export async function answerAs(args: {
   if (!role) throw new QuestionRefused(`no question ${args.questionId}`, 'QUESTION_NOT_FOUND');
   return answerQuestion({
     questionId: args.questionId,
-    optionId: args.optionId,
+    answer: args.answer,
     round: args.round,
     by: args.userId,
     role,
@@ -177,11 +199,16 @@ export async function answerOf(questionId: string) {
     .from(agentQuestions)
     .where(eq(agentQuestions.id, questionId))
     .limit(1);
-  const answered = row?.steps.filter((s) => s.chosenOptionId).at(-1);
-  if (!answered?.chosenOptionId) return null;
+  // cm:guard keyed on `answeredAt` and NOT on the chosen option, because a free-text round is answered without one: the pre-ISS-996 filter reads every text answer as "not answered yet" and leaves the box parked on a question a person already settled.
+  // cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/questions.rs — the box branches on `answerShape` and reads `optionId` or `text` accordingly; `optionId` stays present and null on a text answer rather than being dropped, so a box that predates the field still parses the payload and simply finds no option to act on.
+  const answered = row?.steps.filter((s) => s.answeredAt).at(-1);
+  if (!answered?.answeredAt) return null;
+  const choice = isChoiceStep(answered);
   return {
     questionId,
-    optionId: answered.chosenOptionId,
+    answerShape: (choice ? 'choice' : 'free_text') satisfies AnswerShape as AnswerShape,
+    optionId: choice ? (answered.chosenOptionId ?? null) : null,
+    text: choice ? null : (answered.answerText ?? null),
     answeredAt: answered.answeredAt,
     answeredBy: answered.answeredBy,
     round: answered.round,

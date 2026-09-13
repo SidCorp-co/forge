@@ -43,16 +43,47 @@ export type QuestionOption = {
   fingerprint?: string;
 };
 
-export type QuestionStep = {
+// cm:guard a step declares its answer shape and a reader NEVER infers one from which fields happen to be present: a step carrying both an option list and a needed-text line is two questions in one row, and whichever field the reader looks at first decides what the person is asked. The write path refuses that row by name (`questions/write.ts`).
+// cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/transport/questions.rs — the box reads the answer back off the wire and branches on this same tag; a shape added here that the runner does not know reaches it as an answer it cannot act on, and the park never ends.
+export const answerShapes = ['choice', 'free_text'] as const;
+export type AnswerShape = (typeof answerShapes)[number];
+
+type StepCommon = {
   round: number;
   prompt: string;
-  options: QuestionOption[];
-  recommendedOptionId: string;
   askedAt: string;
   answeredAt?: string;
-  chosenOptionId?: string;
   answeredBy?: string;
 };
+
+export type ChoiceStep = StepCommon & {
+  answerShape: 'choice';
+  options: QuestionOption[];
+  recommendedOptionId: string;
+  chosenOptionId?: string;
+};
+
+// cm:guard `needed` is REQUIRED and is not the prompt said twice: the prompt is the question, this is what would settle it — the credential, the missing paragraph, which of the two readings was meant. A free-text round without it asks a person to guess what counts as an answer, which is the failure the option list never had (ISS-996).
+export type FreeTextStep = StepCommon & {
+  answerShape: 'free_text';
+  needed: string;
+  answerText?: string;
+};
+
+export type QuestionStep = ChoiceStep | FreeTextStep;
+
+// cm:guard absence of the tag means `choice` and has exactly one legal source: a row written before ISS-996, when a choice was the only shape there was. It is NOT a default for a caller that forgot the field — `questions/write.ts` refuses that at the door — and the migration that stamps the tag onto stored rows is what drains this arm. Same shape as a body whose `format` is absent resolving to `markdown`, and for the same reason: an old row must keep the one meaning it ever had.
+// cm:guard the ONE reader of a chosen option, and it answers `null` for a free-text round rather than `undefined`: a caller that reaches for the field directly gets a type error on the union, which is what stops a text round being read as an unanswered choice one (ISS-996).
+export function chosenOptionIdOf(step: QuestionStep | undefined): string | null {
+  if (!step || !isChoiceStep(step)) return null;
+  return step.chosenOptionId ?? null;
+}
+
+export function isChoiceStep(step: QuestionStep): step is ChoiceStep {
+  if (step.answerShape === 'choice') return true;
+  const untagged = step as { answerShape?: AnswerShape; options?: unknown };
+  return untagged.answerShape === undefined && Array.isArray(untagged.options);
+}
 
 export const agentQuestions = pgTable(
   'agent_questions',

@@ -346,7 +346,7 @@ describe("answering and voiding stay a session's", () => {
       .where(eq(schema.agentQuestions.id, id))
       .limit(1);
     expect(row?.status).toBe('open');
-    expect(row?.steps.at(-1)?.chosenOptionId).toBeUndefined();
+    expect(schema.chosenOptionIdOf(row?.steps.at(-1))).toBeNull();
   });
 
   // cm:guard an UNGRANTED token is the one the widening actually exposed — an absent grant array reads as holding every group — so this is the case that would have been an open door.

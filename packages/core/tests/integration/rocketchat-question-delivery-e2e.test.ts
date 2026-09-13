@@ -142,8 +142,7 @@ async function ask(over: { blockerKind?: 'human' | 'machine' } = {}) {
     issueId,
     prompt: 'The migration drops a column. Which way?',
     blockerKind: over.blockerKind ?? 'human',
-    options: OPTIONS,
-    recommendedOptionId: SAFE.id,
+    answer: { shape: 'choice', options: OPTIONS, recommendedOptionId: SAFE.id },
   });
 }
 
@@ -286,8 +285,7 @@ describe('delivering a round', () => {
     await write.askFollowUp({
       questionId: q.id,
       prompt: 'Neither worked. Which now?',
-      options: OPTIONS,
-      recommendedOptionId: SAFE.id,
+      answer: { shape: 'choice', options: OPTIONS, recommendedOptionId: SAFE.id },
     });
     nextMessageId = 'msg-2';
     await delivery.drainQuestionDeliveries();

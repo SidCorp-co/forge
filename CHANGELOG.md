@@ -4244,6 +4244,17 @@
 
 ### Changed
 
+- **An agent can now ask you a question whose answer is words, not one of a list.** Until now a
+  parked run could only offer you a set of options to pick from, so anything whose answer was a
+  sentence — a credential, which of two readings was meant, the wording to use — could not be asked
+  as a question at all. A round now says, when it is asked, which of the two it is: pick one of
+  these, or write the answer. A round asking for words also has to say what would settle it, so you
+  are never left guessing what counts as an answer. Neither kind bends into the other: words typed
+  at a list of options are refused rather than matched to the nearest one, and an empty answer is
+  refused rather than recorded as a settlement. Answering in words needs the same standing as
+  writing on the project — read-only members can read the question and cannot answer it, exactly as
+  with a locked option.
+
 - **The workspace dashboard now tells you whether anything is actually running.** It used to open
   with throughput for the last seven days and an average cycle time — figures that read the same
   whether the control plane was busy or had not executed anything in three days. On 2026-09-12 it
