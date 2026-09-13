@@ -31,8 +31,7 @@ const dbSelect = vi.fn(() => ({ from: selectFrom }));
 const dbInsert = vi.fn(() => ({ values: insertValues }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
 
-// loadVisibleProjectIdsForPrincipal chain (org scope):
-// selectDistinct({id}).from(projects).leftJoin(...).leftJoin(...).where(...)
+// cm:why loadVisibleProjectIdsForPrincipal chain (org scope): selectDistinct({id}).from(projects).leftJoin(...).leftJoin(...).where(...)
 const selectDistinctWhere = vi.fn();
 const selectDistinctLeftJoin2 = vi.fn(() => ({ where: selectDistinctWhere }));
 const selectDistinctLeftJoin = vi.fn(() => ({ leftJoin: selectDistinctLeftJoin2 }));
@@ -70,6 +69,13 @@ const memberAccessRow = { orgId: ORG_ID, memberRole: 'member', orgRole: null };
 function queueSlugAndMember(...then: unknown[][]): void {
   let m = selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
   for (const rows of [[memberAccessRow], ...then]) m = m.mockResolvedValueOnce(rows);
+}
+
+/** `submit` names its project, so it spends no slug lookup — only the membership check. */
+// cm:guard a submit that resolved the caller's project instead would consume the slug row this helper deliberately does NOT queue, which is the shape the refusal exists to make impossible (ISS-992)
+function queueMemberOnly(...then: unknown[][]): void {
+  let m = selectLimit.mockResolvedValueOnce([memberAccessRow]);
+  for (const rows of then) m = m.mockResolvedValueOnce(rows);
 }
 
 // cm:guard the pipeline ctx carries a MACHINE principal — since ISS-931 the job comes off the `job:<id>` name on the caller's own token, so a person's PAT (`machine: null`) makes every context field null and the happy path stops asserting anything about attribution.
@@ -112,7 +118,7 @@ describe('forge_feedback submit', () => {
   it('happy path: returns {ok, id, signalKey}', async () => {
     const tool = forgeFeedbackTool(makeCtx());
 
-    queueSlugAndMember();
+    queueMemberOnly();
     selectLimit.mockResolvedValueOnce([
       {
         jobId: JOB_ID,
@@ -134,6 +140,7 @@ describe('forge_feedback submit', () => {
 
     const result = await tool.handler({
       action: 'submit',
+      projectId: PROJECT_ID,
       kind: 'friction',
       target: 'skill',
       targetRef: 'plan-skill',
@@ -153,7 +160,7 @@ describe('forge_feedback submit', () => {
   it('soft-rejects with rate_limited when per-job cap is hit', async () => {
     const tool = forgeFeedbackTool(makeCtx());
 
-    queueSlugAndMember();
+    queueMemberOnly();
     selectLimit.mockResolvedValueOnce([
       {
         jobId: JOB_ID,
@@ -168,6 +175,7 @@ describe('forge_feedback submit', () => {
 
     const result = await tool.handler({
       action: 'submit',
+      projectId: PROJECT_ID,
       kind: 'friction',
       target: 'skill',
       summary: 'Over the limit',
@@ -206,6 +214,7 @@ describe('forge_feedback submit', () => {
 
     const result = await tool.handler({
       action: 'submit',
+      projectId: PROJECT_ID,
       kind: 'unclear_step',
       target: 'pipeline',
       summary: 'Interactive submit from CLI',
@@ -221,7 +230,7 @@ describe('forge_feedback submit', () => {
   it('hostile targetRef: signalKey contains no control chars or frame sentinels', async () => {
     const tool = forgeFeedbackTool(makeCtx());
 
-    queueSlugAndMember();
+    queueMemberOnly();
     selectLimit.mockResolvedValueOnce([
       { jobId: JOB_ID, runId: RUN_ID, issueId: ISSUE_ID, stage: 'code' },
     ]);
@@ -234,6 +243,7 @@ describe('forge_feedback submit', () => {
 
     await tool.handler({
       action: 'submit',
+      projectId: PROJECT_ID,
       kind: 'friction',
       target: 'skill',
       // Contains zero-width space, bidi override, and a forged END_UNTRUSTED_DATA sentinel
@@ -254,12 +264,93 @@ describe('forge_feedback submit', () => {
   it('missing required fields throw BAD_REQUEST', async () => {
     const tool = forgeFeedbackTool(makeCtx());
 
-    queueSlugAndMember();
+    queueMemberOnly();
     // cm:why only two rows are queued: the handler throws on the missing `summary` before it resolves the token's job, so a third would never be consumed and would leak into the next test
 
     await expect(
-      tool.handler({ action: 'submit', kind: 'friction', target: 'skill' }),
+      tool.handler({ action: 'submit', projectId: PROJECT_ID, kind: 'friction', target: 'skill' }),
     ).rejects.toThrow('summary is required');
+  });
+});
+
+describe('forge_feedback submit refuses to guess the project (ISS-992)', () => {
+  it('refuses an omitted projectId, naming the field', async () => {
+    const tool = forgeFeedbackTool(makeCtx());
+
+    await expect(
+      tool.handler({
+        action: 'submit',
+        kind: 'friction',
+        target: 'skill',
+        summary: 'A defect about some other project',
+      }),
+    ).rejects.toThrow(/projectId is required for submit/);
+  });
+
+  it('says where the id comes from, so the refusal is a way forward', async () => {
+    const tool = forgeFeedbackTool(makeCtx());
+
+    await expect(
+      tool.handler({ action: 'submit', kind: 'friction', target: 'skill', summary: 'x' }),
+    ).rejects.toThrow(/forge_projects action=list/);
+  });
+
+  it('writes NOTHING when it refuses — the whole point, a row filed somewhere plausible', async () => {
+    const tool = forgeFeedbackTool(makeCtx());
+
+    await expect(
+      tool.handler({ action: 'submit', kind: 'friction', target: 'skill', summary: 'x' }),
+    ).rejects.toThrow();
+    expect(insertValues).not.toHaveBeenCalled();
+  });
+
+  // cm:why The bound on the change: a read that looks at the wrong feed is visibly empty, so the three reading arms keep resolving the caller's project and are NOT refused.
+  it('leaves list resolving the caller\'s project with no projectId', async () => {
+    const tool = forgeFeedbackTool(makeCtx());
+
+    queueSlugAndMember();
+    selectOrderBy.mockReturnValueOnce({
+      limit: vi.fn().mockResolvedValueOnce([]),
+    } as unknown as ReturnType<typeof selectOrderBy>);
+
+    const out = (await tool.handler({ action: 'list' })) as { reports: unknown[] };
+    expect(out.reports).toEqual([]);
+  });
+
+  // cm:why The context resolves one project and the caller names another: the row must land where the CALLER said. Before ISS-992 this call filed against the context's project and said nothing.
+  it('files into the project the caller named, not the one the context resolves', async () => {
+    const tool = forgeFeedbackTool(makeCtx('some-other-project'));
+
+    queueMemberOnly();
+    selectLimit.mockResolvedValueOnce([]);
+    insertReturning.mockResolvedValueOnce([
+      { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', signalKey: 'self_report:skill:-:friction' },
+    ]);
+
+    await tool.handler({
+      action: 'submit',
+      projectId: PROJECT_ID,
+      kind: 'friction',
+      target: 'skill',
+      summary: 'A defect observed while working somewhere else',
+    });
+
+    const inserted = (insertValues.mock.calls[0] as unknown[])?.[0] as Record<string, unknown>;
+    expect(inserted.projectId).toBe(PROJECT_ID);
+    // cm:why and the slug the context carries was never looked up — `queueMemberOnly` queued no row for it
+    expect(selectLimit).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('the forge_feedback tool description (ISS-992)', () => {
+  it('names projectId among the fields submit requires', () => {
+    const tool = forgeFeedbackTool(makeCtx());
+    expect(tool.description).toMatch(/Required fields: projectId/);
+  });
+
+  it('says the id names the project the report is ABOUT', () => {
+    const tool = forgeFeedbackTool(makeCtx());
+    expect(tool.description).toContain('the report is ABOUT');
   });
 });
 
