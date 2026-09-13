@@ -121,12 +121,18 @@ describe('GET /api/runners/active', () => {
     `);
   }
 
+  type ActiveRunner = {
+    runnerId: string;
+    current: { stage: string; issueRef: string | null; startedAt: string | null } | null;
+  };
+  type ActiveBody = { total: number; busy: number; runners: ActiveRunner[] };
+
   async function call(projectId: string, jwt: string) {
     const res = await app.request(
       `/api/runners/active?projectId=${encodeURIComponent(projectId)}`,
       { headers: { authorization: `Bearer ${jwt}` } },
     );
-    return { status: res.status, body: (await res.json().catch(() => null)) as any };
+    return { status: res.status, body: (await res.json().catch(() => null)) as ActiveBody };
   }
 
   it('reports a busy runner with its issue ref + stage, and an idle runner as null', async () => {
@@ -144,12 +150,12 @@ describe('GET /api/runners/active', () => {
     expect(body.total).toBe(2);
     expect(body.busy).toBe(1);
 
-    const busy = body.runners.find((r: any) => r.runnerId === busyRunner);
-    expect(busy.current).toMatchObject({ stage: 'code', issueRef: 'ISS-417' });
-    expect(busy.current.startedAt).toBeTruthy();
+    const busy = body.runners.find((r) => r.runnerId === busyRunner);
+    expect(busy?.current).toMatchObject({ stage: 'code', issueRef: 'ISS-417' });
+    expect(busy?.current?.startedAt).toBeTruthy();
 
-    const idle = body.runners.find((r: any) => r.runnerId === idleRunner);
-    expect(idle.current).toBeNull();
+    const idle = body.runners.find((r) => r.runnerId === idleRunner);
+    expect(idle?.current).toBeNull();
   });
 
   // cm:guard the route builds its reference in raw SQL, so the prefix must be JOINED in — this case is the only thing that catches a `projects` column selected with no `projects` in the FROM, which the unit suites cannot see at all (ISS-992)
@@ -170,8 +176,8 @@ describe('GET /api/runners/active', () => {
 
     const { status, body } = await call(project.id, jwt);
     expect(status).toBe(200);
-    const busy = body.runners.find((r: any) => r.runnerId === runner);
-    expect(busy.current.issueRef).toBe('FD-977');
+    const busy = body.runners.find((r) => r.runnerId === runner);
+    expect(busy?.current?.issueRef).toBe('FD-977');
   });
 
   it('counts a job under a PAUSED pipeline_run as busy (paused is non-terminal)', async () => {
@@ -187,7 +193,7 @@ describe('GET /api/runners/active', () => {
     const { status, body } = await call(project.id, jwt);
     expect(status).toBe(200);
     expect(body.busy).toBe(1);
-    expect(body.runners[0].current).toMatchObject({ stage: 'review', issueRef: 'ISS-88' });
+    expect(body.runners[0]?.current).toMatchObject({ stage: 'review', issueRef: 'ISS-88' });
   });
 
   it('treats a job under a terminal pipeline_run as idle (orphan filter, ISS-258)', async () => {
@@ -202,10 +208,9 @@ describe('GET /api/runners/active', () => {
 
     const { status, body } = await call(project.id, jwt);
     expect(status).toBe(200);
-    // Runner is still listed (not dropped), but idle — its only job is an orphan.
     expect(body.total).toBe(1);
     expect(body.busy).toBe(0);
-    expect(body.runners[0].current).toBeNull();
+    expect(body.runners[0]?.current).toBeNull();
   });
 
   it('403s a non-member', async () => {
