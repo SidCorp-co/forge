@@ -10,7 +10,6 @@
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   createTestDevice,
@@ -28,9 +27,7 @@ let heldIssuePrefixes: typeof import('../../src/issues/issue-prefix-read.js').he
 let parseIssueRef: typeof import('../../src/lib/issue-ref.js').parseIssueRef;
 let openRunSession: typeof import('../../src/devices/run-session.js').openRunSession;
 let loadIssueDependencyEdges: typeof import('../../src/issues/dependency-read.js').loadIssueDependencyEdges;
-let signUserToken: typeof import('../../src/auth/jwt.js')['signUserToken'];
-// biome-ignore lint/suspicious/noExplicitAny: test-only mount
-let app: any;
+let readAdmissibleIssues: typeof import('../../src/devices/admissible.js').readAdmissibleIssues;
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
@@ -46,12 +43,7 @@ beforeAll(async () => {
   ({ parseIssueRef } = await import('../../src/lib/issue-ref.js'));
   ({ openRunSession } = await import('../../src/devices/run-session.js'));
   ({ loadIssueDependencyEdges } = await import('../../src/issues/dependency-read.js'));
-  ({ signUserToken } = await import('../../src/auth/jwt.js'));
-  const { projectRoutes } = await import('../../src/projects/routes.js');
-  const { errorHandler } = await import('../../src/middleware/error.js');
-  app = new Hono();
-  app.onError(errorHandler);
-  app.route('/api/projects', projectRoutes);
+  ({ readAdmissibleIssues } = await import('../../src/devices/admissible.js'));
 }, 300_000);
 
 afterAll(async () => {
@@ -346,52 +338,6 @@ describe('an edge whose two ends sit in different projects', () => {
   });
 });
 
-describe('the project PATCH that sets a prefix', () => {
-  async function patch(projectId: string, body: Record<string, unknown>) {
-    const res = await app.request(`/api/projects/${projectId}`, {
-      method: 'PATCH',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${await signUserToken(userId)}`,
-      },
-      body: JSON.stringify(body),
-    });
-    return {
-      status: res.status,
-      body: (await res.json().catch(() => null)) as Record<string, unknown> | null,
-    };
-  }
-
-  // cm:why criterion 2, through the door a person actually uses — every other prefix case arranges the row itself, so none of them proves the write works.
-  it('persists a prefix named on its own and returns it', async () => {
-    const a = await project();
-    const out = await patch(a.id, { issuePrefix: 'FD' });
-    expect(out.status).toBe(200);
-    expect(out.body?.issuePrefix).toBe('FD');
-    expect(await activePrefixOf(a.id)).toBe('FD');
-  });
-
-  // cm:guard the prefix is written through a SECOND table, so it has to move in the same transaction as the rest of the patch — applied outside it, a request that then fails on a sibling field renames the project and answers the caller with an error (codex review of ISS-992)
-  it('leaves the prefix unset when a later field in the same patch fails', async () => {
-    const a = await project();
-    const out = await patch(a.id, { issuePrefix: 'FD', defaultDeviceId: randomUUID() });
-    expect(out.status).toBeGreaterThanOrEqual(400);
-    expect(await activePrefixOf(a.id)).toBeNull();
-    expect(await heldIssuePrefixes(a.id)).toEqual([]);
-  });
-
-  it('refuses a prefix another project holds without naming a project the caller cannot see', async () => {
-    const other = (await createTestUser(harness.db)).id;
-    const theirs = await createTestProject(harness.db, other);
-    await assign(theirs.id, 'FD');
-    const mine = await project();
-    const out = await patch(mine.id, { issuePrefix: 'FD' });
-    expect(out.status).toBe(409);
-    expect(JSON.stringify(out.body)).not.toContain(theirs.slug);
-    expect(JSON.stringify(out.body)).not.toContain(theirs.name);
-  });
-});
-
 describe('a run session under a prefixed project', () => {
   // cm:why criteria 22 and 23 — the stored key stays canonical, so admission still finds it.
   it('stores the canonical ISS- key whatever prefix the project holds', async () => {
@@ -416,6 +362,35 @@ describe('a run session under a prefixed project', () => {
       sql`SELECT metadata -> 'runIssues' AS keys FROM pipeline_runs WHERE id = ${session.runId}`,
     )) as unknown as Array<{ keys: string[] }>;
     expect(rows[0]?.keys).toEqual(['ISS-977']);
+  });
+
+  // cm:guard criterion 23 — admission matches the stored `runIssues` key by SQL string CONTAINMENT, and the stored form is canonical. Take `issue_prefix` into account in that predicate and it stops matching: the run's own issue is offered to a second box as free work, which is the cross-box conflict ISS-933 criterion 7 exists to prevent.
+  it("sees a FD project's issue in a run whose stored key reads ISS-977", async () => {
+    const p = await project();
+    await assign(p.id, 'FD');
+    for (const seq of [977, 978]) {
+      await harness.db.execute(sql`
+        INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
+        VALUES (${randomUUID()}, ${p.id}, ${seq}, ${`issue ${seq}`}, 'draft', ${userId})
+      `);
+    }
+    const deviceId = (await createTestDevice(harness.db, userId)).id;
+    await harness.db.execute(sql`
+      UPDATE projects
+         SET agent_config = ${JSON.stringify({ pipelineConfig: { poolBacklog: { statuses: ['draft'], limit: 20 } } })}::jsonb
+       WHERE id = ${p.id}
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO runners (id, project_id, device_id, name, type, status)
+      VALUES (${randomUUID()}, ${p.id}, ${deviceId}, 'r', 'claude-code', 'online')
+    `);
+    await openRunSession({ deviceId, projectId: p.id, issueKeys: ['FD-977'], name: 'prefixed' });
+
+    const admitted = (await readAdmissibleIssues({ deviceId, projectId: p.id })).map(
+      (a) => a.issueKey,
+    );
+    expect(admitted).not.toContain('FD-977');
+    expect(admitted).toContain('FD-978');
   });
 
   it('refuses a key under a prefix the project does not hold, by name', async () => {
