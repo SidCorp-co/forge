@@ -233,9 +233,9 @@ export type AnswerInput = {
   role: ProjectMemberRole | null;
 };
 
-// cm:guard a VIEWER may read a free-text round and may not answer it, which is `mayChoose`'s split and not a new rule: an answer here is typed straight into a running agent's prompt, so it reaches further than choosing one of the options somebody else authored. Visibility stays separate — a question hidden from a reader is the failure ISS-964 criterion 15 names.
+// cm:guard ANY role on the project may answer in words, viewer included — the owner's call on 2026-09-13, and it is not the same question `mayChoose` answers. An OPTION declares its own authority because choosing one exercises it; writing an answer supplies information the run asked for, and gating that on a role only means the person who has it gets asked to relay what the person who does not already typed. A `null` role is still refused, by `answerAs` reading the question at all.
 export function mayAnswerFreeText(role: ProjectMemberRole | null): boolean {
-  return role === 'admin' || role === 'member';
+  return role !== null;
 }
 
 /**

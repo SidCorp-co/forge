@@ -109,11 +109,11 @@ describe('reading a step', () => {
 });
 
 describe('who may answer in words', () => {
-  // cm:guard a viewer READS the round and does not answer it, which is `mayChoose`'s own split: a free-text answer is typed straight into a running agent, so it reaches further than picking one of the options somebody else authored.
-  it('refuses a viewer and admits the two roles that may write', () => {
+  // cm:guard every role answers, viewer included, and only a caller with NO role is refused. An option carries its own authority because choosing one exercises it; supplying an answer the run asked for exercises nothing, and gating it would make the person who holds a role relay what the person who does not already typed.
+  it('admits every role on the project and refuses only a stranger', () => {
     expect(mayAnswerFreeText('admin')).toBe(true);
     expect(mayAnswerFreeText('member')).toBe(true);
-    expect(mayAnswerFreeText('viewer')).toBe(false);
+    expect(mayAnswerFreeText('viewer')).toBe(true);
     expect(mayAnswerFreeText(null)).toBe(false);
   });
 });
@@ -184,7 +184,8 @@ describe('neither shape absorbs the other', () => {
     ).toBe('QUESTION_ANSWER_WRONG_SHAPE');
   });
 
-  it('refuses a viewer answering in words, by authority', async () => {
+  // cm:guard a caller with NO role on the project is still refused, and that is the whole of the rule now: it is the same check that stops a stranger READING the question, not a second one about answering.
+  it('refuses a caller holding no role at all', async () => {
     row = openRow([freeText]);
     expect(
       await refusalOf(() =>
@@ -193,7 +194,7 @@ describe('neither shape absorbs the other', () => {
           answer: { kind: 'text', text: 'the second reading' },
           round: 1,
           by: 'u-1',
-          role: 'viewer',
+          role: null,
         }),
       ),
     ).toBe('QUESTION_AUTHORITY_REQUIRED');

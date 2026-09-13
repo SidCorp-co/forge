@@ -851,17 +851,16 @@ describe("deriveBlockerState", () => {
 		expect(b?.tone).toBe("attention");
 	});
 
-	it("needs_info shows the supplied question and a provide-info action", () => {
+	// cm:guard the banner points at the DECISION PANEL and never at the comment thread: since ISS-996 a park at `needs_info` is settled by answering its question row, and an answer typed into the comments resumes nothing.
+	it("needs_info sends the reader to the decision below, with a provide-info action", () => {
 		const b = deriveBlockerState(
 			blockerIssue({ status: "needs_info" }),
 			undefined,
 			undefined,
-			{
-				needsInfoQuestion: "Which environment?",
-			},
 		);
 		expect(b?.cta.kind).toBe("provide-info");
-		expect(b?.question).toBe("Which environment?");
+		expect(b?.whoMustAct).toMatch(/decision below/);
+		expect(b?.whoMustAct).not.toMatch(/comment/i);
 	});
 
 	describe("waiting → the authored kind (RFC 0002 INV-5)", () => {
@@ -1231,7 +1230,6 @@ describe("deriveBlockerState — ISS-853, the paused run the screen used to hide
 			blockerIssue({ status: "needs_info" }),
 			pausedHealth(),
 			undefined,
-			{ needsInfoQuestion: "which account?" },
 		);
 		expect(b?.cta.kind).toBe("resume-run");
 	});

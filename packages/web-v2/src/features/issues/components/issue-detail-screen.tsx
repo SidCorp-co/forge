@@ -33,7 +33,7 @@ import { STAGES, type StageKey } from "@/design/stages";
 import type { StatusKey } from "@/design/status";
 import { useResumeRun } from "@/features/pipeline/hooks";
 import { useProjects } from "@/features/projects/hooks";
-import { DecisionPanel } from "@/features/questions/components/decision-panel";
+import { DECISION_PANEL_ANCHOR, DecisionPanel } from "@/features/questions/components/decision-panel";
 import { buildShareLink, useRecents } from "@/features/shell";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
@@ -215,14 +215,7 @@ export function IssueDetailScreen({
 
   // cm:guard the derivations below sit AFTER the loading/error early-returns on purpose — they are plain function calls, not hooks, so no hook order changes with them; moving a real hook down here is what would break
   const runStatus = statusToRun(issue.status, issue.agentStatus);
-  // The needs_info question is the MOST RECENT comment (the API returns the
-  // comment tree oldest-first, so the triggering question is the last top-level
-  // node, not index 0). ISS-377 review fix.
-  const needsInfoQuestion =
-    issue.status === "needs_info" ? commentsQ.data?.items.at(-1)?.body : undefined;
-  const blocker = deriveBlockerState(issue, issue.pipelineHealth, depsQ.data, {
-    ...(needsInfoQuestion ? { needsInfoQuestion } : {}),
-  });
+  const blocker = deriveBlockerState(issue, issue.pipelineHealth, depsQ.data);
   const stageCells = deriveStageOutcomes(
     stage,
     runStatus,
@@ -251,12 +244,11 @@ export function IssueDetailScreen({
     }
   };
 
-  // cm:why the blocker banner names the question but never reproduces it, so its CTA has to actually move the reader — switching the tab alone was a no-op whenever comments was already the open tab and the thread sat below the fold
-  const focusComments = () => {
-    setTab("comments");
+  // cm:guard "Provide info" moves the reader to the DECISION PANEL and not to the comment box: since ISS-996 a park at `needs_info` is settled by answering its question row, and an answer typed into the thread resumes nothing (ISS-996).
+  const focusDecisions = () => {
     if (typeof window !== "undefined") {
       requestAnimationFrame(() =>
-        document.getElementById("issue-comments")?.scrollIntoView({ behavior: "smooth", block: "start" }),
+        document.getElementById(DECISION_PANEL_ANCHOR)?.scrollIntoView({ behavior: "smooth", block: "start" }),
       );
     }
   };
@@ -436,7 +428,7 @@ export function IssueDetailScreen({
               onApprove={onApprove}
               onResume={onBannerResume}
               onResumeRun={onResumeRun}
-              onProvideInfo={focusComments}
+              onProvideInfo={focusDecisions}
             />
           )}
 

@@ -12,10 +12,13 @@ export const questionsApi = {
     apiClient<QuestionListResponse>(`/questions?issueId=${encodeURIComponent(issueId)}`),
 
   // cm:guard `round` travels with every answer and is never filled in from the question the client happens to hold: core refuses a round that is not the current one, and that refusal is the whole of the stale-screen protection (ISS-980 criterion 39).
-  /** `POST /api/questions/:id/answer` — choose one option on the round it was shown on. */
-  answer: ({ questionId, optionId, round }: AnswerInput) =>
+  // cm:guard the body carries optionId XOR text and never both — core refuses a body with both rather than picking one, so the spread below must not be widened into sending an empty `text` beside an option (ISS-996).
+  /** `POST /api/questions/:id/answer` — answer the round it was shown on, by option or in words. */
+  answer: ({ questionId, round, ...given }: AnswerInput) =>
     apiClient<AgentQuestion>(`/questions/${questionId}/answer`, {
       method: "POST",
-      body: JSON.stringify({ optionId, round }),
+      body: JSON.stringify(
+        given.optionId ? { optionId: given.optionId, round } : { text: given.text, round },
+      ),
     }),
 };

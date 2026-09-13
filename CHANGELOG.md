@@ -4244,6 +4244,16 @@
 
 ### Changed
 
+- **The question a stopped run leaves you can now be answered on the issue page, in your own
+  words.** The decision panel could only offer a list of options to pick from, which is not the
+  shape of most of what a run is stuck on — it usually needs a hostname, a name, a sentence of
+  context. Rounds asked in words now render a box to write in, and the answer goes back to the run
+  the same way a chosen option does. Anyone with a role on the project can answer one; picking an
+  option is still governed by that option's own authority, which is a different question and stays
+  separate. The banner at the top of a blocked issue has been re-pointed too: "Provide info" used
+  to scroll you to the comment box, which since the previous change does nothing at all, and now
+  takes you to the decision itself.
+
 - **A run that stops to ask you something is now restarted by answering it, and by nothing else.**
   Every time a run stops on an issue it now leaves a question you can answer — where it said what
   would settle it, the question says that; where it did not, the question says so and asks for

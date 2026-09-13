@@ -2,21 +2,39 @@
 
 // The structured decision a parked run is waiting on, on the issue screen.
 //
-// This is the `agent_questions` ROW. The agent's prose question is a comment in
-// the thread below and `blocker-banner.tsx` deliberately does not duplicate it —
-// that is a different lane and stays one.
+// This is the `agent_questions` ROW, and since ISS-996 it is the ONLY lane: a
+// park at `needs_info` mints its own question, answered by option or in words.
+// The comment thread below records what was asked; answering there moves
+// nothing.
 
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, ErrorState, MonoTag, Skeleton } from "@/design";
+import { useState } from "react";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  ErrorState,
+  Field,
+  MonoTag,
+  Skeleton,
+  Textarea,
+} from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useAnswerQuestion, useIssueQuestions } from "../hooks";
-import type {
-  AgentQuestion,
-  OptionAuthority,
-  OptionBinding,
-  OptionExecutor,
-  QuestionStep,
-  VisibleOption,
+import {
+  type AgentQuestion,
+  isChoiceStep,
+  type OptionAuthority,
+  type OptionBinding,
+  type OptionExecutor,
+  type QuestionStep,
+  type VisibleOption,
 } from "../types";
+
+// cm:guard exported and imported rather than spelled twice: the blocker banner's "Provide info" CTA scrolls to this element, and a renamed string on one side alone leaves that CTA silently doing nothing (ISS-996).
+export const DECISION_PANEL_ANCHOR = "issue-decisions";
 
 // cm:guard the three attributes are rendered as what they MEAN for the reader, never as their stored values: `bindsTo: 'session'` tells a person nothing, and a decision whose reach the reader cannot state is one they cannot make (ISS-980 criteria 3, 4, 5).
 const AUTHORITY_MEANS: Record<OptionAuthority, string> = {
@@ -90,21 +108,91 @@ function OptionRow({
   );
 }
 
-function RoundHistory({ step, chosenLabel }: { step: QuestionStep; chosenLabel: string | null }) {
+// cm:guard an earlier round renders by its OWN shape and never by the question's current one: a decision that asked for a choice and then followed up in words carries both, and reading the row's shape here would list options a text round never had (ISS-996).
+function RoundHistory({ step }: { step: QuestionStep }) {
   return (
     <div className="rounded-md border border-line px-3 py-2">
       <p className="fg-caption text-subtle">Round {step.round}</p>
       <p className="fg-body-sm mt-0.5 text-fg">{step.prompt}</p>
-      <ul className="fg-caption mt-1 space-y-0.5 text-muted">
-        {step.options.map((o) => (
-          <li key={o.id}>
-            {o.label}
-            {o.id === step.chosenOptionId ? " — chosen" : ""}
-          </li>
-        ))}
-      </ul>
-      {chosenLabel && <p className="fg-caption mt-1 text-muted">Answered: {chosenLabel}</p>}
+      {isChoiceStep(step) ? (
+        <>
+          <ul className="fg-caption mt-1 space-y-0.5 text-muted">
+            {step.options.map((o) => (
+              <li key={o.id}>
+                {o.label}
+                {o.id === step.chosenOptionId ? " — chosen" : ""}
+              </li>
+            ))}
+          </ul>
+          {step.chosenOptionId && (
+            <p className="fg-caption mt-1 text-muted">
+              Answered:{" "}
+              {step.options.find((o) => o.id === step.chosenOptionId)?.label ??
+                "an option no longer on this round"}
+            </p>
+          )}
+        </>
+      ) : (
+        <>
+          <p className="fg-caption mt-1 text-muted">Needed: {step.needed}</p>
+          {step.answerText && (
+            <p className="fg-body-sm mt-1 whitespace-pre-wrap text-fg">{step.answerText}</p>
+          )}
+        </>
+      )}
     </div>
+  );
+}
+
+// cm:guard the empty answer is refused HERE and the button stays enabled to do it: a disabled submit under an empty box tells a person nothing about why, and core would refuse the blank body anyway (ISS-996).
+function FreeTextAnswer({
+  needed,
+  locked,
+  pending,
+  onAnswer,
+}: {
+  needed: string;
+  locked: boolean;
+  pending: boolean;
+  onAnswer: (text: string) => void;
+}) {
+  const [text, setText] = useState("");
+  const [fault, setFault] = useState<string | null>(null);
+
+  if (locked) {
+    return (
+      <p className="fg-caption text-danger">
+        Answering this needs access to the project this issue belongs to.
+      </p>
+    );
+  }
+
+  return (
+    <form
+      className="space-y-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!text.trim()) {
+          setFault("Write what the run asked for before sending it.");
+          return;
+        }
+        setFault(null);
+        onAnswer(text.trim());
+        setText("");
+      }}
+    >
+      <Field label="Your answer" hint={needed ? `Needed: ${needed}` : undefined} error={fault ?? undefined}>
+        <Textarea
+          value={text}
+          rows={4}
+          placeholder="Tell the run what it needs to know"
+          onChange={(e) => setText(e.target.value)}
+        />
+      </Field>
+      <Button type="submit" variant="primary" size="sm" loading={pending}>
+        Send answer
+      </Button>
+    </form>
   );
 }
 
@@ -113,11 +201,20 @@ function isAnswerable(question: AgentQuestion): boolean {
   return question.status === "open" && question.blockerKind === "human";
 }
 
+function answeredWith(last: QuestionStep | undefined): string {
+  if (!last) return "no round on the record";
+  if (!isChoiceStep(last)) return last.answerText ?? "in words, no longer on the record";
+  return (
+    last.options.find((o) => o.id === last.chosenOptionId)?.label ??
+    last.chosenOptionId ??
+    "an option no longer on this round"
+  );
+}
+
 function outcomeOf(question: AgentQuestion): string | null {
   const last = question.steps[question.steps.length - 1];
-  const chosen = last?.options.find((o) => o.id === last.chosenOptionId);
   if (question.status === "answered") {
-    return `Answered — ${chosen?.label ?? last?.chosenOptionId ?? "an option no longer on this round"}`;
+    return `Answered — ${answeredWith(last)}`;
   }
   if (question.status === "void") {
     return `Withdrawn — ${question.voidReason ?? "no reason recorded"}`;
@@ -149,13 +246,7 @@ function QuestionCard({ question, issueId }: { question: AgentQuestion; issueId:
         {earlier.length > 0 && (
           <div className="space-y-2">
             {earlier.map((step) => (
-              <RoundHistory
-                key={step.round}
-                step={step}
-                chosenLabel={
-                  step.options.find((o) => o.id === step.chosenOptionId)?.label ?? null
-                }
-              />
+              <RoundHistory key={step.round} step={step} />
             ))}
           </div>
         )}
@@ -163,19 +254,34 @@ function QuestionCard({ question, issueId }: { question: AgentQuestion; issueId:
         {current && (
           <div className="space-y-2">
             <p className="fg-caption text-subtle">Round {current.round}</p>
-            <p className="fg-body text-fg">{current.prompt}</p>
-            {question.options.map((option) => (
-              <OptionRow
-                key={option.id}
-                option={option}
-                recommended={option.id === question.recommendedOptionId}
-                answerable={answerable}
+            {current.prompt && <p className="fg-body text-fg">{current.prompt}</p>}
+            {question.answerShape === "choice" ? (
+              question.options.map((option) => (
+                <OptionRow
+                  key={option.id}
+                  option={option}
+                  recommended={option.id === question.recommendedOptionId}
+                  answerable={answerable}
+                  pending={answer.isPending}
+                  onChoose={(optionId) =>
+                    answer.mutate({ questionId: question.id, optionId, round: current.round })
+                  }
+                />
+              ))
+            ) : answerable ? (
+              <FreeTextAnswer
+                needed={question.needed}
+                locked={question.locked}
                 pending={answer.isPending}
-                onChoose={(optionId) =>
-                  answer.mutate({ questionId: question.id, optionId, round: current.round })
+                onAnswer={(text) =>
+                  answer.mutate({ questionId: question.id, text, round: current.round })
                 }
               />
-            ))}
+            ) : (
+              question.needed && (
+                <p className="fg-caption text-muted">Needed: {question.needed}</p>
+              )
+            )}
           </div>
         )}
 
@@ -206,7 +312,7 @@ export function DecisionPanel({ issueId }: { issueId: string }) {
   if (questions.length === 0) return null;
 
   return (
-    <div className="space-y-3">
+    <div id={DECISION_PANEL_ANCHOR} className="space-y-3">
       {questions.map((question) => (
         <QuestionCard key={question.id} question={question} issueId={issueId} />
       ))}

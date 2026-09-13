@@ -8,7 +8,7 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AgentQuestion, QuestionStep, VisibleOption } from "../types";
+import type { AgentQuestion, ChoiceStep, FreeTextStep, VisibleOption } from "../types";
 import { DecisionPanel } from "./decision-panel";
 
 expect.extend(matchers);
@@ -37,12 +37,24 @@ const DEPLOY: VisibleOption = {
   locked: true,
 };
 
-function step(over: Partial<QuestionStep> = {}): QuestionStep {
+function step(over: Partial<ChoiceStep> = {}): ChoiceStep {
   return {
     round: 1,
+    answerShape: "choice",
     prompt: "Push to a shared branch?",
     options: [SAFE, DEPLOY],
     recommendedOptionId: SAFE.id,
+    askedAt: "2026-09-11T09:00:00.000Z",
+    ...over,
+  };
+}
+
+function textStep(over: Partial<FreeTextStep> = {}): FreeTextStep {
+  return {
+    round: 1,
+    answerShape: "free_text",
+    prompt: "Which staging database should this point at?",
+    needed: "the hostname of the staging database",
     askedAt: "2026-09-11T09:00:00.000Z",
     ...over,
   };
@@ -62,10 +74,25 @@ function aQuestion(over: Partial<AgentQuestion> = {}): AgentQuestion {
     parkDeadlineAt: null,
     createdAt: "2026-09-11T09:00:00.000Z",
     updatedAt: "2026-09-11T09:00:00.000Z",
+    answerShape: "choice",
     options: [SAFE, DEPLOY],
     recommendedOptionId: SAFE.id,
+    needed: "",
+    locked: false,
     ...over,
   };
+}
+
+function aTextQuestion(over: Partial<AgentQuestion> = {}): AgentQuestion {
+  return aQuestion({
+    steps: [textStep()],
+    answerShape: "free_text",
+    options: [],
+    recommendedOptionId: "",
+    needed: "the hostname of the staging database",
+    locked: false,
+    ...over,
+  });
 }
 
 function loaded(questions: AgentQuestion[]) {
@@ -254,5 +281,107 @@ describe("nothing, loading and broken are three different screens", () => {
     expect(screen.getByText("network down")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /retry|try again/i }));
     expect(refetch).toHaveBeenCalled();
+  });
+});
+
+// cm:guard the round that is answered in WORDS is a different control, not an option list with zero rows: an empty `options` array renders identically for a free-text round and for a choice round whose options failed to write, so every assertion here reads the panel's own answer form (ISS-996).
+describe("a round answered in words", () => {
+  it("offers a written answer instead of options, and says what is needed", () => {
+    loaded([aTextQuestion()]);
+    renderPanel();
+
+    expect(screen.getByRole("textbox", { name: /your answer/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Choose / })).toBeNull();
+    expect(
+      screen.getByText(/the hostname of the staging database/),
+    ).toBeInTheDocument();
+  });
+
+  it("sends the text on the round it was shown on, and never an option", () => {
+    loaded([aTextQuestion({ steps: [textStep({ round: 2 })] })]);
+    renderPanel();
+
+    fireEvent.change(screen.getByRole("textbox", { name: /your answer/i }), {
+      target: { value: "  db-staging-3.internal  " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /send answer/i }));
+
+    expect(mutate).toHaveBeenCalledWith({
+      questionId: "q-1",
+      text: "db-staging-3.internal",
+      round: 2,
+    });
+  });
+
+  it("refuses an empty answer here rather than sending a blank one core would reject", () => {
+    loaded([aTextQuestion()]);
+    renderPanel();
+
+    fireEvent.click(screen.getByRole("button", { name: /send answer/i }));
+
+    expect(mutate).not.toHaveBeenCalled();
+    expect(screen.getByText(/write what the run asked for/i)).toBeInTheDocument();
+  });
+
+  // cm:guard the SERVER's `locked` and no role read of our own — the client has no access to the org-derived half of the rule (ISS-964 criterion 15).
+  it("shows no answer box to a reader the server says may not answer", () => {
+    loaded([aTextQuestion({ locked: true })]);
+    renderPanel();
+
+    expect(screen.queryByRole("textbox", { name: /your answer/i })).toBeNull();
+    expect(screen.getByText(/needs access to the project/i)).toBeInTheDocument();
+  });
+
+  it("reads back the words an answered round was settled with", () => {
+    loaded([
+      aTextQuestion({
+        status: "answered",
+        steps: [
+          textStep({
+            answeredAt: "2026-09-13T10:00:00.000Z",
+            answerText: "db-staging-3.internal",
+          }),
+        ],
+      }),
+    ]);
+    renderPanel();
+
+    expect(screen.getByText("Answered — db-staging-3.internal")).toBeInTheDocument();
+  });
+
+  it("reads back an earlier round answered in words, under a current choice round", () => {
+    loaded([
+      aQuestion({
+        steps: [
+          textStep({
+            round: 1,
+            answeredAt: "2026-09-13T09:00:00.000Z",
+            answerText: "db-staging-3.internal",
+          }),
+          step({ round: 2 }),
+        ],
+      }),
+    ]);
+    renderPanel();
+
+    expect(screen.getByText("db-staging-3.internal")).toBeInTheDocument();
+    expect(screen.getByText(/Needed: the hostname of the staging database/)).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /^Choose / }).length).toBeGreaterThan(0);
+  });
+
+  // cm:guard an EARLIER round renders by its own shape: a decision that asked for a choice and followed up in words carries both, and reading the row's current shape would list options a text round never had (ISS-996).
+  it("renders an earlier choice round beside a current written one", () => {
+    loaded([
+      aTextQuestion({
+        steps: [
+          step({ round: 1, chosenOptionId: DEPLOY.id, answeredAt: "2026-09-13T09:00:00.000Z" }),
+          textStep({ round: 2 }),
+        ],
+      }),
+    ]);
+    renderPanel();
+
+    expect(screen.getByText("Answered: Deploy it")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: /your answer/i })).toBeInTheDocument();
   });
 });

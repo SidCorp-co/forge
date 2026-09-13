@@ -31,16 +31,40 @@ export interface VisibleOption extends QuestionOption {
   locked: boolean;
 }
 
-/** One round of one decision. A follow-up is another step on the same row, never a second row. */
-export interface QuestionStep {
+/** How a round is answered: by picking one of its options, or in words. */
+export type AnswerShape = "choice" | "free_text";
+
+interface StepCommon {
   round: number;
   prompt: string;
-  options: QuestionOption[];
-  recommendedOptionId: string;
   askedAt: string;
   answeredAt?: string;
-  chosenOptionId?: string;
   answeredBy?: string;
+}
+
+export interface ChoiceStep extends StepCommon {
+  answerShape: "choice";
+  options: QuestionOption[];
+  recommendedOptionId: string;
+  chosenOptionId?: string;
+}
+
+export interface FreeTextStep extends StepCommon {
+  answerShape: "free_text";
+  /** What the run said it needs to know. Never empty — core writes a stated fallback. */
+  needed: string;
+  answerText?: string;
+}
+
+/** One round of one decision. A follow-up is another step on the same row, never a second row. */
+export type QuestionStep = ChoiceStep | FreeTextStep;
+
+// cm:guard a step written before ISS-996 carries no `answerShape` and is a CHOICE round; the untagged case is read off `options` and never off an empty option list on a tagged step, because a free-text round and a choice round whose options failed to write both present as zero options (ISS-996).
+// cm:edge contract -> packages/core/src/db/schema-questions.ts — `isChoiceStep` is the same predicate on the server, and the two must agree on the untagged row or a screen draws the wrong control over a live decision.
+export function isChoiceStep(step: QuestionStep): step is ChoiceStep {
+  if (step.answerShape === "choice") return true;
+  const untagged = step as { answerShape?: AnswerShape; options?: unknown };
+  return untagged.answerShape === undefined && Array.isArray(untagged.options);
 }
 
 export interface AgentQuestion {
@@ -56,18 +80,26 @@ export interface AgentQuestion {
   parkDeadlineAt: string | null;
   createdAt: string;
   updatedAt: string;
-  /** The CURRENT round's options, each with the server's `locked` verdict. */
+  /** How the CURRENT round is answered. Read this, never the length of `options`. */
+  answerShape: AnswerShape;
+  /** The CURRENT round's options, each with the server's `locked` verdict. Empty on a free-text round. */
   options: VisibleOption[];
   recommendedOptionId: string;
+  /** What the run needs to be told, on a free-text round. Empty string on a choice round. */
+  needed: string;
+  // cm:guard the server's verdict on whether THIS reader may answer the current free-text round; always `false` on a choice round, where the per-option `locked` carries it instead (ISS-996).
+  locked: boolean;
 }
 
 export interface QuestionListResponse {
   questions: AgentQuestion[];
 }
 
-export interface AnswerInput {
+// cm:guard exactly ONE of `optionId` and `text` — core refuses a body carrying both rather than picking one, because a caller that sent both does not know which round it is answering (ISS-996).
+export type GivenAnswer = { optionId: string; text?: never } | { text: string; optionId?: never };
+
+export type AnswerInput = GivenAnswer & {
   questionId: string;
-  optionId: string;
   /** The round the person was looking at. Core refuses an answer bound to any other. */
   round: number;
-}
+};

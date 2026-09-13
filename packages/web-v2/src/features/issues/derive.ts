@@ -723,8 +723,6 @@ export interface BlockerState {
 	/** The paused `pipeline_runs.id` the `resume-run` CTA acts on. Set only
 	 *  alongside that kind. */
 	runId?: string;
-	/** The actual question to answer, for `needs_info`. */
-	question?: string;
 	/** Open `blocks` issues this one is waiting on. */
 	blockingRefs?: BlockingRef[];
 	/** Extra context (failure classification, hold-until), Tier-2 detail. */
@@ -762,8 +760,7 @@ export function openBlockingRefs(
  * Derive the single blocker verdict for an issue, or `null` when it is actively
  * progressing. Precedence (richest signal first): needs_info →
  * waiting-for-approve → on_hold → pipelineHealth capacity/dep waits → open
- * `blocks` edges. `needsInfoQuestion` is supplied by the screen (which can read
- * the latest comment); kept as an arg so this stays pure + unit-testable.
+ * `blocks` edges.
  *
  * ISS-393 removed the manual-hold failure card: a mechanically-failed job now
  * reverts the issue to its stage entry-status (auto re-dispatch) or parks it at
@@ -773,11 +770,10 @@ export function deriveBlockerState(
 	issue: Pick<IssueDetail, "status">,
 	pipelineHealth: PipelineHealth | undefined,
 	deps: IssueDependencies | undefined,
-	opts: { needsInfoQuestion?: string } = {},
 ): BlockerState | null {
 	const blockingRefs = openBlockingRefs(deps);
 
-	// cm:guard ISS-853 — this arm is FIRST, above needs_info and both waiting kinds, and moving it down re-hides the pause: while a run is paused NOTHING dispatches whatever the issue's status says, so every arm below would show a CTA ("Approve", "Provide info") promising movement that cannot happen. The cost is named in the plan: an issue that is both `needs_info` and paused shows the pause, and the question stays in the comments below.
+	// cm:guard ISS-853 — this arm is FIRST, above needs_info and both waiting kinds, and moving it down re-hides the pause: while a run is paused NOTHING dispatches whatever the issue's status says, so every arm below would show a CTA ("Approve", "Provide info") promising movement that cannot happen. The cost is named in the plan: an issue that is both `needs_info` and paused shows the pause, and the question stays in the decision panel below.
 	const paused = pausedRunView(pipelineHealth?.pausedRun);
 	if (paused) {
 		return {
@@ -796,9 +792,9 @@ export function deriveBlockerState(
 		return {
 			tone: "attention",
 			reason: "The pipeline needs more information before it can continue.",
-			whoMustAct: "The reporter (or a maintainer) must answer and re-open.",
+			whoMustAct:
+				"Anyone on the project can answer the decision below; the run picks up from the answer.",
 			cta: { label: "Provide info", kind: "provide-info" },
-			question: opts.needsInfoQuestion?.trim() || undefined,
 			...(blockingRefs.length ? { blockingRefs } : {}),
 		};
 	}
