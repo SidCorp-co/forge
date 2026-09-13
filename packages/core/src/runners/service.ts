@@ -57,15 +57,18 @@ export type NewRunner = {
 
 /**
  * One device already binds this project on this type. Each transport maps this
- * to its own status; `collided` is the row that holds the binding.
+ * to its own status; `collided` is the row that holds the binding, or null when
+ * the binding outlived two reads and could not be named.
  */
 export class RunnerAlreadyBoundError extends Error {
   constructor(
-    readonly collided: { id: string; name: string; status: RunnerStatus },
+    readonly collided: { id: string; name: string; status: RunnerStatus } | null,
     readonly wayBack: string,
   ) {
     super(
-      `runner ${collided.id} (${collided.name}) already binds this device to this project as this type, status ${collided.status}. ${wayBack}`,
+      collided
+        ? `runner ${collided.id} (${collided.name}) already binds this device to this project as this type, status ${collided.status}. ${wayBack}`
+        : `this device already binds this project as this type, and the runner holding it could not be read back. ${wayBack}`,
     );
     this.name = 'RunnerAlreadyBoundError';
   }
@@ -74,26 +77,47 @@ export class RunnerAlreadyBoundError extends Error {
 // cm:edge contract -> packages/core/src/db/schema.ts — the key is the index NAME as `runnersProjectDeviceTypeUq` spells it; renamed there and not here, the violation stops being recognised and leaves as a 500 again.
 const PROJECT_DEVICE_TYPE_UQ = 'runners_project_device_type_uq';
 
-// cm:guard registration REFUSES an existing binding by name, it does not resolve one — a retired runner is returned to the pool by `forge_runners restore` or the pool toggle, and re-registering was the way out the old copy named and the unique index has never allowed (ISS-990). The two paths that legitimately resolve a collision, `projects/runners-routes.ts` by upsert and `heartbeat-ws.ts` by re-select, do not come through here.
-export async function insertRunner(input: NewRunner) {
-  let row: typeof runners.$inferSelect | undefined;
-  try {
-    [row] = await db
-      .insert(runners)
-      .values({ ...input, status: 'offline' })
-      .returning();
-  } catch (err) {
-    if (isUniqueViolation(err) && uniqueViolationConstraint(err) === PROJECT_DEVICE_TYPE_UQ) {
-      throw await runnerAlreadyBound(input);
-    }
-    throw err;
-  }
+const isBindingCollision = (err: unknown) =>
+  isUniqueViolation(err) && uniqueViolationConstraint(err) === PROJECT_DEVICE_TYPE_UQ;
+
+async function insertRunnerRow(input: NewRunner) {
+  const [row] = await db
+    .insert(runners)
+    .values({ ...input, status: 'offline' })
+    .returning();
   if (!row) throw new Error('runners: insert returned no row');
   return row;
 }
 
-async function runnerAlreadyBound(input: NewRunner): Promise<Error> {
-  const [collided] = await db
+// cm:guard registration REFUSES an existing binding by name, it does not resolve one — a retired runner is returned to the pool by `forge_runners restore` or the pool toggle, and re-registering was the way out the old copy named and the unique index has never allowed (ISS-990). The two paths that legitimately resolve a collision, `projects/runners-routes.ts` by upsert and `heartbeat-ws.ts` by re-select, do not come through here.
+export async function insertRunner(input: NewRunner) {
+  try {
+    return await insertRunnerRow(input);
+  } catch (err) {
+    if (!isBindingCollision(err)) throw err;
+    const collided = await readBinding(input);
+    // cm:guard a collision whose row has since gone means the binding is FREE, so the answer is the insert, never a refusal naming a runner nobody can read — a fabricated id in that message is the state lying about which runner blocked the caller.
+    if (!collided) return await retryAfterVanishedBinding(input);
+    throw new RunnerAlreadyBoundError(
+      collided,
+      collided.status === 'disabled'
+        ? 'It was retired, not removed: restore it rather than registering a second row.'
+        : 'Unassign it first if you mean to replace it.',
+    );
+  }
+}
+
+async function retryAfterVanishedBinding(input: NewRunner) {
+  try {
+    return await insertRunnerRow(input);
+  } catch (err) {
+    if (!isBindingCollision(err)) throw err;
+    throw new RunnerAlreadyBoundError(null, "Read the project's runners to find it.");
+  }
+}
+
+async function readBinding(input: NewRunner) {
+  const [row] = await db
     .select({ id: runners.id, name: runners.name, status: runners.status })
     .from(runners)
     .where(
@@ -104,19 +128,7 @@ async function runnerAlreadyBound(input: NewRunner): Promise<Error> {
       ),
     )
     .limit(1);
-  // cm:guard a 23505 whose row cannot be read back still refuses — rethrowing the raw violation here would put the caller back at the unhandled 500 this replaces, and the binding exists whether or not this second read finds it.
-  if (!collided) {
-    return new RunnerAlreadyBoundError(
-      { id: '(unread)', name: '(unread)', status: 'offline' },
-      "Read the project's runners to find it.",
-    );
-  }
-  return new RunnerAlreadyBoundError(
-    collided,
-    collided.status === 'disabled'
-      ? 'It was retired, not removed: restore it rather than registering a second row.'
-      : 'Unassign it first if you mean to replace it.',
-  );
+  return row ?? null;
 }
 
 export async function setRunnerStatus(runnerId: string, status: RunnerStatus) {

@@ -69,7 +69,7 @@ describe('insertRunner when the device already binds this project', () => {
     const err = await insertRunner(INPUT).catch((e: unknown) => e);
 
     expect(err).toBeInstanceOf(RunnerAlreadyBoundError);
-    expect((err as InstanceType<typeof RunnerAlreadyBoundError>).collided.id).toBe(COLLIDED_ID);
+    expect((err as InstanceType<typeof RunnerAlreadyBoundError>).collided?.id).toBe(COLLIDED_ID);
     expect((err as Error).message).toContain(COLLIDED_ID);
     expect((err as Error).message).toContain('forge-vm');
     expect((err as Error).message).toContain('disabled');
@@ -92,12 +92,29 @@ describe('insertRunner when the device already binds this project', () => {
     expect(err.message).toMatch(/unassign/i);
   });
 
-  it('still refuses when the colliding row cannot be read back', async () => {
+  // cm:guard a vanished collider means the binding is free — refusing here with a runner nobody can read would send the caller after a row that no longer exists, and the id in that message would be invented (ISS-990).
+  it('retries the insert when the colliding row has since gone, rather than naming a runner nobody can read', async () => {
     mockCollided(null);
+    insertImpl.mockImplementationOnce(() => ({
+      values: () => ({ returning: () => Promise.resolve([{ id: 'r2', status: 'offline' }]) }),
+    }));
+
+    await expect(insertRunner(INPUT)).resolves.toMatchObject({ id: 'r2' });
+  });
+
+  it('refuses without inventing a runner when the retry collides all over again', async () => {
+    mockCollided(null);
+    insertImpl.mockImplementationOnce(() => ({
+      values: () => ({
+        returning: () => Promise.reject(uniqueViolation('runners_project_device_type_uq')),
+      }),
+    }));
 
     const err = await insertRunner(INPUT).catch((e: unknown) => e);
 
     expect(err).toBeInstanceOf(RunnerAlreadyBoundError);
+    expect((err as InstanceType<typeof RunnerAlreadyBoundError>).collided).toBeNull();
+    expect((err as Error).message).not.toMatch(/unread/i);
   });
 });
 
