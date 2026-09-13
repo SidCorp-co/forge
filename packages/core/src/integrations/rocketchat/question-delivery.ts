@@ -10,10 +10,7 @@ import { and, eq, isNull, lte, or, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { issues, organizations, projects } from '../../db/schema.js';
 import { agentQuestions } from '../../db/schema-questions.js';
-import {
-  rocketchatQuestionDeliveries,
-  rocketchatQuestionThreads,
-} from '../../db/schema-rocketchat.js';
+import { rocketchatQuestionDeliveries } from '../../db/schema-rocketchat.js';
 import { activeIssuePrefix } from '../../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../../lib/issue-ref.js';
 import { logger } from '../../logger.js';
@@ -24,6 +21,7 @@ import { sendFixedReply } from './outbound.js';
 import { agentAuthoredSegments, renderRound } from './question-render.js';
 import { screenOperatorMessage } from './reply-guard.js';
 import { resolveRoomPostAuth } from './room-delivery.js';
+import { registerThread, threadForQuestion } from './thread-registry.js';
 import type { RocketChatBindingConfig } from './types.js';
 
 const RETRY_BACKOFF_MS = 60_000;
@@ -130,8 +128,8 @@ async function reportUndeliverable(owed: OwedRound, already: boolean): Promise<v
     issueId: owed.issueId,
     type: 'ops_alert',
     severity: 'warning',
-    title: `${row.name} has a parked question and no chat room to ask it in`,
-    body: `A run is parked waiting on a person, and no Rocket.Chat room is bound to ${row.slug}. Bind one and the question is delivered on the next sweep — the run does not have to ask again.`,
+    title: `${row.name} has a question waiting and no chat room to ask it in`,
+    body: `A question is waiting on a person, and no Rocket.Chat room is bound to ${row.slug}. Bind one and the question is delivered on the next sweep — whoever asked does not have to ask again.`,
     resolutionKey: undeliverableKey(owed.questionId),
   });
 }
@@ -198,16 +196,6 @@ async function noteFailure(owed: OwedRound, lastError: string, now: Date): Promi
     );
 }
 
-/** The thread this question was first asked in, or null when it has none yet. */
-async function threadOfQuestion(questionId: string): Promise<string | null> {
-  const [row] = await db
-    .select({ tmid: rocketchatQuestionThreads.tmid })
-    .from(rocketchatQuestionThreads)
-    .where(eq(rocketchatQuestionThreads.questionId, questionId))
-    .limit(1);
-  return row?.tmid ?? null;
-}
-
 /**
  * Deliver one owed round. Never throws — a failure is a record, not an exception.
  */
@@ -266,7 +254,7 @@ export async function deliverOwedRound(
         .where(eq(issues.id, owed.issueId))
         .limit(1)
     : [];
-  const existingThread = await threadOfQuestion(owed.questionId);
+  const existingThread = await threadForQuestion(owed.questionId);
   const text = renderRound({
     issueKey: issue?.issSeq
       ? formatIssueRef(await activeIssuePrefix(owed.projectId), issue.issSeq)
@@ -288,10 +276,10 @@ export async function deliverOwedRound(
       return 'failed';
     }
     // cm:guard the thread is registered BEFORE the round is marked delivered: a round marked delivered with no thread row is a message in a room whose replies reach nothing, and this order makes that state unreachable rather than merely unlikely (ISS-978 criterion 7).
-    await db
-      .insert(rocketchatQuestionThreads)
-      .values({ questionId: owed.questionId, connectionId: room.connectionId, rid: room.rid, tmid })
-      .onConflictDoNothing();
+    await registerThread(
+      { questionId: owed.questionId },
+      { connectionId: room.connectionId, rid: room.rid, tmid },
+    );
     await settle(owed, { status: 'delivered' }, now);
     await resolveNotifications(undeliverableKey(owed.questionId));
     return 'delivered';
@@ -330,27 +318,6 @@ export async function drainQuestionDeliveries(
     result[outcome] += 1;
   }
   return result;
-}
-
-/** The question and round a reply in this thread would answer, or null when we do not own it. */
-// cm:guard the lookup is by (connection, room, thread) and nothing else — the same triple the unique index holds — because a thread we do not own must be indistinguishable here from one that does not exist, and the caller falls through to the conversation handler on null (ISS-978 criterion 21).
-export async function questionForThread(args: {
-  connectionId: string;
-  rid: string;
-  tmid: string;
-}): Promise<{ questionId: string } | null> {
-  const [row] = await db
-    .select({ questionId: rocketchatQuestionThreads.questionId })
-    .from(rocketchatQuestionThreads)
-    .where(
-      and(
-        eq(rocketchatQuestionThreads.connectionId, args.connectionId),
-        eq(rocketchatQuestionThreads.rid, args.rid),
-        eq(rocketchatQuestionThreads.tmid, args.tmid),
-      ),
-    )
-    .limit(1);
-  return row ? { questionId: row.questionId } : null;
 }
 
 /** The drain is a backstop, not the fast path: a newly asked question goes out on the next tick. */

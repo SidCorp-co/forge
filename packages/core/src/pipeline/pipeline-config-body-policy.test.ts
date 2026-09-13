@@ -50,7 +50,7 @@ describe('bodyPolicy (ISS-969)', () => {
 
   it('is absent from the shipped defaults, at every stage', () => {
     for (const stage of Object.values(defaultStatesConfig())) {
-      expect('bodyPolicy' in stage).toBe(false);
+      expect('bodyPolicy' in (stage ?? {})).toBe(false);
     }
     for (const stage of Object.values(PIPELINE_CONFIG_DEFAULTS.states ?? {})) {
       expect('bodyPolicy' in (stage ?? {})).toBe(false);

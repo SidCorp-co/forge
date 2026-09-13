@@ -28,7 +28,8 @@ import type { scopeForMethod } from '../middleware/pat-rest-surface.js';
  */
 // cm:guard an ALLOWLIST, and it must stay one — a forgotten entry costs a caller a 403 they will report, while a forgotten entry on a deny-list is a silent leak nobody reports. Never invert this to "everything except", however much shorter that list looks: the routes that would need excluding are exactly the ones (`/api/pat`, `/api/orgs`, `/api/admin`, `/api/me`) where being wrong once ends the fence for good.
 // cm:guard adding a prefix here WIDENS what every PAT may reach, because an ABSENT or EMPTY grant array reads as holding every group (ISS-973) and 25 of production's 26 human tokens were minted before the column existed. A new entry owes the same proof the rest have: `scripts/check-pat-surface.mjs` must stay green, which means every route under it funnels through `effectiveProjectRole`.
-// cm:edge lockstep -> packages/core/src/auth/pat-permissions.test.ts — the union of these prefixes is frozen there as a 16-entry literal. Editing this map without editing that literal is a deliberate reachability change presenting as a refactor, and the test is what makes the two indistinguishable impossible.
+// cm:guard `questions` covers the ASKING door and the two reads, and `POST /api/questions/:id/answer` and `/void` refuse a token in `questions/routes.ts` rather than here: a prefix is the finest grain this menu has, so the level split is no defence for a token granted nothing, which reads as holding every group.
+// cm:edge lockstep -> packages/core/src/auth/pat-permissions.test.ts — the union of these prefixes is frozen there as a 17-entry literal. Editing this map without editing that literal is a deliberate reachability change presenting as a refactor, and the test is what makes the two indistinguishable impossible.
 export const PAT_PERMISSION_RESOURCES = {
   issues: ['/api/issues', '/api/comments', '/api/attachments', '/api/labels'],
   tasks: ['/api/tasks'],
@@ -37,6 +38,7 @@ export const PAT_PERMISSION_RESOURCES = {
   skills: ['/api/skills', '/api/skill-facts', '/api/prompts'],
   schedules: ['/api/schedules'],
   projects: ['/api/projects'],
+  questions: ['/api/questions'],
 } as const satisfies Record<string, readonly string[]>;
 
 // cm:edge contract -> packages/core/src/agent-sessions/routes.ts — `/api/agent-sessions` belongs to NO resource above and must not be given one while its list route keeps a cross-project branch: `GET /api/agent-sessions` with no `projectId` returns every session of every project the caller can see, `messages[]` included. This list is now the ONLY thing keeping a PAT off it: the "inert because `requireUserOrDevice` has no PAT branch" reading held until ISS-932 gave that middleware one, and the branch resolves a device and sets no `userId` precisely so the fan-out stays out of reach. A PAT belongs on a project-scoped twin under `/api/projects/:id`, never on the fan-out.

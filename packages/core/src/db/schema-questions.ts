@@ -57,7 +57,7 @@ export type QuestionStep = {
 export const agentQuestions = pgTable(
   'agent_questions',
   {
-    // cm:guard the id is MINTED BY THE RUNNER and sent, never allocated here. The box writes its own half of the park in a local transaction before core has seen anything, and a server-allocated id would make the two halves unjoinable across the window where the box has parked and core has not heard (ISS-964 criterion 10).
+    // cm:guard on the BOX's door (`POST /api/devices/me/questions`) the id is minted by the runner and sent, never allocated here: the box writes its own half of the park in a local transaction before core has seen anything, and a server-allocated id would make the two halves unjoinable across the window where the box has parked and core has not heard (ISS-964 criterion 10). `POST /api/questions` allocates, because a caller holding a token has written no local half to join to (ISS-993).
     id: uuid('id').primaryKey(),
     projectId: uuid('project_id')
       .notNull()

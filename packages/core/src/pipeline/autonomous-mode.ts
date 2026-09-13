@@ -7,7 +7,7 @@
 // whether a project is autonomous must not boot the queue to find out.
 
 import { type IssueStatus, issueStatuses, type JobType } from '../db/schema.js';
-import type { PipelineConfig, StageName } from './pipeline-config-schema.js';
+import type { PipelineConfig } from './pipeline-config-schema.js';
 
 /** The status at which the driver is handed the issue. */
 export const AUTONOMOUS_ENTRY_STATUS: IssueStatus = 'open';
@@ -76,7 +76,8 @@ export const AUTONOMOUS_INFLIGHT_STATUSES: readonly IssueStatus[] =
 
 /** Whether a human, not a master, decides when this project's work starts. */
 // cm:guard this used to gate whether core MINTED a drive job and since ISS-933 gates whether the issue is OFFERED to a master. Same config, same word to an operator; it lives here rather than in the dispatcher because `devices/admissible.ts` must ask it without booting the queue.
+// cm:guard `states.open` is read by NAME, not through `AUTONOMOUS_ENTRY_STATUS as StageName`: `mode` exists only on the entry stage's schema since ISS-994, so an index over the stage union no longer typechecks — and that refusal is the point. Widening the read to reach another stage's `mode` re-creates a field that gates nothing.
 export function isEntryGateClosed(cfg: PipelineConfig | null): boolean {
-  const entry = cfg?.states?.[AUTONOMOUS_ENTRY_STATUS as StageName];
+  const entry = cfg?.states?.open;
   return entry?.enabled === false || entry?.mode === 'manual';
 }

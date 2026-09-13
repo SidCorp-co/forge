@@ -69,17 +69,18 @@ const STORED: PipelineConfig = {
     open: { enabled: true, mode: "auto", disallowedTools: DENYLIST_FULL },
     in_progress: {
       enabled: true,
-      mode: "auto",
+      model: "sonnet",
       disallowedTools: DENYLIST_FULL.filter((t) => t !== "mcp__forge__forge_uploads"),
       mcpServers: { playwright: true },
     },
     needs_info: {
       enabled: true,
-      mode: "auto",
+      model: "sonnet",
       disallowedTools: DENYLIST_FULL,
       futureStageKnob: "stage-round-trips",
     },
-    awaiting_release: { enabled: true, mode: "manual", disallowedTools: DENYLIST_FULL },
+    // cm:guard `mode` off the entry status is NOT a key a GET can return since ISS-994 — core strips a stored one and refuses a PATCH that sets one — so the round-trip cases below carry `model` instead. Putting `mode` back here would make the fixture a document the API cannot produce and the save it asserts a 400.
+    awaiting_release: { enabled: true, model: "opus", disallowedTools: DENYLIST_FULL },
   },
   someFutureKnob: "round-trips",
 };
@@ -143,10 +144,10 @@ describe("Pipeline tab · preserve-on-save (ISS-813, ISS-767 pattern)", () => {
     const states = sent.states as Record<string, Record<string, unknown>>;
     expect(states.open.disallowedTools).toEqual(DENYLIST_FULL);
     expect(states.needs_info.futureStageKnob).toBe("stage-round-trips");
-    expect(states.awaiting_release.mode).toBe("manual");
+    expect(states.awaiting_release.model).toBe("opus");
     expect(sent.someFutureKnob).toBe("round-trips");
     expect(states.in_progress.enabled).toBe(true);
-    expect(states.in_progress.mode).toBe("auto");
+    expect(states.in_progress.model).toBe("sonnet");
     expect(states.in_progress.mcpServers).toEqual({ playwright: true });
     expect(states.in_progress.disallowedTools).not.toContain("CronCreate");
   });

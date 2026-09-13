@@ -14,6 +14,7 @@
 import { and, eq, ne } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, projects, skillRegistrations, skills } from '../db/schema.js';
+import { AUTONOMOUS_ENTRY_STATUS } from '../pipeline/autonomous-mode.js';
 import { hooks } from '../pipeline/hooks.js';
 import { recordSkillActivityEvent } from './activity.js';
 
@@ -126,7 +127,8 @@ export interface SkillRegistrationView {
   skillId: string;
   skillName: string;
   scope: 'global' | 'project';
-  mode: 'auto' | 'manual';
+  /** `null` off the entry status, where the field gates nothing. */
+  mode: 'auto' | 'manual' | null;
   enabled: boolean;
   registeredBy: string | null;
   registeredAt: string;
@@ -134,13 +136,15 @@ export interface SkillRegistrationView {
 
 /**
  * List a project's stage→skill bindings overlaid with the per-stage
- * `mode`/`enabled` from `agentConfig.pipelineConfig.states`. Plan agents call
- * this to decide whether to dispatch into a stage that is registered but
- * configured `manual` or disabled.
+ * `mode`/`enabled` from `agentConfig.pipelineConfig.states`.
+ *
+ * `enabled` is meaningful at every stage. `mode` is meaningful at the entry
+ * status alone and comes back `null` everywhere else.
  *
  * Stages with no skill registered are NOT returned — clients diff against
  * the canonical stage list (`STAGE_NAMES`) to surface gaps.
  */
+// cm:edge contract -> packages/core/src/pipeline/autonomous-mode.ts — `isEntryGateClosed` is the only reader of `mode`, and it reads `states.open`. Reporting `'auto'` off that status told a caller a stage was ungated when nothing there gates at all, which is the display half of the ISS-994 affordance.
 export async function listSkillRegistrations(projectId: string): Promise<SkillRegistrationView[]> {
   const [project] = await db
     .select({ agentConfig: projects.agentConfig })
@@ -176,7 +180,7 @@ export async function listSkillRegistrations(projectId: string): Promise<SkillRe
       skillId: r.skillId,
       skillName: r.skillName,
       scope: r.scope as 'global' | 'project',
-      mode: stageCfg?.mode ?? 'auto',
+      mode: r.stage === AUTONOMOUS_ENTRY_STATUS ? (stageCfg?.mode ?? 'auto') : null,
       enabled: stageCfg?.enabled !== false,
       registeredBy: r.registeredBy,
       registeredAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),

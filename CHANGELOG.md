@@ -114,6 +114,34 @@
 
 ### Added
 
+- **An issue's comments and a chat thread are now the same conversation.**
+  Talking to a run meant being in Forge. A comment on a `needs_info` issue is already how a person
+  answers a working agent — the reply reaches the parked session and wakes it — but the only way to
+  write one was the web app or the API, so anyone whose day happens in chat had to leave it, find the
+  issue, and type there instead. A comment written in Forge now appears in the Rocket.Chat room the
+  project is bound to, in a thread of the issue's own opened with its key and title; a reply in that
+  thread becomes a real comment on the issue, authored by the Forge user the speaker maps to, and
+  reaches the parked run by the same path a comment typed in Forge has always taken. Somebody the
+  channel cannot map to a Forge user is told so by name and nothing is written as them. The issue's
+  comment thread is separate from the thread a question is asked in, because a reply has to mean one
+  thing: prose can restart a run that is waiting, and it can never stand in for choosing an option on
+  a decision somebody was asked to make. Nothing echoes — a comment carried into the room is not
+  carried back out, and the same message delivered twice is still one comment, so the agent is not
+  run twice on one sentence.
+
+- **An agent can now put a decision to a person as real choices, without being a runner box.**
+  Asking a structured question — a prompt, the options, which one is advised — was something only a
+  box could do. Every other agent wrote a heading and a few lines of prose into a comment instead:
+  no choices anybody could click, no round, nothing that could wake the work back up, and a person
+  answering in prose on one end and an agent parsing prose back out on the other. An agent holding a
+  token now asks against an issue directly, and the question it creates is the same one a box
+  creates — it goes to the project's chat room with its options numbered and the advised one marked,
+  and a reply there answers it and restarts the work. Two things come with it: the open questions of
+  a project can be listed in one go, so anyone can see what is waiting instead of needing an
+  identifier nobody handed them, and the answer can be read back whenever the agent next looks.
+  Answering and voiding are still a person's, from a browser or the room — a token can ask and read,
+  and is told so by name if it tries to decide.
+
 - **A parked run's question now reaches a person on a chat channel, and a reply there answers it.**
   A run that stops to ask a human was the one park with no answering surface: the box minted the
   question, core stored its options, authorities and fingerprints — and nothing rendered them
@@ -1713,6 +1741,35 @@
 
 ### Removed
 
+- **A runner no longer keeps a job pool, and a run is no longer a second terminal.** A box used to
+  ask Forge which jobs it could take, hold one while its master decided, start it in a tmux session
+  of its own, and give the hold back if the decision went the other way. Seven verbs on a local
+  socket carried that — `prepare`, `start`, `discard`, `release`, `run_open`, `ask`, `decide` — and
+  the `forge-runner pool` command was how a master reached them. All of it is gone, along with the
+  per-run tmux session, the worktree lock that serialised jobs sharing a checkout, and the
+  preparation reaper that existed to hand back holds nobody started.
+
+  **What replaces it.** A master dispatches each run as a subagent inside its own session, through
+  one of the shipped roles, in a worktree of its own. The lease `forge claim` takes on the issue is
+  the whole record of a run: a run that ends leaves the lease for the next one to read or reclaim,
+  and nothing about it is remembered on the box. The daemon still asks Forge which issues are
+  admissible — that is what tells it a project is worth keeping a resident master up for — and
+  still carries the one socket verb that never acted, a session reporting its own turn boundaries.
+
+  **What you will see.** `forge-runner pool` is not a command any more; nothing on a box answers it.
+  A project's runs no longer appear as separate panes, so `tmux ls` on a runner shows one session
+  per project rather than one per run, and a box's run count is bounded by how wide its master
+  dispatches rather than by `duplex_max_sessions`. Runs already open when a box is upgraded are
+  closed by the existing reapers on their usual schedule; no run is orphaned by the upgrade, and no
+  lease is stranded by it.
+
+  **Why.** The two models were both live: the runner spawned a session per run because the master
+  skill told it to, while the plugin's own dispatch method — the one every role and every guide is
+  written against — was never reached. A box that ran out of tmux slots looked exactly like a box
+  with no work, and on forge-vm on 2026-09-12 one project sat at 10 of 10 slots with nine of them
+  idle and nothing saying so. One record of a run beats two, and the lease is the one the rest of
+  Forge already reads.
+
 - **Forge no longer issues a separate credential for each job and each unattended session. A paired
   box holds one credential, and that is what its agents use.** Until now a dispatched job was handed
   a token minted for that job alone, and an unattended chat or schedule session got one of its own;
@@ -2107,6 +2164,40 @@
   set is now 59.
 
 ### Fixed
+
+- **A retired build machine can be put back from the Runners screen.** A machine can be retired
+  several ways — an operator action elsewhere in the product, an agent, or the system reaping a box
+  that went missing — and however it happened, the project's Runners screen showed it with its pool
+  switch greyed out. The line under that switch told you to register the machine again, which has
+  never worked: the second registration collides with the first and used to fail with nothing a
+  reader could act on. So there was no way back from any screen, and a project whose only other
+  machine was already draining had nowhere to send its work until somebody edited the record by
+  hand. The switch is now usable on a retired machine, its line tells you to use it, and agents
+  that can retire a box can put one back too.
+
+  Registering a machine that is already on a project now says so in a sentence — which machine it
+  collided with, what state that one is in, and whether to bring it back or unassign it first —
+  instead of failing with a database error.
+
+- **A per-stage "manual" setting that held nothing no longer looks like an approval gate.** Every
+  stage in a project's pipeline settings carried a mode of Auto or Manual, and exactly one of them
+  meant anything: the first, where an issue waits to be started. Set the others to Manual — to hold
+  work in progress, to hold an issue that had asked a question, to hold one waiting to be released
+  — and the setting saved, came back on the next read, and was reported as Manual by the tool a
+  planning agent asks before it hands out work. It held nothing. Work carried on. Setting it at a
+  stage that has no such gate is now refused, saying which stage you asked for and where the one
+  real gate lives; a setting already stored on one of those stages is dropped rather than shown, so
+  nobody reads a hold that was never there. The gate at the first stage is untouched and works as
+  it always has — it is still the way to stop new work starting without you.
+
+- **Three settings that read like a retry budget, and bounded nothing, are gone.** A project's
+  configuration listed a maximum number of recovery attempts, a window in hours, and a per-cause
+  breakdown. Anyone reading them would take them for the limits on how hard the system retries
+  failed work. Nothing had read them since May, when the recovery mechanism they configured was
+  replaced wholesale; the retry limits that are actually enforced live elsewhere and were never
+  these numbers. They stayed visible because the settings document keeps whatever it is given.
+  They have been removed from every project's stored settings, so the only numbers on show are the
+  ones that decide something.
 
 - **A paused job no longer restarts itself by writing a note.** When a job stops to ask a person
   something, it is supposed to stay stopped until someone answers. It did not: the job's own

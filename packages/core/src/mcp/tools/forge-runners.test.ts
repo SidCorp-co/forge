@@ -14,6 +14,7 @@ const selectDistinctImpl = vi.fn();
 const insertImpl = vi.fn();
 const updateImpl = vi.fn();
 const executeImpl = vi.fn();
+const transactionImpl = vi.fn();
 
 vi.mock('../../db/client.js', () => ({
   db: {
@@ -22,6 +23,7 @@ vi.mock('../../db/client.js', () => ({
     insert: (...a: unknown[]) => insertImpl(...a),
     update: (...a: unknown[]) => updateImpl(...a),
     execute: (...a: unknown[]) => executeImpl(...a),
+    transaction: (...a: unknown[]) => transactionImpl(...a),
   },
 }));
 
@@ -46,7 +48,6 @@ function buildCtx() {
   };
 }
 
-// loadVisibleProjectIdsForPrincipal: selectDistinct({id}).from.leftJoin.where.
 function mockVisible(ids: string[]) {
   selectDistinctImpl.mockImplementationOnce(() => ({
     from: () => ({
@@ -96,7 +97,43 @@ beforeEach(() => {
   insertImpl.mockReset();
   updateImpl.mockReset();
   executeImpl.mockReset();
+  transactionImpl.mockReset();
 });
+
+/**
+ * `runner-events.ts:setRunnerStatus` in one transaction: locked read of the
+ * current status, the UPDATE, then a `runner_events` insert only on a change.
+ */
+function mockAuditedTransition(oldStatus: string) {
+  const written: Array<Record<string, unknown>> = [];
+  const events: Array<Record<string, unknown>> = [];
+  transactionImpl.mockImplementationOnce((fn: (tx: unknown) => unknown) =>
+    fn({
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            for: () => ({
+              limit: () => Promise.resolve([{ status: oldStatus, projectId: PROJECT_ID }]),
+            }),
+          }),
+        }),
+      }),
+      update: () => ({
+        set: (v: Record<string, unknown>) => {
+          written.push(v);
+          return { where: () => Promise.resolve(undefined) };
+        },
+      }),
+      insert: () => ({
+        values: (v: Record<string, unknown>) => {
+          events.push(v);
+          return Promise.resolve(undefined);
+        },
+      }),
+    }),
+  );
+  return { written, events };
+}
 
 describe('forge_runners', () => {
   it('list attaches inFlightCount per runner, scoped to visible projects', async () => {
@@ -221,7 +258,6 @@ describe('forge_runners', () => {
         where: () => ({ returning: () => Promise.resolve([runnerRow]) }),
       }),
     }));
-    // disabled update with returning
     updateImpl.mockImplementationOnce(() => ({
       set: () => ({
         where: () => ({
@@ -258,5 +294,87 @@ describe('forge_runners', () => {
       capabilities: { maxConcurrent: 4 },
     })) as { runner: { capabilities: { maxConcurrent: number } } };
     expect(res.runner.capabilities.maxConcurrent).toBe(4);
+  });
+});
+
+describe('forge_runners, the inverse of retire and the collision refusal', () => {
+  // cm:guard `restore` is asserted on the status it WRITES, never on the row the mock returns — the handler's whole job here is the value it puts in that `set`, and a test reading the returned fixture passes whatever it writes (ISS-990).
+  it('restore writes `online`, the status the dispatch picker requires', async () => {
+    mockLimitOnce([{ projectId: PROJECT_ID }]);
+    mockLimitOnce([adminAccessRow]);
+    const tx = mockAuditedTransition('disabled');
+    mockLimitOnce([{ ...runnerRow, status: 'online' }]);
+    const tool = forgeRunnersTool(buildCtx());
+    const res = (await tool.handler({ action: 'restore', runnerId: RUNNER_ID })) as {
+      runner: { status: string };
+    };
+
+    expect(tx.written[0]?.status).toBe('online');
+    expect(res.runner.status).toBe('online');
+  });
+
+  // cm:guard the transition must reach `runner_events` — the Activity panel is what answers "why is this box back", and a restore that writes only the column leaves the operator's own action the one thing missing from the timeline (ISS-990).
+  it('restore appends the audited transition, it does not just set the column', async () => {
+    mockLimitOnce([{ projectId: PROJECT_ID }]);
+    mockLimitOnce([adminAccessRow]);
+    const tx = mockAuditedTransition('disabled');
+    mockLimitOnce([{ ...runnerRow, status: 'online' }]);
+    const tool = forgeRunnersTool(buildCtx());
+
+    await tool.handler({ action: 'restore', runnerId: RUNNER_ID });
+
+    expect(tx.events).toHaveLength(1);
+    expect(tx.events[0]).toMatchObject({ oldStatus: 'disabled', newStatus: 'online' });
+  });
+
+  it('restore by a non-admin on the owning project is refused', async () => {
+    mockLimitOnce([{ projectId: PROJECT_ID }]);
+    mockLimitOnce([memberAccessRow]);
+    const tool = forgeRunnersTool(buildCtx());
+    await expect(tool.handler({ action: 'restore', runnerId: RUNNER_ID })).rejects.toThrow(
+      /FORBIDDEN/,
+    );
+  });
+
+  it('restore names the argument it is missing rather than throwing on undefined', async () => {
+    const tool = forgeRunnersTool(buildCtx());
+    await expect(tool.handler({ action: 'restore' })).rejects.toThrow(
+      /runnerId is required for action=restore/,
+    );
+  });
+
+  it('restore of a runner that does not exist answers NOT_FOUND', async () => {
+    mockLimitOnce([]);
+    const tool = forgeRunnersTool(buildCtx());
+    await expect(tool.handler({ action: 'restore', runnerId: RUNNER_ID })).rejects.toThrow(
+      /NOT_FOUND/,
+    );
+  });
+
+  it('register refuses a device already bound to this project by name, not with a bare 23505', async () => {
+    mockLimitOnce([adminAccessRow]);
+    insertImpl.mockImplementationOnce(() => ({
+      values: () => ({
+        returning: () =>
+          Promise.reject(
+            Object.assign(new Error('duplicate key value'), {
+              cause: { code: '23505', constraint_name: 'runners_project_device_type_uq' },
+            }),
+          ),
+      }),
+    }));
+    mockLimitOnce([{ id: RUNNER_ID, name: 'forge-vm', status: 'disabled' }]);
+    const tool = forgeRunnersTool(buildCtx());
+
+    const err = (await tool
+      .handler({
+        action: 'register',
+        data: { projectId: PROJECT_ID, type: 'claude-code', deviceId: DEVICE_ID, name: 'forge-vm' },
+      })
+      .catch((e: unknown) => e)) as Error;
+
+    expect(err.message).toContain('RUNNER_ALREADY_BOUND');
+    expect(err.message).toContain(RUNNER_ID);
+    expect(err.message).toMatch(/restore it/i);
   });
 });

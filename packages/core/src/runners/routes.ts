@@ -22,6 +22,7 @@ import { clearRunnerQuarantine } from './quarantine.js';
 import { getRunnerAdapter, listRunnerTypes } from './registry.js';
 import { setRunnerStatus } from './runner-events.js';
 import { defaultRunnerCapabilities } from './select.js';
+import { insertRunner, RunnerAlreadyBoundError } from './service.js';
 import type { Runner } from './types.js';
 
 const badRequest = (details: unknown) =>
@@ -327,9 +328,10 @@ runnerRoutes.post(
     const result = adapter.validateConfig(input.config);
     if (!result.ok) throw badRequest({ config: result.error });
 
-    const [row] = await db
-      .insert(runners)
-      .values({
+    // cm:edge protocol -> packages/core/src/runners/service.ts — registration inserts through `insertRunner` and nowhere else, so the one writer that turns a collision on `runners_project_device_type_uq` into a named refusal is the one both transports use. A raw insert here raises the bare 23505 this route answered with until ISS-990.
+    let row: Awaited<ReturnType<typeof insertRunner>>;
+    try {
+      row = await insertRunner({
         projectId: input.projectId,
         type: input.type,
         deviceId: input.deviceId,
@@ -337,9 +339,17 @@ runnerRoutes.post(
         labels: input.labels ?? [],
         capabilities: defaultRunnerCapabilities(input.type, input.capabilities),
         config: result.config,
-      })
-      .returning();
-    if (!row) throw new HTTPException(500, { message: 'insert failed' });
+      });
+    } catch (err) {
+      if (err instanceof RunnerAlreadyBoundError) {
+        // cm:edge contract -> packages/core/src/middleware/error.ts — `extractCause` forwards `code`, `details` and `wwwAuthenticate` and DROPS every other key, so the colliding runner travels as `details` or it does not reach the caller at all.
+        throw new HTTPException(409, {
+          message: err.message,
+          cause: { code: 'RUNNER_ALREADY_BOUND', details: { runner: err.collided } },
+        });
+      }
+      throw err;
+    }
 
     roomManager.publish(projectRoom(input.projectId), {
       event: 'runner.created',

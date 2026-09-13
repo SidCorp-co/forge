@@ -71,8 +71,8 @@ const STORED: PipelineConfig = {
   enabled: true,
   states: {
     open: { enabled: true, mode: "auto", disallowedTools: ["CronCreate"] },
-    in_progress: { enabled: true, mode: "auto", deviceIds: [CX] },
-    awaiting_release: { enabled: false, mode: "manual" },
+    in_progress: { enabled: true, model: "sonnet", deviceIds: [CX] },
+    awaiting_release: { enabled: false, model: "opus" },
   },
 };
 
@@ -107,8 +107,8 @@ describe("RunnerPoolsSection", () => {
       disallowedTools: ["CronCreate"],
       deviceIds: [CLI],
     });
-    expect(sent.states?.in_progress).toEqual({ enabled: true, mode: "auto", deviceIds: [CX] });
-    expect(sent.states?.awaiting_release).toEqual({ enabled: false, mode: "manual" });
+    expect(sent.states?.in_progress).toEqual({ enabled: true, model: "sonnet", deviceIds: [CX] });
+    expect(sent.states?.awaiting_release).toEqual({ enabled: false, model: "opus" });
     expect(sent.enabled).toBe(true);
   });
 
@@ -118,7 +118,7 @@ describe("RunnerPoolsSection", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save runner pools" }));
 
     const sent = mutate.mock.calls[0][0] as PipelineConfig;
-    expect(sent.states?.in_progress).toEqual({ enabled: true, mode: "auto" });
+    expect(sent.states?.in_progress).toEqual({ enabled: true, model: "sonnet" });
     expect("deviceIds" in (sent.states?.in_progress ?? {})).toBe(false);
   });
 

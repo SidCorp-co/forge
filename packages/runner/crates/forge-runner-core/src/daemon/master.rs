@@ -35,7 +35,8 @@ use crate::daemon::terminal;
 use crate::runner::close_loop;
 use crate::runner::ledger::Ledger;
 use crate::runner::terminate;
-use crate::transport::{master as master_api, pool, runners, CoreClient};
+use crate::transport::admissible::{self, AdmissibleIssue};
+use crate::transport::{master as master_api, runners, CoreClient};
 use tokio::sync::mpsc;
 
 /// How often the box asks whether any work exists.
@@ -57,7 +58,7 @@ const LIMITED_POLL_INTERVAL: Duration = Duration::from_secs(5 * 60);
 
 /// The first thing a resident master is told, once, when its session starts.
 // cm:guard name the skill and STOP. Restating its RULES here creates a second copy of the master's process, and the copies drift in silence because nothing compares them — the skill file is where a reader looks and this string is what a master is actually told. The two ship together (see the include_str edge below), so there is no version where inlining the rules here is even the safer half. The owner policy block below is the one thing that is not a copy: the skill holds the defaults and defers to it by name, and it exists nowhere in the binary.
-// cm:guard this is the STANDING brief and the pass prompt is the pool read, and the split is what makes residency worth anything. Folding the two back together sends the whole brief every 30 seconds — the cold start this change removed, arriving as tokens instead of as a process.
+// cm:guard this is the STANDING brief and the pass prompt is the wave, and the split is what makes residency worth anything. Folding the two back together sends the whole brief every 30 seconds — the cold start this change removed, arriving as tokens instead of as a process.
 // cm:guard the policy is spliced VERBATIM and is never summarised, reordered or merged into the sentences around it. It is the project owner speaking, this box is a courier, and a courier that paraphrases is how an instruction that was typed correctly arrives wrong. The heading is what lets the skill defer to it by name.
 // cm:edge contract -> packages/core/src/devices/me-runners.ts — the text arrives as `masterPolicy` on `/me/runners`, from the `master-policy` projectFact. `None` means the project set none, and the skill's own defaults stand; it never means "brief nothing".
 fn standing_prompt(
@@ -67,32 +68,24 @@ fn standing_prompt(
 ) -> String {
     let mut out = format!(
         "Use the `forge-master` skill. You are the resident master for project `{project}` on \
-this box. You will be given the claimable pool repeatedly, in this same session: read it, decide \
-what runs and how much, claim through `forge-runner pool claim`, and end each pass by releasing \
-anything you claimed but did not start.\n"
+this box. You will be woken repeatedly, in this same session: each waking is one wave — hand it to \
+the `forge:dispatch` skill, and end the pass by saying what you dispatched and what you did not.\n"
     );
     if let Some(base) = base_branch {
         out.push_str(&format!(
             "\nYou are standing in this project's checkout, on its base branch `{base}`. Every \
-agent you start works in a worktree cut from `origin/{base}`, never in this tree.\n"
+run you dispatch works in a worktree of its own cut from `origin/{base}`, never in this tree.\n"
         ));
     }
     out.push_str(
-        "\nYou NAME every agent you start: `forge-runner pool claim <jobId> --agent <name>`. The name becomes that agent's git branch and its worktree, so it must read as \
-the work — `ISS-175` when an agent takes one issue, something like `catalog-eav` when you group \
-several into one. Give two jobs the SAME name deliberately and they share one checkout and one \
-branch; give them different names and they cannot see each other's work. A claim with no name is \
-refused.\n",
-    );
-    out.push_str(
-        "\nTaking a job and starting it are two acts. `forge-runner pool prepare` gives you the \
-job row and its token with nothing running; `forge-runner pool start` spawns it and \
-`forge-runner pool discard` hands it back. `pool claim` is those first two in order, for when \
-you have already decided.\n",
+        "\nA run is a subagent dispatched through a shipped role — `runner`, `reviewer`, `qa`, \
+`triage`, `evaluator` — and the role decides its model, its effort and its tools. `forge doctor` \
+prints which roles the loaded copy ships. There is no job pool and no second terminal: the lease \
+`forge claim` takes on the issue is the whole record of a run.\n",
     );
     out.push_str(
         "\nBetween passes you stay open. Keep what you concluded — what you grouped, what you \
-deliberately did not claim and why — where the next pass can read it, and say it out loud rather \
+deliberately did not dispatch and why — where the next pass can read it, and say it out loud rather \
 than only thinking it: this pane is the record.\n",
     );
     if let Some(policy) = master_policy {
@@ -109,9 +102,9 @@ is re-sent to every master this box starts, so it survives this session.\n\n",
 }
 
 /// What this box knows about each project's resident master.
-// cm:guard one master per PROJECT, and the key is the project id rather than the box. Two masters on one project read the same pool and both claim: core's L1 refuses the second for the same ISSUE, but two jobs on two issues sharing that project's checkout would both start and collide on the same tree, which the repo lock then serialises into a stall neither master understands. Two masters on DIFFERENT projects are fine and are the point — they share no tree.
+// cm:guard one master per PROJECT, and the key is the project id rather than the box. Two masters on one project read the same queue and both dispatch: core refuses the second lease on the same ISSUE, but two runs on two issues would each cut a worktree from a checkout neither master knows the other is standing in. Two masters on DIFFERENT projects are fine and are the point — they share no tree.
 // cm:guard this map is now an OPTIMISATION, not the bound. The bound moved to two places that survive this process: tmux refuses a second session under a name that exists, and core refuses a second live `agent_sessions` row for the same (device, project). It had to move, because a session parented by the multiplexer is invisible to any in-process set — which is exactly the hole ISS-919 B1 names. Never re-derive the bound from this map alone: a daemon restart empties it while every master is still running.
-// cm:guard this bounds masters and NOTHING ELSE. `duplex_max_sessions` (default 3) is the box's only process ceiling and it covers duplex PIPELINE jobs alone — a master takes no permit, and neither does a one-shot job. Adding a project therefore adds a claude process with nothing counting it; measured on dev1 2026-09-05 at load 17.26 on 12 cores with CPU pressure some=52%. A box-level bound is owed and is not this map.
+// cm:guard this bounds masters and NOTHING ELSE, and nothing else on the box bounds them either: `duplex_max_sessions` sizes a permit pool no spawn takes from any more. Adding a project adds a claude process with nothing counting it, and each one now dispatches its own runs inside itself; measured on dev1 2026-09-05 at load 17.26 on 12 cores with CPU pressure some=52%. A box-level bound is owed and is not this map.
 #[derive(Default)]
 pub struct Masters(Arc<Mutex<Registry>>);
 
@@ -132,15 +125,13 @@ struct MasterState {
 
 /// What the master is being asked to look at, as one comparable value.
 ///
-/// Identity only — a job id or an issue id, never a title, a priority or a
-/// status. Those change while the decision does not, and a digest that moves
-/// on them re-nudges for nothing.
-// cm:guard ORDER-INDEPENDENT by construction (the ids are sorted before hashing) because neither route promises a stable order: `readPool` ranks and `readAdmissibleIssues` runs one query per project, so hashing the sequence would report new work every time two rows swapped.
-// cm:guard the `job:`/`issue:` prefix is part of the identity, not decoration: the two routes carry different id spaces, and hashing bare strings made one job indistinguishable from one admissible issue that happened to share an id — caught by this function's own test while it was being written.
-fn work_digest(items: &[pool::PoolEntry], admissible: &[pool::AdmissibleIssue]) -> u64 {
+/// Identity only — an issue id, never a title, a priority or a status. Those
+/// change while the decision does not, and a digest that moves on them
+/// re-nudges for nothing.
+// cm:guard ORDER-INDEPENDENT by construction (the ids are sorted before hashing) because the route promises no stable order: `readAdmissibleIssues` runs one query per project, so hashing the sequence would report new work every time two rows swapped.
+fn work_digest(admissible: &[AdmissibleIssue]) -> u64 {
     use std::hash::{Hash, Hasher};
-    let mut ids: Vec<String> = Vec::with_capacity(items.len() + admissible.len());
-    ids.extend(items.iter().map(|i| format!("job:{}", i.job_id)));
+    let mut ids: Vec<String> = Vec::with_capacity(admissible.len());
     ids.extend(admissible.iter().map(|a| format!("issue:{}", a.issue_id)));
     ids.sort_unstable();
     let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -230,7 +221,7 @@ impl Masters {
 }
 
 /// Why a sweep is happening now, when it is not the timer.
-// cm:guard a wake carries NO work — not a job, not a token, not a decision. It says "look now", and the box then reads the pool through the same path the timer uses and decides for itself. A wake that carried the work would be a second dispatcher, and this box would hold two sources of truth about what to run with nothing reconciling them.
+// cm:guard a wake carries NO work — not an issue, not a token, not a decision. It says "look now", and the master then reads the queue through the same path the timer uses and decides for itself. A wake that carried the work would be a second dispatcher, and this box would hold two sources of truth about what to run with nothing reconciling them.
 #[derive(Debug, Clone)]
 pub enum Wake {
     /// Core published `master.wake` on this box's device room (ISS-933).
@@ -368,27 +359,18 @@ async fn sweep(
                 runner.slug,
                 runner.status
             );
-            // cm:guard a drained runner still gets `supervise`, and only the START of new work is skipped. A master already running on a project being moved off this box must still be watched and still give its holds back when it dies — a drain that stopped watching would leave a dead master's work unclaimable with nothing reporting why, which is the drain doing damage rather than nothing.
+            // cm:guard a drained runner still gets `supervise`, and only the START of new work is skipped. A master already running on a project being moved off this box must still be watched and still have its row closed when it dies — a drain that stopped watching would leave a dead master's session live in core with nothing reporting why, which is the drain doing damage rather than nothing.
             supervise(client, masters, &runner.project_id, &runner.slug).await;
             continue;
         }
         supervise(client, masters, &runner.project_id, &runner.slug).await;
 
-        let view = match pool::pool(client, 20, Some(&runner.project_id)).await {
-            Ok(view) => view,
-            Err(e) => {
-                tracing::warn!("[master] pool unreadable for {}: {e}", runner.slug);
-                continue;
-            }
-        };
-        let items = view.items;
-        // cm:guard read the admissible issues too, and never gate on `items` alone. The pool holds jobs for the four kinds that have no issue to rank; a project whose entire content is issues would otherwise get a master, a brief and never a single pass, leaving `pipelineConfig.poolBacklog` configurable, savable and dead (ISS-933 criterion 26).
-        // cm:guard an unreadable admissible read is EMPTY, not fatal. It is the newer of the two routes, so a box talking to an older core must still serve that core's pool rather than going quiet on every project at once.
-        let admissible = pool::admissible(client, Some(&runner.project_id))
+        // cm:guard an unreadable read is EMPTY, not fatal — this project goes quiet for a pass rather than the box going quiet on every project at once. It is now the ONLY thing that tells the daemon a project has work, so a failure here must cost one pass and never a master.
+        let admissible = admissible::admissible(client, Some(&runner.project_id))
             .await
             .unwrap_or_default();
-        // cm:guard an EMPTY pool starts no master, and that bound survives residency. A resident session is a `claude` process that lives until something ends it, and nothing counts it — `duplex_max_sessions` covers duplex pipeline jobs alone, so a box serving six projects would carry six permanent processes for however many of them never have work. A master that already exists is kept and still supervised; residency is for a project doing something, not for every row `/me/runners` returns.
-        if items.is_empty() && admissible.is_empty() {
+        // cm:guard NOTHING admissible starts no master, and that bound survives residency. A resident session is a `claude` process that lives until something ends it, and nothing counts it, so a box serving six projects would carry six permanent processes for however many of them never have work. A master that already exists is kept and still supervised; residency is for a project doing something, not for every row `/me/runners` returns.
+        if admissible.is_empty() {
             if retire_if_idle(client, masters, ledger, &runner.project_id, &runner.slug).await
                 || masters.get(&runner.project_id).is_none()
             {
@@ -413,11 +395,11 @@ async fn sweep(
             continue;
         }
 
-        if items.is_empty() && admissible.is_empty() {
+        if admissible.is_empty() {
             continue;
         }
 
-        if masters.claim_nudge(&runner.project_id, work_digest(&items, &admissible)) {
+        if masters.claim_nudge(&runner.project_id, work_digest(&admissible)) {
             nudge_master(masters, &runner.project_id, &resolved.slug).await;
         }
     }
@@ -737,7 +719,6 @@ async fn ensure_master(
     }
 
     // cm:guard hooks are installed but a failure does NOT stop the master, and the asymmetry with the skill above is deliberate: a master with no skill improvises the whole process, while a master with no hooks is exactly what every box ran before this channel existed — blind, and working. Trading the pass for the telemetry would be the wrong way round.
-    // cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/runner/run_session.rs — a RUN pane installs the same hooks into its own worktree, and the two spawn paths are the only places this can happen: settings are read once at startup, so a path that spawns without installing produces a session that reports nothing for its whole life and cannot be repaired in flight.
     install_hooks_logged(&resolved.repo_path, &resolved.slug);
 
     // cm:guard the pane is the ONE session this runner opens on a TTY, and a TTY is the only place Claude Code shows the workspace-trust prompt. An unanswered prompt is a session that ends without doing anything and takes the breaker above with it, so the stamp belongs immediately before the spawn — `workspace::provision` covers a fresh box, this covers every box provisioned before it shipped (ISS-928, forge-vm 2026-09-06).
@@ -812,20 +793,20 @@ fn remember(masters: &Arc<Masters>, project_id: &str, session: &master_api::Mast
 }
 
 /// The whole of one pass prompt: go, and who you are.
-// cm:guard the pool is NOT embedded here, and that absence is what let the quiet gate go. The skill's own first step is `pool list`, so a snapshot typed at the master is a second copy that is already stale by the time the turn reaches it — and a prompt that queued behind a turn then acted on that copy is exactly what the deleted quiet gate existed to prevent (ISS-933 criterion 17).
-// cm:edge contract -> packages/runner/crates/forge-runner-core/assets/forge-master-skill.md — the skill is told it never names itself, and this prompt is what must not contradict it. A pass that handed a master its session id would invite it back onto a flag no command has (ISS-964 criterion 29).
+// cm:guard the queue is NOT embedded here, and that absence is what let the quiet gate go. Dispatch reads it itself with its own ranking verb, so a snapshot typed at the master is a second copy already stale by the time the turn reaches it — and a prompt that queued behind a turn then acted on that copy is exactly what the deleted quiet gate existed to prevent (ISS-933 criterion 17).
+// cm:edge contract -> packages/runner/crates/forge-runner-core/assets/forge-master-skill.md — the skill hands every pass to `forge:dispatch`, and this prompt is what must not contradict it by naming a phase, a width or a queue of its own (ISS-964 criterion 29).
 fn nudge() -> String {
-    "Pass. Read the pool, decide, claim what you are confident about, report, and stop.".into()
+    "Pass. Hand it to the dispatch skill, and say what you dispatched and what you did not.".into()
 }
 
 /// Tell a master there is something to look at.
-// cm:guard nothing gates this on the master looking idle. Residency used to be policed from outside — transcript growth read as liveness, a quiet window before prompting, a ceiling that killed — and every one of those inferred a process state from a pane's byte count (ISS-933 criteria 17 and 18). `claim_nudge` is NOT that gate and must not become it: it reads the POOL's identity, never the pane, so it cannot be wrong about whether the master is alive or working.
+// cm:guard nothing gates this on the master looking idle. Residency used to be policed from outside — transcript growth read as liveness, a quiet window before prompting, a ceiling that killed — and every one of those inferred a process state from a pane's byte count (ISS-933 criteria 17 and 18). `claim_nudge` is NOT that gate and must not become it: it reads the admissible WORK's identity, never the pane, so it cannot be wrong about whether the master is alive or working.
 // cm:guard an extra nudge costs a full agent pass, NOT a line in a composer — ~$0.18 measured on forge-vm 2026-09-08, where 1,354 unconditional nudges over 95 minutes bought 0 claims and $245. That is why the caller gates on `claim_nudge`; a new call site that skips it reinstates a spend proportional to sweeps.
 async fn nudge_master(masters: &Arc<Masters>, project_id: &str, slug: &str) {
     let Some((_, name)) = masters.get(project_id) else {
         return;
     };
-    tracing::info!("[master] {slug}: work in the pool — nudging {name}");
+    tracing::info!("[master] {slug}: admissible work — nudging {name}");
     if let Err(e) = terminal::send_line(&name, &nudge()).await {
         tracing::warn!("[master] {slug}: could not nudge {name}: {e}");
     }
@@ -836,15 +817,14 @@ async fn nudge_master(masters: &Arc<Masters>, project_id: &str, slug: &str) {
 /// B3: the daemon is no longer the master's parent, so a dead master drops no
 /// socket. What it does do is stop existing as a tmux session, and this is the
 /// thing that notices — one sweep, not the three minutes core's reaper costs.
-// cm:guard the holds come back on BOTH arms, and that is the load-bearing half. A master that dies holding a preparation parks claimable work until core's reaper notices; `pool::release` with no job id is the same "everything this session holds" call the socket-drop path used to make, and losing it would leave the fast detector detecting and not repairing.
-// cm:guard close the row AFTER releasing, never before. Core's reaper reads a terminal status as reason enough to sweep, so a close that landed with the release still to come would race the reaper for the same rows — harmless twice over, but only in that order; the reverse leaves a live row with no holds and nothing to say why.
+// cm:guard this closes the ROW on the fast path, one sweep instead of the three minutes core's reaper costs. There is nothing to release alongside it any more — a master's runs are subagents of its own process and their leases lapse with the pane — so a caller tempted to add a release here is reaching for a hold this box no longer takes.
 async fn supervise(client: &CoreClient, masters: &Arc<Masters>, project_id: &str, slug: &str) {
     let Some((session_id, name)) = masters.get(project_id) else {
         return;
     };
 
     if !terminal::alive(&name).await {
-        tracing::warn!("[master] {slug}: resident session {name} is gone — returning its holds");
+        tracing::warn!("[master] {slug}: resident session {name} is gone — closing its row");
         end_master(
             client,
             masters,
@@ -857,7 +837,7 @@ async fn supervise(client: &CoreClient, masters: &Arc<Masters>, project_id: &str
 }
 
 /// Let an idle master go, if the ledger says its children are done.
-// cm:guard both halves are asked EVERY time, and the ledger read is not skipped when the pool is empty. An empty pool is the idle half already — reading the children is the half that is easy to drop, and dropping it is what abandons a run's close loop to core's ten-minute reaper.
+// cm:guard both halves are asked EVERY time, and the ledger read is not skipped when nothing is admissible. No admissible work is the idle half already — reading the children is the half that is easy to drop, and dropping it is what abandons a run's close loop to core's ten-minute reaper.
 async fn retire_if_idle(
     client: &CoreClient,
     masters: &Arc<Masters>,
@@ -907,11 +887,6 @@ async fn end_master(
     session_id: &str,
     reason: &str,
 ) {
-    match pool::release(client, None, session_id).await {
-        Ok(n) if n > 0 => tracing::info!("[master] returned {n} hold(s) to the pool"),
-        Ok(_) => {}
-        Err(e) => tracing::warn!("[master] could not return holds for {session_id}: {e}"),
-    }
     if let Err(e) = master_api::close(client, session_id, reason).await {
         tracing::warn!("[master] could not close session {session_id}: {e}");
     }
@@ -1094,11 +1069,11 @@ mod tests {
     }
 
     // cm:guard the policy must arrive VERBATIM and this asserts exactly that. A master briefed with a summary of the owner's instruction is a master following the summariser, and the whole failure ISS-929 fixes is an instruction that reached the pane wrong or not at all.
-    // cm:edge lockstep -> packages/runner/crates/forge-runner-core/assets/forge-master-skill.md — the verb and the instruction to use it ship in one binary and are useless apart: a `decide` nothing tells the master about is a denominator that stays zero, which reads as a master that asks about everything (ISS-964 criterion 2).
+    // cm:edge contract -> packages/runner/crates/forge-runner-core/assets/forge-master-skill.md — `forge record decision` is the plugin's verb, not this binary's, and the skill is the only place a master is told it exists: dispatch names no recording verb, so dropping it here leaves the decided/asked ratio with a denominator of zero (ISS-964 criteria 1, 2).
     #[test]
     fn the_brief_tells_the_master_to_record_what_it_decided_rather_than_asked() {
         assert!(
-            MASTER_SKILL.contains("pool decide"),
+            MASTER_SKILL.contains("forge record decision"),
             "the brief must name the verb that records a decision; without it the ratio's denominator is zero for every master (ISS-964 criteria 1, 2)"
         );
         assert!(
@@ -1260,7 +1235,7 @@ mod give_back_tests {
     // cm:guard the discriminating assertion is that core is TOLD, not that the pid was killed. A build that kills the pane and says nothing still passes every other test in this file, and that build is what this box shipped for weeks: core's ten-minute sweep then wrote `runner_unreachable` over a box that had ended the run deliberately, which is ~95% of a 203-session failure bucket nobody can now decompose.
     #[tokio::test]
     async fn ending_an_idle_run_tells_core_the_box_did_it() {
-        let mut led = a_ledger_holding_one_run();
+        let led = a_ledger_holding_one_run();
         led.attach_pid("run-1", 424_248).unwrap();
         let mut ledger = Some(led);
         let killed = CountedKill(std::sync::atomic::AtomicUsize::new(0));
@@ -1703,12 +1678,7 @@ mod give_back_tests {
         );
     }
 
-    fn entry(job_id: &str) -> pool::PoolEntry {
-        serde_json::from_value(serde_json::json!({ "jobId": job_id, "type": "drive" }))
-            .expect("pool entry fixture")
-    }
-
-    fn admiss(issue_id: &str) -> pool::AdmissibleIssue {
+    fn admiss(issue_id: &str) -> AdmissibleIssue {
         serde_json::from_value(serde_json::json!({ "issueId": issue_id }))
             .expect("admissible fixture")
     }
@@ -1743,30 +1713,29 @@ mod give_back_tests {
 
     #[test]
     fn the_digest_does_not_move_when_the_rows_merely_swap_places() {
-        let a = work_digest(&[entry("j1"), entry("j2")], &[admiss("i1"), admiss("i2")]);
-        let b = work_digest(&[entry("j2"), entry("j1")], &[admiss("i2"), admiss("i1")]);
+        let a = work_digest(&[admiss("i1"), admiss("i2")]);
+        let b = work_digest(&[admiss("i2"), admiss("i1")]);
         assert_eq!(a, b);
     }
 
     #[test]
     fn the_digest_moves_when_a_row_arrives_or_leaves() {
-        let one = work_digest(&[entry("j1")], &[]);
-        assert_ne!(one, work_digest(&[entry("j1"), entry("j2")], &[]));
-        assert_ne!(one, work_digest(&[], &[]));
-        assert_ne!(one, work_digest(&[], &[admiss("j1")]));
+        let one = work_digest(&[admiss("i1")]);
+        assert_ne!(one, work_digest(&[admiss("i1"), admiss("i2")]));
+        assert_ne!(one, work_digest(&[]));
     }
 
     // cm:guard identity ONLY. A title or a priority moving is not new work, and a digest that tracked them would nudge on every edit an operator makes in the UI.
     #[test]
     fn the_digest_ignores_everything_but_the_ids() {
-        let plain: pool::PoolEntry =
-            serde_json::from_value(serde_json::json!({ "jobId": "j1", "type": "drive" })).unwrap();
-        let dressed: pool::PoolEntry = serde_json::from_value(serde_json::json!({
-            "jobId": "j1", "type": "drive", "title": "renamed", "priority": "critical",
-            "status": "queued"
+        let plain: AdmissibleIssue =
+            serde_json::from_value(serde_json::json!({ "issueId": "i1" })).unwrap();
+        let dressed: AdmissibleIssue = serde_json::from_value(serde_json::json!({
+            "issueId": "i1", "title": "renamed", "priority": "critical",
+            "status": "in_progress"
         }))
         .unwrap();
-        assert_eq!(work_digest(&[plain], &[]), work_digest(&[dressed], &[]));
+        assert_eq!(work_digest(&[plain]), work_digest(&[dressed]));
     }
 
     #[test]

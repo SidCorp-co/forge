@@ -1,5 +1,5 @@
 {
-  "id": "c68e02a2-4f16-4b44-a9e8-2d56f5c966c3",
+  "id": "0a49a003-2e20-4435-a370-4dcbf86fb29c",
   "prevId": "55c34222-3c0f-4d06-bf01-e1bf72440d2a",
   "version": "7",
   "dialect": "postgresql",
@@ -3833,84 +3833,6 @@
         }
       },
       "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.issue_prefix_aliases": {
-      "name": "issue_prefix_aliases",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "project_id": {
-          "name": "project_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "prefix": {
-          "name": "prefix",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "issue_prefix_aliases_prefix_uq": {
-          "name": "issue_prefix_aliases_prefix_uq",
-          "columns": [
-            {
-              "expression": "prefix",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "issue_prefix_aliases_project_id_projects_id_fk": {
-          "name": "issue_prefix_aliases_project_id_projects_id_fk",
-          "tableFrom": "issue_prefix_aliases",
-          "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "issue_prefix_aliases_project_prefix_uq": {
-          "name": "issue_prefix_aliases_project_prefix_uq",
-          "nullsNotDistinct": false,
-          "columns": [
-            "project_id",
-            "prefix"
-          ]
-        }
-      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -8676,12 +8598,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "issue_prefix": {
-          "name": "issue_prefix",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "archived_at": {
           "name": "archived_at",
           "type": "timestamp with time zone",
@@ -8812,21 +8728,6 @@
             "id"
           ],
           "onDelete": "set null",
-          "onUpdate": "no action"
-        },
-        "projects_issue_prefix_fk": {
-          "name": "projects_issue_prefix_fk",
-          "tableFrom": "projects",
-          "tableTo": "issue_prefix_aliases",
-          "columnsFrom": [
-            "id",
-            "issue_prefix"
-          ],
-          "columnsTo": [
-            "project_id",
-            "prefix"
-          ],
-          "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
@@ -12845,6 +12746,195 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.rocketchat_comment_mirror_state": {
+      "name": "rocketchat_comment_mirror_state",
+      "schema": "",
+      "columns": {
+        "only": {
+          "name": "only",
+          "type": "boolean",
+          "primaryKey": true,
+          "notNull": true,
+          "default": true
+        },
+        "since": {
+          "name": "since",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "rcq_mirror_state_one_row_chk": {
+          "name": "rcq_mirror_state_one_row_chk",
+          "value": "\"rocketchat_comment_mirror_state\".\"only\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.rocketchat_comment_mirrors": {
+      "name": "rocketchat_comment_mirrors",
+      "schema": "",
+      "columns": {
+        "comment_id": {
+          "name": "comment_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "connection_id": {
+          "name": "connection_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "direction": {
+          "name": "direction",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "external_message_id": {
+          "name": "external_message_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "announced_at": {
+          "name": "announced_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "announce_lease_until": {
+          "name": "announce_lease_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "last_error": {
+          "name": "last_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "next_attempt_at": {
+          "name": "next_attempt_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "rcq_mirrors_external_idx": {
+          "name": "rcq_mirrors_external_idx",
+          "columns": [
+            {
+              "expression": "connection_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "external_message_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "rcq_mirrors_status_idx": {
+          "name": "rcq_mirrors_status_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "next_attempt_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "rocketchat_comment_mirrors_comment_id_comments_id_fk": {
+          "name": "rocketchat_comment_mirrors_comment_id_comments_id_fk",
+          "tableFrom": "rocketchat_comment_mirrors",
+          "tableTo": "comments",
+          "columnsFrom": [
+            "comment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "rocketchat_comment_mirrors_connection_id_integration_connections_id_fk": {
+          "name": "rocketchat_comment_mirrors_connection_id_integration_connections_id_fk",
+          "tableFrom": "rocketchat_comment_mirrors",
+          "tableTo": "integration_connections",
+          "columnsFrom": [
+            "connection_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.rocketchat_question_deliveries": {
       "name": "rocketchat_question_deliveries",
       "schema": "",
@@ -12973,15 +13063,99 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.rocketchat_thread_openings": {
+      "name": "rocketchat_thread_openings",
+      "schema": "",
+      "columns": {
+        "issue_id": {
+          "name": "issue_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "connection_id": {
+          "name": "connection_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rid": {
+          "name": "rid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "claimed_at": {
+          "name": "claimed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "rocketchat_thread_openings_issue_id_issues_id_fk": {
+          "name": "rocketchat_thread_openings_issue_id_issues_id_fk",
+          "tableFrom": "rocketchat_thread_openings",
+          "tableTo": "issues",
+          "columnsFrom": [
+            "issue_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "rocketchat_thread_openings_connection_id_integration_connections_id_fk": {
+          "name": "rocketchat_thread_openings_connection_id_integration_connections_id_fk",
+          "tableFrom": "rocketchat_thread_openings",
+          "tableTo": "integration_connections",
+          "columnsFrom": [
+            "connection_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.rocketchat_question_threads": {
       "name": "rocketchat_question_threads",
       "schema": "",
       "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
         "question_id": {
           "name": "question_id",
           "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
+          "primaryKey": false,
+          "notNull": false
+        },
+        "issue_id": {
+          "name": "issue_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         },
         "connection_id": {
           "name": "connection_id",
@@ -13000,6 +13174,12 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "retired_at": {
+          "name": "retired_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",
@@ -13036,6 +13216,38 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "rcq_threads_question_idx": {
+          "name": "rcq_threads_question_idx",
+          "columns": [
+            {
+              "expression": "question_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "question_id IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "rcq_threads_issue_live_idx": {
+          "name": "rcq_threads_issue_live_idx",
+          "columns": [
+            {
+              "expression": "issue_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "issue_id IS NOT NULL AND retired_at IS NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -13045,6 +13257,19 @@
           "tableTo": "agent_questions",
           "columnsFrom": [
             "question_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "rocketchat_question_threads_issue_id_issues_id_fk": {
+          "name": "rocketchat_question_threads_issue_id_issues_id_fk",
+          "tableFrom": "rocketchat_question_threads",
+          "tableTo": "issues",
+          "columnsFrom": [
+            "issue_id"
           ],
           "columnsTo": [
             "id"
@@ -13069,7 +13294,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "rcq_threads_subject_chk": {
+          "name": "rcq_threads_subject_chk",
+          "value": "num_nonnulls(\"rocketchat_question_threads\".\"question_id\", \"rocketchat_question_threads\".\"issue_id\") = 1"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.session_inbox": {

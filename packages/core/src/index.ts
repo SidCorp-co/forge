@@ -72,6 +72,7 @@ import { registerIntegrationsHealthSweep } from './integrations/health-sweep.js'
 import { registerPostmanAdapter } from './integrations/postman/adapter.js';
 import { registerIntegrationsWorker } from './integrations/queue.js';
 import { registerRocketChatAdapter } from './integrations/rocketchat/adapter.js';
+import { registerCommentMirror } from './integrations/rocketchat/comment-mirror.js';
 import {
   startRocketChatManager,
   stopRocketChatManager,
@@ -376,7 +377,7 @@ app.route('/api/update-packets', updatePacketRoutes);
 app.route('/api/notifications', notificationRoutes);
 app.route('/api/me', meAttentionRoutes);
 app.route('/api/me', mePulseRoutes);
-app.route('/api', questionRoutes);
+app.route('/api/questions', questionRoutes);
 app.route('/api', speakerLinkProjectRoutes);
 app.route('/api', speakerLinkMeRoutes);
 app.route('/api/me', meRecentChangesRoutes);
@@ -496,6 +497,7 @@ if (isMain) {
   registerWebhookSubscribers(hooks);
   registerPipelineOrchestrator(hooks);
   registerAnswerResume(hooks);
+  registerCommentMirror(hooks);
   registerPhaseJournalClose(hooks);
   // cm:guard ISS-238 — register AFTER registerPipelineOrchestrator: this subscriber resumes a run whose missing skill was just registered and then re-enqueues, and that re-enqueue must walk through the orchestrator's own hooks, which are not on the bus yet if it is wired first
   registerPausedRunWedgeResolve(hooks);
@@ -504,9 +506,6 @@ if (isMain) {
   registerOutboxWorker();
   await registerReconciler();
 
-  // ISS-392 — periodically re-ingest the latest `runner-v*` GitHub Release so a
-  // freshly cut runner build is served (and auto-pulled by runners) without a
-  // manual core redeploy. No-op when RUNNER_RELEASE_DIR is unset.
   registerRunnerReleaseRefetch();
 
   const server = serve({ fetch: app.fetch, port }, (info) => {
@@ -516,8 +515,7 @@ if (isMain) {
   // cm:why serve() returns a union including http2, and ws's WebSocketServer takes only http/https — the cast narrows to the HTTP/1 server this call actually asked for
   attachWs(server as unknown as HttpServer);
 
-  // ISS-604 (P2c) — open bot-user DDP sockets for active Rocket.Chat
-  // connections. Best-effort: never block boot; single-owner via advisory lock.
+  // cm:guard never awaited and never fatal: the manager dials bot-user DDP sockets and takes a single-owner advisory lock, so a Rocket.Chat server that is slow or unreachable must not hold up boot or fail it (ISS-604).
   void startRocketChatManager().catch((err) =>
     logger.error({ err }, 'rocketchat: manager start failed'),
   );

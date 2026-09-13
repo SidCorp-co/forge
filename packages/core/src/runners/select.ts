@@ -70,10 +70,9 @@ export function defaultRunnerCapabilities(
  * The `capabilities` jsonb of the device's `claude-code` runner, or `null`
  * when the device has none registered.
  *
- * `runners_device_type_uq` pins at most one `claude-code` runner per device, so
- * this row is the single place `capabilities.pm` — the PM opt-in written by
- * {@link defaultRunnerCapabilities} — can be read from.
+ * `capabilities.pm` is the PM opt-in written by {@link defaultRunnerCapabilities}.
  */
+// cm:guard this reads ONE row for a device that may hold several — the unique index is `runners_project_device_type_uq` (project, device, type), so a device bound to two projects has two `claude-code` rows and this `limit(1)` is unordered between them. The header used to claim an index named `runners_device_type_uq` pinned one row per device; no such index exists. Which project's capabilities a device-only caller means is undecided — docs/proposals/mcp-runner-status-writes-are-unaudited.md carries it.
 export async function readDeviceClaudeCodeCapabilities(
   deviceId: string,
 ): Promise<Record<string, unknown> | null> {

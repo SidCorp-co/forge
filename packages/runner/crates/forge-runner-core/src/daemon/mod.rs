@@ -1,10 +1,11 @@
 //! Daemon orchestration.
 //!
 //! Loop: connect WS → subscribe `device:<id>` (+ `runner:register` when
-//! enabled) → heartbeat every 30s → poll the pool, spawn a master, run what it claims, streaming
-//! its events back; on `job.cancel` abort the matching process. Interactive
+//! enabled) → heartbeat every 30s → ask which issues are admissible, keep a
+//! resident master up for each project that has some, and nudge it. The runs
+//! are the master's own subagents and never reach this process. Interactive
 //! chat (`agent:start` / `agent:send` / `agent:abort`) is handled out-of-band
-//! by `chat`, off the jobs path and under its own concurrency budget (ISS-321).
+//! by `chat`, under its own concurrency budget (ISS-321).
 
 pub mod agent_activity;
 pub mod chat;
@@ -17,7 +18,6 @@ pub mod master_exit;
 pub mod preflight;
 pub mod recovery;
 pub mod recovery_ports;
-pub mod repo_lock;
 pub mod run_exit;
 pub mod session_tokens;
 pub mod setup_agent;
@@ -315,7 +315,6 @@ pub async fn run(
     // drains this to zero before restarting so auto-update never kills running
     // work (ISS-392). Created before any spawn so every worker can register.
     let inflight = Arc::new(AtomicUsize::new(0));
-    let repo_locks = crate::daemon::repo_lock::RepoLocks::new();
 
     // Update check loop: warn when a newer release exists; auto-apply +
     // restart when `update.auto` is set. Checks ~30s after start, then every 6h.
@@ -600,32 +599,17 @@ pub async fn run(
 
     // cm:guard ONE map, shared by the socket that records and every reader that acts on it. A second instance would give the control socket somewhere to write that no liveness reader ever looks at, which is the shape of the bug this whole channel exists to close.
     let activity = Arc::new(agent_activity::Activities::new());
-    // cm:guard both loops start, or the box does neither half of its own work: the control socket is the ONLY way a master turns a decision into a running job, and the pool poll is the only thing that notices work exists now that core pushes nothing. A daemon that starts one without the other looks healthy and never runs anything.
     {
-        // cm:guard refuse to serve the socket with no token map rather than serving it unauthenticated. Every verb on this socket acts on a session by capability, and a daemon that could not resolve the map would either refuse every frame or, worse, be tempted back to the declared id (ISS-964 criterion 29).
+        // cm:guard refuse to serve the socket with no token map rather than serving it unauthenticated. The one verb on this socket describes a session by capability, and a daemon that could not resolve the map would either refuse every frame or, worse, be tempted back to the declared id (ISS-964 criterion 29).
         let Some(tokens_path) = session_tokens::default_path() else {
             return Err(crate::error::Error::Other(
                 "cannot resolve the control token map path".into(),
             ));
         };
-        let prepared = control::Preparations::new();
         let ctl = Arc::new(control::Control {
-            client: (*client).clone(),
-            runner: runner.clone(),
-            cfg: (*cfg).clone(),
-            locks: repo_locks.clone(),
-            inflight: inflight.clone(),
-            prepared: prepared.clone(),
             tokens: session_tokens::SessionTokens::at(tokens_path),
             activity: activity.clone(),
         });
-        // cm:guard the preparation reaper starts with the socket, always. `prepare` can park a hold, and the only process that knows it happened is this one — a daemon serving the split without this loop leaves a master free to take ten jobs, start two and strand eight until core's three-minute reaper notices each of them.
-        {
-            let (client, cancel_rx) = ((*client).clone(), cancel_rx.clone());
-            tokio::spawn(async move {
-                control::reap_preparations(client, prepared, cancel_rx).await;
-            });
-        }
         let cancel_rx = cancel_rx.clone();
         tokio::spawn(async move {
             if let Err(e) = control::serve(ctl, cancel_rx).await {
