@@ -1618,6 +1618,13 @@
       "when": 1793491200000,
       "tag": "0232_drop_memory_candidates",
       "breakpoints": true
+    },
+    {
+      "idx": 233,
+      "version": "7",
+      "when": 1793577600000,
+      "tag": "0233_new_iron_fist",
+      "breakpoints": true
     }
   ]
 }
