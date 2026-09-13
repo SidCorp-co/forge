@@ -119,34 +119,31 @@ vi.mock('../db/schema.js', () => ({
 
 vi.mock('../db/client.js', () => ({
   db: {
-    // cm:why discriminate the two `jobs` selects by PROJECTION, not by call order — the attempts timeline and the ISS-789 live-job count both read that table from the same `Promise.all`, and an order-based queue silently mis-feeds them the day a loader is added to that array
-    select: (projection?: Record<string, unknown>) => ({
+    // cm:guard the ISS-998 liveness pair is raw `db.execute` and is queued SEPARATELY from every `select`: it is one statement by design — two would be two snapshots — and routing it through the projection discriminator above would make the mock's shape disagree with the code's.
+    execute: () => Promise.resolve(livenessQueue.shift() ?? []),
+    // cm:why the queues are keyed on the TABLE each select reads and never on call order: the loaders run from one `Promise.all`, and an order-based queue silently mis-feeds them the day a loader joins that array. The ISS-998 liveness pair needs no key at all — it is raw `execute`, above.
+    select: () => ({
       from: (table: unknown) => {
         const tableKey = typeof table === 'object' && table !== null ? Object.values(table)[0] : '';
         const isAgentSessions = String(tableKey).startsWith('agent_sessions');
         const isUsageRecords = String(tableKey).startsWith('usage_records');
-        // cm:why discriminate the two `pipeline_runs` selects by PROJECTION, not by call order: the run row and the ISS-998 liveness pair both read that table, and an order-based queue mis-feeds them the day a loader joins the `Promise.all`
-        const isLiveness =
-          String(tableKey).startsWith('pipeline_runs') && !!projection && 'n' in projection;
-        const isPipelineRuns = String(tableKey).startsWith('pipeline_runs') && !isLiveness;
+        const isPipelineRuns = String(tableKey).startsWith('pipeline_runs');
         const isIssues = String(tableKey).startsWith('issues');
         const isAttempts = String(tableKey).startsWith('jobs.');
 
-        const result = isLiveness
-          ? livenessQueue.shift()
-          : isAgentSessions
-            ? stepsQueue.shift()
-            : isPipelineRuns
-              ? runRowQueue.shift()
-              : isIssues
-                ? issueQueue.shift()
-                : isAttempts
-                  ? attemptsQueue.shift()
-                  : isUsageRecords
-                    ? nextSelectKind === 'bulkCost'
-                      ? bulkCostQueue.shift()
-                      : costQueue.shift()
-                    : [];
+        const result = isAgentSessions
+          ? stepsQueue.shift()
+          : isPipelineRuns
+            ? runRowQueue.shift()
+            : isIssues
+              ? issueQueue.shift()
+              : isAttempts
+                ? attemptsQueue.shift()
+                : isUsageRecords
+                  ? nextSelectKind === 'bulkCost'
+                    ? bulkCostQueue.shift()
+                    : costQueue.shift()
+                  : [];
 
         return makeChain(Promise.resolve(result ?? []));
       },
@@ -304,7 +301,7 @@ describe('loadPipelineRunSummary', () => {
     runRowQueue.push([runRow]);
     stepsQueue.push([]);
     costQueue.push([]);
-    livenessQueue.push([{ runId: RUN_ID, n: 2, beat: null }]);
+    livenessQueue.push([{ run_id: RUN_ID, live_jobs: 2, last_beat: null }]);
 
     const result = await loadPipelineRunSummary(RUN_ID);
     expect(result?.liveJobs).toBe(2);
@@ -316,7 +313,7 @@ describe('loadPipelineRunSummary', () => {
     runRowQueue.push([runRow]);
     stepsQueue.push([]);
     costQueue.push([]);
-    livenessQueue.push([{ runId: RUN_ID, n: 0, beat }]);
+    livenessQueue.push([{ run_id: RUN_ID, live_jobs: 0, last_beat: beat }]);
 
     const result = await loadPipelineRunSummary(RUN_ID);
     expect(result?.lastSessionBeatAt).toBe('2026-09-13T11:59:00.000Z');
@@ -327,7 +324,7 @@ describe('loadPipelineRunSummary', () => {
     runRowQueue.push([runRow]);
     stepsQueue.push([]);
     costQueue.push([]);
-    livenessQueue.push([{ runId: RUN_ID, n: 0, beat: null }]);
+    livenessQueue.push([{ run_id: RUN_ID, live_jobs: 0, last_beat: null }]);
 
     const result = await loadPipelineRunSummary(RUN_ID);
     expect(result?.lastSessionBeatAt).toBeNull();
@@ -353,7 +350,8 @@ describe('listItemsFromRows', () => {
 
   it('falls back to zero cost for runs missing from the cost map', async () => {
     nextSelectKind = 'bulkCost';
-    bulkCostQueue.push([]); // no usage rows
+    // cm:guard an EMPTY cost read is the case, not a zero-valued row: a run with no usage records must fall back to `EMPTY_COST` rather than come back with the field missing, which would render as a blank where a reader expects nothing spent.
+    bulkCostQueue.push([]);
 
     const items = await listItemsFromRows([runRow]);
     expect(items).toHaveLength(1);
@@ -401,7 +399,9 @@ describe('listItemsFromRows', () => {
   it('ISS-789: the list surface keeps reporting the batched live-job count', async () => {
     nextSelectKind = 'bulkCost';
     bulkCostQueue.push([]);
-    livenessQueue.push([{ runId: RUN_ID, n: 3, beat: new Date('2026-09-13T11:58:00.000Z') }]);
+    livenessQueue.push([
+      { run_id: RUN_ID, live_jobs: 3, last_beat: new Date('2026-09-13T11:58:00.000Z') },
+    ]);
 
     const items = await listItemsFromRows([runRow]);
     expect(items[0]!.liveJobs).toBe(3);
@@ -415,7 +415,7 @@ describe('ISS-885: the attempt timeline carries the classified cause', () => {
     runRowQueue.push([runRow]);
     stepsQueue.push([]);
     costQueue.push([]);
-    livenessQueue.push([{ n: 0 }]);
+    livenessQueue.push([]);
     attemptsQueue.push([
       {
         jobId: 'job-1',
@@ -449,7 +449,7 @@ describe('ISS-885: the attempt timeline carries the classified cause', () => {
     runRowQueue.push([runRow]);
     stepsQueue.push([]);
     costQueue.push([]);
-    livenessQueue.push([{ n: 0 }]);
+    livenessQueue.push([]);
     attemptsQueue.push([
       {
         jobId: 'job-2',

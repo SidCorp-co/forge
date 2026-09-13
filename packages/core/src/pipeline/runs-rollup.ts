@@ -273,8 +273,7 @@ async function loadAttemptsForRun(runId: string): Promise<{
   }
 
   const attempts: PipelineRunAttempt[] = rows.map((r) => {
-    // `readAutoRetryPayload` always returns the zero state; only surface it
-    // when the row actually carries `_autoRetry` (i.e. it is a retry chain).
+    // cm:guard the retry state is surfaced only where the row actually CARRIES `_autoRetry`: `readAutoRetryPayload` answers its zero state for every row, so surfacing it unconditionally would put a round counter and a rotation target on every attempt that never retried.
     const hasAutoRetry =
       !!r.payload &&
       typeof r.payload === 'object' &&
@@ -420,20 +419,27 @@ async function loadRunLivenessByRunIds(
 ): Promise<Map<string, { liveJobs: number; beat: string | null }>> {
   const out = new Map<string, { liveJobs: number; beat: string | null }>();
   if (runIds.length === 0) return out;
-  const rows = await db
-    .select({
-      runId: pipelineRuns.id,
-      // cm:guard the JOB half counts `queued`, `dispatched` and `running` and nothing else — `held` is a deliberate shape that is not work in flight, and counting it would keep a parked run out of the stalled band forever
-      n: sql<number>`(SELECT count(*) FROM ${jobs} j WHERE j.pipeline_run_id = ${pipelineRuns.id} AND j.status IN (${sqlList(LIVE_JOB_STATUSES)}))`.mapWith(
-        Number,
-      ),
-      // cm:guard the SESSION half is the newest beat of a NON-TERMINAL session; a terminal row's last heartbeat is a fact about when it stopped, and reading it as liveness keeps every finished run out of the count
-      beat: sql<Date | null>`(SELECT max(s.last_heartbeat_at) FROM ${agentSessions} s WHERE s.pipeline_run_id = ${pipelineRuns.id} AND s.status NOT IN (${sqlList(terminalAgentSessionStatuses)}))`,
-    })
-    .from(pipelineRuns)
-    .where(inArray(pipelineRuns.id, runIds));
-  for (const r of rows)
-    if (r.runId) out.set(r.runId, { liveJobs: Number(r.n), beat: toIso(r.beat) });
+  // cm:guard raw with EXPLICIT aliases and an explicit `r.` correlation, not a builder select of two bare subqueries: drizzle emits an unaliased `${pipelineRuns.id}` as `"id"`, which inside the job subquery resolves to `jobs.id` and correlates every run to itself, and two unnamed scalar subqueries both come back as `?column?` so the driver's row object keeps only the last. Both faults read as "no live jobs" on every run — caught by `tests/integration/run-live-jobs-e2e.test.ts`, which is why that file is the falsification for this query and the unit test above cannot be (ISS-998).
+  const rows = await db.execute<{
+    run_id: string;
+    live_jobs: number | string;
+    last_beat: Date | string | null;
+  }>(sql`
+    SELECT
+      r.id AS run_id,
+      (SELECT count(*) FROM ${jobs} j
+        WHERE j.pipeline_run_id = r.id
+          AND j.status IN (${sqlList(LIVE_JOB_STATUSES)})) AS live_jobs,
+      (SELECT max(s.last_heartbeat_at) FROM ${agentSessions} s
+        WHERE s.pipeline_run_id = r.id
+          AND s.status NOT IN (${sqlList(terminalAgentSessionStatuses)})) AS last_beat
+    FROM ${pipelineRuns} r
+    WHERE r.id IN (${sqlList(runIds)})
+  `);
+  for (const r of rows) {
+    if (!r.run_id) continue;
+    out.set(r.run_id, { liveJobs: Number(r.live_jobs), beat: toIso(r.last_beat) });
+  }
   return out;
 }
 
