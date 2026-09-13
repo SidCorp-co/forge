@@ -13,8 +13,7 @@ const costQueue: SelectQueue = [];
 const runRowQueue: SelectQueue = [];
 const bulkCostQueue: SelectQueue = [];
 const issueQueue: SelectQueue = [];
-const liveJobsQueue: SelectQueue = [];
-const sessionBeatQueue: SelectQueue = [];
+const livenessQueue: SelectQueue = [];
 const attemptsQueue: SelectQueue = [];
 
 let nextSelectKind: 'steps' | 'cost' | 'runRow' | 'bulkCost' = 'steps';
@@ -30,10 +29,14 @@ vi.mock('drizzle-orm', () => ({
   asc: (...args: unknown[]) => ({ _asc: args }),
   inArray: (...args: unknown[]) => ({ _inArray: args }),
   notInArray: (...args: unknown[]) => ({ _notInArray: args }),
-  sql: ((strings: TemplateStringsArray, ...values: unknown[]) => {
-    const obj = { _sql: strings.join('?'), values };
-    return Object.assign(obj, { mapWith: () => obj });
-  }) as never,
+  sql: Object.assign(
+    (strings: TemplateStringsArray, ...values: unknown[]) => {
+      const obj = { _sql: strings.join('?'), values };
+      return Object.assign(obj, { mapWith: () => obj });
+    },
+    // cm:why `sql.join` is stubbed rather than left off: ISS-998's liveness statement builds its status lists from the shared constants through it, and a missing member here fails the whole suite with `sql.join is not a function` — a message about the mock, not about the code under test.
+    { join: (parts: unknown[], sep: unknown) => ({ _join: parts, sep }) },
+  ) as never,
 }));
 
 // cm:why ISS-411 — runs-rollup now imports the pure retry-state helpers; mock them so the suite does not transitively pull in the dispatch/queue graph (env-gated).
@@ -120,35 +123,30 @@ vi.mock('../db/client.js', () => ({
     select: (projection?: Record<string, unknown>) => ({
       from: (table: unknown) => {
         const tableKey = typeof table === 'object' && table !== null ? Object.values(table)[0] : '';
-        // cm:why discriminate the two `agent_sessions` selects by PROJECTION for the same reason the two `jobs` selects are: the steps rollup and the ISS-998 heartbeat both read that table from one `Promise.all`, and an order-based queue mis-feeds them the day a loader joins that array
-        const isSessionBeat =
-          String(tableKey).startsWith('agent_sessions') && !!projection && 'beat' in projection;
-        const isAgentSessions = String(tableKey).startsWith('agent_sessions') && !isSessionBeat;
+        const isAgentSessions = String(tableKey).startsWith('agent_sessions');
         const isUsageRecords = String(tableKey).startsWith('usage_records');
-        const isPipelineRuns = String(tableKey).startsWith('pipeline_runs');
+        // cm:why discriminate the two `pipeline_runs` selects by PROJECTION, not by call order: the run row and the ISS-998 liveness pair both read that table, and an order-based queue mis-feeds them the day a loader joins the `Promise.all`
+        const isLiveness =
+          String(tableKey).startsWith('pipeline_runs') && !!projection && 'n' in projection;
+        const isPipelineRuns = String(tableKey).startsWith('pipeline_runs') && !isLiveness;
         const isIssues = String(tableKey).startsWith('issues');
-        const isLiveJobCount =
-          String(tableKey).startsWith('jobs.') && !!projection && 'n' in projection;
-        const isAttempts =
-          String(tableKey).startsWith('jobs.') && !!projection && !('n' in projection);
+        const isAttempts = String(tableKey).startsWith('jobs.');
 
-        const result = isSessionBeat
-          ? sessionBeatQueue.shift()
+        const result = isLiveness
+          ? livenessQueue.shift()
           : isAgentSessions
             ? stepsQueue.shift()
             : isPipelineRuns
               ? runRowQueue.shift()
               : isIssues
                 ? issueQueue.shift()
-                : isLiveJobCount
-                  ? liveJobsQueue.shift()
-                  : isAttempts
-                    ? attemptsQueue.shift()
-                    : isUsageRecords
-                      ? nextSelectKind === 'bulkCost'
-                        ? bulkCostQueue.shift()
-                        : costQueue.shift()
-                      : [];
+                : isAttempts
+                  ? attemptsQueue.shift()
+                  : isUsageRecords
+                    ? nextSelectKind === 'bulkCost'
+                      ? bulkCostQueue.shift()
+                      : costQueue.shift()
+                    : [];
 
         return makeChain(Promise.resolve(result ?? []));
       },
@@ -178,8 +176,7 @@ beforeEach(() => {
   runRowQueue.length = 0;
   bulkCostQueue.length = 0;
   issueQueue.length = 0;
-  liveJobsQueue.length = 0;
-  sessionBeatQueue.length = 0;
+  livenessQueue.length = 0;
   attemptsQueue.length = 0;
   nextSelectKind = 'steps';
 });
@@ -307,7 +304,7 @@ describe('loadPipelineRunSummary', () => {
     runRowQueue.push([runRow]);
     stepsQueue.push([]);
     costQueue.push([]);
-    liveJobsQueue.push([{ runId: RUN_ID, n: 2 }]);
+    livenessQueue.push([{ runId: RUN_ID, n: 2, beat: null }]);
 
     const result = await loadPipelineRunSummary(RUN_ID);
     expect(result?.liveJobs).toBe(2);
@@ -319,8 +316,7 @@ describe('loadPipelineRunSummary', () => {
     runRowQueue.push([runRow]);
     stepsQueue.push([]);
     costQueue.push([]);
-    liveJobsQueue.push([]);
-    sessionBeatQueue.push([{ runId: RUN_ID, beat }]);
+    livenessQueue.push([{ runId: RUN_ID, n: 0, beat }]);
 
     const result = await loadPipelineRunSummary(RUN_ID);
     expect(result?.lastSessionBeatAt).toBe('2026-09-13T11:59:00.000Z');
@@ -331,8 +327,7 @@ describe('loadPipelineRunSummary', () => {
     runRowQueue.push([runRow]);
     stepsQueue.push([]);
     costQueue.push([]);
-    liveJobsQueue.push([]);
-    sessionBeatQueue.push([]);
+    livenessQueue.push([{ runId: RUN_ID, n: 0, beat: null }]);
 
     const result = await loadPipelineRunSummary(RUN_ID);
     expect(result?.lastSessionBeatAt).toBeNull();
@@ -342,7 +337,7 @@ describe('loadPipelineRunSummary', () => {
     runRowQueue.push([runRow]);
     stepsQueue.push([]);
     costQueue.push([]);
-    liveJobsQueue.push([]);
+    livenessQueue.push([]);
 
     const result = await loadPipelineRunSummary(RUN_ID);
     expect(result?.status).toBe('running');
@@ -379,7 +374,7 @@ describe('listItemsFromRows', () => {
 
   it('ISS-460: maps cost (via agent_sessions rollup) and resolves issueRef/issueTitle', async () => {
     nextSelectKind = 'bulkCost';
-    // loadCostByRunIds maps rows keyed on runId (now sourced from agent_sessions).
+    // cm:guard the cost rows are keyed on the RUN and reached through `agent_sessions`, because `usage_records.session_id` is a session id and not a job id: a fixture keyed any other way passes against a build that reads the wrong column (ISS-460).
     bulkCostQueue.push([
       {
         runId: RUN_ID,
@@ -406,8 +401,7 @@ describe('listItemsFromRows', () => {
   it('ISS-789: the list surface keeps reporting the batched live-job count', async () => {
     nextSelectKind = 'bulkCost';
     bulkCostQueue.push([]);
-    liveJobsQueue.push([{ runId: RUN_ID, n: 3 }]);
-    sessionBeatQueue.push([{ runId: RUN_ID, beat: new Date('2026-09-13T11:58:00.000Z') }]);
+    livenessQueue.push([{ runId: RUN_ID, n: 3, beat: new Date('2026-09-13T11:58:00.000Z') }]);
 
     const items = await listItemsFromRows([runRow]);
     expect(items[0]!.liveJobs).toBe(3);
@@ -421,7 +415,7 @@ describe('ISS-885: the attempt timeline carries the classified cause', () => {
     runRowQueue.push([runRow]);
     stepsQueue.push([]);
     costQueue.push([]);
-    liveJobsQueue.push([{ n: 0 }]);
+    livenessQueue.push([{ n: 0 }]);
     attemptsQueue.push([
       {
         jobId: 'job-1',
@@ -455,7 +449,7 @@ describe('ISS-885: the attempt timeline carries the classified cause', () => {
     runRowQueue.push([runRow]);
     stepsQueue.push([]);
     costQueue.push([]);
-    liveJobsQueue.push([{ n: 0 }]);
+    livenessQueue.push([{ n: 0 }]);
     attemptsQueue.push([
       {
         jobId: 'job-2',

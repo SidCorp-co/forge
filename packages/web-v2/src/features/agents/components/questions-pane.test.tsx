@@ -305,6 +305,29 @@ describe("the project's open decisions", () => {
     );
   });
 
+  // cm:guard when the card taking the answered one's place asks in WORDS, focus lands in the box the answer is typed into and not on the submit beside it: focusing the button skips the control the decision is actually made in, and the next keypress is the empty-answer refusal (ISS-996, ISS-998).
+  it("puts focus in the answer box when the next decision is asked in words", async () => {
+    const inWords = {
+      ...question({ id: "q-text" }),
+      answerShape: "free_text",
+      options: [],
+      needed: "the staging database name",
+    } as unknown as AgentQuestion;
+    list = {
+      isLoading: false,
+      isError: false,
+      data: { questions: [question({ id: "q-1" }), inWords] },
+    };
+    const view = render(<QuestionsPane scope={scope} />);
+
+    fireEvent.click(nth(screen.getAllByRole("button", { name: /choose dispatch/i }), 0));
+    await act(async () => settle[0]?.resolve());
+    list = { isLoading: false, isError: false, data: { questions: [inWords] } };
+    view.rerender(<QuestionsPane scope={scope} />);
+
+    expect(document.activeElement).toBe(screen.getByRole("textbox"));
+  });
+
   // cm:guard the last resort when a remaining card has NO answerable option at all: the card's own title, which is why it is script-focusable. Without it this reader lands on the body with a decision still on screen (ISS-998).
   it("falls back to the next card's title when every option on it is locked", async () => {
     const allLocked = [{ ...onlyOption(), id: "opt-locked", locked: true }];

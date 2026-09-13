@@ -9,12 +9,13 @@
  * here so the front-end stays a thin renderer.
  */
 
-import { and, asc, eq, inArray, notInArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   agentSessions,
   devices,
   issues,
+  type JobStatus,
   jobs,
   type PipelineRunKind,
   type PipelineRunStatus,
@@ -265,8 +266,7 @@ async function loadAttemptsForRun(runId: string): Promise<{
     .where(eq(jobs.pipelineRunId, runId))
     .orderBy(asc(jobs.queuedAt));
 
-  // Map deviceId → name for resolving the `_autoRetry.target` device, which is
-  // not necessarily the device of any row already loaded.
+  // cm:guard the device map is built over EVERY device named anywhere in the retry chain, not over the rows already loaded: `_autoRetry.target` can name a box no attempt has run on yet, and resolving only the loaded rows leaves that target rendered as a bare uuid.
   const nameById = new Map<string, string>();
   for (const r of rows) {
     if (r.deviceId && r.deviceName) nameById.set(r.deviceId, r.deviceName);
@@ -370,13 +370,12 @@ export async function loadPipelineRunSummary(runId: string): Promise<PipelineRun
   const [row] = await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, runId)).limit(1);
   if (!row) return null;
 
-  const [steps, cost, attemptRollup, issueRefs, liveMap, beatMap] = await Promise.all([
+  const [steps, cost, attemptRollup, issueRefs, liveMap] = await Promise.all([
     loadStepsForRun(runId),
     loadCostForRun(runId),
     loadAttemptsForRun(runId),
     loadIssueRefs(row.issueId ? [row.issueId] : []),
-    loadLiveJobCountsByRunIds([runId]),
-    loadLastSessionBeatByRunIds([runId]),
+    loadRunLivenessByRunIds([runId]),
   ]);
 
   const ref = row.issueId ? issueRefs.get(row.issueId) : undefined;
@@ -385,9 +384,9 @@ export async function loadPipelineRunSummary(runId: string): Promise<PipelineRun
     issueRef: ref?.issueRef ?? null,
     issueTitle: ref?.issueTitle ?? null,
     // cm:guard load this from the same batched helper as the list surface and never leave the `rowToListItem` default standing — a spread whose `liveJobs: 0` is not overridden makes the detail endpoint answer 0 for EVERY run, which is the run-liveness lie ISS-789 exists to remove and is what it shipped as for the whole of ISS-789's first half
-    liveJobs: liveMap.get(runId) ?? 0,
+    liveJobs: liveMap.get(runId)?.liveJobs ?? 0,
     // cm:guard the same rule as `liveJobs` above: loaded from the batched helper, never left on `rowToListItem`'s null — a detail endpoint answering `null` for every run says "no session" about runs that have one
-    lastSessionBeatAt: beatMap.get(runId) ?? null,
+    lastSessionBeatAt: liveMap.get(runId)?.beat ?? null,
     steps,
     cost,
     attempts: attemptRollup.attempts,
@@ -400,49 +399,41 @@ export async function loadPipelineRunSummary(runId: string): Promise<PipelineRun
  * Runs with no usage rows are absent from the map; callers should fall back
  * to {@link EMPTY_COST}.
  */
-// cm:why ISS-789 — batched like loadCostByRunIds: the list endpoint renders up to `limit` runs, and a per-run count query would make the honest answer cost more than the dishonest one
-async function loadLiveJobCountsByRunIds(runIds: string[]): Promise<Map<string, number>> {
-  const out = new Map<string, number>();
-  if (runIds.length === 0) return out;
-  const rows = await db
-    .select({
-      runId: jobs.pipelineRunId,
-      n: sql<number>`count(*)`.mapWith(Number),
-    })
-    .from(jobs)
-    .where(
-      and(
-        inArray(jobs.pipelineRunId, runIds),
-        inArray(jobs.status, ['queued', 'dispatched', 'running']),
-      ),
-    )
-    .groupBy(jobs.pipelineRunId);
-  for (const r of rows) if (r.runId) out.set(r.runId, Number(r.n));
-  return out;
-}
+// cm:guard the status lists are BUILT from the shared constants rather than spelled into the SQL: a status added to `jobStatuses` or `terminalAgentSessionStatuses` and not to a literal here changes what "live" means with nothing going red, and the two halves of this query would then disagree with every other reader of the same tables.
+const LIVE_JOB_STATUSES = [
+  'queued',
+  'dispatched',
+  'running',
+] as const satisfies readonly JobStatus[];
+const sqlList = (values: readonly string[]) =>
+  sql.join(
+    values.map((v) => sql`${v}`),
+    sql`, `,
+  );
 
-/**
- * Newest heartbeat of a non-terminal session on each run, in one round-trip.
- */
-// cm:why batched beside `loadLiveJobCountsByRunIds` and never fetched per run: the list renders up to `limit` runs, and the whole point of carrying this field is that the two halves of run liveness are read in ONE snapshot — a second paged request cannot give a consistent answer at all (ISS-998).
-// cm:edge contract -> packages/web-v2/src/features/agents/stalled-runs.ts — `stalledRuns` reads `liveJobs` and this field together; a run counted on one of them alone is either a live master-lane run called dead or an orphan left uncounted.
-async function loadLastSessionBeatByRunIds(runIds: string[]): Promise<Map<string, string | null>> {
-  const out = new Map<string, string | null>();
+/** Both halves of run liveness for many runs, in ONE statement. */
+// cm:guard ONE statement and not two in a `Promise.all`: read-committed gives each statement its own snapshot, so a handoff that ends a session and starts a job can be straddled — the job count reads the state before it and the heartbeat reads the state after, and the run comes back claiming no job AND no session when it always had one of them. That impossible pair is exactly what the stalled count acts on (ISS-998).
+// cm:why batched like `loadCostByRunIds`: the list renders up to `limit` runs, and a per-run pair of counts would make the honest answer cost more than the dishonest one (ISS-789).
+// cm:edge contract -> packages/web-v2/src/features/agents/stalled-runs.ts — `stalledRuns` reads `liveJobs` and `lastSessionBeatAt` together; a run counted on one of them alone is either a live master-lane run called dead or an orphan left uncounted.
+async function loadRunLivenessByRunIds(
+  runIds: string[],
+): Promise<Map<string, { liveJobs: number; beat: string | null }>> {
+  const out = new Map<string, { liveJobs: number; beat: string | null }>();
   if (runIds.length === 0) return out;
   const rows = await db
     .select({
-      runId: agentSessions.pipelineRunId,
-      beat: sql<Date | null>`max(${agentSessions.lastHeartbeatAt})`,
-    })
-    .from(agentSessions)
-    .where(
-      and(
-        inArray(agentSessions.pipelineRunId, runIds),
-        notInArray(agentSessions.status, [...terminalAgentSessionStatuses]),
+      runId: pipelineRuns.id,
+      // cm:guard the JOB half counts `queued`, `dispatched` and `running` and nothing else — `held` is a deliberate shape that is not work in flight, and counting it would keep a parked run out of the stalled band forever
+      n: sql<number>`(SELECT count(*) FROM ${jobs} j WHERE j.pipeline_run_id = ${pipelineRuns.id} AND j.status IN (${sqlList(LIVE_JOB_STATUSES)}))`.mapWith(
+        Number,
       ),
-    )
-    .groupBy(agentSessions.pipelineRunId);
-  for (const r of rows) if (r.runId) out.set(r.runId, toIso(r.beat));
+      // cm:guard the SESSION half is the newest beat of a NON-TERMINAL session; a terminal row's last heartbeat is a fact about when it stopped, and reading it as liveness keeps every finished run out of the count
+      beat: sql<Date | null>`(SELECT max(s.last_heartbeat_at) FROM ${agentSessions} s WHERE s.pipeline_run_id = ${pipelineRuns.id} AND s.status NOT IN (${sqlList(terminalAgentSessionStatuses)}))`,
+    })
+    .from(pipelineRuns)
+    .where(inArray(pipelineRuns.id, runIds));
+  for (const r of rows)
+    if (r.runId) out.set(r.runId, { liveJobs: Number(r.n), beat: toIso(r.beat) });
   return out;
 }
 
@@ -494,11 +485,10 @@ export async function listItemsFromRows(rows: RunRow[]): Promise<PipelineRunList
   if (rows.length === 0) return [];
   const ids = rows.map((r) => r.id);
   const issueIds = [...new Set(rows.map((r) => r.issueId).filter((v): v is string => v != null))];
-  const [costMap, issueRefs, liveMap, beatMap] = await Promise.all([
+  const [costMap, issueRefs, liveMap] = await Promise.all([
     loadCostByRunIds(ids),
     loadIssueRefs(issueIds),
-    loadLiveJobCountsByRunIds(ids),
-    loadLastSessionBeatByRunIds(ids),
+    loadRunLivenessByRunIds(ids),
   ]);
   return rows.map((r) => {
     const ref = r.issueId ? issueRefs.get(r.issueId) : undefined;
@@ -507,8 +497,8 @@ export async function listItemsFromRows(rows: RunRow[]): Promise<PipelineRunList
       issueRef: ref?.issueRef ?? null,
       issueTitle: ref?.issueTitle ?? null,
       cost: costMap.get(r.id) ?? EMPTY_COST,
-      liveJobs: liveMap.get(r.id) ?? 0,
-      lastSessionBeatAt: beatMap.get(r.id) ?? null,
+      liveJobs: liveMap.get(r.id)?.liveJobs ?? 0,
+      lastSessionBeatAt: liveMap.get(r.id)?.beat ?? null,
     };
   });
 }
