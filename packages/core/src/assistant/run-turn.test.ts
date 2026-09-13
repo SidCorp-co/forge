@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
-// Capture SSE events by running the streamSSE callback against a fake stream.
+// cm:why the SSE callback is run against a fake stream, because what this file judges is the events
+// a turn emits and their order, which no HTTP assertion over the body can separate from framing.
 const captured: Array<{ event: string; data: string }> = [];
 vi.mock('hono/streaming', () => ({
   streamSSE: async (
@@ -21,31 +22,37 @@ vi.mock('hono/streaming', () => ({
   },
 }));
 
-// chat_logs audit + session persistence both touch the DB — stub them out.
+// cm:why the audit row and the message rows both reach the database, and this file is about the SSE
+// stream rather than either of them.
 vi.mock('../db/client.js', () => ({
   db: { insert: () => ({ values: async () => undefined }) },
 }));
 const appended: string[] = [];
-vi.mock('./session.js', () => ({
-  appendAssistantMessage: (s: { messages: unknown[] }, text: string) => {
+const silences: string[] = [];
+vi.mock('./conversation-turn.js', () => ({
+  appendAssistantMessage: (t: { pending: unknown[] }, text: string) => {
     appended.push(text);
-    s.messages.push({ role: 'assistant', content: text });
+    t.pending.push({ role: 'assistant', content: text });
+  },
+  appendSilence: (t: { pending: unknown[] }, reason: string) => {
+    silences.push(reason);
+    t.pending.push({ role: 'assistant', content: '', silenceReason: reason });
   },
   persistMessages: async () => undefined,
 }));
 
 const { runChatTurn } = await import('./run-turn.js');
 
+import type { ConversationTurn } from './conversation-turn.js';
 import type { ChatProvider, ChatStreamEvent } from './providers/types.js';
-import type { ChatSessionRow } from './session.js';
 import type { ChatToolset } from './tools/mcp-adapter.js';
 
 function fakeCtx() {
   return { header: () => {} } as never;
 }
 
-function session(): ChatSessionRow {
-  return { id: 's1', projectId: 'p1', userId: 'u1', source: 'web', messages: [] };
+function turn(): ConversationTurn {
+  return { conversationId: 'c1', adapter: 'web', handleUserId: null, history: [], pending: [] };
 }
 
 describe('runChatTurn tool loop', () => {
@@ -53,7 +60,7 @@ describe('runChatTurn tool loop', () => {
     captured.length = 0;
     appended.length = 0;
 
-    // Turn 1 → asks for a tool. Turn 2 → plain answer.
+    // cm:why two provider turns: the first asks for a tool, the second answers with it done
     let call = 0;
     const provider: ChatProvider = {
       id: 'mock',
@@ -88,24 +95,24 @@ describe('runChatTurn tool loop', () => {
 
     await runChatTurn({
       c: fakeCtx(),
-      session: session(),
+      turn: turn(),
       resolved: { provider, model: 'm' },
       providerMessages: [{ role: 'user', content: 'how many open issues?' }],
       tools,
       projectSlug: 'proj',
       userMessage: 'how many open issues?',
       userKey: 'u1',
+      adapter: 'web',
     });
 
-    // The tool ran with the model's arguments.
     expect(executedWith).toEqual({ name: 'forge_issues', args: '{"action":"list"}' });
 
     const kinds = captured.map((e) => e.event);
     expect(kinds).toContain('tool_call');
     expect(kinds).toContain('tool_result');
-    // Exactly one terminal `done` for the whole loop.
     expect(kinds.filter((k) => k === 'done')).toHaveLength(1);
-    // Only the final (post-tool) assistant text is persisted.
+    // cm:guard the PRE-tool assistant text is not persisted: a turn that called a tool and then
+    // answered is one answer, and storing the intermediate text replays it as a second one
     expect(appended).toEqual(['You have 2 open issues.']);
 
     const provider_called_twice = call === 2;
@@ -127,13 +134,14 @@ describe('runChatTurn tool loop', () => {
 
     await runChatTurn({
       c: fakeCtx(),
-      session: session(),
+      turn: turn(),
       resolved: { provider, model: 'm' },
       providerMessages: [{ role: 'user', content: 'hi' }],
       tools: { tools: [], execute: async () => ({ content: [] }) },
       projectSlug: 'proj',
       userMessage: 'hi',
       userKey: 'u1',
+      adapter: 'web',
     });
 
     expect(appended).toEqual(['hi']);

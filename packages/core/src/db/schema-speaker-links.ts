@@ -6,7 +6,8 @@
 // drizzle client's schema map alongside it.
 
 import { index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
-import { chatSessionSources, users } from './schema.js';
+import { users } from './schema.js';
+import { conversationAdapters } from './schema-conversations.js';
 
 // cm:guard one value today, and a second one is a NEW authority rather than a relabelling of this one. `channel_email_match` means the channel's own directory reported this user's exact address and the person holding that Forge account asked for the link themselves; a delegated path (an account-linking admin, a redeemed pairing code) states a different thing and must be told apart from this one wherever authority is read back.
 export const speakerLinkConfirmations = ['channel_email_match'] as const;
@@ -16,7 +17,7 @@ export const assistantSpeakerLinks = pgTable(
   'assistant_speaker_links',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    source: text('source', { enum: chatSessionSources }).notNull(),
+    source: text('source', { enum: conversationAdapters }).notNull(),
     // cm:guard the channel INSTANCE, not the channel type — a Rocket.Chat user id is unique only within one installation, so without this column a confirmed row on one server answers for a stranger of the same id on another. Derived from the connection, never from request input (`assistant/identity/directory.ts`).
     externalNamespace: text('external_namespace').notNull(),
     // cm:guard the channel's own stable user id and never a display name. A username is re-assignable on most chat servers, so a mapping keyed on one hands the next holder of that name the previous holder's authority.

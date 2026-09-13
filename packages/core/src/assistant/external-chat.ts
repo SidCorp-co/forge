@@ -2,13 +2,18 @@
  * ISS-604 (P2a) — non-streaming chat entrypoint for external channels (Rocket.Chat, Telegram, …):
  * the same resolution as the SSE `/api/chat` route, but the shared turn loop is drained to one
  * reply string. The caller supplies the toolset (it owns the principal); none means a tool-less
- * completion. Persists the final assistant text and a `chat_logs` audit row exactly like the SSE path.
+ * completion.
+ *
+ * A turn either belongs to a conversation — named by its id, or by the venue it
+ * happens in — or belongs to none, which is what a one-shot relay is. The audit
+ * row is written either way.
  */
 
 import { eq } from 'drizzle-orm';
 import { env } from '../config/env.js';
 import { db as defaultDb } from '../db/client.js';
 import { appConfig, chatLogs, projects } from '../db/schema.js';
+import type { ConversationAdapter, ConversationShape } from '../db/schema-conversations.js';
 import {
   buildProgressFactsBlock,
   computeProjectProgress,
@@ -16,18 +21,19 @@ import {
 } from '../issues/progress.js';
 import { logger } from '../logger.js';
 import { PROVIDER_HISTORY_WINDOW } from './context-budget.js';
+import {
+  appendAssistantMessage,
+  appendSilence,
+  appendUserMessage,
+  type ConversationTurn,
+  openTurn,
+  persistMessages,
+  toProviderMessages,
+} from './conversation-turn.js';
 import { defaultChatProviderId } from './providers/bootstrap.js';
 import { type ChatTurnKind, resolveForProject } from './providers/registry.js';
 import type { ChatResponseFormat } from './providers/types.js';
 import { runTurnEvents, usageForLog } from './run-turn-core.js';
-import {
-  appendAssistantMessage,
-  appendUserMessage,
-  type ChatSessionSource,
-  loadOrCreateSession,
-  persistMessages,
-  toProviderMessages,
-} from './session.js';
 import { buildSystemPrompt } from './system-prompt.js';
 import type { ChatToolset } from './tools/mcp-adapter.js';
 import { applyTurnContext } from './turn-context.js';
@@ -35,12 +41,15 @@ import { type ImageResolver, resolveVisionImages, type TurnImage } from './visio
 
 export interface ExternalChatTurnArgs {
   projectId: string;
-  source: ChatSessionSource;
+  adapter: ConversationAdapter;
   message: string;
-  /** Forge user who owns the session, or null for an anonymous external user. */
+  /** The Forge user this turn runs as. A turn that names a room REQUIRES one; an ephemeral turn, which names none, does not. */
   userId?: string | null;
-  /** Continue an existing conversation; omit to start a new one. */
-  sessionId?: string | undefined;
+  /** Continue this conversation. */
+  conversationId?: string | undefined;
+  /** Or open/resume the venue it happens in, in the transport's own terms. */
+  externalId?: string | undefined;
+  shape?: ConversationShape | undefined;
   /** Read-only toolset (caller builds it with the right principal); omit for tool-less. */
   tools?: ChatToolset | undefined;
   /** `chat_logs.user_key` audit key (e.g. the external user id). */
@@ -58,14 +67,20 @@ export interface ExternalChatTurnArgs {
   responseFormat?: ChatResponseFormat | undefined;
   /** Picks `app_config.chat_model_by_kind[kind]`; defaults to `'agentic'`. */
   turnKind?: ChatTurnKind | undefined;
+  /**
+   * What this turn WRITES to the room it reads. Default: the question and the answer.
+   */
+  // cm:guard a SCREENED adapter passes `question-only` and records the answer itself: the model's first answer can fail the reply guard and be replaced by a corrective retry or a fixed fallback, and a transcript holding the rejected text is a record of a conversation nobody had (ISS-1001).
+  // cm:guard `nothing` is for the RETRY of such a turn — its message is a code-authored instruction, and persisting it files words the speaker never said under their name — while a SILENCE is written under `question-only` all the same, because nothing replaces it and the reason is the row's whole point.
+  record?: 'question-and-answer' | 'question-only' | 'nothing';
   db?: typeof defaultDb;
 }
 
-/** External sessions live as long as the room (never rotated), so the persisted transcript is bounded too — the model-visible window is `context-budget.ts`'s. */
-const PERSISTED_MESSAGES_CAP = 200;
-
 export interface ExternalChatTurnResult {
-  sessionId: string;
+  /** The conversation this turn joined, or null when it belonged to none. */
+  conversationId: string | null;
+  /** The row this turn's answer became, for the caller to stamp with its delivery receipt. */
+  assistantMessageId: string | null;
   reply: string;
   terminal: 'done' | 'error';
   error: string | null;
@@ -108,16 +123,28 @@ export async function runExternalChatTurn(
     db: dbi,
   });
 
-  const session = await loadOrCreateSession({
-    projectId: args.projectId,
-    sessionId: args.sessionId,
-    userId: args.userId ?? null,
-    source: args.source,
-    db: dbi,
-  });
+  // cm:guard a turn with neither a conversation nor a venue is EPHEMERAL and writes no room: the escalation bridge's synthesis is one message posted by another path, not a conversation being had, and giving it a room of its own left an unread `chat_sessions` row behind every escalation (ISS-1001).
+  const turn: ConversationTurn | null =
+    args.conversationId || args.externalId
+      ? await openTurn({
+          projectId: args.projectId,
+          adapter: args.adapter,
+          conversationId: args.conversationId,
+          externalId: args.externalId,
+          shape: args.shape ?? 'direct',
+          readerUserId: args.userId ?? null,
+          db: dbi,
+        })
+      : null;
 
   const images = args.images ?? [];
-  appendUserMessage(session, args.message, images);
+  if (turn) {
+    appendUserMessage(turn, args.message, {
+      images,
+      authorUserId: args.userId ?? null,
+      authorLabel: args.userKey ?? null,
+    });
+  }
 
   const systemPrompt = buildSystemPrompt({
     project: { name: project.name, agentConfig: project.agentConfig },
@@ -125,12 +152,18 @@ export async function runExternalChatTurn(
     persona: args.persona ?? null,
     progressFacts: progress ? buildProgressFactsBlock(progress) : null,
   });
-  const historyWindow = session.messages.slice(-PROVIDER_HISTORY_WINDOW);
+  const historyWindow = turn
+    ? [...turn.history, ...turn.pending]
+        .slice(-PROVIDER_HISTORY_WINDOW)
+        .map((m) => ({ role: m.role, content: m.content, images: m.images }))
+    : [];
   const resolvedImages = await resolveVisionImages(historyWindow, images, args.resolveImage);
   const providerMessages = applyTurnContext(
     [
       { role: 'system' as const, content: systemPrompt },
-      ...toProviderMessages(session, resolvedImages).slice(-PROVIDER_HISTORY_WINDOW),
+      ...(turn
+        ? toProviderMessages(turn, resolvedImages).slice(-PROVIDER_HISTORY_WINDOW)
+        : [{ role: 'user' as const, content: args.message }]),
     ],
     { conversationContext: args.conversationContext },
   );
@@ -141,11 +174,8 @@ export async function runExternalChatTurn(
     model: resolved.model,
     messages: providerMessages,
     tools: args.tools,
-    // External-channel turns are agentic workers, not creative chat — a low
-    // temperature keeps small models on the call-the-tool path instead of
-    // narrating what they are "about to" do, and the first round REQUIRES a
-    // tool call so a lazy model cannot answer (or invent an action) without
-    // having investigated anything.
+    // cm:why an adapter turn is an agentic worker, not creative chat: a low temperature keeps small
+    // models on the call-the-tool path instead of narrating what they are "about to" do.
     temperature: 0.2,
     requireInitialToolUse: args.tools !== undefined,
     contextBudgetTokens: env.CHAT_CONTEXT_BUDGET_TOKENS,
@@ -158,22 +188,30 @@ export async function runExternalChatTurn(
   const durationMs = Date.now() - startedAt;
   if (result.elided.overBudget) {
     logger.warn(
-      { sessionId: session.id, elided: result.elided },
+      { conversationId: turn?.conversationId ?? null, elided: result.elided },
       'chat: request exceeds the context budget even after elision',
     );
   }
 
-  if (result.terminal === 'done' && result.finalText.length > 0) {
-    appendAssistantMessage(session, result.finalText);
+  const record = args.record ?? 'question-and-answer';
+  let assistantMessageId: string | null = null;
+  if (turn && record !== 'nothing') {
+    if (result.terminal === 'done' && result.finalText.length > 0) {
+      if (record === 'question-and-answer') appendAssistantMessage(turn, result.finalText);
+    } else {
+      appendSilence(
+        turn,
+        result.errorMessage ?? (result.terminal === 'done' ? 'empty-reply' : result.terminal),
+      );
+    }
+    const written = await persistMessages(turn, { db: dbi });
+    assistantMessageId =
+      written.find((m) => m.role === 'assistant' && !m.silenceReason)?.id ?? null;
   }
-  if (session.messages.length > PERSISTED_MESSAGES_CAP) {
-    session.messages = session.messages.slice(-PERSISTED_MESSAGES_CAP);
-  }
-  await persistMessages(session, { db: dbi });
 
   try {
     await dbi.insert(chatLogs).values({
-      sessionId: session.id,
+      sessionId: turn?.conversationId ?? null,
       projectSlug: project.slug,
       userKey: args.userKey ?? args.userId ?? null,
       query: args.message,
@@ -184,14 +222,15 @@ export async function runExternalChatTurn(
       iterations: result.iterations,
       durationMs,
       error: result.errorMessage,
-      source: session.source,
+      source: args.adapter,
     });
   } catch (err) {
-    logger.error({ err, sessionId: session.id }, 'chat_logs insert failed');
+    logger.error({ err, conversationId: turn?.conversationId ?? null }, 'chat_logs insert failed');
   }
 
   return {
-    sessionId: session.id,
+    conversationId: turn?.conversationId ?? null,
+    assistantMessageId,
     reply: result.finalText,
     terminal: result.terminal,
     error: result.errorMessage,

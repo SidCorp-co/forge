@@ -7,6 +7,7 @@
  * this stays a fast, hermetic unit suite; `handle()` is private, invoked via a
  * loose cast (TS `private` is compile-time only).
  */
+// cm:ignore CM013 — the one frozen comment left in this file is an `i18n-allow` pragma the language gate reads; deleting it to pay the drain reds that gate instead.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -22,6 +23,14 @@ vi.mock('../../config/env.js', () => ({
 const selectLimit = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
+/** Whether the room is still bound to the turn's project; flipped by the rebind case. */
+const roomBound = true;
+// cm:why stubbed: this file's fake db answers only the subject's own queries, and the room-is-still-ours check has its cases in room-delivery.test.ts.
+vi.mock('./room-delivery.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./room-delivery.js')>()),
+  roomStillBoundTo: async () => roomBound,
+}));
+
 vi.mock('../../db/client.js', () => ({
   db: { select: vi.fn(() => ({ from: selectFrom })) },
 }));
@@ -94,6 +103,20 @@ vi.mock('../../assistant/tools/principal.js', () => ({
   buildChatToolContext: (...args: unknown[]) => buildChatToolContext(...args),
 }));
 
+vi.mock('../../conversations/store.js', () => ({
+  openConversation: async (venue: { adapter: string; externalId: string }) => ({
+    id: `conv:${venue.externalId}`,
+    adapter: venue.adapter,
+    externalId: venue.externalId,
+    shape: 'direct',
+    title: null,
+  }),
+}));
+
+vi.mock('../../conversations/ports.js', () => ({
+  registerConversationTransport: vi.fn(),
+}));
+
 const resolveRoomShape = vi.fn();
 vi.mock('./room-shape.js', () => ({
   resolveRoomShape: (...args: unknown[]) => resolveRoomShape(...args),
@@ -161,7 +184,7 @@ describe('connection-manager escalation wiring', () => {
 
   it('posts the ACK and invokes startEscalation when the model calls escalate(); skips the normal reply', async () => {
     runExternalChatTurn.mockResolvedValue({
-      sessionId: 'chat-session-1',
+      conversationId: 'conv:chat.example.co room-1',
       reply: '',
       terminal: 'done',
       error: null,
@@ -189,7 +212,7 @@ describe('connection-manager escalation wiring', () => {
 
   it('replies with the dedup message and does not double-dispatch on a second in-flight escalation', async () => {
     runExternalChatTurn.mockResolvedValue({
-      sessionId: 'chat-session-1',
+      conversationId: 'conv:chat.example.co room-1',
       reply: '',
       terminal: 'done',
       error: null,
@@ -206,7 +229,7 @@ describe('connection-manager escalation wiring', () => {
 
   it('replies with the no-device message when no runner is available', async () => {
     runExternalChatTurn.mockResolvedValue({
-      sessionId: 'chat-session-1',
+      conversationId: 'conv:chat.example.co room-1',
       reply: '',
       terminal: 'done',
       error: null,
@@ -223,7 +246,7 @@ describe('connection-manager escalation wiring', () => {
 
   it('sends nothing over DDP on dispatch-failed — the completion bridge already delivers the fallback', async () => {
     runExternalChatTurn.mockResolvedValue({
-      sessionId: 'chat-session-1',
+      conversationId: 'conv:chat.example.co room-1',
       reply: '',
       terminal: 'done',
       error: null,
@@ -240,7 +263,7 @@ describe('connection-manager escalation wiring', () => {
 
   it('takes the normal verify/reply path (not escalation) when the model answers without escalating', async () => {
     runExternalChatTurn.mockResolvedValue({
-      sessionId: 'chat-session-1',
+      conversationId: 'conv:chat.example.co room-1',
       reply: 'Đơn hàng của bạn đã xử lý xong.', // i18n-allow: a plain-language bot reply exercised by the guard
       terminal: 'done',
       error: null,
@@ -291,9 +314,8 @@ describe('connection-manager ISS-727 answer-mode routing', () => {
       }),
     );
     expect(runExternalChatTurn).not.toHaveBeenCalled();
-    // No immediate ack — a fast turn's answer arrives on its own via the
-    // completion bridge; only a slow turn gets the delayed ack, scheduled
-    // inside startAgentChat, not sent here.
+    // cm:guard no immediate ack: a fast turn's answer arrives through the completion bridge, and only
+    // a slow turn gets the delayed ack, scheduled inside `startAgentChat` rather than sent from here.
     expect(ac.client.sendMessage).not.toHaveBeenCalled();
   });
 
@@ -336,7 +358,7 @@ describe('connection-manager ISS-727 answer-mode routing', () => {
   it('absent answerMode (null agentConfig) runs the existing fast path unchanged — regression guard', async () => {
     selectLimit.mockResolvedValue([{ agentConfig: null, repoPath: '/repo' }]);
     runExternalChatTurn.mockResolvedValue({
-      sessionId: 'chat-session-1',
+      conversationId: 'conv:chat.example.co room-1',
       reply: 'Đơn hàng của bạn đã xử lý xong.', // i18n-allow: a plain-language bot reply exercised by the guard
       terminal: 'done',
       error: null,
@@ -356,7 +378,7 @@ describe('connection-manager ISS-727 answer-mode routing', () => {
       { agentConfig: { rocketChatAnswerMode: 'fast' }, repoPath: '/repo' },
     ]);
     runExternalChatTurn.mockResolvedValue({
-      sessionId: 'chat-session-1',
+      conversationId: 'conv:chat.example.co room-1',
       reply: 'Đơn hàng của bạn đã xử lý xong.', // i18n-allow: a plain-language bot reply exercised by the guard
       terminal: 'done',
       error: null,
@@ -390,7 +412,7 @@ describe('connection-manager image handling', () => {
     selectLimit.mockResolvedValue([{ agentConfig: null, repoPath: null }]);
     screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
     runExternalChatTurn.mockResolvedValue({
-      sessionId: 's1',
+      conversationId: 'conv:chat.example.co room-1',
       reply: 'that toggle reads the wrong tier',
       terminal: 'done',
       error: null,

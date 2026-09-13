@@ -1,20 +1,16 @@
 /**
- * ISS-987 — which conversation a Rocket.Chat message belongs to, and whose
- * authority its turn runs under.
+ * ISS-987 — whose authority a Rocket.Chat turn runs under.
  *
- * Both answers follow from the room's shape rather than from whatever field is
- * nearest, and both are read by the connection manager on every handled message.
+ * The answer follows from the room's shape rather than from whatever field is
+ * nearest, and it is read by the connection manager on every handled message.
+ * Which conversation the message belongs to moved to
+ * `conversation-port.ts:rocketChatVenueId`, where the server is part of the key.
  */
 
 import { namespaceFromServerUrl } from '../../assistant/identity/directory.js';
 import { resolveSpeaker, unlinkedMessage } from '../../assistant/identity/speaker-link.js';
 import type { RocketChatIncomingMessage } from './ddp-client.js';
 import type { RoomShape } from './room-shape.js';
-
-// cm:guard the room's own messages and each thread in it are DIFFERENT conversations, so a thread's key may never collide with its room's: the separator is a space, which no Rocket.Chat id contains (they are Mongo-style alphanumerics), and `tmid`'s absence is what makes the room's key the bare rid.
-export function conversationKey(m: RocketChatIncomingMessage): string {
-  return m.tmid ? `${m.rid} ${m.tmid}` : m.rid;
-}
 
 export type TurnPrincipal = { ok: true; userId: string } | { ok: false; refusal: string };
 

@@ -1,12 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Unit tests for the ISS-727 `agent`-mode completion bridge: the CAS
-// idempotency stamp (safe to call from both session-terminal writers),
-// verbatim delivery of the runner's final reply through the output guard,
-// and the room-never-silent fallback paths. Mirrors
-// `escalation-bridge.test.ts`'s structure; adjacent modules are mocked
-// directly (rather than pulling in their real dependency graphs) exactly
-// like that file does for `connection-manager.js`.
+/**
+ * ISS-727 — the `agent`-mode completion bridge: its CAS idempotency stamp, the
+ * verbatim delivery of a runner's final reply through the output guard, and the
+ * room-never-silent fallbacks.
+ */
+// cm:why adjacent modules are mocked directly rather than by pulling in their real dependency graphs, as `escalation-bridge.test.ts` does for `connection-manager.js`: those graphs validate env eagerly at import.
 
 // cm:why the room-delivery mock below spreads the REAL module, whose graph validates env eagerly at import — without these two stubs the file fails to load rather than failing a test
 vi.mock('../../config/env.js', () => ({
@@ -18,8 +17,12 @@ vi.mock('../../db/client.js', () => ({ db: {} }));
 const claimRoomReplyDelivery = vi.fn<(...args: unknown[]) => Promise<boolean>>();
 const resolveRoomPostAuth = vi.fn();
 const extractFinalAssistantText = vi.fn();
+/** Whether the room is still the session project's; flipped by the rebind case. */
+const roomBound = true;
 vi.mock('./room-delivery.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./room-delivery.js')>()),
+  // cm:why stubbed: this file's fake db answers only the subject's own queries, and the room-is-still-ours check has its cases in room-delivery.test.ts.
+  roomStillBoundTo: async () => roomBound,
   claimRoomReplyDelivery: (...args: unknown[]) => claimRoomReplyDelivery(...args),
   resolveRoomPostAuth: (...args: unknown[]) => resolveRoomPostAuth(...args),
   extractFinalAssistantText: (...args: unknown[]) => extractFinalAssistantText(...args),
@@ -104,7 +107,7 @@ describe('deliverAgentChatReplyOnce', () => {
   });
 
   it('no-ops (does not post) when the CAS loses the race', async () => {
-    claimRoomReplyDelivery.mockResolvedValue(false); // another caller already claimed it
+    claimRoomReplyDelivery.mockResolvedValue(false);
     await deliverAgentChatReplyOnce(makeSession());
     expect(sendFixedReply).not.toHaveBeenCalled();
   });

@@ -18,3 +18,10 @@ knowledge.json
 # committing it would conflict on every parallel agent — but unignored it is untracked output that a
 # release step's `git status --porcelain` reads as someone's interrupted work.
 .codemap-metrics/
+
+# `cm archmap`'s parsed-graph cache and the lock the refresh holds, written by whichever machine ran
+# the check (same shape as `.codemap-metrics/` above: per-machine tool output, not a rule). The lock
+# carries a pid that is dead on any other box, and the graph is ~800KB that every parallel agent
+# rewrites — but unignored it is untracked output a release step's `git status --porcelain` reads as
+# someone's interrupted work.
+.codemap-archmap-cache/

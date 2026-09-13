@@ -6,13 +6,16 @@
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import pg from 'pg';
-import { type ExternalChatTurnResult, runExternalChatTurn } from '../../assistant/external-chat.js';
+import { runExternalChatTurn } from '../../assistant/external-chat.js';
 import { ESCALATE_TOOL_NAME } from '../../assistant/tools/escalate.js';
 import {
   buildExternalMcpToolsets,
   type ExternalMcpToolsets,
 } from '../../assistant/tools/external-mcp.js';
 import { env } from '../../config/env.js';
+import { handleForProject } from '../../conversations/participants.js';
+import { registerConversationTransport } from '../../conversations/ports.js';
+import { appendMessage, openConversation, recordDelivery } from '../../conversations/store.js';
 import { db } from '../../db/client.js';
 import { integrationConnections, organizations, projects } from '../../db/schema.js';
 import { logger } from '../../logger.js';
@@ -28,6 +31,7 @@ import { readRocketChatAnswerMode } from './answer-mode.js';
 import { consumeIssueThreadReply } from './comment-inbound.js';
 import { startCommentMirrorLoop } from './comment-mirror.js';
 import { buildConversationContext } from './context.js';
+import { rocketChatConversationPorts } from './conversation-port.js';
 import { RocketChatDdpClient, type RocketChatIncomingMessage } from './ddp-client.js';
 import {
   ESCALATION_ACK,
@@ -35,17 +39,18 @@ import {
   ESCALATION_NO_DEVICE_REPLY,
   startEscalation,
 } from './escalation.js';
-import { type FastTurnInputs, prepareFastTurn } from './images.js';
+import { prepareFastTurn } from './images.js';
 import { createSeenTracker, decideHandling, decideSkip } from './inbound-gate.js';
-import { FIXED_REPLY_CONSTANT, type ReplySendProof, sendFixedReply } from './outbound.js';
+import { FIXED_REPLY_CONSTANT, sendFixedReply } from './outbound.js';
 import { rocketChatPersona } from './persona.js';
 import { startQuestionDrainLoop } from './question-delivery.js';
 import { consumeQuestionThreadReply } from './question-inbound.js';
-import { screenStakeholderReply } from './reply-screen.js';
+import { errorFallbackReply, fixed, screenWithRetry, type TurnOutcome } from './reply-verdict.js';
 import { fetchOwnUsername } from './rest-client.js';
+import { roomStillBoundTo } from './room-delivery.js';
 import { type RoomShape, resolveRoomShape } from './room-shape.js';
 import { subjectForThread } from './thread-registry.js';
-import { conversationKey, resolveTurnPrincipal } from './turn-principal.js';
+import { resolveTurnPrincipal } from './turn-principal.js';
 import type { RocketChatBindingConfig, RocketChatConfig, RocketChatSecrets } from './types.js';
 
 // cm:guard the first CORS origin IS the web app's origin (operators must allow it for the UI to work at all); exported so the escalation bridge's Bao turn builds the same issue-link base as the sync path
@@ -90,26 +95,7 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   });
 }
 
-// cm:guard fallbacks speak AS the bot by name — never as an anonymous "the system" or "the model" voice
-const errorFallbackReply = (name: string): string =>
-  `Xin lỗi, ${name} đang quá tải hoặc gặp sự cố — bạn thử lại sau ít phút nhé.`; // i18n-allow: user-facing channel reply
-
-// cm:guard ISS-818 — name the REASON: a bare "couldn't verify" reads to a stakeholder as "didn't understand you" so they rephrase, which cannot help because the question WAS understood and the answer failed the check
-const unverifiedFallbackReply = (name: string): string =>
-  `Xin lỗi, ${name} chưa đối chiếu được số liệu dự án nên không dám gửi câu trả lời chưa chắc chắn — không phải do câu hỏi của bạn, bạn hỏi lại sau ít phút nhé.`; // i18n-allow: user-facing channel reply
-
-const emptyFallbackReply = (name: string): string =>
-  `Xin lỗi, ${name} chưa đưa ra được câu trả lời cho yêu cầu này — bạn diễn đạt lại giúp ${name} nhé.`; // i18n-allow: user-facing channel reply
-
 const capitalize = (s: string): string => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
-
-const correctiveMessage = (problems: string[]): string =>
-  `[SYSTEM CHECK — not from the user] Your previous reply cannot be sent as-is: ${problems.join('; ')}. Rewrite it now, keep only verified facts, actually CALL the tools if work is needed, cite issue ids/links only exactly as tools returned them, and reply in the user's language.`;
-
-// cm:guard `send: false` is the explicit "this turn posts nothing" case — the completion bridge delivers that reply asynchronously, so posting here too double-replies
-type TurnOutcome = { send: false } | { send: true; text: string; proof: ReplySendProof };
-
-const fixed = (text: string): TurnOutcome => ({ send: true, text, proof: FIXED_REPLY_CONSTANT });
 
 interface Route {
   rid: string;
@@ -136,10 +122,48 @@ interface ActiveConnection {
   closing: boolean;
 }
 
+/**
+ * The reply goes out the one door, and the room's transcript holds what the room saw.
+ */
+// cm:guard the receipt is stamped on whichever row IS the answer, and a fallback gets a row of its own: a fixed reply is composed by code and carries no message id, so without this the transcript kept the text the screen REJECTED and the sentence the person read existed nowhere (ISS-1001 criterion 15).
+// cm:guard failures here are logged and never thrown: the room HAS the message by the time this runs, and turning a delivered answer into an error is a lie in the other direction.
+async function deliverAndRecord(
+  door: Parameters<typeof sendFixedReply>[0],
+  outcome: Extract<TurnOutcome, { send: true }>,
+  conversationId: string,
+  route: Route & { connectionId: string },
+): Promise<void> {
+  // cm:guard the binding is read again at DELIVERY and not trusted from the route this turn started under: a turn runs for up to HANDLE_TIMEOUT_MS, and an answer computed for project A must not be posted into a room project B now owns (ISS-1001 invariant 2).
+  if (!(await roomStillBoundTo(route))) {
+    logger.error(
+      { rid: route.rid, projectId: route.projectId, connectionId: route.connectionId },
+      'rocketchat: the room was rebound while this turn ran; the answer is not posted',
+    );
+    return;
+  }
+  const receipt = await sendFixedReply(door, outcome.text, outcome.proof);
+  try {
+    if (outcome.messageId) {
+      await recordDelivery(outcome.messageId, receipt);
+      return;
+    }
+    await appendMessage({
+      conversationId,
+      role: 'assistant',
+      content: outcome.text,
+      authorUserId: await handleForProject(conversationId, route.projectId),
+      deliveryProof: receipt,
+    });
+  } catch (err) {
+    logger.warn(
+      { err, conversationId, messageId: outcome.messageId ?? null },
+      'rocketchat: delivered, but the transcript could not record it',
+    );
+  }
+}
+
 class RocketChatConnectionManager {
   private readonly conns = new Map<string, ActiveConnection>();
-  // cm:guard keyed by the CONVERSATION and never the room: a thread exists so a side conversation need not be followed by the room, and one key per rid put two live threads in one `chat_sessions` row reading each other's turns back as their own history (ISS-987). The room's own messages are their own conversation under the same rule.
-  private readonly sessionByConversation = new Map<string, string>();
   private started = false;
   private listenClient?: pg.Client | undefined;
   private listenRetryTimer?: NodeJS.Timeout | undefined;
@@ -151,6 +175,7 @@ class RocketChatConnectionManager {
     this.started = true;
     // cm:why listen even with zero connections — the first-ever connect arrives as a NOTIFY from whichever instance served the HTTP request
     this.startReloadListener();
+    registerConversationTransport(rocketChatConversationPorts);
     this.stopQuestionDrain = startQuestionDrainLoop(() => this.started);
     this.stopCommentMirror = startCommentMirrorLoop(() => this.started, hooks);
     const rows = await db
@@ -437,7 +462,6 @@ class RocketChatConnectionManager {
     shape: RoomShape,
   ): Promise<void> {
     const restAuth = { serverUrl: ac.serverUrl, authToken: ac.authToken, userId: ac.botUserId };
-    const conversation = conversationKey(m);
     const principal = await resolveTurnPrincipal({
       serverUrl: ac.serverUrl,
       routePrincipalUserId: route.principalUserId,
@@ -447,17 +471,32 @@ class RocketChatConnectionManager {
       onRefusal: (d) => logger.warn(d, 'rocketchat: direct speaker unresolved; refusing the turn'),
     });
     // cm:guard the refusal is the deliverable and the turn does NOT run: a DM's authority is its one human, so with nobody resolved there is no identity to compute an answer under — falling back to the organization's creator would answer a stranger with the creator's read access (ISS-987, consuming ISS-977).
+    // cm:guard it also runs BEFORE the venue is opened, so a speaker being refused does not leave a conversation row behind for a turn that was never had (ISS-1001).
     if (!principal.ok) {
-      const client = ac.client;
-      if (client) {
+      if (ac.client) {
         await sendFixedReply(
-          { kind: 'ddp', client, rid: m.rid, tmid: m.tmid, authToken: ac.authToken },
+          { kind: 'ddp', client: ac.client, rid: m.rid, tmid: m.tmid, authToken: ac.authToken },
           principal.refusal,
           FIXED_REPLY_CONSTANT,
         );
       }
       return;
     }
+    // cm:guard the room's conversation is resolved from the DATABASE on every message, never from a map on this instance: the pointer used to live in `sessionByConversation`, so a core restart — which every deploy is, and which the reconciler makes nearly certain to catch a live session — silently began a fresh transcript for every room that had been talking (ISS-1001 criterion 1).
+    const venue = await rocketChatConversationPorts.resolveVenue({
+      m,
+      auth: restAuth,
+      projectId: route.projectId,
+      shape,
+    });
+    if (!venue) {
+      logger.error(
+        { connectionId, rid: m.rid, msgId: m.id, projectId: route.projectId },
+        'rocketchat: venue unresolved; refusing the message, not inventing one',
+      );
+      return;
+    }
+    const conversation = await openConversation(venue);
     // cm:guard two nested guards so a stall NEVER leaves the mention in silence: `abort` cancels the provider, `withTimeout` backstops a hang the abort cannot reach; either fire sends a fallback AND captures to Sentry tagged with `phase`
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(), TURN_TIMEOUT_MS);
@@ -531,10 +570,14 @@ class RocketChatConnectionManager {
           phase = 'turn';
           const result = await runExternalChatTurn({
             projectId: route.projectId,
-            source: 'rocketchat',
-            sessionId: this.sessionByConversation.get(conversation),
+            adapter: 'rocketchat',
+            conversationId: conversation.id,
+            // cm:guard the question is recorded here and the ANSWER by `deliverAndRecord`, because this adapter screens: the row has to be the sentence the room was actually shown.
+            record: 'question-only',
             message: m.text,
             tools: fast.tools,
+            // cm:guard the room is read under the authority its TOOLS run as; omitting it silenced every room
+            userId: principal.userId,
             userKey: m.userId,
             persona,
             conversationContext,
@@ -542,13 +585,9 @@ class RocketChatConnectionManager {
             resolveImage: fast.resolveImage,
             signal: abort.signal,
           });
-          this.sessionByConversation.set(conversation, result.sessionId);
 
-          // ISS-675 — escalation short-circuits the normal verify/reply path:
-          // the model chose to hand this question to a deeper research agent
-          // instead of answering now. Post a fixed, guard-exempt ACK (a
-          // legitimate promise — a real async follow-up lands via the
-          // completion bridge) and skip the rest of this turn entirely.
+          // cm:guard escalation short-circuits the verify/reply path deliberately: the ACK it posts is
+          // guard-exempt because a real follow-up lands through the completion bridge (ISS-675).
           const escalateCall = result.toolCalls.find((t) => t.name === ESCALATE_TOOL_NAME);
           if (escalateCall) {
             phase = 'escalate';
@@ -585,17 +624,14 @@ class RocketChatConnectionManager {
             return { send: false };
           }
 
-          // Kernel guards: a reply citing issues that don't exist (or claiming
-          // a creation that never ran), leaking developer detail to a
-          // non-technical stakeholder, or promising work with no follow-up
-          // turn never reaches the channel — one corrective retry, then an
-          // honest fallback. See reply-guard.ts (live incident 2026-07-07:
-          // zero tool calls + fabricated issue link; ISS-672: kernel-hard
-          // product-lint + empty-promise guards).
-          return await this.screenWithRetry({
-            route,
-            m,
+          // cm:guard a reply citing an issue that does not exist, leaking developer detail, or
+          // promising work no turn will do never reaches the room (`reply-guard.ts`, ISS-672).
+          return await screenWithRetry({
+            projectId: route.projectId,
+            rid: m.rid,
             botName: ac.botName,
+            principalUserId: principal.userId,
+            speakerKey: m.userId,
             first: result,
             fast,
             persona,
@@ -609,10 +645,7 @@ class RocketChatConnectionManager {
         HANDLE_TIMEOUT_MS,
       );
     } catch (err) {
-      // The mention was seen — never leave the user in silence. Cancel a still
-      // running provider call, drop the room's session pointer (a poisoned
-      // session can't wedge every future turn), capture with the phase we hung
-      // in, and reply with an honest fallback.
+      // cm:guard the mention was seen, so the room never goes silent — but the CONVERSATION is not dropped on the way out, which is what the in-memory pointer used to do here. A room whose turn failed keeps its transcript; a turn that cannot be answered is recorded as a silence with its reason by `external-chat.ts`, and the read window moves past a poisoned turn on its own (ISS-1001).
       abort.abort();
       const timedOut = err instanceof HandleTimeoutError;
       logger.error(
@@ -628,7 +661,6 @@ class RocketChatConnectionManager {
           user: m.username,
         },
       });
-      this.sessionByConversation.delete(conversation);
       outcome = fixed(errorFallbackReply(ac.botName));
     } finally {
       clearTimeout(timer);
@@ -636,73 +668,15 @@ class RocketChatConnectionManager {
     }
     // cm:why delivery only, never a second guard pass: every branch above already screened its text or replaced it with a code-authored constant, and the proof rides along on the outcome
     if (outcome.send && ac.client) {
-      await sendFixedReply(
-        { kind: 'ddp', client: ac.client, rid: m.rid, tmid: m.tmid, authToken: ac.authToken },
-        outcome.text,
-        outcome.proof,
-      );
+      const door = {
+        kind: 'ddp' as const,
+        client: ac.client,
+        rid: m.rid,
+        tmid: m.tmid,
+        authToken: ac.authToken,
+      };
+      await deliverAndRecord(door, outcome, conversation.id, { ...route, connectionId });
     }
-  }
-
-  // cm:guard exactly ONE corrective retry, then an honest fallback — never a second: each retry is a full model turn inside HANDLE_TIMEOUT_MS, and a model that failed the guard twice does not converge on a third
-  private async screenWithRetry(args: {
-    route: Route;
-    m: RocketChatIncomingMessage;
-    botName: string;
-    first: ExternalChatTurnResult;
-    fast: FastTurnInputs;
-    persona: string;
-    conversationContext: string | null;
-    signal: AbortSignal;
-    setPhase: (phase: string) => void;
-  }): Promise<TurnOutcome> {
-    const { route, m, botName, fast, persona, conversationContext, signal, setPhase } = args;
-    const screen = (r: ExternalChatTurnResult) =>
-      screenStakeholderReply(route.projectId, r.reply, r.toolCalls, r.progress);
-    let result = args.first;
-
-    setPhase('verify');
-    let verdict = result.reply.trim()
-      ? await screen(result)
-      : { ok: true, problems: [] as string[] };
-    if (!verdict.ok) {
-      logger.warn(
-        { rid: m.rid, projectId: route.projectId, problems: verdict.problems },
-        'rocketchat: reply failed output guards; corrective retry',
-      );
-      setPhase('retry');
-      result = await runExternalChatTurn({
-        projectId: route.projectId,
-        source: 'rocketchat',
-        sessionId: result.sessionId,
-        message: correctiveMessage(verdict.problems),
-        tools: fast.tools,
-        userKey: m.userId,
-        persona,
-        conversationContext,
-        resolveImage: fast.resolveImage,
-        signal,
-      });
-      this.sessionByConversation.set(conversationKey(m), result.sessionId);
-      verdict = result.reply.trim()
-        ? await screen(result)
-        : { ok: false, problems: ['empty retry reply'] };
-      if (!verdict.ok) {
-        logger.error(
-          { rid: m.rid, projectId: route.projectId, problems: verdict.problems },
-          'rocketchat: retry still failing output guards; sending honest fallback',
-        );
-      }
-    }
-    if (!verdict.ok) return fixed(unverifiedFallbackReply(botName));
-    const trimmedReply = result.reply.trim();
-    if (!trimmedReply) {
-      return fixed(
-        result.terminal === 'error' ? errorFallbackReply(botName) : emptyFallbackReply(botName),
-      );
-    }
-    // cm:guard the verdict travels WITH the text as its proof — the only shape sendFixedReply accepts for model-generated output, so no later branch can send unscreened text under a stale proof
-    return { send: true, text: trimmedReply, proof: { ok: true, problems: verdict.problems } };
   }
 
   private async teardown(connectionId: string): Promise<void> {
@@ -713,18 +687,16 @@ class RocketChatConnectionManager {
     if (ac.refreshTimer) clearInterval(ac.refreshTimer);
     try {
       ac.client?.close();
-    } catch {
-      // ignore
-    }
+    } catch {}
+    // cm:why a teardown swallows both failures rather than reporting them: the socket and the lock
+    // are being given up, so a close that fails has already lost the thing the failure is about.
     try {
       await ac.lockClient.query('select pg_advisory_unlock(hashtext($1), hashtext($2))', [
         LOCK_NAMESPACE,
         connectionId,
       ]);
       await ac.lockClient.end();
-    } catch {
-      // ignore
-    }
+    } catch {}
     this.conns.delete(connectionId);
   }
 
@@ -736,7 +708,8 @@ class RocketChatConnectionManager {
    * so it runs on every instance, not just the one that served the request.
    */
   async reload(connectionId: string): Promise<void> {
-    this.started = true; // an idle manager (no connections at boot) can start owning one now
+    // cm:why an idle manager — no connections at boot — may start owning one at a reload
+    this.started = true;
     await this.teardown(connectionId);
     await this.acquire(connectionId).catch((err) =>
       logger.error({ err, connectionId }, 'rocketchat: reload failed'),
@@ -768,7 +741,8 @@ class RocketChatConnectionManager {
   }
 
   private restartReloadListener(failed: pg.Client): void {
-    if (this.listenClient !== failed) return; // stale event from a replaced client
+    // cm:guard a stale event from a client this manager already replaced restarts nothing
+    if (this.listenClient !== failed) return;
     this.listenClient = undefined;
     void failed.end().catch(() => {});
     if (!this.started || this.listenRetryTimer) return;

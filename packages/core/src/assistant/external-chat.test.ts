@@ -1,28 +1,47 @@
 import { describe, expect, it, vi } from 'vitest';
 
-// Mock the module boundaries so the test exercises external-chat's glue
-// (resolve → session → drain loop → persist → return reply) without a DB.
+// cm:why the module boundaries are mocked so this file exercises the glue — resolve, open the turn,
+// drain, persist, reply — rather than the store or the provider.
 const appended: string[] = [];
-vi.mock('./session.js', () => ({
-  loadOrCreateSession: async (o: { projectId: string; source: string; userId: string | null }) => ({
-    id: 'sess-1',
-    projectId: o.projectId,
-    userId: o.userId,
-    source: o.source,
-    messages: [] as unknown[],
+const silences: string[] = [];
+/** One entry per persistMessages call: `role:content`, or `role:!reason` for a silence. */
+const persisted: string[][] = [];
+vi.mock('./conversation-turn.js', () => ({
+  openTurn: async (o: { adapter: string }) => ({
+    conversationId: 'conv-1',
+    adapter: o.adapter,
+    history: [] as unknown[],
+    pending: [] as unknown[],
   }),
-  appendUserMessage: (s: { messages: unknown[] }, c: string, images: unknown[] = []) =>
-    s.messages.push({ role: 'user', content: c, ...(images.length > 0 ? { images } : {}) }),
-  appendAssistantMessage: (s: { messages: unknown[] }, c: string) => {
-    appended.push(c);
-    s.messages.push({ role: 'assistant', content: c });
+  appendUserMessage: (t: { pending: unknown[] }, c: string, opts: { images?: unknown[] } = {}) => {
+    const images = opts.images ?? [];
+    t.pending.push({ role: 'user', content: c, images });
   },
-  persistMessages: async () => undefined,
+  appendAssistantMessage: (t: { pending: unknown[] }, c: string) => {
+    appended.push(c);
+    t.pending.push({ role: 'assistant', content: c, images: [] });
+  },
+  appendSilence: (t: { pending: unknown[] }, reason: string) => {
+    silences.push(reason);
+    t.pending.push({ role: 'assistant', content: '', images: [], silenceReason: reason });
+  },
+  persistMessages: async (t: {
+    pending: Array<{ role: string; content: string; silenceReason?: string }>;
+  }) => {
+    const written = t.pending.splice(0).map((m, i) => ({ ...m, id: `msg-${i}` }));
+    persisted.push(
+      written.map((m) => `${m.role}:${m.silenceReason ? `!${m.silenceReason}` : m.content}`),
+    );
+    return written;
+  },
   toProviderMessages: (
-    s: { messages: Array<{ role: string; content: string; images?: Array<{ ref: string }> }> },
+    t: {
+      history: Array<{ role: string; content: string; images?: Array<{ ref: string }> }>;
+      pending: Array<{ role: string; content: string; images?: Array<{ ref: string }> }>;
+    },
     resolved?: Map<string, string>,
   ) =>
-    s.messages.map((m) => {
+    [...t.history, ...t.pending].map((m) => {
       const url = m.images?.[0] ? resolved?.get(m.images[0].ref) : undefined;
       return url
         ? {
@@ -60,12 +79,15 @@ vi.mock('../issues/progress.js', () => ({
 }));
 
 const seenRequests: Array<{ messages: unknown[] }> = [];
+/** What the provider answers this turn; empty is a turn that produced nothing. */
+let replyText = 'The answer is 42.';
+
 const mockProvider = {
   id: 'mock',
   defaultModel: 'm',
   async *stream(req: { messages: unknown[] }) {
     seenRequests.push({ messages: req.messages });
-    yield { type: 'chunk' as const, text: 'The answer is 42.' };
+    if (replyText) yield { type: 'chunk' as const, text: replyText };
     yield { type: 'done' as const };
   },
 };
@@ -73,7 +95,8 @@ vi.mock('./providers/registry.js', () => ({
   resolveForProject: async () => ({ provider: mockProvider, model: 'm' }),
 }));
 
-// Fake db: two selects (project, then appConfig) + a chat_logs insert.
+// cm:why the fake db answers exactly two selects and one insert, in that order — the project, the
+// app config, then the audit row; a third select here means the turn grew a read this file does not model.
 let selectCall = 0;
 const fakeDb = {
   select: () => ({
@@ -101,11 +124,12 @@ describe('runExternalChatTurn', () => {
     buildSystemPromptCalls.length = 0;
     const out = await runExternalChatTurn({
       projectId: 'p1',
-      source: 'rocketchat',
+      adapter: 'rocketchat' as const,
+      conversationId: 'conv-1',
       message: 'what is the answer?',
       userId: null,
     });
-    expect(out.sessionId).toBe('sess-1');
+    expect(out.conversationId).toBe('conv-1');
     expect(out.reply).toBe('The answer is 42.');
     expect(out.terminal).toBe('done');
     expect(appended).toEqual(['The answer is 42.']);
@@ -116,7 +140,8 @@ describe('runExternalChatTurn', () => {
     selectCall = 0;
     const out = await runExternalChatTurn({
       projectId: 'p1',
-      source: 'rocketchat',
+      adapter: 'rocketchat' as const,
+      conversationId: 'conv-1',
       message: 'how is the project progressing?',
       userId: null,
     });
@@ -138,7 +163,8 @@ describe('runExternalChatTurn — images', () => {
     selectCall = 0;
     await runExternalChatTurn({
       projectId: 'p1',
-      source: 'rocketchat',
+      adapter: 'rocketchat' as const,
+      conversationId: 'conv-1',
       message: 'what is wrong here?',
       images: [IMAGE],
       userId: null,
@@ -157,7 +183,8 @@ describe('runExternalChatTurn — images', () => {
     selectCall = 0;
     await runExternalChatTurn({
       projectId: 'p1',
-      source: 'rocketchat',
+      adapter: 'rocketchat' as const,
+      conversationId: 'conv-1',
       message: 'plain question',
       userId: null,
     });
@@ -175,7 +202,8 @@ describe('runExternalChatTurn — turn context placement', () => {
     buildSystemPromptCalls.length = 0;
     await runExternalChatTurn({
       projectId: 'p1',
-      source: 'rocketchat',
+      adapter: 'rocketchat' as const,
+      conversationId: 'conv-1',
       message: 'what broke?',
       conversationContext: '[an]: deploy is failing',
     });
@@ -185,5 +213,57 @@ describe('runExternalChatTurn — turn context placement', () => {
     expect(messages.at(-1)?.content).toContain('[an]: deploy is failing');
     expect(messages.at(-1)?.content).toMatch(/---\n\nwhat broke\?$/);
     expect(buildSystemPromptCalls[0]).not.toHaveProperty('conversationContext');
+  });
+});
+
+// cm:guard a SCREENED adapter's transcript holds the sentence the room was SHOWN, and the model's first answer is not that sentence: it can be replaced by a corrective retry or a fixed fallback, so the answer is the caller's to record once it knows what went out.
+describe('runExternalChatTurn — what a turn writes to the room it reads', () => {
+  const base = {
+    projectId: 'p1',
+    adapter: 'rocketchat' as const,
+    conversationId: 'conv-1',
+    userId: 'u-1',
+  };
+
+  it('writes the question and not the answer under `question-only`, and names no row to stamp', async () => {
+    persisted.length = 0;
+    selectCall = 0;
+    const out = await runExternalChatTurn({ ...base, message: 'asked', record: 'question-only' });
+    expect(persisted).toEqual([['user:asked']]);
+    expect(out.assistantMessageId).toBeNull();
+    expect(out.reply).toBe('The answer is 42.');
+  });
+
+  it('writes nothing at all under `nothing`, so a corrective retry files no words the speaker never said', async () => {
+    persisted.length = 0;
+    selectCall = 0;
+    const out = await runExternalChatTurn({
+      ...base,
+      message: '[SYSTEM CHECK] rewrite it',
+      record: 'nothing',
+    });
+    expect(persisted).toEqual([]);
+    expect(out.assistantMessageId).toBeNull();
+  });
+
+  // cm:guard a SILENCE is still written under `question-only`: there is no answer for the caller to
+  // record in its place, and the reason the turn produced nothing is the row's whole point.
+  it('still writes the silence under `question-only`, because nothing replaces it', async () => {
+    persisted.length = 0;
+    selectCall = 0;
+    replyText = '';
+    try {
+      await runExternalChatTurn({ ...base, message: 'asked', record: 'question-only' });
+    } finally {
+      replyText = 'The answer is 42.';
+    }
+    expect(persisted).toEqual([['user:asked', 'assistant:!empty-reply']]);
+  });
+
+  it('writes the question AND the answer when nothing says otherwise', async () => {
+    persisted.length = 0;
+    selectCall = 0;
+    await runExternalChatTurn({ ...base, message: 'asked' });
+    expect(persisted).toEqual([['user:asked', 'assistant:The answer is 42.']]);
   });
 });

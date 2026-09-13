@@ -8,8 +8,11 @@
 
 import { eq } from 'drizzle-orm';
 import { runExternalChatTurn } from '../../assistant/external-chat.js';
+import { namespaceFromServerUrl } from '../../assistant/identity/directory.js';
 import { buildChatToolContext } from '../../assistant/tools/principal.js';
 import { buildProjectToolset } from '../../assistant/tools/registry.js';
+import { handleForProject } from '../../conversations/participants.js';
+import { appendMessage, findConversation } from '../../conversations/store.js';
 import { db } from '../../db/client.js';
 import {
   type agentSessions as agentSessionsTable,
@@ -18,6 +21,7 @@ import {
 } from '../../db/schema.js';
 import { logger } from '../../logger.js';
 import { webBaseUrl } from './connection-manager.js';
+import { rocketChatVenueId } from './conversation-port.js';
 import { ESCALATION_FALLBACK_REPLY } from './escalation.js';
 import { FIXED_REPLY_CONSTANT, type ReplySendProof, sendFixedReply } from './outbound.js';
 import { rocketChatPersona } from './persona.js';
@@ -28,6 +32,7 @@ import {
   type RoomReplyMeta,
   readRoomReplyMeta,
   resolveRoomPostAuth,
+  roomStillBoundTo,
 } from './room-delivery.js';
 
 type SessionRow = typeof agentSessionsTable.$inferSelect;
@@ -155,7 +160,7 @@ async function synthesizeViaBao(
 
   const result = await runExternalChatTurn({
     projectId: session.projectId,
-    source: 'rocketchat',
+    adapter: 'rocketchat',
     message: buildSynthesisMessage(meta.question, payload, meta.askedByUsername),
     tools,
     turnKind: tools ? 'agentic' : 'relay',
@@ -180,6 +185,21 @@ export async function deliverEscalationReplyOnce(session: SessionRow): Promise<v
   const meta = readRoomReplyMeta(session.metadata, 'escalation');
   if (!meta) return;
   if (meta.deliveredAt) return;
+  // cm:guard the room is checked against THIS session's project before anything is posted: an escalation is minutes or hours long, and a room rebound in the meantime is not this project's to answer into (ISS-1001).
+  // cm:guard and BEFORE the claim, not after it: a transient failure in this lookup throws, and a throw after the claim spends the one stamp this delivery has — the answer is then lost to a database blip with every later sweep reading it as already delivered. An UNBOUND room is terminal and takes the claim on purpose, so the sweeper stops retrying what can never succeed.
+  const bound = await roomStillBoundTo({
+    connectionId: meta.connectionId,
+    projectId: session.projectId,
+    rid: meta.rid,
+  });
+  if (!bound) {
+    await claimRoomReplyDelivery(session, 'escalation');
+    logger.error(
+      { sessionId: session.id, rid: meta.rid, projectId: session.projectId },
+      'rocketchat.escalation-bridge: the room is no longer bound to this project; the answer is not posted',
+    );
+    return;
+  }
   if (!(await claimRoomReplyDelivery(session, 'escalation'))) return;
 
   const auth = await resolveRoomPostAuth(meta.connectionId, {
@@ -210,15 +230,50 @@ export async function deliverEscalationReplyOnce(session: SessionRow): Promise<v
   }
 
   try {
-    await sendFixedReply(
+    const receipt = await sendFixedReply(
       { kind: 'rest', auth, rid: meta.rid, tmid: meta.tmid ?? undefined },
       reply,
       proof,
     );
+    await recordInRoomTranscript(auth.serverUrl, session.projectId, meta, reply, receipt);
   } catch (err) {
     logger.error(
       { err, sessionId: session.id, rid: meta.rid },
       'rocketchat.escalation-bridge: chat.postMessage failed',
+    );
+  }
+}
+
+/**
+ * The room saw this answer, so the room's transcript holds it.
+ */
+// cm:guard the synthesis TURN stays out of the transcript and only its answer goes in: the turn's own input is `buildSynthesisMessage`, an instruction the room never saw, so running it against the room's conversation would put words in a person's mouth. The answer is appended here instead, with the receipt the send returned — which is also the only way an escalated reply satisfies the same delivery-proof rule the fast path does (ISS-1001 criterion 15).
+// cm:guard a room with no conversation yet is left alone rather than given one: an escalation always follows a turn that opened the venue, so no row here means the venue key has moved and inventing a second room under the new key would split the transcript in two.
+// cm:guard the row is BY the project's handle and not by nobody: an escalated answer is the same assistant through a slower path, and the rule `appendAssistantMessage` keeps on the fast path has to be kept here too, by the door that bypasses it (ISS-1001).
+async function recordInRoomTranscript(
+  serverUrl: string,
+  projectId: string,
+  meta: RoomReplyMeta,
+  reply: string,
+  receipt: { messageId: string | null },
+): Promise<void> {
+  const namespace = namespaceFromServerUrl(serverUrl);
+  if (!namespace) return;
+  const externalId = rocketChatVenueId(namespace, meta.rid, meta.tmid);
+  try {
+    const conversation = await findConversation('rocketchat', externalId);
+    if (!conversation) return;
+    await appendMessage({
+      conversationId: conversation.id,
+      role: 'assistant',
+      content: reply,
+      authorUserId: await handleForProject(conversation.id, projectId),
+      deliveryProof: receipt,
+    });
+  } catch (err) {
+    logger.warn(
+      { err, rid: meta.rid, externalId },
+      'rocketchat.escalation-bridge: delivered, but the transcript could not record it',
     );
   }
 }

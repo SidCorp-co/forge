@@ -1,0 +1,83 @@
+// What a transport has to supply for a conversation to happen on it: four
+// ports and nothing else.
+//
+// Two of them are inbound and typed to the transport's own message frame —
+// which venue this is, and who spoke. Two are outbound and neutral, so a caller
+// holding only a venue can reach a room it knows nothing about; those two are
+// what the registry serves.
+
+import type { SpeakerResolution } from '../assistant/identity/speaker-link.js';
+import type { ConversationAdapter } from '../db/schema-conversations.js';
+import type { ConversationVenue } from './store.js';
+
+/** What a transport returns for a message it posted. */
+export interface DeliveryReceipt {
+  /** The transport's own id for the posted message, or null when it named none. */
+  messageId: string | null;
+}
+
+export interface ConversationHistoryMessage {
+  role: 'user' | 'assistant';
+  authorLabel: string | null;
+  content: string;
+}
+
+/**
+ * Text that has passed a screen, carrying the screen's verdict and the exact
+ * string it was passed.
+ */
+// cm:guard the value owns its own text and there is no way to build one around a DIFFERENT string, which is the whole point: a screen run over the option labels while the rendered message went out unscreened is the hole ISS-978's review found, and a verdict that travels beside the text rather than inside it cannot close it.
+export interface ScreenedMessage {
+  readonly text: string;
+  readonly problems: readonly string[];
+}
+
+/** Text this codebase wrote — an ack, a fallback, a refusal. It screens nothing because there is nothing to screen. */
+export function codeAuthored(text: string): ScreenedMessage {
+  return { text, problems: [] };
+}
+
+/** Model-written text, admitted only on an `ok` verdict over that exact string. */
+export function screened(
+  text: string,
+  verdict: { ok: boolean; problems: string[] },
+): ScreenedMessage | null {
+  return verdict.ok ? { text, problems: verdict.problems } : null;
+}
+
+/** The neutral half: reachable with a venue alone, which is what the registry holds. */
+export interface ConversationTransport {
+  readonly adapter: ConversationAdapter;
+  deliver(venue: ConversationVenue, message: ScreenedMessage): Promise<DeliveryReceipt>;
+  fetchHistory(venue: ConversationVenue, limit: number): Promise<ConversationHistoryMessage[]>;
+}
+
+/** The inbound half: typed to the transport's own frame, so it is called where that frame exists. */
+export interface ConversationInbound<Frame> {
+  resolveVenue(frame: Frame): Promise<ConversationVenue | null>;
+  resolveSpeaker(frame: Frame): Promise<SpeakerResolution>;
+}
+
+export type ConversationAdapterPorts<Frame> = ConversationTransport & ConversationInbound<Frame>;
+
+const transports = new Map<ConversationAdapter, ConversationTransport>();
+
+// cm:guard registration is by adapter NAME and the store holds nothing else about a transport: adding a second adapter is one `registerConversationTransport` call and no change here, which is the property `transport-free.test.ts` exists to keep true (ISS-1001 criteria 34, 36).
+export function registerConversationTransport(transport: ConversationTransport): void {
+  transports.set(transport.adapter, transport);
+}
+
+export function conversationTransport(
+  adapter: ConversationAdapter,
+): ConversationTransport | undefined {
+  return transports.get(adapter);
+}
+
+export function registeredConversationAdapters(): ConversationAdapter[] {
+  return [...transports.keys()].sort();
+}
+
+/** Test seam — the registry is process-global by design. */
+export function clearConversationTransports(): void {
+  transports.clear();
+}

@@ -1,8 +1,13 @@
 /**
- * Which of a transcript's images are re-sent to the model this turn, and the budget that bounds them. A chat session lives as long as its channel and the model only ever sees a window of it, so "the picture the user is asking about" is not always the one that arrived this turn — a design review is three questions about one screenshot. Images are stored by reference (see `session.ts`), so replaying them means paying a fetch; this module decides how many fetches are worth it.
+ * Which of a transcript's images are re-sent to the model this turn, and the budget that bounds them. A conversation lives as long as its venue and the model only ever sees a window of it, so "the picture the user is asking about" is not always the one that arrived this turn — a design review is three questions about one screenshot. Images are stored by reference (see `conversations/store.ts`), so replaying them means paying a fetch; this module decides how many fetches are worth it.
  */
 
-import type { StoredChatImage, StoredChatMessage } from './session.js';
+import type { ConversationImage } from '../conversations/store.js';
+
+/** Just enough of a stored turn for the lookback: what images it carried. */
+export interface ImageBearingMessage {
+  images?: readonly ConversationImage[] | undefined;
+}
 
 /**
  * How many image-bearing user turns, newest-first, are eligible to be re-sent. 1 would make every follow-up question ("so what should the layout be?") answer blind; the number is small because each turn's images are re-fetched and re-uploaded to the model on EVERY subsequent turn they stay eligible for.
@@ -14,12 +19,12 @@ export const VISION_LOOKBACK_TURNS = 2;
  */
 export const VISION_BUDGET_BYTES = 6_000_000;
 
-export interface TurnImage extends StoredChatImage {
+export interface TurnImage extends ConversationImage {
   /** Raw bytes, base64-encoded — no `data:` prefix. */
   dataBase64: string;
 }
 
-export type ImageResolver = (image: StoredChatImage) => Promise<string | null>;
+export type ImageResolver = (image: ConversationImage) => Promise<string | null>;
 
 function dataUri(mime: string, base64: string): string {
   return `data:${mime};base64,${base64}`;
@@ -35,7 +40,7 @@ export function base64Bytes(b64: string): number {
  * Build the `ref → data:` map {@link toProviderMessages} needs. `inHand` covers images that arrived with the current turn (already downloaded, never re-fetched); anything older goes through `resolve`, and a resolver failure is skipped rather than failing the turn — an answer without the picture beats no answer.
  */
 export async function resolveVisionImages(
-  messages: readonly StoredChatMessage[],
+  messages: readonly ImageBearingMessage[],
   inHand: readonly TurnImage[],
   resolve?: ImageResolver,
 ): Promise<Map<string, string>> {

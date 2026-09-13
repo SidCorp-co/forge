@@ -13,7 +13,7 @@
 
 import { and, eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
-import { type ChatSessionSource, chatSessionSources } from '../../db/schema.js';
+import { type ConversationAdapter, conversationAdapters } from '../../db/schema-conversations.js';
 import { assistantSpeakerLinks } from '../../db/schema-speaker-links.js';
 
 export type SpeakerRefusalCode =
@@ -65,14 +65,14 @@ export function unlinkedMessage(ref: SpeakerRef): string {
   ].join(' ');
 }
 
-export function isChatSessionSource(value: string): value is ChatSessionSource {
-  return (chatSessionSources as readonly string[]).includes(value);
+export function isConversationAdapter(value: string): value is ConversationAdapter {
+  return (conversationAdapters as readonly string[]).includes(value);
 }
 
 export function sourceUnknownRefusal(source: string): SpeakerRefusal {
   return {
     code: 'SPEAKER_SOURCE_UNKNOWN',
-    message: `"${source}" is not a chat channel this Forge knows. Valid sources are ${chatSessionSources.join(', ')}.`,
+    message: `"${source}" is not a chat channel this Forge knows. Valid sources are ${conversationAdapters.join(', ')}.`,
   };
 }
 
@@ -82,7 +82,7 @@ export function sourceUnknownRefusal(source: string): SpeakerRefusal {
  */
 // cm:guard the only writer of an identity on the chat side. A second path to a `userId` — a bot account standing in for a person, a "best effort" match at call time, a default project owner — makes `questions/write.ts:answeredBy` lie, which is what `comments.is_ai` did before it was dropped on 2026-09-04 disagreeing with the token on 3,172 of 23,414 rows.
 export async function resolveSpeaker(ref: SpeakerRef): Promise<SpeakerResolution> {
-  if (!isChatSessionSource(ref.source)) {
+  if (!isConversationAdapter(ref.source)) {
     return { linked: false, refusal: sourceUnknownRefusal(ref.source) };
   }
   const [row] = await db

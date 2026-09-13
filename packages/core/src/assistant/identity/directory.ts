@@ -9,7 +9,7 @@
  * from the request.
  */
 
-import type { ChatSessionSource } from '../../db/schema.js';
+import type { ConversationAdapter } from '../../db/schema-conversations.js';
 import { fetchUserProfile } from '../../integrations/rocketchat/rest-client.js';
 import type { RocketChatConfig, RocketChatSecrets } from '../../integrations/rocketchat/types.js';
 import {
@@ -17,10 +17,14 @@ import {
   effectiveConfig,
   listActiveBindingsForProjectProvider,
 } from '../../integrations/store.js';
-import { isChatSessionSource, type SpeakerRefusal, sourceUnknownRefusal } from './speaker-link.js';
+import {
+  isConversationAdapter,
+  type SpeakerRefusal,
+  sourceUnknownRefusal,
+} from './speaker-link.js';
 
 export interface SpeakerProfile {
-  source: ChatSessionSource;
+  source: ConversationAdapter;
   namespace: string;
   externalId: string;
   username: string | null;
@@ -69,7 +73,7 @@ export async function lookupSpeakerProfile(args: {
   externalId: string;
 }): Promise<SpeakerLookup> {
   const { projectId, source, externalId } = args;
-  if (!isChatSessionSource(source)) {
+  if (!isConversationAdapter(source)) {
     return { found: false, refusal: sourceUnknownRefusal(source) };
   }
   // cm:guard refuse each unimplemented channel BY NAME rather than falling through to one handler that guesses. `telegram` and `widget` are vocabulary with no code behind them (ISS-977 out of scope), and `web` speakers are sessions that already carry a userId — treating any of the three as Rocket.Chat would read a credential that has nothing to say about them.

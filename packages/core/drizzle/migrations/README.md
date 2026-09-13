@@ -77,6 +77,44 @@ hand-write a `NNNN_name.sql`, you **must also**:
    The migrator splits on this exact marker and runs each statement
    in its own command.
 
+4. Open no transaction of your own. The migrator wraps the WHOLE run in one,
+   so a `BEGIN;`/`COMMIT;` in a file ends drizzle's and every migration after
+   it in the chain auto-commits statement by statement — free to half-apply
+   and still be recorded as applied. `0067_unify_runners.sql` did exactly that
+   for 171 migrations until ISS-1001 removed it;
+   `db/migrations-journal.test.ts` is now the gate.
+
+**A hand-written migration that changes the SCHEMA still owes a snapshot**, and
+`db/migrations-journal.test.ts` fails it by name if it does not have one: a head
+snapshot that lags is a `pnpm db:generate` that re-emits DDL the database
+already has. A data-only migration owes nothing — the classifier in that test
+says which is which.
+
+The way to produce one for a hand-written migration is `pnpm db:generate` on the
+merged tree, keeping `meta/<idx>_snapshot.json` and discarding the `.sql` it
+emits. **When the change both creates and drops a table, that command cannot
+run unattended**: `drizzle-kit` asks "created or renamed?" and its prompt has no
+non-TTY answer at all — it aborts with *"Interactive prompts require a TTY"*
+under a pipe, a heredoc and `script -qec` alike. Generate in two passes instead,
+so neither pass has both a creation and a deletion in it:
+
+1. Add a temporary module re-declaring the table you are DROPPING, and list it
+   in `drizzle.config.ts`. Generate: creations only, no prompt.
+2. Delete that module and its config line. Generate again: the deletion only,
+   no prompt.
+
+Keep the second pass's snapshot, rename it onto your migration's own index, and
+set its `prevId` to the id of the snapshot it was diffed from — the two staging
+snapshots are discarded, so the chain must link past them. Then delete both
+emitted `.sql` files and restore `meta/_journal.json`, which `generate` appends
+to. `pnpm db:generate` answering *"No schema changes, nothing to migrate"* is
+the check that it worked. Measured 2026-09-14 on `0241_conversations.sql`,
+which creates three tables and drops one.
+
+**Declare every CHECK constraint in the schema module too**, not only in the
+`.sql`. A drizzle snapshot records `checkConstraints` per table, so a constraint
+that exists only in the migration is one the snapshot denies.
+
 ## Common failure modes
 
 ### Symptom: column from a new migration "does not exist" in prod

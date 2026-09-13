@@ -103,6 +103,20 @@ vi.mock('../../logger.js', () => ({
 }));
 
 const resolveRoomShape = vi.fn();
+vi.mock('../../conversations/store.js', () => ({
+  openConversation: async (venue: { adapter: string; externalId: string }) => ({
+    id: `conv:${venue.externalId}`,
+    adapter: venue.adapter,
+    externalId: venue.externalId,
+    shape: 'direct',
+    title: null,
+  }),
+}));
+
+vi.mock('../../conversations/ports.js', () => ({
+  registerConversationTransport: vi.fn(),
+}));
+
 vi.mock('./room-shape.js', () => ({
   resolveRoomShape: (...args: unknown[]) => resolveRoomShape(...args),
   roomShapeFromType: (t: string) => (t === 'd' ? 'direct' : 'group'),
@@ -301,7 +315,7 @@ describe('a reply inside a question thread', () => {
     expect(subjectForThread).not.toHaveBeenCalled();
     expect(runExternalChatTurn.mock.calls[0]?.[0]).toMatchObject({
       message: MESSAGE.text,
-      source: 'rocketchat',
+      adapter: 'rocketchat',
     });
   });
 

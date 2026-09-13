@@ -676,10 +676,8 @@ export const jobs = pgTable(
     // retry_after_at. Written by the retry engine after a transient/timeout
     // failure with an optional provider Retry-After hint; NULL otherwise.
     retryAfterAt: timestamp('retry_after_at', { withTimezone: true }),
-    // ISS-4: link to the observability `agent_sessions` row created by the
-    // dispatcher so /pipeline + issue detail surfaces can render pipeline
-    // jobs alongside interactive sessions. Bare uuid (no FK) to match the
-    // notifications.agent_session_id pattern — adding the FK later is additive.
+    // cm:why a bare uuid with no foreign key, matching `notifications.agent_session_id`: the
+    // dispatcher writes the observability row, and adding the key later is additive (ISS-4).
     agentSessionId: uuid('agent_session_id'),
     // cm:guard the master session holding this job. NULL means claimable; non-NULL means a master took it and is answerable for it. It MUST be released when that session dies — `devices/master-reaper.ts` is what does that, and without it a dead master's jobs are unclaimable forever with nothing reporting why.
     // cm:edge lockstep -> packages/core/src/devices/pool.ts — `held_by IS NULL` is the pool's only exclusion, so a writer that sets this column without a matching release path silently shrinks the pool
@@ -1912,11 +1910,13 @@ export const usageRecordsRelations = relations(usageRecords, ({ one }) => ({
 export const qaRatings = ['good', 'bad', 'flagged'] as const;
 export type QaRating = (typeof qaRatings)[number];
 
+// cm:guard `chat_logs` keeps the `chat` name the module dropped in ISS-979, and ISS-1001's migration wave — which replaced `chat_sessions` with `conversations` — deliberately did NOT take it: this is a per-turn QA audit keyed by `project_slug`, not a conversation, and renaming it moves the admin QA screens for no gain to the model. Cost: a reader meets `conversations/` and `chat_logs` in one file. Ends when a wave has a reason to touch the QA surface.
 export const chatLogs = pgTable(
   'chat_logs',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    sessionId: text('session_id').notNull(),
+    // cm:guard nullable since ISS-1001, and the null is a FACT rather than a gap: a one-shot relay turn — the escalation bridge's synthesis — belongs to no conversation, and it used to be given a throwaway `chat_sessions` row so this column could be filled. A reader must treat null as "this turn was not part of a room".
+    sessionId: text('session_id'),
     projectSlug: text('project_slug').notNull(),
     userKey: text('user_key'),
     query: text('query').notNull(),
@@ -2065,44 +2065,6 @@ export const agents = pgTable(
 
 export const agentsRelations = relations(agents, ({ one }) => ({
   project: one(projects, { fields: [agents.projectId], references: [projects.id] }),
-}));
-
-export const chatSessionSources = ['web', 'widget', 'rocketchat', 'telegram'] as const;
-export type ChatSessionSource = (typeof chatSessionSources)[number];
-
-/**
- * Persisted chat sessions. Two separate identity columns are intentional:
- *
- * - `userId` is the authenticated owner — set when the request carries a Bearer
- *   JWT (web/desktop). Drives the per-user scoping in GET/PATCH/DELETE.
- * - `userKey` is the chat_logs audit key — propagated to `chat_logs.userKey`
- *   inside `assistant/run-turn.ts`.
- */
-// cm:guard `chat_sessions`, `chat_logs` and `chatSessionSources` keep the `chat` name the module dropped in ISS-979 — renaming live tables costs a migration that cannot be half-applied, and the `_journal.json` `when` rule (max(when) + 86400000) makes it a one-way door. Cost: a reader meets `assistant/` and `chat_sessions` in one file. Ends when a migration wave has another reason to touch these tables.
-export const chatSessions = pgTable(
-  'chat_sessions',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    projectId: uuid('project_id')
-      .notNull()
-      .references(() => projects.id, { onDelete: 'cascade' }),
-    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
-    userKey: text('user_key'),
-    title: text('title'),
-    source: text('source', { enum: chatSessionSources }).notNull().default('web'),
-    messages: jsonb('messages').notNull().default(sql`'[]'::jsonb`),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    projectUpdatedIdx: index('chat_sessions_project_updated_idx').on(t.projectId, t.updatedAt),
-    userIdx: index('chat_sessions_user_idx').on(t.userId),
-  }),
-);
-
-export const chatSessionsRelations = relations(chatSessions, ({ one }) => ({
-  project: one(projects, { fields: [chatSessions.projectId], references: [projects.id] }),
-  user: one(users, { fields: [chatSessions.userId], references: [users.id] }),
 }));
 
 // ISS-197 — `completed_via_recovery` / `cancelled_stale` are non-failure

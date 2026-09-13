@@ -38,6 +38,9 @@
     "core-config": [
       "packages/core/src/config/**"
     ],
+    "core-conversations": [
+      "packages/core/src/conversations/**"
+    ],
     "core-db": [
       "packages/core/src/db/**"
     ],

@@ -4,22 +4,27 @@
  * browser, then persists the final assistant text + a `chat_logs` audit row.
  *
  * ISS-604 — the loop itself lives in `run-turn-core.ts` so the Rocket.Chat
- * (non-streaming) path can reuse it. Only the FINAL assistant text is persisted
- * to the session; intra-turn tool round-trips are ephemeral + audited.
+ * (non-streaming) path can reuse it. Only the FINAL assistant text is written
+ * to the conversation; intra-turn tool round-trips are ephemeral + audited.
  */
 
 import type { Context } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { db } from '../db/client.js';
 import { chatLogs } from '../db/schema.js';
+import {
+  appendAssistantMessage,
+  appendSilence,
+  type ConversationTurn,
+  persistMessages,
+} from './conversation-turn.js';
 import type { ChatMessage, ChatProvider, ChatStreamEvent } from './providers/types.js';
 import { runTurnEvents, type TurnCoreResult, usageForLog } from './run-turn-core.js';
-import { appendAssistantMessage, type ChatSessionRow, persistMessages } from './session.js';
 import type { ChatToolset } from './tools/mcp-adapter.js';
 
 export interface RunTurnArgs {
   c: Context;
-  session: ChatSessionRow;
+  turn: ConversationTurn;
   /** Resolved provider + model (already chosen by `resolveForProject`). */
   resolved: { provider: ChatProvider; model: string };
   /** The full message array (system + history + new user turn). */
@@ -32,29 +37,33 @@ export interface RunTurnArgs {
   userMessage: string;
   /** Caller key for `chat_logs.user_key` (userId for web, null for widget). */
   userKey: string | null;
+  /** The transport this turn arrived on, for `chat_logs.source`. */
+  adapter: string;
   /** Estimated-token cap on each provider request (`env.CHAT_CONTEXT_BUDGET_TOKENS`). */
   contextBudgetTokens?: number | undefined;
 }
 
 export function runChatTurn({
   c,
-  session,
+  turn,
   resolved,
   providerMessages,
   tools,
   projectSlug,
   userMessage,
   userKey,
+  adapter,
   contextBudgetTokens,
 }: RunTurnArgs) {
   return streamSSE(c, async (stream) => {
-    // Disable buffering on Traefik / nginx so events flush immediately.
+    // cm:guard buffering is off for Traefik and nginx, or a proxy holds the events until the turn
+    // ends and a stream the client reads token by token arrives as one block at the end.
     c.header('X-Accel-Buffering', 'no');
-    // Echo back the resolved sessionId so the client can stash it for the
-    // next turn without parsing a separate REST response.
+    // cm:why the conversation is echoed back so the client can stash it for the next turn
+    // without parsing a separate REST response
     await stream.writeSSE({
-      event: 'session',
-      data: JSON.stringify({ sessionId: session.id }),
+      event: 'conversation',
+      data: JSON.stringify({ conversationId: turn.conversationId }),
     });
 
     const ac = new AbortController();
@@ -83,17 +92,16 @@ export function runChatTurn({
     }
 
     if (result.terminal === 'done' && result.finalText.length > 0) {
-      appendAssistantMessage(session, result.finalText);
-      await persistMessages(session);
+      appendAssistantMessage(turn, result.finalText);
     } else {
-      // Persist the user message even on error so the UI can surface the
-      // partial turn and the user's prior context isn't lost.
-      await persistMessages(session);
+      // cm:guard the user's message is written even when the turn failed, and the failure is written BESIDE it rather than left absent: a transcript that stops without saying why reads to the next person as a message nobody answered (ISS-1001 invariant 7).
+      appendSilence(turn, result.errorMessage ?? result.terminal);
     }
+    await persistMessages(turn);
 
     try {
       await db.insert(chatLogs).values({
-        sessionId: session.id,
+        sessionId: turn.conversationId,
         projectSlug,
         userKey,
         query: userMessage,
@@ -104,7 +112,7 @@ export function runChatTurn({
         iterations: result.iterations,
         durationMs,
         error: result.errorMessage,
-        source: session.source,
+        source: adapter,
       });
     } catch (err) {
       // chat_logs is best-effort audit — don't fail the request when the

@@ -11,6 +11,7 @@
 import { randomUUID } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as conversationSchema from '../../src/db/schema-conversations.js';
 import {
   createTestDevice,
   createTestProject,
@@ -209,13 +210,13 @@ describe('who may author, and what a refusal costs', () => {
     expect(rows[0]?.authorDeviceId).toBeNull();
   });
 
-  it('opens no chat session for a reply it carries', async () => {
+  it('opens no conversation for a reply it carries', async () => {
     await linkSpeaker(LINKED);
     await deliver(reply());
 
-    // cm:guard a mirrored comment is an issue tool being carried and never a chat turn: a `chat_sessions` row here is the mark of a delivery that became a provider conversation, which would put a model between two people talking (ISS-981 criterion 24).
-    const sessions = await db.select().from(schema.chatSessions);
-    expect(sessions).toHaveLength(0);
+    // cm:guard a mirrored comment is an issue tool being carried and never a chat turn: a `conversations` row here is the mark of a delivery that became a provider conversation, which would put a model between two people talking (ISS-981 criterion 24; the table was `chat_sessions` until ISS-1001 replaced it).
+    const rooms = await db.select().from(conversationSchema.conversations);
+    expect(rooms).toHaveLength(0);
   });
 
   it('records no answer against an open question when a person types prose in the issue thread', async () => {

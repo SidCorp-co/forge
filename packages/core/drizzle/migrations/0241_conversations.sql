@@ -1,0 +1,380 @@
+-- ISS-1001 — a conversation becomes a durable row, and `chat_sessions` is replaced.
+--
+-- Order matters and each step is why the next is safe: create, then refuse a row
+-- that cannot be represented, then mint or reuse one handle per project, then
+-- copy, then ASSERT the copy source-driven, and only then drop. Nothing is
+-- nulled, emptied or deleted to make the schema apply.
+--
+-- The reverse is `packages/core/drizzle/rollback/0241_conversations_down.sql`
+-- and it is executable, which is why this migration is a relocation rather than
+-- a discard: every field of every consumed row is reachable from
+-- `conversations.origin` without consulting a membership.
+--
+-- Not idempotent, and it does not need to be: the whole run is ONE transaction
+-- (which it was not until this issue removed `0067_unify_runners.sql`'s stray
+-- `COMMIT;`), so an abort anywhere below leaves the database exactly as it was
+-- and the retry starts from the same place this run did.
+--
+-- WHAT THIS CANNOT CARRY, AND SAYS SO RATHER THAN PRETENDING: which Rocket.Chat
+-- room a migrated transcript belonged to. That mapping only ever lived in
+-- `RocketChatConnectionManager.sessionByConversation`, an in-process Map, so it
+-- is already lost on every core restart and there is nothing on disk to read it
+-- from. A migrated row keeps every message it holds under the venue
+-- `legacy:<chat_session_id>`; the room it came from opens a fresh conversation
+-- under its real venue key the next time it speaks. That is the defect being
+-- fixed, and the orphaned history is its last bill.
+
+-- SEARCH PATH — pinned AND qualified, because either half alone looks done and
+-- is not. A temp relation is searched BEFORE `public` and does not appear in
+-- `SHOW search_path` at all, so a bare `FROM chat_sessions` resolves against
+-- whatever the deploying session happens to carry: an empty temp table of that
+-- name makes a guard below find nothing and pass, and the drop then takes the
+-- real rows. This migration creates a temp table of its own, so it runs with a
+-- temp schema in scope by construction rather than by bad luck.
+--   * Pinned: naming `pg_temp` LAST is what demotes it — an unlisted `pg_temp`
+--     is implicitly searched first for relations, and a path starting
+--     `pg_catalog` would send the CREATEs below into the catalog instead.
+--   * Qualified: every relation names its schema anyway, so an added line that
+--     forgets the pin still resolves to `public` and `_iss1001_handles` is
+--     reached as `pg_temp._iss1001_handles`.
+-- Restored at the bottom: drizzle applies the whole run in ONE transaction, so
+-- leaving this set would silently change name resolution for every migration
+-- numbered after this one.
+--
+-- The same defect in a FUNCTION is pinned differently and that is deliberate:
+-- `0240_issue_prefix_search_path.sql` sets `search_path = pg_catalog, public`
+-- on the function, which is right for a body that only reads. A migration body
+-- CREATEs, and an unqualified CREATE targets the first named schema — so
+-- `pg_catalog` first would send these tables into the catalog. The population
+-- still carrying the defect is in
+-- `docs/proposals/trigger-functions-resolve-tables-through-the-caller.md`.
+SELECT set_config('forge.iss1001_prior_search_path', current_setting('search_path'), true);--> statement-breakpoint
+SET LOCAL search_path = public, pg_temp;--> statement-breakpoint
+
+CREATE TABLE IF NOT EXISTS public.conversations (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  "adapter" text NOT NULL,
+  "external_id" text NOT NULL,
+  "shape" text DEFAULT 'direct' NOT NULL,
+  "title" text,
+  "origin" jsonb,
+  "created_at" timestamp with time zone DEFAULT now() NOT NULL,
+  "updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT "conversations_adapter_known" CHECK ("adapter" IN ('web','widget','rocketchat','telegram')),
+  CONSTRAINT "conversations_shape_known" CHECK ("shape" IN ('direct','group'))
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "conversations_venue_unique" ON public.conversations ("adapter","external_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "conversations_updated_idx" ON public.conversations ("updated_at");--> statement-breakpoint
+
+CREATE TABLE IF NOT EXISTS public.conversation_participants (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  "conversation_id" uuid NOT NULL REFERENCES public.conversations("id") ON DELETE cascade,
+  "kind" text NOT NULL,
+  "user_id" uuid REFERENCES public.users("id") ON DELETE cascade,
+  "external_key" text,
+  "label" text,
+  "added_by" uuid REFERENCES public.users("id") ON DELETE set null,
+  "added_at" timestamp with time zone DEFAULT now() NOT NULL,
+  "removed_at" timestamp with time zone,
+  CONSTRAINT "conversation_participants_kind_known" CHECK ("kind" IN ('person','handle')),
+  -- a handle is an agent account and contributes the room's scope, so it cannot be a row with nobody in it
+  CONSTRAINT "conversation_participants_handle_has_user" CHECK ("kind" <> 'handle' OR "user_id" IS NOT NULL),
+  -- a person is a Forge user or the key their transport gave; with neither there is nobody to add
+  CONSTRAINT "conversation_participants_person_identified" CHECK ("kind" <> 'person' OR "user_id" IS NOT NULL OR "external_key" IS NOT NULL)
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "conversation_participants_live_user_unique" ON public.conversation_participants ("conversation_id","user_id") WHERE removed_at IS NULL AND user_id IS NOT NULL;--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "conversation_participants_conversation_idx" ON public.conversation_participants ("conversation_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "conversation_participants_user_idx" ON public.conversation_participants ("user_id");--> statement-breakpoint
+
+CREATE TABLE IF NOT EXISTS public.conversation_messages (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  "conversation_id" uuid NOT NULL REFERENCES public.conversations("id") ON DELETE cascade,
+  "seq" integer NOT NULL,
+  "role" text NOT NULL,
+  "author_user_id" uuid REFERENCES public.users("id") ON DELETE set null,
+  "author_label" text,
+  "content" text NOT NULL,
+  "images" jsonb,
+  "delivery_proof" jsonb,
+  "silence_reason" text,
+  "created_at" timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT "conversation_messages_role_known" CHECK ("role" IN ('user','assistant','system'))
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "conversation_messages_seq_unique" ON public.conversation_messages ("conversation_id","seq");--> statement-breakpoint
+
+-- A one-shot relay turn belongs to no conversation and used to be given a throwaway
+-- `chat_sessions` row purely so this column could be filled.
+ALTER TABLE public.chat_logs ALTER COLUMN "session_id" DROP NOT NULL;--> statement-breakpoint
+
+-- Refuse a row the new schema cannot represent, naming it, before anything is written.
+DO $$
+DECLARE bad record;
+BEGIN
+  SELECT cs.id, cs.project_id INTO bad
+  FROM public.chat_sessions cs
+  WHERE jsonb_typeof(cs.messages) <> 'array'
+  LIMIT 1;
+  IF FOUND THEN
+    RAISE EXCEPTION 'chat_sessions row % (project %) holds a % where an array of messages was required; it cannot be represented as conversation_messages and nothing here will empty it to make the schema apply',
+      bad.id, bad.project_id, (SELECT jsonb_typeof(messages) FROM public.chat_sessions WHERE id = bad.id);
+  END IF;
+
+  -- A row naming no project, or a project belonging to no organization, would be
+  -- the third unrepresentable shape — and it is NOT checked here, deliberately.
+  -- `chat_sessions.project_id` is NOT NULL with a foreign key onto `projects`,
+  -- and `projects.org_id` is NOT NULL with a foreign key onto `organizations`,
+  -- so neither shape can exist to be found. A guard for it would raise on no
+  -- input this database can hold, which is not a defence: it is a line that
+  -- always passes, reads like one that checked something, and cannot be shown
+  -- red by any planted row. If either column is ever relaxed, this is the
+  -- comment that says what to put back.
+
+  SELECT cs.id, cs.project_id INTO bad
+  FROM public.chat_sessions cs
+  WHERE cs.source NOT IN ('web','widget','rocketchat','telegram')
+  LIMIT 1;
+  IF FOUND THEN
+    RAISE EXCEPTION 'chat_sessions row % carries source "%" which is no conversation adapter',
+      bad.id, (SELECT source FROM public.chat_sessions WHERE id = bad.id);
+  END IF;
+
+  -- A stored element whose role `conversation_messages` cannot hold. The copy
+  -- below selects the three roles it can represent, so without this the element
+  -- is dropped in silence and the assertion — which applies the same filter to
+  -- both sides — agrees that nothing was lost. The old create route inserted a
+  -- caller-supplied array verbatim past its own validation, so a role outside
+  -- the three is a shape this table really can hold.
+  SELECT cs.id, cs.project_id INTO bad
+  FROM public.chat_sessions cs
+  CROSS JOIN LATERAL jsonb_array_elements(cs.messages) AS e(step)
+  WHERE COALESCE(e.step ->> 'role', '') NOT IN ('user','assistant','system')
+  LIMIT 1;
+  IF FOUND THEN
+    RAISE EXCEPTION 'chat_sessions row % holds a message with role "%", which conversation_messages cannot represent; it is not being dropped to make the schema apply',
+      bad.id,
+      (SELECT COALESCE(e.step ->> 'role', '(none)')
+       FROM public.chat_sessions cs2
+       CROSS JOIN LATERAL jsonb_array_elements(cs2.messages) AS e(step)
+       WHERE cs2.id = bad.id
+         AND COALESCE(e.step ->> 'role', '') NOT IN ('user','assistant','system')
+       LIMIT 1);
+  END IF;
+END $$;--> statement-breakpoint
+
+-- One handle per project that owns chat rows: reused where the project already
+-- has an agent account, minted where it does not — with its org and project
+-- memberships and NO access token, because a handle is a name in a room.
+CREATE TEMP TABLE _iss1001_handles ON COMMIT DROP AS
+SELECT
+  cs.project_id,
+  (
+    SELECT u.id FROM public.users u
+    JOIN public.project_members pm ON pm.user_id = u.id AND pm.project_id = cs.project_id
+    WHERE u.kind = 'agent'
+    ORDER BY u.created_at, u.id
+    LIMIT 1
+  ) AS existing_user_id,
+  NULL::uuid AS minted_user_id
+FROM (SELECT DISTINCT project_id FROM public.chat_sessions) cs;--> statement-breakpoint
+
+-- The id is allocated FIRST so the user this project got is unambiguous: matching
+-- a freshly inserted row back by its handle name would tie two projects whose
+-- slugs sanitize alike to each other's principal.
+UPDATE pg_temp._iss1001_handles SET minted_user_id = gen_random_uuid() WHERE existing_user_id IS NULL;--> statement-breakpoint
+
+INSERT INTO public.users (id, email, kind, password_hash, email_verified_at)
+SELECT
+  h.minted_user_id,
+  (CASE
+     WHEN trim(both '-' from regexp_replace(lower(p.slug), '[^a-z0-9]+', '-', 'g')) ~ '^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$'
+       THEN trim(both '-' from regexp_replace(lower(p.slug), '[^a-z0-9]+', '-', 'g'))
+     ELSE 'agent-' || left(p.id::text, 8)
+   END) || '.' || left(md5(random()::text || clock_timestamp()::text), 12) || '@agents.forge.invalid',
+  'agent',
+  NULL,
+  now()
+FROM pg_temp._iss1001_handles h
+JOIN public.projects p ON p.id = h.project_id
+WHERE h.minted_user_id IS NOT NULL;--> statement-breakpoint
+
+INSERT INTO public.organization_members (org_id, user_id, role)
+SELECT p.org_id, h.minted_user_id, 'member'
+FROM pg_temp._iss1001_handles h JOIN public.projects p ON p.id = h.project_id
+WHERE h.minted_user_id IS NOT NULL
+ON CONFLICT DO NOTHING;--> statement-breakpoint
+
+INSERT INTO public.project_members (user_id, project_id, role)
+SELECT h.minted_user_id, h.project_id, 'member'
+FROM pg_temp._iss1001_handles h
+WHERE h.minted_user_id IS NOT NULL
+ON CONFLICT DO NOTHING;--> statement-breakpoint
+
+-- Every chat session becomes one direct conversation carrying its source row whole.
+INSERT INTO public.conversations (id, adapter, external_id, shape, title, origin, created_at, updated_at)
+-- the conversation KEEPS the chat session's id, so the `chat_logs.session_id`
+-- values already written keep naming the same thing they always did
+SELECT
+  cs.id,
+  cs.source,
+  'legacy:' || cs.id::text,
+  'direct',
+  cs.title,
+  jsonb_build_object(
+    'chatSessionId', cs.id::text,
+    'projectId', cs.project_id::text,
+    -- the title AS CONSUMED. The conversation carries a title column of its own and a
+    -- rename after this deploy is real activity, so the reverse restores the current
+    -- one — but "every consumed field comes back off `origin` alone" is a claim this
+    -- file makes, and a field living only in a column the reverse reads is that claim
+    -- being true by accident. Keep both and the claim holds however the title moves.
+    'title', cs.title,
+    'userId', cs.user_id::text,
+    'userKey', cs.user_key,
+    'source', cs.source,
+    -- the blob VERBATIM. Every other field of the reverse is reconstructible from
+    -- the message rows, but the rows keep only what this schema models: an element
+    -- that carried its own `ts`, or a key nothing here reads, would come back
+    -- re-synthesized rather than as it was written. This is the field that makes
+    -- the reverse exact instead of merely equivalent.
+    'messages', cs.messages,
+    -- `US` and not `MS`: a timestamptz carries MICROseconds, and formatting to
+    -- milliseconds silently drops three digits — a forward-then-reverse cycle would
+    -- then change a timestamp it promised to restore field-for-field. The explicit
+    -- UTC conversion stays rather than letting jsonb render the value, because that
+    -- rendering follows the deploying session's TimeZone the way an unqualified
+    -- relation follows its search_path.
+    'createdAt', to_char(cs.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
+    'updatedAt', to_char(cs.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
+    'mintedHandleUserId', h.minted_user_id::text
+  ),
+  cs.created_at,
+  cs.updated_at
+FROM public.chat_sessions cs
+JOIN pg_temp._iss1001_handles h ON h.project_id = cs.project_id;--> statement-breakpoint
+
+INSERT INTO public.conversation_participants (conversation_id, kind, user_id, added_at)
+SELECT cs.id, 'handle', COALESCE(h.existing_user_id, h.minted_user_id), cs.created_at
+FROM public.chat_sessions cs
+JOIN pg_temp._iss1001_handles h ON h.project_id = cs.project_id;--> statement-breakpoint
+
+-- A person joins only where the source row recorded one. 34 of the 35 rows on
+-- forge-beta record neither a user nor a key: the Rocket.Chat fast path ran with
+-- no `userId` and `user_key` is null on every row in the table. Inventing a
+-- stand-in would put a principal in a room that never spoke.
+INSERT INTO public.conversation_participants (conversation_id, kind, user_id, external_key, added_at)
+SELECT cs.id, 'person', cs.user_id, cs.user_key, cs.created_at
+FROM public.chat_sessions cs
+WHERE cs.user_id IS NOT NULL OR cs.user_key IS NOT NULL;--> statement-breakpoint
+
+-- Each element of the blob becomes one row, in its original order. The stored
+-- element carries a role and a text and no author, so the author is the handle
+-- for an assistant turn, the recorded person for a user turn, and nobody where
+-- the row recorded none.
+INSERT INTO public.conversation_messages
+  (conversation_id, seq, role, author_user_id, author_label, content, images, created_at)
+SELECT
+  cs.id,
+  (t.ord - 1)::int,
+  COALESCE(t.step ->> 'role', 'user'),
+  CASE
+    WHEN t.step ->> 'role' = 'assistant' THEN COALESCE(h.existing_user_id, h.minted_user_id)
+    WHEN t.step ->> 'role' = 'user' THEN cs.user_id
+    ELSE NULL
+  END,
+  CASE WHEN t.step ->> 'role' = 'user' THEN cs.user_key ELSE NULL END,
+  COALESCE(t.step ->> 'content', ''),
+  CASE WHEN jsonb_typeof(t.step -> 'images') = 'array' THEN t.step -> 'images' ELSE NULL END,
+  COALESCE((t.step ->> 'ts')::timestamptz, cs.created_at)
+FROM public.chat_sessions cs
+JOIN pg_temp._iss1001_handles h ON h.project_id = cs.project_id
+CROSS JOIN LATERAL jsonb_array_elements(cs.messages) WITH ORDINALITY AS t(step, ord)
+WHERE t.step ->> 'role' IN ('user','assistant','system');--> statement-breakpoint
+
+-- The assertion, source-driven and run AFTER the copy. Every clause anti-joins
+-- from `chat_sessions` outward, so an omission fails rather than a count matching.
+DO $$
+DECLARE bad record;
+BEGIN
+  SELECT cs.id INTO bad FROM public.chat_sessions cs
+  WHERE (SELECT count(*) FROM public.conversations c WHERE c.origin ->> 'chatSessionId' = cs.id::text) <> 1
+  LIMIT 1;
+  IF FOUND THEN RAISE EXCEPTION 'chat_sessions row % did not become exactly one conversation', bad.id; END IF;
+
+  SELECT cs.id INTO bad FROM public.chat_sessions cs JOIN public.conversations c ON c.id = cs.id
+  WHERE c.shape <> 'direct' OR c.adapter <> cs.source OR c.title IS DISTINCT FROM cs.title
+  LIMIT 1;
+  IF FOUND THEN RAISE EXCEPTION 'conversation for chat_sessions row % does not carry its shape, adapter or title', bad.id; END IF;
+
+  SELECT cs.id INTO bad FROM public.chat_sessions cs
+  WHERE (
+    SELECT count(*) FROM public.conversation_participants cp
+    JOIN public.project_members pm ON pm.user_id = cp.user_id AND pm.project_id = cs.project_id
+    WHERE cp.conversation_id = cs.id AND cp.kind = 'handle' AND cp.removed_at IS NULL
+  ) <> 1
+  LIMIT 1;
+  IF FOUND THEN RAISE EXCEPTION 'conversation for chat_sessions row % has no single handle on project %', bad.id, (SELECT project_id FROM public.chat_sessions WHERE id = bad.id); END IF;
+
+  SELECT cs.id INTO bad FROM public.chat_sessions cs
+  WHERE (SELECT count(*) FROM public.conversation_participants cp WHERE cp.conversation_id = cs.id AND cp.kind = 'person')
+        <> (CASE WHEN cs.user_id IS NOT NULL OR cs.user_key IS NOT NULL THEN 1 ELSE 0 END)
+  LIMIT 1;
+  IF FOUND THEN RAISE EXCEPTION 'conversation for chat_sessions row % carries a person it did not record, or lost the one it did', bad.id; END IF;
+
+  -- and it is the person that row recorded, not merely A person. Counting alone
+  -- passes a copy that kept the cardinality and mistranslated the identity —
+  -- somebody else's user id, or a key dropped — and the source table is dropped
+  -- immediately after this block, so a wrong identity here is unrecoverable.
+  SELECT cs.id INTO bad FROM public.chat_sessions cs
+  JOIN public.conversation_participants cp
+    ON cp.conversation_id = cs.id AND cp.kind = 'person'
+  WHERE cp.user_id IS DISTINCT FROM cs.user_id
+     OR cp.external_key IS DISTINCT FROM cs.user_key
+  LIMIT 1;
+  IF FOUND THEN RAISE EXCEPTION 'the person on the conversation for chat_sessions row % is not the person that row recorded', bad.id; END IF;
+
+  -- the same for the handle: exactly one project membership, on the source row's
+  -- own project. The count above proves a membership on that project exists; this
+  -- proves there is no SECOND one, which would widen the room's derived scope to a
+  -- project the session it came from was never about.
+  SELECT cs.id INTO bad FROM public.chat_sessions cs
+  JOIN public.conversation_participants cp
+    ON cp.conversation_id = cs.id AND cp.kind = 'handle' AND cp.removed_at IS NULL
+  WHERE (SELECT count(*) FROM public.project_members pm WHERE pm.user_id = cp.user_id) <> 1
+  LIMIT 1;
+  IF FOUND THEN RAISE EXCEPTION 'the handle on the conversation for chat_sessions row % holds a membership beyond its own project', bad.id; END IF;
+
+  -- every source element has a row at its own ordinal with its own role and text
+  SELECT cs.id INTO bad FROM public.chat_sessions cs
+  CROSS JOIN LATERAL jsonb_array_elements(cs.messages) WITH ORDINALITY AS t(step, ord)
+  WHERE t.step ->> 'role' IN ('user','assistant','system')
+    AND NOT EXISTS (
+      SELECT 1 FROM public.conversation_messages cm
+      WHERE cm.conversation_id = cs.id
+        AND cm.seq = (t.ord - 1)::int
+        AND cm.role = t.step ->> 'role'
+        AND cm.content = COALESCE(t.step ->> 'content', '')
+    )
+  LIMIT 1;
+  IF FOUND THEN RAISE EXCEPTION 'chat_sessions row % has a stored message with no row at its own position, role and text', bad.id; END IF;
+
+  -- and no row exists that no source element accounts for
+  SELECT cm.conversation_id AS id INTO bad FROM public.conversation_messages cm
+  JOIN public.chat_sessions cs ON cs.id = cm.conversation_id
+  WHERE NOT EXISTS (
+    SELECT 1 FROM jsonb_array_elements(cs.messages) WITH ORDINALITY AS t(step, ord)
+    WHERE (t.ord - 1)::int = cm.seq
+      AND t.step ->> 'role' = cm.role
+      AND COALESCE(t.step ->> 'content', '') = cm.content
+  )
+  LIMIT 1;
+  IF FOUND THEN RAISE EXCEPTION 'conversation % holds a message no chat_sessions element accounts for', bad.id; END IF;
+END $$;--> statement-breakpoint
+
+DROP TABLE public.chat_sessions;--> statement-breakpoint
+
+-- and the path goes back to whatever the deploying session brought, so the
+-- migrations numbered after this one resolve names exactly as they would have.
+SELECT set_config('search_path', current_setting('forge.iss1001_prior_search_path'), true);
