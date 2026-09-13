@@ -2,23 +2,25 @@ import { z } from 'zod';
 import { ROOT_COMPONENT_NAMES } from '../body/components.js';
 import { issueStatuses } from '../db/schema.js';
 import { ENTRY_CRITERION_KEYS } from '../issues/entry-criteria-keys.js';
-import { BACKLOG_ADMISSIBLE_STATUSES } from './autonomous-mode.js';
+import { AUTONOMOUS_ENTRY_STATUS, BACKLOG_ADMISSIBLE_STATUSES } from './autonomous-mode.js';
 import {
   INTEGRATION_SERVER_NAMES,
   isKnownMcpServerName,
   MCP_CATALOG_NAMES,
 } from './mcp-catalog.js';
 /**
- * Per-stage `{ enabled, mode }` config under `pipelineConfig.states`, keyed by
- * the kernel status the config applies at.
+ * Per-stage config under `pipelineConfig.states`, keyed by the kernel status
+ * the config applies at.
  *
- * These are the four non-terminal statuses the one lane has. Only `open`
- * dispatches — `autonomousStepFor` returns a step there and nowhere else — so
- * the other three carry prompt/tool policy for a session that is already
- * running or resuming, never a dispatch decision.
+ * A name belongs here when a session can be AT that status carrying this
+ * project's prompt and tool policy — which `resolveStageOverrides` looks up by
+ * the status stamped on the job. Only `open` dispatches (`autonomousStepFor`
+ * returns a step there and nowhere else), and `awaiting_release` is here
+ * because `BACKLOG_ADMISSIBLE_STATUSES` admits it and a master opens a session
+ * over it.
  */
 // cm:guard the staged ladder (`confirmed` `clarified` `approved` `developed` `testing` `tested`) was removed here by ISS-897, and this schema STRIPS unknown keys — so re-adding one of those names does not just widen a union, it un-deletes a stage the settings surface no longer shows and the orchestrator no longer walks. A key here must be a status this lane actually reaches.
-// cm:edge contract -> packages/core/src/pipeline/autonomous-mode.ts — the same four statuses AUTONOMOUS_DRIVER_STATUSES names minus the terminals; a stage name that is not a driver status is config for a state no issue on this lane is ever in
+// cm:guard NOT `AUTONOMOUS_DRIVER_STATUSES` minus the terminals — that subtraction yields three names and this list is four. `awaiting_release` is not a driver status and is reached anyway, so the list is written out and each name earns its place by the rule in the block above (ISS-994).
 export const STAGE_NAMES = ['open', 'in_progress', 'needs_info', 'awaiting_release'] as const;
 
 export type StageName = (typeof STAGE_NAMES)[number];
@@ -134,9 +136,9 @@ export const budgetConfigSchema = z
 export type BudgetConfig = z.infer<typeof budgetConfigSchema>;
 
 // cm:why every field is optional so a PATCH may send one stage key without resending the rest, and there is no `.passthrough()`: `mergePipelineConfig` round-trips legacy TOP-LEVEL keys by spread, while a stage-level key this object does not name is dropped on purpose
+// cm:guard `mode` is NOT here — it lives on `entryStageConfigSchema` alone, because `isEntryGateClosed` is its only consumer and reads `states.open`. On any other stage it parsed, persisted and displayed while gating nothing, which is the affordance ISS-994 removed. Adding it back here re-creates a knob an operator sets to hold work and that holds none.
 export const stageConfigSchema = z.object({
   enabled: z.boolean().optional(),
-  mode: z.enum(['auto', 'manual']).optional(),
   skillName: z.string().min(1).max(128).optional(),
   model: z.string().min(1).max(64).optional(),
   allowedTools: z.array(z.string().min(1).max(128)).max(100).nullable().optional(),
@@ -170,6 +172,13 @@ export const stageConfigSchema = z.object({
 
 export type StageConfig = z.infer<typeof stageConfigSchema>;
 
+// cm:edge contract -> packages/core/src/pipeline/autonomous-mode.ts — `isEntryGateClosed` reads `enabled` and `mode` off `states.open` and CLOSED is the OR of them, so `mode: 'manual'` is the only representable way to close the entry gate: `pipeline-config-service.ts` refuses `open.enabled === false` outright with OPEN_LOCKED_ON. Removing `mode` from this object removes the gate.
+export const entryStageConfigSchema = stageConfigSchema.extend({
+  mode: z.enum(['auto', 'manual']).optional(),
+});
+
+export type EntryStageConfig = z.infer<typeof entryStageConfigSchema>;
+
 /**
  * ISS-917 — per-project pool admission. Declares which issue statuses a master
  * agent may SEE as a backlog beside the claimable pool, and how many rows it
@@ -189,8 +198,14 @@ export const poolBacklogSchema = z
 
 export type PoolBacklogConfig = z.infer<typeof poolBacklogSchema>;
 
+// cm:guard every key OPTIONAL and the object STRICT, which is what the `partialRecord` this replaced did: a stored `states` naming only `open` is what nearly every project holds, so a required key would make that document unparseable — and one unparseable value makes `cfg` null, `isAutonomous` false and the project dispatch nothing in SILENCE (measured 2026-09-10). Strict keeps a stage name off this lane refused rather than dropped, which is the behaviour the record shape had.
 export const statesConfigSchema = z
-  .partialRecord(z.enum(STAGE_NAMES), stageConfigSchema)
+  .strictObject({
+    open: entryStageConfigSchema.optional(),
+    in_progress: stageConfigSchema.optional(),
+    needs_info: stageConfigSchema.optional(),
+    awaiting_release: stageConfigSchema.optional(),
+  })
   .optional();
 
 export type StatesConfig = z.infer<typeof statesConfigSchema>;
@@ -211,13 +226,18 @@ const DRIVER_DEFAULT_DISALLOWED = [
   'ScheduleWakeup',
 ];
 
-export function defaultStatesConfig(): Record<StageName, StageConfig> {
-  return Object.fromEntries(
-    STAGE_NAMES.map((s) => [
-      s,
-      { enabled: true, mode: 'auto' as const, disallowedTools: [...DRIVER_DEFAULT_DISALLOWED] },
-    ]),
-  ) as Record<StageName, StageConfig>;
+// cm:guard `mode` is written at the entry status ONLY. Writing it on the other three is what seeded the field across the fleet in the first place, on stages where nothing reads it (ISS-994).
+export function defaultStatesConfig(): NonNullable<StatesConfig> {
+  const base = (): StageConfig => ({
+    enabled: true,
+    disallowedTools: [...DRIVER_DEFAULT_DISALLOWED],
+  });
+  return {
+    open: { ...base(), mode: 'auto' },
+    in_progress: base(),
+    needs_info: base(),
+    awaiting_release: base(),
+  };
 }
 
 /**
@@ -254,7 +274,7 @@ export const pipelineConfigSchema = z
       .optional(),
     // cm:why ISS-917 — statuses whose issues a master may SEE but not claim; the shape is `poolBacklogSchema` above and the refusal pairing it with `intakeGate` lives in the `superRefine` at the bottom of this object
     poolBacklog: poolBacklogSchema.optional(),
-    // cm:why ISS-108/ISS-110 — `states[X].enabled === false` makes the orchestrator auto-transition PAST `X` rather than dispatching a job there, which is not derivable from a boolean called `enabled`; cycle and dead-end detection for the resulting walk runs at PATCH time
+    // cm:guard `enabled === false` does NOT route around a stage — the walk that did was deleted with the staged lane (ISS-897), and nothing has replaced it. Its one effect is that `buildLadder` (prompt/facts/resolve.ts) leaves the status out of the ladder rendered into the agent's prompt; at the entry status it also closes the gate `isEntryGateClosed` reads. No validator runs at PATCH time (ISS-994).
     states: statesConfigSchema,
     // cm:why ISS-580 — a resume carries the prior session's whole context, so past a peak the fresh session plus its handoff is cheaper and no less informed; 0 disables the bound, absent means 150000 tokens / 3 reopen cycles (jobs/resume-policy.ts)
     maxResumeTokens: z.number().int().min(0).optional(),
@@ -267,10 +287,7 @@ export const pipelineConfigSchema = z
       .optional(),
     // cm:guard these are seeded into EVERY job's temp `--mcp-config` and the runner passes `--strict-mcp-config`, so the box's own MCP config is ignored: a server this project does not declare does not exist for any job, and anything declared here must be secret-free because the file is written per job on a shared box.
     mcpServers: z.record(z.string(), z.unknown()).optional(),
-    // When true, a `prod`-environment Coolify deploy auto-dispatches on release
-    // exactly like `staging` — skipping the human "Confirm production deploy"
-    // gate. Default (absent/false) keeps the gate: prod never auto-deploys
-    // (safety valve for the autonomous pipeline). Per-project opt-in only.
+    // cm:guard absent and `false` both KEEP the human "Confirm production deploy" gate, and that is the safety valve of the autonomous pipeline — a `.default(true)` here, or any reader treating absent as on, ships to prod on every release with nobody asked. Per-project opt-in only; `true` makes a prod Coolify deploy auto-dispatch exactly as `staging` does.
     autoProdDeploy: z.boolean().optional(),
     // cm:guard MUST stay declared here — this schema STRIPS unknown keys, so a lock that is not in the object literal is dropped by PATCH /pipeline-config and silently never takes effect, while skills/lock.ts keeps reporting the project as unlocked
     // cm:edge contract -> packages/core/src/skills/lock.ts — readLockedSkills() parses exactly this field; `false` and a malformed value read as ABSENT there, never as "unlocked"
@@ -335,12 +352,35 @@ export const pipelineConfigSchema = z
 export type PipelineConfig = z.infer<typeof pipelineConfigSchema>;
 
 /**
- * Patch payload for `PATCH /pipeline-config`. ISS-232 Phase 3 dropped the
- * sibling `runnerFallback` field — the deterministic v2 selector picks
- * primary → standby with no type-chain fallback. Per-stage `runner`
- * overrides on the step toggles continue to work.
+ * Patch payload for `PATCH /pipeline-config` and MCP `forge_config` action
+ * `update`.
+ *
+ * It is the canonical schema plus one refusal that runs on the RAW body,
+ * before the parse strips anything: a `states[X].mode` at any status other
+ * than the entry status. The two schemas differ in exactly that, and each
+ * caller wants the one it has — a WRITE is told what does not reach, a READ of
+ * a stored document must never be refused.
  */
-export const pipelineConfigPatchSchema = pipelineConfigSchema;
+// cm:guard the pair must stay asymmetric, and in this direction only. Make the canonical schema refuse a non-entry `mode` and every project storing one (sidpeak stores `needs_info.mode` and `awaiting_release.mode`) reads back as `cfg = null`, `isAutonomous` false, and dispatches nothing in silence — the ISS-897 shape measured on 2026-09-10. Drop the refusal from this side and an operator setting `in_progress.mode: 'manual'` gets a 200 and no gate, which is the affordance ISS-994 was filed for.
+function refuseNonEntryStageMode(raw: unknown, ctx: z.RefinementCtx): void {
+  const states = (raw as { states?: unknown } | null | undefined)?.states;
+  if (!states || typeof states !== 'object') return;
+  for (const [stage, stageCfg] of Object.entries(states as Record<string, unknown>)) {
+    if (!stageCfg || typeof stageCfg !== 'object') continue;
+    if (!('mode' in stageCfg)) continue;
+    if (stage === AUTONOMOUS_ENTRY_STATUS) continue;
+    ctx.addIssue({
+      code: 'custom',
+      path: ['states', stage, 'mode'],
+      message: `states.${stage}.mode does not gate anything — \`mode\` is read only at the entry status \`${AUTONOMOUS_ENTRY_STATUS}\`, where it decides whether a human releases work. To hold work at ${stage}, there is no such gate; to hold it before it starts, set states.${AUTONOMOUS_ENTRY_STATUS}.mode = "manual". Remove states.${stage}.mode and resend.`,
+    });
+  }
+}
+
+export const pipelineConfigPatchSchema = z
+  .unknown()
+  .superRefine(refuseNonEntryStageMode)
+  .pipe(pipelineConfigSchema);
 
 export type PipelineConfigPatchInput = z.infer<typeof pipelineConfigPatchSchema>;
 

@@ -174,6 +174,12 @@ export type LabelPatchInput = Partial<LabelCreateInput>;
  */
 export interface PipelineStateConfig {
 	enabled?: boolean;
+	/**
+	 * ENTRY STATUS ONLY (`open`). `isEntryGateClosed` is the field's one reader
+	 * and reads `states.open`; core refuses a PATCH that sets it anywhere else
+	 * and strips a stored one on read. The tab already writes it on `open`
+	 * alone — see `withEntryGate` in `components/pipeline-tab.tsx`.
+	 */
 	mode?: "auto" | "manual";
 	skillName?: string;
 	model?: string;

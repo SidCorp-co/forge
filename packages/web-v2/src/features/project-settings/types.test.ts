@@ -132,7 +132,7 @@ describe("withStagePatch", () => {
     enabled: true,
     states: {
       open: { disallowedTools: ["CronCreate"], sessionKnob: "keep" },
-      awaiting_release: { mode: "manual" },
+      awaiting_release: { model: "opus" },
     },
     topLevelKnob: "keep",
   };
@@ -142,7 +142,7 @@ describe("withStagePatch", () => {
     const states = next.states as Record<string, Record<string, unknown>>;
     expect(states.open.disallowedTools).toEqual(["Workflow"]);
     expect(states.open.sessionKnob).toBe("keep");
-    expect(states.awaiting_release).toEqual({ mode: "manual" });
+    expect(states.awaiting_release).toEqual({ model: "opus" });
     expect(next.topLevelKnob).toBe("keep");
     expect(next.enabled).toBe(true);
   });

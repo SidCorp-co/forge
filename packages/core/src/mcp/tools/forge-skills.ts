@@ -218,7 +218,7 @@ export const forgeSkillsRegisterTool: ContextScopedMcpToolFactory = ({ principal
 export const forgeSkillsListRegistrationsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_skills.list_registrations',
   description:
-    "List the project's stage→skill bindings overlaid with per-stage `mode` ('auto'|'manual') and `enabled` from `agentConfig.pipelineConfig.states`. Plan agents call this before dispatching to avoid sending work into a manual or disabled stage. Stages with no registration are omitted — clients diff against `STAGE_NAMES` to find gaps. Returns `{ registrations: [{ stage, skillId, skillName, scope, mode, enabled, registeredBy, registeredAt }] }`.",
+    "List the project's stage→skill bindings overlaid with per-stage `enabled` and `mode` from `agentConfig.pipelineConfig.states`. `enabled` applies at every stage. `mode` ('auto'|'manual') gates at the ENTRY status alone — it decides whether a human releases work before it starts — and comes back `null` at every other stage, where the field gates nothing and setting it is refused. Stages with no registration are omitted — clients diff against `STAGE_NAMES` to find gaps. Returns `{ registrations: [{ stage, skillId, skillName, scope, mode, enabled, registeredBy, registeredAt }] }`.",
   inputSchema: zodToMcpSchema(listRegistrationsInputSchema),
   handler: async (args) => {
     const { projectId } = listRegistrationsInputSchema.parse(args);

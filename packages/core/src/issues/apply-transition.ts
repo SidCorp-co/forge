@@ -105,8 +105,7 @@ export interface ApplyStatusTransitionOptions {
    * Bypass `canTransitionFree`. In practice that guard only forbids `draft`
    * as a target and restricts `draft`'s own exits, so this flag buys exactly
    * two things: entering `draft` (nothing does) and moving a `draft` issue to
-   * a status outside {open, closed, developed}. The soft-skip resolver
-   * (ISS-110) also passes it while walking `STAGE_FORWARD`.
+   * a status outside {open, closed, developed}.
    *
    * It is NOT a general safety override: NO_OP, stale-transition detection and
    * every content guard still run. The orchestrator is its caller.
