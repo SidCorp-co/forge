@@ -38,6 +38,7 @@ const RETRY_BACKOFF_MS = 60_000;
 const MAX_BACKOFF_MS = 3_600_000;
 const DRAIN_INTERVAL_MS = 30_000;
 const OPENING_LEASE_MS = 60_000;
+const OPENING_RENEW_MS = 20_000;
 // cm:guard the drain takes a BOUNDED slice per tick, and the bound is what keeps a backlog from becoming a single unbounded pass: an unbound project's comments stay owed for ever by design, so `owedComments` over a busy month is every one of them, materialised and walked every thirty seconds. What is left over is not lost — it is owed, and the next tick takes the next slice (ISS-981).
 const DRAIN_BATCH = 200;
 
@@ -244,6 +245,23 @@ async function threadForIssueIn(
     .returning({ issueId: rocketchatThreadOpenings.issueId });
   if (held.length === 0) return { failure: "another instance is opening this issue's thread" };
 
+  // cm:guard the lease is RENEWED while the root post is in flight, and renewed only by its own holder: the outbound door carries no request timeout, so a post that merely hangs outlives a fixed lease and a second worker steals it and posts a second root — a stray root nobody registered, which the trade-off priced for a crashed opener and not for a slow one (ISS-981 criterion 33).
+  const renew = setInterval(() => {
+    void db
+      .update(rocketchatThreadOpenings)
+      .set({ expiresAt: new Date(Date.now() + OPENING_LEASE_MS) })
+      .where(
+        and(
+          eq(rocketchatThreadOpenings.issueId, issueId),
+          eq(rocketchatThreadOpenings.claimedAt, lease.claimedAt),
+        ),
+      )
+      .catch((err) =>
+        logger.warn({ err, issueId }, 'rocketchat: renewing the opening lease failed'),
+      );
+  }, OPENING_RENEW_MS);
+  renew.unref?.();
+
   try {
     if (existing) await retireIssueThread(issueId, existing);
 
@@ -264,8 +282,14 @@ async function threadForIssueIn(
     const ref = { connectionId: room.connectionId, rid: room.rid, tmid: root.messageId };
     await registerThread({ issueId }, ref);
     // cm:guard the row is READ BACK rather than the local ref returned: the insert absorbs a conflict silently, so a worker whose root lost a race the lease could not cover — an expired lease, a rolled-back peer — would otherwise send its comment into a root no row names, and a reply left there resolves to nothing (ISS-981 criterion 33).
-    return (await liveThreadForIssue(issueId)) ?? ref;
+    const registered = (await liveThreadForIssue(issueId)) ?? ref;
+    // cm:guard the winner's ROOM is checked, not only its tmid: a peer that registered while this root was in flight may have been posting to a room this project was rebound to, and returning its `tmid` to a caller that posts with THIS room's rid and credentials sends the comment to a thread that does not exist there. Re-resolve on the next attempt rather than mixing one room's thread with another's door (ISS-981 criterion 32).
+    if (registered.connectionId !== room.connectionId || registered.rid !== room.rid) {
+      return { failure: "this issue's thread was registered in another room" };
+    }
+    return registered;
   } finally {
+    clearInterval(renew);
     await db
       .delete(rocketchatThreadOpenings)
       .where(

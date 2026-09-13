@@ -380,3 +380,26 @@ describe('an unannounced comment is announced by the drain', () => {
     expect(after.seen.map((e) => e.commentId)).toEqual([commentId]);
   });
 });
+
+describe('a roomful of replies at once', () => {
+  it('writes ten concurrent replies without starving the connection pool', async () => {
+    const connectionId = await bindRoom();
+
+    // cm:guard TEN, which is the pool width: each of these holds a pooled connection for its transaction, so a read inside `insertComment` that went to the pool instead of the caller's handle leaves all ten waiting for an eleventh until they time out (ISS-981, review F3).
+    const written = await Promise.all(
+      Array.from({ length: 10 }, (_, i) =>
+        inbound.writeMirroredComment({
+          issueId,
+          authorId: ownerId,
+          connectionId,
+          externalMessageId: `rc-parallel-${i}`,
+          body: `said at once ${i}`,
+        }),
+      ),
+    );
+
+    expect(written.every((w) => w.created)).toBe(true);
+    expect(new Set(written.map((w) => w.commentId)).size).toBe(10);
+    expect(await commentRows()).toHaveLength(10);
+  }, 20_000);
+});

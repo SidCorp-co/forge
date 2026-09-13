@@ -213,10 +213,12 @@ export type WrittenComment = { row: CommentThreadRow; warnings: string[] };
  * `pipeline-config-schema.ts` — "a key here must be a status this lane actually
  * reaches"), and the project's stored `agentConfig` is where the policy lives.
  */
+// cm:guard reads through the CALLER's handle, never the pool: `insertComment` runs this before its own insert, so a caller inside a transaction that left this on `db` would hold one pooled connection and block waiting for a second. The pool is ten wide and every inbound room reply is one such transaction, so ten concurrent replies deadlock until they time out (ISS-981).
 async function loadStageContext(
   issueId: string,
+  tx: Tx = db,
 ): Promise<{ stage: string; policySource: BodyPolicyConfigSource | null } | null> {
-  const [row] = await db
+  const [row] = await tx
     .select({ stage: issues.status, agentConfig: projects.agentConfig })
     .from(issues)
     .innerJoin(projects, eq(issues.projectId, projects.id))
@@ -233,7 +235,7 @@ async function loadStageContext(
 // cm:guard ISS-898 — the caller-supplied body is validated HERE, not at each transport, because REST and MCP create both reach this one function and a gate on one of them is a gate on neither. ISS-969 collapsed REST's own `db.insert(comments)` copy into this call for that same reason, so there is now exactly one insert site for a body somebody sent us. The ~11 kernel-authored `db.insert(comments)` sites (apply-transition, budget-check, merge-marker, stage-stall-guard, pm/routes, release-batch) deliberately do NOT come through here: they take the `markdown` column default, which is right for text core formats itself, and they store no stage because no stage asked them for a record. `agent-sessions/steer-session.ts` is the one kernel caller that DOES come through here, and correctly: a steer is a person's typed body written at a stage, and it passes `authorDeviceId: null`, so the mandate exempts it while the stage is still recorded.
 export async function insertComment(input: NewComment, tx: Tx = db): Promise<WrittenComment> {
   const prepared = prepareBody({ raw: input.body, format: input.format });
-  const context = await loadStageContext(input.issueId);
+  const context = await loadStageContext(input.issueId, tx);
   const refusal = refuseMissingComponent({
     policy: resolveStageBodyPolicy(context?.policySource, context?.stage ?? ''),
     agency: input.authorAgency,

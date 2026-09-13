@@ -240,3 +240,72 @@ describe('an unbound project costs one lookup, not one per comment', () => {
     expect(await mirror.owedComments()).toHaveLength(3);
   });
 });
+
+describe('what the review found, and what now holds', () => {
+  it('renews its own opening lease while the root post is still in flight', async () => {
+    const connectionId = await bindRoom();
+    const first = await comment('held past the lease');
+    const owed = await mirror.owedComments();
+
+    let leaseAtStart: Date | undefined;
+    let leaseAfterRenewal: Date | undefined;
+    // cm:guard the post is held past `OPENING_RENEW_MS`, which is the case a fixed lease loses: the outbound door carries no request timeout, so a post that merely hangs outlives its lease and the next worker steals it and posts a second root (ISS-981 criterion 33, review F1).
+    atPostTime = async () => {
+      atPostTime = null;
+      const [before] = await db.select().from(rcSchema.rocketchatThreadOpenings);
+      leaseAtStart = before?.expiresAt;
+      await vi.advanceTimersByTimeAsync(25_000);
+      const [after] = await db.select().from(rcSchema.rocketchatThreadOpenings);
+      leaseAfterRenewal = after?.expiresAt;
+    };
+
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      expect(await mirror.deliverOwedComment(onlyOwed(owed))).toBe('delivered');
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(leaseAtStart).toBeDefined();
+    expect(leaseAfterRenewal).toBeDefined();
+    expect(leaseAfterRenewal?.getTime()).toBeGreaterThan((leaseAtStart as Date).getTime());
+    expect(posts.filter((p) => p.tmid === undefined)).toHaveLength(1);
+    void connectionId;
+    void first;
+  });
+
+  it('refuses to post one room credentials against a thread registered in another', async () => {
+    const roomA = await bindRoom('room-a');
+    // cm:guard a SECOND CONNECTION and no second binding: one project carries one binding, and what this test needs is the peer's connection — the room the project was rebound to (ISS-981 criterion 32).
+    const roomB = (
+      await store.createConnection({
+        ownerType: 'user',
+        ownerId,
+        provider: 'rocketchat',
+        config: { serverUrl: 'https://chat.example.com' },
+        secrets: { authToken: 'tok', userId: 'bot' },
+      })
+    ).id;
+    const owedId = await comment('rebound mid-flight');
+    const registry = await import('../../src/integrations/rocketchat/thread-registry.js');
+
+    // cm:guard the peer registers DURING this worker's root post, which is the only moment that reaches the read-back: a row already there before the call is an ordinary rebind and takes the retire-and-reopen branch instead, so the race is never exercised (ISS-981 criterion 32, review F2).
+    atPostTime = async () => {
+      atPostTime = null;
+      await registry.registerThread(
+        { issueId },
+        { connectionId: roomB, rid: 'room-b', tmid: 'root-in-b' },
+      );
+    };
+
+    const outcome = await mirror.deliverOwedComment(
+      { commentId: owedId, issueId, projectId, body: 'rebound mid-flight', attempts: 0 },
+      new Date(),
+      { connectionId: roomA, rid: 'room-a' },
+    );
+
+    // cm:guard a comment must never carry one room's rid and credentials with another's tmid: Rocket.Chat either refuses it or files it outside the registered thread, and either way the person it was written to never sees it (ISS-981 criterion 32, review F2).
+    expect(outcome).toBe('failed');
+    expect(posts.some((p) => p.tmid === 'root-in-b')).toBe(false);
+  });
+});
