@@ -12,13 +12,8 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-// GET /api/runners/active?projectId= — the live per-runner execution snapshot
-// powering the dashboard "Active runners" card + the Runners-screen "running
-// ISS-X" line. Exercises the real SQL against Postgres via an in-process
-// `app.request` (mirrors dependency-routes-e2e — no network server): a runner
-// with a dispatched job surfaces `current` (issue ref + stage); an idle runner
-// is null; a job under a TERMINAL pipeline_run (orphan) leaves its runner idle
-// rather than dropping it from the result (ISS-258 join-side filter).
+// cm:why the route is exercised as real SQL against Postgres through an in-process `app.request`, because every assertion here is about what the query returns and a mocked chain answers for none of it
+// cm:guard a job under a TERMINAL pipeline_run leaves its runner IDLE and never drops it from the result — the exclusion is join-side for exactly that reason (ISS-258)
 type Mods = {
   runnerRoutes: typeof import('../../src/runners/routes.js').runnerRoutes;
   signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
@@ -155,6 +150,28 @@ describe('GET /api/runners/active', () => {
 
     const idle = body.runners.find((r: any) => r.runnerId === idleRunner);
     expect(idle.current).toBeNull();
+  });
+
+  // cm:guard the route builds its reference in raw SQL, so the prefix must be JOINED in — this case is the only thing that catches a `projects` column selected with no `projects` in the FROM, which the unit suites cannot see at all (ISS-992)
+  it("names the issue with the project's own prefix", async () => {
+    const { user, project } = await seed();
+    const jwt = await mods.signUserToken(user.id);
+    await harness.db.execute(sql`
+      INSERT INTO issue_prefix_aliases (project_id, prefix) VALUES (${project.id}, 'FD')
+    `);
+    await harness.db.execute(sql`
+      UPDATE projects SET issue_prefix = 'FD' WHERE id = ${project.id}
+    `);
+
+    const runner = await insertRunner(project.id, 'prefixed-runner');
+    const issue = await insertIssue(project.id, 977);
+    const run = await insertRun(project.id, issue, 'running');
+    await insertJob(project.id, { issueId: issue, runnerId: runner, type: 'code', runId: run });
+
+    const { status, body } = await call(project.id, jwt);
+    expect(status).toBe(200);
+    const busy = body.runners.find((r: any) => r.runnerId === runner);
+    expect(busy.current.issueRef).toBe('FD-977');
   });
 
   it('counts a job under a PAUSED pipeline_run as busy (paused is non-terminal)', async () => {

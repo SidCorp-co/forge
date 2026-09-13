@@ -118,8 +118,7 @@ runnerRoutes.get(
       if (!access.role) throw forbidden('not a project member');
       filters.push(eq(runners.projectId, q.projectId));
     } else {
-      // No projectId filter — return runners across the user's projects only.
-      // For simplicity in v1, require explicit projectId. Without it, return [].
+      // cm:guard a caller with no `projectId` gets an EMPTY list and never a cross-project one — this route is project-scoped and the authz above resolves one project, so widening it here would return runners the caller was never checked against
       return c.json({ runners: [] });
     }
     if (q.type) filters.push(eq(runners.type, q.type as RunnerType));
@@ -183,6 +182,7 @@ runnerRoutes.get(
        AND j.status IN ('dispatched','running')
       LEFT JOIN pipeline_runs pr ON pr.id = j.pipeline_run_id
       LEFT JOIN issues i ON i.id = j.issue_id
+      LEFT JOIN projects rp ON rp.id = i.project_id
       WHERE r.project_id = ${projectId}
         AND (j.id IS NULL OR pr.id IS NULL OR pr.status IN ('running','paused'))
       ORDER BY r.name ASC, j.dispatched_at ASC NULLS LAST
