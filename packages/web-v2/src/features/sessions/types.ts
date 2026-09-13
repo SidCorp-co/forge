@@ -533,28 +533,6 @@ export function isRealFailure(
   return classifySessionOutcome(display, failureReason).bucket === "failed";
 }
 
-type RunStatus = "running" | "done" | "failed" | "blocked" | "queued" | "review";
-
-/** Map a session status to the mini PipelineTracker's run-status vocabulary. */
-export function statusToRun(display: AgentSessionDisplayStatus): RunStatus {
-  switch (display) {
-    case "running":
-      return "running";
-    case "completed":
-    case "completed_via_recovery":
-      return "done";
-    case "failed":
-      return "failed";
-    case "cancelled_stale":
-    case "stalled":
-      return "blocked";
-    case "idle":
-    case "queued":
-    default:
-      return "queued";
-  }
-}
-
 /** The step this session RECORDED, verbatim — or `null`, for a session that recorded none. */
 // cm:guard the recorded value, never a projection of it onto the seven staged names. Its predecessor `deriveStage` matched `metadata.step` as a SUBSTRING against a 13-key table and answered `code` for anything left over, so every `drive` session — which is every session the autonomous lane runs — showed "running · code" beside a step nobody ran, and its own doc named the mini tracker ISS-999 deleted as the reason it existed.
 // cm:guard each candidate must be a NONBLANK STRING before it wins. `step ?? stage` let a blank `step` beat a real `stage`, and `.toString()` on a jsonb object rendered a step named "[object Object]" — this is untyped jsonb the server writes, so a value that is not a string is not a step.
