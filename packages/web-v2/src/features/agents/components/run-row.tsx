@@ -1,9 +1,21 @@
 "use client";
 
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Icon, MonoTag } from "@/design";
 import { TONE_META } from "@/design/status";
 import { formatRelativeTime } from "@/lib/utils/format";
-import { blockerText, closeMarks, runState, stateLabel } from "../run-state";
+import {
+  blockerText,
+  closeMarks,
+  disagreement,
+  disagreementText,
+  endReasonText,
+  pendingReasonText,
+  runState,
+  silenceText,
+  stateLabel,
+} from "../run-state";
 import type { RunSessionRow } from "../types";
 
 function StateChip({ row }: { row: RunSessionRow }) {
@@ -53,13 +65,39 @@ function Marks({ row }: { row: RunSessionRow }) {
   );
 }
 
-export interface RunRowProps {
-  row: RunSessionRow;
+/** What core's own heartbeat says, where it disagrees with the chip beside it. */
+// cm:guard this line is rendered from `lastActivityAt`, `sessionStatus` and `sessionFailureReason`, all three of which the route has always sent and this row used to discard. A run the box calls `live x runnable` whose heartbeat is four hours old drew the same "Working" chip as one mid-turn, which is what made a pane stopped on a prompt invisible for 25 hours (ISS-205, ISS-998).
+function CoreReading({ row, now }: { row: RunSessionRow; now: number }) {
+  const silence = silenceText(row, now);
+  const split = disagreement(row);
+  const ended = endReasonText(row);
+  // cm:guard a reason core holds is rendered whichever side of terminal the session is on, and only the WORDING differs: an ending is stated as one, and a note on a session still running is stated as a note. Rendering neither is the silence this row exists to end (ISS-998).
+  const note = pendingReasonText(row);
+  const lines = [silence, split && disagreementText(split), ended, note].filter(
+    Boolean,
+  ) as string[];
+  if (lines.length === 0) return null;
+  return (
+    <span className="fg-caption flex min-w-0 flex-col gap-0.5 text-muted sm:flex-none sm:text-right">
+      {lines.map((l) => (
+        <span key={l} className="truncate">
+          {l}
+        </span>
+      ))}
+    </span>
+  );
 }
 
-export function RunRow({ row }: RunRowProps) {
+export interface RunRowProps {
+  row: RunSessionRow;
+  /** One clock for the whole list, so two rows never grade the same instant differently. */
+  now: number;
+}
+
+export function RunRow({ row, now }: RunRowProps) {
   const waiting = blockerText(row.blockerKind);
   const issues = row.issues ?? [];
+  const pathname = usePathname() || "";
   return (
     <li className="flex flex-col gap-2 rounded-md border border-line bg-surface px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3">
       <StateChip row={row} />
@@ -70,11 +108,21 @@ export function RunRow({ row }: RunRowProps) {
           issues.map((i) => <MonoTag key={i.issueKey}>{i.issueKey}</MonoTag>)
         )}
       </span>
-      {waiting && (
-        <span className="fg-caption flex-none whitespace-nowrap text-muted">
-          waiting on {waiting}
-        </span>
-      )}
+      {waiting &&
+        // cm:guard `waitingOn` IS the question's id, so the link carries it and the Questions tab opens on THAT card. A link to the tab alone leaves a reader with several open decisions unable to tell which one this run is parked on, which is the whole of what the row was supposed to answer (ISS-998).
+        (row.waitingOn ? (
+          <Link
+            href={`${pathname}?tab=questions&q=${encodeURIComponent(row.waitingOn)}`}
+            className="fg-caption flex-none whitespace-nowrap text-muted underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+          >
+            waiting on {waiting} — read the decision
+          </Link>
+        ) : (
+          <span className="fg-caption flex-none whitespace-nowrap text-muted">
+            waiting on {waiting}
+          </span>
+        ))}
+      <CoreReading row={row} now={now} />
       <Marks row={row} />
       <span className="fg-caption hidden flex-none truncate text-subtle sm:inline sm:max-w-[9rem]">
         {row.deviceName ?? row.deviceId}

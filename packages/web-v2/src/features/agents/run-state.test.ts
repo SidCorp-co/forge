@@ -1,7 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { applyFilters, inState, matches } from "./filter";
-import { blockerText, closeMarks, runState, stateLabel } from "./run-state";
-import type { RunSessionRow } from "./types";
+import { HEARTBEAT_REAP_MS, STALLED_THRESHOLD_MS } from "@/features/sessions/types";
+import {
+  blockerText,
+  closeMarks,
+  disagreement,
+  disagreementText,
+  endReasonText,
+  pendingReasonText,
+  pulse,
+  pulseIsStalling,
+  pulseText,
+  runState,
+  silenceText,
+  stateLabel,
+} from "./run-state";
+
 
 describe("the four states", () => {
   it("names each combination of the two axes", () => {
@@ -96,51 +109,138 @@ describe("who can end the wait", () => {
   });
 });
 
-describe("the screen's filters", () => {
-  const row = (over: Partial<RunSessionRow> = {}): RunSessionRow =>
-    ({
-      runId: "run-1",
-      projectId: "p-1",
-      sessionId: null,
-      masterSessionId: null,
-      pid: null,
-      worktreePath: "/repo/.worktrees/grp-964",
-      bootId: "boot-a",
-      incarnation: "live",
-      work: "runnable",
-      blockerKind: null,
-      waitingOn: null,
-      sessionTerminalAt: null,
-      worktreeGoneAt: null,
-      issues: [{ issueKey: "ISS-964", leaseReturned: false }],
-      deviceId: "d-1",
-      deviceName: "dev1",
-      observedAt: "2026-09-09T10:00:00.000Z",
+
+const NOW = Date.parse("2026-09-13T12:00:00.000Z");
+const ago = (ms: number) => new Date(NOW - ms).toISOString();
+
+describe("the heartbeat core holds for a run", () => {
+  // cm:guard the assertions sit either side of each boundary rather than well clear of it: a test taking a 4-hour-old beat and a 1-second-old one passes against a build with no thresholds at all.
+  it("grades a beat either side of the stalled threshold", () => {
+    expect(pulse({ lastActivityAt: ago(STALLED_THRESHOLD_MS) }, NOW).state).toBe("beating");
+    expect(pulse({ lastActivityAt: ago(STALLED_THRESHOLD_MS + 1) }, NOW).state).toBe("silent");
+  });
+
+  it("grades a beat either side of the automatic-recovery threshold", () => {
+    expect(pulse({ lastActivityAt: ago(HEARTBEAT_REAP_MS) }, NOW).state).toBe("silent");
+    expect(pulse({ lastActivityAt: ago(HEARTBEAT_REAP_MS + 1) }, NOW).state).toBe("past-threshold");
+  });
+
+  // cm:guard a run core has never heard from must NOT read as silent: a revival between its CAS and its process registering has no session yet, and calling that stuck marks every start (ISS-998).
+  it("keeps a run it has never heard from apart from one that has gone quiet", () => {
+    expect(pulse({ lastActivityAt: null }, NOW).state).toBe("unheard");
+    expect(pulse({ lastActivityAt: "not a date" }, NOW).state).toBe("unheard");
+    expect(pulseIsStalling(pulse({ lastActivityAt: null }, NOW))).toBe(false);
+    expect(pulseIsStalling(pulse({ lastActivityAt: ago(HEARTBEAT_REAP_MS + 1) }, NOW))).toBe(true);
+  });
+
+  it("says nothing at all while the beat is fresh", () => {
+    expect(pulseText(pulse({ lastActivityAt: ago(1_000) }, NOW))).toBeNull();
+    expect(pulseText(pulse({ lastActivityAt: null }, NOW))).toBeNull();
+  });
+
+  it("names how long the silence has lasted", () => {
+    expect(pulseText(pulse({ lastActivityAt: ago(4 * 3_600_000) }, NOW))).toContain("4h");
+  });
+
+  // cm:guard the wording is the FALSIFIABLE half of criterion 3: past the threshold the client knows only that the bound elapsed. `PIPELINE_HEARTBEAT_TIMEOUT_MS` can move the server's bound and a scheduler that has not run leaves nothing recovered, so any past tense here is a claim about a server action no browser can observe.
+  it("claims an elapsed threshold and never a recovery that happened", () => {
+    const text = pulseText(pulse({ lastActivityAt: ago(HEARTBEAT_REAP_MS + 1) }, NOW)) ?? "";
+    expect(text).toMatch(/threshold/i);
+    expect(text).not.toMatch(/recovered|swept|restarted|has been|was reaped/i);
+  });
+});
+
+describe("the silence line", () => {
+  const row = (incarnation: string, lastActivityAt: string | null) => ({ incarnation, lastActivityAt });
+
+  // cm:guard the falsifying PAIR: a build that dropped the incarnation test entirely passes the first assertion, and one that dropped the line altogether passes the second.
+  it("grades a box that claims a process and stays silent about one that does not", () => {
+    expect(silenceText(row("live", ago(4 * 3_600_000)), NOW)).toMatch(/no report/);
+    expect(silenceText(row("starting", ago(4 * 3_600_000)), NOW)).toMatch(/no report/);
+    expect(
+      silenceText(row("exited", ago(4 * 3_600_000)), NOW),
+      "a park releases the process on purpose, so core will never hear from it again",
+    ).toBeNull();
+  });
+
+  it("says nothing about a live run that is still reporting", () => {
+    expect(silenceText(row("live", ago(1_000)), NOW)).toBeNull();
+  });
+});
+
+describe("the two readings disagreeing", () => {
+  const base = { sessionId: "s-1" };
+
+  it("names a box calling a run live over a session core has ended", () => {
+    expect(
+      disagreement({ ...base, incarnation: "live", sessionStatus: "failed" }),
+    ).toBe("box-live-core-terminal");
+    expect(
+      disagreement({ ...base, incarnation: "starting", sessionStatus: "cancelled" }),
+    ).toBe("box-live-core-terminal");
+  });
+
+  it("names a box calling the process gone over a session core still has running", () => {
+    expect(
+      disagreement({ ...base, incarnation: "exited", sessionStatus: "running" }),
+    ).toBe("box-exited-core-running");
+  });
+
+  it("is silent when the two agree, and when there is no session to compare", () => {
+    expect(disagreement({ ...base, incarnation: "live", sessionStatus: "running" })).toBeNull();
+    expect(disagreement({ ...base, incarnation: "exited", sessionStatus: "completed" })).toBeNull();
+    expect(
+      disagreement({ sessionId: null, incarnation: "live", sessionStatus: "failed" }),
+    ).toBeNull();
+  });
+
+  it("gives every disagreement words that name both readings", () => {
+    for (const d of ["box-live-core-terminal", "box-exited-core-running"] as const) {
+      expect(disagreementText(d)).toMatch(/box/);
+      expect(disagreementText(d)).toMatch(/core/);
+    }
+  });
+});
+
+describe("why a session ended", () => {
+  // cm:guard routed through the Sessions tab's own label table, so one cause never reads two ways across the two tabs of one screen, and an unknown reason resolves rather than leaking the wire word.
+  it("says the cause in words rather than the stored reason", () => {
+    const text = endReasonText({
+      sessionFailureReason: "agent_exited_without_result",
+      sessionStatus: "failed",
+    });
+    expect(text).not.toBe("agent_exited_without_result");
+    expect(text ?? "").toMatch(/exited/i);
+  });
+
+  it("says nothing where core holds no reason", () => {
+    expect(endReasonText({ sessionFailureReason: null, sessionStatus: "failed" })).toBeNull();
+  });
+
+  // cm:guard the FALSIFYING pair: `failureReason` is written on a session that is still running for the skip causes, so a version reading the reason alone renders "why this ended" over a run that is mid-turn. Both halves are needed — one reading nothing at all passes the first assertion.
+  it("names no ending for a run whose session core still calls running", () => {
+    expect(
+      endReasonText({ sessionFailureReason: "runner_full", sessionStatus: "running" }),
+    ).toBeNull();
+    expect(
+      endReasonText({ sessionFailureReason: "runner_full", sessionStatus: "failed" }),
+    ).not.toBeNull();
+  });
+
+  // cm:guard the reason core holds on a session it has NOT ended is still SHOWN, in wording that does not call it an ending: `runner_full` on a running session is the answer to "why has this not moved", and suppressing it to keep the wording tidy is the silence this screen was filed against (ISS-998).
+  it("shows a reason core holds on a running session, worded as a note", () => {
+    const text = pendingReasonText({
+      sessionFailureReason: "runner_full",
       sessionStatus: "running",
-      lastActivityAt: null,
-      masterTitle: null,
-      ...over,
-    }) as RunSessionRow;
-
-  it("matches an issue key, a box name and the worktree", () => {
-    expect(matches(row(), "iss-964")).toBe(true);
-    expect(matches(row(), "dev1")).toBe(true);
-    expect(matches(row(), "grp-964")).toBe(true);
-    expect(matches(row(), "nothing-like-this")).toBe(false);
+    });
+    expect(text ?? "").toMatch(/capacity/i);
+    expect(text ?? "").not.toMatch(/ended/i);
+    expect(
+      pendingReasonText({ sessionFailureReason: "runner_full", sessionStatus: "failed" }),
+    ).toBeNull();
   });
 
-  // cm:guard the two filters must not overlap: a reader typing a state word means the state filter, and matching the label in the text search would make both untrustworthy.
-  it("does not match the state label as text", () => {
-    expect(matches(row({ incarnation: "exited", work: "blocked" }), "parked")).toBe(false);
-  });
-
-  it("counts an answered park as waiting, not as working", () => {
-    const answered = row({ incarnation: "exited", work: "runnable" });
-    expect(inState(answered, "waiting")).toBe(true);
-    expect(inState(answered, "working")).toBe(false);
-  });
-
-  it("returns nothing for a search that matches nothing, which is the empty-search state", () => {
-    expect(applyFilters([row()], "zzz", "all")).toEqual([]);
+  it("says nothing at all where core holds no session for this run", () => {
+    expect(endReasonText({ sessionFailureReason: "runner_full", sessionStatus: null })).toBeNull();
   });
 });

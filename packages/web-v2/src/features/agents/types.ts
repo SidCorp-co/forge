@@ -32,6 +32,8 @@ export interface RunSessionRow {
   observedAt: string;
   /** Core's own reading, never the box's claim — the two disagreeing is signal. */
   sessionStatus: string | null;
+  /** Why core failed the session, where it did. `null` both on a clean end and on one still open. */
+  sessionFailureReason: string | null;
   lastActivityAt: string | null;
   masterTitle: string | null;
 }

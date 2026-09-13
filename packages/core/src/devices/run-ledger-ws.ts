@@ -22,7 +22,9 @@ const runSchema = z
     pid: z.number().int().positive().nullish(),
     worktreePath: z.string().min(1).max(1024),
     bootId: z.string().min(1).max(120),
-    incarnation: z.enum(['live', 'exited']),
+    // cm:guard all THREE values `Incarnation::wire` can emit, and `starting` is the one that was missing: it is the window between a revival's CAS committing and the process registering, so it appears on any box mid-revival. The snapshot is validated WHOLE, so one unknown value here drops that box's entire registry and every run on it vanishes from `GET /api/projects/:id/run-sessions` behind nothing but a warn — the same failure mode `non_empty` in `session_ledger.rs` was written to avoid for `masterSessionId`.
+    // cm:edge contract -> packages/runner/crates/forge-runner-core/src/runner/ledger.rs — `Incarnation::wire`; a value added there must join this enum in the same change, and `packages/web-v2/src/features/agents/types.ts:Incarnation` is the third copy.
+    incarnation: z.enum(['live', 'starting', 'exited']),
     work: z.enum(['runnable', 'blocked', 'done']),
     blockerKind: z.enum(['machine', 'master_or_peer', 'human', 'nobody']).nullish(),
     waitingOn: z.string().max(1024).nullish(),

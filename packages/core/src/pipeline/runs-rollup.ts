@@ -9,7 +9,7 @@
  * here so the front-end stays a thin renderer.
  */
 
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   agentSessions,
@@ -20,6 +20,7 @@ import {
   type PipelineRunStatus,
   pipelineRuns,
   projects,
+  terminalAgentSessionStatuses,
   usageRecords,
 } from '../db/schema.js';
 import { RETRY_MAX_ROUNDS, readAutoRetryPayload } from '../jobs/retry.js';
@@ -114,8 +115,15 @@ export interface PipelineRunSummary {
    * ISS-789 — jobs on this run that are not yet terminal (`queued`,
    * `dispatched`, `running`).
    */
-  // cm:guard this counts JOBS, never occupancy — `agent_sessions` has no `job_id` and hangs off `pipelineRunId`, so a master-lane run reads `liveJobs: 0` while fully live. Reading 0 as "nothing left working on it" is what made 14 heartbeating runs look like a leak (2026-09-12); confirm against `agent_sessions.lastHeartbeatAt` before any caller calls a run dead.
+  // cm:guard this counts JOBS, never occupancy — `agent_sessions` has no `job_id` and hangs off `pipelineRunId`, so a master-lane run reads `liveJobs: 0` while fully live. Reading 0 as "nothing left working on it" is what made 14 heartbeating runs look like a leak (2026-09-12); confirm against `lastSessionBeatAt` below, which is that confirmation carried on the same row.
   liveJobs: number;
+  /**
+   * ISS-998 — the newest heartbeat of any non-terminal `agent_sessions` row on
+   * this run, or `null` where the run has none.
+   */
+  // cm:guard this is the OTHER half of `liveJobs` and it rides on the same row because a caller that has to fetch it separately cannot get a consistent answer: `agent_sessions` is paged, the set moves under an offset walk, and a session that ends between two pages takes a still-running one off the end of the list with it. One query, one snapshot, both facts (ISS-998).
+  // cm:guard graded on the BEAT and never on `status === 'running'`: the sweeper fails a silent session on its own schedule, so between a box dying and the sweep there are `running` rows with hours-old heartbeats, and taking those as proof of life keeps an abandoned run uncounted for as long as the reaper is behind.
+  lastSessionBeatAt: string | null;
   /** ISS-411 — per-attempt device/retry timeline (jobs-sourced). */
   attempts: PipelineRunAttempt[];
   /** ISS-411 — round-robin headline; null when the run never retried. */
@@ -207,9 +215,7 @@ async function loadCostForRun(runId: string): Promise<PipelineRunCostSummary> {
       requests: sql<number>`coalesce(sum(${usageRecords.requestCount}), 0)`.mapWith(Number),
       sampleCount: sql<number>`count(${usageRecords.id})`.mapWith(Number),
     })
-    // ISS-460 — usage_records.session_id is an agent_sessions.id (NOT a job id;
-    // verified beta ISS-308), so join through agent_sessions, scoped by the
-    // session's pipeline_run_id. Guard the ::uuid cast against non-uuid ids.
+    // cm:guard `usage_records.session_id` is an `agent_sessions.id` and NOT a job id (verified on beta, ISS-308), so the run is reached by joining that table rather than by reading a column named for a job; the `::uuid` cast is guarded because the column is text and one non-uuid row would fail the whole query.
     .from(usageRecords)
     .innerJoin(agentSessions, sql`${agentSessions.id} = ${usageRecords.sessionId}::uuid`)
     .where(
@@ -329,6 +335,8 @@ function rowToListItem(row: RunRow): PipelineRunListItem {
     cost: EMPTY_COST,
     // cm:why 0 is the honest default for a caller that did not batch the count — never a guess about liveness
     liveJobs: 0,
+    // cm:why `null` is "this caller did not load it", which is the same thing a reader does with "this run has no session": neither is a claim that the run is dead
+    lastSessionBeatAt: null,
   };
 }
 
@@ -362,12 +370,13 @@ export async function loadPipelineRunSummary(runId: string): Promise<PipelineRun
   const [row] = await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, runId)).limit(1);
   if (!row) return null;
 
-  const [steps, cost, attemptRollup, issueRefs, liveMap] = await Promise.all([
+  const [steps, cost, attemptRollup, issueRefs, liveMap, beatMap] = await Promise.all([
     loadStepsForRun(runId),
     loadCostForRun(runId),
     loadAttemptsForRun(runId),
     loadIssueRefs(row.issueId ? [row.issueId] : []),
     loadLiveJobCountsByRunIds([runId]),
+    loadLastSessionBeatByRunIds([runId]),
   ]);
 
   const ref = row.issueId ? issueRefs.get(row.issueId) : undefined;
@@ -377,6 +386,8 @@ export async function loadPipelineRunSummary(runId: string): Promise<PipelineRun
     issueTitle: ref?.issueTitle ?? null,
     // cm:guard load this from the same batched helper as the list surface and never leave the `rowToListItem` default standing — a spread whose `liveJobs: 0` is not overridden makes the detail endpoint answer 0 for EVERY run, which is the run-liveness lie ISS-789 exists to remove and is what it shipped as for the whole of ISS-789's first half
     liveJobs: liveMap.get(runId) ?? 0,
+    // cm:guard the same rule as `liveJobs` above: loaded from the batched helper, never left on `rowToListItem`'s null — a detail endpoint answering `null` for every run says "no session" about runs that have one
+    lastSessionBeatAt: beatMap.get(runId) ?? null,
     steps,
     cost,
     attempts: attemptRollup.attempts,
@@ -407,6 +418,31 @@ async function loadLiveJobCountsByRunIds(runIds: string[]): Promise<Map<string, 
     )
     .groupBy(jobs.pipelineRunId);
   for (const r of rows) if (r.runId) out.set(r.runId, Number(r.n));
+  return out;
+}
+
+/**
+ * Newest heartbeat of a non-terminal session on each run, in one round-trip.
+ */
+// cm:why batched beside `loadLiveJobCountsByRunIds` and never fetched per run: the list renders up to `limit` runs, and the whole point of carrying this field is that the two halves of run liveness are read in ONE snapshot — a second paged request cannot give a consistent answer at all (ISS-998).
+// cm:edge contract -> packages/web-v2/src/features/agents/stalled-runs.ts — `stalledRuns` reads `liveJobs` and this field together; a run counted on one of them alone is either a live master-lane run called dead or an orphan left uncounted.
+async function loadLastSessionBeatByRunIds(runIds: string[]): Promise<Map<string, string | null>> {
+  const out = new Map<string, string | null>();
+  if (runIds.length === 0) return out;
+  const rows = await db
+    .select({
+      runId: agentSessions.pipelineRunId,
+      beat: sql<Date | null>`max(${agentSessions.lastHeartbeatAt})`,
+    })
+    .from(agentSessions)
+    .where(
+      and(
+        inArray(agentSessions.pipelineRunId, runIds),
+        notInArray(agentSessions.status, [...terminalAgentSessionStatuses]),
+      ),
+    )
+    .groupBy(agentSessions.pipelineRunId);
+  for (const r of rows) if (r.runId) out.set(r.runId, toIso(r.beat));
   return out;
 }
 
@@ -458,10 +494,11 @@ export async function listItemsFromRows(rows: RunRow[]): Promise<PipelineRunList
   if (rows.length === 0) return [];
   const ids = rows.map((r) => r.id);
   const issueIds = [...new Set(rows.map((r) => r.issueId).filter((v): v is string => v != null))];
-  const [costMap, issueRefs, liveMap] = await Promise.all([
+  const [costMap, issueRefs, liveMap, beatMap] = await Promise.all([
     loadCostByRunIds(ids),
     loadIssueRefs(issueIds),
     loadLiveJobCountsByRunIds(ids),
+    loadLastSessionBeatByRunIds(ids),
   ]);
   return rows.map((r) => {
     const ref = r.issueId ? issueRefs.get(r.issueId) : undefined;
@@ -471,6 +508,7 @@ export async function listItemsFromRows(rows: RunRow[]): Promise<PipelineRunList
       issueTitle: ref?.issueTitle ?? null,
       cost: costMap.get(r.id) ?? EMPTY_COST,
       liveJobs: liveMap.get(r.id) ?? 0,
+      lastSessionBeatAt: beatMap.get(r.id) ?? null,
     };
   });
 }

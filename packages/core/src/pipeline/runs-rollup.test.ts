@@ -14,6 +14,7 @@ const runRowQueue: SelectQueue = [];
 const bulkCostQueue: SelectQueue = [];
 const issueQueue: SelectQueue = [];
 const liveJobsQueue: SelectQueue = [];
+const sessionBeatQueue: SelectQueue = [];
 const attemptsQueue: SelectQueue = [];
 
 let nextSelectKind: 'steps' | 'cost' | 'runRow' | 'bulkCost' = 'steps';
@@ -28,6 +29,7 @@ vi.mock('drizzle-orm', () => ({
   eq: (...args: unknown[]) => ({ _eq: args }),
   asc: (...args: unknown[]) => ({ _asc: args }),
   inArray: (...args: unknown[]) => ({ _inArray: args }),
+  notInArray: (...args: unknown[]) => ({ _notInArray: args }),
   sql: ((strings: TemplateStringsArray, ...values: unknown[]) => {
     const obj = { _sql: strings.join('?'), values };
     return Object.assign(obj, { mapWith: () => obj });
@@ -64,7 +66,16 @@ vi.mock('../db/schema.js', () => ({
     status: 'agent_sessions.status',
     failureReason: 'agent_sessions.failure_reason',
     failureDetail: 'agent_sessions.failure_detail',
+    lastHeartbeatAt: 'agent_sessions.last_heartbeat_at',
   },
+  // cm:edge contract -> packages/core/src/db/schema.ts#terminalAgentSessionStatuses — the same five, copied because this suite mocks the whole schema module; a status added there and not here leaves this file asserting the heartbeat rollup against a list production no longer uses, and nothing goes red (ISS-998).
+  terminalAgentSessionStatuses: [
+    'completed',
+    'failed',
+    'completed_via_recovery',
+    'cancelled_stale',
+    'cancelled',
+  ],
   jobs: {
     id: 'jobs.id',
     pipelineRunId: 'jobs.pipeline_run_id',
@@ -109,7 +120,10 @@ vi.mock('../db/client.js', () => ({
     select: (projection?: Record<string, unknown>) => ({
       from: (table: unknown) => {
         const tableKey = typeof table === 'object' && table !== null ? Object.values(table)[0] : '';
-        const isAgentSessions = String(tableKey).startsWith('agent_sessions');
+        // cm:why discriminate the two `agent_sessions` selects by PROJECTION for the same reason the two `jobs` selects are: the steps rollup and the ISS-998 heartbeat both read that table from one `Promise.all`, and an order-based queue mis-feeds them the day a loader joins that array
+        const isSessionBeat =
+          String(tableKey).startsWith('agent_sessions') && !!projection && 'beat' in projection;
+        const isAgentSessions = String(tableKey).startsWith('agent_sessions') && !isSessionBeat;
         const isUsageRecords = String(tableKey).startsWith('usage_records');
         const isPipelineRuns = String(tableKey).startsWith('pipeline_runs');
         const isIssues = String(tableKey).startsWith('issues');
@@ -118,21 +132,23 @@ vi.mock('../db/client.js', () => ({
         const isAttempts =
           String(tableKey).startsWith('jobs.') && !!projection && !('n' in projection);
 
-        const result = isAgentSessions
-          ? stepsQueue.shift()
-          : isPipelineRuns
-            ? runRowQueue.shift()
-            : isIssues
-              ? issueQueue.shift()
-              : isLiveJobCount
-                ? liveJobsQueue.shift()
-                : isAttempts
-                  ? attemptsQueue.shift()
-                  : isUsageRecords
-                    ? nextSelectKind === 'bulkCost'
-                      ? bulkCostQueue.shift()
-                      : costQueue.shift()
-                    : [];
+        const result = isSessionBeat
+          ? sessionBeatQueue.shift()
+          : isAgentSessions
+            ? stepsQueue.shift()
+            : isPipelineRuns
+              ? runRowQueue.shift()
+              : isIssues
+                ? issueQueue.shift()
+                : isLiveJobCount
+                  ? liveJobsQueue.shift()
+                  : isAttempts
+                    ? attemptsQueue.shift()
+                    : isUsageRecords
+                      ? nextSelectKind === 'bulkCost'
+                        ? bulkCostQueue.shift()
+                        : costQueue.shift()
+                      : [];
 
         return makeChain(Promise.resolve(result ?? []));
       },
@@ -163,6 +179,7 @@ beforeEach(() => {
   bulkCostQueue.length = 0;
   issueQueue.length = 0;
   liveJobsQueue.length = 0;
+  sessionBeatQueue.length = 0;
   attemptsQueue.length = 0;
   nextSelectKind = 'steps';
 });
@@ -224,7 +241,7 @@ describe('loadPipelineRunSummary', () => {
     expect(result?.steps).toHaveLength(1);
     const step = result!.steps[0]!;
     expect(step.status).toBe('running');
-    // running is not terminal → no finishedAt + no durationMs
+    // cm:guard both nulls are asserted because a step that is still running has neither: a build stamping `finishedAt` at the moment a step starts would give every live run a duration and read as finished.
     expect(step.finishedAt).toBeNull();
     expect(step.durationMs).toBeNull();
     expect(step.agentSessionId).toBe(SESS_A);
@@ -296,6 +313,31 @@ describe('loadPipelineRunSummary', () => {
     expect(result?.liveJobs).toBe(2);
   });
 
+  // cm:guard assert a REAL stamp here, never just "the field is present": the failure this covers is a spread whose `lastSessionBeatAt: null` default is never overridden, which reads as "no session on this run" for every run there is and puts every live master-lane run into the stalled count (ISS-998).
+  it('ISS-998: carries the run session heartbeat, not the rowToListItem null default', async () => {
+    const beat = new Date('2026-09-13T11:59:00.000Z');
+    runRowQueue.push([runRow]);
+    stepsQueue.push([]);
+    costQueue.push([]);
+    liveJobsQueue.push([]);
+    sessionBeatQueue.push([{ runId: RUN_ID, beat }]);
+
+    const result = await loadPipelineRunSummary(RUN_ID);
+    expect(result?.lastSessionBeatAt).toBe('2026-09-13T11:59:00.000Z');
+  });
+
+  // cm:guard the pair: a run with no non-terminal session reads `null`, and `null` must not be confused with the loader not having run — both halves are asserted because a build returning `null` always passes the second alone.
+  it('ISS-998: a run with no live session reads null rather than a stale stamp', async () => {
+    runRowQueue.push([runRow]);
+    stepsQueue.push([]);
+    costQueue.push([]);
+    liveJobsQueue.push([]);
+    sessionBeatQueue.push([]);
+
+    const result = await loadPipelineRunSummary(RUN_ID);
+    expect(result?.lastSessionBeatAt).toBeNull();
+  });
+
   it('ISS-789: a run with no live jobs reads 0, so a dead run is distinguishable from a live one', async () => {
     runRowQueue.push([runRow]);
     stepsQueue.push([]);
@@ -365,9 +407,11 @@ describe('listItemsFromRows', () => {
     nextSelectKind = 'bulkCost';
     bulkCostQueue.push([]);
     liveJobsQueue.push([{ runId: RUN_ID, n: 3 }]);
+    sessionBeatQueue.push([{ runId: RUN_ID, beat: new Date('2026-09-13T11:58:00.000Z') }]);
 
     const items = await listItemsFromRows([runRow]);
     expect(items[0]!.liveJobs).toBe(3);
+    expect(items.map((i) => i.lastSessionBeatAt)).toEqual(['2026-09-13T11:58:00.000Z']);
   });
 });
 
