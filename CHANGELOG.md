@@ -2152,6 +2152,20 @@
 
 ### Fixed
 
+- **A retired build machine can be put back from the Runners screen.** A machine can be retired
+  several ways — an operator action elsewhere in the product, an agent, or the system reaping a box
+  that went missing — and however it happened, the project's Runners screen showed it with its pool
+  switch greyed out. The line under that switch told you to register the machine again, which has
+  never worked: the second registration collides with the first and used to fail with nothing a
+  reader could act on. So there was no way back from any screen, and a project whose only other
+  machine was already draining had nowhere to send its work until somebody edited the record by
+  hand. The switch is now usable on a retired machine, its line tells you to use it, and agents
+  that can retire a box can put one back too.
+
+  Registering a machine that is already on a project now says so in a sentence — which machine it
+  collided with, what state that one is in, and whether to bring it back or unassign it first —
+  instead of failing with a database error.
+
 - **A paused job no longer restarts itself by writing a note.** When a job stops to ask a person
   something, it is supposed to stay stopped until someone answers. It did not: the job's own
   follow-up note — a finding it owed the ticket, a correction, a record of what it had already

@@ -98,7 +98,7 @@ Two reachability changes come with it, and neither is a bug to file:
   no scopes at all, so `assertPrincipalIsAdmin`'s scope half was skipped for it and only the
   project role was asked. A box's agent credential is minted `['read','write']`
   (`devices/credential.ts`), so `forge_skills.register` /
-  `.create` / `.update` / `.delete` / `.adopt` / `.push`, `forge_runners` register / retire /
+  `.create` / `.update` / `.delete` / `.adopt` / `.push`, `forge_runners` register / retire / restore /
   update_capabilities, `forge_config action=update`, `forge_schedules` create / update / delete /
   run and `forge_reconcile` now answer `FORBIDDEN: this token lacks the admin scope` to a pipeline
   agent. That traffic was operator-shaped and mostly dormant (`forge_skills.register` last

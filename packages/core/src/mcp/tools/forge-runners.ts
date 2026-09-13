@@ -7,10 +7,13 @@ import {
   runnerTypes,
 } from '../../db/schema.js';
 import { countInFlightByRunner, countInFlightForOneRunner } from '../../jobs/in-flight.js';
+import { setRunnerStatus as auditedSetRunnerStatus } from '../../runners/runner-events.js';
 import {
+  findRunnerById,
   findRunnerProjectId,
   insertRunner,
   listRunners,
+  RunnerAlreadyBoundError,
   setRunnerCapabilities,
   setRunnerStatus,
 } from '../../runners/service.js';
@@ -36,14 +39,12 @@ const registerDataSchema = z
 
 const inputSchema = z
   .object({
-    action: z.enum(['list', 'register', 'retire', 'update_capabilities']),
+    action: z.enum(['list', 'register', 'restore', 'retire', 'update_capabilities']),
     // list filters
     projectId: z.uuid().optional(),
     status: z.enum(runnerStatuses).optional(),
     type: z.enum(runnerTypes).optional(),
-    // register
     data: registerDataSchema.optional(),
-    // retire / update_capabilities
     runnerId: z.uuid().optional(),
     force: z.boolean().optional(),
     capabilities: z.record(z.string(), z.unknown()).optional(),
@@ -87,7 +88,7 @@ function parseCapabilitiesOrThrow(input: unknown): Record<string, unknown> {
 export const forgeRunnersTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_runners',
   description:
-    'Manage runners for projects in your scope (projects you own or are a member of). Actions: `list` (optional projectId/status/type filters, restricted to your projects; returns inFlightCount per runner plus quarantinedUntil/quarantineReason — non-null means the box is HARD-excluded from dispatch after repeated identical box-scoped failures, either the same preflight check or the same never-claimed dispatch; distinct from the rate/usage/auth limitReason fields), `register` (insert with default status=offline; requires owner/admin on the target project), `retire` (sets status=disabled; requires owner/admin; refuses with RUNNER_BUSY unless force:true), `update_capabilities` (replaces capabilities jsonb after server-side validation; requires owner/admin).',
+    'Manage runners for projects in your scope (projects you own or are a member of). Actions: `list` (optional projectId/status/type filters, restricted to your projects; returns inFlightCount per runner plus quarantinedUntil/quarantineReason — non-null means the box is HARD-excluded from dispatch after repeated identical box-scoped failures, either the same preflight check or the same never-claimed dispatch; distinct from the rate/usage/auth limitReason fields), `register` (insert with default status=offline; requires owner/admin on the target project), `retire` (sets status=disabled; requires owner/admin; refuses with RUNNER_BUSY unless force:true), `restore` (the inverse of retire: sets status=online, returning a withdrawn box to the pool; requires owner/admin), `update_capabilities` (replaces capabilities jsonb after server-side validation; requires owner/admin).',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
@@ -118,16 +119,23 @@ export const forgeRunnersTool: ContextScopedMcpToolFactory = (ctx) => ({
       }
       await assertPrincipalIsAdmin(ctx.principal, input.data.projectId);
       const caps = parseCapabilitiesOrThrow(input.data.capabilities);
-      const row = await insertRunner({
-        projectId: input.data.projectId,
-        type: input.data.type,
-        deviceId: input.data.deviceId,
-        name: input.data.name,
-        labels: input.data.labels ?? [],
-        capabilities: caps,
-        config: input.data.config ?? {},
-      });
-      return { runner: publicRunnerRow(row) };
+      try {
+        const row = await insertRunner({
+          projectId: input.data.projectId,
+          type: input.data.type,
+          deviceId: input.data.deviceId,
+          name: input.data.name,
+          labels: input.data.labels ?? [],
+          capabilities: caps,
+          config: input.data.config ?? {},
+        });
+        return { runner: publicRunnerRow(row) };
+      } catch (err) {
+        if (err instanceof RunnerAlreadyBoundError) {
+          throw new Error(`BAD_REQUEST: RUNNER_ALREADY_BOUND: ${err.message}`);
+        }
+        throw err;
+      }
     }
 
     if (input.action === 'retire') {
@@ -149,6 +157,28 @@ export const forgeRunnersTool: ContextScopedMcpToolFactory = (ctx) => ({
         await setRunnerStatus(runnerId, 'draining');
       }
       const row = await setRunnerStatus(runnerId, 'disabled');
+      if (!row) throw new Error('NOT_FOUND: runner not found');
+      return { runner: publicRunnerRow(row) };
+    }
+
+    // cm:guard `retire` and `restore` stay a pair at the same reach — a status a surface can create and not leave is what left forge-vm withdrawn with no route back, and the only fix on offer was a re-registration the unique index refuses (ISS-990).
+    // cm:edge contract -> packages/core/src/runners/select.ts — `online` and not `offline`, because dispatch filters on `status = 'online'`: `offline` would leave a restored box admitted by pool-admission and invisible to the picker until its next heartbeat. `stale-detector.ts` demotes a stale `online` row within the minute, so this cannot become a lasting lie.
+    // cm:edge lockstep -> packages/core/src/runners/runner-events.ts — the AUDITED writer, so the Activity panel answering "why is this box back" holds the transition. `retire` beside it still takes the bare one and leaves no row; closing that is docs/proposals/mcp-runner-status-writes-are-unaudited.md.
+    if (input.action === 'restore') {
+      if (!input.runnerId) {
+        throw new Error('BAD_REQUEST: runnerId is required for action=restore');
+      }
+      const runnerId = input.runnerId;
+      const ownerProjectId = await findRunnerProjectId(runnerId);
+      if (!ownerProjectId) throw new Error('NOT_FOUND: runner not found');
+      await assertPrincipalIsAdmin(ctx.principal, ownerProjectId);
+      const transition = await auditedSetRunnerStatus({
+        runnerId,
+        newStatus: 'online',
+        reason: 'mcp_restore',
+      });
+      if (!transition.found) throw new Error('NOT_FOUND: runner not found');
+      const row = await findRunnerById(runnerId);
       if (!row) throw new Error('NOT_FOUND: runner not found');
       return { runner: publicRunnerRow(row) };
     }
