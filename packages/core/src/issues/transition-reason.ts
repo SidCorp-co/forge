@@ -77,3 +77,32 @@ export async function postTransitionReasonComment(
     parentId: null,
   });
 }
+
+/**
+ * What is missing from a park's own account of itself, or `null`.
+ */
+// cm:guard both faults are raised BEFORE the transaction opens, and neither may move inside it: a park whose reason is missing must be refused rather than detected after the fact, which is what every guard deleted with the reopen cap tried to do and each detected it by stranding the issue.
+export function parkReasonFault(
+  fromStatus: IssueStatus,
+  requestedStatus: IssueStatus,
+  options: {
+    transitionReason?: string | undefined;
+    waitingKind?: WaitingKind | undefined;
+    skip?: boolean | undefined;
+  },
+): { code: 'TRANSITION_REASON_REQUIRED' | 'WAITING_KIND_REQUIRED'; detail: string } | null {
+  if (!requiresAuthoredReason(fromStatus, requestedStatus) || options.skip === true) return null;
+  if (!options.transitionReason?.trim()) {
+    return {
+      code: 'TRANSITION_REASON_REQUIRED',
+      detail: `a transition to \`${requestedStatus}\` must carry a reason saying what is needed or what is wrong`,
+    };
+  }
+  if (requestedStatus === 'waiting' && !options.waitingKind) {
+    return {
+      code: 'WAITING_KIND_REQUIRED',
+      detail: 'a `waiting` park must say which kind it is: `needs_decision` or `needs_resource`',
+    };
+  }
+  return null;
+}

@@ -16,9 +16,13 @@ import {
   type QuestionOption,
   type QuestionStep,
 } from '../db/schema-questions.js';
+import type { IssueDependencyExecutor } from '../issues/dependency-executor.js';
 import { wakeMastersForAnswer } from '../ws/master-wake.js';
 
 // cm:guard the shape is DECLARED by the asker, never derived from which field arrived. A caller that sends an option list and a needed-text line has asked two questions in one round, and deriving would silently pick one of them for the person to answer (ISS-996).
+/** The pool, or a caller's open transaction — a park writes its question inside the transition's. */
+type QuestionExecutor = IssueDependencyExecutor;
+
 export type AskAnswer =
   | { shape: 'choice'; options: QuestionOption[]; recommendedOptionId: string }
   | { shape: 'free_text'; needed: string };
@@ -157,7 +161,32 @@ async function checkIssueBelongsToProject(
 export async function askQuestion(input: AskInput) {
   checkAnswer(input.answer);
   await checkIssueBelongsToProject(input.issueId, input.projectId);
-  const [row] = await db
+  return insertQuestion(db, input);
+}
+
+/**
+ * The question a park mints, written inside the transition's own transaction.
+ */
+// cm:guard core ALLOCATES the id here, and that does not weaken the rule on the pool route that it must not: a box asking through `POST /me/questions` has already written its own half of the park in a local transaction, and this door has no such half — the park and its question are one commit or neither (ISS-996).
+// cm:guard no `checkIssueBelongsToProject` call: the caller is mid-transition on that very issue and holds its `projectId`, so the crossed row this guards against is not representable here, and the read would be a `issues` SELECT inside the highest-volume transaction in the product (ISS-863's rule).
+export async function askParkQuestion(
+  executor: QuestionExecutor,
+  input: { id: string; projectId: string; issueId: string; prompt: string; needed: string },
+) {
+  const answer: AskAnswer = { shape: 'free_text', needed: input.needed };
+  checkAnswer(answer);
+  return insertQuestion(executor, {
+    id: input.id,
+    projectId: input.projectId,
+    issueId: input.issueId,
+    prompt: input.prompt,
+    blockerKind: 'human',
+    answer,
+  });
+}
+
+async function insertQuestion(executor: QuestionExecutor, input: AskInput) {
+  const [row] = await executor
     .insert(agentQuestions)
     .values({
       id: input.id,

@@ -4244,6 +4244,16 @@
 
 ### Changed
 
+- **When a run stops to ask you something, it can now leave you a question instead of only a note.**
+  A run that parks on an issue has always had to say why, and that reason is posted as a comment —
+  but there was nothing to answer, only a thread to reply in, and any reply at all restarted the
+  work. A park that also says *what would settle it* now creates a real question on the issue: it
+  appears where questions appear, in the project's room as well as on the issue, and answering it is
+  answering rather than commenting. The park and its question are written together, so an issue that
+  says a run is waiting on you always has the question to show. A park that does not say what would
+  settle it behaves exactly as before. Parks you enter yourself create nothing — stopping your own
+  work is not asking yourself a question.
+
 - **An agent can now ask you a question whose answer is words, not one of a list.** Until now a
   parked run could only offer you a set of options to pick from, so anything whose answer was a
   sentence — a credential, which of two readings was meant, the wording to use — could not be asked

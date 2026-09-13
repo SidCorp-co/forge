@@ -175,6 +175,8 @@ const dataObject = z
     reason: z.string().trim().min(1).max(10_000).optional(),
     // cm:guard say WHICH kind whenever you write `waiting` (RFC 0002 INV-5) — core never derives it, so an omitted kind leaves the board rendering "a human is needed" with no hint of what is being asked; it is cleared automatically on any exit
     waitingKind: z.enum(waitingKinds).optional(),
+    // cm:guard what would SETTLE the park, and not the reason said twice: `reason` is why the work stopped, this is what the person has to supply for it to start again. Sending it mints a free-text question a person answers on the issue and in the project's room; omitting it leaves the park as prose nobody can answer except by commenting (ISS-996).
+    needs: z.string().trim().min(1).max(2_000).optional(),
     // cm:guard REPLACE-SET, not additive — `[]` clears every label and `undefined` means no change, so a caller that has not read the issue's current `labels[]` clobbers the set it did not send (ISS-633)
     // cm:guard the object arm mirrors REST's `labelAttachItemSchema` exactly — `labelId` takes a NAME or a uuid like the bare string, `isPrimary` is legal only on a module, and both arms resolve through `resolveLabelIdsForWrite`, so the two surfaces cannot drift apart
     labels: z
@@ -749,6 +751,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           await transitionIssueStatus(issue, input.data.status, principalActor(principal), {
             transitionReason: input.data.reason ?? input.data.note,
             waitingKind: input.data.waitingKind,
+            needs: input.data.needs,
           });
         }
 
@@ -774,6 +777,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         await transitionIssueStatus(issue, target, principalActor(principal), {
           transitionReason: input.data?.reason ?? input.data?.note,
           waitingKind: input.data?.waitingKind,
+          needs: input.data?.needs,
         });
         const fresh = await loadIssue(issue.id);
         const transitionOutput: Record<string, unknown> = await serializeWithAttachments(fresh);
