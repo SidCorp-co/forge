@@ -211,7 +211,7 @@ async function assertAssigneeIsMember(projectId: string, assigneeId: string): Pr
 }
 
 // cm:why the ISS-967 body routes are re-exported through here rather than imported straight into `index.ts`: `.arch.baseline.json` freezes that file's fan-out at 48 modules with `improves: down`, so a 49th — `core-body` — is refused outright and there is no widening available. This module is where the choice belongs anyway: it already owns issue bodies, already imports `core-body` (so this costs its own frozen 7 nothing), and already hosts the comment surface via `registerIssueCommentRoutes`. `index.ts` stays a mount list.
-export { bodyProjectRoutes, bodyRoutes } from '../body/routes.js';
+export { bodyRoutes } from '../body/routes.js';
 
 export const issueProjectRoutes = new Hono<{ Variables: AuthVars }>();
 issueProjectRoutes.use('*', requireAuth(), assertEmailVerified());

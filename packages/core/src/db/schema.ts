@@ -266,7 +266,7 @@ export const organizationMembersRelations = relations(organizationMembers, ({ on
 }));
 
 // cm:guard a prefix is a claim on the whole deployment and is NEVER given up: this table is only ever inserted into, and `project_id` goes NULL when its project is deleted rather than the row going with it. Freeing a dead project's prefix would let a second project claim it and silently re-point every published `FD-977` at a different issue 977, which is the one failure ISS-992 exists to prevent.
-// cm:edge sideeffect -> packages/core/drizzle/migrations/0238_issue_prefix_search_path.sql — `issue_prefix_aliases_immutable_trg` refuses every DELETE, every prefix change, every owner change, and a `project_id` -> NULL written by ANYTHING but the project FK's own cascade, which it tells apart by whether the project row is still there. Drizzle cannot model a trigger, so this comment is the only place in TypeScript that says it exists.
+// cm:edge sideeffect -> packages/core/drizzle/migrations/0239_issue_prefix_search_path.sql — `issue_prefix_aliases_immutable_trg` refuses every DELETE, every prefix change, every owner change, and a `project_id` -> NULL written by ANYTHING but the project FK's own cascade, which it tells apart by whether the project row is still there. Drizzle cannot model a trigger, so this comment is the only place in TypeScript that says it exists.
 // cm:guard `prefix` is stored UPPER CASE and compared as stored — a `lower(prefix)` expression index cannot back a foreign key, and `projects.issue_prefix` needs one (see `projectsIssuePrefixFk`)
 export const issuePrefixAliases = pgTable(
   'issue_prefix_aliases',
@@ -581,15 +581,8 @@ export type JobType = (typeof jobTypes)[number];
 export const modelTiers = ['haiku', 'sonnet', 'opus'] as const;
 export type ModelTier = (typeof modelTiers)[number];
 
-// ISS-101 — pipeline_runs groups every job/agent_session of a single
-// pipeline walk. Picker orders by `(priority, run.started_at, queued_at)`
-// so all jobs of the oldest run drain before a newer same-priority run.
-// `kind` discriminates issue-driven pipelines from one-shot PM jobs and
-// interactive chat sessions (both keep `issueId` NULL so the NOT NULL FK
-// on `jobs`/`agent_sessions` always has a row to point at).
-// 'system' covers one-shot project-scoped jobs without an issueId — schedule
-// runs, skill pushes, MCP/CLI custom jobs. Kept distinct from 'pm' (PM
-// coordinator) so reviews of pipeline_runs.kind aren't ambiguous.
+// cm:guard the picker orders by `(priority, run.started_at, queued_at)`, so every job of the oldest run drains before a newer same-priority one — a run is the unit of fairness here, not a job (ISS-101).
+// cm:guard `pm`, `interactive` and `system` all keep `issueId` NULL, and the kind is what tells them apart: the NOT NULL FK on `jobs`/`agent_sessions` needs a run row to point at whether or not an issue exists, so collapsing them leaves `pipeline_runs.kind` unable to say which of the three a null-issue run was.
 export const pipelineRunKinds = ['issue', 'pm', 'interactive', 'system'] as const;
 export type PipelineRunKind = (typeof pipelineRunKinds)[number];
 
@@ -1036,11 +1029,10 @@ export const issues = pgTable(
     issSeq: integer('iss_seq').notNull().default(0),
     title: text('title').notNull(),
     description: text('description'),
-    // cm:why named `description_*` rather than a bare `format`/`template` (ISS-898) — `plan` and `acceptanceCriteria` sit in this same table, so an unqualified name would read as covering all three the moment one of them gains a format
+    // cm:why named `description_format` rather than a bare `format` (ISS-898) — `plan` and `acceptanceCriteria` sit in this same table, so an unqualified name would read as covering all three the moment one of them gains a format
     descriptionFormat: text('description_format', { enum: BODY_FORMATS })
       .notNull()
       .default('markdown'),
-    descriptionTemplate: text('description_template'),
     status: text('status', { enum: issueStatuses }).notNull().default('open'),
     priority: text('priority', { enum: issuePriorities }).notNull().default('medium'),
     category: text('category'),
@@ -1155,9 +1147,8 @@ export const comments = pgTable(
       onDelete: 'set null',
     }),
     body: text('body').notNull(),
-    // cm:edge contract -> packages/core/src/body/prepare.ts — ISS-898. `format` decides which renderer and which validator a body gets, and its DEFAULT is load-bearing: every pre-existing row and every shipped SKILL.md example omits it, so `markdown` is what keeps them all valid. `template` is the root component name, replacing the regex guess in web-v2 `features/issues/derive.ts:deriveCommentKind`.
+    // cm:edge contract -> packages/core/src/body/prepare.ts — ISS-898. `format` decides which renderer and which validator a body gets, and its DEFAULT is load-bearing: every pre-existing row and every shipped SKILL.md example omits it, so `markdown` is what keeps them all valid.
     format: text('format', { enum: BODY_FORMATS }).notNull().default('markdown'),
-    template: text('template'),
     // cm:guard ISS-969 — the kernel status the issue was at when this comment was WRITTEN, which is what `pipelineConfig.states` keys a stage by. Stored rather than derived because the issue moves on: a drive comment is written at `open` and the issue is `closed` an hour later, so grouping the adoption metric by the issue's CURRENT status attributes every one of them to the wrong stage. NULL means written before this existed and stays unbackfilled. No CHECK, unlike the `format` sibling above: that guards a two-value set the renderer must know, this mirrors `issues.status`, whose set is open enough that a constraint would need migrating in lockstep with every status the lane gains.
     stage: text('stage'),
     // cm:guard ISS-969 — who was at the keyboard, and NOT a rename of `author_device_id` two lines up: that column became the BOX a credential was issued to (ISS-932 wave 4) and every live `job:` token carries none, so a rule keyed on it fires for almost nobody while its number reads a confident zero. NULL is "written before this column existed" and is NOT 'human' — defaulting it would sweep 13,556 rows into the population the adoption fraction claims to describe, the same reason `stage` above has no backfill.
@@ -1171,10 +1162,6 @@ export const comments = pgTable(
     // cm:guard the CHECK is the backstop, not a duplicate of the TS enum: `text(..., { enum })` is a compile-time type only and emits no constraint, so the ~17 kernel paths that `db.insert(comments)` without going through `prepareBody` have nothing else stopping an unrenderable format. Same reason `issues_complexity_chk` exists.
     formatChk: check('comments_format_chk', sql`${t.format} IN ('markdown', 'html')`),
     issueIdx: index('comments_issue_id_idx').on(t.issueId),
-    // cm:edge contract -> packages/core/src/body/adoption.ts — the adoption read scans (stage, created_at) over a window on the largest table in the schema; without this it is a seq scan on every settings page open
-    stageCreatedAtIdx: index('comments_stage_created_at_idx')
-      .on(t.stage, t.createdAt)
-      .where(sql`stage IS NOT NULL`),
     parentIdx: index('comments_parent_id_idx').on(t.parentId),
     parentFk: foreignKey({
       columns: [t.parentId],

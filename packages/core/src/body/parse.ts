@@ -32,7 +32,7 @@ export type BodyNode =
  * at the opening tag — rather than in a pre-pass with placeholders — is the
  * same guarantee with no placeholder that author text could collide with.
  */
-// cm:edge contract -> packages/core/src/body/components.ts — a component listed here must also declare `raw: true`; the two are read by different halves (scanner vs validator) and a body that is raw in one and structured in the other loses its content.
+// cm:guard `forge-diagram` stays lifted as RAW TEXT even though writing one has been refused since 2026-09-14: a mermaid body carries `-->` and `<br/>`, which the scanner reads as an end-of-comment and a void tag, so the rows stored before that are unreadable — and unrenderable — without it.
 export const RAW_TEXT_ELEMENTS = new Set(['forge-diagram']);
 
 const NAME_START = /[A-Za-z]/;

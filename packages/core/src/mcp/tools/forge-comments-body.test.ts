@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { issues } from '../../db/schema.js';
 import { makeFakePrincipal } from '../fake-principal.fixture.js';
 
 /**
@@ -34,27 +33,12 @@ const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy })
 const selectInnerJoin = vi.fn(() => ({ where: selectWhere }));
 const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
 const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
-// cm:guard branch on the TABLE — `from(issues).innerJoin(projects)` is `insertComment`'s stage read (ISS-969) and nothing else in this path, so it answers off its own row; routed through the shared chain it would eat a `selectLimit` the tests below queued for an auth lookup, and every one of them would resolve one link early.
-const stageContextRow: { stage: string; agentConfig: unknown } = {
-  stage: 'open',
-  agentConfig: null,
-};
-const selectStageJoin = vi.fn(() => ({
-  where: () => ({ limit: async () => [{ ...stageContextRow }] }),
+// cm:guard `insertComment`'s stage read used to join `projects` and be told apart by that join; since the body mandate was removed (2026-09-14) it is a plain `from(issues).where().limit()` and is INDISTINGUISHABLE from an auth lookup by chain shape, so every create case below must queue a third `selectLimit` for it — one short and the insert resolves against an auth row.
+const selectFrom = vi.fn(() => ({
+  where: selectWhere,
+  innerJoin: selectInnerJoin,
+  leftJoin: selectLeftJoin,
 }));
-const selectFrom = vi.fn((table: unknown) =>
-  table === issues
-    ? {
-        where: selectWhere,
-        innerJoin: selectStageJoin,
-        leftJoin: selectLeftJoin,
-      }
-    : {
-        where: selectWhere,
-        innerJoin: selectInnerJoin,
-        leftJoin: selectLeftJoin,
-      },
-);
 const insertReturning = vi.fn();
 const insertValues = vi.fn(() => ({ returning: insertReturning }));
 const updateReturning = vi.fn();
@@ -104,49 +88,36 @@ const baseCommentRow = {
   updatedAt: new Date(),
 };
 
-const REVIEW_BODY =
-  '<forge-review sha="60e8d635" verdict="approve">' +
-  '<forge-finding file="a.ts" line="42" severity="bug">boom</forge-finding>' +
-  '<forge-summary>ran the suite</forge-summary>' +
-  '</forge-review>';
-
 beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe('forge_comments component bodies (ISS-898)', () => {
+describe('forge_comments html bodies', () => {
   const tool = () =>
     forgeCommentsTool({
       principal: fakePrincipal,
       projectSlug: null,
     });
 
-  it('create with format=html stores the normalized body and its template', async () => {
+  it('create with format=html stores the normalized body', async () => {
     selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    selectLimit.mockResolvedValueOnce([{ stage: 'open' }]);
     insertReturning.mockResolvedValueOnce([
-      {
-        ...baseCommentRow,
-        body: REVIEW_BODY,
-        format: 'html',
-        template: 'forge-review',
-      },
+      { ...baseCommentRow, body: '<p>looks right</p>', format: 'html' },
     ]);
 
     const result = (await tool().handler({
       action: 'create',
-      data: { issue: ISSUE_ID, body: REVIEW_BODY, format: 'html' },
-    })) as { template: string; slots: Record<string, unknown>; text: string };
+      data: { issue: ISSUE_ID, body: '<p>looks right</p>', format: 'html' },
+    })) as { text: string };
 
-    expect(insertValues).toHaveBeenCalledWith(
-      expect.objectContaining({ format: 'html', template: 'forge-review' }),
-    );
-    expect(result.template).toBe('forge-review');
-    expect(result.slots).toMatchObject({ sha: '60e8d635', verdict: 'approve' });
-    expect(result.text).toContain('Review 60e8d635: APPROVE');
+    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({ format: 'html' }));
+    expect(result.text).toContain('looks right');
   });
 
-  it('create refuses an invalid component body naming the attribute, and writes nothing', async () => {
+  // cm:guard component markup is refused by NAME at the MCP door too, and writes nothing: `forge-plugin` skills reach this door over the wire and still carry the vocabulary removed on 2026-09-14, so a silent unwrap here would flatten a skill's structured record into prose behind a success.
+  it('create refuses component markup, naming it, and writes nothing', async () => {
     selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
 
@@ -155,17 +126,18 @@ describe('forge_comments component bodies (ISS-898)', () => {
         action: 'create',
         data: {
           issue: ISSUE_ID,
-          body: REVIEW_BODY.replace('verdict="approve"', 'verdict="approved"'),
+          body: '<forge-review sha="60e8d635" verdict="approve"></forge-review>',
           format: 'html',
         },
       }),
-    ).rejects.toThrow(/BAD_REQUEST: BODY_INVALID.*forge-review@verdict/s);
+    ).rejects.toThrow(/BAD_REQUEST: BODY_INVALID.*forge-review.*removed on 2026-09-14/s);
     expect(insertValues).not.toHaveBeenCalled();
   });
 
   it('create reports what the sanitizer removed instead of refusing plain markup', async () => {
     selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    selectLimit.mockResolvedValueOnce([{ stage: 'open' }]);
     insertReturning.mockResolvedValueOnce([{ ...baseCommentRow, format: 'html' }]);
 
     const result = (await tool().handler({
@@ -179,28 +151,26 @@ describe('forge_comments component bodies (ISS-898)', () => {
     );
   });
 
-  it('update replaces the body — the only way to place a forge-artifact after the upload', async () => {
-    const artifact = '<forge-artifact id="ebcb91c1-1b5f-4fa4-92af-49362d5692de" />';
+  it('update replaces the body', async () => {
     selectLimit.mockResolvedValueOnce([
       { id: COMMENT_ID, issueId: ISSUE_ID, authorId: OWNER_ID, projectId: PROJECT_ID },
     ]);
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
-    // cm:guard `updateCommentBody` reads the row it is about to replace, because the stage policy stands at the EDIT door too (ISS-969); drop this queued row and the update resolves against an auth lookup's.
+    // cm:guard the EDIT door reads no stage: `stage` records when a comment was WRITTEN and an edit does not move it, and the mandate that used to read it here went with the component vocabulary (2026-09-14). A row queued for it leaks into the next case, which then resolves its auth lookup against a stage row.
     selectLimit.mockResolvedValueOnce([{ issueId: ISSUE_ID, authorDeviceId: null }]);
     updateReturning.mockResolvedValueOnce([
-      { ...baseCommentRow, body: artifact, format: 'html', template: 'forge-artifact' },
+      { ...baseCommentRow, body: '<p>corrected</p>', format: 'html' },
     ]);
 
-    const result = (await tool().handler({
+    await tool().handler({
       action: 'update',
       documentId: COMMENT_ID,
-      data: { body: artifact, format: 'html' },
-    })) as { template: string };
+      data: { body: '<p>corrected</p>', format: 'html' },
+    });
 
     expect(updateSet).toHaveBeenCalledWith(
-      expect.objectContaining({ format: 'html', template: 'forge-artifact' }),
+      expect.objectContaining({ body: '<p>corrected</p>', format: 'html' }),
     );
-    expect(result.template).toBe('forge-artifact');
   });
 
   it('update requires documentId and data.body', async () => {
@@ -212,7 +182,7 @@ describe('forge_comments component bodies (ISS-898)', () => {
     );
   });
 
-  it('leaves a markdown row alone — no template, no slots, no text projection', async () => {
+  it('leaves a markdown row alone — no text projection', async () => {
     selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
     selectLimit.mockResolvedValueOnce([{ ...baseCommentRow, body: '**Triage** - m' }]);
@@ -220,12 +190,10 @@ describe('forge_comments component bodies (ISS-898)', () => {
     const envelope = (await tool().handler({
       action: 'list',
       filters: { issue: ISSUE_ID },
-    })) as { comments: Array<{ format: string; template: null; slots: null; text: null }> };
+    })) as { comments: Array<{ format: string; text: null }> };
 
     const [only] = envelope.comments;
     expect(only?.format).toBe('markdown');
-    expect(only?.template).toBeNull();
-    expect(only?.slots).toBeNull();
     expect(only?.text).toBeNull();
   });
 });

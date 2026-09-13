@@ -18,7 +18,6 @@
 // catalogue without a live DB. `render()` is pure; a project-resolved fact
 // takes its inputs through `FactRenderContext` from `./resolve.ts`.
 
-import { describeComponents } from '../../body/registry-view.js';
 import type { IssueStatus, JobType } from '../../db/schema.js';
 // cm:guard the only two non-type imports this module may carry, and only because both are leaves whose own imports erase — `dependency-effects.ts`'s schema import is type-only, and `body/components.ts` pulls nothing but zod. The cycle constraint above is what a third, DB- or env-touching import would break.
 import { WORK_EVIDENCE_WAIVER_NOTE } from '../../issues/dependency-effects.js';
@@ -166,20 +165,6 @@ export const CANONICAL_LADDER: readonly IssueStatus[] = [
   'awaiting_release',
   'closed',
 ];
-
-// cm:why `pm` is absent because it has no issue to act on — a fact that names "the issue" reaching a pm job describes something that is not there
-// cm:edge contract -> packages/core/src/body/components.ts — every value is a `root: true` component name there; `registry.test.ts` is what holds the two sides together
-const STAGE_ROOT_COMPONENT: Partial<Record<JobType, string>> = {
-  triage: 'forge-triage',
-  clarify: 'forge-symptom',
-  plan: 'forge-plan',
-  code: 'forge-outcome',
-  fix: 'forge-outcome',
-  review: 'forge-review',
-  test: 'forge-qa-report',
-  release: 'forge-close',
-  drive: 'forge-outcome',
-};
 
 const ISSUE_STAGES: readonly JobType[] = [
   'triage',
@@ -329,31 +314,6 @@ This ladder is also the authoritative set of statuses. **If your adopted skill's
     version: 1,
     render: () => `## Comment + status ordering
 Post your findings/decision comment via \`forge_comments.create\` BEFORE the final \`forge_issues.update\` status change — the next pipeline step must see the comment already in place. Status is always the LAST action.`,
-  },
-  {
-    id: 'body-components',
-    title: 'Issue and comment body components',
-    category: 'format',
-    tier: 'contextual',
-    scope: 'global',
-    namespace: 'forge',
-    appliesTo: [...ISSUE_STAGES, 'drive'],
-    version: 1,
-    // cm:edge contract -> packages/core/src/body/components.ts — the set is RENDERED from `describeComponents()`, never restated here. That is the whole point of this fact: §1 of `docs/proposals/body-templates.md` measured a guide at 14-28 % compliance against near 100 % for what a stage prompt carries, so a pasted example here would re-create the drift at the one place that measures.
-    // cm:guard the per-stage roots below are the only hand-written half, and each must be a name `describeComponents()` prints — a root that is not in the registry is markup the kernel refuses with a 400 the agent cannot diagnose from its prompt. `registry.test.ts` holds every one of them against `ROOT_COMPONENT_NAMES`.
-    render: (ctx) => {
-      const stage = ctx?.stage ?? null;
-      const root = stage ? STAGE_ROOT_COMPONENT[stage] : undefined;
-      const forStage = root
-        ? `Your record comment for this step is a \`<${root}>\`.`
-        : 'Pick the root that matches what you are recording.';
-      return `## Body components
-Issue and comment bodies accept an allowlisted component markup as well as markdown, and \`format\` is what chooses: absent resolves to \`markdown\`, so **plain prose stays valid everywhere and always**. Send \`format: 'html'\` to use the set below. One level of nesting: a root, its declared slots, plain tags inside. \`forge-diagram\` and \`forge-artifact\` are leaves and are legal inside any slot.
-
-${describeComponents()}
-
-\`[name=type]\` is an attribute — \`a|b\` are the only accepted values, \`?\` optional. \`{child}\` is a declared slot — \`*\` repeatable, \`!\` required. Anything else is REFUSED with a 400 naming the element, the attribute and its legal set; an unknown PLAIN tag is repaired and reported instead. ${forStage}`;
-    },
   },
   {
     id: 'memory-recall-first',

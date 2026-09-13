@@ -22,8 +22,6 @@ import { bodyToText, validateBody } from './validate.js';
 export interface PreparedBody {
   body: string;
   format: BodyFormat;
-  template: string | null;
-  slots: Record<string, unknown> | null;
   warnings: string[];
   /** The compact projection the prompt, the indexer and both MCP tools read. */
   text: string;
@@ -53,8 +51,6 @@ export function resolveFormat(input: PrepareInput): BodyFormat {
 const MARKDOWN_PASSTHROUGH = (raw: string): PreparedBody => ({
   body: raw,
   format: 'markdown',
-  template: null,
-  slots: null,
   warnings: [],
   text: raw,
 });
@@ -73,8 +69,6 @@ export function prepareBody(input: PrepareInput): PreparedBody {
   return {
     body,
     format,
-    template: validated.template,
-    slots: validated.slots,
     warnings: validated.warnings,
     text: bodyToText(validated.nodes),
   };
@@ -116,6 +110,7 @@ export function bodyText(body: string, format: string | null | undefined): strin
  * wins, so a markdown row can never be misread as markup.
  */
 // cm:guard the sniff must stay the SAME rule as `resolveFormat`'s — a body that opens with `<forge-` is html on the way in and on the way out, or a body stores one way and reads the other
+// cm:guard the `<forge-` sniff is NOT dead code now that component markup is refused on write (2026-09-14): it is what keeps the rows written BEFORE that projecting to text when their format is lost in transit, and `track` in `issues/routes.ts` is what loses it.
 function readsAsHtml(body: string, format: string | null | undefined): boolean {
   if (format === 'html') return true;
   if (format) return false;
@@ -136,19 +131,6 @@ export function bodyNodes(body: string, format: string | null | undefined): Body
   if (!readsAsHtml(body, format)) return null;
   try {
     return parseBody(body);
-  } catch {
-    return null;
-  }
-}
-
-/** Parsed slots of a STORED body, for the MCP read surface. Never throws. */
-export function bodySlots(
-  body: string,
-  format: string | null | undefined,
-): Record<string, unknown> | null {
-  if (!readsAsHtml(body, format)) return null;
-  try {
-    return validateBody(parseBody(body)).slots;
   } catch {
     return null;
   }

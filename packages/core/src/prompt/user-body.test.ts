@@ -21,6 +21,7 @@ describe('an html component description reaches the prompt as text, not markup',
     descriptionFormat: 'html',
   };
 
+  // cm:guard the LABELS a component's own `toText()` used to add ("Who it hurts:", an evidence row rendered from its attributes) are gone with the registry (2026-09-14), and their loss is priced here rather than discovered: the projection is generic prose extraction now, so a stored component body reaches an agent as its text and an ATTRIBUTE-ONLY child such as `<forge-row date=… />` reaches it as nothing. It costs the 11 rows fleet-wide that carry one, which the owner accepted when the vocabulary was removed.
   it('carries the prose and the mermaid source, and no forge- tag', () => {
     const out = buildJobPromptString({
       jobType: 'triage',
@@ -29,11 +30,9 @@ describe('an html component description reaches the prompt as text, not markup',
       policy: { includeFields: ['description'] },
     });
     expect(out).toContain('Bodies are unchecked.');
-    expect(out).toContain('Who it hurts: Every downstream reader.');
+    expect(out).toContain('Every downstream reader.');
     expect(out).toContain('A --> B');
-    expect(out).toContain('2026-09-03 · 8 of 57 · SQL');
     expect(out).not.toContain('<forge-');
-    expect(out).not.toContain('<forge-problem>');
   });
 
   it('projects BEFORE the cap, so the cap bounds requirements rather than tag names', () => {

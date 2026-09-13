@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { commentAttachments, issues } from '../../db/schema.js';
+import { commentAttachments } from '../../db/schema.js';
 import { makeFakeJobPrincipal, makeFakePrincipal } from '../fake-principal.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
@@ -39,20 +39,10 @@ const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
 const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
 // cm:guard branch on the TABLE, never on the chain shape — the ISS-963 name lookup reads comment_attachments through the same .where().orderBy().limit() shape the auth lookups use, so a shared resolver hands it a row queued for a project row and every attachment is refused as a duplicate of itself
 const noCollision = { orderBy: () => ({ limit: async () => [] as unknown[] }) };
-// cm:guard branch on the TABLE — `from(issues).innerJoin(projects)` is `insertComment`'s stage read (ISS-969) and nothing else in this path, so it answers off its own row; routed through the shared chain it would eat a `selectLimit` the tests below queued for an auth lookup, and every one of them would resolve one link early.
-const stageContextRow: { stage: string; agentConfig: unknown } = {
-  stage: 'open',
-  agentConfig: null,
-};
-const selectStageJoin = vi.fn(() => ({
-  where: () => ({ limit: async () => [{ ...stageContextRow }] }),
-}));
+// cm:guard `insertComment`'s stage read used to join `projects` and be told apart by that join; since the body mandate was removed (2026-09-14) it is a plain `from(issues).where().limit()`, indistinguishable from an auth lookup by chain shape — so the stage row is queued on `selectLimit` like any other, and a case one short resolves its insert against an auth row.
 const selectFrom = vi.fn((table: unknown) => {
   if (table === commentAttachments) {
     return { where: () => noCollision, innerJoin: selectInnerJoin, leftJoin: selectLeftJoin };
-  }
-  if (table === issues) {
-    return { where: selectWhere, innerJoin: selectStageJoin, leftJoin: selectLeftJoin };
   }
   return { where: selectWhere, innerJoin: selectInnerJoin, leftJoin: selectLeftJoin };
 });
@@ -277,8 +267,9 @@ describe('forge_comments tool', () => {
       principal: jobPrincipal,
       projectSlug: null,
     });
-    selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]); // loadIssueProjectId
-    selectLimit.mockResolvedValueOnce([memberAccessRow]); // membership
+    selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    selectLimit.mockResolvedValueOnce([{ stage: 'open' }]);
     insertReturning.mockResolvedValueOnce([baseCommentRow]);
 
     const result = (await tool.handler({
@@ -304,9 +295,10 @@ describe('forge_comments tool', () => {
       principal: humanPat(null),
       projectSlug: null,
     });
-    selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]); // loadIssueProjectId
-    selectLimit.mockResolvedValueOnce([memberAccessRow]); // membership (assertPrincipalIsWriter)
-    insertReturning.mockResolvedValueOnce([baseCommentRow]); // insert
+    selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    selectLimit.mockResolvedValueOnce([{ stage: 'open' }]);
+    insertReturning.mockResolvedValueOnce([baseCommentRow]);
 
     const result = (await tool.handler({
       action: 'create',
@@ -335,6 +327,7 @@ describe('forge_comments tool', () => {
     });
     selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]); // loadIssueProjectId
     selectLimit.mockResolvedValueOnce([memberAccessRow]); // membership
+    selectLimit.mockResolvedValueOnce([{ stage: 'open' }]);
     const fkError = Object.assign(new Error('insert or update on table "comments" violates fk'), {
       code: '23503',
       constraint_name: 'comments_author_device_id_devices_id_fk',
@@ -486,6 +479,7 @@ describe('forge_comments tool', () => {
       });
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]); // loadIssueProjectId
       selectLimit.mockResolvedValueOnce([memberAccessRow]); // membership
+      selectLimit.mockResolvedValueOnce([{ stage: 'open' }]);
       insertReturning.mockResolvedValueOnce([baseCommentRow]); // comment insert
       insertReturning.mockResolvedValueOnce([makeAttachmentRow(0)]); // attachment insert
 
@@ -519,6 +513,7 @@ describe('forge_comments tool', () => {
       });
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
       selectLimit.mockResolvedValueOnce([memberAccessRow]);
+      selectLimit.mockResolvedValueOnce([{ stage: 'open' }]);
       insertReturning.mockResolvedValueOnce([baseCommentRow]);
       for (let i = 0; i < 5; i++) insertReturning.mockResolvedValueOnce([makeAttachmentRow(i)]);
 
@@ -546,6 +541,7 @@ describe('forge_comments tool', () => {
       });
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
       selectLimit.mockResolvedValueOnce([memberAccessRow]);
+      selectLimit.mockResolvedValueOnce([{ stage: 'open' }]);
       insertReturning.mockResolvedValueOnce([baseCommentRow]);
       insertReturning.mockResolvedValueOnce([makeAttachmentRow(0)]);
 
@@ -631,6 +627,7 @@ describe('forge_comments tool', () => {
       });
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
       selectLimit.mockResolvedValueOnce([memberAccessRow]);
+      selectLimit.mockResolvedValueOnce([{ stage: 'open' }]);
       insertReturning.mockResolvedValueOnce([baseCommentRow]);
 
       const result = (await tool.handler({

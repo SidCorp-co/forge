@@ -680,56 +680,13 @@ describe("deriveCommentKind", () => {
 		}
 	});
 
-	const templates: [string, string][] = [
-		["forge-triage", "triage"],
-		["forge-plan", "plan"],
-		["forge-qa-report", "qa"],
-		["forge-outcome", "outcome"],
-		["forge-blocked", "blocked"],
-		["forge-close", "released"],
-	];
-	it.each(templates)("reads %s off the template alone", (template, kind) => {
-		expect(deriveCommentKind({ body: "<p>nothing to match</p>", template })).toEqual(
-			{ kind, form: "component" },
-		);
-	});
-
-	it.each([
-		["approve", "approved"],
-		["request-changes", "changes"],
-		["abstain", "review"],
-	])("reads a forge-review verdict=%s as %s", (verdict, kind) => {
-		const body = `<forge-review sha="abc1234" verdict="${verdict}"><forge-summary><p>ok</p></forge-summary></forge-review>`;
-		expect(deriveCommentKind({ body, template: "forge-review" })).toEqual({
-			kind,
-			form: "component",
-		});
-	});
-
-	it("falls back to review when the verdict attribute is unreadable", () => {
-		expect(
-			deriveCommentKind({
-				body: "<forge-review sha=\"abc1234\"></forge-review>",
-				template: "forge-review",
-			}),
-		).toEqual({ kind: "review", form: "component" });
-	});
-
-	it("falls back to the prose form for a root that names no lifecycle kind", () => {
+	// cm:guard the kind is read from PROSE and from nothing else: `template` carried the root component name until the vocabulary and the column were removed on 2026-09-14, and the prose regex this was written to replace is the only reader again. A body that still contains component markup falls through to it like any other text.
+	it("classifies a stored component body by its prose, not by its markup", () => {
 		expect(
 			deriveCommentKind({
 				body: "<forge-symptom><forge-opening><p>Plan written</p></forge-opening></forge-symptom>",
-				template: "forge-symptom",
 			}),
 		).toEqual({ kind: "plan", form: "prefix" });
-	});
-
-	it("has badge meta for every kind a template can produce", () => {
-		for (const [, kind] of templates) {
-			expect(
-				COMMENT_KIND_META[kind as keyof typeof COMMENT_KIND_META],
-			).toBeDefined();
-		}
 	});
 });
 

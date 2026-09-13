@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { issues } from '../../db/schema.js';
 import { makeFakePrincipal } from '../fake-principal.fixture.js';
 
 /**
@@ -31,27 +30,12 @@ const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy })
 const selectInnerJoin = vi.fn(() => ({ where: selectWhere }));
 const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
 const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
-// cm:guard branch on the TABLE — `from(issues).innerJoin(projects)` is `insertComment`'s stage read (ISS-969) and nothing else in this path, so it answers off its own row; routed through the shared chain it would eat a `selectLimit` the tests below queued for an auth lookup, and every one of them would resolve one link early.
-const stageContextRow: { stage: string; agentConfig: unknown } = {
-  stage: 'open',
-  agentConfig: null,
-};
-const selectStageJoin = vi.fn(() => ({
-  where: () => ({ limit: async () => [{ ...stageContextRow }] }),
+// cm:guard `insertComment`'s stage read used to join `projects` and be told apart by that join; since the body mandate was removed (2026-09-14) it is a plain `from(issues).where().limit()`, indistinguishable from an auth lookup by chain shape — so the stage row is queued on `selectLimit` like any other, and a case one short resolves its insert against an auth row.
+const selectFrom = vi.fn(() => ({
+  where: selectWhere,
+  innerJoin: selectInnerJoin,
+  leftJoin: selectLeftJoin,
 }));
-const selectFrom = vi.fn((table: unknown) =>
-  table === issues
-    ? {
-        where: selectWhere,
-        innerJoin: selectStageJoin,
-        leftJoin: selectLeftJoin,
-      }
-    : {
-        where: selectWhere,
-        innerJoin: selectInnerJoin,
-        leftJoin: selectLeftJoin,
-      },
-);
 const insertReturning = vi.fn();
 const insertValues = vi.fn((_row: Record<string, unknown>) => ({ returning: insertReturning }));
 
@@ -92,20 +76,29 @@ function authzHits() {
   selectLimit.mockResolvedValueOnce([memberAccessRow]);
 }
 
+// cm:guard a WRITE queues one more row than a read: `insertComment` reads the issue's stage after the two auth lookups, and since the body mandate was removed (2026-09-14) that read is a plain `from(issues).where().limit()` indistinguishable from them by chain shape. Calling this before a LIST instead makes the list resolve the stage row as its comment page, and `serialize` then reads `body` off a row that has none.
+function writeHits() {
+  authzHits();
+  selectLimit.mockResolvedValueOnce([{ stage: 'open' }]);
+}
+
 /**
- * The record shape ISS-958 measured: one `<forge-case>` per acceptance
- * criterion, each carrying the criterion's text, the commit, the evidence list
- * and a 400-character reason — ~1,400 characters a block, ~48,000 for 34.
+ * The record shape ISS-958 measured: one block per acceptance criterion, each
+ * carrying the criterion's text, the commit, the evidence list and a
+ * 400-character reason — ~1,400 characters a block, ~48,000 for 34.
+ *
+ * It was `<forge-case>` markup until the component vocabulary was removed on
+ * 2026-09-14. The cap is what this file is about and the shape was incidental,
+ * so the same volume is written as the markdown a writer actually sends now.
  */
 function verdictRecord(caseCount: number): string {
-  const cases = Array.from({ length: caseCount }, (_, i) => {
+  return Array.from({ length: caseCount }, (_, i) => {
     const n = i + 1;
     const criterion = `Criterion ${n}: ${'c'.repeat(500)}`;
     const evidence = `commit 60e8d635 · evidence ${'e'.repeat(450)}`;
     const reason = 'r'.repeat(400);
-    return `<forge-case id="AC-${n}" verdict="pass">${criterion} — ${evidence} — ${reason}</forge-case>`;
-  }).join('');
-  return `<forge-qa-report verdict="pass" env="local">${cases}</forge-qa-report>`;
+    return `### AC-${n} — pass\n\n${criterion} — ${evidence} — ${reason}`;
+  }).join('\n\n');
 }
 
 beforeEach(() => vi.clearAllMocks());
@@ -121,7 +114,7 @@ describe('forge_comments body cap (ISS-958)', () => {
   });
 
   it('accepts a 60,000-character body in one write', async () => {
-    authzHits();
+    writeHits();
     const body = 'x'.repeat(60_000);
     insertReturning.mockResolvedValueOnce([
       {
@@ -130,7 +123,6 @@ describe('forge_comments body cap (ISS-958)', () => {
         authorId: OWNER_ID,
         body,
         format: 'markdown',
-        template: null,
         parentId: null,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -147,8 +139,8 @@ describe('forge_comments body cap (ISS-958)', () => {
     expect(result.documentId).toBe('55555555-5555-4555-8555-555555555555');
   });
 
-  it('lands a 34-block verdict record whole, with every block parsed back', async () => {
-    authzHits();
+  it('lands a 34-block verdict record whole', async () => {
+    writeHits();
     const body = verdictRecord(34);
     expect(body.length).toBeGreaterThan(45_000);
     let stored = '';
@@ -162,23 +154,17 @@ describe('forge_comments body cap (ISS-958)', () => {
         issueId: ISSUE_ID,
         authorId: OWNER_ID,
         body: stored,
-        format: 'html',
-        template: 'forge-qa-report',
+        format: 'markdown',
         parentId: null,
         createdAt: new Date(),
         updatedAt: new Date(),
       },
     ]);
 
-    const result = (await tool().handler({
-      action: 'create',
-      data: { issue: ISSUE_ID, body, format: 'html' },
-    })) as { template: string; slots: { cases: unknown[] } };
+    await tool().handler({ action: 'create', data: { issue: ISSUE_ID, body } });
 
     expect(insertValues).toHaveBeenCalledTimes(1);
     expect(stored).toBe(body);
-    expect(result.template).toBe('forge-qa-report');
-    expect(result.slots.cases).toHaveLength(34);
 
     authzHits();
     selectLimit.mockResolvedValueOnce([
@@ -187,8 +173,7 @@ describe('forge_comments body cap (ISS-958)', () => {
         issueId: ISSUE_ID,
         authorId: OWNER_ID,
         body: stored,
-        format: 'html',
-        template: 'forge-qa-report',
+        format: 'markdown',
         parentId: null,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -198,12 +183,11 @@ describe('forge_comments body cap (ISS-958)', () => {
     const envelope = (await tool().handler({
       action: 'list',
       filters: { issue: ISSUE_ID },
-    })) as { comments: Array<{ body: string; slots: { cases: unknown[] } }> };
+    })) as { comments: Array<{ body: string }> };
 
     expect(envelope.comments).toHaveLength(1);
     // cm:why the read projection FRAMES a body as untrusted data (ISS-532), so byte-identity is asserted on what reached the INSERT above; here the assertion is that the whole record survives the round trip inside that frame rather than being split, trimmed or truncated
     expect(envelope.comments[0]?.body).toContain(body);
-    expect(envelope.comments[0]?.slots.cases).toHaveLength(34);
   });
 
   it('refuses one character over the cap, naming the cap, and writes nothing', async () => {

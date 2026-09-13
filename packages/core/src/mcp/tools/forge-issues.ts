@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { BodyInvalidError } from '../../body/errors.js';
 import { BODY_FORMATS } from '../../body/formats.js';
-import { bodySlots, bodyText } from '../../body/prepare.js';
+import { bodyText } from '../../body/prepare.js';
 import {
   issueComplexities,
   issuePriorities,
@@ -281,10 +281,6 @@ export function serialize(row: IssueRow, prefix: string | null): Record<string, 
             source: 'issue.description',
           }),
     descriptionFormat: row.descriptionFormat,
-    descriptionTemplate: row.descriptionTemplate,
-    descriptionSlots: row.descriptionTemplate
-      ? bodySlots(row.description ?? '', row.descriptionFormat)
-      : null,
     status: row.status,
     // cm:guard emit it on BOTH projections or the kind is unreadable through MCP: core never derives it (see the `waitingKind` input guard), and an absent key reads as `null` to a caller — a park asking for a DECISION and one asking for a RESOURCE then look identical, which is what a `waiting` read looked like until 2026-09-09
     // cm:edge lockstep -> packages/core/src/issues/list-service.ts — `IssueListRow`, its `projection` and `serializeListRow` carry the same field; adding it to one surface only leaves the triage list unable to say what any park wants

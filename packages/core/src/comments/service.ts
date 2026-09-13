@@ -11,13 +11,8 @@
 import { and, asc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import type { BodyFormat } from '../body/formats.js';
 import { prepareBody } from '../body/prepare.js';
-import {
-  type BodyPolicyConfigSource,
-  refuseMissingComponent,
-  resolveStageBodyPolicy,
-} from '../body/stage-policy.js';
 import { db, type Tx } from '../db/client.js';
-import { comments, issues, projects } from '../db/schema.js';
+import { comments, issues } from '../db/schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { type CommentCursor, encodeCommentCursor } from './cursor.js';
 
@@ -28,7 +23,6 @@ export type CommentThreadRow = {
   authorDeviceId: string | null;
   body: string;
   format: BodyFormat;
-  template: string | null;
   stage: string | null;
   authorAgency: ActorAgency | null;
   parentId: string | null;
@@ -45,7 +39,6 @@ export const commentThreadColumns = {
   authorDeviceId: comments.authorDeviceId,
   body: comments.body,
   format: comments.format,
-  template: comments.template,
   stage: comments.stage,
   authorAgency: comments.authorAgency,
   parentId: comments.parentId,
@@ -207,28 +200,18 @@ export type NewComment = {
 export type WrittenComment = { row: CommentThreadRow; warnings: string[] };
 
 /**
- * The stage a body write happens at, and the policy in force there.
- *
- * One read for both: `issues.status` IS the stage name (`STAGE_NAMES` in
- * `pipeline-config-schema.ts` — "a key here must be a status this lane actually
- * reaches"), and the project's stored `agentConfig` is where the policy lives.
+ * The stage a body write happens at: `issues.status` IS the stage name
+ * (`STAGE_NAMES` in `pipeline-config-schema.ts` — "a key here must be a status
+ * this lane actually reaches").
  */
 // cm:guard reads through the CALLER's handle, never the pool: `insertComment` runs this before its own insert, so a caller inside a transaction that left this on `db` would hold one pooled connection and block waiting for a second. The pool is ten wide and every inbound room reply is one such transaction, so ten concurrent replies deadlock until they time out (ISS-981).
-async function loadStageContext(
-  issueId: string,
-  tx: Tx = db,
-): Promise<{ stage: string; policySource: BodyPolicyConfigSource | null } | null> {
+async function loadStageContext(issueId: string, tx: Tx = db): Promise<{ stage: string } | null> {
   const [row] = await tx
-    .select({ stage: issues.status, agentConfig: projects.agentConfig })
+    .select({ stage: issues.status })
     .from(issues)
-    .innerJoin(projects, eq(issues.projectId, projects.id))
     .where(eq(issues.id, issueId))
     .limit(1);
-  if (!row) return null;
-  return {
-    stage: row.stage,
-    policySource: (row.agentConfig ?? null) as BodyPolicyConfigSource | null,
-  };
+  return row ? { stage: row.stage } : null;
 }
 
 // cm:guard the `tx` handle exists for ONE reason: a caller that must commit this comment together with another row passes its transaction, and `rocketchat/comment-inbound.ts` is that caller — a room reply whose comment committed without its idempotency row is written a second time on the next redelivery, which is two resume intents at `answer-resume.ts` and the agent run twice (ISS-981). It defaults to the pool, so every other door is unchanged.
@@ -236,13 +219,6 @@ async function loadStageContext(
 export async function insertComment(input: NewComment, tx: Tx = db): Promise<WrittenComment> {
   const prepared = prepareBody({ raw: input.body, format: input.format });
   const context = await loadStageContext(input.issueId, tx);
-  const refusal = refuseMissingComponent({
-    policy: resolveStageBodyPolicy(context?.policySource, context?.stage ?? ''),
-    agency: input.authorAgency,
-    format: prepared.format,
-    template: prepared.template,
-  });
-  if (refusal) throw refusal;
 
   const { format: _ignored, ...rest } = input;
   const [row] = await tx
@@ -251,7 +227,6 @@ export async function insertComment(input: NewComment, tx: Tx = db): Promise<Wri
       ...rest,
       body: prepared.body,
       format: prepared.format,
-      template: prepared.template,
       stage: context?.stage ?? null,
     })
     .returning(commentThreadColumns);
@@ -267,7 +242,6 @@ export async function insertComment(input: NewComment, tx: Tx = db): Promise<Wri
  * and corrected an hour later count towards whatever stage the issue reached
  * meanwhile, which is the exact misattribution the column exists to prevent.
  */
-// cm:guard the mandate stands at the EDIT door too. Gating create alone leaves the obvious way past it — post a compliant body, then replace it with prose — and a rule with a way around it measures nothing, which is the whole reason the adoption number beside it would be worth reading.
 export async function updateCommentBody(
   commentId: string,
   input: { body: string; format?: BodyFormat | null | undefined },
@@ -280,22 +254,11 @@ export async function updateCommentBody(
     .limit(1);
   if (!existing) return null;
 
-  // cm:why the STORED agency, not the editor's: the rule is about who wrote the record, and a person correcting an agent's comment does not turn it into a person's. A row written before this column exists reads NULL and is exempt, which is the same "no backfill" position `stage` takes.
-  const context = await loadStageContext(existing.issueId);
-  const refusal = refuseMissingComponent({
-    policy: resolveStageBodyPolicy(context?.policySource, context?.stage ?? ''),
-    agency: existing.authorAgency,
-    format: prepared.format,
-    template: prepared.template,
-  });
-  if (refusal) throw refusal;
-
   const [row] = await db
     .update(comments)
     .set({
       body: prepared.body,
       format: prepared.format,
-      template: prepared.template,
       updatedAt: new Date(),
     })
     .where(eq(comments.id, commentId))

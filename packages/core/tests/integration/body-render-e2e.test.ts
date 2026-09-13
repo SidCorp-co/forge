@@ -6,7 +6,10 @@
  * tree on the two surfaces web actually reads — `GET /api/issues/:id` and the
  * comment thread — and that the composer's two routes answer without a row.
  * Wire those up wrong and every unit test still passes while the screen shows
- * literal `<forge-…>` markup, which is the defect this issue exists to fix.
+ * literal markup, which is the defect this issue exists to fix. The `forge-*`
+ * vocabulary these cases were written against was removed on 2026-09-14; what
+ * they hold — an html body reaches the client as a TREE and a markdown one does
+ * not — is unchanged, and is now asserted on plain allowlisted markup.
  */
 
 import { sql } from 'drizzle-orm';
@@ -23,11 +26,7 @@ import {
 
 type BodyNodeish = { type: string; name?: string; attrs?: Record<string, string> };
 
-const REVIEW =
-  '<forge-review sha="60e8d635" verdict="approve">' +
-  '<forge-finding file="a.ts" severity="nit">tidy</forge-finding>' +
-  '<forge-summary><p>ran the suite</p></forge-summary>' +
-  '</forge-review>';
+const HTML_BODY = '<blockquote><p>ran the suite</p></blockquote><p>tidy <code>a.ts</code></p>';
 
 type Mods = {
   issueRoutes: typeof import('../../src/issues/routes.js').issueRoutes;
@@ -101,27 +100,24 @@ describe('ISS-967 component bodies reach a client as a tree', () => {
     'content-type': 'application/json',
   });
 
-  it('hands the detail payload a tree for a description written as components', async () => {
+  it('hands the detail payload a tree for a description written as html', async () => {
     const { issueId, jwt } = await seed();
     const patch = await app.request(`/api/issues/${issueId}`, {
       method: 'PATCH',
       headers: auth(jwt),
-      body: JSON.stringify({ description: REVIEW, descriptionFormat: 'html' }),
+      body: JSON.stringify({ description: HTML_BODY, descriptionFormat: 'html' }),
     });
     expect(patch.status).toBe(200);
 
     const res = await app.request(`/api/issues/${issueId}`, { headers: auth(jwt) });
     const detail = (await res.json()) as {
       descriptionFormat: string;
-      descriptionTemplate: string | null;
       descriptionNodes: BodyNodeish[] | null;
     };
     expect(detail.descriptionFormat).toBe('html');
-    expect(detail.descriptionTemplate).toBe('forge-review');
     expect(detail.descriptionNodes?.[0]).toMatchObject({
       type: 'element',
-      name: 'forge-review',
-      attrs: { sha: '60e8d635', verdict: 'approve' },
+      name: 'blockquote',
     });
   });
 
@@ -142,7 +138,7 @@ describe('ISS-967 component bodies reach a client as a tree', () => {
     const posted = await app.request(`/api/issues/${issueId}/comments`, {
       method: 'POST',
       headers: auth(jwt),
-      body: JSON.stringify({ body: REVIEW, format: 'html' }),
+      body: JSON.stringify({ body: HTML_BODY, format: 'html' }),
     });
     expect(posted.status).toBe(201);
 
@@ -151,15 +147,7 @@ describe('ISS-967 component bodies reach a client as a tree', () => {
       items: { format: string; nodes: BodyNodeish[] | null }[];
     };
     expect(page.items[0]?.format).toBe('html');
-    expect(page.items[0]?.nodes?.[0]).toMatchObject({ name: 'forge-review' });
-  });
-
-  it('answers the registry the composer offers components from', async () => {
-    const { jwt } = await seed();
-    const res = await app.request('/api/body/components', { headers: auth(jwt) });
-    expect(res.status).toBe(200);
-    const { items } = (await res.json()) as { items: { name: string; root: boolean }[] };
-    expect(items.find((d) => d.name === 'forge-review')?.root).toBe(true);
+    expect(page.items[0]?.nodes?.[0]).toMatchObject({ name: 'blockquote' });
   });
 
   it('previews the bytes a save would store, without storing them', async () => {
@@ -176,14 +164,14 @@ describe('ISS-967 component bodies reach a client as a tree', () => {
     const html = await app.request('/api/body/preview', {
       method: 'POST',
       headers: auth(jwt),
-      body: JSON.stringify({ raw: REVIEW }),
+      body: JSON.stringify({ raw: HTML_BODY, format: 'html' }),
     });
-    const rendered = (await html.json()) as { template: string; nodes: BodyNodeish[] };
-    expect(rendered.template).toBe('forge-review');
-    expect(rendered.nodes[0]).toMatchObject({ name: 'forge-review' });
+    const rendered = (await html.json()) as { nodes: BodyNodeish[] };
+    expect(rendered.nodes[0]).toMatchObject({ name: 'blockquote' });
   });
 
-  it('refuses an invalid draft in the preview with the same named 400 the save gives', async () => {
+  // cm:guard the preview refuses exactly what a save refuses, and the message is the deliverable: it is where an author learns what to change, and a generic 400 here turns a one-line correction into a source read.
+  it('refuses component markup in the preview with the same named 400 the save gives', async () => {
     const { jwt } = await seed();
     const res = await app.request('/api/body/preview', {
       method: 'POST',
@@ -193,7 +181,7 @@ describe('ISS-967 component bodies reach a client as a tree', () => {
     expect(res.status).toBe(400);
     const err = (await res.json()) as { message: string; code: string };
     expect(err.code).toBe('BODY_INVALID');
-    expect(err.message).toContain('forge-review@verdict');
-    expect(err.message).toContain('approve|request-changes|abstain');
+    expect(err.message).toContain('forge-review');
+    expect(err.message).toContain('removed on 2026-09-14');
   });
 });

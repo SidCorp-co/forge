@@ -3,7 +3,7 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { collectIssueFieldUpdates } from '../issues/patch-fields.js';
-import { bodySlots, bodyText } from './prepare.js';
+import { bodyText } from './prepare.js';
 
 /**
  * `refuseUnrecordedClose` states the shape of the rule this file gates: a rule
@@ -154,54 +154,6 @@ describe('every caller-supplied body door is gated', () => {
 });
 
 /**
- * ISS-969 — the stage mandate is a rule with doors too, and it has fewer of
- * them than the syntax gate on purpose.
- *
- * A comment body arrives through four caller-supplied doors (REST create, REST
- * patch, MCP create, MCP update) and ALL FOUR now converge on
- * `comments/service.ts`: ISS-969 collapsed REST create's own
- * `db.insert(comments)` copy into `insertComment` for exactly that reason. So
- * the enumeration here is the two service functions, plus the assertion that
- * the route did not grow its copy back.
- */
-const STAGE_GATED = {
-  'comments/service.ts': [/refuseMissingComponent\(/, /resolveStageBodyPolicy\(/],
-};
-
-describe('the stage body policy stands at every comment door', () => {
-  it('both service write paths consult the policy', () => {
-    for (const [rel, patterns] of Object.entries(STAGE_GATED)) {
-      const src = codeOf(join(SRC, rel));
-      for (const pattern of patterns) {
-        expect(pattern.test(src), `${rel} no longer reaches the stage policy`).toBe(true);
-      }
-    }
-    const service = codeOf(join(SRC, 'comments/service.ts'));
-    expect(
-      (service.match(/refuseMissingComponent\(/g) ?? []).length,
-      'insertComment and updateCommentBody must each consult it — gating create alone leaves "post it, then edit it away"',
-    ).toBe(2);
-  });
-
-  // cm:guard the REST create route must NOT insert a comment itself. It did until ISS-969, and a second insert site is a second place the policy and the `stage` column have to be remembered — which is the failure `refuseUnrecordedClose` names: a rule with two doors has to stand at both.
-  it('the REST create route inserts through the service rather than its own copy', () => {
-    const route = codeOf(join(SRC, 'comments/routes.ts'));
-    expect(/\.insert\(comments\)/.test(route)).toBe(false);
-    expect(/insertComment\(/.test(route)).toBe(true);
-  });
-
-  // cm:guard the kernel-authored writers do not carry the rule THEMSELVES. Most format their own text and `db.insert(comments)` directly, so they take the `markdown` default and store no stage; `steer-session.ts` is the exception and goes through `insertComment`, which is right — a steer is a person's typed body written at a stage. It is still never refused, because it passes `authorDeviceId: null`, and that is the exemption doing its job rather than a hole.
-  it('leaves the kernel-authored writers ungated', () => {
-    for (const rel of KERNEL_AUTHORED) {
-      const src = codeOf(join(SRC, rel));
-      expect(/refuseMissingComponent\(/.test(src), `${rel} should not carry the mandate`).toBe(
-        false,
-      );
-    }
-  });
-});
-
-/**
  * `IssueSnapshot.descriptionFormat` is optional so an absent value degrades to
  * the raw body rather than throwing. That makes the type no longer the guard —
  * this is.
@@ -223,41 +175,38 @@ describe('the issue-patch convergence point', () => {
 
   it('normalizes an html description and records its template', () => {
     const { updates, warnings } = patch({
-      description: '<forge-blocked on="decision"><p>which one?</p></forge-blocked>',
+      description: '<p>which one?</p>',
       descriptionFormat: 'html',
     });
     expect(updates.descriptionFormat).toBe('html');
-    expect(updates.descriptionTemplate).toBe('forge-blocked');
     expect(warnings).toEqual([]);
   });
 
   it('refuses an invalid component body, naming the attribute and its legal set', () => {
     expect(() =>
       patch({
-        description: '<forge-blocked on="vibes">x</forge-blocked>',
+        description: '<forge-blocked on="decision">x</forge-blocked>',
         descriptionFormat: 'html',
       }),
-    ).toThrow(/forge-blocked@on.*decision\|resource\|person/s);
+    ).toThrow(/forge-blocked.*removed on 2026-09-14/s);
   });
 
-  it('leaves a markdown description byte-identical and untemplated', () => {
+  it('leaves a markdown description byte-identical', () => {
     const raw = '## Problem\n\nIt 500s.\n';
     const { updates } = patch({ description: raw });
     expect(updates.description).toBe(raw);
     expect(updates.descriptionFormat).toBe('markdown');
-    expect(updates.descriptionTemplate).toBeNull();
   });
 
   it('resets the format when the description is cleared', () => {
     const { updates } = patch({ description: null });
     expect(updates.descriptionFormat).toBe('markdown');
-    expect(updates.descriptionTemplate).toBeNull();
   });
 
   it('reports the format change so the memory indexer can project the new body', () => {
     const changed: string[] = [];
     collectIssueFieldUpdates(
-      { description: '<forge-blocked on="decision">x</forge-blocked>', descriptionFormat: 'html' },
+      { description: '<p>it 500s</p>', descriptionFormat: 'html' },
       ['description'],
       (f) => changed.push(f),
     );
@@ -285,19 +234,18 @@ describe('the read projection is safe on stored rows', () => {
    * `issueUpdated` carries only the fields whose VALUE moved, and `track` in
    * `issues/routes.ts` is what drops the rest — so editing an html description
    * that was already html emits `description` with no format. Measured live on
-   * forge-beta: ISS-899's body was re-embedded as raw `<forge-problem>` markup.
+   * forge-beta: ISS-899's body was re-embedded as raw markup.
    */
+  // cm:guard the sniff that reads a leading `<forge-` as html is NOT dead now that the vocabulary is refused on write (2026-09-14): it is what keeps the rows written before that projecting to text when their format is lost in transit.
   it('projects a component body whose format was lost in transit, rather than embedding markup', () => {
     const body = '<forge-symptom><forge-opening>patched</forge-opening></forge-symptom>';
     const text = bodyText(body, null);
     expect(text).not.toContain('<forge-');
     expect(text).toContain('patched');
-    expect(bodySlots(body, null)).not.toBeNull();
   });
 
   it('still refuses to sniff a row that SAYS markdown, whatever it contains', () => {
     const body = '<forge-symptom><forge-opening>x</forge-opening></forge-symptom>';
     expect(bodyText(body, 'markdown')).toBe(body);
-    expect(bodySlots(body, 'markdown')).toBeNull();
   });
 });
