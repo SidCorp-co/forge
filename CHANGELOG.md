@@ -4311,6 +4311,13 @@
 
 ### Changed
 
+- **The comment and description boxes no longer offer to insert a markup template.** The
+  "Insert component" menu dropped a skeleton like `<forge-blocked on="">` into the box for you to
+  fill in. It was built to make what *agents* write consistent, and it ended up asking people to
+  hand-write markup instead — which nobody did: of 13,564 comments across every project, seven
+  carried one. Writing a comment is a text box again. Everything already written this way still
+  renders exactly as before, attachments still place the same way, and the preview button stays.
+
 - **An issue that was parked before there were questions to answer now says so, instead of
   showing you a button that does nothing.** Four issues were sitting parked for information with
   no question attached — every one of them parked before answering became the way back — and the
