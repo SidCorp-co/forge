@@ -12,13 +12,12 @@
 
 import { and, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
-import { comments, issues } from '../../db/schema.js';
+import { comments, issues, projects } from '../../db/schema.js';
 import {
   rocketchatCommentMirrorState,
   rocketchatCommentMirrors,
   rocketchatThreadOpenings,
 } from '../../db/schema-rocketchat.js';
-import { activeIssuePrefix } from '../../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../../lib/issue-ref.js';
 import { logger } from '../../logger.js';
 import type { HooksBus } from '../../pipeline/hooks.js';
@@ -268,18 +267,16 @@ async function threadForIssueIn(
     if (existing) await retireIssueThread(issueId, existing);
 
     const [issue] = await db
-      .select({ issSeq: issues.issSeq, projectId: issues.projectId, title: issues.title })
+      .select({ issSeq: issues.issSeq, issuePrefix: projects.issuePrefix, title: issues.title })
       .from(issues)
+      .innerJoin(projects, eq(projects.id, issues.projectId))
       .where(eq(issues.id, issueId))
       .limit(1);
     if (!issue) return { failure: 'the issue is no longer on the record' };
 
     const root = await sendFixedReply(
       { kind: 'rest', auth, rid: room.rid },
-      threadRootText(
-        formatIssueRef(await activeIssuePrefix(issue.projectId), issue.issSeq),
-        issue.title,
-      ),
+      threadRootText(formatIssueRef(issue.issuePrefix, issue.issSeq), issue.title),
       FIXED_REPLY_CONSTANT,
     );
     if (!root.messageId) return { failure: 'the root post named no message id' };

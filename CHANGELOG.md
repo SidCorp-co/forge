@@ -132,7 +132,9 @@
   Three of those rules are enforced by Postgres rather than by code remembering to check: the
   pointer may only name an alias of the project's own, the stored shape is checked where a restore
   and a `psql` session are held to it too, and the alias table refuses every delete and every
-  rename. ISS-992.
+  rename, and the tombstone a deleted project leaves belongs to that deletion alone — writing one
+  by hand while the project is still there is refused, because it would orphan a live project's
+  claim and stop its published references resolving. ISS-992.
 
 - **`forge_feedback action=submit` no longer guesses which project a report is about.**
   `projectId` was optional, and an omitted one fell back to the project the caller happened to be
