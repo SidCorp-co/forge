@@ -3,6 +3,7 @@ import type { WebSocket } from 'ws';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { runners, runnerTypes } from '../db/schema.js';
+import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
 import { hooks } from '../pipeline/hooks.js';
 import { roomManager } from '../ws/room-manager.js';
@@ -115,12 +116,7 @@ export async function handleRunnerRegister(ws: RunnerWs, msg: unknown): Promise<
       runnerId = inserted.id;
     } catch (err) {
       // cm:guard scope the re-select by PROJECT as well as device and type — the index that raced is `runners_project_device_type_uq`, so a device bound to two projects has a second row matching on device and type alone, and the unscoped read returned the other project's runner and set IT online (ISS-990).
-      if (
-        typeof err === 'object' &&
-        err !== null &&
-        'code' in err &&
-        (err as { code: string }).code === '23505'
-      ) {
+      if (isUniqueViolation(err)) {
         const [retry] = await db
           .select()
           .from(runners)
@@ -157,7 +153,6 @@ export async function handleRunnerRegister(ws: RunnerWs, msg: unknown): Promise<
   if (wasOffline) {
     void hooks.emit('runnerOnline', { projectId: input.projectId, runnerId });
   }
-  // Echo back so the daemon learns its runnerId.
   try {
     ws.send(
       JSON.stringify({

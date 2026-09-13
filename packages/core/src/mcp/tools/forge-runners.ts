@@ -7,7 +7,9 @@ import {
   runnerTypes,
 } from '../../db/schema.js';
 import { countInFlightByRunner, countInFlightForOneRunner } from '../../jobs/in-flight.js';
+import { setRunnerStatus as auditedSetRunnerStatus } from '../../runners/runner-events.js';
 import {
+  findRunnerById,
   findRunnerProjectId,
   insertRunner,
   listRunners,
@@ -42,7 +44,6 @@ const inputSchema = z
     projectId: z.uuid().optional(),
     status: z.enum(runnerStatuses).optional(),
     type: z.enum(runnerTypes).optional(),
-    // register
     data: registerDataSchema.optional(),
     runnerId: z.uuid().optional(),
     force: z.boolean().optional(),
@@ -162,14 +163,22 @@ export const forgeRunnersTool: ContextScopedMcpToolFactory = (ctx) => ({
 
     // cm:guard `retire` and `restore` stay a pair at the same reach — a status a surface can create and not leave is what left forge-vm withdrawn with no route back, and the only fix on offer was a re-registration the unique index refuses (ISS-990).
     // cm:edge contract -> packages/core/src/runners/select.ts — `online` and not `offline`, because dispatch filters on `status = 'online'`: `offline` would leave a restored box admitted by pool-admission and invisible to the picker until its next heartbeat. `stale-detector.ts` demotes a stale `online` row within the minute, so this cannot become a lasting lie.
+    // cm:edge lockstep -> packages/core/src/runners/runner-events.ts — the AUDITED writer, so the Activity panel answering "why is this box back" holds the transition. `retire` beside it still takes the bare one and leaves no row; closing that is docs/proposals/mcp-runner-status-writes-are-unaudited.md.
     if (input.action === 'restore') {
       if (!input.runnerId) {
         throw new Error('BAD_REQUEST: runnerId is required for action=restore');
       }
-      const ownerProjectId = await findRunnerProjectId(input.runnerId);
+      const runnerId = input.runnerId;
+      const ownerProjectId = await findRunnerProjectId(runnerId);
       if (!ownerProjectId) throw new Error('NOT_FOUND: runner not found');
       await assertPrincipalIsAdmin(ctx.principal, ownerProjectId);
-      const row = await setRunnerStatus(input.runnerId, 'online');
+      const transition = await auditedSetRunnerStatus({
+        runnerId,
+        newStatus: 'online',
+        reason: 'mcp_restore',
+      });
+      if (!transition.found) throw new Error('NOT_FOUND: runner not found');
+      const row = await findRunnerById(runnerId);
       if (!row) throw new Error('NOT_FOUND: runner not found');
       return { runner: publicRunnerRow(row) };
     }

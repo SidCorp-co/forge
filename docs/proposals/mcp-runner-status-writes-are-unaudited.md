@@ -38,3 +38,17 @@ inverse.
 Whether `runner_events` is meant to be the complete record of who moved a runner and why, or only
 the record of what the web surfaces did. The first reading makes this a defect; the second makes
 the `api.ts` annotation the thing to correct.
+
+## A second reader with the same shape
+
+`runners/select.ts:readDeviceClaudeCodeCapabilities` takes a device id alone and reads one
+`claude-code` runner row with an unordered `limit(1)`. Its header claimed an index
+`runners_device_type_uq` pinned at most one such row per device; no index of that name exists, and
+the real one permits a row per project. So on a device bound to two projects the function returns
+whichever row Postgres hands back first, and `capabilities.pm` — the PM opt-in — is read from an
+arbitrary project's runner.
+
+ISS-990 corrected the false claim to a `cm:guard` that says what is actually true. What it did not
+decide is what a device-only caller should mean: the union of the device's runners, the row for a
+project the caller has not named, or a signature that takes the project too. That is the same
+question as above wearing different clothes — whether a per-device fact is really a per-binding one.

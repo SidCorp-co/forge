@@ -14,6 +14,7 @@ const selectDistinctImpl = vi.fn();
 const insertImpl = vi.fn();
 const updateImpl = vi.fn();
 const executeImpl = vi.fn();
+const transactionImpl = vi.fn();
 
 vi.mock('../../db/client.js', () => ({
   db: {
@@ -22,6 +23,7 @@ vi.mock('../../db/client.js', () => ({
     insert: (...a: unknown[]) => insertImpl(...a),
     update: (...a: unknown[]) => updateImpl(...a),
     execute: (...a: unknown[]) => executeImpl(...a),
+    transaction: (...a: unknown[]) => transactionImpl(...a),
   },
 }));
 
@@ -46,7 +48,6 @@ function buildCtx() {
   };
 }
 
-// loadVisibleProjectIdsForPrincipal: selectDistinct({id}).from.leftJoin.where.
 function mockVisible(ids: string[]) {
   selectDistinctImpl.mockImplementationOnce(() => ({
     from: () => ({
@@ -96,7 +97,43 @@ beforeEach(() => {
   insertImpl.mockReset();
   updateImpl.mockReset();
   executeImpl.mockReset();
+  transactionImpl.mockReset();
 });
+
+/**
+ * `runner-events.ts:setRunnerStatus` in one transaction: locked read of the
+ * current status, the UPDATE, then a `runner_events` insert only on a change.
+ */
+function mockAuditedTransition(oldStatus: string) {
+  const written: Array<Record<string, unknown>> = [];
+  const events: Array<Record<string, unknown>> = [];
+  transactionImpl.mockImplementationOnce((fn: (tx: unknown) => unknown) =>
+    fn({
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            for: () => ({
+              limit: () => Promise.resolve([{ status: oldStatus, projectId: PROJECT_ID }]),
+            }),
+          }),
+        }),
+      }),
+      update: () => ({
+        set: (v: Record<string, unknown>) => {
+          written.push(v);
+          return { where: () => Promise.resolve(undefined) };
+        },
+      }),
+      insert: () => ({
+        values: (v: Record<string, unknown>) => {
+          events.push(v);
+          return Promise.resolve(undefined);
+        },
+      }),
+    }),
+  );
+  return { written, events };
+}
 
 describe('forge_runners', () => {
   it('list attaches inFlightCount per runner, scoped to visible projects', async () => {
@@ -265,22 +302,29 @@ describe('forge_runners, the inverse of retire and the collision refusal', () =>
   it('restore writes `online`, the status the dispatch picker requires', async () => {
     mockLimitOnce([{ projectId: PROJECT_ID }]);
     mockLimitOnce([adminAccessRow]);
-    const written: Array<Record<string, unknown>> = [];
-    updateImpl.mockImplementationOnce(() => ({
-      set: (v: Record<string, unknown>) => {
-        written.push(v);
-        return {
-          where: () => ({ returning: () => Promise.resolve([{ ...runnerRow, status: 'online' }]) }),
-        };
-      },
-    }));
+    const tx = mockAuditedTransition('disabled');
+    mockLimitOnce([{ ...runnerRow, status: 'online' }]);
     const tool = forgeRunnersTool(buildCtx());
     const res = (await tool.handler({ action: 'restore', runnerId: RUNNER_ID })) as {
       runner: { status: string };
     };
 
-    expect(written[0]?.status).toBe('online');
+    expect(tx.written[0]?.status).toBe('online');
     expect(res.runner.status).toBe('online');
+  });
+
+  // cm:guard the transition must reach `runner_events` — the Activity panel is what answers "why is this box back", and a restore that writes only the column leaves the operator's own action the one thing missing from the timeline (ISS-990).
+  it('restore appends the audited transition, it does not just set the column', async () => {
+    mockLimitOnce([{ projectId: PROJECT_ID }]);
+    mockLimitOnce([adminAccessRow]);
+    const tx = mockAuditedTransition('disabled');
+    mockLimitOnce([{ ...runnerRow, status: 'online' }]);
+    const tool = forgeRunnersTool(buildCtx());
+
+    await tool.handler({ action: 'restore', runnerId: RUNNER_ID });
+
+    expect(tx.events).toHaveLength(1);
+    expect(tx.events[0]).toMatchObject({ oldStatus: 'disabled', newStatus: 'online' });
   });
 
   it('restore by a non-admin on the owning project is refused', async () => {

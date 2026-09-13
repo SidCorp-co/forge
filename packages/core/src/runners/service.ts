@@ -29,6 +29,12 @@ export async function listRunners(q: RunnerQuery) {
     .where(and(...filters));
 }
 
+/** One runner row by id, for a caller that has just written it through an audited writer. */
+export async function findRunnerById(runnerId: string) {
+  const [row] = await db.select().from(runners).where(eq(runners.id, runnerId)).limit(1);
+  return row ?? null;
+}
+
 /** Which project a runner belongs to, for a gate that runs before anything else. */
 export async function findRunnerProjectId(runnerId: string): Promise<string | null> {
   const [row] = await db

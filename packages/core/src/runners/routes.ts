@@ -55,7 +55,6 @@ function rowToRunner(r: typeof runners.$inferSelect): Runner {
 }
 
 function publicRunner(r: Runner): Omit<Runner, 'config'> & { config: Record<string, unknown> } {
-  // Strip secrets before returning over the wire.
   const config = { ...r.config };
   if ('apiKey' in config) config.apiKey = '***';
   if ('callbackSecret' in config) config.callbackSecret = '***';
@@ -339,9 +338,10 @@ runnerRoutes.post(
       });
     } catch (err) {
       if (err instanceof RunnerAlreadyBoundError) {
+        // cm:edge contract -> packages/core/src/middleware/error.ts — `extractCause` forwards `code`, `details` and `wwwAuthenticate` and DROPS every other key, so the colliding runner travels as `details` or it does not reach the caller at all.
         throw new HTTPException(409, {
           message: err.message,
-          cause: { code: 'RUNNER_ALREADY_BOUND', runner: err.collided },
+          cause: { code: 'RUNNER_ALREADY_BOUND', details: { runner: err.collided } },
         });
       }
       throw err;
@@ -462,7 +462,7 @@ runnerRoutes.post(
     const access = await loadProjectAccess(existing.projectId, userId);
     assertProjectRole(access, 'member');
     const adapter = getRunnerAdapter(existing.type);
-    if (!adapter || !adapter.refreshQuota) {
+    if (!adapter?.refreshQuota) {
       return c.json({ remaining: null, limit: null });
     }
     const result = await adapter.refreshQuota({ runner: rowToRunner(existing) });
