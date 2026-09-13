@@ -114,6 +114,21 @@
 
 ### Added
 
+- **An issue's comments and a chat thread are now the same conversation.**
+  Talking to a run meant being in Forge. A comment on a `needs_info` issue is already how a person
+  answers a working agent — the reply reaches the parked session and wakes it — but the only way to
+  write one was the web app or the API, so anyone whose day happens in chat had to leave it, find the
+  issue, and type there instead. A comment written in Forge now appears in the Rocket.Chat room the
+  project is bound to, in a thread of the issue's own opened with its key and title; a reply in that
+  thread becomes a real comment on the issue, authored by the Forge user the speaker maps to, and
+  reaches the parked run by the same path a comment typed in Forge has always taken. Somebody the
+  channel cannot map to a Forge user is told so by name and nothing is written as them. The issue's
+  comment thread is separate from the thread a question is asked in, because a reply has to mean one
+  thing: prose can restart a run that is waiting, and it can never stand in for choosing an option on
+  a decision somebody was asked to make. Nothing echoes — a comment carried into the room is not
+  carried back out, and the same message delivered twice is still one comment, so the agent is not
+  run twice on one sentence.
+
 - **A parked run's question now reaches a person on a chat channel, and a reply there answers it.**
   A run that stops to ask a human was the one park with no answering surface: the box minted the
   question, core stored its options, authorities and fingerprints — and nothing rendered them

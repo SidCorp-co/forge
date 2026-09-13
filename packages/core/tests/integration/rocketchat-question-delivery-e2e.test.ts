@@ -157,8 +157,8 @@ const threadOf = async (questionId: string) =>
   (
     await db
       .select()
-      .from(rcSchema.rocketchatQuestionThreads)
-      .where(eq(rcSchema.rocketchatQuestionThreads.questionId, questionId))
+      .from(rcSchema.rocketchatThreads)
+      .where(eq(rcSchema.rocketchatThreads.questionId, questionId))
   )[0] ?? null;
 
 describe('the obligation is derived, not written by the kernel', () => {
@@ -301,8 +301,8 @@ describe('delivering a round', () => {
     // cm:guard ONE thread row for the whole question, still naming round one's message: a second row would be a second thread, and "is this reply an answer or a comment?" stops being decidable from the message alone (ISS-978 criterion 9).
     const threads = await db
       .select()
-      .from(rcSchema.rocketchatQuestionThreads)
-      .where(eq(rcSchema.rocketchatQuestionThreads.questionId, q.id));
+      .from(rcSchema.rocketchatThreads)
+      .where(eq(rcSchema.rocketchatThreads.questionId, q.id));
     expect(threads).toHaveLength(1);
     expect(threads[0]?.tmid).toBe('msg-1');
   });
@@ -426,14 +426,18 @@ describe('the record lives on its own table', () => {
     const connectionId = await bindRoom();
     const q = await ask();
     await delivery.drainQuestionDeliveries();
+    const registry = await import('../../src/integrations/rocketchat/thread-registry.js');
+    expect(await registry.subjectForThread({ connectionId, rid: 'room-1', tmid: 'msg-1' })).toEqual(
+      {
+        kind: 'question',
+        questionId: q.id,
+      },
+    );
     expect(
-      await delivery.questionForThread({ connectionId, rid: 'room-1', tmid: 'msg-1' }),
-    ).toEqual({ questionId: q.id });
-    expect(
-      await delivery.questionForThread({ connectionId, rid: 'room-1', tmid: 'someone-elses' }),
+      await registry.subjectForThread({ connectionId, rid: 'room-1', tmid: 'someone-elses' }),
     ).toBeNull();
     expect(
-      await delivery.questionForThread({ connectionId, rid: 'other-room', tmid: 'msg-1' }),
+      await registry.subjectForThread({ connectionId, rid: 'other-room', tmid: 'msg-1' }),
     ).toBeNull();
   });
 });
