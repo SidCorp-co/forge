@@ -2152,6 +2152,19 @@
 
 ### Fixed
 
+- **A build machine you retire can be put back from the same switch that retired it.** Turning a
+  box off is meant to be a decision you can change your mind about, and it was not: the switch that
+  took a machine out of the pool locked the moment it succeeded, and the line under it told you to
+  register the machine again, which has never worked — the second registration collides with the
+  first and used to fail with nothing a reader could act on. There was no way back from any screen,
+  and a project whose only other machine was already draining had nowhere to send its work until
+  somebody edited the record by hand. The switch now stays usable, its line tells you to use it,
+  and the same way back exists for the agents that retire a box rather than a person.
+
+  Registering a machine that is already on a project now says so in a sentence — which machine it
+  collided with, what state that one is in, and whether to bring it back or unassign it first —
+  instead of failing with a database error.
+
 - **A paused job no longer restarts itself by writing a note.** When a job stops to ask a person
   something, it is supposed to stay stopped until someone answers. It did not: the job's own
   follow-up note — a finding it owed the ticket, a correction, a record of what it had already

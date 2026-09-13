@@ -221,7 +221,6 @@ describe('forge_runners', () => {
         where: () => ({ returning: () => Promise.resolve([runnerRow]) }),
       }),
     }));
-    // disabled update with returning
     updateImpl.mockImplementationOnce(() => ({
       set: () => ({
         where: () => ({
@@ -258,5 +257,80 @@ describe('forge_runners', () => {
       capabilities: { maxConcurrent: 4 },
     })) as { runner: { capabilities: { maxConcurrent: number } } };
     expect(res.runner.capabilities.maxConcurrent).toBe(4);
+  });
+});
+
+describe('forge_runners, the inverse of retire and the collision refusal', () => {
+  // cm:guard `restore` is asserted on the status it WRITES, never on the row the mock returns — the handler's whole job here is the value it puts in that `set`, and a test reading the returned fixture passes whatever it writes (ISS-990).
+  it('restore writes `online`, the status the dispatch picker requires', async () => {
+    mockLimitOnce([{ projectId: PROJECT_ID }]);
+    mockLimitOnce([adminAccessRow]);
+    const written: Array<Record<string, unknown>> = [];
+    updateImpl.mockImplementationOnce(() => ({
+      set: (v: Record<string, unknown>) => {
+        written.push(v);
+        return {
+          where: () => ({ returning: () => Promise.resolve([{ ...runnerRow, status: 'online' }]) }),
+        };
+      },
+    }));
+    const tool = forgeRunnersTool(buildCtx());
+    const res = (await tool.handler({ action: 'restore', runnerId: RUNNER_ID })) as {
+      runner: { status: string };
+    };
+
+    expect(written[0]?.status).toBe('online');
+    expect(res.runner.status).toBe('online');
+  });
+
+  it('restore by a non-admin on the owning project is refused', async () => {
+    mockLimitOnce([{ projectId: PROJECT_ID }]);
+    mockLimitOnce([memberAccessRow]);
+    const tool = forgeRunnersTool(buildCtx());
+    await expect(tool.handler({ action: 'restore', runnerId: RUNNER_ID })).rejects.toThrow(
+      /FORBIDDEN/,
+    );
+  });
+
+  it('restore names the argument it is missing rather than throwing on undefined', async () => {
+    const tool = forgeRunnersTool(buildCtx());
+    await expect(tool.handler({ action: 'restore' })).rejects.toThrow(
+      /runnerId is required for action=restore/,
+    );
+  });
+
+  it('restore of a runner that does not exist answers NOT_FOUND', async () => {
+    mockLimitOnce([]);
+    const tool = forgeRunnersTool(buildCtx());
+    await expect(tool.handler({ action: 'restore', runnerId: RUNNER_ID })).rejects.toThrow(
+      /NOT_FOUND/,
+    );
+  });
+
+  it('register refuses a device already bound to this project by name, not with a bare 23505', async () => {
+    mockLimitOnce([adminAccessRow]);
+    insertImpl.mockImplementationOnce(() => ({
+      values: () => ({
+        returning: () =>
+          Promise.reject(
+            Object.assign(new Error('duplicate key value'), {
+              cause: { code: '23505', constraint_name: 'runners_project_device_type_uq' },
+            }),
+          ),
+      }),
+    }));
+    mockLimitOnce([{ id: RUNNER_ID, name: 'forge-vm', status: 'disabled' }]);
+    const tool = forgeRunnersTool(buildCtx());
+
+    const err = (await tool
+      .handler({
+        action: 'register',
+        data: { projectId: PROJECT_ID, type: 'claude-code', deviceId: DEVICE_ID, name: 'forge-vm' },
+      })
+      .catch((e: unknown) => e)) as Error;
+
+    expect(err.message).toContain('RUNNER_ALREADY_BOUND');
+    expect(err.message).toContain(RUNNER_ID);
+    expect(err.message).toMatch(/restore it/i);
   });
 });

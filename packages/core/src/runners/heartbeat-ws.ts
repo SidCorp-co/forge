@@ -61,11 +61,18 @@ export async function handleRunnerRegister(ws: RunnerWs, msg: unknown): Promise<
     return;
   }
   const input = parsed.data;
-  // Upsert by (deviceId, type).
+  // cm:guard the upsert key is (project, device, type) — `runners_project_device_type_uq` in db/schema.ts is the authority, and a device may serve several projects. Keyed on device and type alone this UPDATE re-pointed an existing row's `project_id`, so the second of the daemon's per-project registers silently moved the first project's runner onto the second (ISS-990).
+  // cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/ws.rs — that side sends one `runner:register` per bound project, which is what makes the project part of the key load-bearing rather than incidental.
   const [existing] = await db
     .select()
     .from(runners)
-    .where(and(eq(runners.deviceId, principal.deviceId), eq(runners.type, input.type)))
+    .where(
+      and(
+        eq(runners.projectId, input.projectId),
+        eq(runners.deviceId, principal.deviceId),
+        eq(runners.type, input.type),
+      ),
+    )
     .limit(1);
 
   const wasOffline = existing?.status !== 'online';
@@ -107,8 +114,7 @@ export async function handleRunnerRegister(ws: RunnerWs, msg: unknown): Promise<
       if (!inserted) return;
       runnerId = inserted.id;
     } catch (err) {
-      // Concurrent register from same device for same type — runners_device_type_uq
-      // raced. Re-select the row that won.
+      // cm:guard scope the re-select by PROJECT as well as device and type — the index that raced is `runners_project_device_type_uq`, so a device bound to two projects has a second row matching on device and type alone, and the unscoped read returned the other project's runner and set IT online (ISS-990).
       if (
         typeof err === 'object' &&
         err !== null &&
@@ -118,7 +124,13 @@ export async function handleRunnerRegister(ws: RunnerWs, msg: unknown): Promise<
         const [retry] = await db
           .select()
           .from(runners)
-          .where(and(eq(runners.deviceId, principal.deviceId), eq(runners.type, input.type)))
+          .where(
+            and(
+              eq(runners.projectId, input.projectId),
+              eq(runners.deviceId, principal.deviceId),
+              eq(runners.type, input.type),
+            ),
+          )
           .limit(1);
         if (!retry) return;
         runnerId = retry.id;
