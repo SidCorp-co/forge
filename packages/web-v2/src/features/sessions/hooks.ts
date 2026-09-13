@@ -1,12 +1,6 @@
 "use client";
 
-// web-v2 feature module: sessions — React Query hooks.
-//
-// Query-key contract (ISS-291): every key MUST start with `['agent-sessions']`,
-// the exact prefix the WS event-router invalidates on
-// `agent-session.created/updated/status/deleted` (+ `replayOnReconnect`). Pick
-// any other prefix and live updates silently no-op. See
-// `lib/ws/event-router.ts`.
+// cm:guard every key in this file starts with `['agent-sessions']`, which is the exact prefix `lib/ws/event-router.ts` invalidates on `agent-session.created/updated/status/deleted` and on `replayOnReconnect`. A key under any other prefix looks live on screen and silently never refreshes (ISS-291).
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
 import { formatApiError } from "@/lib/api/error";

@@ -13,7 +13,7 @@ const costQueue: SelectQueue = [];
 const runRowQueue: SelectQueue = [];
 const bulkCostQueue: SelectQueue = [];
 const issueQueue: SelectQueue = [];
-const liveJobsQueue: SelectQueue = [];
+const livenessQueue: SelectQueue = [];
 const attemptsQueue: SelectQueue = [];
 
 let nextSelectKind: 'steps' | 'cost' | 'runRow' | 'bulkCost' = 'steps';
@@ -28,10 +28,15 @@ vi.mock('drizzle-orm', () => ({
   eq: (...args: unknown[]) => ({ _eq: args }),
   asc: (...args: unknown[]) => ({ _asc: args }),
   inArray: (...args: unknown[]) => ({ _inArray: args }),
-  sql: ((strings: TemplateStringsArray, ...values: unknown[]) => {
-    const obj = { _sql: strings.join('?'), values };
-    return Object.assign(obj, { mapWith: () => obj });
-  }) as never,
+  notInArray: (...args: unknown[]) => ({ _notInArray: args }),
+  sql: Object.assign(
+    (strings: TemplateStringsArray, ...values: unknown[]) => {
+      const obj = { _sql: strings.join('?'), values };
+      return Object.assign(obj, { mapWith: () => obj });
+    },
+    // cm:why `sql.join` is stubbed rather than left off: ISS-998's liveness statement builds its status lists from the shared constants through it, and a missing member here fails the whole suite with `sql.join is not a function` — a message about the mock, not about the code under test.
+    { join: (parts: unknown[], sep: unknown) => ({ _join: parts, sep }) },
+  ) as never,
 }));
 
 // cm:why ISS-411 — runs-rollup now imports the pure retry-state helpers; mock them so the suite does not transitively pull in the dispatch/queue graph (env-gated).
@@ -64,7 +69,17 @@ vi.mock('../db/schema.js', () => ({
     status: 'agent_sessions.status',
     failureReason: 'agent_sessions.failure_reason',
     failureDetail: 'agent_sessions.failure_detail',
+    lastHeartbeatAt: 'agent_sessions.last_heartbeat_at',
   },
+  // cm:edge contract -> packages/core/src/db/schema.ts#terminalAgentSessionStatuses — the same five, and `jobStatuses` the same seven, copied because this suite mocks the whole schema module; a status added there and not here leaves this file asserting the rollup against lists production no longer uses, and nothing goes red (ISS-998).
+  jobStatuses: ['queued', 'dispatched', 'running', 'held', 'done', 'failed', 'cancelled'],
+  terminalAgentSessionStatuses: [
+    'completed',
+    'failed',
+    'completed_via_recovery',
+    'cancelled_stale',
+    'cancelled',
+  ],
   jobs: {
     id: 'jobs.id',
     pipelineRunId: 'jobs.pipeline_run_id',
@@ -105,18 +120,17 @@ vi.mock('../db/schema.js', () => ({
 
 vi.mock('../db/client.js', () => ({
   db: {
-    // cm:why discriminate the two `jobs` selects by PROJECTION, not by call order — the attempts timeline and the ISS-789 live-job count both read that table from the same `Promise.all`, and an order-based queue silently mis-feeds them the day a loader is added to that array
-    select: (projection?: Record<string, unknown>) => ({
+    // cm:guard the ISS-998 liveness pair is raw `db.execute` and is queued SEPARATELY from every `select`: it is one statement by design — two would be two snapshots — and routing it through the projection discriminator above would make the mock's shape disagree with the code's.
+    execute: () => Promise.resolve(livenessQueue.shift() ?? []),
+    // cm:why the queues are keyed on the TABLE each select reads and never on call order: the loaders run from one `Promise.all`, and an order-based queue silently mis-feeds them the day a loader joins that array. The ISS-998 liveness pair needs no key at all — it is raw `execute`, above.
+    select: () => ({
       from: (table: unknown) => {
         const tableKey = typeof table === 'object' && table !== null ? Object.values(table)[0] : '';
         const isAgentSessions = String(tableKey).startsWith('agent_sessions');
         const isUsageRecords = String(tableKey).startsWith('usage_records');
         const isPipelineRuns = String(tableKey).startsWith('pipeline_runs');
         const isIssues = String(tableKey).startsWith('issues');
-        const isLiveJobCount =
-          String(tableKey).startsWith('jobs.') && !!projection && 'n' in projection;
-        const isAttempts =
-          String(tableKey).startsWith('jobs.') && !!projection && !('n' in projection);
+        const isAttempts = String(tableKey).startsWith('jobs.');
 
         const result = isAgentSessions
           ? stepsQueue.shift()
@@ -124,15 +138,13 @@ vi.mock('../db/client.js', () => ({
             ? runRowQueue.shift()
             : isIssues
               ? issueQueue.shift()
-              : isLiveJobCount
-                ? liveJobsQueue.shift()
-                : isAttempts
-                  ? attemptsQueue.shift()
-                  : isUsageRecords
-                    ? nextSelectKind === 'bulkCost'
-                      ? bulkCostQueue.shift()
-                      : costQueue.shift()
-                    : [];
+              : isAttempts
+                ? attemptsQueue.shift()
+                : isUsageRecords
+                  ? nextSelectKind === 'bulkCost'
+                    ? bulkCostQueue.shift()
+                    : costQueue.shift()
+                  : [];
 
         return makeChain(Promise.resolve(result ?? []));
       },
@@ -162,7 +174,7 @@ beforeEach(() => {
   runRowQueue.length = 0;
   bulkCostQueue.length = 0;
   issueQueue.length = 0;
-  liveJobsQueue.length = 0;
+  livenessQueue.length = 0;
   attemptsQueue.length = 0;
   nextSelectKind = 'steps';
 });
@@ -224,7 +236,7 @@ describe('loadPipelineRunSummary', () => {
     expect(result?.steps).toHaveLength(1);
     const step = result!.steps[0]!;
     expect(step.status).toBe('running');
-    // running is not terminal → no finishedAt + no durationMs
+    // cm:guard both nulls are asserted because a step that is still running has neither: a build stamping `finishedAt` at the moment a step starts would give every live run a duration and read as finished.
     expect(step.finishedAt).toBeNull();
     expect(step.durationMs).toBeNull();
     expect(step.agentSessionId).toBe(SESS_A);
@@ -290,17 +302,40 @@ describe('loadPipelineRunSummary', () => {
     runRowQueue.push([runRow]);
     stepsQueue.push([]);
     costQueue.push([]);
-    liveJobsQueue.push([{ runId: RUN_ID, n: 2 }]);
+    livenessQueue.push([{ run_id: RUN_ID, live_jobs: 2, last_beat: null }]);
 
     const result = await loadPipelineRunSummary(RUN_ID);
     expect(result?.liveJobs).toBe(2);
+  });
+
+  // cm:guard assert a REAL stamp here, never just "the field is present": the failure this covers is a spread whose `lastSessionBeatAt: null` default is never overridden, which reads as "no session on this run" for every run there is and puts every live master-lane run into the stalled count (ISS-998).
+  it('ISS-998: carries the run session heartbeat, not the rowToListItem null default', async () => {
+    const beat = new Date('2026-09-13T11:59:00.000Z');
+    runRowQueue.push([runRow]);
+    stepsQueue.push([]);
+    costQueue.push([]);
+    livenessQueue.push([{ run_id: RUN_ID, live_jobs: 0, last_beat: beat }]);
+
+    const result = await loadPipelineRunSummary(RUN_ID);
+    expect(result?.lastSessionBeatAt).toBe('2026-09-13T11:59:00.000Z');
+  });
+
+  // cm:guard the pair: a run with no non-terminal session reads `null`, and `null` must not be confused with the loader not having run — both halves are asserted because a build returning `null` always passes the second alone.
+  it('ISS-998: a run with no live session reads null rather than a stale stamp', async () => {
+    runRowQueue.push([runRow]);
+    stepsQueue.push([]);
+    costQueue.push([]);
+    livenessQueue.push([{ run_id: RUN_ID, live_jobs: 0, last_beat: null }]);
+
+    const result = await loadPipelineRunSummary(RUN_ID);
+    expect(result?.lastSessionBeatAt).toBeNull();
   });
 
   it('ISS-789: a run with no live jobs reads 0, so a dead run is distinguishable from a live one', async () => {
     runRowQueue.push([runRow]);
     stepsQueue.push([]);
     costQueue.push([]);
-    liveJobsQueue.push([]);
+    livenessQueue.push([]);
 
     const result = await loadPipelineRunSummary(RUN_ID);
     expect(result?.status).toBe('running');
@@ -316,7 +351,8 @@ describe('listItemsFromRows', () => {
 
   it('falls back to zero cost for runs missing from the cost map', async () => {
     nextSelectKind = 'bulkCost';
-    bulkCostQueue.push([]); // no usage rows
+    // cm:guard an EMPTY cost read is the case, not a zero-valued row: a run with no usage records must fall back to `EMPTY_COST` rather than come back with the field missing, which would render as a blank where a reader expects nothing spent.
+    bulkCostQueue.push([]);
 
     const items = await listItemsFromRows([runRow]);
     expect(items).toHaveLength(1);
@@ -337,7 +373,7 @@ describe('listItemsFromRows', () => {
 
   it('ISS-460: maps cost (via agent_sessions rollup) and resolves issueRef/issueTitle', async () => {
     nextSelectKind = 'bulkCost';
-    // loadCostByRunIds maps rows keyed on runId (now sourced from agent_sessions).
+    // cm:guard the cost rows are keyed on the RUN and reached through `agent_sessions`, because `usage_records.session_id` is a session id and not a job id: a fixture keyed any other way passes against a build that reads the wrong column (ISS-460).
     bulkCostQueue.push([
       {
         runId: RUN_ID,
@@ -364,10 +400,13 @@ describe('listItemsFromRows', () => {
   it('ISS-789: the list surface keeps reporting the batched live-job count', async () => {
     nextSelectKind = 'bulkCost';
     bulkCostQueue.push([]);
-    liveJobsQueue.push([{ runId: RUN_ID, n: 3 }]);
+    livenessQueue.push([
+      { run_id: RUN_ID, live_jobs: 3, last_beat: new Date('2026-09-13T11:58:00.000Z') },
+    ]);
 
     const items = await listItemsFromRows([runRow]);
     expect(items[0]!.liveJobs).toBe(3);
+    expect(items.map((i) => i.lastSessionBeatAt)).toEqual(['2026-09-13T11:58:00.000Z']);
   });
 });
 
@@ -377,7 +416,7 @@ describe('ISS-885: the attempt timeline carries the classified cause', () => {
     runRowQueue.push([runRow]);
     stepsQueue.push([]);
     costQueue.push([]);
-    liveJobsQueue.push([{ n: 0 }]);
+    livenessQueue.push([]);
     attemptsQueue.push([
       {
         jobId: 'job-1',
@@ -411,7 +450,7 @@ describe('ISS-885: the attempt timeline carries the classified cause', () => {
     runRowQueue.push([runRow]);
     stepsQueue.push([]);
     costQueue.push([]);
-    liveJobsQueue.push([{ n: 0 }]);
+    livenessQueue.push([]);
     attemptsQueue.push([
       {
         jobId: 'job-2',

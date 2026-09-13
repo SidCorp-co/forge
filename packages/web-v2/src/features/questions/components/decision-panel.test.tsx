@@ -15,9 +15,11 @@ expect.extend(matchers);
 
 const list = vi.fn();
 const mutate = vi.fn();
-vi.mock("../hooks", () => ({
+// cm:guard `useAnsweringQuestions` is the REAL one and only the two fetch hooks are replaced: the per-question pending rule is the thing under test on this panel, and a stub of it would leave both callers free to regress the same way at once (ISS-998).
+vi.mock("../hooks", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../hooks")>()),
   useIssueQuestions: () => list(),
-  useAnswerQuestion: () => ({ mutate, isPending: false }),
+  useAnswerQuestion: () => ({ mutate, mutateAsync: async (i: unknown) => mutate(i) }),
 }));
 
 const SAFE: VisibleOption = {

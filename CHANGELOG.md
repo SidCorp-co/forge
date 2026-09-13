@@ -114,6 +114,26 @@
 
 ### Added
 
+- **The Agents screen now says what a run is actually doing, and holds the decisions runs are waiting on.**
+  A run row read its two words off the box that was running it — `live` and `runnable` — and drew
+  "Working". That is the box's own word for "I have a process", and a pane stopped on a prompt has a
+  process too, which is how a session that had said nothing for twenty-five hours went on reading as
+  working. The row now carries core's independent reading beside the box's claim: how long it has
+  been since the last report, whether that silence has passed the threshold at which automatic
+  recovery is meant to act, why a finished session ended, and — where the two disagree, a box holding
+  a process for a session core has already closed, or a box reporting nothing for a session core
+  still calls running — it says so in those words rather than picking one of them to show. A run
+  parked on a question links straight to that question rather than to the tab it lives on, so a
+  reader with several decisions open can tell which one this run is stopped on. Above the list is a
+  count of runs nothing is working: a pipeline run that is not finished, has no live job, and whose
+  session has not reported in — all three, because any one of them alone counts a healthy master-lane
+  run as dead. That count renders even when the box a run belonged to is gone, which is the only
+  state it exists for. Two things that used to be unreachable are now on the screen: a decision an
+  agent asked with no issue behind it — the shape a master's question takes — had no screen to be
+  answered from at all, and now has its own tab that lists every open question on the project; and a
+  run whose box was mid-revival vanished from the screen entirely, along with every other run on that
+  box, because the word the box publishes in that window was not one the server would accept.
+
 - **A project can be given its own issue prefix, so its issues read `FD-977` rather than `ISS-977`.**
   Every project on a deployment numbered its issues under one shared `ISS-`, so `ISS-977` meant a
   different issue depending on which project you were standing in — and a reference pasted between

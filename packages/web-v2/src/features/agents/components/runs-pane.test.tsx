@@ -4,7 +4,8 @@
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { PipelineRunListItem } from "@/features/pipeline/types";
 import type { RunSessionRow } from "../types";
 
 expect.extend(matchers);
@@ -18,11 +19,52 @@ let state: {
 };
 const refetch = vi.fn();
 
+/** The pipeline-runs read behind the stalled count; it carries both halves of run liveness. */
+let band: {
+  runs: {
+    data?: { items: PipelineRunListItem[] };
+    isLoading: boolean;
+    isError: boolean;
+    error?: unknown;
+  };
+};
+const bandRefetch = vi.fn();
+
 vi.mock("../hooks", () => ({
   useRunSessions: () => ({ ...state, refetch }),
 }));
+vi.mock("@/features/pipeline/hooks", () => ({
+  useProjectRuns: () => ({ ...band.runs, refetch: bandRefetch }),
+}));
 
 const { RunsPane } = await import("./runs-pane");
+
+const NOW = Date.now();
+const runItem = (over: Partial<PipelineRunListItem> = {}): PipelineRunListItem =>
+  ({
+    id: "pr-1",
+    projectId: "p-1",
+    issueId: null,
+    issueRef: null,
+    issueTitle: null,
+    kind: "issue",
+    status: "running",
+    currentStep: "drive",
+    startedAt: new Date(NOW - 3_600_000).toISOString(),
+    finishedAt: null,
+    cost: {
+      estimatedCost: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+      requests: 0,
+      sampleCount: 0,
+    },
+    liveJobs: 0,
+    lastSessionBeatAt: null,
+    ...over,
+  }) as PipelineRunListItem;
 
 function row(over: Partial<RunSessionRow> = {}): RunSessionRow {
   return {
@@ -44,13 +86,19 @@ function row(over: Partial<RunSessionRow> = {}): RunSessionRow {
     deviceName: "dev1",
     observedAt: new Date().toISOString(),
     sessionStatus: "running",
-    lastActivityAt: null,
+    sessionFailureReason: null,
+    lastActivityAt: new Date().toISOString(),
     masterTitle: null,
     ...over,
   } as RunSessionRow;
 }
 
 const scope = { projectId: "p-1" };
+
+beforeEach(() => {
+  band = { runs: { data: { items: [] }, isLoading: false, isError: false } };
+  bandRefetch.mockClear();
+});
 
 describe("the runs pane", () => {
   it("shows a loading placeholder rather than an empty screen", () => {
@@ -133,5 +181,59 @@ describe("the runs pane", () => {
     render(<RunsPane scope={scope} />);
 
     expect(screen.getByText(/awaiting revival/i)).toBeInTheDocument();
+  });
+});
+
+
+describe("the count of runs nothing is working on", () => {
+  // cm:guard the case the count EXISTS for, and the reason it renders outside the ledger's first-run branch: an orphaned run's box is long gone, so it has no ledger row and the screen it appears on is the one that says "No runs on this project". Inside that branch the count would be invisible here.
+  it("is stated even when the box ledger holds nothing at all", () => {
+    state = { isLoading: false, isError: false, data: { items: [], count: 0 } };
+    band.runs = { data: { items: [runItem()] }, isLoading: false, isError: false };
+    render(<RunsPane scope={scope} />);
+
+    expect(screen.getByText(/No runs on this project/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 open run has nothing working on it/i)).toBeInTheDocument();
+  });
+
+  // cm:guard the pair, because either half alone passes against a broken build: a version ignoring the heartbeat entirely counts both, and one counting nothing at all counts neither.
+  it("excludes a run whose session is still beating and counts one whose beat is stale", () => {
+    state = { isLoading: false, isError: false, data: { items: [], count: 0 } };
+    band.runs = {
+      data: {
+        items: [
+          runItem({ id: "pr-live", lastSessionBeatAt: new Date(NOW - 5_000).toISOString() }),
+          runItem({
+            id: "pr-dead",
+            lastSessionBeatAt: new Date(NOW - 6 * 3_600_000).toISOString(),
+          }),
+        ],
+      },
+      isLoading: false,
+      isError: false,
+    };
+    render(<RunsPane scope={scope} />);
+
+    expect(screen.getByText(/1 open run has nothing working on it/i)).toBeInTheDocument();
+  });
+
+  it("says every open run is accounted for when none qualifies", () => {
+    state = { isLoading: false, isError: false, data: { items: [], count: 0 } };
+    band.runs = { data: { items: [runItem({ liveJobs: 2 })] }, isLoading: false, isError: false };
+    render(<RunsPane scope={scope} />);
+
+    expect(screen.getByText(/Every open run has a job or a live agent/i)).toBeInTheDocument();
+  });
+
+  // cm:guard a failed read must not render as a zero: "0 runs" a reader cannot tell from an unanswered question is the reassurance this count was added to stop giving.
+  it("says the read failed rather than reporting a zero, and offers the retry", () => {
+    state = { isLoading: false, isError: false, data: { items: [], count: 0 } };
+    band.runs = { isLoading: false, isError: true, error: new Error("nope") };
+    render(<RunsPane scope={scope} />);
+
+    expect(screen.queryByText(/nothing working on/i)).toBeNull();
+    expect(screen.getByText(/Couldn.t read this project.s runs/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^retry$/i }));
+    expect(bandRefetch).toHaveBeenCalled();
   });
 });
