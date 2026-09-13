@@ -291,31 +291,61 @@ function QuestionCard({ question, issueId }: { question: AgentQuestion; issueId:
   );
 }
 
+// cm:guard a park with NO question is its own render and never the empty one: four issues sat at `needs_info` carrying zero question rows on 2026-09-13, every one of them parked before ISS-996, and rendering nothing under a banner whose CTA scrolls here left that CTA a silent no-op. What it says is what is true of both shapes of such a park — the agent's, minted before the lane existed, and a person's, which mints none by design.
+function NothingToAnswer() {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Nothing to answer here</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <p className="fg-body-sm text-fg">
+          This issue was parked without a question, so there is no round to answer on this screen.
+        </p>
+        <p className="fg-caption text-muted">
+          A comment does not restart the run. Once whoever is waiting has what they need, move the
+          issue on from the header.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
 /**
- * Every question on this issue, or nothing at all when it has none.
+ * Every question on this issue — or, on an issue parked for information with none,
+ * a statement that there is nothing here to answer.
  */
 // cm:guard the empty, loading and failed reads are THREE different renders. Collapsing a failed read into the empty one makes a decision somebody owes disappear from the screen with no way to tell it apart from an issue that never had one (ISS-980 criteria 16, 17, 18).
-export function DecisionPanel({ issueId }: { issueId: string }) {
+// cm:guard the anchored element is rendered on EVERY arm once `parkedForInfo` holds, loading included: the blocker banner's CTA scrolls to this id, and an id that only exists once a fetch resolves makes that CTA do nothing for as long as the read is in flight.
+export function DecisionPanel({
+  issueId,
+  parkedForInfo = false,
+}: {
+  issueId: string;
+  parkedForInfo?: boolean;
+}) {
   const { data, isLoading, isError, error, refetch } = useIssueQuestions(issueId);
-
-  if (isLoading) return <Skeleton variant="rect" className="h-24 w-full" />;
-  if (isError) {
-    return (
-      <ErrorState
-        title="Couldn't load this issue's decisions"
-        message={formatApiError(error)}
-        onRetry={() => refetch()}
-      />
-    );
-  }
   const questions = data?.questions ?? [];
-  if (questions.length === 0) return null;
+
+  if (!parkedForInfo && !isLoading && !isError && questions.length === 0) return null;
 
   return (
     <div id={DECISION_PANEL_ANCHOR} className="space-y-3">
-      {questions.map((question) => (
-        <QuestionCard key={question.id} question={question} issueId={issueId} />
-      ))}
+      {isLoading ? (
+        <Skeleton variant="rect" className="h-24 w-full" />
+      ) : isError ? (
+        <ErrorState
+          title="Couldn't load this issue's decisions"
+          message={formatApiError(error)}
+          onRetry={() => refetch()}
+        />
+      ) : questions.length === 0 ? (
+        <NothingToAnswer />
+      ) : (
+        questions.map((question) => (
+          <QuestionCard key={question.id} question={question} issueId={issueId} />
+        ))
+      )}
     </div>
   );
 }

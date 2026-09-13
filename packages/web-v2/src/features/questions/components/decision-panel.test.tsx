@@ -105,10 +105,10 @@ function loaded(questions: AgentQuestion[]) {
   });
 }
 
-function renderPanel() {
+function renderPanel(props: { parkedForInfo?: boolean } = {}) {
   return render(
     <QueryClientProvider client={new QueryClient()}>
-      <DecisionPanel issueId="i-1" />
+      <DecisionPanel issueId="i-1" {...props} />
     </QueryClientProvider>,
   );
 }
@@ -383,5 +383,67 @@ describe("a round answered in words", () => {
 
     expect(screen.getByText("Answered: Deploy it")).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: /your answer/i })).toBeInTheDocument();
+  });
+});
+
+
+// cm:guard the CTA that scrolls here is the reason this render exists: four issues sat at `needs_info` with zero question rows on 2026-09-13 (ISS-978, ISS-987, ISS-990, ISS-962), all parked before ISS-996, and a panel that rendered null under them left "Provide info" scrolling to an element that was not on the page — a silent no-op the reader cannot tell from a broken click.
+describe("an issue parked for information that carries no question", () => {
+  it("says there is nothing to answer instead of rendering nothing", () => {
+    loaded([]);
+    const { container } = renderPanel({ parkedForInfo: true });
+
+    expect(container).not.toBeEmptyDOMElement();
+    expect(screen.getByText(/nothing to answer here/i)).toBeInTheDocument();
+    expect(screen.getByText(/a comment does not restart the run/i)).toBeInTheDocument();
+  });
+
+  it("carries the anchor the blocker banner scrolls to", () => {
+    loaded([]);
+    const { container } = renderPanel({ parkedForInfo: true });
+    expect(container.querySelector("#issue-decisions")).not.toBeNull();
+  });
+
+  // cm:guard the anchor must exist while the read is STILL IN FLIGHT: an id that appears only once a fetch resolves makes the banner's CTA do nothing for exactly as long as the panel is loading, which is when a reader is most likely to click it.
+  it("carries the anchor while the read is still in flight", () => {
+    list.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    const { container } = renderPanel({ parkedForInfo: true });
+    expect(container.querySelector("#issue-decisions")).not.toBeNull();
+    expect(screen.queryByText(/nothing to answer here/i)).toBeNull();
+  });
+
+  it("still renders a failed read as a failed read, not as a park with no question", () => {
+    list.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: new Error("network down"),
+      refetch: vi.fn(),
+    });
+    renderPanel({ parkedForInfo: true });
+
+    expect(screen.getByText("network down")).toBeInTheDocument();
+    expect(screen.queryByText(/nothing to answer here/i)).toBeNull();
+  });
+
+  it("renders the question when the park has one, and no such notice", () => {
+    loaded([aTextQuestion()]);
+    renderPanel({ parkedForInfo: true });
+
+    expect(screen.getByRole("textbox", { name: /your answer/i })).toBeInTheDocument();
+    expect(screen.queryByText(/nothing to answer here/i)).toBeNull();
+  });
+
+  // cm:guard an issue that is NOT parked keeps rendering nothing: the notice is scoped to the park, and a panel that showed it on every issue with no decision would put a card about parks on every issue in the project.
+  it("renders nothing at all on an issue that is not parked for information", () => {
+    loaded([]);
+    const { container } = renderPanel();
+    expect(container).toBeEmptyDOMElement();
   });
 });

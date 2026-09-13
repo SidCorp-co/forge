@@ -792,8 +792,7 @@ export function deriveBlockerState(
 		return {
 			tone: "attention",
 			reason: "The pipeline needs more information before it can continue.",
-			whoMustAct:
-				"Anyone on the project can answer the decision below; the run picks up from the answer.",
+			whoMustAct: "Anyone on the project can act on it; what the run is waiting on is below.",
 			cta: { label: "Provide info", kind: "provide-info" },
 			...(blockingRefs.length ? { blockingRefs } : {}),
 		};

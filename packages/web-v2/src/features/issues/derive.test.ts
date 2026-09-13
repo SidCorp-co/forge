@@ -859,7 +859,7 @@ describe("deriveBlockerState", () => {
 			undefined,
 		);
 		expect(b?.cta.kind).toBe("provide-info");
-		expect(b?.whoMustAct).toMatch(/decision below/);
+		expect(b?.whoMustAct).toMatch(/is below/);
 		expect(b?.whoMustAct).not.toMatch(/comment/i);
 	});
 

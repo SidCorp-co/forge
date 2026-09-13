@@ -4244,6 +4244,15 @@
 
 ### Changed
 
+- **An issue that was parked before there were questions to answer now says so, instead of
+  showing you a button that does nothing.** Four issues were sitting parked for information with
+  no question attached — every one of them parked before answering became the way back — and the
+  "Provide info" button on them pointed at a panel that rendered nothing at all, so clicking it
+  moved the page not at all and explained nothing. Those issues now carry a short note in place of
+  the decision: there is no round to answer here, a comment will not restart the run, and the issue
+  has to be moved on from the header once whoever is waiting has what they need. Issues that do
+  carry a question are unchanged.
+
 - **The question a stopped run leaves you can now be answered on the issue page, in your own
   words.** The decision panel could only offer a list of options to pick from, which is not the
   shape of most of what a run is stuck on — it usually needs a hostname, a name, a sentence of

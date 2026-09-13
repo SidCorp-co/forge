@@ -116,8 +116,6 @@ export function IssueDetailScreen({
   const { toast } = useToast();
   const { push: pushRecent } = useRecents();
   const [tab, setTab] = useState("comments");
-  // ISS-377 — which stage's artifact card is expanded (driven by tracker clicks
-  // + manual toggles). `null` = all collapsed.
   const [expandedStage, setExpandedStage] = useState<StageKey | null>(null);
 
   useRoom(projectRoom(projectId));
@@ -432,7 +430,7 @@ export function IssueDetailScreen({
             />
           )}
 
-          <DecisionPanel issueId={issue.id} />
+          <DecisionPanel issueId={issue.id} parkedForInfo={issue.status === "needs_info"} />
 
           <AwaitingReleaseBanner
             projectId={issue.projectId}
@@ -470,7 +468,6 @@ export function IssueDetailScreen({
               hides when no session carries group metadata. */}
           <SessionGroupTimeline sessions={issue.agentSessions ?? []} />
 
-          {/* Tier-2: per-stage artifact cards (AC#4/#6). */}
           <Card>
             <CardHeader>
               <CardTitle>Pipeline stages</CardTitle>

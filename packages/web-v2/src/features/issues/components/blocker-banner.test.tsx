@@ -102,7 +102,7 @@ describe("BlockerBanner — an issue parked for information", () => {
       />,
     );
 
-    expect(screen.getByText(/answer the decision below/i)).toBeInTheDocument();
+    expect(screen.getByText(/what the run is waiting on is below/i)).toBeInTheDocument();
     expect(screen.queryByText(/comment/i)).toBeNull();
   });
 
