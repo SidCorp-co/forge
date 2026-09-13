@@ -69,6 +69,20 @@ export async function deliverAgentChatReplyOnce(session: SessionRow): Promise<vo
   const meta = readRoomReplyMeta(session.metadata, 'agentChat');
   if (!meta) return;
   if (meta.deliveredAt) return;
+  // cm:guard the room is checked against THIS session's project before anything is posted, and BEFORE the claim: an agent session runs long, a room rebound while it ran is not this project's to answer into, and a throw from this lookup after the claim would spend the one stamp this delivery has (ISS-1001).
+  const bound = await roomStillBoundTo({
+    connectionId: meta.connectionId,
+    projectId: session.projectId,
+    rid: meta.rid,
+  });
+  if (!bound) {
+    await claimRoomReplyDelivery(session, 'agentChat');
+    logger.error(
+      { sessionId: session.id, rid: meta.rid, projectId: session.projectId },
+      'rocketchat.agent-chat-bridge: the room is no longer bound to this project; the answer is not posted',
+    );
+    return;
+  }
   if (!(await claimRoomReplyDelivery(session, 'agentChat'))) return;
 
   // cm:why the CAS claim above already stamped THIS session's deliveredAt, so retrying here can never double-post — its "delivery" is really a hand-off to the retry; a content-side outcome (completed, no usable/screened text) is never retried, since retrying would just reproduce the same content decision; deterministic non-infra failures (skill_not_synced, ws_publish_failed) are excluded because retrying them on every runner produces the same outcome
@@ -82,21 +96,6 @@ export async function deliverAgentChatReplyOnce(session: SessionRow): Promise<vo
   ) {
     const failover = await redispatchAgentChatSessionOnFailover(session);
     if (failover.ok) return;
-  }
-
-  // cm:guard the room is checked against THIS session's project before anything is posted: an agent session runs long, and a room rebound while it ran is not this project's to answer into (ISS-1001).
-  if (
-    !(await roomStillBoundTo({
-      connectionId: meta.connectionId,
-      projectId: session.projectId,
-      rid: meta.rid,
-    }))
-  ) {
-    logger.error(
-      { sessionId: session.id, rid: meta.rid, projectId: session.projectId },
-      'rocketchat.agent-chat-bridge: the room is no longer bound to this project; the answer is not posted',
-    );
-    return;
   }
 
   const auth = await resolveRoomPostAuth(meta.connectionId, {

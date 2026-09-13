@@ -187,6 +187,9 @@ describe(`the room transcript after an escalated answer`, () => {
     }
     expect(sendFixedReply).not.toHaveBeenCalled();
     expect(appendMessage).not.toHaveBeenCalled();
+    // cm:guard an unbound room is TERMINAL, so the claim is spent on purpose and the sweeper stops
+    // retrying a delivery that can never succeed — the opposite of a lookup that merely failed.
+    expect(updateReturning).toHaveBeenCalled();
   });
 
   it('does not record an answer the room never received', async () => {
