@@ -341,6 +341,7 @@ export function IssuesListView({
     (groupBy !== "none" ? 1 : 0) +
     (sort !== "createdAt:desc" ? 1 : 0);
 
+  // cm:why ONE status column, carrying the lifecycle chip and the live-agent indicator: the separate Pipeline/Status pair it replaced rendered the same two fields twice (ISS-436). It carried a mini stage tracker as well until ISS-999 deleted the ladder that tracker drew.
   return (
     <>
       {reasonDialog}
@@ -614,10 +615,6 @@ export function IssuesListView({
                         <TH>ID</TH>
                         <TH>Issue</TH>
                         <TH>Module</TH>
-                        {/* ISS-436: ONE status column — lifecycle chip + live
-                            agent indicator + mini stage tracker. The old
-                            separate Pipeline/Status pair rendered the same two
-                            fields twice. */}
                         <TH>Status</TH>
                         <TH>Priority</TH>
                         <TH>Complexity</TH>
