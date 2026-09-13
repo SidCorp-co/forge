@@ -148,6 +148,43 @@ describe("the decision card", () => {
   });
 
   // cm:guard a blocker that resolves without a person gets NO button: asking somebody to settle a machine's wait is a decision that was never theirs (ISS-980 criterion 15).
+  // cm:guard the draft outlives the press. `onAnswer` reports nothing back, so a refused or dropped send leaves this card standing and clearing on submit throws away words somebody wrote with no way to get them back. The pair falsifies: a version that clears on submit passes the second assertion and fails the first (ISS-998).
+  it("keeps a free-text draft after a send that has not landed, and starts a new round clean", () => {
+    const free = question({ answerShape: "free_text", options: [], needed: "the staging database name", steps: [
+      { round: 3, prompt: "Which database should the backfill run against?", askedAt: "2026-09-13T10:00:00.000Z", answerShape: "free_text", needed: "the staging database name" },
+    ] });
+    const onAnswer = vi.fn();
+    const { rerender } = render(<QuestionCard question={free} onAnswer={onAnswer} pending={false} />);
+
+    const box = screen.getByRole("textbox");
+    fireEvent.change(box, { target: { value: "forge_staging" } });
+    fireEvent.click(screen.getByRole("button", { name: /send answer/i }));
+
+    expect(onAnswer).toHaveBeenCalledWith({ questionId: "q-1", text: "forge_staging", round: 3 });
+    expect(screen.getByRole("textbox")).toHaveValue("forge_staging");
+
+    const nextRound = question({ answerShape: "free_text", options: [], needed: "the staging database name", steps: [
+      { round: 4, prompt: "Which schema inside it?", askedAt: "2026-09-13T10:10:00.000Z", answerShape: "free_text", needed: "the schema" },
+    ] });
+    rerender(<QuestionCard question={nextRound} onAnswer={onAnswer} pending={false} />);
+
+    expect(screen.getByRole("textbox")).toHaveValue("");
+  });
+
+  // cm:guard an empty box is refused here rather than sent: core answers a blank with a round the reader then has to re-read, and the refusal a person can act on is the one beside the box they typed in.
+  it("refuses an empty free-text answer without calling the sender", () => {
+    const free = question({ answerShape: "free_text", options: [], needed: "the staging database name", steps: [
+      { round: 3, prompt: "Which database should the backfill run against?", askedAt: "2026-09-13T10:00:00.000Z", answerShape: "free_text", needed: "the staging database name" },
+    ] });
+    const onAnswer = vi.fn();
+    render(<QuestionCard question={free} onAnswer={onAnswer} pending={false} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /send answer/i }));
+
+    expect(onAnswer).not.toHaveBeenCalled();
+    expect(screen.getByText(/write what the run asked for/i)).toBeInTheDocument();
+  });
+
   it("offers no way to answer a wait no person owns", () => {
     render(
       <QuestionCard question={question({ blockerKind: "machine" })} onAnswer={vi.fn()} pending={false} />,

@@ -22,6 +22,20 @@ export function sessionIsBeating(
   return nowMs - beat <= HEARTBEAT_REAP_MS;
 }
 
+/** Whether a run that has never been heard from is still inside its startup grace. */
+// cm:guard a run is INSERTed `running` and committed before its first job row exists (packages/core/src/pipeline/runs.ts:openIssueRun), so between those two writes every run on the project reads zero jobs and no beat. Counting that instant is a false alarm on work that is starting normally, and the grace is the reap window because that is the same clock the beat is graded against: a run still silent after it is nobody's startup any more.
+// cm:guard the grace applies ONLY where there is no beat at all. A run that beat once and went quiet is counted however young it is — its silence is a fact about a process that existed, not about one that has not started (ISS-998).
+function runIsStartingUp(
+  run: Pick<PipelineRunListItem, "lastSessionBeatAt" | "startedAt">,
+  nowMs: number,
+): boolean {
+  if (run.lastSessionBeatAt) return false;
+  const started = Date.parse(run.startedAt);
+  // cm:why an unreadable `startedAt` buys no grace: a run is counted on what is known about it, and a timestamp nobody can parse is not a claim that it just started
+  if (Number.isNaN(started)) return false;
+  return nowMs - started <= HEARTBEAT_REAP_MS;
+}
+
 /**
  * Live runs with neither a live job nor a heartbeating session.
  */
@@ -34,6 +48,9 @@ export function stalledRuns(
 ): PipelineRunListItem[] {
   return (runs ?? []).filter(
     (r) =>
-      LIVE_RUN_STATUSES.has(r.status) && (r.liveJobs ?? 0) === 0 && !sessionIsBeating(r, nowMs),
+      LIVE_RUN_STATUSES.has(r.status) &&
+      (r.liveJobs ?? 0) === 0 &&
+      !sessionIsBeating(r, nowMs) &&
+      !runIsStartingUp(r, nowMs),
   );
 }
