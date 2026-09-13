@@ -120,7 +120,7 @@ describe("the scan itself cannot be fooled", () => {
 
   it("still sees one after a `/*` carried inside a string or a template", () => {
     expect(named('const a = "/* not a comment"; function statusToStage() {}')).toContain("statusToStage");
-    expect(named("const t = `/* ${x} */`; const STAGE_INDEX = 1;")).toContain("STAGE_INDEX");
+    expect(named(`const t = \`/* \${x} */\`; const STAGE_INDEX = 1;`)).toContain("STAGE_INDEX");
   });
 
   it("still sees one after a regex literal holding a comment delimiter", () => {
