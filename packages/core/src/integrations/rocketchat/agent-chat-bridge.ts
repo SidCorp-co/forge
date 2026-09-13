@@ -69,7 +69,8 @@ export async function deliverAgentChatReplyOnce(session: SessionRow): Promise<vo
   const meta = readRoomReplyMeta(session.metadata, 'agentChat');
   if (!meta) return;
   if (meta.deliveredAt) return;
-  // cm:guard the room is checked against THIS session's project before anything is posted, and BEFORE the claim: an agent session runs long, a room rebound while it ran is not this project's to answer into, and a throw from this lookup after the claim would spend the one stamp this delivery has (ISS-1001).
+  // cm:guard the room is checked against THIS session's project BEFORE the claim: an agent session runs long, a room rebound while it ran is not this project's to answer into, and a throw from this lookup after the claim would spend the one stamp this delivery has (ISS-1001).
+  // cm:guard FIRST of a pair — the second read sits immediately before `sendFixedReply` below and BOTH are load-bearing: drop this one and a rebound room still costs a failover redispatch and a screening turn, drop that one and the answer they produce is posted into a room that moved (ISS-1001).
   const bound = await roomStillBoundTo({
     connectionId: meta.connectionId,
     projectId: session.projectId,
@@ -123,6 +124,22 @@ export async function deliverAgentChatReplyOnce(session: SessionRow): Promise<vo
     } else {
       reply = AGENT_CHAT_FALLBACK_REPLY(meta.botName);
     }
+  }
+
+  // cm:guard the binding is read a SECOND time, here, because everything since the first read takes time a rebind fits inside — a failover redispatch and a screening turn, either of them minutes — and the first read cannot know what happened during them (ISS-1001).
+  // cm:why no claim is touched here: the claim above is already spent and that is right, since a rebound room is terminal for THIS delivery; the answer is not re-queued, because the project that would retry it is no longer the room's.
+  if (
+    !(await roomStillBoundTo({
+      connectionId: meta.connectionId,
+      projectId: session.projectId,
+      rid: meta.rid,
+    }))
+  ) {
+    logger.error(
+      { sessionId: session.id, rid: meta.rid, projectId: session.projectId },
+      'rocketchat.agent-chat-bridge: the room was rebound while this answer was prepared; the answer is not posted',
+    );
+    return;
   }
 
   try {

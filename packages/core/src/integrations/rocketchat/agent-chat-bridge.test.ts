@@ -17,12 +17,17 @@ vi.mock('../../db/client.js', () => ({ db: {} }));
 const claimRoomReplyDelivery = vi.fn<(...args: unknown[]) => Promise<boolean>>();
 const resolveRoomPostAuth = vi.fn();
 const extractFinalAssistantText = vi.fn();
-/** Whether the room is still the session project's; flipped by the rebind case. */
-const roomBound = true;
+/** Answers of the successive `roomStillBoundTo` reads; a single `true` unless a case says otherwise. */
+let roomBoundSequence: boolean[] = [true];
+const roomStillBoundToCalls = vi.fn();
 vi.mock('./room-delivery.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./room-delivery.js')>()),
   // cm:why stubbed: this file's fake db answers only the subject's own queries, and the room-is-still-ours check has its cases in room-delivery.test.ts.
-  roomStillBoundTo: async () => roomBound,
+  roomStillBoundTo: async () => {
+    const n = roomStillBoundToCalls.mock.calls.length;
+    roomStillBoundToCalls();
+    return roomBoundSequence[n] ?? roomBoundSequence.at(-1) ?? true;
+  },
   claimRoomReplyDelivery: (...args: unknown[]) => claimRoomReplyDelivery(...args),
   resolveRoomPostAuth: (...args: unknown[]) => resolveRoomPostAuth(...args),
   extractFinalAssistantText: (...args: unknown[]) => extractFinalAssistantText(...args),
@@ -72,6 +77,12 @@ function makeSession(overrides: Record<string, unknown> = {}) {
     ...overrides,
   } as never;
 }
+
+// cm:why the binding stub is reset at module level, not inside either describe: the describe below is at its frozen function budget, and two more lines in its `beforeEach` is what pushed it over (ISS-1001).
+beforeEach(() => {
+  roomBoundSequence = [true];
+  roomStillBoundToCalls.mockReset();
+});
 
 describe('deliverAgentChatReplyOnce', () => {
   beforeEach(() => {
@@ -326,5 +337,80 @@ describe('deliverAgentChatReplyOnce', () => {
     sendFixedReply.mockRejectedValue(new Error('network error'));
 
     await expect(deliverAgentChatReplyOnce(makeSession())).resolves.toBeUndefined();
+  });
+});
+
+/**
+ * The binding is read twice, and each read answers a question the other cannot. These live in a
+ * describe of their own because `deliverAgentChatReplyOnce` above is at its frozen function budget.
+ */
+describe('deliverAgentChatReplyOnce: the room is read again before the post', () => {
+  beforeEach(() => {
+    claimRoomReplyDelivery.mockReset();
+    claimRoomReplyDelivery.mockResolvedValue(true);
+    resolveRoomPostAuth.mockReset();
+    resolveRoomPostAuth.mockResolvedValue(AUTH);
+    screenStakeholderReply.mockReset();
+    screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
+    sendFixedReply.mockReset();
+    extractFinalAssistantText.mockReset();
+    extractFinalAssistantText.mockReturnValue('answer');
+    AGENT_CHAT_FALLBACK_REPLY.mockClear();
+    redispatchAgentChatSessionOnFailover.mockReset();
+    redispatchAgentChatSessionOnFailover.mockResolvedValue({ ok: false, status: 'exhausted' });
+  });
+
+  /** What the room was shown this run — the empty list is a room that saw nothing. */
+  const postedTexts = () => sendFixedReply.mock.calls.map((c) => c[1] as string);
+
+  // cm:guard the first read is before the claim, the second immediately before the post, and between them sit a failover redispatch and a screening turn — either of them minutes long, so without the second read the answer they produce is posted into a room that moved (ISS-1001).
+  it('shows the room nothing when it is rebound during a failover redispatch', async () => {
+    roomBoundSequence = [true, false];
+
+    await deliverAgentChatReplyOnce(makeSession({ status: 'failed', failureReason: null }));
+
+    expect(redispatchAgentChatSessionOnFailover.mock.calls).toHaveLength(1);
+    expect(roomStillBoundToCalls.mock.calls).toHaveLength(2);
+    expect(postedTexts()).toEqual([]);
+  });
+
+  it('shows the room nothing when it is rebound during the screening turn', async () => {
+    roomBoundSequence = [true, false];
+
+    await deliverAgentChatReplyOnce(makeSession());
+
+    expect(screenStakeholderReply.mock.calls).toHaveLength(1);
+    expect(roomStillBoundToCalls.mock.calls).toHaveLength(2);
+    expect(postedTexts()).toEqual([]);
+  });
+
+  // cm:guard the rebind is terminal for THIS delivery and the claim above is already spent, which is right: the project that would retry it is no longer the room's.
+  it('leaves the claim spent rather than re-queueing the answer', async () => {
+    roomBoundSequence = [true, false];
+
+    await deliverAgentChatReplyOnce(makeSession());
+
+    expect(claimRoomReplyDelivery.mock.calls).toHaveLength(1);
+  });
+
+  // cm:guard the first read still refuses before any work is spent: a rebound room costs no failover redispatch and no screening turn.
+  it('spends no failover and no screening turn when the FIRST read refuses', async () => {
+    roomBoundSequence = [false];
+
+    await deliverAgentChatReplyOnce(makeSession({ status: 'failed', failureReason: null }));
+
+    expect(roomStillBoundToCalls.mock.calls).toHaveLength(1);
+    expect(redispatchAgentChatSessionOnFailover.mock.calls).toHaveLength(0);
+    expect(screenStakeholderReply.mock.calls).toHaveLength(0);
+    expect(postedTexts()).toEqual([]);
+  });
+
+  it('shows the room the answer once when it is bound at both reads', async () => {
+    roomBoundSequence = [true, true];
+
+    await deliverAgentChatReplyOnce(makeSession());
+
+    expect(roomStillBoundToCalls.mock.calls).toHaveLength(2);
+    expect(postedTexts()).toEqual(['answer']);
   });
 });
