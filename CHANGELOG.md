@@ -4306,6 +4306,12 @@
 
 ### Changed
 
+- **The comment and description boxes are a real editor now, with a formatting toolbar.** Bold,
+  italic, inline code, link, heading, quote, bulleted and numbered lists, a code block and a
+  mermaid diagram — each one a button, and Ctrl/Cmd+B, +I and +K for the three you reach for most.
+  Pressing a button formats what you had selected and leaves the selection on the text, so you can
+  keep typing. The box itself now highlights markdown as you write it.
+
 - **The comment and description boxes no longer offer to insert a markup template.** The
   "Insert component" menu dropped a skeleton like `<forge-blocked on="">` into the box for you to
   fill in. It was built to make what *agents* write consistent, and it ended up asking people to

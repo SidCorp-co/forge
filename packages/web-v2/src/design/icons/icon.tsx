@@ -6,6 +6,7 @@ import {
   Menu as MenuIcon, MessageSquare, Monitor, MoreHorizontal, PanelLeftClose, Pause, Pin, Play,
   Plus, RotateCw, Rows3, Search, Server, Settings, Shield, Sparkles, Square,
   Star, Trash2, TriangleAlert, Users, Workflow, X,
+  Bold, Code, Heading, Italic, ListOrdered, Quote, SquareCode,
 } from "lucide-react";
 
 // cm:ignore CM013 — lucide-react 1.x brand-glyph migration only: `Github` was removed upstream, so the `github` entry maps to `GitBranch`; the registry's orientation prose is unchanged and there is nothing to reword.
@@ -16,6 +17,13 @@ const ICONS = {
   board: LayoutGrid,
   grid: LayoutGrid,
   list: List,
+  "list-ordered": ListOrdered,
+  bold: Bold,
+  italic: Italic,
+  code: Code,
+  "code-block": SquareCode,
+  heading: Heading,
+  quote: Quote,
   rows: Rows3,
   pipeline: Workflow,
   server: Server,
