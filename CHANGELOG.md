@@ -1797,6 +1797,18 @@
   code, review, test, release are real things a job can be, and thirty thousand past jobs are
   recorded as one of them. What went is the claim that an issue is somewhere along them.
 
+  **One colour per state.** The board's column headings and the chips on the cards beneath them were
+  coloured from two separate hand-written tables, so a reopened issue sat under an amber heading
+  wearing a blue chip, and a closed issue sat under a green heading wearing a grey one. A column now
+  takes its colour from the state it names, by the same route the chip does, so a heading and the
+  cards under it can no longer disagree about one issue. Reopened reads as work in progress; Done
+  reads the way a closed issue has always read everywhere else.
+
+  **A step nobody has started no longer reads "Running".** The Steps list on an issue's page called
+  a step running as soon as a job for it was queued, which on a retry meant a step that had already
+  finished once flipped back to Running before anything picked it up. It says Running only while a
+  session is actually running it.
+
 - **A runner no longer keeps a job pool, and a run is no longer a second terminal.** A box used to
   ask Forge which jobs it could take, hold one while its master decided, start it in a tmux session
   of its own, and give the hold back if the decision went the other way. Seven verbs on a local
