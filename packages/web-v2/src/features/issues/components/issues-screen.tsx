@@ -30,9 +30,10 @@ interface IssuesScreenProps {
   scope: { projectId: string; slug: string };
 }
 
+// cm:guard the subtitle in the header below says what the LIST is, never where an issue sits: "One strict pipeline, left to right" described the ladder ISS-897 deleted and outlived every screen that drew it (ISS-999)
 export function IssuesScreen({ scope }: IssuesScreenProps) {
   const [view, setView] = useTabParam<IssuesView>(VIEWS, "list");
-  // Viewer = read-only: hide write affordances (the server 403s regardless).
+  // cm:guard hiding the write affordances is UX and never the gate — the server 403s a viewer's write regardless, so a bug here costs a confusing button and not an unauthorised write
   const projectsQ = useProjects();
   const canWrite =
     projectsQ.data?.find((p) => p.id === scope.projectId)?.role !== "viewer";
@@ -58,7 +59,7 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
         <h1 className="fg-h3 sm:hidden">Issues</h1>
         <h1 className="fg-h2 hidden sm:block">Issues</h1>
         <p className="fg-body-sm mt-1 hidden text-muted sm:block">
-          One strict pipeline, left to right.
+          Every issue on this project, and what each one is waiting on.
         </p>
       </div>
       <div className="flex items-center gap-3">
