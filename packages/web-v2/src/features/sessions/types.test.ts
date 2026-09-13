@@ -15,6 +15,7 @@ import {
   isAwaitingReply,
   isInteractiveSession,
   sessionKind,
+  sessionStep,
   statusToChip,
   classifySessionOutcome,
   isRealFailure,
@@ -302,4 +303,31 @@ describe("isAwaitingReply (ISS-664 — 'waiting for me' signal)", () => {
   it("is false for a terminal chat", () => {
     expect(isAwaitingReply({ status: "completed", metadata: { type: "agent" } })).toBe(false);
   });
+});
+
+describe("sessionStep — the step a session recorded, or none (ISS-999)", () => {
+	const meta = (over: Record<string, unknown>) =>
+		over as unknown as Parameters<typeof sessionStep>[0];
+
+	// cm:guard the case its predecessor got wrong: `deriveStage` matched the 13 staged names as SUBSTRINGS and answered `code` for everything else, so every autonomous session read "running · code"
+	it("names `drive` as `drive`, not as one of the seven staged names", () => {
+		expect(sessionStep(meta({ type: "pipeline", step: "drive" }))).toBe("drive");
+	});
+
+	it("names a staged step by the word that was recorded, without normalising it", () => {
+		expect(sessionStep(meta({ step: "verify" }))).toBe("verify");
+		expect(sessionStep(meta({ step: "code" }))).toBe("code");
+	});
+
+	it("falls back to `stage` where only that was recorded", () => {
+		expect(sessionStep(meta({ stage: "review" }))).toBe("review");
+	});
+
+	// cm:guard `type` is what KIND of session this is; the old chain read it as a step whenever both step and stage were absent, so an interactive chat read "running · chat"
+	it("names no step for a session that recorded none, and never reads `type` as one", () => {
+		expect(sessionStep(meta({ type: "pipeline" }))).toBeNull();
+		expect(sessionStep(meta({ step: "  " }))).toBeNull();
+		expect(sessionStep(meta({}))).toBeNull();
+		expect(sessionStep(null)).toBeNull();
+	});
 });

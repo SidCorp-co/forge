@@ -1809,6 +1809,15 @@
   finished once flipped back to Running before anything picked it up. It says Running only while a
   session is actually running it.
 
+  **A running session names the step it is on, or no step at all.** "running · code" appeared beside
+  every live agent on the sessions list, the fleet strip, the session screen, the chat header and the
+  run thread's rail — including the ones running `drive`, which is every agent an autonomous project
+  starts. The word was not read from the session: it was guessed by looking for one of the seven
+  stage names inside whatever the session had recorded, and answering "code" when none was there. A
+  session that recorded `drive` now reads "running · drive", one that recorded `verify` reads
+  "running · verify" rather than being filed under "test", and one that recorded no step at all says
+  only "running".
+
 - **A runner no longer keeps a job pool, and a run is no longer a second terminal.** A box used to
   ask Forge which jobs it could take, hold one while its master decided, start it in a tmux session
   of its own, and give the hold back if the decision went the other way. Seven verbs on a local

@@ -1,6 +1,6 @@
 # Agent-driven pipeline
 
-- Status: **Phases 0–4 shipped; phase 5 instrumented and awaiting evidence** — owner sessions 2026-08-19/20. **Two of those phases were reversed on 2026-09-02 — see the section directly below before reading anything else here as current.**
+- Status: **Phases 0–4 shipped; phase 5 measured and closed** — owner sessions 2026-08-19/20. Phase 5's own close is at the end of this document: the evidence bar is met and the verdict on that evidence is *do not ship*, driven by getcontent. **Two of those phases were reversed on 2026-09-02 — see the section directly below before reading anything else here as current.**
 - Upgrade path: this becomes an RFC once the mode switch and the status vocabulary are agreed — both are cross-surface (REST, MCP, web, runner).
 - Related: `packages/runner/README.md` · skill delivery: `runner/crates/forge-runner-core/src/workspace/skill_sync.rs`
 
@@ -87,7 +87,8 @@ Two hard boundaries:
   driver's transcript. Self-review is kept as a cheaper first pass, but it is not the gate.
 - **The verdict is written by the runner from a structured result, never narrated by the driver.**
   A driver that authors its own review record can launder `request_changes` into "reviewed, fine",
-  and with no job boundary left there is nothing to expose it.
+  and with no job boundary left there is nothing to expose it. **Reversed 2026-09-02** — this
+  boundary no longer exists; the reversal section at the top of this document states the price.
 
 ### Six statuses
 

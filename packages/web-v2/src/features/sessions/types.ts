@@ -11,7 +11,6 @@ import {
   resolveFailureCause,
 } from "@forge/contracts/failure-causes";
 import type { StatusKey } from "@/design/status";
-import type { StageKey } from "@/design/stages";
 
 /**
  * Real persisted status enum (`agentSessionStatuses` in core schema). The
@@ -489,7 +488,6 @@ export function classifySessionOutcome(
     };
   }
 
-  // Non-terminal (running / stalled / queued / idle): defer to the plain mapping.
   return {
     bucket: "active",
     statusKey: statusToChip(display),
@@ -530,33 +528,12 @@ export function statusToRun(display: AgentSessionDisplayStatus): RunStatus {
   }
 }
 
-const STEP_TO_STAGE: Record<string, StageKey> = {
-  triage: "triage",
-  clarify: "clarify",
-  plan: "plan",
-  code: "code",
-  fix: "code",
-  develop: "code",
-  development: "code",
-  review: "review",
-  test: "test",
-  testing: "test",
-  deploy: "test",
-  verify: "test",
-  release: "release",
-};
-
-/**
- * Best-effort pipeline stage for the per-row mini tracker. The row has no clean
- * stage field, so derive from `metadata.step`/`stage`/`type`; default to `code`
- * (the running mini bar sweeps indeterminately, so an exact stage isn't needed).
- */
-export function deriveStage(metadata: SessionMetadata | null): StageKey {
-  const raw = (metadata?.step || metadata?.stage || metadata?.type || "").toString().toLowerCase();
-  for (const [key, stage] of Object.entries(STEP_TO_STAGE)) {
-    if (raw.includes(key)) return stage;
-  }
-  return "code";
+/** The step this session RECORDED, verbatim — or `null`, for a session that recorded none. */
+// cm:guard the recorded value, never a projection of it onto the seven staged names. Its predecessor `deriveStage` matched `metadata.step` as a SUBSTRING against a 13-key table and answered `code` for anything left over, so every `drive` session — which is every session the autonomous lane runs — showed "running · code" beside a step nobody ran, and its own doc named the mini tracker ISS-999 deleted as the reason it existed.
+// cm:guard `metadata.type` is deliberately NOT a fallback here: `pipeline` and `pm` say what KIND of session this is, and the old chain read one of them as a step whenever `step` and `stage` were both absent.
+export function sessionStep(metadata: SessionMetadata | null): string | null {
+  const raw = (metadata?.step ?? metadata?.stage ?? "").toString().trim();
+  return raw === "" ? null : raw;
 }
 
 /** Whether a session can be retried (pipeline/pm sessions tied to an issue). */

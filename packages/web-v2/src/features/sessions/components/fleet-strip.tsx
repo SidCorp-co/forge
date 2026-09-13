@@ -19,7 +19,7 @@ import { deviceHealth } from "@/features/runners/types";
 import { useQueueStats } from "../hooks";
 import {
   deriveLiveness,
-  deriveStage,
+  sessionStep,
   type AgentSessionDisplayStatus,
   type SessionRow,
 } from "../types";
@@ -62,8 +62,7 @@ export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) 
     return m;
   }, [queueQ.data]);
 
-  // The running session bound to each device (first running/stalled row whose
-  // deviceId matches) — drives the busy slot + step · ISS-x + stale dot.
+  // cm:guard the FIRST running row per device and not a count: the strip claims one busy slot per device because a runner cap is 1, so a second row here would be a device running two things the pool cannot have given it
   const boundByDevice = useMemo(() => {
     const m = new Map<string, { row: SessionRow; display: AgentSessionDisplayStatus }>();
     rows.forEach((row, i) => {
@@ -105,7 +104,7 @@ export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) 
             const health = busy && stale ? "attention" : deviceHealth(d.status as never);
             const isPrimary = d.id === defaultDeviceId;
             const queued = queuedByDevice.get(d.id) ?? 0;
-            const step = bound ? deriveStage(bound.row.metadata) : null;
+            const step = bound ? sessionStep(bound.row.metadata) : null;
             const issueRef = bound ? issueRefFromTitle(bound.row.title) : null;
 
             return (

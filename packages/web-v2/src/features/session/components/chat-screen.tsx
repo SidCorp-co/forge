@@ -28,7 +28,7 @@ import { useAuth } from "@/providers/auth-provider";
 import {
   classifySessionOutcome,
   deriveSessionDisplayStatus,
-  deriveStage,
+  sessionStep,
   statusToChip,
 } from "@/features/sessions/types";
 import { formatApiError } from "@/lib/api/error";
@@ -283,8 +283,6 @@ export function ChatScreen({
       <header className="@container flex-none border-b border-line bg-app/95 px-4 py-3">
         <div className="flex flex-col gap-2 @[560px]:flex-row @[560px]:items-center @[560px]:gap-3">
           <div className="min-w-0">
-            {/* Title row: editable per-conversation title once a real row exists.
-                In draft / no-conversation state, fall back to the section label. */}
             {session ? (
               <h1 className="fg-h2 truncate">
                 <EditableTitle session={session} />
@@ -317,7 +315,7 @@ export function ChatScreen({
           {session && display && (
             <StatusChip
               status={statusToChip(display)}
-              stage={deriveStage(session.metadata)}
+              stage={sessionStep(session.metadata) ?? undefined}
               size="sm"
               domain="session"
             />
