@@ -250,6 +250,30 @@ describe('what the database refuses on its own, so a restore and a psql session 
     );
   });
 
+  // cm:guard the tombstone belongs to the project FK and to nothing else. Postgres deletes the parent row BEFORE the referential action fires, so the cascade's own `project_id -> NULL` sees no `projects` row while a hand-written one sees its project alive — which is the only thing that tells them apart, and without it the one mutation the design must allow is a door onto orphaning a live project's alias (codex review of ISS-992, measured against Postgres 16 on 2026-09-13).
+  it('refuses a tombstone written by hand while the project is still here', async () => {
+    const a = await project();
+    await assign(a.id, 'FD');
+    const id = await aliasOf(a.id);
+    await refusedBy(
+      harness.db.execute(sql`UPDATE issue_prefix_aliases SET project_id = NULL WHERE id = ${id}`),
+      /tombstone belongs to the project FK/,
+    );
+    expect(await heldIssuePrefixes(a.id)).toEqual(['FD']);
+  });
+
+  it.each(['id', 'created_at'])('refuses a change to %s', async (col) => {
+    const a = await project();
+    await assign(a.id, 'FD');
+    const id = await aliasOf(a.id);
+    const set =
+      col === 'id' ? sql`id = gen_random_uuid()` : sql`created_at = now() - interval '1 year'`;
+    await refusedBy(
+      harness.db.execute(sql`UPDATE issue_prefix_aliases SET ${set} WHERE id = ${id}`),
+      /id and created_at never change/,
+    );
+  });
+
   // cm:why the tombstone is the ONE mutation the design needs, so the trigger has to let it through — a trigger that refused it would break project deletion instead.
   it('still lets the project FK tombstone the alias on delete', async () => {
     const a = await project();
