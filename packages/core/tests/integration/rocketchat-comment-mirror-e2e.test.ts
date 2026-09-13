@@ -445,3 +445,40 @@ describe('the claim is written before the post', () => {
     expect(posts.filter((p) => p.text === 'must not vanish')).toHaveLength(1);
   });
 });
+
+describe('an issue can carry two threads, and they are never one', () => {
+  it('opens its own root rather than posting into that issue question thread', async () => {
+    const connectionId = await bindRoom();
+    const questionId = randomUUID();
+    await db.execute(sql`
+      INSERT INTO agent_questions (id, project_id, issue_id, blocker_kind, steps)
+      VALUES (${questionId}, ${projectId}, ${issueId}, 'human', '[]'::jsonb)
+    `);
+    await registry.registerThread({ questionId }, { connectionId, rid: 'room-1', tmid: 'q-root' });
+    await comment('a comment on the same issue, in the same room');
+
+    const owed = await mirror.owedComments();
+    expect(await mirror.deliverOwedComment(onlyOwed(owed))).toBe('delivered');
+
+    // cm:guard the comment opens a SECOND root and never posts into the question's: Rocket.Chat threads do not nest, so one shared root would make a reply's meaning — an answer, or a comment — undecidable from the message alone (ISS-981 criterion 17).
+    const all = await db.select().from(rcSchema.rocketchatThreads);
+    const issueThread = all.find((r) => r.issueId === issueId);
+    const questionThread = all.find((r) => r.questionId === questionId);
+    expect(all).toHaveLength(2);
+    expect(questionThread?.tmid).toBe('q-root');
+    expect(issueThread?.tmid).toBeDefined();
+    expect(issueThread?.tmid).not.toBe(questionThread?.tmid);
+
+    // cm:guard each triple resolves to its OWN subject, which is what lets `route()` send an answer to the question handler and a comment to the comment handler from the tmid alone (ISS-981 criteria 17, 18).
+    expect(
+      await registry.subjectForThread({ connectionId, rid: 'room-1', tmid: 'q-root' }),
+    ).toEqual({ kind: 'question', questionId });
+    expect(
+      await registry.subjectForThread({
+        connectionId,
+        rid: 'room-1',
+        tmid: issueThread?.tmid as string,
+      }),
+    ).toEqual({ kind: 'issue', issueId, retired: false });
+  });
+});
