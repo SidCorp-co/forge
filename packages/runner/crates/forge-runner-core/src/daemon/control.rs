@@ -344,19 +344,26 @@ mod tests {
         assert_eq!(tokens.session_for("forged"), None);
     }
 
-    fn source() -> String {
-        include_str!("control.rs").to_string()
+    /// The `Request` enum's body, as source text.
+    // cm:guard normalise CRLF and use `split_once`, because BOTH halves were silent failures. `str::split(..).next()` never answers `None`, so a delimiter that did not match returned the whole rest of the file and the scan below passed over `fn agent_event(.., session_id: &str)` instead of over the enum — a test that cannot fail. It only surfaced when a runner change made ci.yml's windows leg run at all; the path filter had been skipping it, and skipped is a pass to `ci-passed`.
+    fn request_enum_body() -> String {
+        let src = include_str!("control.rs").replace("\r\n", "\n");
+        let after = src
+            .split_once("enum Request {")
+            .expect("the Request enum must be findable")
+            .1
+            .to_string();
+        after
+            .split_once("\n}\n")
+            .expect("the Request enum must be closed by a `}` in column 0")
+            .0
+            .to_string()
     }
 
     // cm:guard scans the source rather than the types, because the claim is about what CANNOT be written: a variant that reintroduces `session_id` compiles, passes every behavioural test, and silently restores the weakness (ISS-964 criterion 31).
     #[test]
     fn no_frame_declares_a_session_and_every_frame_carries_a_token() {
-        let src = source();
-        let body = src
-            .split("enum Request {")
-            .nth(1)
-            .and_then(|s| s.split("\n}\n").next())
-            .expect("the Request enum must be findable");
+        let body = request_enum_body();
         assert!(
             !body.contains("session_id:"),
             "the daemon must map token -> session and ignore any session named on the frame; a declared id here is the weakness ISS-964 criterion 29 removes"
@@ -372,12 +379,7 @@ mod tests {
     // cm:guard the socket carries REPORTS and nothing else now that the pool is gone. A verb that acts — claiming, starting, parking, releasing — is a second record of a run beside the lease on the issue, which is the split this runner was rebuilt to remove.
     #[test]
     fn the_socket_offers_no_verb_that_acts_on_work() {
-        let src = source();
-        let body = src
-            .split("enum Request {")
-            .nth(1)
-            .and_then(|s| s.split("\n}\n").next())
-            .expect("the Request enum must be findable");
+        let body = request_enum_body();
         for gone in [
             "Prepare", "Start", "Discard", "Release", "RunOpen", "Ask", "Decide",
         ] {
