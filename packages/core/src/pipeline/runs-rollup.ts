@@ -22,8 +22,8 @@ import {
   projects,
   usageRecords,
 } from '../db/schema.js';
-import { formatIssueRef } from '../issues/issue-ref.js';
 import { RETRY_MAX_ROUNDS, readAutoRetryPayload } from '../jobs/retry.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 
 export type PipelineStepStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
 
@@ -122,8 +122,7 @@ export interface PipelineRunSummary {
   retrySummary: PipelineRunRetrySummary | null;
 }
 
-// The list endpoint stays cheap: it omits the heavy per-step + per-attempt
-// rollups (each needs its own query). Only the single-run summary carries them.
+// cm:why the list endpoint stays cheap by omitting the per-step and per-attempt rollups, one query each; only the single-run summary pays for them
 export type PipelineRunListItem = Omit<PipelineRunSummary, 'steps' | 'attempts' | 'retrySummary'>;
 
 const EMPTY_COST: PipelineRunCostSummary = {

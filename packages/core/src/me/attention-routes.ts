@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { formatIssueRef } from '../issues/issue-ref.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
   type AttentionAwaitingRow,

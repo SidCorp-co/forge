@@ -9,7 +9,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { eq, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   createTestDevice,
@@ -24,7 +24,7 @@ let harness: TestDatabase;
 let userId: string;
 let assignIssuePrefix: typeof import('../../src/issues/issue-prefix-service.js').assignIssuePrefix;
 let heldIssuePrefixes: typeof import('../../src/issues/issue-prefix-read.js').heldIssuePrefixes;
-let parseIssueRef: typeof import('../../src/issues/issue-ref.js').parseIssueRef;
+let parseIssueRef: typeof import('../../src/lib/issue-ref.js').parseIssueRef;
 let openRunSession: typeof import('../../src/devices/run-session.js').openRunSession;
 
 beforeAll(async () => {
@@ -38,7 +38,7 @@ beforeAll(async () => {
   // cm:guard every core import here is DYNAMIC and happens after the env above is set — `db/client.ts` binds its pool at module load, so a static import resolves the wrong database before a case runs.
   ({ assignIssuePrefix } = await import('../../src/issues/issue-prefix-service.js'));
   ({ heldIssuePrefixes } = await import('../../src/issues/issue-prefix-read.js'));
-  ({ parseIssueRef } = await import('../../src/issues/issue-ref.js'));
+  ({ parseIssueRef } = await import('../../src/lib/issue-ref.js'));
   ({ openRunSession } = await import('../../src/devices/run-session.js'));
 }, 300_000);
 

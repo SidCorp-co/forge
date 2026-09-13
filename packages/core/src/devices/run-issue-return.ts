@@ -21,7 +21,7 @@ import { db } from '../db/client.js';
 import { type IssueStatus, issues } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
-import { canonicalIssueKey } from '../issues/issue-ref.js';
+import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { RUN_ISSUE_STATUSES_METADATA_KEY, RUN_ISSUES_METADATA_KEY } from './run-session.js';
 
@@ -89,7 +89,7 @@ export async function returnIssuesForRun(
 
   // cm:guard the STORED keys, which `openRunSession` canonicalised on the way in — this reads the
   // metadata and must never take a project's own prefix into account (ISS-992)
-  // cm:edge lockstep -> packages/core/src/devices/run-session.ts:canonicaliseIssueKeys
+  // cm:edge lockstep -> packages/core/src/devices/run-session.ts#canonicaliseIssueKeys
   const seqs = run.keys
     .map((k) => Number.parseInt(k.replace(/^ISS-/, ''), 10))
     .filter((n) => Number.isInteger(n));

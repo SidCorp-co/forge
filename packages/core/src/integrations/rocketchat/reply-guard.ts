@@ -11,7 +11,7 @@
 // cm:ignore CM013 — every frozen comment in this file is an `i18n-allow` pragma carrying the Vietnamese phrasing its regex matches; deleting one to pay the drain reds the language gate instead, so this file's debt cannot be paid the ordinary way.
 
 import { scrubLogText } from '@forge/observability';
-import { formatIssueRef, LEGACY_ISSUE_PREFIX } from '../../issues/issue-ref.js';
+import { formatIssueRef, LEGACY_ISSUE_PREFIX } from '../../lib/issue-ref.js';
 import { OPTION_LINE_RE } from './question-render.js';
 
 /** The reference tokens this project answers to, as a regex. */

@@ -9,7 +9,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, pipelineRuns, schedules } from '../db/schema.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import { formatIssueRef } from '../issues/issue-ref.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { readProjectBranches } from '../projects/service.js';
 import { nextRunFor } from '../schedules/cron.js';
 import { resolveReleaseChannel } from './channel.js';

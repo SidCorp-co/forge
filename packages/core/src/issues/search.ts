@@ -13,6 +13,7 @@ import {
   usageRecords,
 } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { listResponse } from '../lib/pagination.js';
 import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -23,7 +24,6 @@ import {
   hydrateCreatorsForIssues,
 } from './creator.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
-import { formatIssueRef } from './issue-ref.js';
 import { listModulesForIssues, resolveModuleIdsTolerant } from './label-service.js';
 import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
 import { buildIssueSearchCondition, issueSearchMatchedFields } from './search-predicate.js';

@@ -7,7 +7,7 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { formatIssueRef } from '../issues/issue-ref.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { ADMITTED_RUNNER } from './pool-admission.js';
 
 export type PoolRelation = {

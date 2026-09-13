@@ -7,7 +7,7 @@ import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, memories, projects } from '../db/schema.js';
 import { loadIssueRelations } from '../issues/dependency-read.js';
-import { formatIssueRef } from '../issues/issue-ref.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { deriveMemoryStaleness, type MemoryHit, type MemoryVia } from './search.js';
 
 export const EXPAND_SEED_LIMIT = 5;

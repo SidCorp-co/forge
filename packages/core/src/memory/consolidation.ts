@@ -3,8 +3,7 @@ import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { activityLog, comments, issues, memories } from '../db/schema.js';
 import { EmbeddingUnavailableError, embed } from '../embeddings/index.js';
-import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import { formatIssueRef } from '../issues/issue-ref.js';
+import { issueRefFormatter } from '../issues/issue-prefix-read.js';
 import { BASE_MERGE_STATE } from '../issues/merged-at.js';
 import { searchKnowledge } from '../knowledge/search.js';
 import { logger } from '../logger.js';
@@ -571,7 +570,7 @@ async function reconcile(projectId: string, issueId: string): Promise<ReconcileR
     .limit(1);
   if (!issueRow) return emptyReconcileResult('issue-not-found', 'issue not found');
 
-  const issRef = formatIssueRef(await activeIssuePrefix(projectId), issueRow.issSeq);
+  const issRef = (await issueRefFormatter(projectId))(issueRow.issSeq);
   const decisionRef = `reconcile:${issRef}`;
 
   // Idempotency: skip if this issue was already reconciled (reopen → re-release
@@ -618,7 +617,7 @@ async function reconcile(projectId: string, issueId: string): Promise<ReconcileR
     sourceFilter: [...RECONCILE_SOURCES],
   });
 
-  // Only memories that PRE-DATE this release can be stale relative to it.
+  // cm:guard only memories that PRE-DATE this release are candidates — a memory written after it cannot be stale relative to it, and archiving one would destroy the newer record on the older one's evidence
   const mergedAt = issueRow.mergedAt ?? new Date();
   const candidates = hits
     .filter((h) => h.score >= RECONCILE_SCORE_FLOOR && h.embeddedAt < mergedAt)

@@ -16,6 +16,7 @@ import {
 import { enqueueJob } from '../jobs/enqueue.js';
 import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
@@ -32,7 +33,6 @@ import {
   transitionIssueStatus,
 } from './apply-transition.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
-import { formatIssueRef } from './issue-ref.js';
 import { triggerTerminalDispatch } from './transition.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
@@ -291,9 +291,7 @@ issueExtrasRoutes.patch(
   },
 );
 
-// POST /api/issues/:id/enrich
-// Enqueues a custom job to re-run AI enrichment for the issue. The desktop
-// device-runner picks the job off the queue. We do not run the LLM in-process.
+// cm:guard enrichment is ENQUEUED and never run in-process: the desktop device-runner is what calls the model, so a handler that awaited it here would hold a request open for the length of an LLM call
 issueExtrasRoutes.post(
   '/:id/enrich',
   zValidator('param', idParamSchema, (r) => {

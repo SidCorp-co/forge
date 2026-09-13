@@ -8,7 +8,7 @@ import { db } from '../db/client.js';
 import { issues, type MemorySource, memories, projects } from '../db/schema.js';
 import { memoryChunks } from '../db/schema-memory-chunks.js';
 import { embedBatch } from '../embeddings/index.js';
-import { formatIssueRef } from '../issues/issue-ref.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { chunkText, contextPrefix, isChunkedSource } from './chunker.js';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];

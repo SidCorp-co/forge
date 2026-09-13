@@ -13,8 +13,8 @@ import {
   runners,
   runnerTypes,
 } from '../db/schema.js';
-import { formatIssueRef } from '../issues/issue-ref.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -55,7 +55,7 @@ function rowToRunner(r: typeof runners.$inferSelect): Runner {
 }
 
 function publicRunner(r: Runner): Omit<Runner, 'config'> & { config: Record<string, unknown> } {
-  // Strip secrets before returning over the wire.
+  // cm:guard every secret in `config` is masked HERE, on the one projection that reaches the wire — a field added to the runner config and not masked here ships the credential to any project member
   const config = { ...r.config };
   if ('apiKey' in config) config.apiKey = '***';
   if ('callbackSecret' in config) config.callbackSecret = '***';
@@ -456,7 +456,7 @@ runnerRoutes.post(
     const access = await loadProjectAccess(existing.projectId, userId);
     assertProjectRole(access, 'member');
     const adapter = getRunnerAdapter(existing.type);
-    if (!adapter || !adapter.refreshQuota) {
+    if (!adapter?.refreshQuota) {
       return c.json({ remaining: null, limit: null });
     }
     const result = await adapter.refreshQuota({ runner: rowToRunner(existing) });

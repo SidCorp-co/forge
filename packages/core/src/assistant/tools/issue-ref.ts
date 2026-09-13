@@ -3,7 +3,7 @@
 import { and, eq } from 'drizzle-orm';
 import type { db as defaultDb } from '../../db/client.js';
 import { issues } from '../../db/schema.js';
-import { issueRefPrefixOf, parseIssueRef } from '../../issues/issue-ref.js';
+import { issueRefPrefixOf, parseIssueRef } from '../../lib/issue-ref.js';
 
 export type IssueLookupDb = Pick<typeof defaultDb, 'select'>;
 

@@ -327,7 +327,7 @@ export const projects = pgTable(
     apiKeyUq: uniqueIndex('projects_api_key_uq').on(t.apiKey).where(sql`api_key IS NOT NULL`),
     defaultDeviceIdx: index('projects_default_device_id_idx').on(t.defaultDeviceId),
     archivedAtIdx: index('projects_archived_at_idx').on(t.archivedAt),
-    // cm:edge lockstep -> packages/core/src/db/schema.ts:issuePrefixAliases — MATCH SIMPLE skips the check while `issue_prefix` is NULL, which is what leaves the legacy `ISS` default free; measured against Postgres 2026-09-13, seven probes
+    // cm:edge lockstep -> packages/core/src/db/schema.ts#issuePrefixAliases — MATCH SIMPLE skips the check while `issue_prefix` is NULL, which is what leaves the legacy `ISS` default free; measured against Postgres 2026-09-13, seven probes
     issuePrefixFk: foreignKey({
       name: 'projects_issue_prefix_fk',
       columns: [t.id, t.issuePrefix],

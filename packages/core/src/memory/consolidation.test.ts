@@ -1,10 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // cm:why the prefix reader is a collaborator with a query shape of its own, stubbed so this file stays a check of what the module under test does with the reference rather than of how the prefix is read (ISS-992)
-vi.mock('../issues/issue-prefix-read.js', () => ({
-  activeIssuePrefix: async () => null,
-  heldIssuePrefixes: async () => [],
-}));
+vi.mock('../issues/issue-prefix-read.js', async () => {
+  const { formatIssueRef } = await import('../lib/issue-ref.js');
+  return {
+    activeIssuePrefix: async () => null,
+    heldIssuePrefixes: async () => [],
+    issueRefFormatter: async () => (issSeq: number) => formatIssueRef(null, issSeq),
+  };
+});
 vi.mock('../config/env.js', () => ({
   env: {
     LITELLM_API_URL: 'http://litellm.test',

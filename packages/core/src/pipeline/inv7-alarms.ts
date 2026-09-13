@@ -16,10 +16,10 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { formatIssueRef } from '../issues/issue-ref.js';
 import { HOLD_PAYLOAD_KEY, holdResumesItself } from '../jobs/hold.js';
 import { RESULT_QUIET_MINUTES } from '../jobs/loop-monitor.js';
 import { gateReasonsForQueuedJobs } from '../jobs/queued-gates.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { DEFAULT_NO_PROGRESS_ROUNDS } from './reopen-policy.js';
 import { pauseResumesItself } from './run-pause.js';

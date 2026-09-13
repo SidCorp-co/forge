@@ -11,11 +11,7 @@ import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, issues, pipelineRuns, terminalAgentSessionStatuses } from '../db/schema.js';
 import { heldIssuePrefixes } from '../issues/issue-prefix-read.js';
-import {
-  canonicalIssueKey,
-  issueRefNeedsHeldPrefixes,
-  parseIssueRef,
-} from '../issues/issue-ref.js';
+import { canonicalIssueKey, issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
@@ -56,7 +52,7 @@ async function readIssueStatuses(
 
 /** Every key this run will be recorded under, in the ONE form the metadata holds. */
 // cm:guard the caller may type the project's own prefix or the legacy one — `pool list` shows the first — and what is STORED is always canonical. The stored keys are matched by string containment in SQL (`admissible.ts`, `runSessionsForIssue` below) and never parsed, so a run opened under `FD-977` among historical `ISS-977` rows is a set no single query matches and its issues never come back (ISS-992).
-// cm:edge lockstep -> packages/core/src/issues/issue-ref.ts:canonicalIssueKey
+// cm:edge lockstep -> packages/core/src/lib/issue-ref.ts#canonicalIssueKey
 async function canonicaliseIssueKeys(
   projectId: string,
   issueKeys: string[],

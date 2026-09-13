@@ -18,7 +18,7 @@ import {
   createIssue,
   type IssueCreateWriter,
 } from '../issues/create-service.js';
-import { formatIssueRef } from '../issues/issue-ref.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { duplicateRefusal, noticeFor, shapeRefusal } from './refusal.js';
 import { type CliGapKind, readFiling } from './shape.js';
 

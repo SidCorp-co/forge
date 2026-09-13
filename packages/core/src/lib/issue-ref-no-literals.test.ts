@@ -18,7 +18,7 @@ import { describe, expect, it } from 'vitest';
 const SRC = new URL('..', import.meta.url).pathname;
 
 // cm:why The two files that are allowed to name the prefix: the module that owns formatting, and its own tests. Everything else asks one of them.
-const OWNERS = ['issues/issue-ref.ts', 'issues/issue-ref.test.ts'];
+const OWNERS = ['lib/issue-ref.ts', 'lib/issue-ref.test.ts'];
 
 /**
  * Sites where the CANONICAL `ISS-` form is deliberate, because the value is a storage key matched
@@ -39,7 +39,7 @@ const NOT_A_REFERENCE = {
   // cm:why The git branch convention is `iss-<seq>-<slug>`, a different namespace from the reference: renaming branches would break salvage matching, live worktrees and every merged branch's history, and ISS-992 put none of that in scope.
   'issues/metadata.ts': 'the git branch convention, not an issue reference',
   // cm:why This file's own mutation fixtures ARE hand-built references; that is what they are for.
-  'issues/issue-ref-no-literals.test.ts': 'the mutation fixtures this scan is made of',
+  'lib/issue-ref-no-literals.test.ts': 'the mutation fixtures this scan is made of',
 };
 
 const TEMPLATE = /`[^`]*\$\{[^}]*\}[^`]*`/g;
@@ -58,7 +58,7 @@ function walk(dir: string, out: string[] = []): string[] {
 }
 
 /** Every way this repo knows of to assemble a reference by hand, from one line of source. */
-export function handBuiltReferencesIn(line: string): string[] {
+function handBuiltReferencesIn(line: string): string[] {
   const found: string[] = [];
   for (const lit of line.match(TEMPLATE) ?? []) {
     if (/ISS-\$\{/.test(lit) || (/-\$\{/.test(lit) && SEQ_BEARING.test(lit))) found.push(lit);
@@ -99,7 +99,9 @@ describe('issue references are built in one place (ISS-992)', () => {
 
   // cm:why The mutation cases. Each is a way somebody could put a reference back by hand; the scanner going green on any of them is the scanner failing, not the code passing.
   it.each([
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: the fixture IS the forbidden shape — a real template literal here would interpolate and the scanner would never see it
     ['a template literal', 'const ref = `ISS-${row.issSeq}`;'],
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: the fixture IS the forbidden shape — a real template literal here would interpolate and the scanner would never see it
     ['a template literal under another prefix', 'const ref = `${prefix}-${row.issSeq}`;'],
     ['a string concatenation', "const ref = 'ISS-' + row.issSeq;"],
     ['a SQL concatenation', "sql`'ISS-' || i.iss_seq`"],
@@ -112,6 +114,7 @@ describe('issue references are built in one place (ISS-992)', () => {
   it.each([
     ['the approved formatter', 'const ref = formatIssueRef(prefix, row.issSeq);'],
     ['the canonical helper', 'const key = canonicalIssueKey(issue.issSeq);'],
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: the fixture IS the forbidden shape — a real template literal here would interpolate and the scanner would never see it
     ['an unrelated template literal', 'const label = `${row.type} failed`;'],
     ['an unrelated join', "const names = parts.join('-');"],
   ])('leaves %s alone', (_name, line) => {

@@ -15,7 +15,7 @@
 import { and, eq, gte, isNotNull, isNull, lt, notInArray, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueStatuses, issues, notifications, projects } from '../db/schema.js';
-import { formatIssueRef } from '../issues/issue-ref.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
 import { projectAdminUserIds } from '../notifications/project-admins.js';

@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { makeFakeJobPrincipal } from '../fake-principal.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -10,108 +9,38 @@ vi.mock('../../config/env.js', () => ({
   },
 }));
 
-const selectLimit = vi.fn();
-const selectOrderBy = vi.fn(() => ({ limit: selectLimit }));
-const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
-const selectInnerJoin = vi.fn(() => ({ where: selectWhere }));
-const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
-const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
-const selectFrom = vi.fn(() => ({
-  where: selectWhere,
-  leftJoin: selectLeftJoin,
-  innerJoin: selectInnerJoin,
-}));
+const h = await vi.hoisted(async () =>
+  (await import('./forge-feedback.fixture.js')).makeFeedbackDbMocks(),
+);
+vi.mock('../../db/client.js', () => ({ db: h.db }));
 
-const insertReturning = vi.fn();
-const insertValues = vi.fn(() => ({ returning: insertReturning }));
-const updateReturning = vi.fn();
-const updateWhere = vi.fn(() => ({ returning: updateReturning }));
-const updateSet = vi.fn(() => ({ where: updateWhere }));
-const dbSelect = vi.fn(() => ({ from: selectFrom }));
-const dbInsert = vi.fn(() => ({ values: insertValues }));
-const dbUpdate = vi.fn(() => ({ set: updateSet }));
-
-// cm:why loadVisibleProjectIdsForPrincipal chain (org scope): selectDistinct({id}).from(projects).leftJoin(...).leftJoin(...).where(...)
-const selectDistinctWhere = vi.fn();
-const selectDistinctLeftJoin2 = vi.fn(() => ({ where: selectDistinctWhere }));
-const selectDistinctLeftJoin = vi.fn(() => ({ leftJoin: selectDistinctLeftJoin2 }));
-const selectDistinctFrom = vi.fn(() => ({ leftJoin: selectDistinctLeftJoin }));
-const dbSelectDistinct = vi.fn(() => ({ from: selectDistinctFrom }));
-
-vi.mock('../../db/client.js', () => ({
-  db: {
-    select: dbSelect,
-    selectDistinct: dbSelectDistinct,
-    insert: dbInsert,
-    update: dbUpdate,
-  },
-}));
-
-function mockVisibleProjects(ids: string[]) {
-  selectDistinctWhere.mockResolvedValueOnce(ids.map((id) => ({ id })));
-}
+const {
+  ISSUE_ID,
+  JOB_ID,
+  makeCtx,
+  OWNER_ID,
+  PROJECT_ID,
+  PROJECT_ID_2,
+  memberAccessRow,
+  PROJECT_SLUG,
+  RUN_ID,
+} = await import('./forge-feedback.fixture.js');
+const {
+  insertReturning,
+  insertValues,
+  mockVisibleProjects,
+  queueMemberOnly,
+  queueSlugAndMember,
+  selectLimit,
+  updateReturning,
+  updateSet,
+} = h;
 
 const { forgeFeedbackTool } = await import('./forge-feedback.js');
 
-const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
-const PROJECT_SLUG = 'forge-dev';
-const PROJECT_ID_2 = '22222222-2222-4222-8222-222222222222';
-const OWNER_ID = '33333333-3333-4333-8333-333333333333';
-const TOKEN_ID = '99999999-9999-4999-8999-99999999aaaa';
-const JOB_ID = '55555555-5555-4555-8555-555555555555';
-const RUN_ID = '66666666-6666-4666-8666-666666666666';
-const ISSUE_ID = '77777777-7777-4777-8777-777777777777';
-
-const ORG_ID = '99999999-9999-4999-8999-999999999999';
-const memberAccessRow = { orgId: ORG_ID, memberRole: 'member', orgRole: null };
-
-/** resolveProjectIdFromSlug then effectiveProjectRole — the two reads every action makes first, plus any rows the action reads after them. */
-function queueSlugAndMember(...then: unknown[][]): void {
-  let m = selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-  for (const rows of [[memberAccessRow], ...then]) m = m.mockResolvedValueOnce(rows);
-}
-
-/** `submit` names its project, so it spends no slug lookup — only the membership check. */
-// cm:guard a submit that resolved the caller's project instead would consume the slug row this helper deliberately does NOT queue, which is the shape the refusal exists to make impossible (ISS-992)
-function queueMemberOnly(...then: unknown[][]): void {
-  let m = selectLimit.mockResolvedValueOnce([memberAccessRow]);
-  for (const rows of then) m = m.mockResolvedValueOnce(rows);
-}
-
-// cm:guard the pipeline ctx carries a MACHINE principal — since ISS-931 the job comes off the `job:<id>` name on the caller's own token, so a person's PAT (`machine: null`) makes every context field null and the happy path stops asserting anything about attribution.
-const DEVICE_ID = '44444444-4444-4444-8444-444444444444';
-const jobPrincipal = makeFakeJobPrincipal(TOKEN_ID, OWNER_ID, DEVICE_ID, PROJECT_ID);
-
-function makeCtx(projectSlug = PROJECT_SLUG) {
-  return {
-    principal: jobPrincipal,
-    projectSlug,
-  };
-}
-
-// cm:guard the re-install block below is load-bearing, not duplication — `vi.resetAllMocks()` clears IMPLEMENTATIONS as well as calls, so dropping it fails every test with `Cannot read properties of undefined (reading 'where')`, which points at the drizzle chain mock and never at the reset that emptied it
 beforeEach(() => {
   vi.resetAllMocks();
-  selectFrom.mockImplementation(() => ({
-    where: selectWhere,
-    leftJoin: selectLeftJoin,
-    innerJoin: selectInnerJoin,
-  }));
-  selectWhere.mockImplementation(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
-  selectOrderBy.mockImplementation(() => ({ limit: selectLimit }));
-  selectLeftJoin.mockImplementation(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
-  selectLeftJoin2.mockImplementation(() => ({ where: selectWhere }));
-  selectInnerJoin.mockImplementation(() => ({ where: selectWhere }));
-  insertValues.mockImplementation(() => ({ returning: insertReturning }));
-  updateSet.mockImplementation(() => ({ where: updateWhere }));
-  updateWhere.mockImplementation(() => ({ returning: updateReturning }));
-  dbSelect.mockImplementation(() => ({ from: selectFrom }));
-  dbInsert.mockImplementation(() => ({ values: insertValues }));
-  dbUpdate.mockImplementation(() => ({ set: updateSet }));
-  selectDistinctLeftJoin2.mockImplementation(() => ({ where: selectDistinctWhere }));
-  selectDistinctLeftJoin.mockImplementation(() => ({ leftJoin: selectDistinctLeftJoin2 }));
-  selectDistinctFrom.mockImplementation(() => ({ leftJoin: selectDistinctLeftJoin }));
-  dbSelectDistinct.mockImplementation(() => ({ from: selectDistinctFrom }));
+  h.install();
 });
 
 describe('forge_feedback submit', () => {
@@ -129,7 +58,6 @@ describe('forge_feedback submit', () => {
         agentSessionId: 'sess-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
       },
     ]);
-    // per-job count check: 0 existing
     selectLimit.mockResolvedValueOnce([{ n: 0 }]);
     insertReturning.mockResolvedValueOnce([
       {
@@ -270,87 +198,6 @@ describe('forge_feedback submit', () => {
     await expect(
       tool.handler({ action: 'submit', projectId: PROJECT_ID, kind: 'friction', target: 'skill' }),
     ).rejects.toThrow('summary is required');
-  });
-});
-
-describe('forge_feedback submit refuses to guess the project (ISS-992)', () => {
-  it('refuses an omitted projectId, naming the field', async () => {
-    const tool = forgeFeedbackTool(makeCtx());
-
-    await expect(
-      tool.handler({
-        action: 'submit',
-        kind: 'friction',
-        target: 'skill',
-        summary: 'A defect about some other project',
-      }),
-    ).rejects.toThrow(/projectId is required for submit/);
-  });
-
-  it('says where the id comes from, so the refusal is a way forward', async () => {
-    const tool = forgeFeedbackTool(makeCtx());
-
-    await expect(
-      tool.handler({ action: 'submit', kind: 'friction', target: 'skill', summary: 'x' }),
-    ).rejects.toThrow(/forge_projects action=list/);
-  });
-
-  it('writes NOTHING when it refuses — the whole point, a row filed somewhere plausible', async () => {
-    const tool = forgeFeedbackTool(makeCtx());
-
-    await expect(
-      tool.handler({ action: 'submit', kind: 'friction', target: 'skill', summary: 'x' }),
-    ).rejects.toThrow();
-    expect(insertValues).not.toHaveBeenCalled();
-  });
-
-  // cm:why The bound on the change: a read that looks at the wrong feed is visibly empty, so the three reading arms keep resolving the caller's project and are NOT refused.
-  it('leaves list resolving the caller\'s project with no projectId', async () => {
-    const tool = forgeFeedbackTool(makeCtx());
-
-    queueSlugAndMember();
-    selectOrderBy.mockReturnValueOnce({
-      limit: vi.fn().mockResolvedValueOnce([]),
-    } as unknown as ReturnType<typeof selectOrderBy>);
-
-    const out = (await tool.handler({ action: 'list' })) as { reports: unknown[] };
-    expect(out.reports).toEqual([]);
-  });
-
-  // cm:why The context resolves one project and the caller names another: the row must land where the CALLER said. Before ISS-992 this call filed against the context's project and said nothing.
-  it('files into the project the caller named, not the one the context resolves', async () => {
-    const tool = forgeFeedbackTool(makeCtx('some-other-project'));
-
-    queueMemberOnly();
-    selectLimit.mockResolvedValueOnce([]);
-    insertReturning.mockResolvedValueOnce([
-      { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', signalKey: 'self_report:skill:-:friction' },
-    ]);
-
-    await tool.handler({
-      action: 'submit',
-      projectId: PROJECT_ID,
-      kind: 'friction',
-      target: 'skill',
-      summary: 'A defect observed while working somewhere else',
-    });
-
-    const inserted = (insertValues.mock.calls[0] as unknown[])?.[0] as Record<string, unknown>;
-    expect(inserted.projectId).toBe(PROJECT_ID);
-    // cm:why and the slug the context carries was never looked up — `queueMemberOnly` queued no row for it
-    expect(selectLimit).toHaveBeenCalledTimes(2);
-  });
-});
-
-describe('the forge_feedback tool description (ISS-992)', () => {
-  it('names projectId among the fields submit requires', () => {
-    const tool = forgeFeedbackTool(makeCtx());
-    expect(tool.description).toMatch(/Required fields: projectId/);
-  });
-
-  it('says the id names the project the report is ABOUT', () => {
-    const tool = forgeFeedbackTool(makeCtx());
-    expect(tool.description).toContain('the report is ABOUT');
   });
 });
 

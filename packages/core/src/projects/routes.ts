@@ -18,11 +18,6 @@ import {
   runners,
 } from '../db/schema.js';
 import {
-  type AssignPrefixResult,
-  assignIssuePrefix,
-  retireIssuePrefix,
-} from '../issues/issue-prefix-service.js';
-import {
   assertOrgAccess,
   assertOrgRoleOnProject,
   assertProjectRole,
@@ -44,6 +39,7 @@ import {
 import { updatePipelineConfig } from '../pipeline/pipeline-config-service.js';
 import { pluginDesignationsPatchSchema } from '../plugins/designation.js';
 import { readAgentConfig } from './agent-config.js';
+import { applyIssuePrefixPatch } from './issue-prefix-patch.js';
 import { projectOnboardRoutes } from './onboard-routes.js';
 import { pipelineConfigHttpError } from './pipeline-config-http.js';
 
@@ -134,38 +130,6 @@ export type UpdateProjectInput = z.infer<typeof updateProjectSchema>;
 const idParamSchema = z.object({
   id: z.uuid(),
 });
-
-// cm:guard the holder is named ONLY to a caller who can already see it. Probing candidate prefixes would otherwise enumerate the private projects on the deployment one refusal at a time, and the issue asks for uniqueness, not for disclosure (codex review of ISS-992).
-async function issuePrefixRefusal(
-  refusal: Exclude<AssignPrefixResult, { ok: true }>,
-  userId: string,
-): Promise<HTTPException> {
-  if (refusal.reason !== 'taken') {
-    return new HTTPException(400, {
-      message: refusal.message,
-      cause: { code: 'BAD_REQUEST' },
-    });
-  }
-  const holder = refusal.holderProjectId
-    ? await loadProjectAccess(refusal.holderProjectId, userId)
-    : null;
-  const visible = holder?.role ? await readProjectName(refusal.holderProjectId as string) : null;
-  return new HTTPException(409, {
-    message: visible
-      ? `that issue prefix is already held by the project \`${visible}\`. A prefix names one project for good, so it is never handed on.`
-      : 'that issue prefix is already held by another project. A prefix names one project for good, so it is never handed on.',
-    cause: { code: 'ISSUE_PREFIX_TAKEN' },
-  });
-}
-
-async function readProjectName(projectId: string): Promise<string | null> {
-  const [row] = await db
-    .select({ name: projects.name })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  return row?.name ?? null;
-}
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, {
@@ -288,8 +252,7 @@ projectRoutes.get('/', async (c) => {
       const role = maxProjectRole(memberRole ?? null, orgDerivedProjectRole(orgRole ?? null));
       return {
         ...row,
-        // Viewer is read-only: the apiKey can pair MCP devices / install the
-        // widget (execution-grade), so it is withheld from the viewer tier.
+        // cm:guard the apiKey is execution-grade — it pairs MCP devices and installs the widget — so the viewer tier, which is read-only, never receives it
         apiKey: role === 'viewer' ? null : apiKey,
         role,
         orgRole: orgRole ?? null,
@@ -459,12 +422,7 @@ projectRoutes.patch(
     if (patch.productionBranch !== undefined) updates.productionBranch = patch.productionBranch;
     if (patch.defaultDeviceId !== undefined) updates.defaultDeviceId = patch.defaultDeviceId;
     if (patch.issuePrefix !== undefined) {
-      if (patch.issuePrefix === null || patch.issuePrefix === '') {
-        await retireIssuePrefix(id);
-      } else {
-        const assigned = await assignIssuePrefix(id, patch.issuePrefix);
-        if (!assigned.ok) throw await issuePrefixRefusal(assigned, userId);
-      }
+      await applyIssuePrefixPatch(id, patch.issuePrefix, userId);
     }
     if (patch.stateContext !== undefined) {
       // Read-modify-write rather than Postgres's `jsonb || jsonb` (shallow

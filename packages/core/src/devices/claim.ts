@@ -20,7 +20,6 @@ import { db } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
 import { jobs } from '../db/schema.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import { formatIssueRef } from '../issues/issue-ref.js';
 import { endJobForBudgetBreach } from '../jobs/budget-breach.js';
 import { checkMonthlyBudget, shouldEmitWarn } from '../jobs/budget-check.js';
 import {
@@ -29,6 +28,7 @@ import {
   prepareClaimedJob,
   resolveRunnerForDevice,
 } from '../jobs/prepare-claimed-job.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { hooks } from '../pipeline/hooks.js';
 import { runnerAdmission } from './pool-admission.js';
 

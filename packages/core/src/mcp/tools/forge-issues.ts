@@ -17,7 +17,6 @@ import { createIssue, IssueCreateError } from '../../issues/create-service.js';
 import { loadIssueRelations } from '../../issues/dependency-read.js';
 import { isValidDetectorKey } from '../../issues/detector-key.js';
 import { activeIssuePrefix } from '../../issues/issue-prefix-read.js';
-import { formatIssueRef } from '../../issues/issue-ref.js';
 import {
   LabelResolutionError,
   listIssueLabels,
@@ -37,6 +36,7 @@ import { applyIssueRelations, issueRelationInputSchema } from '../../issues/rela
 import { ReleaseNotesSchema } from '../../issues/release-notes.js';
 import { sessionContextExpectSchema, sessionContextSchema } from '../../issues/session-context.js';
 import { SessionContextExpectMismatch, updateIssueFields } from '../../issues/update-service.js';
+import { formatIssueRef } from '../../lib/issue-ref.js';
 import { markUntrusted, sanitizeUntrusted } from '../../prompt/sanitize.js';
 import {
   createTask as createTaskRow,

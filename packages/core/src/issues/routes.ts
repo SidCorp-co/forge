@@ -21,6 +21,7 @@ import {
   usageRecords,
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { formatIssueRef, issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { queryBadRequest } from '../lib/query-strict.js';
 import { logger } from '../logger.js';
@@ -32,7 +33,6 @@ import { AttachmentError } from './attachment-service.js';
 import { createIssue, IssueCreateError } from './create-service.js';
 import { hydrateCreatorsForIssues } from './creator.js';
 import { activeIssuePrefix, heldIssuePrefixes } from './issue-prefix-read.js';
-import { formatIssueRef, issueRefNeedsHeldPrefixes, parseIssueRef } from './issue-ref.js';
 import {
   LabelResolutionError,
   listIssueLabels,

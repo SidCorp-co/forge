@@ -17,13 +17,13 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
 import { agentSessions, devices, issues, projects, runners, schedules } from '../db/schema.js';
-import { formatIssueRef } from '../issues/issue-ref.js';
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import {
   findAvailableDeviceForProject,
   findChatCapableDeviceForProject,
   resolveSessionRepoPathForDevice,
 } from '../lib/device-pool.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
@@ -112,30 +112,15 @@ agentSessionLifecycleRoutes.post(
 
     let title: string;
     if (input.issueIds && input.issueIds.length > 0) {
-      const issueRows = await db
-        .select({
-          id: issues.id,
-          issSeq: issues.issSeq,
-          issuePrefix: projects.issuePrefix,
-          title: issues.title,
-        })
+      const rows = await db
+        .select({ seq: issues.issSeq, prefix: projects.issuePrefix, title: issues.title })
         .from(issues)
         .innerJoin(projects, eq(projects.id, issues.projectId))
         .where(inArray(issues.id, input.issueIds));
-      const first = issueRows[0];
-      if (issueRows.length === 1 && first) {
-        title = `${formatIssueRef(first.issuePrefix, first.issSeq)} ${first.title ?? ''}`.slice(
-          0,
-          120,
-        );
-      } else if (issueRows.length > 1) {
-        title = issueRows
-          .map((i) => formatIssueRef(i.issuePrefix, i.issSeq))
-          .join(', ')
-          .slice(0, 120);
-      } else {
-        title = rawPrompt.slice(0, 120);
-      }
+      const refs = rows.map((r) => formatIssueRef(r.prefix, r.seq));
+      if (refs.length === 1) title = `${refs[0]} ${rows[0]?.title ?? ''}`.slice(0, 120);
+      else if (refs.length > 1) title = refs.join(', ').slice(0, 120);
+      else title = rawPrompt.slice(0, 120);
     } else {
       title = rawPrompt
         .replace(/^You are working on issue:\s*/i, '')
@@ -156,8 +141,6 @@ agentSessionLifecycleRoutes.post(
       }
     }
 
-    // ===== Interactive chat: create an empty row, then deliver turn #1 through
-    // the ONE shared dispatcher — identical to a /send follow-up. =====
     const metadata: Record<string, unknown> = {};
     if (input.issueIds?.length === 1 && input.issueIds[0]) metadata.issueId = input.issueIds[0];
     const session = await createChatSessionRow({

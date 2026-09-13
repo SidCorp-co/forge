@@ -1,7 +1,7 @@
 import { and, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
-import { formatIssueRef } from '../issues/issue-ref.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { ageSeconds, emptyBuckets, foldBuckets } from './pulse-folds.js';
 import { idList } from './pulse-sql.js';
 import {

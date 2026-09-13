@@ -15,7 +15,7 @@ import {
   rocketchatQuestionThreads,
 } from '../../db/schema-rocketchat.js';
 import { activeIssuePrefix } from '../../issues/issue-prefix-read.js';
-import { formatIssueRef } from '../../issues/issue-ref.js';
+import { formatIssueRef } from '../../lib/issue-ref.js';
 import { logger } from '../../logger.js';
 import { resolveNotifications } from '../../notifications/auto-resolve.js';
 import { emitNotification } from '../../notifications/emit.js';

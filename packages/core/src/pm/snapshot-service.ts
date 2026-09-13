@@ -9,7 +9,7 @@ import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, jobs } from '../db/schema.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import { formatIssueRef } from '../issues/issue-ref.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { readRunnerLoad } from './runner-load-service.js';
 
 const ACTIVE_JOB_STATUSES = ['queued', 'dispatched', 'running'] as const;

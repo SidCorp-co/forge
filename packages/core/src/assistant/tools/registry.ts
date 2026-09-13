@@ -12,7 +12,7 @@
 
 import { db } from '../../db/client.js';
 import { activeIssuePrefix, heldIssuePrefixes } from '../../issues/issue-prefix-read.js';
-import { formatIssueRef } from '../../issues/issue-ref.js';
+import { formatIssueRef } from '../../lib/issue-ref.js';
 import { forgeCommentsTool } from '../../mcp/tools/forge-comments.js';
 import { forgeIssuesTool } from '../../mcp/tools/forge-issues.js';
 import { forgeKnowledgeTool } from '../../mcp/tools/forge-knowledge.js';

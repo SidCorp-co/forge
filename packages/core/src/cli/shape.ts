@@ -8,7 +8,7 @@
  * door asked.
  */
 
-import { LEGACY_ISSUE_PREFIX } from '../issues/issue-ref.js';
+import { LEGACY_ISSUE_PREFIX } from '../lib/issue-ref.js';
 import {
   article,
   type CliKind,

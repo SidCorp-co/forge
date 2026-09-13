@@ -18,6 +18,7 @@ import type { BodyFormat } from '../body/formats.js';
 import { prepareBody } from '../body/prepare.js';
 import { db } from '../db/client.js';
 import { type IssueStatus, issueLabels, issues } from '../db/schema.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import type { Actor } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import {
@@ -31,7 +32,6 @@ import {
 import { claimDetectorKey, isValidDetectorKey } from './detector-key.js';
 import { applyIntakeGate, finalizeIntake } from './intake-gate.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
-import { formatIssueRef } from './issue-ref.js';
 import {
   type LabelAttachInput,
   type ResolvedLabelAttach,

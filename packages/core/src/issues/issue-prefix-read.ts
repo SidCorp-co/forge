@@ -5,7 +5,7 @@
 import { eq } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
 import { issuePrefixAliases, projects } from '../db/schema.js';
-import { formatIssueRef } from './issue-ref.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 
 export type IssueRefReader = Pick<typeof defaultDb, 'select'>;
 

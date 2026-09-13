@@ -3,8 +3,8 @@ import { Hono } from 'hono';
 import { db } from '../db/client.js';
 import { issues, pipelineRuns, projectMembers, projects, runners, users } from '../db/schema.js';
 import { activityLog } from '../db/schema-activity.js';
-import { formatIssueRef } from '../issues/issue-ref.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 
 interface ProjectHealthRow {
@@ -54,6 +54,28 @@ const BLOCKED_STATUSES = ['on_hold', 'needs_info'] as const;
 export const projectHealthRoutes = new Hono<{ Variables: AuthVars }>();
 projectHealthRoutes.use('/health', requireAuth(), assertEmailVerified());
 
+type BlockerRow = {
+  projectId: string;
+  id: string;
+  issSeq: number;
+  issuePrefix: string | null;
+  status: string;
+};
+
+function groupBlockers(rows: BlockerRow[]): Map<string, ProjectHealthRow['blockers']> {
+  const byProject = new Map<string, ProjectHealthRow['blockers']>();
+  for (const r of rows) {
+    const arr = byProject.get(r.projectId) ?? [];
+    arr.push({
+      issueId: formatIssueRef(r.issuePrefix, r.issSeq),
+      documentId: r.id,
+      status: r.status,
+    });
+    byProject.set(r.projectId, arr);
+  }
+  return byProject;
+}
+
 projectHealthRoutes.get('/health', async (c) => {
   const userId = c.get('userId');
 
@@ -76,7 +98,6 @@ projectHealthRoutes.get('/health', async (c) => {
 
   const projectIds = visibleProjects.map((p) => p.id);
 
-  // Status distribution per project — single GROUP BY query.
   const statusRows = await db
     .select({
       projectId: issues.projectId,
@@ -243,16 +264,7 @@ projectHealthRoutes.get('/health', async (c) => {
     distByProject.set(r.projectId, dist);
   }
 
-  const blockersByProject = new Map<string, ProjectHealthRow['blockers']>();
-  for (const r of blockerRows) {
-    const arr = blockersByProject.get(r.projectId) ?? [];
-    arr.push({
-      issueId: formatIssueRef(r.issuePrefix, r.issSeq),
-      documentId: r.id,
-      status: r.status,
-    });
-    blockersByProject.set(r.projectId, arr);
-  }
+  const blockersByProject = groupBlockers(blockerRows);
 
   const throughputByProject = new Map<string, number>();
   for (const r of throughputRows) throughputByProject.set(r.projectId, Number(r.n));

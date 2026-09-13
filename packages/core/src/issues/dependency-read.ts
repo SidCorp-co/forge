@@ -9,8 +9,8 @@ import { and, eq, or } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../db/client.js';
 import { type IssueDependencyKind, issueDependencies, issues } from '../db/schema.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
-import { formatIssueRef } from './issue-ref.js';
 
 export type IssueDependencyEdge = {
   id: string;

@@ -9,10 +9,10 @@ import {
   issueDependencies,
   issueStatuses,
   issues,
-  projects,
   waitingKinds,
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -23,7 +23,6 @@ import {
 } from './apply-transition.js';
 import type { UnblockedDependent } from './drop-cascade.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
-import { formatIssueRef } from './issue-ref.js';
 
 const transitionBodySchema = z
   .object({
@@ -110,34 +109,23 @@ export async function triggerTerminalDispatch(
       }
     };
 
-    // cm:guard a dependent may sit in ANOTHER project, so the prefixes are resolved per project and not once for the blocker's — naming a cross-project dependent under this project's prefix is the substitution ISS-992 exists to remove, not one to add on the way out
-    const prefixOf = new Map<string, string | null>(
-      await Promise.all(
-        [
-          ...new Set([
-            ...terminal.map((t) => t.projectId),
-            ...terminal.flatMap((t) => (t.dependents ?? []).map((d) => d.projectId)),
-          ]),
-        ]
-          .filter((id): id is string => typeof id === 'string')
-          .map(async (id): Promise<[string, string | null]> => [id, await activeIssuePrefix(id)]),
-      ),
-    );
+    const pending: Array<{
+      blockerId: string;
+      issueId: string;
+      issSeq: number;
+      projectId: string | null;
+    }> = [];
 
     for (const t of terminal) {
       if (!t.dependents) continue;
       for (const d of t.dependents) {
         noteChild(d.projectId, t.issueId);
-        const list = byBlocker.get(t.issueId) ?? [];
-        list.push({
+        pending.push({
+          blockerId: t.issueId,
           issueId: d.issueId,
           issSeq: d.issSeq,
-          displayId: formatIssueRef(
-            d.projectId ? (prefixOf.get(d.projectId) ?? null) : null,
-            d.issSeq,
-          ),
+          projectId: d.projectId,
         });
-        byBlocker.set(t.issueId, list);
       }
     }
 
@@ -151,11 +139,9 @@ export async function triggerTerminalDispatch(
               toIssueId: issueDependencies.toIssueId,
               depProjectId: issueDependencies.projectId,
               toIssSeq: issues.issSeq,
-              toIssuePrefix: projects.issuePrefix,
             })
             .from(issueDependencies)
             .innerJoin(issues, eq(issues.id, issueDependencies.toIssueId))
-            .innerJoin(projects, eq(projects.id, issues.projectId))
             .where(
               and(
                 inArray(issueDependencies.fromIssueId, issueIds),
@@ -166,13 +152,34 @@ export async function triggerTerminalDispatch(
 
     for (const row of dependents) {
       noteChild(row.depProjectId, row.fromIssueId);
-      const list = byBlocker.get(row.fromIssueId) ?? [];
-      list.push({
+      pending.push({
+        blockerId: row.fromIssueId,
         issueId: row.toIssueId,
         issSeq: row.toIssSeq,
-        displayId: formatIssueRef(row.toIssuePrefix, row.toIssSeq),
+        projectId: row.depProjectId,
       });
-      byBlocker.set(row.fromIssueId, list);
+    }
+
+    // cm:guard a dependent may sit in ANOTHER project, so a reference is named with ITS project's prefix and not the blocker's — naming a cross-project dependent under this project's prefix is the substitution ISS-992 exists to remove, not one to add on the way out
+    const prefixOf = new Map<string, string | null>(
+      await Promise.all(
+        [...new Set([...terminal.map((t) => t.projectId), ...pending.map((p) => p.projectId)])]
+          .filter((id): id is string => typeof id === 'string')
+          .map(async (id): Promise<[string, string | null]> => [id, await activeIssuePrefix(id)]),
+      ),
+    );
+
+    for (const d of pending) {
+      const list = byBlocker.get(d.blockerId) ?? [];
+      list.push({
+        issueId: d.issueId,
+        issSeq: d.issSeq,
+        displayId: formatIssueRef(
+          d.projectId ? (prefixOf.get(d.projectId) ?? null) : null,
+          d.issSeq,
+        ),
+      });
+      byBlocker.set(d.blockerId, list);
     }
 
     for (const t of terminal) {

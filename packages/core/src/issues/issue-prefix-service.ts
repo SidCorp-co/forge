@@ -2,8 +2,8 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issuePrefixAliases, projects } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
+import { type IssuePrefixShapeError, validateIssuePrefix } from '../lib/issue-ref.js';
 import { issuePrefixHolder } from './issue-prefix-read.js';
-import { type IssuePrefixShapeError, validateIssuePrefix } from './issue-ref.js';
 
 export type AssignPrefixResult =
   | { ok: true; prefix: string }
@@ -12,7 +12,7 @@ export type AssignPrefixResult =
 
 /** Give a project a prefix, or move it back to one it already holds. */
 // cm:guard the alias row and `projects.issue_prefix` are written in ONE transaction, and the pointer moves on EVERY accepted assignment — returning success for an alias this project already owns without moving the pointer acknowledges a change it did not apply, and the project goes on rendering its old prefix (ISS-992)
-// cm:edge lockstep -> packages/core/src/db/schema.ts:issuePrefixAliases — `projects_issue_prefix_fk` is what makes a divergence between the two unrepresentable rather than merely unlikely
+// cm:edge lockstep -> packages/core/src/db/schema.ts#issuePrefixAliases — `projects_issue_prefix_fk` is what makes a divergence between the two unrepresentable rather than merely unlikely
 export async function assignIssuePrefix(
   projectId: string,
   raw: string,

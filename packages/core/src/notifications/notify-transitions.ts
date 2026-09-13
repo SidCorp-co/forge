@@ -4,7 +4,7 @@ import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { issues, notifications } from '../db/schema.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import { formatIssueRef } from '../issues/issue-ref.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { AUTONOMOUS_QUESTION_STATUS } from '../pipeline/autonomous-mode.js';
 import type { HooksBus } from '../pipeline/hooks.js';
