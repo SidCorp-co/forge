@@ -10,6 +10,7 @@
 
 import { relations, sql } from 'drizzle-orm';
 import {
+  check,
   index,
   integer,
   jsonb,
@@ -45,7 +46,7 @@ export interface ConversationOrigin {
   source: string;
   createdAt: string;
   updatedAt: string;
-  /** The handle 0238 minted for this project, or null where an existing agent account was reused. */
+  /** The handle 0240 minted for this project, or null where an existing agent account was reused. */
   mintedHandleUserId: string | null;
 }
 
@@ -59,14 +60,21 @@ export const conversations = pgTable(
     externalId: text('external_id').notNull(),
     shape: text('shape', { enum: conversationShapes }).notNull().default('direct'),
     title: text('title'),
-    // cm:guard provenance for the reverse migration and NOTHING else — scope may never be read from it, and a reader that took `origin.projectId` for the room's project would restore the column this table exists to remove. Null on every conversation opened after 0238 ran.
+    // cm:guard provenance for the reverse migration and NOTHING else — scope may never be read from it, and a reader that took `origin.projectId` for the room's project would restore the column this table exists to remove. Null on every conversation opened after 0240 ran.
     origin: jsonb('origin').$type<ConversationOrigin | null>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
+  // cm:guard every CHECK the migration creates is declared HERE too, because a drizzle snapshot
+  // records `checkConstraints` per table: one left in SQL alone is a constraint the snapshot denies
   (t) => ({
     venueUnique: uniqueIndex('conversations_venue_unique').on(t.adapter, t.externalId),
     updatedIdx: index('conversations_updated_idx').on(t.updatedAt),
+    adapterKnown: check(
+      'conversations_adapter_known',
+      sql`${t.adapter} IN ('web','widget','rocketchat','telegram')`,
+    ),
+    shapeKnown: check('conversations_shape_known', sql`${t.shape} IN ('direct','group')`),
   }),
 );
 
@@ -93,6 +101,15 @@ export const conversationParticipants = pgTable(
       .where(sql`removed_at IS NULL AND user_id IS NOT NULL`),
     conversationIdx: index('conversation_participants_conversation_idx').on(t.conversationId),
     userIdx: index('conversation_participants_user_idx').on(t.userId),
+    kindKnown: check('conversation_participants_kind_known', sql`${t.kind} IN ('person','handle')`),
+    handleHasUser: check(
+      'conversation_participants_handle_has_user',
+      sql`${t.kind} <> 'handle' OR ${t.userId} IS NOT NULL`,
+    ),
+    personIdentified: check(
+      'conversation_participants_person_identified',
+      sql`${t.kind} <> 'person' OR ${t.userId} IS NOT NULL OR ${t.externalKey} IS NOT NULL`,
+    ),
   }),
 );
 
@@ -120,6 +137,10 @@ export const conversationMessages = pgTable(
   },
   (t) => ({
     seqUnique: uniqueIndex('conversation_messages_seq_unique').on(t.conversationId, t.seq),
+    roleKnown: check(
+      'conversation_messages_role_known',
+      sql`${t.role} IN ('user','assistant','system')`,
+    ),
   }),
 );
 

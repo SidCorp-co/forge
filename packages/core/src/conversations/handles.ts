@@ -43,7 +43,7 @@ export function handleNameForProject(slug: string, projectId: string): string {
  */
 // cm:guard the lock comes BEFORE the look, not around the insert: without it both callers read no account, both mint, and the project ends with two handles whose union is still one project — so nothing downstream ever reports the duplicate. The conversations' unique index cannot serialize this because the two venues' external ids differ (ISS-1001 criterion 43).
 // cm:guard a handle is minted with NO `personal_access_tokens` row and that is the point: it is a name in a room, and an agent with no token cannot act. Minting a credential here would put a principal with write authority into every room a person opens.
-// cm:edge contract -> packages/core/src/orgs/agent-accounts.ts — `createAgentAccount` is the same account shape reached from the org console, and it DOES mint a token; a column added to the shape there has to arrive here too, and `0239_conversations.sql` holds a third copy in SQL because a migration cannot call either.
+// cm:edge contract -> packages/core/src/orgs/agent-accounts.ts — `createAgentAccount` is the same account shape reached from the org console, and it DOES mint a token; a column added to the shape there has to arrive here too, and `0240_conversations.sql` holds a third copy in SQL because a migration cannot call either.
 export async function resolveProjectHandle(
   tx: Executor,
   projectId: string,

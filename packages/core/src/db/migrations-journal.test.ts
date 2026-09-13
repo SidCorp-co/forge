@@ -5,7 +5,6 @@ import { describe, expect, it } from 'vitest';
 const metaDir = fileURLToPath(new URL('../../drizzle/migrations/meta/', import.meta.url));
 const migrationsDir = fileURLToPath(new URL('../../drizzle/migrations/', import.meta.url));
 const journalPath = `${metaDir}_journal.json`;
-const migrationsDir = fileURLToPath(new URL('../../drizzle/migrations/', import.meta.url));
 
 /** Every `<idx>_snapshot.json` in index order, with the chain links drizzle-kit reads. */
 function readSnapshotChain(): Array<{ idx: number; id: string; prevId: string }> {

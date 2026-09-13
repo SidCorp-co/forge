@@ -1,9 +1,9 @@
 /**
  * ISS-1001 — the ground both migration suites stand on: a database at the
- * schema `0239_conversations.sql` expects to FIND, which the harness's own
+ * schema `0240_conversations.sql` expects to FIND, which the harness's own
  * database no longer has because it is already migrated.
  *
- * Every migration below 0239 goes into one template once per file; each case
+ * Every migration below 0240 goes into one template once per file; each case
  * clones it. That is the only way to plant the row the migration must refuse —
  * after the forward run there is nothing left to plant into.
  */
@@ -15,11 +15,11 @@ import postgres, { type Sql } from 'postgres';
 
 const MIGRATIONS = fileURLToPath(new URL('../../drizzle/migrations', import.meta.url));
 
-/** The statement list of 0239, and everything below it, split at the seam drizzle splits. */
+/** The statement list of 0240, and everything below it, split at the seam drizzle splits. */
 function migrationParts(): { below: string[]; conversations: string[] } {
   const files = readMigrationFiles({ migrationsFolder: MIGRATIONS });
   const target = files.find((f) => f.sql.join('\n').includes('_iss1001_handles'));
-  if (!target) throw new Error('0239_conversations.sql is not in the migrations folder');
+  if (!target) throw new Error('0240_conversations.sql is not in the migrations folder');
   const below = files
     .filter((f) => f.folderMillis < target.folderMillis)
     .sort((a, b) => a.folderMillis - b.folderMillis)

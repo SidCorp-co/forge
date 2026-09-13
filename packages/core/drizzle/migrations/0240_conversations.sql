@@ -5,7 +5,7 @@
 -- copy, then ASSERT the copy source-driven, and only then drop. Nothing is
 -- nulled, emptied or deleted to make the schema apply.
 --
--- The reverse is `packages/core/drizzle/rollback/0239_conversations_down.sql`
+-- The reverse is `packages/core/drizzle/rollback/0240_conversations_down.sql`
 -- and it is executable, which is why this migration is a relocation rather than
 -- a discard: every field of every consumed row is reachable from
 -- `conversations.origin` without consulting a membership.

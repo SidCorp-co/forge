@@ -1,5 +1,5 @@
 /**
- * ISS-1001 — the reverse of `0239_conversations.sql`, which is what makes the
+ * ISS-1001 — the reverse of `0240_conversations.sql`, which is what makes the
  * forward drop a relocation rather than a discard.
  *
  * Drizzle has no down migrations, so the reverse is a checked-in file run by
@@ -31,7 +31,7 @@ afterAll(async () => {
 const freshDb = () => ground.fresh();
 
 const ROLLBACK = fileURLToPath(
-  new URL('../../drizzle/rollback/0239_conversations_down.sql', import.meta.url),
+  new URL('../../drizzle/rollback/0240_conversations_down.sql', import.meta.url),
 );
 
 describe('0238 reverse — the forward drop is a relocation', () => {
