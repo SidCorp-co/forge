@@ -126,8 +126,8 @@ async function reportUndeliverable(owed: OwedRound, already: boolean): Promise<v
     issueId: owed.issueId,
     type: 'ops_alert',
     severity: 'warning',
-    title: `${row.name} has a parked question and no chat room to ask it in`,
-    body: `A run is parked waiting on a person, and no Rocket.Chat room is bound to ${row.slug}. Bind one and the question is delivered on the next sweep — the run does not have to ask again.`,
+    title: `${row.name} has a question waiting and no chat room to ask it in`,
+    body: `A question is waiting on a person, and no Rocket.Chat room is bound to ${row.slug}. Bind one and the question is delivered on the next sweep — whoever asked does not have to ask again.`,
     resolutionKey: undeliverableKey(owed.questionId),
   });
 }

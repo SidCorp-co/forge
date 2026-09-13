@@ -343,6 +343,8 @@ describe('a project with no bound room', () => {
     expect(notes).toHaveLength(1);
     expect(notes[0]?.user_id).toBe(ownerId);
     expect(String(notes[0]?.body)).toContain('Bind one');
+    // cm:guard the wording may name no run: since ISS-993 a question is asked on a token too, with nothing parked behind it, and telling the org's creator a run is waiting sends them looking for one that does not exist.
+    expect(`${notes[0]?.title} ${notes[0]?.body}`).not.toContain('parked');
   });
 
   it('tells them once, not on every retry', async () => {
