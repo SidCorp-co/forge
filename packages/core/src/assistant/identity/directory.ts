@@ -17,7 +17,11 @@ import {
   effectiveConfig,
   listActiveBindingsForProjectProvider,
 } from '../../integrations/store.js';
-import { isConversationAdapter, type SpeakerRefusal, sourceUnknownRefusal } from './speaker-link.js';
+import {
+  isConversationAdapter,
+  type SpeakerRefusal,
+  sourceUnknownRefusal,
+} from './speaker-link.js';
 
 export interface SpeakerProfile {
   source: ConversationAdapter;

@@ -7,7 +7,9 @@
 // own row, so the turn before it is never rewritten and turn 201 no longer
 // deletes turn 1.
 
+import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import { assertConversationReadable } from '../conversations/scope.js';
 import {
   appendMessage,
   type ConversationImage,
@@ -22,8 +24,6 @@ import type {
   ConversationShape,
 } from '../db/schema-conversations.js';
 import { conversations } from '../db/schema-conversations.js';
-import { eq } from 'drizzle-orm';
-import { assertConversationReadable } from '../conversations/scope.js';
 import type { ChatContentPart, ChatMessage } from './providers/types.js';
 
 export type { ConversationImage };
@@ -202,15 +202,18 @@ export function toProviderMessages(
   turn: ConversationTurn,
   resolvedImages?: ReadonlyMap<string, string>,
 ): ChatMessage[] {
-  const all: Array<{ role: ConversationMessageRole; content: string; images: ConversationImage[] }> =
-    [
-      ...turn.history
-        .filter((m) => m.silenceReason === null && m.content.length > 0)
-        .map((m) => ({ role: m.role, content: m.content, images: m.images })),
-      ...turn.pending
-        .filter((m) => m.silenceReason === null && m.content.length > 0)
-        .map((m) => ({ role: m.role, content: m.content, images: m.images })),
-    ];
+  const all: Array<{
+    role: ConversationMessageRole;
+    content: string;
+    images: ConversationImage[];
+  }> = [
+    ...turn.history
+      .filter((m) => m.silenceReason === null && m.content.length > 0)
+      .map((m) => ({ role: m.role, content: m.content, images: m.images })),
+    ...turn.pending
+      .filter((m) => m.silenceReason === null && m.content.length > 0)
+      .map((m) => ({ role: m.role, content: m.content, images: m.images })),
+  ];
   return all.map(({ role, content, images }) => {
     const urls = images.map((i) => resolvedImages?.get(i.ref)).filter((u): u is string => !!u);
     if (urls.length === 0) return { role, content };

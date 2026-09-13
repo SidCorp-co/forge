@@ -61,8 +61,12 @@ beforeEach(async () => {
   const owner = await createTestUser(harness.db);
   ownerId = owner.id;
   await harness.db.execute(sql`UPDATE users SET email_verified_at = now()`);
-  projectId = (await createTestProject(harness.db, ownerId, { slug: `alpha-${randomUUID().slice(0, 8)}` })).id;
-  otherProjectId = (await createTestProject(harness.db, ownerId, { slug: `beta-${randomUUID().slice(0, 8)}` })).id;
+  projectId = (
+    await createTestProject(harness.db, ownerId, { slug: `alpha-${randomUUID().slice(0, 8)}` })
+  ).id;
+  otherProjectId = (
+    await createTestProject(harness.db, ownerId, { slug: `beta-${randomUUID().slice(0, 8)}` })
+  ).id;
 });
 
 function venue(externalId: string, over: Record<string, unknown> = {}) {
@@ -115,6 +119,8 @@ describe('two writers opening the same unseen venue', () => {
     // that is what the loser has to find when it re-reads.
     const sibling = await store.openConversation(venue(`chat.example.co ${randomUUID()}`));
     const [handle] = await participants.listParticipants(sibling.id);
+    const handleUserId = handle?.userId;
+    expect(handleUserId).toBeTruthy();
 
     const planted = randomUUID();
     let release: () => void = () => {};
@@ -128,7 +134,7 @@ describe('two writers opening the same unseen venue', () => {
       );
       await tx.unsafe(
         `INSERT INTO conversation_participants (conversation_id, kind, user_id) VALUES ($1, 'handle', $2)`,
-        [planted, handle?.userId],
+        [planted, handleUserId as string],
       );
       await held;
     });

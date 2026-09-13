@@ -22,6 +22,7 @@ import { registerAgentCronTicker, unregisterAgentCronTicker } from './agents/cro
 import { agentRoutes } from './agents/routes.js';
 import { memoryModelRoutes } from './app-config/memory-model-routes.js';
 import { appConfigRoutes } from './app-config/routes.js';
+import { conversationRoutes } from './assistant/conversation-routes.js';
 import { speakerLinkMeRoutes, speakerLinkProjectRoutes } from './assistant/identity/routes.js';
 import { bootstrapChatProviders } from './assistant/providers/bootstrap.js';
 import { chatRoutes } from './assistant/routes.js';
@@ -36,7 +37,6 @@ import { refreshRoutes } from './auth/refresh.js';
 import { authRoutes } from './auth/register.js';
 import { verifyRoutes } from './auth/verify.js';
 import { chatLogRoutes } from './chat-logs/routes.js';
-import { conversationRoutes } from './conversations/routes.js';
 import { commentRoutes } from './comments/routes.js';
 import { env } from './config/env.js';
 import { closeDb, db } from './db/client.js';

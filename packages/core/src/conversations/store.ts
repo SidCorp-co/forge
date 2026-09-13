@@ -178,9 +178,7 @@ export interface AppendMessageArgs {
 
 /** Append one turn. Every row already in the conversation is left alone. */
 // cm:guard the row is locked and the sequence read inside the same transaction: two turns that each read `max(seq)` and each write it plus one lose one of the two, which is exactly what the jsonb blob did on a concurrent write and what the unique index on `(conversation_id, seq)` now refuses outright.
-export async function appendMessage(
-  args: AppendMessageArgs,
-): Promise<StoredConversationMessage> {
+export async function appendMessage(args: AppendMessageArgs): Promise<StoredConversationMessage> {
   const dbi = args.db ?? defaultDb;
   return dbi.transaction(async (tx) => {
     const [live] = await tx

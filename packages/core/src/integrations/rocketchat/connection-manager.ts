@@ -13,6 +13,8 @@ import {
   type ExternalMcpToolsets,
 } from '../../assistant/tools/external-mcp.js';
 import { env } from '../../config/env.js';
+import { registerConversationTransport } from '../../conversations/ports.js';
+import { openConversation } from '../../conversations/store.js';
 import { db } from '../../db/client.js';
 import { integrationConnections, organizations, projects } from '../../db/schema.js';
 import { logger } from '../../logger.js';
@@ -28,6 +30,7 @@ import { readRocketChatAnswerMode } from './answer-mode.js';
 import { consumeIssueThreadReply } from './comment-inbound.js';
 import { startCommentMirrorLoop } from './comment-mirror.js';
 import { buildConversationContext } from './context.js';
+import { rocketChatConversationPorts } from './conversation-port.js';
 import { RocketChatDdpClient, type RocketChatIncomingMessage } from './ddp-client.js';
 import {
   ESCALATION_ACK,
@@ -43,9 +46,6 @@ import { startQuestionDrainLoop } from './question-delivery.js';
 import { consumeQuestionThreadReply } from './question-inbound.js';
 import { screenStakeholderReply } from './reply-screen.js';
 import { fetchOwnUsername } from './rest-client.js';
-import { registerConversationTransport } from '../../conversations/ports.js';
-import { openConversation } from '../../conversations/store.js';
-import { rocketChatConversationPorts } from './conversation-port.js';
 import { type RoomShape, resolveRoomShape } from './room-shape.js';
 import { subjectForThread } from './thread-registry.js';
 import { resolveTurnPrincipal } from './turn-principal.js';
@@ -560,11 +560,8 @@ class RocketChatConnectionManager {
             signal: abort.signal,
           });
 
-          // ISS-675 — escalation short-circuits the normal verify/reply path:
-          // the model chose to hand this question to a deeper research agent
-          // instead of answering now. Post a fixed, guard-exempt ACK (a
-          // legitimate promise — a real async follow-up lands via the
-          // completion bridge) and skip the rest of this turn entirely.
+          // cm:guard escalation short-circuits the verify/reply path deliberately: the ACK it posts is
+          // guard-exempt because a real follow-up lands through the completion bridge (ISS-675).
           const escalateCall = result.toolCalls.find((t) => t.name === ESCALATE_TOOL_NAME);
           if (escalateCall) {
             phase = 'escalate';

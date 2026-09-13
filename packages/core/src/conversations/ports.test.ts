@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  type ConversationTransport,
   clearConversationTransports,
   codeAuthored,
-  type ConversationTransport,
   conversationTransport,
   registerConversationTransport,
   registeredConversationAdapters,

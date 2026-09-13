@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
-// Capture SSE events by running the streamSSE callback against a fake stream.
+// cm:why the SSE callback is run against a fake stream, because what this file judges is the events
+// a turn emits and their order, which no HTTP assertion over the body can separate from framing.
 const captured: Array<{ event: string; data: string }> = [];
 vi.mock('hono/streaming', () => ({
   streamSSE: async (
@@ -42,8 +43,8 @@ vi.mock('./conversation-turn.js', () => ({
 
 const { runChatTurn } = await import('./run-turn.js');
 
-import type { ChatProvider, ChatStreamEvent } from './providers/types.js';
 import type { ConversationTurn } from './conversation-turn.js';
+import type { ChatProvider, ChatStreamEvent } from './providers/types.js';
 import type { ChatToolset } from './tools/mcp-adapter.js';
 
 function fakeCtx() {

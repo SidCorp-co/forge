@@ -6,8 +6,8 @@
 // drizzle client's schema map alongside it.
 
 import { index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
-import { conversationAdapters } from './schema-conversations.js';
 import { users } from './schema.js';
+import { conversationAdapters } from './schema-conversations.js';
 
 // cm:guard one value today, and a second one is a NEW authority rather than a relabelling of this one. `channel_email_match` means the channel's own directory reported this user's exact address and the person holding that Forge account asked for the link themselves; a delegated path (an account-linking admin, a redeemed pairing code) states a different thing and must be told apart from this one wherever authority is read back.
 export const speakerLinkConfirmations = ['channel_email_match'] as const;

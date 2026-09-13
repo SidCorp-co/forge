@@ -17,7 +17,11 @@ import { assertProjectAccess } from '../../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { proposeCandidates, type SpeakerCandidate } from './candidates.js';
 import { lookupSpeakerProfile, type SpeakerProfile } from './directory.js';
-import { isConversationAdapter, type SpeakerRefusal, sourceUnknownRefusal } from './speaker-link.js';
+import {
+  isConversationAdapter,
+  type SpeakerRefusal,
+  sourceUnknownRefusal,
+} from './speaker-link.js';
 
 interface SpeakerBody {
   source?: unknown;

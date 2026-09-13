@@ -8,8 +8,8 @@
 import { and, eq, isNull } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db as defaultDb } from '../db/client.js';
-import { conversationParticipants } from '../db/schema-conversations.js';
 import { projectMembers } from '../db/schema.js';
+import { conversationParticipants } from '../db/schema-conversations.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import type { Executor } from './db-executor.js';
 
@@ -21,9 +21,10 @@ const forbidden = (message: string, code: string) =>
  * unchanged room compare equal.
  */
 // cm:guard the join is the whole authorization story and there is no cache of it: a `project_id` on the conversation, or a materialized scope column, is a second copy of a membership that a revocation does not reach — which is the state ISS-1001 invariant 2 exists to remove. Add one only with its invalidation, and price it.
-export async function derivedScope(conversationId: string, tx: Executor = defaultDb): Promise<
-  string[]
-> {
+export async function derivedScope(
+  conversationId: string,
+  tx: Executor = defaultDb,
+): Promise<string[]> {
   const rows = await tx
     .selectDistinct({ projectId: projectMembers.projectId })
     .from(conversationParticipants)

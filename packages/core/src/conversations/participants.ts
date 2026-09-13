@@ -9,11 +9,11 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { handleFromAgentEmail } from '../auth/agent-account.js';
 import { db as defaultDb } from '../db/client.js';
+import { projectMembers, users } from '../db/schema.js';
 import {
   type ConversationParticipantKind,
   conversationParticipants,
 } from '../db/schema-conversations.js';
-import { projectMembers, users } from '../db/schema.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import type { Executor } from './db-executor.js';
 

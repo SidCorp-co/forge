@@ -4,10 +4,8 @@ import { describe, expect, it } from 'vitest';
 
 const dir = fileURLToPath(new URL('.', import.meta.url));
 
-// cm:guard `routes.ts` is the Forge UI's OWN adapter surface and the one file here allowed to name
-// an adapter; every other file is the store, and widening this list stops the check measuring anything.
-const ADAPTER_SURFACE = new Set(['routes.ts']);
-
+// cm:guard there is no exception list and there must not become one: the Forge UI's own adapter
+// surface lives in `assistant/conversation-routes.ts` precisely so nothing here needs carving out.
 const TRANSPORT_WORDS = [
   'rocketchat',
   'RocketChat',
@@ -21,9 +19,7 @@ const TRANSPORT_WORDS = [
 ];
 
 function storeFiles(): string[] {
-  return readdirSync(dir)
-    .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'))
-    .filter((f) => !ADAPTER_SURFACE.has(f));
+  return readdirSync(dir).filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'));
 }
 
 describe('the conversation store knows no transport', () => {
@@ -43,7 +39,7 @@ describe('the conversation store knows no transport', () => {
     expect(offences).toEqual([]);
   });
 
-  it('imports nothing from the integrations tree, routes included', () => {
+  it('imports nothing from the integrations tree', () => {
     const offences: string[] = [];
     for (const file of readdirSync(dir).filter((f) => f.endsWith('.ts'))) {
       const text = readFileSync(`${dir}${file}`, 'utf8');

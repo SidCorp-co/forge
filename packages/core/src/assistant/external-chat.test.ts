@@ -11,11 +11,7 @@ vi.mock('./conversation-turn.js', () => ({
     history: [] as unknown[],
     pending: [] as unknown[],
   }),
-  appendUserMessage: (
-    t: { pending: unknown[] },
-    c: string,
-    opts: { images?: unknown[] } = {},
-  ) => {
+  appendUserMessage: (t: { pending: unknown[] }, c: string, opts: { images?: unknown[] } = {}) => {
     const images = opts.images ?? [];
     t.pending.push({ role: 'user', content: c, images });
   },
@@ -86,7 +82,8 @@ vi.mock('./providers/registry.js', () => ({
   resolveForProject: async () => ({ provider: mockProvider, model: 'm' }),
 }));
 
-// Fake db: two selects (project, then appConfig) + a chat_logs insert.
+// cm:why the fake db answers exactly two selects and one insert, in that order — the project, the
+// app config, then the audit row; a third select here means the turn grew a read this file does not model.
 let selectCall = 0;
 const fakeDb = {
   select: () => ({

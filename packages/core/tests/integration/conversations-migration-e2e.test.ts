@@ -1,12 +1,6 @@
 /**
- * ISS-1001 — `0239_conversations.sql` and its reverse, walked against a real
- * Postgres from the schema that existed BEFORE it.
- *
- * The harness's own database already has the migration applied and no
- * `chat_sessions` to migrate, so this suite builds its own: every migration
- * below 0238 into a template database once, then a clone per case with the
- * rows that case is about. That is the only way to plant the row the migration
- * must refuse — after the forward run there is nothing left to plant into.
+ * ISS-1001 — `0239_conversations.sql` forward, walked against a real Postgres
+ * from the schema that existed BEFORE it.
  *
  * The omission cases are the point of the assertion block. Each one runs the
  * real statement list with ONE statement removed or corrupted and requires the
@@ -16,142 +10,27 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { readMigrationFiles } from 'drizzle-orm/migrator';
-import postgres, { type Sql } from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import {
+  conversations,
+  type PreMigrationGround,
+  plantProject,
+  plantSession,
+  preMigrationGround,
+  runForward,
+} from './conversations-migration-ground.js';
 
-const MIGRATIONS = fileURLToPath(new URL('../../drizzle/migrations', import.meta.url));
-const ROLLBACK = fileURLToPath(
-  new URL('../../drizzle/rollback/0239_conversations_down.sql', import.meta.url),
-);
-
-/** The statement list of 0238, and everything below it, split at the same seam drizzle splits. */
-function migrationParts(): { below: string[]; conversations: string[] } {
-  const files = readMigrationFiles({ migrationsFolder: MIGRATIONS });
-  const target = files.find((f) => f.sql.join('\n').includes('_iss1001_handles'));
-  if (!target) throw new Error('0239_conversations.sql is not in the migrations folder');
-  const below = files
-    .filter((f) => f.folderMillis < target.folderMillis)
-    .sort((a, b) => a.folderMillis - b.folderMillis)
-    .flatMap((f) => f.sql);
-  return { below, conversations: target.sql };
-}
-
-const { below, conversations } = migrationParts();
-
-let adminUrl: string;
-let admin: Sql;
-let template: string;
-
-/** A database at the schema 0238 expects to find, cloned rather than replayed. */
-async function freshDb(): Promise<{ sql: Sql; drop: () => Promise<void> }> {
-  const name = `iss1001_${randomUUID().replace(/-/g, '').slice(0, 16)}`;
-  await admin.unsafe(`CREATE DATABASE "${name}" TEMPLATE "${template}"`);
-  const url = new URL(adminUrl);
-  url.pathname = `/${name}`;
-  const sql = postgres(url.toString(), { max: 1, onnotice: () => {} });
-  return {
-    sql,
-    drop: async () => {
-      await sql.end({ timeout: 5 }).catch(() => {});
-      await admin.unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`).catch(() => {});
-    },
-  };
-}
-
-/** Run the forward migration as drizzle runs it: every statement, one transaction. */
-async function runForward(sql: Sql, statements: string[] = conversations): Promise<void> {
-  await sql.begin(async (tx) => {
-    for (const stmt of statements) await tx.unsafe(stmt, []);
-  });
-}
-
-interface PlantedSession {
-  id: string;
-  projectId: string;
-  userId: string | null;
-  userKey: string | null;
-  title: string | null;
-  source: string;
-  messages: unknown;
-}
-
-/** An org, a project and a person — the ground a chat session sits on. */
-async function plantProject(sql: Sql, slug: string): Promise<{ orgId: string; projectId: string; ownerId: string }> {
-  const ownerId = randomUUID();
-  const orgId = randomUUID();
-  const projectId = randomUUID();
-  await sql.unsafe(
-    `INSERT INTO users (id, email, kind, email_verified_at) VALUES ($1, $2, 'human', now())`,
-    [ownerId, `owner-${ownerId.slice(0, 8)}@example.com`],
-  );
-  await sql.unsafe(
-    `INSERT INTO organizations (id, name, slug, created_by) VALUES ($1, $2, $3, $4)`,
-    [orgId, `org ${slug}`, `org-${orgId.slice(0, 8)}`, ownerId],
-  );
-  await sql.unsafe(
-    `INSERT INTO projects (id, slug, name, created_by, org_id) VALUES ($1, $2, $3, $4, $5)`,
-    [projectId, slug, slug, ownerId, orgId],
-  );
-  await sql.unsafe(
-    `INSERT INTO project_members (user_id, project_id, role) VALUES ($1, $2, 'owner')`,
-    [ownerId, projectId],
-  );
-  return { orgId, projectId, ownerId };
-}
-
-async function plantSession(sql: Sql, row: Partial<PlantedSession> & { projectId: string }): Promise<PlantedSession> {
-  const planted: PlantedSession = {
-    id: row.id ?? randomUUID(),
-    projectId: row.projectId,
-    userId: row.userId ?? null,
-    userKey: row.userKey ?? null,
-    title: row.title ?? null,
-    source: row.source ?? 'web',
-    messages: row.messages ?? [],
-  };
-  await sql.unsafe(
-    `INSERT INTO chat_sessions (id, project_id, user_id, user_key, title, source, messages)
-     VALUES ($1, $2, $3, $4, $5, $6, $7::text::jsonb)`,
-    [
-      planted.id,
-      planted.projectId,
-      planted.userId,
-      planted.userKey,
-      planted.title,
-      planted.source,
-      JSON.stringify(planted.messages),
-    ],
-  );
-  return planted;
-}
+let ground: PreMigrationGround;
 
 beforeAll(async () => {
-  adminUrl = process.env.TEST_PG_ADMIN_URL ?? process.env.TEST_DATABASE_URL ?? '';
-  if (!adminUrl) throw new Error('no TEST_PG_ADMIN_URL — global setup did not run');
-  admin = postgres(adminUrl, { max: 1, onnotice: () => {} });
-  template = `iss1001_tpl_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
-  await admin.unsafe(`CREATE DATABASE "${template}"`);
-  const url = new URL(adminUrl);
-  url.pathname = `/${template}`;
-  const tpl = postgres(url.toString(), { max: 1, onnotice: () => {} });
-  try {
-    await tpl.begin(async (tx) => {
-      for (const stmt of below) await tx.unsafe(stmt, []);
-    });
-  } finally {
-    await tpl.end({ timeout: 5 });
-  }
+  ground = await preMigrationGround();
 }, 300_000);
 
 afterAll(async () => {
-  if (admin) {
-    await admin.unsafe(`DROP DATABASE IF EXISTS "${template}" WITH (FORCE)`).catch(() => {});
-    await admin.end({ timeout: 5 });
-  }
+  if (ground) await ground.stop();
 });
+
+const freshDb = () => ground.fresh();
 
 describe('0238 forward — what every legacy row becomes', () => {
   it('turns a chat session into one direct conversation carrying its messages in order', async () => {
@@ -209,7 +88,11 @@ describe('0238 forward — what every legacy row becomes', () => {
         [projectId],
       );
       expect(agents).toHaveLength(1);
-      const handle = agents[0] as unknown as { id: string; email: string; password_hash: string | null };
+      const handle = agents[0] as unknown as {
+        id: string;
+        email: string;
+        password_hash: string | null;
+      };
       expect(handle.email).toMatch(/^forge-dev\.[0-9a-f]{12}@agents\.forge\.invalid$/);
       expect(handle.password_hash).toBeNull();
 
@@ -257,7 +140,9 @@ describe('0238 forward — what every legacy row becomes', () => {
       );
       expect(agents.map((a) => a.id)).toEqual([existing]);
 
-      const [c] = await db.sql.unsafe(`SELECT origin FROM conversations WHERE id = $1`, [session.id]);
+      const [c] = await db.sql.unsafe(`SELECT origin FROM conversations WHERE id = $1`, [
+        session.id,
+      ]);
       const origin = (c as unknown as { origin: Record<string, unknown> }).origin;
       expect(origin.mintedHandleUserId).toBeNull();
     } finally {
@@ -345,9 +230,14 @@ describe('0238 forward — a row it cannot represent stops the deploy', () => {
     const db = await freshDb();
     try {
       const { projectId } = await plantProject(db.sql, 'forge-dev');
-      const good = await plantSession(db.sql, { projectId, messages: [{ role: 'user', content: 'x' }] });
+      const good = await plantSession(db.sql, {
+        projectId,
+        messages: [{ role: 'user', content: 'x' }],
+      });
       const bad = await plantSession(db.sql, { projectId });
-      await db.sql.unsafe(`UPDATE chat_sessions SET messages = '{"a":1}'::jsonb WHERE id = $1`, [bad.id]);
+      await db.sql.unsafe(`UPDATE chat_sessions SET messages = '{"a":1}'::jsonb WHERE id = $1`, [
+        bad.id,
+      ]);
 
       await expect(runForward(db.sql)).rejects.toThrow(new RegExp(bad.id));
 
@@ -368,7 +258,9 @@ describe('0238 forward — a row it cannot represent stops the deploy', () => {
       const { projectId } = await plantProject(db.sql, 'forge-dev');
       const bad = await plantSession(db.sql, { projectId, source: 'sms' });
 
-      await expect(runForward(db.sql)).rejects.toThrow(new RegExp(`${bad.id}.*sms|sms.*${bad.id}`, 's'));
+      await expect(runForward(db.sql)).rejects.toThrow(
+        new RegExp(`${bad.id}.*sms|sms.*${bad.id}`, 's'),
+      );
       const still = await db.sql.unsafe(`SELECT id FROM chat_sessions`);
       expect(still).toHaveLength(1);
     } finally {
@@ -421,9 +313,9 @@ describe('0238 forward — the assertion is the thing that says no', () => {
         projectId,
         messages: [{ role: 'user', content: 'x' }],
       });
-      await expect(runForward(db.sql, without('INSERT INTO conversation_messages\n'))).rejects.toThrow(
-        new RegExp(session.id),
-      );
+      await expect(
+        runForward(db.sql, without('INSERT INTO conversation_messages\n')),
+      ).rejects.toThrow(new RegExp(session.id));
     } finally {
       await db.drop();
     }
@@ -470,173 +362,6 @@ describe('0238 forward — the assertion is the thing that says no', () => {
           : [s],
       );
       await expect(runForward(db.sql, smuggled)).rejects.toThrow(new RegExp(session.id));
-    } finally {
-      await db.drop();
-    }
-  });
-});
-
-describe('0238 reverse — the forward drop is a relocation', () => {
-  const rollback = readFileSync(ROLLBACK, 'utf8');
-
-  it('rebuilds a consumed row exactly, from `origin` and not from a membership', async () => {
-    const db = await freshDb();
-    try {
-      const { projectId, ownerId } = await plantProject(db.sql, 'forge-dev');
-      const session = await plantSession(db.sql, {
-        projectId,
-        userId: ownerId,
-        userKey: null,
-        title: 'a title',
-        source: 'rocketchat',
-        messages: [
-          { role: 'user', content: 'first' },
-          { role: 'assistant', content: 'second' },
-        ],
-      });
-      const [beforeRow] = await db.sql.unsafe(
-        `SELECT id, project_id, user_id, user_key, title, source, created_at, updated_at
-         FROM chat_sessions WHERE id = $1`,
-        [session.id],
-      );
-
-      await runForward(db.sql);
-
-      // cm:guard the handle's membership MOVES before the rollback, because the reconstruction must
-      // come off `origin` alone; consult a membership here and this assertion stops proving that.
-      const other = await plantProject(db.sql, 'somewhere-else');
-      await db.sql.unsafe(
-        `UPDATE project_members SET project_id = $1
-         WHERE user_id = (SELECT user_id FROM conversation_participants
-                          WHERE conversation_id = $2 AND kind = 'handle')`,
-        [other.projectId, session.id],
-      );
-
-      await db.sql.unsafe(rollback);
-
-      const [afterRow] = await db.sql.unsafe(
-        `SELECT id, project_id, user_id, user_key, title, source, created_at, updated_at
-         FROM chat_sessions WHERE id = $1`,
-        [session.id],
-      );
-      expect(afterRow).toEqual(beforeRow);
-
-      const [restored] = await db.sql.unsafe(`SELECT messages FROM chat_sessions WHERE id = $1`, [
-        session.id,
-      ]);
-      const messages = (restored as unknown as { messages: Array<Record<string, unknown>> }).messages;
-      expect(messages.map((m) => [m.role, m.content])).toEqual([
-        ['user', 'first'],
-        ['assistant', 'second'],
-      ]);
-    } finally {
-      await db.drop();
-    }
-  });
-
-  it('rebuilds a conversation opened AFTER the forward run rather than dropping it', async () => {
-    const db = await freshDb();
-    try {
-      const { projectId } = await plantProject(db.sql, 'forge-dev');
-      await plantSession(db.sql, { projectId });
-      await runForward(db.sql);
-
-      const [handle] = await db.sql.unsafe(
-        `SELECT u.id FROM users u JOIN project_members pm ON pm.user_id = u.id
-         WHERE u.kind = 'agent' AND pm.project_id = $1`,
-        [projectId],
-      );
-      const opened = randomUUID();
-      await db.sql.unsafe(
-        `INSERT INTO conversations (id, adapter, external_id, shape, title)
-         VALUES ($1, 'rocketchat', 'chat.example.co ROOM9', 'group', 'since the deploy')`,
-        [opened],
-      );
-      await db.sql.unsafe(
-        `INSERT INTO conversation_participants (conversation_id, kind, user_id) VALUES ($1, 'handle', $2)`,
-        [opened, (handle as unknown as { id: string }).id],
-      );
-      await db.sql.unsafe(
-        `INSERT INTO conversation_messages (conversation_id, seq, role, content)
-         VALUES ($1, 0, 'user', 'spoken after the deploy')`,
-        [opened],
-      );
-
-      await db.sql.unsafe(rollback);
-
-      const [row] = await db.sql.unsafe(
-        `SELECT project_id, title, source, messages FROM chat_sessions WHERE id = $1`,
-        [opened],
-      );
-      expect(row).toMatchObject({ project_id: projectId, title: 'since the deploy', source: 'rocketchat' });
-      expect((row as unknown as { messages: Array<{ content: string }> }).messages[0]?.content).toBe(
-        'spoken after the deploy',
-      );
-    } finally {
-      await db.drop();
-    }
-  });
-
-  it('deletes the handle it minted and leaves the one it reused standing', async () => {
-    const db = await freshDb();
-    try {
-      const minted = await plantProject(db.sql, 'minted-here');
-      const reused = await plantProject(db.sql, 'reused-here');
-      const existing = randomUUID();
-      await db.sql.unsafe(
-        `INSERT INTO users (id, email, kind, email_verified_at) VALUES ($1, $2, 'agent', now())`,
-        [existing, 'already.abcabcabcabc@agents.forge.invalid'],
-      );
-      await db.sql.unsafe(
-        `INSERT INTO organization_members (org_id, user_id, role) VALUES ($1, $2, 'member')`,
-        [reused.orgId, existing],
-      );
-      await db.sql.unsafe(
-        `INSERT INTO project_members (user_id, project_id, role) VALUES ($1, $2, 'member')`,
-        [existing, reused.projectId],
-      );
-      await plantSession(db.sql, { projectId: minted.projectId });
-      await plantSession(db.sql, { projectId: reused.projectId });
-
-      await runForward(db.sql);
-      const [mintedHandle] = await db.sql.unsafe(
-        `SELECT u.id FROM users u JOIN project_members pm ON pm.user_id = u.id
-         WHERE u.kind = 'agent' AND pm.project_id = $1`,
-        [minted.projectId],
-      );
-
-      await db.sql.unsafe(rollback);
-
-      const survivors = await db.sql.unsafe(`SELECT id FROM users WHERE kind = 'agent'`);
-      expect(survivors.map((s) => s.id)).toEqual([existing]);
-      expect((mintedHandle as unknown as { id: string }).id).not.toBe(existing);
-    } finally {
-      await db.drop();
-    }
-  });
-
-  it('keeps a minted handle that has since been given an access token', async () => {
-    const db = await freshDb();
-    try {
-      const { projectId } = await plantProject(db.sql, 'forge-dev');
-      await plantSession(db.sql, { projectId });
-      await runForward(db.sql);
-      const [handle] = await db.sql.unsafe(
-        `SELECT u.id FROM users u JOIN project_members pm ON pm.user_id = u.id
-         WHERE u.kind = 'agent' AND pm.project_id = $1`,
-        [projectId],
-      );
-      const handleId = (handle as unknown as { id: string }).id;
-      await db.sql.unsafe(
-        `INSERT INTO personal_access_tokens (user_id, name, token_hash, token_prefix)
-         VALUES ($1, 'given since', $2, 'forge_pat_given')`,
-        [handleId, `hash-${randomUUID()}`],
-      );
-
-      await db.sql.unsafe(rollback);
-
-      const survivors = await db.sql.unsafe(`SELECT id FROM users WHERE id = $1`, [handleId]);
-      expect(survivors).toHaveLength(1);
     } finally {
       await db.drop();
     }

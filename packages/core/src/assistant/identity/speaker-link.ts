@@ -13,10 +13,7 @@
 
 import { and, eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
-import {
-  type ConversationAdapter,
-  conversationAdapters,
-} from '../../db/schema-conversations.js';
+import { type ConversationAdapter, conversationAdapters } from '../../db/schema-conversations.js';
 import { assistantSpeakerLinks } from '../../db/schema-speaker-links.js';
 
 export type SpeakerRefusalCode =

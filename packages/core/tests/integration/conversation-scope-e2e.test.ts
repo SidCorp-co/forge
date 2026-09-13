@@ -53,8 +53,12 @@ beforeEach(async () => {
   const owner = await createTestUser(harness.db);
   ownerId = owner.id;
   await harness.db.execute(sql`UPDATE users SET email_verified_at = now()`);
-  projectA = (await createTestProject(harness.db, ownerId, { slug: `alpha-${randomUUID().slice(0, 8)}` })).id;
-  projectB = (await createTestProject(harness.db, ownerId, { slug: `beta-${randomUUID().slice(0, 8)}` })).id;
+  projectA = (
+    await createTestProject(harness.db, ownerId, { slug: `alpha-${randomUUID().slice(0, 8)}` })
+  ).id;
+  projectB = (
+    await createTestProject(harness.db, ownerId, { slug: `beta-${randomUUID().slice(0, 8)}` })
+  ).id;
 });
 
 /** A room the adapter opened, with the project's handle already in it. */
@@ -119,9 +123,7 @@ describe('who may read a conversation', () => {
   it('refuses a room that is about no project rather than granting it to everyone', async () => {
     const room = await openRoom(projectA);
     const [handle] = await participants.listParticipants(room.id);
-    await harness.db.execute(
-      sql`DELETE FROM project_members WHERE user_id = ${handle?.userId}`,
-    );
+    await harness.db.execute(sql`DELETE FROM project_members WHERE user_id = ${handle?.userId}`);
     const stranger = await createTestUser(harness.db);
     for (const reader of [ownerId, stranger.id, null]) {
       await expect(scope.assertConversationReadable(room.id, reader)).rejects.toMatchObject({

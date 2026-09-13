@@ -10,7 +10,11 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { handleFromAgentEmail, isAgentHandle, synthesizeAgentEmail } from '../auth/agent-account.js';
+import {
+  handleFromAgentEmail,
+  isAgentHandle,
+  synthesizeAgentEmail,
+} from '../auth/agent-account.js';
 import { handleNameForProject } from './handles.js';
 
 const PROJECT_ID = 'da368b0a-8e21-4763-9d90-8f7b9d0c7115';

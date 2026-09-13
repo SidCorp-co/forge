@@ -4,17 +4,21 @@
 // and this user id". A conversation carries neither, so the list is the rooms
 // this project's handle speaks in, filtered to the ones the caller's roles
 // reach.
+//
+// It lives HERE, beside the rest of the assistant, rather than under
+// `conversations/`, because it is the Forge UI's own adapter and not part of the
+// store: it opens `web` venues, which is what being that adapter means, and a
+// store that knows one transport's name knows them all. `transport-free.test.ts`
+// is the gate that keeps the store clean, and this file is what it would have
+// had to carve an exception for.
 
 import { randomUUID } from 'node:crypto';
 import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { effectiveProjectRole, assertProjectRole, loadProjectAccess } from '../lib/authz.js';
-import { fromPage, listResponse } from '../lib/pagination.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { addPerson, listParticipants } from './participants.js';
-import { assertConversationReadable, derivedScope } from './scope.js';
+import { addPerson, listParticipants } from '../conversations/participants.js';
+import { assertConversationReadable, derivedScope } from '../conversations/scope.js';
 import {
   type ConversationRow,
   countConversationsInProject,
@@ -24,7 +28,10 @@ import {
   openConversation,
   readMessages,
   renameConversation,
-} from './store.js';
+} from '../conversations/store.js';
+import { assertProjectRole, effectiveProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { fromPage, listResponse } from '../lib/pagination.js';
+import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 
 const READ_WINDOW = 200;
 

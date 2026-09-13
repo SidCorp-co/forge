@@ -12,14 +12,14 @@ import type { Context } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { db } from '../db/client.js';
 import { chatLogs } from '../db/schema.js';
-import type { ChatMessage, ChatProvider, ChatStreamEvent } from './providers/types.js';
-import { runTurnEvents, type TurnCoreResult, usageForLog } from './run-turn-core.js';
 import {
   appendAssistantMessage,
   appendSilence,
   type ConversationTurn,
   persistMessages,
 } from './conversation-turn.js';
+import type { ChatMessage, ChatProvider, ChatStreamEvent } from './providers/types.js';
+import { runTurnEvents, type TurnCoreResult, usageForLog } from './run-turn-core.js';
 import type { ChatToolset } from './tools/mcp-adapter.js';
 
 export interface RunTurnArgs {
@@ -56,7 +56,8 @@ export function runChatTurn({
   contextBudgetTokens,
 }: RunTurnArgs) {
   return streamSSE(c, async (stream) => {
-    // Disable buffering on Traefik / nginx so events flush immediately.
+    // cm:guard buffering is off for Traefik and nginx, or a proxy holds the events until the turn
+    // ends and a stream the client reads token by token arrives as one block at the end.
     c.header('X-Accel-Buffering', 'no');
     // cm:why the conversation is echoed back so the client can stash it for the next turn
     // without parsing a separate REST response

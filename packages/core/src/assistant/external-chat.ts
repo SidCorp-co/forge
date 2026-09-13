@@ -13,18 +13,14 @@ import { eq } from 'drizzle-orm';
 import { env } from '../config/env.js';
 import { db as defaultDb } from '../db/client.js';
 import { appConfig, chatLogs, projects } from '../db/schema.js';
+import type { ConversationAdapter, ConversationShape } from '../db/schema-conversations.js';
 import {
   buildProgressFactsBlock,
   computeProjectProgress,
   type ProjectProgress,
 } from '../issues/progress.js';
 import { logger } from '../logger.js';
-import type { ConversationAdapter, ConversationShape } from '../db/schema-conversations.js';
 import { PROVIDER_HISTORY_WINDOW } from './context-budget.js';
-import { defaultChatProviderId } from './providers/bootstrap.js';
-import { type ChatTurnKind, resolveForProject } from './providers/registry.js';
-import type { ChatResponseFormat } from './providers/types.js';
-import { runTurnEvents, usageForLog } from './run-turn-core.js';
 import {
   appendAssistantMessage,
   appendSilence,
@@ -34,6 +30,10 @@ import {
   persistMessages,
   toProviderMessages,
 } from './conversation-turn.js';
+import { defaultChatProviderId } from './providers/bootstrap.js';
+import { type ChatTurnKind, resolveForProject } from './providers/registry.js';
+import type { ChatResponseFormat } from './providers/types.js';
+import { runTurnEvents, usageForLog } from './run-turn-core.js';
 import { buildSystemPrompt } from './system-prompt.js';
 import type { ChatToolset } from './tools/mcp-adapter.js';
 import { applyTurnContext } from './turn-context.js';
