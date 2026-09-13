@@ -18,6 +18,8 @@ import {
   rocketchatCommentMirrors,
   rocketchatThreadOpenings,
 } from '../../db/schema-rocketchat.js';
+import { activeIssuePrefix } from '../../issues/issue-prefix-read.js';
+import { formatIssueRef } from '../../lib/issue-ref.js';
 import { logger } from '../../logger.js';
 import type { HooksBus } from '../../pipeline/hooks.js';
 import { drainOwedAnnouncements } from './comment-inbound.js';
@@ -266,7 +268,7 @@ async function threadForIssueIn(
     if (existing) await retireIssueThread(issueId, existing);
 
     const [issue] = await db
-      .select({ issSeq: issues.issSeq, title: issues.title })
+      .select({ issSeq: issues.issSeq, projectId: issues.projectId, title: issues.title })
       .from(issues)
       .where(eq(issues.id, issueId))
       .limit(1);
@@ -274,7 +276,10 @@ async function threadForIssueIn(
 
     const root = await sendFixedReply(
       { kind: 'rest', auth, rid: room.rid },
-      threadRootText(`ISS-${issue.issSeq}`, issue.title),
+      threadRootText(
+        formatIssueRef(await activeIssuePrefix(issue.projectId), issue.issSeq),
+        issue.title,
+      ),
       FIXED_REPLY_CONSTANT,
     );
     if (!root.messageId) return { failure: 'the root post named no message id' };
