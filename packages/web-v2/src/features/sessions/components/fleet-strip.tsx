@@ -63,6 +63,7 @@ export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) 
   }, [queueQ.data]);
 
   // cm:guard the FIRST running row per device and not a count: the strip claims one busy slot per device because a runner cap is 1, so a second row here would be a device running two things the pool cannot have given it
+  // cm:guard every part of the busy detail row below is optional: the step is the one the session RECORDED and a session may have recorded none, where `deriveStage` always answered something. A bare span left an empty line under the Busy chip and a lone separator in front of ISS-x (ISS-999).
   const boundByDevice = useMemo(() => {
     const m = new Map<string, { row: SessionRow; display: AgentSessionDisplayStatus }>();
     rows.forEach((row, i) => {
@@ -76,8 +77,7 @@ export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) 
 
   const onlineRunners = devicePool.filter((d) => d.status === "online").length;
   const queuedCount = rows.filter((r) => r.status === "queued" || r.status === "idle").length;
-  // The silent failure mode: work waiting with nobody to pick it up. NOT shown
-  // when runners exist but are all busy (that's healthy backpressure).
+  // cm:guard NOT raised when runners exist but are all busy — that is healthy backpressure, and a banner over it teaches an operator to ignore the one case that is real: work queued with nobody online to pick it up.
   const dispatchStalled = queuedCount > 0 && onlineRunners === 0;
 
   return (
@@ -148,12 +148,12 @@ export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) 
                   </span>
                 </div>
 
-                {busy && (
+                {busy && (step || issueRef || stale) && (
                   <div className="mt-1.5 flex items-center gap-1.5 overflow-hidden">
-                    <span className="fg-caption capitalize text-muted">{step}</span>
+                    {step && <span className="fg-caption capitalize text-muted">{step}</span>}
                     {issueRef && (
                       <>
-                        <span className="fg-caption text-subtle">·</span>
+                        {step && <span className="fg-caption text-subtle">·</span>}
                         <MonoTag hue="cobalt">{issueRef}</MonoTag>
                       </>
                     )}

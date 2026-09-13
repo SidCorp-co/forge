@@ -323,6 +323,19 @@ describe("sessionStep — the step a session recorded, or none (ISS-999)", () =>
 		expect(sessionStep(meta({ stage: "review" }))).toBe("review");
 	});
 
+	// cm:guard `step ?? stage` let a BLANK step win over a real stage, because "" is not nullish
+	it("passes a blank `step` over in favour of a recorded `stage`", () => {
+		expect(sessionStep(meta({ step: " ", stage: "review" }))).toBe("review");
+		expect(sessionStep(meta({ step: "", stage: "review" }))).toBe("review");
+	});
+
+	// cm:guard this is untyped jsonb the server writes: `.toString()` on an object rendered a step named "[object Object]"
+	it("names no step for a value that is not a string", () => {
+		expect(sessionStep(meta({ step: { name: "drive" } }))).toBeNull();
+		expect(sessionStep(meta({ step: 7, stage: "plan" }))).toBe("plan");
+		expect(sessionStep(meta({ step: null, stage: null }))).toBeNull();
+	});
+
 	// cm:guard `type` is what KIND of session this is; the old chain read it as a step whenever both step and stage were absent, so an interactive chat read "running · chat"
 	it("names no step for a session that recorded none, and never reads `type` as one", () => {
 		expect(sessionStep(meta({ type: "pipeline" }))).toBeNull();

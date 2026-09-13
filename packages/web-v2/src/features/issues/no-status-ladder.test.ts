@@ -25,7 +25,7 @@ function sourceFiles(dir: string): string[] {
     const full = join(dir, entry);
     if (statSync(full).isDirectory()) {
       out.push(...sourceFiles(full));
-    } else if (/\.tsx?$/.test(entry)) {
+    } else if (/\.(tsx?|jsx?|mjs|cjs)$/.test(entry)) {
       out.push(full);
     }
   }
@@ -51,16 +51,33 @@ function codeNames(body: string, file: string): Set<string> {
     body,
     ts.ScriptTarget.Latest,
     false,
-    file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+    /\.(tsx|jsx)$/.test(file) ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
   );
+  /** `a.b.c` and `a["b"].c` as the dotted chain they read as, or null for anything computed. */
+  const chain = (node: ts.Node): string | null => {
+    if (ts.isIdentifier(node)) return node.text;
+    if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.name)) {
+      const head = chain(node.expression);
+      return head === null ? null : `${head}.${node.name.text}`;
+    }
+    if (ts.isElementAccessExpression(node) && ts.isStringLiteralLike(node.argumentExpression)) {
+      const head = chain(node.expression);
+      return head === null ? null : `${head}.${node.argumentExpression.text}`;
+    }
+    return null;
+  };
   const visit = (node: ts.Node): void => {
     if (ts.isIdentifier(node)) names.add(node.text);
-    if (
-      ts.isPropertyAccessExpression(node) &&
-      ts.isIdentifier(node.expression) &&
-      ts.isIdentifier(node.name)
-    ) {
-      names.add(`${node.expression.text}.${node.name.text}`);
+    if (ts.isStringLiteralLike(node) && ts.isElementAccessExpression(node.parent ?? node)) {
+      names.add(node.text);
+    }
+    if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
+      const full = chain(node);
+      if (full !== null) {
+        // cm:guard every SUFFIX of the chain, not just the whole of it: `registry.STAGES.length` must answer to a `STAGES.length` check, which is the shape a reader writes it as
+        const parts = full.split(".");
+        for (let i = 0; i < parts.length; i++) names.add(parts.slice(i).join("."));
+      }
     }
     ts.forEachChild(node, visit);
   };
@@ -68,7 +85,7 @@ function codeNames(body: string, file: string): Set<string> {
   return names;
 }
 
-/** Every .ts/.tsx under web-v2's `src`, minus this file, as `[path, names-its-code-uses]`. */
+/** Every source file under web-v2's `src`, minus this file, as `[path, names-its-code-uses]`. */
 const FILES: [string, Set<string>][] = sourceFiles(SRC)
   .map(
     (f) =>
@@ -134,5 +151,15 @@ describe("the scan itself cannot be fooled", () => {
 
   it("does not count a name that appears only inside a string", () => {
     expect(named('const s = "statusToStage";')).not.toContain("statusToStage");
+  });
+
+  it("reads a compound chain as the shorter name a reader would check for", () => {
+    expect(named("const n = registry.STAGES.length;")).toContain("STAGES.length");
+  });
+
+  // cm:guard an element access with a string key is the same declaration written another way, and it used to slip past the identifier walk entirely
+  it("reads a bracketed string key as the name it names", () => {
+    expect(named('const m = globalThis["STATUS_TO_STAGE"];')).toContain("STATUS_TO_STAGE");
+    expect(named('const m = registry["STAGES"].length;')).toContain("STAGES.length");
   });
 });
