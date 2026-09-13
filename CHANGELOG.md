@@ -143,6 +143,15 @@
   migrated transcript belonged to only ever lived in that in-process Map, so a migrated transcript
   is readable under its own name and the room it came from starts a fresh one.
 
+  What the transcript holds is now what the room actually saw. Every answer is attributed to the
+  agent that gave it — including the ones an escalation delivered later, and including a turn that
+  produced nothing, which is recorded as a silence by that same agent rather than as a row by
+  nobody — and when the bot replies with one of its own fixed sentences because the model's answer
+  could not be verified, that sentence is what the transcript keeps, instead of the unverified
+  answer that was never sent. A room that has been moved to another project stops being answered
+  under the old one: a reply computed before the move is refused by name rather than posted into a
+  room its project no longer owns.
+
 - **The Agents screen now says what a run is actually doing, and holds the decisions runs are waiting on.**
   A run row read its two words off the box that was running it — `live` and `runnable` — and drew
   "Working". That is the box's own word for "I have a process", and a pane stopped on a prompt has a

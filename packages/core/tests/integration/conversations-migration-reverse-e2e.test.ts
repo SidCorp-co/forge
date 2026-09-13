@@ -337,4 +337,90 @@ describe('0241 reverse — the principals it minted, and the ones it must not ta
       await db.drop();
     }
   });
+
+  // cm:guard `origin` carries EVERY consumed field, title included, while the reverse restores the current title so a rename after the deploy survives exactly as the messages appended after it do.
+  // cm:why a claim that every consumed field is reconstructible from `origin` alone is true by accident when the only copy of one lives in the column being read (ISS-1001).
+  it('keeps the consumed title in `origin` and still restores a rename made after the deploy', async () => {
+    const db = await freshDb();
+    try {
+      const { projectId, ownerId } = await plantProject(db.sql, 'forge-dev');
+      const session = await plantSession(db.sql, {
+        projectId,
+        userId: ownerId,
+        title: 'the title it was consumed with',
+        messages: [{ role: 'user', content: 'hello' }],
+      });
+
+      await runForward(db.sql);
+
+      const [origin] = await db.sql.unsafe(`SELECT origin FROM conversations WHERE id = $1`, [
+        session.id,
+      ]);
+      expect((origin as unknown as { origin: { title: string } }).origin.title).toBe(
+        'the title it was consumed with',
+      );
+
+      await db.sql.unsafe(`UPDATE conversations SET title = $2 WHERE id = $1`, [
+        session.id,
+        'renamed after the deploy',
+      ]);
+      await db.sql.unsafe(rollback);
+
+      const [back] = await db.sql.unsafe(`SELECT title FROM chat_sessions WHERE id = $1`, [
+        session.id,
+      ]);
+      expect((back as unknown as { title: string }).title).toBe('renamed after the deploy');
+    } finally {
+      await db.drop();
+    }
+  });
+
+  // cm:guard a silence is neither dropped nor smuggled back into the replayed blob: the reverted code replays `messages` to the provider verbatim and never wrote an element with empty text, so an empty assistant element is a prompt shape it has never produced.
+  // cm:why losing the row outright would delete the one field the new model exists to keep, which is why it is archived rather than filtered away (ISS-1001).
+  it('archives a silence instead of discarding it or replaying it as an empty answer', async () => {
+    const db = await freshDb();
+    try {
+      const { projectId, ownerId } = await plantProject(db.sql, 'forge-dev');
+      const session = await plantSession(db.sql, {
+        projectId,
+        userId: ownerId,
+        messages: [{ role: 'user', content: 'said before the deploy' }],
+      });
+
+      await runForward(db.sql);
+
+      await db.sql.unsafe(
+        `INSERT INTO conversation_messages (conversation_id, seq, role, content, created_at)
+         VALUES ($1, 1, 'user', 'asked after the deploy', '2026-05-01T00:00:00Z')`,
+        [session.id],
+      );
+      await db.sql.unsafe(
+        `INSERT INTO conversation_messages
+           (conversation_id, seq, role, content, silence_reason, created_at)
+         VALUES ($1, 2, 'assistant', '', 'the provider timed out', '2026-05-01T00:00:01Z')`,
+        [session.id],
+      );
+
+      await db.sql.unsafe(rollback);
+
+      const [back] = await db.sql.unsafe(`SELECT messages FROM chat_sessions WHERE id = $1`, [
+        session.id,
+      ]);
+      const msgs = (back as unknown as { messages: Array<Record<string, unknown>> }).messages;
+      expect(msgs.map((m) => m.content)).toEqual([
+        'said before the deploy',
+        'asked after the deploy',
+      ]);
+
+      const archived = await db.sql.unsafe(
+        `SELECT session_id, seq, reason FROM chat_session_silences WHERE session_id = $1`,
+        [session.id],
+      );
+      expect(archived).toEqual([
+        { session_id: session.id, seq: 2, reason: 'the provider timed out' },
+      ]);
+    } finally {
+      await db.drop();
+    }
+  });
 });

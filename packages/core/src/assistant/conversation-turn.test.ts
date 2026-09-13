@@ -19,12 +19,18 @@ vi.mock('../conversations/store.js', () => ({
 }));
 vi.mock('../conversations/scope.js', () => ({ assertConversationReadable: async () => [] }));
 
-const { toProviderMessages } = await import('./conversation-turn.js');
+const { appendAssistantMessage, appendSilence, toProviderMessages } = await import(
+  './conversation-turn.js'
+);
 
 const IMAGE = { name: 'shot.png', mime: 'image/png', ref: 'att-1' };
 
-function turn(history: unknown[] = [], pending: unknown[] = []) {
-  return { conversationId: 'c1', adapter: 'web' as const, history, pending } as never;
+function turn(
+  history: unknown[] = [],
+  pending: unknown[] = [],
+  handleUserId: string | null = null,
+) {
+  return { conversationId: 'c1', adapter: 'web' as const, handleUserId, history, pending } as never;
 }
 
 function stored(over: Record<string, unknown> = {}) {
@@ -106,6 +112,32 @@ describe('toProviderMessages', () => {
     expect(out[0]?.content).toEqual([
       { type: 'image_url', image_url: { url: 'https://example.test/shot.png' } },
     ]);
+  });
+});
+
+// cm:guard a silence is a handle DECLINING to speak, so it is by that handle: an unattributed one
+// cannot say which of a room's two handles went quiet, which is the distinction the row exists for.
+describe('a silence names the handle that stayed quiet', () => {
+  it('is authored by the room handle, exactly as an answer would have been', () => {
+    const t = turn([], [], 'handle-1');
+    appendSilence(t, 'provider timed out');
+    appendAssistantMessage(t, 'an answer');
+    const [silence, answer] = (t as unknown as { pending: Array<Record<string, unknown>> }).pending;
+    expect(silence).toMatchObject({
+      role: 'assistant',
+      content: '',
+      silenceReason: 'provider timed out',
+      authorUserId: 'handle-1',
+    });
+    expect(answer?.authorUserId).toBe('handle-1');
+  });
+
+  it('is by nobody only where the room itself has no handle', () => {
+    const t = turn([], [], null);
+    appendSilence(t, 'no answer');
+    expect(
+      (t as unknown as { pending: Array<Record<string, unknown>> }).pending[0]?.authorUserId,
+    ).toBeNull();
   });
 });
 

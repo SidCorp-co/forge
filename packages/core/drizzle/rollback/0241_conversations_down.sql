@@ -26,6 +26,10 @@
 --     there is and is NOT byte-exact by construction: the row it rebuilds never
 --     existed before.
 --
+--   * A SILENCE belongs to neither half: it is a row `chat_sessions` cannot hold, so it
+--     is archived into `chat_session_silences` rather than dropped or forced into the
+--     replayed blob. See the block that writes it, below.
+--
 -- `chat_logs.session_id` stays nullable. The forward migration relaxed it so a
 -- one-shot relay turn could belong to no conversation; restoring the constraint
 -- would mean deleting those audit rows, and an audit row is not ours to discard
@@ -74,6 +78,10 @@ SELECT
   (c.origin ->> 'projectId')::uuid,
   NULLIF(c.origin ->> 'userId', '')::uuid,
   c.origin ->> 'userKey',
+  -- the CURRENT title, deliberately, and not `origin ->> 'title'`: a rename made after
+  -- the deploy is activity of the same kind as the messages appended below it, and a
+  -- reverse that undid renames while keeping new messages would be exact about neither.
+  -- The as-consumed title is in `origin` for anyone who needs it (ISS-1001).
   c.title,
   c.origin ->> 'source',
   -- The consumed blob VERBATIM, then everything the room has said SINCE. The
@@ -138,7 +146,7 @@ SELECT
       jsonb_strip_nulls(jsonb_build_object(
         'role', m.role,
         'content', m.content,
-        'ts', to_char(m.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+        'ts', to_char(m.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
         'images', m.images
       )) ORDER BY m.seq
     )
@@ -155,6 +163,33 @@ WHERE c.origin IS NULL
     WHERE cp.conversation_id = c.id AND cp.kind = 'handle' AND cp.removed_at IS NULL
   )
 ON CONFLICT (id) DO NOTHING;
+
+-- SILENCES ARE ARCHIVED, NOT DISCARDED — and not put back into the blob either.
+-- A silence is a turn that produced no text, kept as its reason; `chat_sessions.messages`
+-- has no shape for one. The reverted code replays that array to the provider verbatim and
+-- never wrote an element with empty text (it appends an assistant message only when the
+-- final text is non-empty), so restoring a silence as an empty assistant element would
+-- hand the reverted deployment a prompt shape it has never produced — and an empty content
+-- block is refused outright by part of the provider set. Dropping them instead would
+-- silently delete the one field the new model was introduced to keep, and leave the user
+-- message above it reading as unanswered.
+-- So they leave the dropped table into one of their own, in full, and this reverse is not
+-- finished until whoever ran it has read that table and dropped it deliberately:
+--   SELECT * FROM chat_session_silences;  -- then: DROP TABLE chat_session_silences;
+CREATE TABLE IF NOT EXISTS public.chat_session_silences (
+  "session_id" uuid NOT NULL,
+  "seq" integer NOT NULL,
+  "reason" text NOT NULL,
+  "author_user_id" uuid,
+  "created_at" timestamp with time zone NOT NULL,
+  PRIMARY KEY ("session_id", "seq")
+);
+
+INSERT INTO public.chat_session_silences (session_id, seq, reason, author_user_id, created_at)
+SELECT m.conversation_id, m.seq, m.silence_reason, m.author_user_id, m.created_at
+FROM public.conversation_messages m
+WHERE m.silence_reason IS NOT NULL
+ON CONFLICT DO NOTHING;
 
 -- A minted handle that has since been given an access token is somebody's decision
 -- and it is REFUSED BY NAME rather than worked around in either direction. Deleting

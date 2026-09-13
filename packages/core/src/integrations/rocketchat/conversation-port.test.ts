@@ -40,13 +40,13 @@ vi.mock('../../assistant/identity/speaker-link.js', () => ({
 
 /** The active `rocketchat` connections and bindings `authForVenue` scans, in that query order. */
 let connections: Array<{ id: string; config: { serverUrl: string }; secrets: unknown }> = [];
-let bindings: Array<{ connectionId: string; config: { rids?: string[] } }> = [];
+let bindings: Array<{ connectionId: string; projectId: string; config: { rids?: string[] } }> = [];
 vi.mock('../../db/client.js', () => ({
   db: {
     select: () => ({
       from: (table: unknown) => ({
-        // cm:why the mock answers by TABLE and not by call order: `authForVenue` skips the binding
-        // query when one connection serves the server, so a counter drifts between tests.
+        // cm:why the mock answers by TABLE and not by call order: the two queries are issued in a
+        // fixed order today and a counter would silently re-point if that ever changed.
         where: async () =>
           String((table as { [k: symbol]: unknown })[Symbol.for('drizzle:Name')]) ===
           'integration_bindings'
@@ -67,6 +67,7 @@ const { codeAuthored, screened } = await import('../../conversations/ports.js');
 
 const AUTH = { serverUrl: 'https://chat.example.co', authToken: 't', userId: 'bot' };
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
+const OTHER_PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 
 function frame(over: Record<string, unknown> = {}) {
   return {
@@ -87,6 +88,8 @@ beforeEach(() => {
       secrets: { authToken: 't', userId: 'bot' },
     },
   ];
+  // cm:why every delivery needs a binding naming the venue's own project: a binding is what says this room belongs to this project TODAY, and a connection alone cannot say it.
+  bindings = [{ connectionId: 'conn-1', projectId: PROJECT_ID, config: { rids: ['ROOM1'] } }];
 });
 
 describe('the venue key', () => {
@@ -206,7 +209,26 @@ describe('deliver', () => {
   it('refuses by name when no active connection serves the venue server', async () => {
     connections = [];
     await expect(rocketChatConversationPorts.deliver(venue, codeAuthored('x'))).rejects.toThrow(
-      /no active connection serves chat\.example\.co/,
+      /no active connection on chat\.example\.co/,
+    );
+    expect(sendFixedReply).not.toHaveBeenCalled();
+  });
+
+  // cm:guard a conversation outlives the binding that opened it: this is the rebind, and the old project's delayed answer must not reach a room somebody else now owns (ISS-1001).
+  it('refuses when the room is now bound to another project', async () => {
+    bindings = [
+      { connectionId: 'conn-1', projectId: OTHER_PROJECT_ID, config: { rids: ['ROOM1'] } },
+    ];
+    await expect(rocketChatConversationPorts.deliver(venue, codeAuthored('x'))).rejects.toThrow(
+      /holds a binding for room ROOM1 under project 11111111-1111-4111-8111-111111111111/,
+    );
+    expect(sendFixedReply).not.toHaveBeenCalled();
+  });
+
+  it('refuses when the one connection on the server has no binding for the room at all', async () => {
+    bindings = [];
+    await expect(rocketChatConversationPorts.deliver(venue, codeAuthored('x'))).rejects.toThrow(
+      /rebound since this conversation was opened/,
     );
     expect(sendFixedReply).not.toHaveBeenCalled();
   });
@@ -226,7 +248,7 @@ describe('deliver', () => {
         secrets: { authToken: 'right', userId: 'bot-b' },
       },
     ];
-    bindings = [{ connectionId: 'conn-2', config: { rids: ['ROOM1'] } }];
+    bindings = [{ connectionId: 'conn-2', projectId: PROJECT_ID, config: { rids: ['ROOM1'] } }];
 
     await rocketChatConversationPorts.deliver(venue, codeAuthored('answer'));
 
@@ -248,10 +270,12 @@ describe('deliver', () => {
         secrets: { authToken: 'b', userId: 'bot-b' },
       },
     ];
-    bindings = [{ connectionId: 'conn-2', config: { rids: ['SOMEWHERE-ELSE'] } }];
+    bindings = [
+      { connectionId: 'conn-2', projectId: PROJECT_ID, config: { rids: ['SOMEWHERE-ELSE'] } },
+    ];
 
     await expect(rocketChatConversationPorts.deliver(venue, codeAuthored('x'))).rejects.toThrow(
-      /no active connection serves chat\.example\.co room ROOM1/,
+      /no active connection on chat\.example\.co holds a binding for room ROOM1/,
     );
     expect(sendFixedReply).not.toHaveBeenCalled();
   });
@@ -290,6 +314,14 @@ describe('fetchHistory', () => {
       5,
     );
     expect(fetchThreadMessages).toHaveBeenCalledWith(AUTH, 'T9', 5);
+    expect(fetchRoomHistory).not.toHaveBeenCalled();
+  });
+
+  it('reads nothing when the room is bound to another project now', async () => {
+    bindings = [
+      { connectionId: 'conn-1', projectId: OTHER_PROJECT_ID, config: { rids: ['ROOM1'] } },
+    ];
+    expect(await rocketChatConversationPorts.fetchHistory(room, 20)).toEqual([]);
     expect(fetchRoomHistory).not.toHaveBeenCalled();
   });
 

@@ -11,6 +11,7 @@ import { runExternalChatTurn } from '../../assistant/external-chat.js';
 import { namespaceFromServerUrl } from '../../assistant/identity/directory.js';
 import { buildChatToolContext } from '../../assistant/tools/principal.js';
 import { buildProjectToolset } from '../../assistant/tools/registry.js';
+import { handleForProject } from '../../conversations/participants.js';
 import { appendMessage, findConversation } from '../../conversations/store.js';
 import { db } from '../../db/client.js';
 import {
@@ -218,7 +219,7 @@ export async function deliverEscalationReplyOnce(session: SessionRow): Promise<v
       reply,
       proof,
     );
-    await recordInRoomTranscript(auth.serverUrl, meta, reply, receipt);
+    await recordInRoomTranscript(auth.serverUrl, session.projectId, meta, reply, receipt);
   } catch (err) {
     logger.error(
       { err, sessionId: session.id, rid: meta.rid },
@@ -232,8 +233,10 @@ export async function deliverEscalationReplyOnce(session: SessionRow): Promise<v
  */
 // cm:guard the synthesis TURN stays out of the transcript and only its answer goes in: the turn's own input is `buildSynthesisMessage`, an instruction the room never saw, so running it against the room's conversation would put words in a person's mouth. The answer is appended here instead, with the receipt the send returned — which is also the only way an escalated reply satisfies the same delivery-proof rule the fast path does (ISS-1001 criterion 15).
 // cm:guard a room with no conversation yet is left alone rather than given one: an escalation always follows a turn that opened the venue, so no row here means the venue key has moved and inventing a second room under the new key would split the transcript in two.
+// cm:guard the row is BY the project's handle and not by nobody: an escalated answer is the same assistant through a slower path, and the rule `appendAssistantMessage` keeps on the fast path has to be kept here too, by the door that bypasses it (ISS-1001).
 async function recordInRoomTranscript(
   serverUrl: string,
+  projectId: string,
   meta: RoomReplyMeta,
   reply: string,
   receipt: { messageId: string | null },
@@ -248,6 +251,7 @@ async function recordInRoomTranscript(
       conversationId: conversation.id,
       role: 'assistant',
       content: reply,
+      authorUserId: await handleForProject(conversation.id, projectId),
       deliveryProof: receipt,
     });
   } catch (err) {

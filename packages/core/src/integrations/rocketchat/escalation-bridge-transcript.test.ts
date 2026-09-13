@@ -54,6 +54,11 @@ vi.mock('../../conversations/store.js', () => ({
   appendMessage: (...a: unknown[]) => appendMessage(...a),
 }));
 
+const handleForProject = vi.fn(async (..._a: unknown[]) => 'handle-of-proj-1' as string | null);
+vi.mock('../../conversations/participants.js', () => ({
+  handleForProject: (...a: unknown[]) => handleForProject(...a),
+}));
+
 const runExternalChatTurn = vi.fn();
 vi.mock('../../assistant/external-chat.js', () => ({
   runExternalChatTurn: (...a: unknown[]) => runExternalChatTurn(...a),
@@ -89,6 +94,7 @@ describe(`the room transcript after an escalated answer`, () => {
   beforeEach(() => {
     findConversation.mockReset();
     appendMessage.mockClear();
+    handleForProject.mockClear();
     sendFixedReply.mockReset();
     sendFixedReply.mockResolvedValue({ messageId: 'rc-msg-7' });
     updateReturning.mockReset();
@@ -130,6 +136,18 @@ describe(`the room transcript after an escalated answer`, () => {
         content: 'the synthesized answer',
         deliveryProof: { messageId: 'rc-msg-7' },
       }),
+    );
+  });
+
+  // cm:guard an escalated answer is the same assistant through a slower path: a row by nobody cannot say which handle answered in a room holding two, which is the whole point of attributing the fast path's rows (ISS-1001).
+  it('records it BY the project handle, resolved for the session project', async () => {
+    findConversation.mockResolvedValue({ id: 'conv-9' });
+
+    await escalated();
+
+    expect(handleForProject).toHaveBeenCalledWith('conv-9', 'proj-1');
+    expect(appendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ authorUserId: 'handle-of-proj-1' }),
     );
   });
 

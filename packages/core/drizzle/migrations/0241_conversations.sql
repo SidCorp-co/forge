@@ -225,6 +225,12 @@ SELECT
   jsonb_build_object(
     'chatSessionId', cs.id::text,
     'projectId', cs.project_id::text,
+    -- the title AS CONSUMED. The conversation carries a title column of its own and a
+    -- rename after this deploy is real activity, so the reverse restores the current
+    -- one — but "every consumed field comes back off `origin` alone" is a claim this
+    -- file makes, and a field living only in a column the reverse reads is that claim
+    -- being true by accident. Keep both and the claim holds however the title moves.
+    'title', cs.title,
     'userId', cs.user_id::text,
     'userKey', cs.user_key,
     'source', cs.source,

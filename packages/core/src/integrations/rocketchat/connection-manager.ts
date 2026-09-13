@@ -13,8 +13,9 @@ import {
   type ExternalMcpToolsets,
 } from '../../assistant/tools/external-mcp.js';
 import { env } from '../../config/env.js';
+import { handleForProject } from '../../conversations/participants.js';
 import { registerConversationTransport } from '../../conversations/ports.js';
-import { openConversation, recordDelivery } from '../../conversations/store.js';
+import { appendMessage, openConversation, recordDelivery } from '../../conversations/store.js';
 import { db } from '../../db/client.js';
 import { integrationConnections, organizations, projects } from '../../db/schema.js';
 import { logger } from '../../logger.js';
@@ -118,6 +119,38 @@ interface ActiveConnection {
   // cm:guard MUST stay per-connection: the same bot user is subscribed on every org connection via `__my_messages__`, so a manager-global tracker let a routeless connection mark an id seen first and the routing connection dropped it as a false duplicate (root cause, 2026-07-15)
   seenMessage: (id: string) => boolean;
   closing: boolean;
+}
+
+/**
+ * The reply goes out the one door, and the room's transcript holds what the room saw.
+ */
+// cm:guard the receipt is stamped on whichever row IS the answer, and a fallback gets a row of its own: a fixed reply is composed by code and carries no message id, so without this the transcript kept the text the screen REJECTED and the sentence the person read existed nowhere (ISS-1001 criterion 15).
+// cm:guard failures here are logged and never thrown: the room HAS the message by the time this runs, and turning a delivered answer into an error is a lie in the other direction.
+async function deliverAndRecord(
+  door: Parameters<typeof sendFixedReply>[0],
+  outcome: Extract<TurnOutcome, { send: true }>,
+  conversationId: string,
+  projectId: string,
+): Promise<void> {
+  const receipt = await sendFixedReply(door, outcome.text, outcome.proof);
+  try {
+    if (outcome.messageId) {
+      await recordDelivery(outcome.messageId, receipt);
+      return;
+    }
+    await appendMessage({
+      conversationId,
+      role: 'assistant',
+      content: outcome.text,
+      authorUserId: await handleForProject(conversationId, projectId),
+      deliveryProof: receipt,
+    });
+  } catch (err) {
+    logger.warn(
+      { err, conversationId, messageId: outcome.messageId ?? null },
+      'rocketchat: delivered, but the transcript could not record it',
+    );
+  }
 }
 
 class RocketChatConnectionManager {
@@ -624,20 +657,14 @@ class RocketChatConnectionManager {
     }
     // cm:why delivery only, never a second guard pass: every branch above already screened its text or replaced it with a code-authored constant, and the proof rides along on the outcome
     if (outcome.send && ac.client) {
-      const receipt = await sendFixedReply(
-        { kind: 'ddp', client: ac.client, rid: m.rid, tmid: m.tmid, authToken: ac.authToken },
-        outcome.text,
-        outcome.proof,
-      );
-      // cm:guard stamped AFTER the send returns, on the row the turn already wrote: the message row proves what was composed and only the server's own receipt proves the room received it, which is the difference a person reading the transcript cannot otherwise see (ISS-1001 criterion 15). A failure to stamp is logged and never thrown — the room HAS the message by then, and turning a delivered answer into an error would be a lie in the other direction.
-      if (outcome.messageId) {
-        await recordDelivery(outcome.messageId, receipt).catch((err) =>
-          logger.warn(
-            { err, rid: m.rid, messageId: outcome.messageId },
-            'rocketchat: delivered, but the receipt could not be recorded',
-          ),
-        );
-      }
+      const door = {
+        kind: 'ddp' as const,
+        client: ac.client,
+        rid: m.rid,
+        tmid: m.tmid,
+        authToken: ac.authToken,
+      };
+      await deliverAndRecord(door, outcome, conversation.id, route.projectId);
     }
   }
 
@@ -649,18 +676,16 @@ class RocketChatConnectionManager {
     if (ac.refreshTimer) clearInterval(ac.refreshTimer);
     try {
       ac.client?.close();
-    } catch {
-      // ignore
-    }
+    } catch {}
+    // cm:why a teardown swallows both failures rather than reporting them: the socket and the lock
+    // are being given up, so a close that fails has already lost the thing the failure is about.
     try {
       await ac.lockClient.query('select pg_advisory_unlock(hashtext($1), hashtext($2))', [
         LOCK_NAMESPACE,
         connectionId,
       ]);
       await ac.lockClient.end();
-    } catch {
-      // ignore
-    }
+    } catch {}
     this.conns.delete(connectionId);
   }
 

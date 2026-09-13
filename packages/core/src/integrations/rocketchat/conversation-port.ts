@@ -62,7 +62,13 @@ export function parseRocketChatVenueId(externalId: string): RocketChatVenueParts
 }
 
 // cm:guard the ROOM decides the credential, not the server: one installation can be served by two Forge connections under two bot accounts, and the first-match answer posts as a bot the room may not hold and reads history under the wrong bot id — which silently relabels that bot's own messages as a person's. A connection with no binding naming this room is not this room's connection.
-async function authForVenue(namespace: string, rid: string): Promise<RocketChatRestAuth | null> {
+// cm:guard the binding must also name THIS venue's project, with no single-connection shortcut: a conversation outlives the binding that opened it, so a room rebound from project A to project B still has A's durable venue pointing at it — right credential, somebody else's content.
+// cm:why having only one candidate connection on the server says nothing about which project owns the room today, which is why the old shortcut past the bindings is gone (ISS-1001 invariant 2).
+async function authForVenue(
+  namespace: string,
+  rid: string,
+  projectId: string,
+): Promise<RocketChatRestAuth | null> {
   const rows = await db
     .select()
     .from(integrationConnections)
@@ -79,31 +85,27 @@ async function authForVenue(namespace: string, rid: string): Promise<RocketChatR
   });
   if (onServer.length === 0) return null;
 
-  const bindings =
-    onServer.length === 1
-      ? []
-      : await db
-          .select({
-            connectionId: integrationBindings.connectionId,
-            config: integrationBindings.config,
-          })
-          .from(integrationBindings)
-          .where(
-            and(
-              eq(integrationBindings.provider, 'rocketchat'),
-              eq(integrationBindings.active, true),
-            ),
-          );
+  const bindings = await db
+    .select({
+      connectionId: integrationBindings.connectionId,
+      projectId: integrationBindings.projectId,
+      config: integrationBindings.config,
+    })
+    .from(integrationBindings)
+    .where(
+      and(eq(integrationBindings.provider, 'rocketchat'), eq(integrationBindings.active, true)),
+    );
   const watching = new Set(
     bindings
-      .filter((b) => ((b.config ?? {}) as RocketChatBindingConfig).rids?.includes(rid))
+      .filter(
+        (b) =>
+          b.projectId === projectId &&
+          ((b.config ?? {}) as RocketChatBindingConfig).rids?.includes(rid),
+      )
       .map((b) => b.connectionId),
   );
 
-  // cm:why a single connection on the server is used without consulting a binding: there is no other
-  // candidate to be wrong about, and a room the bot is in but no binding names is still that bot's.
-  const ordered = onServer.length === 1 ? onServer : onServer.filter((r) => watching.has(r.id));
-  for (const row of ordered) {
+  for (const row of onServer.filter((r) => watching.has(r.id))) {
     const config = (row.config ?? {}) as RocketChatConfig;
     const secrets = decryptConnectionSecrets<RocketChatSecrets>(row);
     if (!secrets.authToken || !secrets.userId) continue;
@@ -175,10 +177,10 @@ export const rocketChatConversationPorts: ConversationAdapterPorts<RocketChatFra
     if (!parts) {
       throw new Error(`rocketchat: "${venue.externalId}" is not a Rocket.Chat venue id`);
     }
-    const auth = await authForVenue(parts.namespace, parts.rid);
+    const auth = await authForVenue(parts.namespace, parts.rid, venue.projectId);
     if (!auth) {
       throw new Error(
-        `rocketchat: no active connection serves ${parts.namespace} room ${parts.rid}, so ${venue.externalId} cannot be posted to`,
+        `rocketchat: no active connection on ${parts.namespace} holds a binding for room ${parts.rid} under project ${venue.projectId}, so ${venue.externalId} cannot be posted to — the room may have been rebound since this conversation was opened`,
       );
     }
     const proof: ReplySendProof =
@@ -198,7 +200,7 @@ export const rocketChatConversationPorts: ConversationAdapterPorts<RocketChatFra
   ): Promise<ConversationHistoryMessage[]> {
     const parts = parseRocketChatVenueId(venue.externalId);
     if (!parts) return [];
-    const auth = await authForVenue(parts.namespace, parts.rid);
+    const auth = await authForVenue(parts.namespace, parts.rid, venue.projectId);
     if (!auth) return [];
     const messages = parts.tmid
       ? await fetchThreadMessages(auth, parts.tmid, limit)
