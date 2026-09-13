@@ -505,41 +505,13 @@ export function groupRows(rows: IssueRow[], groupBy: GroupBy): IssueGroup[] {
 }
 
 /**
- * Lifecycle-kind for a comment, read from whichever form the body is in.
+ * Lifecycle-kind for a comment, read from the prose markers the pipeline
+ * writes. Order matters — more specific markers first.
  *
- * `template` is the root component name the kernel stored on write (ISS-898),
- * so a component body names its shape outright. A markdown body has no such
- * column and is matched against the prose markers the pipeline has always
- * written; order matters there — more specific markers first.
+ * It read `template` (the root component name) first until 2026-09-14, when
+ * the component vocabulary and that column were removed. The prose regex this
+ * was meant to replace is the only reader again.
  */
-// cm:edge contract -> packages/core/src/body/components.ts — the keys below are root component names and the `verdict` values are `forge-review`'s enum. A root renamed there without a change here silently falls back to the prose regex, which for a component body matches nothing and badges every review as a plain comment.
-const TEMPLATE_KIND: Record<string, CommentKind> = {
-	"forge-triage": "triage",
-	"forge-plan": "plan",
-	"forge-qa-report": "qa",
-	"forge-outcome": "outcome",
-	"forge-blocked": "blocked",
-	"forge-close": "released",
-};
-
-const REVIEW_VERDICT_KIND: Record<string, CommentKind> = {
-	approve: "approved",
-	"request-changes": "changes",
-	abstain: "review",
-};
-
-/**
- * `forge-review` carries its verdict in an attribute the comment row does not
- * project, so it is read off the canonical bytes. Safe as a regex only because
- * `body/normalize.ts` emits every attribute as `name="value"`, double-quoted
- * and escaped, and the body was validated before it was stored.
- */
-function reviewVerdictKind(body: string): CommentKind {
-	const match = /<forge-review\b[^>]*\sverdict="([a-z-]+)"/.exec(body);
-	const verdict = match?.[1];
-	return (verdict && REVIEW_VERDICT_KIND[verdict]) || "review";
-}
-
 function prefixKind(body: string): CommentKind {
 	const b = body.toLowerCase();
 	if (/^#+\s*triage|triage (report|summary)|\btriaged\b/.test(b))
@@ -571,25 +543,19 @@ function prefixKind(body: string): CommentKind {
 }
 
 /**
- * Which of the two body forms answered. Reported so the component migration's
- * progress is countable off real traffic rather than assumed (ISS-968).
+ * Which body form answered. `component` was the other value until the
+ * vocabulary was removed on 2026-09-14; the union is kept at one member rather
+ * than deleted because callers report it, and a field that silently stops
+ * being reported is harder to notice than one that reports the same thing.
  */
-export type CommentBodyForm = "component" | "prefix";
+export type CommentBodyForm = "prefix";
 
 export interface DerivedCommentKind {
 	kind: CommentKind;
 	form: CommentBodyForm;
 }
 
-export function deriveCommentKind(comment: {
-	body: string;
-	template?: string | null;
-}): DerivedCommentKind {
-	const template = comment.template ?? null;
-	if (template === "forge-review")
-		return { kind: reviewVerdictKind(comment.body), form: "component" };
-	const mapped = template ? TEMPLATE_KIND[template] : undefined;
-	if (mapped) return { kind: mapped, form: "component" };
+export function deriveCommentKind(comment: { body: string }): DerivedCommentKind {
 	return { kind: prefixKind(comment.body), form: "prefix" };
 }
 

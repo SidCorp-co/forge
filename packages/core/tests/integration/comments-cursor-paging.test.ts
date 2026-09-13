@@ -175,7 +175,6 @@ describe('ISS-956 comment thread paging — the envelope and the walk', () => {
         'parentId',
         'replies',
         'stage',
-        'template',
         'updatedAt',
       ].sort(),
     );

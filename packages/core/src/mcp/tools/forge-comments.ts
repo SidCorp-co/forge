@@ -1,8 +1,7 @@
 import { z } from 'zod';
 import { BodyInvalidError } from '../../body/errors.js';
 import { BODY_FORMATS } from '../../body/formats.js';
-import { bodySlots, bodyText } from '../../body/prepare.js';
-import { BodyComponentRequiredError } from '../../body/stage-policy.js';
+import { bodyText } from '../../body/prepare.js';
 import {
   listCommentAttachmentsForIssue,
   persistDecodedCommentAttachments,
@@ -100,9 +99,7 @@ function serialize(
     // cm:guard a comment body reaches the agent verbatim over this MCP surface and anyone can post one, so it must stay inside a DATA frame — unframing it turns every commenter into someone who can issue the agent instructions (ISS-532)
     body: markUntrusted(row.body, { source: 'comment.body' }),
     format: row.format,
-    template: row.template,
-    // cm:guard ISS-898 — `slots` and `text` are what let a downstream skill read a field instead of a string prefix, and `text` is the projection the agent should reason over. Both go through markUntrusted for the same reason `body` does: a parsed slot is still text the reporter wrote.
-    slots: row.template ? bodySlots(row.body, row.format) : null,
+    // cm:guard `text` is the projection the agent should reason over, and it goes through markUntrusted for the same reason `body` does: a parsed body is still text the reporter wrote.
     text:
       row.format === 'html'
         ? markUntrusted(bodyText(row.body, row.format), { source: 'comment.text' })
@@ -151,7 +148,7 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
     try {
       return await run(principal, input);
     } catch (err) {
-      if (err instanceof BodyInvalidError || err instanceof BodyComponentRequiredError) {
+      if (err instanceof BodyInvalidError) {
         throw new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
       }
       throw err;

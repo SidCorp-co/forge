@@ -189,7 +189,6 @@ export async function createIssue(
         title: input.title,
         description: prepared ? prepared.body : (input.description ?? null),
         descriptionFormat: prepared?.format ?? 'markdown',
-        descriptionTemplate: prepared?.template ?? null,
         status: intake.status,
         priority: (input.priority ?? 'medium') as IssueCreateRow['priority'],
         category: input.category ?? null,

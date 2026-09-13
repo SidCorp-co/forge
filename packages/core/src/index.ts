@@ -86,7 +86,7 @@ import { attachmentRoutes, issueAttachmentRoutes } from './issues/attachment-rou
 import { issueDependencyRoutes } from './issues/dependency-routes.js';
 import { issueExtrasRoutes } from './issues/extras-routes.js';
 import { issueMergeRoutes } from './issues/merge-routes.js';
-import { bodyProjectRoutes, bodyRoutes, issueProjectRoutes, issueRoutes } from './issues/routes.js';
+import { bodyRoutes, issueProjectRoutes, issueRoutes } from './issues/routes.js';
 import { searchRoutes } from './issues/search.js';
 import { issueSteerRoutes } from './issues/steer-routes.js';
 import { transitionRoutes } from './issues/transition.js';
@@ -334,7 +334,6 @@ app.route('/api/projects', skillSmokeVerifyRoutes);
 app.route('/api/projects', reconcileRoutes);
 app.route('/api/invitations', invitationRoutes);
 app.route('/api/projects', issueProjectRoutes);
-app.route('/api/projects', bodyProjectRoutes);
 app.route('/api/projects', searchRoutes);
 app.route('/api/projects', labelProjectRoutes);
 app.route('/api/projects', moduleDiagramRoutes);

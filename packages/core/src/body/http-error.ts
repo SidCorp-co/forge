@@ -11,18 +11,9 @@
 import { HTTPException } from 'hono/http-exception';
 import { BodyInvalidError } from './errors.js';
 import { type PreparedBody, type PrepareInput, prepareBody } from './prepare.js';
-import { BodyComponentRequiredError } from './stage-policy.js';
 
 // cm:guard the 400 carries `err.message` VERBATIM. It names the offender, and that is the entire reason this gate produces compliance where a guide produced 14-28% — a caller told only "invalid body" has nothing to correct.
 export function bodyInvalidHttp(err: BodyInvalidError): HTTPException {
-  return new HTTPException(400, {
-    message: err.message,
-    cause: { code: err.code, details: err.details },
-  });
-}
-
-// cm:guard the same VERBATIM rule as `bodyInvalidHttp`, for the same reason and one more: this message is the only place a writer learns which component the stage wanted, and a generic 400 turns a one-line correction into a source read.
-export function bodyComponentRequiredHttp(err: BodyComponentRequiredError): HTTPException {
   return new HTTPException(400, {
     message: err.message,
     cause: { code: err.code, details: err.details },
@@ -39,7 +30,6 @@ export function bodyComponentRequiredHttp(err: BodyComponentRequiredError): HTTP
  */
 export function bodyRefusalHttp(err: unknown): HTTPException | null {
   if (err instanceof BodyInvalidError) return bodyInvalidHttp(err);
-  if (err instanceof BodyComponentRequiredError) return bodyComponentRequiredHttp(err);
   return null;
 }
 

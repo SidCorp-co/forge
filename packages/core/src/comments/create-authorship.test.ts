@@ -84,7 +84,6 @@ const WRITTEN_COLUMNS = [
   'authorAgency',
   'body',
   'format',
-  'template',
   'stage',
   'parentId',
 ];

@@ -85,7 +85,6 @@ describe('renderStageFactsText', () => {
     expect(code).toContain('Worktree isolation');
     expect(code).not.toContain('Complexity scale');
 
-    // release has no handoff schema — the instruction must not appear.
     const release = renderStageFactsText(makeInputs(), 'p-1', 'release');
     expect(release).not.toContain('forge_step_handoff');
     expect(release).toContain('Release-notes shape');
@@ -398,7 +397,6 @@ describe('renderStageFactsText — module attribution is gated on the taxonomy (
       '### Issue relation kinds',
       '### Status ladder',
       '### Comment + status ordering',
-      '### Body components',
       '### Step handoff (best-effort)',
       '### The workspace you were handed',
       '### Project integrations',

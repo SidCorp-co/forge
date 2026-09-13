@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { ROOT_COMPONENT_NAMES } from '../body/components.js';
 import { issueStatuses } from '../db/schema.js';
 import { ENTRY_CRITERION_KEYS } from '../issues/entry-criteria-keys.js';
 import { AUTONOMOUS_ENTRY_STATUS, BACKLOG_ADMISSIBLE_STATUSES } from './autonomous-mode.js';
@@ -157,13 +156,6 @@ export const stageConfigSchema = z.object({
    * does not name this key, so nothing acquires a mandate by upgrading.
    */
   // cm:guard never give this a `.default()` and never add it to `defaultStatesConfig()`. The default IS the safety property: this document is stored per project across the whole fleet, and a value that arrives without an operator typing it refuses comment writes on every tenant project at once. The same reasoning `intakeGate` states for its own absent-means-off.
-  // cm:edge contract -> packages/core/src/body/stage-policy.ts — `resolveStageBodyPolicy` is the only reader, and this object is the only writer; the enum below is `ROOT_COMPONENT_NAMES`, so a component the registry drops becomes a zod refusal naming the legal set rather than a stage nobody can satisfy
-  bodyPolicy: z
-    .object({
-      requireComponent: z.enum(ROOT_COMPONENT_NAMES as unknown as [string, ...string[]]),
-    })
-    .strict()
-    .optional(),
   // cm:why per-state runner pool: unset/empty = whole fleet (pre-pool behaviour), one element = a hard pin, and every other selection rule still applies WITHIN the pool rather than being replaced by it
   // cm:edge contract -> packages/core/src/runners/select.ts — apply the pool INSIDE the candidate query next to rate_limited_until, never as an exclude set: the retry rotation deliberately clears its exclusions when a round wraps, which would evaporate a pool expressed that way
   // cm:guard an all-busy/all-limited pool leaves the job queued — never widen the pool to place it, or the operator loses the guarantee that a stage ran where they pinned it
@@ -302,14 +294,7 @@ export const pipelineConfigSchema = z
       .optional(),
   })
   .superRefine((cfg, ctx) => {
-    // ISS-623 W1 — reject a `name: true` mcpServers shorthand entry whose
-    // name is neither a catalog server nor a known integration sentinel.
-    // Without this, a typo (`shop` vs `epodsystem`) is silently dropped by
-    // `expandMcpServers` at dispatch time with only a `logger.warn` — the
-    // agent never sees the server and the operator has to read core source
-    // to find out why. Object-valued raw specs and `false`/`null` opt-outs
-    // are untouched (they are not shorthand, so there is no "known name" to
-    // check).
+    // cm:guard a `name: true` shorthand whose name is neither a catalog server nor a known integration sentinel is REFUSED here: `expandMcpServers` drops an unknown one at dispatch with only a `logger.warn`, so the agent never sees the server and the operator has to read core source to find out why (ISS-623 W1). Object-valued raw specs and `false`/`null` opt-outs are untouched: they are not shorthand, so there is no known name to check.
     const checkMcpServers = (
       map: Record<string, unknown> | undefined,
       path: (string | number)[],

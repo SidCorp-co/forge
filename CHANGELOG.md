@@ -1802,6 +1802,25 @@
 
 ### Removed
 
+- **The `forge-*` comment components are gone; a body is markdown, or plain HTML.** Bodies could be
+  written in a vocabulary of typed elements — `<forge-review>`, `<forge-plan>`, `<forge-blocked>`
+  and a dozen more — a project could require one of them at a given stage, and a Composer menu
+  offered to insert their skeletons. It was built so an agent's comment would arrive structured
+  instead of as a wall of prose. It never got there: across the whole fleet, 7 of 13,564 comments
+  carried a component and not one of them was written by an agent, because the vocabulary was
+  reachable only from a tool description, and a rule an agent has to go and read is one it mostly
+  does not. The per-stage requirement was switched on for no project. What the measurement did say
+  is that a refusal lands every time, which is where the effort has gone instead.
+
+  **What changes for you.** The insert menu is gone from the Composer, and what replaces it is a
+  real editor: headings, bold, italic, lists, quotes, links and code blocks, on the keyboard
+  shortcuts you already know. The stage requirement and its settings section are gone. The
+  `template` column behind them is dropped, so a comment's kind is read from what it says again.
+  Bodies already stored in the old markup still render; writing new markup is refused by name,
+  saying the set was removed and what to send instead, rather than being quietly flattened into
+  prose. Attribute-only elements in those stored rows lose the labels the component used to draw
+  around them when an agent reads the body back — 11 rows fleet-wide hold one.
+
 - **Issues no longer show you how far along a seven-stage pipeline they are, because there is no
   such pipeline.** Every issue row carried a small "4 / 7" and a progress bar. The issue's own page
   opened with a row of seven beads — triage, clarify, plan, code, review, test, release — with the
