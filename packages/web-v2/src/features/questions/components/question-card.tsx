@@ -142,6 +142,7 @@ function RoundHistory({ step }: { step: QuestionStep }) {
 }
 
 // cm:guard the empty answer is refused HERE and the button stays enabled to do it: a disabled submit under an empty box tells a person nothing about why, and core would refuse the blank body anyway (ISS-996).
+// cm:guard the draft is NOT cleared on submit and this component is keyed on the round instead: `onAnswer` reports nothing back, a refused or dropped send leaves the card standing, and clearing on the press throws away an answer somebody wrote with no way to get it back. A round that actually advances remounts the box empty (ISS-998).
 // cm:guard `data-first-option` rides on the TEXTAREA and not on the submit: it is the element the project queue moves focus to when this card takes an answered one's place, and focusing the button instead skips the box the answer has to be written in — the next keypress is then the empty-answer refusal rather than the start of the decision (ISS-996, ISS-998).
 function FreeTextAnswer({
   needed,
@@ -176,7 +177,6 @@ function FreeTextAnswer({
         }
         setFault(null);
         onAnswer(text.trim());
-        setText("");
       }}
     >
       <Field label="Your answer" hint={needed ? `Needed: ${needed}` : undefined} error={fault ?? undefined}>
@@ -305,6 +305,7 @@ export function QuestionCard({
               ))
             ) : answerable ? (
               <FreeTextAnswer
+                key={current.round}
                 needed={question.needed}
                 locked={question.locked}
                 pending={pending}

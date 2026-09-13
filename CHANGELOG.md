@@ -134,6 +134,18 @@
   run whose box was mid-revival vanished from the screen entirely, along with every other run on that
   box, because the word the box publishes in that window was not one the server would accept.
 
+- **A run that has only just opened is not counted as one nothing is working on, and a decision
+  answered in words keeps what was typed until the answer has gone.** A pipeline run exists for a
+  moment before its first job does, so for that moment it looks exactly like an abandoned one — no
+  job, nothing reporting — and the count said so, putting work that was starting normally under the
+  same heading as work nobody was doing. A run that has never reported now gets the same window
+  automatic recovery grades a silence by before it counts; a run that reported once and went quiet
+  is counted however young it is, because that silence is a fact about a process that existed. And
+  the free-text answer box used to empty itself the moment Send was pressed, before anything was
+  known about whether the answer had arrived: a refusal or a dropped request took the whole answer
+  with it and left a blank box and no message. What was typed now stays until the decision itself
+  is gone.
+
 - **A project can be given its own issue prefix, so its issues read `FD-977` rather than `ISS-977`.**
   Every project on a deployment numbered its issues under one shared `ISS-`, so `ISS-977` meant a
   different issue depending on which project you were standing in — and a reference pasted between
