@@ -3,6 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
 
+// cm:why the prefix reader is a collaborator with a query shape of its own, stubbed so this file stays a check of what the module under test does with the reference rather than of how the prefix is read (ISS-992)
+vi.mock('./issue-prefix-read.js', () => ({
+  activeIssuePrefix: async () => null,
+  heldIssuePrefixes: async () => [],
+}));
 vi.mock('../config/env.js', () => ({
   env: { JWT_SECRET: TEST_SECRET, NODE_ENV: 'test' },
 }));
@@ -13,8 +18,7 @@ const selectOrderBy = vi.fn(() => ({ limit: vi.fn(() => ({ offset: selectOffset 
 const selectWhere = vi.fn(() => ({
   limit: selectLimit,
   orderBy: selectOrderBy,
-  // The totalCount query awaits select().from().where() directly — make the
-  // chain object thenable so the 200-path tests (ISS-437) can run through it.
+  // cm:why The totalCount query awaits select().from().where() directly — make the chain object thenable so the 200-path tests (ISS-437) can run through it.
   then: (resolve: (v: unknown) => void) => resolve([{ n: 0 }]),
 }));
 // loadProjectAccess (lib/authz) runs select().from().leftJoin().leftJoin()

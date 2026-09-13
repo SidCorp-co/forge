@@ -16,6 +16,7 @@ import { AttachmentError, listIssueAttachments } from '../../issues/attachment-s
 import { createIssue, IssueCreateError } from '../../issues/create-service.js';
 import { loadIssueRelations } from '../../issues/dependency-read.js';
 import { isValidDetectorKey } from '../../issues/detector-key.js';
+import { activeIssuePrefix } from '../../issues/issue-prefix-read.js';
 import {
   LabelResolutionError,
   listIssueLabels,
@@ -35,6 +36,7 @@ import { applyIssueRelations, issueRelationInputSchema } from '../../issues/rela
 import { ReleaseNotesSchema } from '../../issues/release-notes.js';
 import { sessionContextExpectSchema, sessionContextSchema } from '../../issues/session-context.js';
 import { SessionContextExpectMismatch, updateIssueFields } from '../../issues/update-service.js';
+import { formatIssueRef } from '../../lib/issue-ref.js';
 import { markUntrusted, sanitizeUntrusted } from '../../prompt/sanitize.js';
 import {
   createTask as createTaskRow,
@@ -264,10 +266,10 @@ function sanitizeDeep(value: unknown): unknown {
 }
 
 // cm:guard ISS-532 — human/external free-text reaching an agent must be framed by `markUntrusted`, never merely char-stripped: `sanitizeUntrusted` neutralizes invisible/bidi smuggling but does NOT tell the model the span is data, so a field promoted from agent-authored to human-authored and left on char-strip becomes an injection surface. REST/web-v2 serialize separately, so the human UI never shows the framing.
-export function serialize(row: IssueRow): Record<string, unknown> {
+export function serialize(row: IssueRow, prefix: string | null): Record<string, unknown> {
   return {
     documentId: row.id,
-    issueId: `ISS-${row.issSeq}`,
+    issueId: formatIssueRef(prefix, row.issSeq),
     title: markUntrusted(row.title, { source: 'issue.title' }),
     // cm:guard ISS-898 — the description reaches the agent PROJECTED, not as raw markup. Under thin-init `prompt/user.ts` inlines only the title, so THIS is the path a description actually travels; handing over raw HTML would spend the caller's context on tag names and shrink what the 8,000-char cap can hold, which is the gap the projection exists to close.
     description:
@@ -312,10 +314,10 @@ export function serialize(row: IssueRow): Record<string, unknown> {
  * widen this back to `serialize()`.
  */
 
-function serializeListRow(row: IssueListRow): Record<string, unknown> {
+function serializeListRow(row: IssueListRow, prefix: string | null): Record<string, unknown> {
   return {
     documentId: row.id,
-    issueId: `ISS-${row.issSeq}`,
+    issueId: formatIssueRef(prefix, row.issSeq),
     // cm:why char-stripped and NOT framed, unlike `serialize` — a full DATA banner per title across many rows would defeat the token cap this projection exists for (ISS-428, ISS-532); invisible/bidi smuggling is still neutralized
     title: sanitizeUntrusted(row.title),
     status: row.status,
@@ -348,11 +350,12 @@ export async function loadIssue(documentId: string): Promise<IssueRow> {
  * NOT used by `list` (summary/browse) to avoid an attachment query per row.
  */
 export async function serializeWithAttachments(row: IssueRow): Promise<Record<string, unknown>> {
-  const [attachments, issueLabelsList] = await Promise.all([
+  const [attachments, issueLabelsList, prefix] = await Promise.all([
     listIssueAttachments(row.id),
     listIssueLabels(row.id),
+    activeIssuePrefix(row.projectId),
   ]);
-  return { ...serialize(row), attachments, labels: issueLabelsList };
+  return { ...serialize(row, prefix), attachments, labels: issueLabelsList };
 }
 
 /** Sum of char lengths across all non-null heavy fields for threshold gating. */
@@ -375,10 +378,10 @@ export function heavyFieldChars(row: IssueRow): number {
  * (still needed for orientation). releaseNotes is a small scalar and remains
  * inline.
  */
-export function serializeManifest(row: IssueRow): Record<string, unknown> {
+export function serializeManifest(row: IssueRow, prefix: string | null): Record<string, unknown> {
   return {
     documentId: row.id,
-    issueId: `ISS-${row.issSeq}`,
+    issueId: formatIssueRef(prefix, row.issSeq),
     title: markUntrusted(row.title, { source: 'issue.title' }),
     status: row.status,
     priority: row.priority,
@@ -406,11 +409,12 @@ export function serializeManifest(row: IssueRow): Record<string, unknown> {
 export async function serializeManifestWithAttachments(
   row: IssueRow,
 ): Promise<Record<string, unknown>> {
-  const [attachments, issueLabelsList] = await Promise.all([
+  const [attachments, issueLabelsList, prefix] = await Promise.all([
     listIssueAttachments(row.id),
     listIssueLabels(row.id),
+    activeIssuePrefix(row.projectId),
   ]);
-  return { ...serializeManifest(row), attachments, labels: issueLabelsList };
+  return { ...serializeManifest(row, prefix), attachments, labels: issueLabelsList };
 }
 
 function serializeTask(row: TaskRow): Record<string, unknown> {
@@ -598,11 +602,12 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           overfetch(issuesLimit),
         );
 
+        const listPrefix = await activeIssuePrefix(projectId);
         return buildListEnvelope({
           key: 'issues',
           limit: issuesLimit,
           hint: 'add status/priority/category/label filters',
-          items: rows.map((r) => serializeListRow(r)),
+          items: rows.map((r) => serializeListRow(r, listPrefix)),
         });
       }
 
@@ -612,7 +617,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         await assertPrincipalIsMember(principal, issue.projectId);
         if (input.fields && input.fields.length > 0) {
           // cm:guard project out of `serialize()`'s output and never out of the raw row — the DATA banners `markUntrusted` puts on `description` and `acceptanceCriteria` exist only on the framed copy, so a projection taken off the row hands the agent untrusted text with nothing marking it as untrusted
-          const full = serialize(issue);
+          const full = serialize(issue, await activeIssuePrefix(issue.projectId));
           const projected: Record<string, unknown> = {
             documentId: full.documentId,
             issueId: full.issueId,
@@ -662,7 +667,10 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           } as Record<string, unknown>;
         }
 
-        const out: Record<string, unknown> = serialize(result.issue as IssueRow);
+        const out: Record<string, unknown> = serialize(
+          result.issue as IssueRow,
+          await activeIssuePrefix(result.issue.projectId),
+        );
         out.labels = result.labelIds.length > 0 ? await listIssueLabels(result.issue.id) : [];
         if (result.relations.length > 0) out.relations = result.relations;
         if (result.attachments.length > 0 || result.attachmentErrors.length > 0) {

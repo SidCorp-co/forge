@@ -751,7 +751,8 @@ export function openBlockingRefs(
 		)
 		.map((e) => ({
 			id: e.fromIssueId,
-			displayId: e.fromDisplayId ?? `ISS-${e.fromIssueId.slice(0, 6)}`,
+			// cm:why The server names an issue or nothing does: a fallback built here from six characters of a uuid renders `ISS-a3f91c`, which reads as a reference and resolves to nothing.
+			displayId: e.fromDisplayId ?? `#${e.fromIssueId.slice(0, 6)}`,
 			title: e.fromTitle ?? null,
 			status: e.fromStatus ?? null,
 		}));

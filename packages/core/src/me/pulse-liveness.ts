@@ -1,6 +1,7 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, jobs, projects, runners } from '../db/schema.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { utcDayText } from '../lib/time-buckets.js';
 import { ageSeconds, fillHeartbeat } from './pulse-folds.js';
 import { idList } from './pulse-sql.js';
@@ -38,6 +39,7 @@ async function selectLiveJobs(
       runId: jobs.pipelineRunId,
       type: jobs.type,
       projectSlug: projects.slug,
+      issuePrefix: projects.issuePrefix,
       issSeq: issues.issSeq,
       issueDocId: issues.id,
       since: sql<string>`coalesce(${jobs.dispatchedAt}, ${jobs.queuedAt})`,
@@ -53,7 +55,7 @@ async function selectLiveJobs(
     runId: r.runId,
     type: r.type,
     projectSlug: r.projectSlug,
-    issueRef: r.issSeq == null ? null : `ISS-${r.issSeq}`,
+    issueRef: r.issSeq == null ? null : formatIssueRef(r.issuePrefix, r.issSeq),
     issueDocId: r.issueDocId ?? null,
     ageSeconds: ageSeconds(r.since, now) ?? 0,
   }));
@@ -81,7 +83,7 @@ async function selectStuckRuns(
   `)) as unknown as Array<{ n: number }>;
 
   const rows = (await db.execute(sql`
-    SELECT r.id AS run_id, p.slug AS project_slug, i.iss_seq, i.id AS issue_doc_id, r.started_at
+    SELECT r.id AS run_id, p.slug AS project_slug, p.issue_prefix, i.iss_seq, i.id AS issue_doc_id, r.started_at
     FROM pipeline_runs r
     JOIN projects p ON p.id = r.project_id
     LEFT JOIN issues i ON i.id = r.issue_id
@@ -95,6 +97,7 @@ async function selectStuckRuns(
   `)) as unknown as Array<{
     run_id: string;
     project_slug: string;
+    issue_prefix: string | null;
     iss_seq: number | null;
     issue_doc_id: string | null;
     started_at: string;
@@ -105,7 +108,7 @@ async function selectStuckRuns(
     shown: rows.map((r) => ({
       runId: r.run_id,
       projectSlug: r.project_slug,
-      issueRef: r.iss_seq == null ? null : `ISS-${r.iss_seq}`,
+      issueRef: r.iss_seq == null ? null : formatIssueRef(r.issue_prefix, r.iss_seq),
       issueDocId: r.issue_doc_id,
       ageSeconds: ageSeconds(r.started_at, now) ?? 0,
     })),

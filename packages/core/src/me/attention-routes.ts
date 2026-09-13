@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
   type AttentionAwaitingRow,
@@ -61,7 +62,7 @@ function issueItem(kind: AttentionKind, r: AttentionIssueRow): AttentionItem {
     title: r.title,
     link: issueLink(r.projectSlug, r.id),
     since: r.updatedAt.toISOString(),
-    issueRef: `ISS-${r.issSeq}`,
+    issueRef: formatIssueRef(r.issuePrefix, r.issSeq),
     status: r.status,
     projectSlug: r.projectSlug,
     projectName: r.projectName,
@@ -85,10 +86,10 @@ function awaitingItem(r: AttentionAwaitingRow): AttentionItem {
 function mentionItem(r: AttentionMentionRow): AttentionItem {
   return {
     kind: 'mention',
-    title: r.notificationTitle ?? `Mention in ISS-${r.issSeq}`,
+    title: r.notificationTitle ?? `Mention in ${formatIssueRef(r.issuePrefix, r.issSeq)}`,
     link: issueLink(r.projectSlug, r.issueDocId),
     since: r.mentionedAt.toISOString(),
-    issueRef: `ISS-${r.issSeq}`,
+    issueRef: formatIssueRef(r.issuePrefix, r.issSeq),
     projectSlug: r.projectSlug,
     projectName: r.projectName,
   };
@@ -104,7 +105,7 @@ function failedJobItem(r: AttentionFailedJobRow): AttentionItem {
     projectSlug: r.projectSlug,
     projectName: r.projectName,
   };
-  if (r.issSeq != null) item.issueRef = `ISS-${r.issSeq}`;
+  if (r.issSeq != null) item.issueRef = formatIssueRef(r.issuePrefix, r.issSeq);
   return item;
 }
 

@@ -29,9 +29,9 @@ import { buildListEnvelope, overfetch } from './list-envelope.js';
 const inputSchema = z
   .object({
     action: z.enum(['submit', 'list', 'review', 'get']),
+    // cm:guard optional in the SCHEMA and required by the `submit` arm — `list`, `get` and `review` legitimately resolve the caller's project, so making it required here would refuse three working calls to fix one (ISS-992)
     projectId: z.uuid().optional(),
-    // scope: 'project' (default, caller's resolved project) or 'all' (every
-    // project the principal can see) — applies to list and bulk review.
+    // cm:why scope: 'project' (default, caller's resolved project) or 'all' (every project the principal can see) — applies to list and bulk review.
     scope: z.enum(['project', 'all']).optional(),
     reportId: z.uuid().optional(),
     reviewed: z.boolean().optional(),
@@ -99,7 +99,9 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
     'Submit, list, get, or review agent friction reports. ' +
     'action=submit: report friction, skill gaps, unclear steps, or learnings mid-run. ' +
     'Pipeline context (issueId/runId/jobId/stage) is resolved server-side from your active job — do NOT supply it. ' +
-    'Required fields: kind, target, summary. Optional: severity (default low), targetRef, detail, suggestion. ' +
+    'Required fields: projectId, kind, target, summary. ' +
+    'projectId names the project the report is ABOUT, which need not be the one you are working in; it is REQUIRED and never inferred, because a report filed into the wrong feed is never read (`forge_projects action=list` prints it). ' +
+    'Optional: severity (default low), targetRef, detail, suggestion. ' +
     'Returns {ok:true,id,signalKey} on success; {ok:false,reason:"rate_limited"} when the per-job cap is hit (not a 500 — agent continues). ' +
     'action=list: read the friction feed. Supports filters.kind/target/severity/reviewed, limit (default 25, fleet default 50). ' +
     'scope="project" (default) reads the resolved project; scope="all" unions every project you own or are a member of and adds projectId/projectSlug to each row. ' +
@@ -118,7 +120,14 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
 
     switch (input.action) {
       case 'submit': {
-        const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
+        // cm:guard submit REFUSES an omitted projectId and never resolves the caller's current one — a read that looks at the wrong feed is visibly empty, a write into it is invisible, and the response named no project, so a defect about another project landed where nobody triaging it would look (ISS-992). `list`, `get` and `review` keep resolving, deliberately.
+        if (!input.projectId) {
+          throw new Error(
+            'BAD_REQUEST: projectId is required for submit — a report is filed against the project whose defect it describes, and the server will not guess which that is. ' +
+              'Pass the projectId of the project this report is ABOUT (not necessarily the one you are working in); `forge_projects action=list` prints it beside each slug.',
+          );
+        }
+        const projectId = input.projectId;
         await assertPrincipalIsMember(principal, projectId);
 
         if (!input.kind) throw new Error('BAD_REQUEST: kind is required for submit');

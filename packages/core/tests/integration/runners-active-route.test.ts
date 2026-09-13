@@ -12,13 +12,8 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-// GET /api/runners/active?projectId= — the live per-runner execution snapshot
-// powering the dashboard "Active runners" card + the Runners-screen "running
-// ISS-X" line. Exercises the real SQL against Postgres via an in-process
-// `app.request` (mirrors dependency-routes-e2e — no network server): a runner
-// with a dispatched job surfaces `current` (issue ref + stage); an idle runner
-// is null; a job under a TERMINAL pipeline_run (orphan) leaves its runner idle
-// rather than dropping it from the result (ISS-258 join-side filter).
+// cm:why the route is exercised as real SQL against Postgres through an in-process `app.request`, because every assertion here is about what the query returns and a mocked chain answers for none of it
+// cm:guard a job under a TERMINAL pipeline_run leaves its runner IDLE and never drops it from the result — the exclusion is join-side for exactly that reason (ISS-258)
 type Mods = {
   runnerRoutes: typeof import('../../src/runners/routes.js').runnerRoutes;
   signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
@@ -126,12 +121,18 @@ describe('GET /api/runners/active', () => {
     `);
   }
 
+  type ActiveRunner = {
+    runnerId: string;
+    current: { stage: string; issueRef: string | null; startedAt: string | null } | null;
+  };
+  type ActiveBody = { total: number; busy: number; runners: ActiveRunner[] };
+
   async function call(projectId: string, jwt: string) {
     const res = await app.request(
       `/api/runners/active?projectId=${encodeURIComponent(projectId)}`,
       { headers: { authorization: `Bearer ${jwt}` } },
     );
-    return { status: res.status, body: (await res.json().catch(() => null)) as any };
+    return { status: res.status, body: (await res.json().catch(() => null)) as ActiveBody };
   }
 
   it('reports a busy runner with its issue ref + stage, and an idle runner as null', async () => {
@@ -149,12 +150,34 @@ describe('GET /api/runners/active', () => {
     expect(body.total).toBe(2);
     expect(body.busy).toBe(1);
 
-    const busy = body.runners.find((r: any) => r.runnerId === busyRunner);
-    expect(busy.current).toMatchObject({ stage: 'code', issueRef: 'ISS-417' });
-    expect(busy.current.startedAt).toBeTruthy();
+    const busy = body.runners.find((r) => r.runnerId === busyRunner);
+    expect(busy?.current).toMatchObject({ stage: 'code', issueRef: 'ISS-417' });
+    expect(busy?.current?.startedAt).toBeTruthy();
 
-    const idle = body.runners.find((r: any) => r.runnerId === idleRunner);
-    expect(idle.current).toBeNull();
+    const idle = body.runners.find((r) => r.runnerId === idleRunner);
+    expect(idle?.current).toBeNull();
+  });
+
+  // cm:guard the route builds its reference in raw SQL, so the prefix must be JOINED in — this case is the only thing that catches a `projects` column selected with no `projects` in the FROM, which the unit suites cannot see at all (ISS-992)
+  it("names the issue with the project's own prefix", async () => {
+    const { user, project } = await seed();
+    const jwt = await mods.signUserToken(user.id);
+    await harness.db.execute(sql`
+      INSERT INTO issue_prefix_aliases (project_id, prefix) VALUES (${project.id}, 'FD')
+    `);
+    await harness.db.execute(sql`
+      UPDATE projects SET issue_prefix = 'FD' WHERE id = ${project.id}
+    `);
+
+    const runner = await insertRunner(project.id, 'prefixed-runner');
+    const issue = await insertIssue(project.id, 977);
+    const run = await insertRun(project.id, issue, 'running');
+    await insertJob(project.id, { issueId: issue, runnerId: runner, type: 'code', runId: run });
+
+    const { status, body } = await call(project.id, jwt);
+    expect(status).toBe(200);
+    const busy = body.runners.find((r) => r.runnerId === runner);
+    expect(busy?.current?.issueRef).toBe('FD-977');
   });
 
   it('counts a job under a PAUSED pipeline_run as busy (paused is non-terminal)', async () => {
@@ -170,7 +193,7 @@ describe('GET /api/runners/active', () => {
     const { status, body } = await call(project.id, jwt);
     expect(status).toBe(200);
     expect(body.busy).toBe(1);
-    expect(body.runners[0].current).toMatchObject({ stage: 'review', issueRef: 'ISS-88' });
+    expect(body.runners[0]?.current).toMatchObject({ stage: 'review', issueRef: 'ISS-88' });
   });
 
   it('treats a job under a terminal pipeline_run as idle (orphan filter, ISS-258)', async () => {
@@ -185,10 +208,9 @@ describe('GET /api/runners/active', () => {
 
     const { status, body } = await call(project.id, jwt);
     expect(status).toBe(200);
-    // Runner is still listed (not dropped), but idle — its only job is an orphan.
     expect(body.total).toBe(1);
     expect(body.busy).toBe(0);
-    expect(body.runners[0].current).toBeNull();
+    expect(body.runners[0]?.current).toBeNull();
   });
 
   it('403s a non-member', async () => {

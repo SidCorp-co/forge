@@ -12,6 +12,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeFakePrincipal } from '../fake-principal.fixture.js';
 
+// cm:why the prefix reader is a collaborator with a query shape of its own, stubbed so this file stays a check of what the module under test does with the reference rather than of how the prefix is read (ISS-992)
+vi.mock('../../issues/issue-prefix-read.js', () => ({
+  activeIssuePrefix: async () => null,
+  heldIssuePrefixes: async () => [],
+}));
 vi.mock('../../config/env.js', () => ({
   env: {
     JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef',

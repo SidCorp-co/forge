@@ -114,6 +114,35 @@
 
 ### Added
 
+- **A project can be given its own issue prefix, so its issues read `FD-977` rather than `ISS-977`.**
+  Every project on a deployment numbered its issues under one shared `ISS-`, so `ISS-977` meant a
+  different issue depending on which project you were standing in — and a reference pasted between
+  two of them resolved silently to the wrong one. A project can now hold a prefix of its own, set
+  in project settings, and every surface that names an issue follows it: the list, the issue page,
+  the pool a master claims from, the alarms, the chat threads. Nothing already written breaks. An
+  `ISS-977` in a commit message, a comment or a memory row still resolves, on a prefixed project
+  too; so does a prefix the project used to hold and has since changed away from, because a
+  reference somebody published is supposed to keep pointing where it pointed. **A prefix belongs to
+  one project for good.** It is never handed on — not when that project stops using it, not when
+  the project is deleted — since freeing a spent prefix would let a second project claim it and
+  quietly re-point every published `FD-977` at a different issue 977. Asking for one another
+  project holds is refused, naming the holder when you are someone who could already see that
+  project and saying only that it is taken when you are not. A reference under a prefix the project
+  has never held is refused by name rather than answered with this project's issue of that number.
+  Three of those rules are enforced by Postgres rather than by code remembering to check: the
+  pointer may only name an alias of the project's own, the stored shape is checked where a restore
+  and a `psql` session are held to it too, and the alias table refuses every delete and every
+  rename. ISS-992.
+
+- **`forge_feedback action=submit` no longer guesses which project a report is about.**
+  `projectId` was optional, and an omitted one fell back to the project the caller happened to be
+  working in. A defect an agent noticed about another project was filed into its own feed, with
+  nothing in the response naming where it had gone — a read that looks at the wrong feed is
+  visibly empty, but a write into one is invisible. `submit` now refuses an omitted `projectId`,
+  says so by name, and says where to get the id. `list`, `get` and `review` keep resolving the
+  caller's project deliberately, because being shown the wrong feed is a mistake you can see.
+  ISS-992.
+
 - **An issue's comments and a chat thread are now the same conversation.**
   Talking to a run meant being in Forge. A comment on a `needs_info` issue is already how a person
   answers a working agent — the reply reaches the parked session and wakes it — but the only way to

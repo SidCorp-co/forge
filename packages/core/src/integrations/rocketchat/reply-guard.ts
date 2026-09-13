@@ -11,7 +11,17 @@
 // cm:ignore CM013 — every frozen comment in this file is an `i18n-allow` pragma carrying the Vietnamese phrasing its regex matches; deleting one to pay the drain reds the language gate instead, so this file's debt cannot be paid the ordinary way.
 
 import { scrubLogText } from '@forge/observability';
+import { formatIssueRef, LEGACY_ISSUE_PREFIX } from '../../lib/issue-ref.js';
 import { OPTION_LINE_RE } from './question-render.js';
+
+/** The reference tokens this project answers to, as a regex. */
+// cm:guard the project's OWN prefixes are passed in, never assumed: a reply citing `FD-977` on a project whose prefix is `FD` would match nothing here and sail past the did-you-verify-it rule, which is the one thing this guard exists to catch (ISS-992). The module stays db-free, so they arrive as data.
+function issueTokenRe(prefixes: readonly string[]): RegExp {
+  const alts = [LEGACY_ISSUE_PREFIX, ...prefixes]
+    .map((p) => p.toUpperCase().replace(/[^A-Z0-9]/g, ''))
+    .filter((p) => p.length > 0);
+  return new RegExp(`\\b(${[...new Set(alts)].join('|')})-(\\d{1,6})\\b`, 'gi');
+}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -25,7 +35,7 @@ export interface IssueClaims {
 const CREATION_CLAIM_RE =
   /(đã|vừa)\s+tạo\s+(một\s+)?(issue|task)|created\s+(a\s+|an\s+|the\s+|new\s+)*(issue|task)/i; // i18n-allow: matches the Vietnamese phrasing of the claim being policed
 
-export function extractIssueClaims(reply: string): IssueClaims {
+export function extractIssueClaims(reply: string, prefixes: readonly string[] = []): IssueClaims {
   const urlIds: string[] = [];
   const malformedUrlIds: string[] = [];
   for (const m of reply.matchAll(/\/projects\/[^\s/]+\/issues\/([A-Za-z0-9-]+)/g)) {
@@ -37,8 +47,8 @@ export function extractIssueClaims(reply: string): IssueClaims {
     }
   }
   const issSeqs: number[] = [];
-  for (const m of reply.matchAll(/\bISS-(\d{1,6})\b/g)) {
-    const seq = Number(m[1]);
+  for (const m of reply.matchAll(issueTokenRe(prefixes))) {
+    const seq = Number(m[2]);
     if (!issSeqs.includes(seq)) issSeqs.push(seq);
   }
   return {
@@ -59,6 +69,7 @@ export function judgeIssueClaims(
   claims: IssueClaims,
   known: { ids: ReadonlySet<string>; seqs: ReadonlySet<number> },
   toolCalls: Array<{ name: string; arguments: string }>,
+  prefix: string | null = null,
 ): { ok: boolean; problems: string[] } {
   const problems: string[] = [];
   for (const id of claims.malformedUrlIds) {
@@ -68,7 +79,9 @@ export function judgeIssueClaims(
     if (!known.ids.has(id)) problems.push(`issue link id "${id}" does not exist in this project`);
   }
   for (const seq of claims.issSeqs) {
-    if (!known.seqs.has(seq)) problems.push(`ISS-${seq} does not exist in this project`);
+    if (!known.seqs.has(seq)) {
+      problems.push(`${formatIssueRef(prefix, seq)} does not exist in this project`);
+    }
   }
   if (
     claims.claimsCreation &&
@@ -93,11 +106,16 @@ const PATH_LINE_RE = /(?:^|\s)[\w./-]*[\w-]\.[a-z]{1,5}:\d+\b/i;
 // cm:guard keep this to unambiguous Forge jargon — common dictionary words (open/testing/closed/approved/waiting/draft/released) are excluded deliberately, because matching them retry-loops on legitimate prose
 const STATUS_ENUM_RE = /\b(needs_info|in_progress|on_hold|clarified|reopen|developed)\b/i;
 
-const ISS_ID_RE = /\bISS-(\d{1,6})\b/g;
-
 export function lintStakeholderReply(
   reply: string,
-  opts: { verifiedSeqs: ReadonlySet<number>; skipIssueIdRule?: boolean },
+  opts: {
+    verifiedSeqs: ReadonlySet<number>;
+    skipIssueIdRule?: boolean;
+    /** The project's active prefix, for naming a citation back to its author. */
+    prefix?: string | null;
+    /** Every prefix the project holds, so a citation under a retired one is still checked. */
+    prefixes?: readonly string[];
+  },
 ): ProductLintResult {
   const problems: string[] = [];
   if (CODE_FENCE_RE.test(reply)) {
@@ -118,11 +136,11 @@ export function lintStakeholderReply(
     );
   }
   if (!opts.skipIssueIdRule) {
-    for (const m of reply.matchAll(ISS_ID_RE)) {
-      const seq = Number(m[1]);
+    for (const m of reply.matchAll(issueTokenRe(opts.prefixes ?? []))) {
+      const seq = Number(m[2]);
       if (!opts.verifiedSeqs.has(seq)) {
         problems.push(
-          `reply cites "ISS-${seq}" which was not verified this turn — rephrase for a non-technical stakeholder: no code, file paths, status codes, or issue ids`,
+          `reply cites "${formatIssueRef(opts.prefix ?? null, seq)}" which was not verified this turn — rephrase for a non-technical stakeholder: no code, file paths, status codes, or issue ids`,
         );
       }
     }
@@ -153,7 +171,7 @@ export interface ProgressFacts {
 }
 
 const UUID_TOKEN_RE = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
-const ISS_TOKEN_RE = /\bISS-\d{1,6}\b/gi;
+const ISS_TOKEN_RE = /\b[A-Z][A-Z0-9]{1,5}-\d{1,6}\b/gi;
 const ISO_DATE_RE =
   /\b\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?\b/g;
 

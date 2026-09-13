@@ -11,6 +11,8 @@
  */
 
 import { db } from '../../db/client.js';
+import { activeIssuePrefix, heldIssuePrefixes } from '../../issues/issue-prefix-read.js';
+import { formatIssueRef } from '../../lib/issue-ref.js';
 import { forgeCommentsTool } from '../../mcp/tools/forge-comments.js';
 import { forgeIssuesTool } from '../../mcp/tools/forge-issues.js';
 import { forgeKnowledgeTool } from '../../mcp/tools/forge-knowledge.js';
@@ -45,7 +47,12 @@ async function guardIssueWritesDeduped(
   const rejection = guardIssueWrites(args);
   if (rejection) return rejection;
   if (ctx?.projectId) {
-    const unknownRef = await resolveIssueDisplayId(db, ctx.projectId, args);
+    const unknownRef = await resolveIssueDisplayId(
+      db,
+      ctx.projectId,
+      args,
+      await heldIssuePrefixes(ctx.projectId),
+    );
     if (unknownRef) return unknownRef;
   }
   if (args.action === 'create' && ctx?.projectId) {
@@ -61,7 +68,8 @@ async function guardIssueWritesDeduped(
       description,
     });
     if (duplicate && !overridden) {
-      return `a near-duplicate issue already exists (ISS-${duplicate.issSeq}: "${duplicate.title}", status draft/open) — comment on it via forge_comments instead of creating a new one. The check is word overlap, not meaning: when this is genuinely a different issue (two screens, two releases, two customers), re-send the same create with \`data.${DEDUP_OVERRIDE_KEY}: true\`.`;
+      const ref = formatIssueRef(await activeIssuePrefix(ctx.projectId), duplicate.issSeq);
+      return `a near-duplicate issue already exists (${ref}: "${duplicate.title}", status draft/open) — comment on it via forge_comments instead of creating a new one. The check is word overlap, not meaning: when this is genuinely a different issue (two screens, two releases, two customers), re-send the same create with \`data.${DEDUP_OVERRIDE_KEY}: true\`.`;
     }
   }
   return null;

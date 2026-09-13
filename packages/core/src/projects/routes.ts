@@ -39,6 +39,7 @@ import {
 import { updatePipelineConfig } from '../pipeline/pipeline-config-service.js';
 import { pluginDesignationsPatchSchema } from '../plugins/designation.js';
 import { readAgentConfig } from './agent-config.js';
+import { applyIssuePrefixPatch } from './issue-prefix-patch.js';
 import { projectOnboardRoutes } from './onboard-routes.js';
 import { pipelineConfigHttpError } from './pipeline-config-http.js';
 
@@ -56,11 +57,9 @@ export const createProjectSchema = z.object({
     .max(64),
   name: z.string().trim().min(1).max(200),
   description: z.string().trim().max(2000).nullable().optional(),
-  // ISS-387 — project kind. `standard` (default) = code repo project;
-  // `website` = an Epodsystem storefront project (git repo optional).
+  // cm:why ISS-387 — project kind. `standard` (default) = code repo project; `website` = an Epodsystem storefront project (git repo optional).
   kind: z.enum(projectKinds).optional(),
-  // Org tier — every project belongs to exactly one org. Omitted = the
-  // caller's personal org. Any org role (incl. member) may create projects.
+  // cm:guard omitted means the caller's PERSONAL org and never "no org" — every project belongs to exactly one, and any org role including plain member may create one here
   orgId: z.uuid().optional(),
 });
 
@@ -104,6 +103,8 @@ export const updateProjectSchema = z
     workspaceSetup: z.string().trim().max(8000).nullable().optional(),
     baseBranch: z.string().trim().max(100).nullable().optional(),
     productionBranch: z.string().trim().max(100).nullable().optional(),
+    // cm:guard ISS-992 — the shape is checked in the handler, not here, because three of the four refusals need the database (the reserved name, the prefix another project holds, and whether the caller may be told which one). A zod regex here would answer the first and let the other three reach Postgres as a 500 on an ordinary conflict.
+    issuePrefix: z.string().trim().max(16).nullable().optional(),
     defaultDeviceId: z.uuid().nullable().optional(),
     agentConfig: z.record(z.string(), z.unknown()).nullable().optional(),
     // ISS-609 follow-up — scoped write for `agentConfig.personaStyle` (the
@@ -128,6 +129,27 @@ export type UpdateProjectInput = z.infer<typeof updateProjectSchema>;
 const idParamSchema = z.object({
   id: z.uuid(),
 });
+
+const PATCHED_PROJECT = {
+  id: projects.id,
+  slug: projects.slug,
+  name: projects.name,
+  orgId: projects.orgId,
+  createdBy: projects.createdBy,
+  description: projects.description,
+  kind: projects.kind,
+  repoPath: projects.repoPath,
+  repoUrl: projects.repoUrl,
+  workspaceSetup: projects.workspaceSetup,
+  baseBranch: projects.baseBranch,
+  productionBranch: projects.productionBranch,
+  defaultDeviceId: projects.defaultDeviceId,
+  agentConfig: projects.agentConfig,
+  previewDeploy: projects.previewDeploy,
+  webhookSecret: projects.webhookSecret,
+  issuePrefix: projects.issuePrefix,
+  createdAt: projects.createdAt,
+};
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, {
@@ -217,6 +239,7 @@ projectRoutes.get('/', async (c) => {
       memberRole: projectMembers.role,
       orgRole: organizationMembers.role,
       apiKey: projects.apiKey,
+      issuePrefix: projects.issuePrefix,
       archivedAt: projects.archivedAt,
       createdAt: projects.createdAt,
     })
@@ -249,8 +272,7 @@ projectRoutes.get('/', async (c) => {
       const role = maxProjectRole(memberRole ?? null, orgDerivedProjectRole(orgRole ?? null));
       return {
         ...row,
-        // Viewer is read-only: the apiKey can pair MCP devices / install the
-        // widget (execution-grade), so it is withheld from the viewer tier.
+        // cm:guard the apiKey is execution-grade — it pairs MCP devices and installs the widget — so the viewer tier, which is read-only, never receives it
         apiKey: role === 'viewer' ? null : apiKey,
         role,
         orgRole: orgRole ?? null,
@@ -289,6 +311,7 @@ projectRoutes.get(
         previewDeploy: projects.previewDeploy,
         webhookSecret: projects.webhookSecret,
         apiKey: projects.apiKey,
+        issuePrefix: projects.issuePrefix,
         archivedAt: projects.archivedAt,
         createdAt: projects.createdAt,
       })
@@ -471,24 +494,16 @@ projectRoutes.patch(
     if (patch.previewDeploy !== undefined) updates.previewDeploy = patch.previewDeploy;
     if (patch.webhookSecret !== undefined) updates.webhookSecret = patch.webhookSecret;
 
-    const [updated] = await db.update(projects).set(updates).where(eq(projects.id, id)).returning({
-      id: projects.id,
-      slug: projects.slug,
-      name: projects.name,
-      orgId: projects.orgId,
-      createdBy: projects.createdBy,
-      description: projects.description,
-      kind: projects.kind,
-      repoPath: projects.repoPath,
-      repoUrl: projects.repoUrl,
-      workspaceSetup: projects.workspaceSetup,
-      baseBranch: projects.baseBranch,
-      productionBranch: projects.productionBranch,
-      defaultDeviceId: projects.defaultDeviceId,
-      agentConfig: projects.agentConfig,
-      previewDeploy: projects.previewDeploy,
-      webhookSecret: projects.webhookSecret,
-      createdAt: projects.createdAt,
+    // cm:guard the prefix moves in the SAME transaction as the rest of the patch — it is written through a second table and its own savepoint, so applying it outside this block would leave a project renamed by a request that then failed on a sibling field and answered the caller with an error (codex review of ISS-992)
+    const [updated] = await db.transaction(async (tx) => {
+      if (patch.issuePrefix !== undefined) {
+        await applyIssuePrefixPatch(id, patch.issuePrefix, userId, tx);
+      }
+      // cm:guard a patch naming ONLY `issuePrefix` leaves `updates` empty, and drizzle refuses `set({})` — the row is read back instead, because the write it asked for has already happened above
+      if (Object.keys(updates).length === 0) {
+        return tx.select(PATCHED_PROJECT).from(projects).where(eq(projects.id, id)).limit(1);
+      }
+      return tx.update(projects).set(updates).where(eq(projects.id, id)).returning(PATCHED_PROJECT);
     });
     if (!updated) throw notFound();
 

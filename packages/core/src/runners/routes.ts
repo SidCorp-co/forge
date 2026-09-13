@@ -14,6 +14,7 @@ import {
   runnerTypes,
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -55,6 +56,7 @@ function rowToRunner(r: typeof runners.$inferSelect): Runner {
 }
 
 function publicRunner(r: Runner): Omit<Runner, 'config'> & { config: Record<string, unknown> } {
+  // cm:guard every secret in `config` is masked HERE, on the one projection that reaches the wire — a field added to the runner config and not masked here ships the credential to any project member
   const config = { ...r.config };
   if ('apiKey' in config) config.apiKey = '***';
   if ('callbackSecret' in config) config.callbackSecret = '***';
@@ -117,8 +119,7 @@ runnerRoutes.get(
       if (!access.role) throw forbidden('not a project member');
       filters.push(eq(runners.projectId, q.projectId));
     } else {
-      // No projectId filter — return runners across the user's projects only.
-      // For simplicity in v1, require explicit projectId. Without it, return [].
+      // cm:guard a caller with no `projectId` gets an EMPTY list and never a cross-project one — this route is project-scoped and the authz above resolves one project, so widening it here would return runners the caller was never checked against
       return c.json({ runners: [] });
     }
     if (q.type) filters.push(eq(runners.type, q.type as RunnerType));
@@ -158,6 +159,7 @@ runnerRoutes.get(
       dispatched_at: string | null;
       issue_id: string | null;
       iss_seq: number | null;
+      issue_prefix: string | null;
       issue_title: string | null;
     }>(sql`
       SELECT
@@ -170,6 +172,7 @@ runnerRoutes.get(
         j.dispatched_at AS dispatched_at,
         i.id          AS issue_id,
         i.iss_seq     AS iss_seq,
+        rp.issue_prefix AS issue_prefix,
         i.title       AS issue_title
       FROM runners r
       -- Orphan exclusion (ISS-258) lives in the JOIN, not a WHERE clause, so a
@@ -180,6 +183,7 @@ runnerRoutes.get(
        AND j.status IN ('dispatched','running')
       LEFT JOIN pipeline_runs pr ON pr.id = j.pipeline_run_id
       LEFT JOIN issues i ON i.id = j.issue_id
+      LEFT JOIN projects rp ON rp.id = i.project_id
       WHERE r.project_id = ${projectId}
         AND (j.id IS NULL OR pr.id IS NULL OR pr.status IN ('running','paused'))
       ORDER BY r.name ASC, j.dispatched_at ASC NULLS LAST
@@ -203,7 +207,7 @@ runnerRoutes.get(
             stage: row.job_type,
             startedAt: row.dispatched_at,
             issueId: row.issue_id,
-            issueRef: row.iss_seq != null ? `ISS-${row.iss_seq}` : null,
+            issueRef: row.iss_seq != null ? formatIssueRef(row.issue_prefix, row.iss_seq) : null,
             issueTitle: row.issue_title,
           }
         : null,

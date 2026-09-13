@@ -3,6 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
 
+// cm:why the prefix reader is a collaborator with a query shape of its own, stubbed so this file stays a check of what the module under test does with the reference rather than of how the prefix is read (ISS-992)
+vi.mock('./issue-prefix-read.js', () => ({
+  activeIssuePrefix: async () => null,
+  heldIssuePrefixes: async () => [],
+}));
 vi.mock('../config/env.js', () => ({
   env: { JWT_SECRET: TEST_SECRET, NODE_ENV: 'test' },
 }));
@@ -20,9 +25,7 @@ const selectWhere = vi.fn(() => {
 });
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
 
-// `db.update(table).set(values).where(cond)` is awaited directly by the
-// plain-field path, OR chains `.returning({...})` for the status path. The
-// where step is therefore both a thenable AND has a `.returning` method.
+// cm:why `db.update(table).set(values).where(cond)` is awaited directly by the plain-field path, OR chains `.returning({...})` for the status path. The where step is therefore both a thenable AND has a `.returning` method.
 const updateReturning = vi.fn();
 const updateWhere = vi.fn(() => {
   const thenable: PromiseLike<unknown> & { returning: typeof updateReturning } = {

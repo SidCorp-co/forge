@@ -7,6 +7,7 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { ADMITTED_RUNNER } from './pool-admission.js';
 
 export type PoolRelation = {
@@ -38,13 +39,14 @@ const RELATIONS = sql`
   COALESCE((
     SELECT json_agg(json_build_object(
       'kind', d.kind,
-      'dependsOnKey', 'ISS-' || p.iss_seq,
+      'dependsOnKey', coalesce(pp.issue_prefix, 'ISS') || '-' || p.iss_seq,
       'blockerStatus', p.status,
       'blockerMergedAt', p.merged_at,
       'edgeValidUntil', d.valid_until
     ))
     FROM issue_dependencies d
     JOIN issues p ON p.id = d.from_issue_id
+    JOIN projects pp ON pp.id = p.project_id
     WHERE d.to_issue_id = j.issue_id
   ), '[]'::json) AS relations
 `;
@@ -68,11 +70,13 @@ export async function readPool(args: {
     SELECT j.id, j.type, j.issue_id, j.attempts, j.held_by,
            EXTRACT(EPOCH FROM (now() - j.queued_at)) / 60 AS age_minutes,
            i.iss_seq, i.title, i.description, i.priority, i.category, i.status,
+           ipj.issue_prefix,
            ${RELATIONS}
     FROM jobs j
     JOIN pipeline_runs pr ON pr.id = j.pipeline_run_id
     JOIN runners r ON r.project_id = j.project_id AND r.device_id = ${args.deviceId}
     LEFT JOIN issues i ON i.id = j.issue_id
+    JOIN projects ipj ON ipj.id = j.project_id
     WHERE j.status = 'queued'
       AND ${ADMITTED_RUNNER}
       AND pr.status IN ('running', 'paused')
@@ -85,7 +89,7 @@ export async function readPool(args: {
           AND other.status IN ('dispatched','running','held')
       )
       ${projectFilter}
-    GROUP BY j.id, i.iss_seq, i.title, i.description, i.priority, i.category, i.status
+    GROUP BY j.id, i.iss_seq, i.title, i.description, i.priority, i.category, i.status, ipj.issue_prefix
     ORDER BY j.queued_at ASC
     LIMIT ${args.limit}
   `)) as unknown as Array<Record<string, unknown>>;
@@ -94,7 +98,10 @@ export async function readPool(args: {
     jobId: String(row.id),
     type: String(row.type),
     issueId: (row.issue_id as string | null) ?? null,
-    issueKey: row.iss_seq == null ? null : `ISS-${row.iss_seq}`,
+    issueKey:
+      row.iss_seq == null
+        ? null
+        : formatIssueRef(row.issue_prefix as string | null, Number(row.iss_seq)),
     title: (row.title as string | null) ?? null,
     description: (row.description as string | null) ?? null,
     priority: (row.priority as string | null) ?? null,

@@ -15,17 +15,20 @@ import { useToast } from "@/providers/toast-provider";
 interface CascadeDependent {
 	issueId: string;
 	issSeq: number;
+	displayId: string;
 }
 
 interface UnblockCascadePayload {
 	blockerId: string;
 	blockerIssSeq: number | null;
+	/** Named by the server: only it knows the project's issue prefix (ISS-992). */
+	blockerDisplayId: string | null;
 	dependents: CascadeDependent[];
 	overflow: number;
 }
 
 export function describeCascade(d: UnblockCascadePayload): string {
-	const names = d.dependents.map((x) => `ISS-${x.issSeq}`);
+	const names = d.dependents.map((x) => x.displayId);
 	const shown = names.join(", ");
 	return d.overflow > 0 ? `${shown} +${d.overflow} more` : shown;
 }
@@ -43,7 +46,7 @@ export function useUnblockCascadeToasts(): void {
 			if (env.event !== "issue.unblockCascade") return;
 			const d = env.data as UnblockCascadePayload;
 			if (!d || !Array.isArray(d.dependents) || d.dependents.length === 0) return;
-			const blocker = d.blockerIssSeq ? `ISS-${d.blockerIssSeq}` : "A blocker";
+			const blocker = d.blockerDisplayId ?? "A blocker";
 			toast({
 				title: `${blocker} released ${d.dependents.length} issue${d.dependents.length === 1 ? "" : "s"}`,
 				description: describeCascade(d),

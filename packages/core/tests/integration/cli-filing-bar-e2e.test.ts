@@ -129,7 +129,14 @@ async function sendToTool(data: Record<string, unknown>) {
 describe('a body missing a section its kind requires', () => {
   it('is refused at the CLI door, naming the section', async () => {
     const out = await fileIssueThroughCli(
-      { projectId, title: TITLE, body: MISSING_SECTION, category: 'feature' },
+      {
+        projectId,
+        prefixes: [],
+        activePrefix: null,
+        title: TITLE,
+        body: MISSING_SECTION,
+        category: 'feature',
+      },
       writer(),
     );
     expect(out.filed).toBe(false);
@@ -139,7 +146,14 @@ describe('a body missing a section its kind requires', () => {
 
   it('leaves no row behind when the CLI door refuses it', async () => {
     await fileIssueThroughCli(
-      { projectId, title: TITLE, body: MISSING_SECTION, category: 'feature' },
+      {
+        projectId,
+        prefixes: [],
+        activePrefix: null,
+        title: TITLE,
+        body: MISSING_SECTION,
+        category: 'feature',
+      },
       writer(),
     );
     expect(await rowsTitled(TITLE)).toHaveLength(0);
@@ -176,14 +190,20 @@ describe('a body missing a section its kind requires', () => {
 
 describe('a filing naming no category', () => {
   it('is refused at the CLI door, naming the four kinds', async () => {
-    const out = await fileIssueThroughCli({ projectId, title: TITLE, body: WHOLE }, writer());
+    const out = await fileIssueThroughCli(
+      { projectId, prefixes: [], activePrefix: null, title: TITLE, body: WHOLE },
+      writer(),
+    );
     expect(out.filed).toBe(false);
     expect(out.filed === false && out.because).toBe('category');
     expect(out.filed === false && out.refusal).toContain('bug, enhancement, feature, review');
   });
 
   it('leaves no row behind when the CLI door refuses it', async () => {
-    await fileIssueThroughCli({ projectId, title: TITLE, body: WHOLE }, writer());
+    await fileIssueThroughCli(
+      { projectId, prefixes: [], activePrefix: null, title: TITLE, body: WHOLE },
+      writer(),
+    );
     expect(await rowsTitled(TITLE)).toHaveLength(0);
   });
 
@@ -216,7 +236,14 @@ describe('a filing naming no category', () => {
 describe('a whole body naming its kind', () => {
   it('is filed by the CLI door', async () => {
     const out = await fileIssueThroughCli(
-      { projectId, title: TITLE, body: WHOLE, category: 'feature' },
+      {
+        projectId,
+        prefixes: [],
+        activePrefix: null,
+        title: TITLE,
+        body: WHOLE,
+        category: 'feature',
+      },
       writer(),
     );
     expect(out.filed).toBe(true);
@@ -224,7 +251,14 @@ describe('a whole body naming its kind', () => {
 
   it('leaves exactly one row behind it, carrying the category it named', async () => {
     await fileIssueThroughCli(
-      { projectId, title: TITLE, body: WHOLE, category: 'feature' },
+      {
+        projectId,
+        prefixes: [],
+        activePrefix: null,
+        title: TITLE,
+        body: WHOLE,
+        category: 'feature',
+      },
       writer(),
     );
     const rows = await rowsTitled(TITLE);

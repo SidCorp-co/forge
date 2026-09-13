@@ -12,6 +12,7 @@ import {
   waitingKinds,
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -21,6 +22,7 @@ import {
   transitionIssueStatus,
 } from './apply-transition.js';
 import type { UnblockedDependent } from './drop-cascade.js';
+import { activeIssuePrefix } from './issue-prefix-read.js';
 
 const transitionBodySchema = z
   .object({
@@ -95,22 +97,35 @@ export async function triggerTerminalDispatch(
   if (terminal.length === 0) return;
   const parentProjectIds = new Set(terminal.map((t) => t.projectId));
 
-  const childTargets = new Map<string, string>(); // childProjectId -> blockerIssueId
+  const childTargets = new Map<string, string>();
   try {
-    const byBlocker = new Map<string, Array<{ issueId: string; issSeq: number }>>();
+    const byBlocker = new Map<
+      string,
+      Array<{ issueId: string; issSeq: number; displayId: string }>
+    >();
     const noteChild = (depProjectId: string | null, blockerId: string) => {
       if (depProjectId && !parentProjectIds.has(depProjectId) && !childTargets.has(depProjectId)) {
         childTargets.set(depProjectId, blockerId);
       }
     };
 
+    const pending: Array<{
+      blockerId: string;
+      issueId: string;
+      issSeq: number;
+      projectId: string | null;
+    }> = [];
+
     for (const t of terminal) {
       if (!t.dependents) continue;
       for (const d of t.dependents) {
         noteChild(d.projectId, t.issueId);
-        const list = byBlocker.get(t.issueId) ?? [];
-        list.push({ issueId: d.issueId, issSeq: d.issSeq });
-        byBlocker.set(t.issueId, list);
+        pending.push({
+          blockerId: t.issueId,
+          issueId: d.issueId,
+          issSeq: d.issSeq,
+          projectId: d.projectId,
+        });
       }
     }
 
@@ -137,9 +152,34 @@ export async function triggerTerminalDispatch(
 
     for (const row of dependents) {
       noteChild(row.depProjectId, row.fromIssueId);
-      const list = byBlocker.get(row.fromIssueId) ?? [];
-      list.push({ issueId: row.toIssueId, issSeq: row.toIssSeq });
-      byBlocker.set(row.fromIssueId, list);
+      pending.push({
+        blockerId: row.fromIssueId,
+        issueId: row.toIssueId,
+        issSeq: row.toIssSeq,
+        projectId: row.depProjectId,
+      });
+    }
+
+    // cm:guard a dependent may sit in ANOTHER project, so a reference is named with ITS project's prefix and not the blocker's — naming a cross-project dependent under this project's prefix is the substitution ISS-992 exists to remove, not one to add on the way out
+    const prefixOf = new Map<string, string | null>(
+      await Promise.all(
+        [...new Set([...terminal.map((t) => t.projectId), ...pending.map((p) => p.projectId)])]
+          .filter((id): id is string => typeof id === 'string')
+          .map(async (id): Promise<[string, string | null]> => [id, await activeIssuePrefix(id)]),
+      ),
+    );
+
+    for (const d of pending) {
+      const list = byBlocker.get(d.blockerId) ?? [];
+      list.push({
+        issueId: d.issueId,
+        issSeq: d.issSeq,
+        displayId: formatIssueRef(
+          d.projectId ? (prefixOf.get(d.projectId) ?? null) : null,
+          d.issSeq,
+        ),
+      });
+      byBlocker.set(d.blockerId, list);
     }
 
     for (const t of terminal) {
@@ -150,6 +190,9 @@ export async function triggerTerminalDispatch(
         data: {
           blockerId: t.issueId,
           blockerIssSeq: t.issSeq ?? null,
+          // cm:guard the SERVER names the blocker — web-v2 has no `@forge/core` dependency and cannot know the project's issue prefix, so a browser rebuilding `ISS-${issSeq}` renders the wrong name on every prefixed project (ISS-992)
+          blockerDisplayId:
+            t.issSeq == null ? null : formatIssueRef(prefixOf.get(t.projectId) ?? null, t.issSeq),
           dependents: list.slice(0, UNBLOCK_CASCADE_DEPENDENT_CAP),
           overflow: Math.max(0, list.length - UNBLOCK_CASCADE_DEPENDENT_CAP),
           at: (t.at ?? new Date()).toISOString(),

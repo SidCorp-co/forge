@@ -218,7 +218,7 @@ export function PropertiesRail({
         </Row>
       )}
       <Row label="Branch">
-        <MonoTag>{`ISS-${issue.issSeq}`}</MonoTag>
+        <MonoTag>{issue.displayId}</MonoTag>
       </Row>
       <Row label="Merged">
         <div className="flex items-center justify-end gap-2">
@@ -227,7 +227,7 @@ export function PropertiesRail({
             <MergeMarkerControl
               issueId={issue.id}
               mergedAt={issue.mergedAt}
-              suggestedTarget={`ISS-${issue.issSeq}`}
+              suggestedTarget={issue.displayId}
             />
           )}
         </div>

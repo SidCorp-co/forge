@@ -8,6 +8,8 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, pipelineRuns, schedules } from '../db/schema.js';
+import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { readProjectBranches } from '../projects/service.js';
 import { nextRunFor } from '../schedules/cron.js';
 import { resolveReleaseChannel } from './channel.js';
@@ -94,6 +96,7 @@ export async function loadReleaseRoster(projectId: string): Promise<ReleaseRoste
     .orderBy(sql`${issues.mergedAt} ASC NULLS LAST`);
 
   const now = Date.now();
+  const prefix = await activeIssuePrefix(projectId);
   return {
     gateStatus,
     channel: channel.provider,
@@ -102,7 +105,7 @@ export async function loadReleaseRoster(projectId: string): Promise<ReleaseRoste
     nextCutAt,
     issues: rows.map((r) => ({
       id: r.id,
-      displayId: r.issSeq != null ? `ISS-${r.issSeq}` : r.id,
+      displayId: r.issSeq != null ? formatIssueRef(prefix, r.issSeq) : r.id,
       title: r.title ?? '(untitled)',
       mergedAt: r.mergedAt ? r.mergedAt.toISOString() : null,
       waitingDays: r.mergedAt

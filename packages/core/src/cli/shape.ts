@@ -8,6 +8,7 @@
  * door asked.
  */
 
+import { LEGACY_ISSUE_PREFIX } from '../lib/issue-ref.js';
 import {
   article,
   type CliKind,
@@ -133,23 +134,45 @@ export function twoChangesIn(body: string): { sentence: string; named: [string, 
   return null;
 }
 
-const ISSUE_KEY = /\bISS-\d+\b/giu;
+// cm:guard the project's OWN prefixes are threaded in rather than the pattern widened to any
+// `AAA-1` shape: a bare `[A-Z]+-\d+` catches `UTF-8`, `RFC-2119` and `COVID-19` in an ordinary
+// filing body, and this arm REFUSES a filing, so a false positive costs a real caller their write
+// (ISS-992). No prefixes given means the legacy one alone, which is what every project had.
+const issueKeyRe = (prefixes: readonly string[]): RegExp =>
+  new RegExp(`\\b(?:${keyAlternates(prefixes)})-\\d+\\b`, 'giu');
+
+function keyAlternates(prefixes: readonly string[]): string {
+  const alts = [LEGACY_ISSUE_PREFIX, ...prefixes]
+    .map((p) => p.toUpperCase().replace(/[^A-Z0-9]/g, ''))
+    .filter((p) => p.length > 0);
+  return [...new Set(alts)].join('|');
+}
 const PARTS_PHRASE = /\b(?:parts?|children|sub-?issues?|split into|consists of|made up of)\b/giu;
 const BARE_PART = /^parts?$/iu;
 const LABEL = /\([^()]*\)/gu;
 // cm:guard forward only, a bare "part" through a connective or not at all, and a label only between a key and its separator: without those three the arm catches "ISS-a and ISS-b split into the halves", "a guide part ISS-a (the lesson) and ISS-b", and a citation inside a label read as a part
-const GOVERNED =
-  /^(?<link>(?:[\s`*_]*[:=]|\s+(?:are|is|both|these|the following)\b)*)[\s`*_]*(?<keys>ISS-\d+\b(?:[\s`*_]*(?:\([^()]{0,40}\))?[\s`*_]*(?:,\s*and|,|;|and|&)[\s`*_]*ISS-\d+\b)+)/iu;
+const governedRe = (prefixes: readonly string[]): RegExp => {
+  const key = `(?:${keyAlternates(prefixes)})-\\d+`;
+  return new RegExp(
+    `^(?<link>(?:[\\s\`*_]*[:=]|\\s+(?:are|is|both|these|the following)\\b)*)[\\s\`*_]*(?<keys>${key}\\b(?:[\\s\`*_]*(?:\\([^()]{0,40}\\))?[\\s\`*_]*(?:,\\s*and|,|;|and|&)[\\s\`*_]*${key}\\b)+)`,
+    'iu',
+  );
+};
 
 /** Two keys the phrase GOVERNS, never a line that merely holds both — that is a cross-reference (ISS-336); two because one may cite the issue this body sits beside. */
-export function partsIn(body: string): { line: string; keys: string[] } | null {
+export function partsIn(
+  body: string,
+  prefixes: readonly string[] = [],
+): { line: string; keys: string[] } | null {
+  const governed = governedRe(prefixes);
+  const issueKey = issueKeyRe(prefixes);
   for (const line of String(body).split('\n')) {
     for (const phrase of line.matchAll(PARTS_PHRASE)) {
       if (phrase.index === undefined) continue;
-      const found = GOVERNED.exec(line.slice(phrase.index + phrase[0].length));
+      const found = governed.exec(line.slice(phrase.index + phrase[0].length));
       if (!found?.groups || (BARE_PART.test(phrase[0]) && !found.groups.link)) continue;
       const claimed = String(found.groups.keys ?? '').replace(LABEL, ' ');
-      const keys = [...new Set((claimed.match(ISSUE_KEY) ?? []).map((one) => one.toUpperCase()))];
+      const keys = [...new Set((claimed.match(issueKey) ?? []).map((one) => one.toUpperCase()))];
       if (keys.length >= 2) return { line: line.trim(), keys };
     }
   }
@@ -207,7 +230,7 @@ function amongOf(text: string): string {
     : 'and the body has no heading at all';
 }
 
-function claimGaps(text: string): CliGap[] {
+function claimGaps(text: string, prefixes: readonly string[]): CliGap[] {
   const out: CliGap[] = [];
   const split = twoChangesIn(text);
   if (split) {
@@ -220,7 +243,7 @@ function claimGaps(text: string): CliGap[] {
       ),
     );
   }
-  const parts = partsIn(text);
+  const parts = partsIn(text, prefixes);
   if (parts) {
     out.push(
       gap(
@@ -261,6 +284,8 @@ export function readFiling(filing: {
   title?: string | null;
   body?: string | null;
   category?: string | null;
+  /** Every prefix the project holds, so the parts arm sees a reference under its own name. */
+  prefixes?: readonly string[];
 }): CliShape {
   const text = String(filing.body ?? '');
   const kind = filing.category ?? null;
@@ -279,7 +304,7 @@ export function readFiling(filing: {
     };
   }
   const gaps = titleGaps(filing.title ?? '');
-  gaps.push(...claimGaps(text));
+  gaps.push(...claimGaps(text, filing.prefixes ?? []));
   const missing = categoryGap(kind);
   if (missing) {
     gaps.push(missing);

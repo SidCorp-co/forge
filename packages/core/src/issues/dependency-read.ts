@@ -9,6 +9,8 @@ import { and, eq, or } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../db/client.js';
 import { type IssueDependencyKind, issueDependencies, issues } from '../db/schema.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
+import { activeIssuePrefix } from './issue-prefix-read.js';
 
 export type IssueDependencyEdge = {
   id: string;
@@ -37,6 +39,15 @@ export type IssueDependencyEdges = {
 };
 
 // cm:guard `projectId` is REQUIRED and must stay in the WHERE clause — `issue_dependencies` carries only the composite indexes `(project_id, from_issue_id)` and `(project_id, to_issue_id)` (schema.ts), so filtering on an endpoint alone constrains the NON-leading column and Postgres degrades to scanning every edge in the table. This read runs on `forge_issues get`, i.e. every agent turn. Measured 2026-08-28 on a 399-edge fixture: with `project_id` the plan is a BitmapOr over both indexes; on the endpoint alone it is a Seq Scan, 398 rows removed by filter.
+/** One prefix read per distinct project across the edge set, never one per row. */
+async function readPrefixes(projectIds: Array<string | null>): Promise<Map<string, string | null>> {
+  const distinct = [...new Set(projectIds)].filter((id): id is string => typeof id === 'string');
+  const pairs = await Promise.all(
+    distinct.map(async (id): Promise<[string, string | null]> => [id, await activeIssuePrefix(id)]),
+  );
+  return new Map(pairs);
+}
+
 export async function loadIssueDependencyEdges(
   issueId: string,
   projectId: string,
@@ -55,10 +66,12 @@ export async function loadIssueDependencyEdges(
       createdAt: issueDependencies.createdAt,
       validUntil: issueDependencies.validUntil,
       fromIssSeq: fromIssue.issSeq,
+      fromProjectId: fromIssue.projectId,
       fromTitle: fromIssue.title,
       fromStatus: fromIssue.status,
       fromMergedAt: fromIssue.mergedAt,
       toIssSeq: toIssue.issSeq,
+      toProjectId: toIssue.projectId,
       toTitle: toIssue.title,
       toStatus: toIssue.status,
       toMergedAt: toIssue.mergedAt,
@@ -73,12 +86,29 @@ export async function loadIssueDependencyEdges(
       ),
     );
 
-  const enrich = <T extends { fromIssSeq: number | null; toIssSeq: number | null }>(edge: T) => {
-    const { fromIssSeq, toIssSeq, ...rest } = edge;
+  // cm:guard each endpoint is named with ITS OWN project's prefix: `issue_dependencies.project_id` scopes the edge and constrains NEITHER endpoint, so an edge may cross projects, and naming a `FD` blocker under the dependent's `FX` reports `FX-7`, which is a different issue that exists (codex review of ISS-992)
+  const prefixOf = await readPrefixes(
+    rows.flatMap((r) => [r.fromProjectId, r.toProjectId]).concat(projectId),
+  );
+  const enrich = <
+    T extends {
+      fromIssSeq: number | null;
+      toIssSeq: number | null;
+      fromProjectId: string | null;
+      toProjectId: string | null;
+    },
+  >(
+    edge: T,
+  ) => {
+    const { fromIssSeq, toIssSeq, fromProjectId, toProjectId, ...rest } = edge;
     return {
       ...rest,
-      fromDisplayId: fromIssSeq != null ? `ISS-${fromIssSeq}` : null,
-      toDisplayId: toIssSeq != null ? `ISS-${toIssSeq}` : null,
+      fromDisplayId:
+        fromIssSeq != null
+          ? formatIssueRef(prefixOf.get(fromProjectId ?? '') ?? null, fromIssSeq)
+          : null,
+      toDisplayId:
+        toIssSeq != null ? formatIssueRef(prefixOf.get(toProjectId ?? '') ?? null, toIssSeq) : null,
     };
   };
 

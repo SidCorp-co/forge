@@ -8,6 +8,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const dbSelect = vi.fn();
 
+// cm:why the prefix reader is a collaborator with a query shape of its own, stubbed so this file stays a check of what the module under test does with the reference rather than of how the prefix is read (ISS-992)
+vi.mock('./issue-prefix-read.js', () => ({
+  activeIssuePrefix: async () => null,
+  heldIssuePrefixes: async () => [],
+}));
 vi.mock('../db/client.js', () => ({
   db: { select: dbSelect },
 }));

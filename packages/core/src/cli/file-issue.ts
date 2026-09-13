@@ -18,6 +18,7 @@ import {
   createIssue,
   type IssueCreateWriter,
 } from '../issues/create-service.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { duplicateRefusal, noticeFor, shapeRefusal } from './refusal.js';
 import { type CliGapKind, readFiling } from './shape.js';
 
@@ -31,6 +32,9 @@ export const CLI_DEDUP_OVERRIDE = 'confirmNotDuplicate';
 // cm:guard this type IS the door, and a field `CreateIssueInput` accepts that is absent here is deliberately out of reach rather than forgotten — adding one is a decision about what may be filed through a stricter front-end, never a passthrough. `relations` is on it because the parts refusal in `shape.ts` tells a filer to relate the keys in the same create, and a way out the door cannot carry is the defect this layer exists to remove.
 export interface CliFiling {
   readonly projectId: string;
+  // cm:guard REQUIRED and never optional-with-a-legacy-default: this door is db-free on purpose (`file-issue.test.ts` mocks `db` as `{}`) and has no production caller yet, so an optional field would let the first one omit it and refuse a prefixed project's filing under the wrong name (ISS-992). A project that has set none passes `[]` and `null`.
+  readonly prefixes: readonly string[];
+  readonly activePrefix: string | null;
   readonly title: string;
   readonly body: string | null;
   /** Required HERE. Absent is a refusal, not a default. */
@@ -75,6 +79,7 @@ export async function fileIssueThroughCli(
     title: filing.title,
     body: filing.body,
     category: filing.category ?? null,
+    prefixes: filing.prefixes,
   });
   const refusal = shapeRefusal(read);
   if (refusal) {
@@ -99,7 +104,10 @@ export async function fileIssueThroughCli(
     },
   );
   if (duplicate && !options.confirmNotDuplicate) {
-    const seen = { key: `ISS-${duplicate.issSeq}`, title: duplicate.title };
+    const seen = {
+      key: formatIssueRef(filing.activePrefix, duplicate.issSeq),
+      title: duplicate.title,
+    };
     return {
       filed: false,
       refusal: duplicateRefusal(seen, CLI_DEDUP_OVERRIDE),

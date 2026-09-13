@@ -69,9 +69,9 @@ function edgeToMenuItem(
 ): MenuItem {
   const isIncoming = dir === "in";
   const otherId = isIncoming ? e.fromIssueId : e.toIssueId;
+  // cm:why The server names an issue or nothing does — see the sibling fallback in `derive.ts`.
   const displayId =
-    (isIncoming ? e.fromDisplayId : e.toDisplayId) ??
-    `ISS-${otherId.slice(0, 6)}`;
+    (isIncoming ? e.fromDisplayId : e.toDisplayId) ?? `#${otherId.slice(0, 6)}`;
   const title = isIncoming ? e.fromTitle : e.toTitle;
   return {
     label: title ? `${displayId} · ${title}` : displayId,
@@ -134,10 +134,7 @@ export function DepBadges({ id, slug }: { id: string; slug: string }) {
 
   const incoming = data?.incoming ?? [];
   const outgoing = data?.outgoing ?? [];
-  // Edge `kind` encodes "from <verb> to": an INCOMING `blocks` means this issue
-  // is blocked-by; an OUTGOING one means it blocks. `decomposes`/`parent` run
-  // parent→child, so an OUTGOING one is a subtask of this epic and an INCOMING
-  // one is this issue's parent. Mirrors `depCounts` + the rail's `PropertiesRail`.
+  // cm:why Edge `kind` encodes "from <verb> to": an INCOMING `blocks` means this issue is blocked-by; an OUTGOING one means it blocks. `decomposes`/`parent` run parent→child, so an OUTGOING one is a subtask of this epic and an INCOMING one is this issue's parent. Mirrors `depCounts` + the rail's `PropertiesRail`.
   const blockedBy = incoming.filter((e) => e.kind === "blocks");
   const blocks = outgoing.filter((e) => e.kind === "blocks");
   const subtasks = outgoing.filter((e) => isParentEdge(e.kind));

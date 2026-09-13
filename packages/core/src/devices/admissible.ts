@@ -15,6 +15,7 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import {
   AUTONOMOUS_ENTRY_STATUS,
   isAutonomous,
@@ -102,13 +103,14 @@ const RELATIONS = sql`
   COALESCE((
     SELECT json_agg(json_build_object(
       'kind', d.kind,
-      'dependsOnKey', 'ISS-' || b.iss_seq,
+      'dependsOnKey', coalesce(bp.issue_prefix, 'ISS') || '-' || b.iss_seq,
       'blockerStatus', b.status,
       'blockerMergedAt', b.merged_at,
       'edgeValidUntil', d.valid_until
     ))
     FROM issue_dependencies d
     JOIN issues b ON b.id = d.from_issue_id
+    JOIN projects bp ON bp.id = b.project_id
     WHERE d.to_issue_id = i.id
   ), '[]'::json) AS relations
 `;
@@ -141,8 +143,10 @@ export async function readAdmissibleIssues(args: {
              i.category, i.status, i.merged_at,
              i.session_context->>'branch' AS branch,
              EXTRACT(EPOCH FROM (now() - i.created_at)) / 60 AS age_minutes,
+             ip.issue_prefix,
              ${RELATIONS}
       FROM issues i
+      JOIN projects ip ON ip.id = i.project_id
       WHERE i.project_id = ${a.projectId}
         AND (
           i.status IN (${statusList})
@@ -163,7 +167,10 @@ export async function readAdmissibleIssues(args: {
           WHERE rs.project_id = i.project_id
             AND rs.kind = 'system'
             AND rs.status IN ('running', 'paused')
-            AND rs.metadata -> 'runIssues' @> to_jsonb('ISS-' || i.iss_seq)
+            -- cm:guard CANONICAL on purpose: runIssues holds the form openRunSession
+            -- canonicalised, never the project's own prefix, so this containment must not take
+            -- issue_prefix into account or a run's issues silently stop being seen (ISS-992)
+            AND rs.metadata -> 'runIssues' @> to_jsonb('ISS-' || i.iss_seq) -- ISS-992:canonical
         )
       ORDER BY i.created_at ASC
       LIMIT ${a.limit}
@@ -172,7 +179,10 @@ export async function readAdmissibleIssues(args: {
     for (const row of rows) {
       out.push({
         issueId: String(row.id),
-        issueKey: row.iss_seq == null ? null : `ISS-${row.iss_seq}`,
+        issueKey:
+          row.iss_seq == null
+            ? null
+            : formatIssueRef(row.issue_prefix as string | null, Number(row.iss_seq)),
         projectId: String(row.project_id),
         title: (row.title as string | null) ?? null,
         description: (row.description as string | null) ?? null,

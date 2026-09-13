@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { makeFakeJobPrincipal } from '../fake-principal.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -10,109 +9,45 @@ vi.mock('../../config/env.js', () => ({
   },
 }));
 
-const selectLimit = vi.fn();
-const selectOrderBy = vi.fn(() => ({ limit: selectLimit }));
-const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
-const selectInnerJoin = vi.fn(() => ({ where: selectWhere }));
-const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
-const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
-const selectFrom = vi.fn(() => ({
-  where: selectWhere,
-  leftJoin: selectLeftJoin,
-  innerJoin: selectInnerJoin,
-}));
+const h = await vi.hoisted(async () =>
+  (await import('./forge-feedback.fixture.js')).makeFeedbackDbMocks(),
+);
+vi.mock('../../db/client.js', () => ({ db: h.db }));
 
-const insertReturning = vi.fn();
-const insertValues = vi.fn(() => ({ returning: insertReturning }));
-const updateReturning = vi.fn();
-const updateWhere = vi.fn(() => ({ returning: updateReturning }));
-const updateSet = vi.fn(() => ({ where: updateWhere }));
-const dbSelect = vi.fn(() => ({ from: selectFrom }));
-const dbInsert = vi.fn(() => ({ values: insertValues }));
-const dbUpdate = vi.fn(() => ({ set: updateSet }));
-
-// loadVisibleProjectIdsForPrincipal chain (org scope):
-// selectDistinct({id}).from(projects).leftJoin(...).leftJoin(...).where(...)
-const selectDistinctWhere = vi.fn();
-const selectDistinctLeftJoin2 = vi.fn(() => ({ where: selectDistinctWhere }));
-const selectDistinctLeftJoin = vi.fn(() => ({ leftJoin: selectDistinctLeftJoin2 }));
-const selectDistinctFrom = vi.fn(() => ({ leftJoin: selectDistinctLeftJoin }));
-const dbSelectDistinct = vi.fn(() => ({ from: selectDistinctFrom }));
-
-vi.mock('../../db/client.js', () => ({
-  db: {
-    select: dbSelect,
-    selectDistinct: dbSelectDistinct,
-    insert: dbInsert,
-    update: dbUpdate,
-  },
-}));
-
-function mockVisibleProjects(ids: string[]) {
-  selectDistinctWhere.mockResolvedValueOnce(ids.map((id) => ({ id })));
-}
+const {
+  ISSUE_ID,
+  JOB_ID,
+  makeCtx,
+  OWNER_ID,
+  PROJECT_ID,
+  PROJECT_ID_2,
+  memberAccessRow,
+  PROJECT_SLUG,
+  RUN_ID,
+} = await import('./forge-feedback.fixture.js');
+const {
+  insertReturning,
+  insertValues,
+  mockVisibleProjects,
+  queueMemberOnly,
+  queueSlugAndMember,
+  selectLimit,
+  updateReturning,
+  updateSet,
+} = h;
 
 const { forgeFeedbackTool } = await import('./forge-feedback.js');
 
-const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
-const PROJECT_SLUG = 'forge-dev';
-const PROJECT_ID_2 = '22222222-2222-4222-8222-222222222222';
-const OWNER_ID = '33333333-3333-4333-8333-333333333333';
-const TOKEN_ID = '99999999-9999-4999-8999-99999999aaaa';
-const JOB_ID = '55555555-5555-4555-8555-555555555555';
-const RUN_ID = '66666666-6666-4666-8666-666666666666';
-const ISSUE_ID = '77777777-7777-4777-8777-777777777777';
-
-const ORG_ID = '99999999-9999-4999-8999-999999999999';
-const memberAccessRow = { orgId: ORG_ID, memberRole: 'member', orgRole: null };
-
-/** resolveProjectIdFromSlug then effectiveProjectRole — the two reads every action makes first, plus any rows the action reads after them. */
-function queueSlugAndMember(...then: unknown[][]): void {
-  let m = selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-  for (const rows of [[memberAccessRow], ...then]) m = m.mockResolvedValueOnce(rows);
-}
-
-// cm:guard the pipeline ctx carries a MACHINE principal — since ISS-931 the job comes off the `job:<id>` name on the caller's own token, so a person's PAT (`machine: null`) makes every context field null and the happy path stops asserting anything about attribution.
-const DEVICE_ID = '44444444-4444-4444-8444-444444444444';
-const jobPrincipal = makeFakeJobPrincipal(TOKEN_ID, OWNER_ID, DEVICE_ID, PROJECT_ID);
-
-function makeCtx(projectSlug = PROJECT_SLUG) {
-  return {
-    principal: jobPrincipal,
-    projectSlug,
-  };
-}
-
-// cm:guard the re-install block below is load-bearing, not duplication — `vi.resetAllMocks()` clears IMPLEMENTATIONS as well as calls, so dropping it fails every test with `Cannot read properties of undefined (reading 'where')`, which points at the drizzle chain mock and never at the reset that emptied it
 beforeEach(() => {
   vi.resetAllMocks();
-  selectFrom.mockImplementation(() => ({
-    where: selectWhere,
-    leftJoin: selectLeftJoin,
-    innerJoin: selectInnerJoin,
-  }));
-  selectWhere.mockImplementation(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
-  selectOrderBy.mockImplementation(() => ({ limit: selectLimit }));
-  selectLeftJoin.mockImplementation(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
-  selectLeftJoin2.mockImplementation(() => ({ where: selectWhere }));
-  selectInnerJoin.mockImplementation(() => ({ where: selectWhere }));
-  insertValues.mockImplementation(() => ({ returning: insertReturning }));
-  updateSet.mockImplementation(() => ({ where: updateWhere }));
-  updateWhere.mockImplementation(() => ({ returning: updateReturning }));
-  dbSelect.mockImplementation(() => ({ from: selectFrom }));
-  dbInsert.mockImplementation(() => ({ values: insertValues }));
-  dbUpdate.mockImplementation(() => ({ set: updateSet }));
-  selectDistinctLeftJoin2.mockImplementation(() => ({ where: selectDistinctWhere }));
-  selectDistinctLeftJoin.mockImplementation(() => ({ leftJoin: selectDistinctLeftJoin2 }));
-  selectDistinctFrom.mockImplementation(() => ({ leftJoin: selectDistinctLeftJoin }));
-  dbSelectDistinct.mockImplementation(() => ({ from: selectDistinctFrom }));
+  h.install();
 });
 
 describe('forge_feedback submit', () => {
   it('happy path: returns {ok, id, signalKey}', async () => {
     const tool = forgeFeedbackTool(makeCtx());
 
-    queueSlugAndMember();
+    queueMemberOnly();
     selectLimit.mockResolvedValueOnce([
       {
         jobId: JOB_ID,
@@ -123,7 +58,6 @@ describe('forge_feedback submit', () => {
         agentSessionId: 'sess-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
       },
     ]);
-    // per-job count check: 0 existing
     selectLimit.mockResolvedValueOnce([{ n: 0 }]);
     insertReturning.mockResolvedValueOnce([
       {
@@ -134,6 +68,7 @@ describe('forge_feedback submit', () => {
 
     const result = await tool.handler({
       action: 'submit',
+      projectId: PROJECT_ID,
       kind: 'friction',
       target: 'skill',
       targetRef: 'plan-skill',
@@ -153,7 +88,7 @@ describe('forge_feedback submit', () => {
   it('soft-rejects with rate_limited when per-job cap is hit', async () => {
     const tool = forgeFeedbackTool(makeCtx());
 
-    queueSlugAndMember();
+    queueMemberOnly();
     selectLimit.mockResolvedValueOnce([
       {
         jobId: JOB_ID,
@@ -168,6 +103,7 @@ describe('forge_feedback submit', () => {
 
     const result = await tool.handler({
       action: 'submit',
+      projectId: PROJECT_ID,
       kind: 'friction',
       target: 'skill',
       summary: 'Over the limit',
@@ -206,6 +142,7 @@ describe('forge_feedback submit', () => {
 
     const result = await tool.handler({
       action: 'submit',
+      projectId: PROJECT_ID,
       kind: 'unclear_step',
       target: 'pipeline',
       summary: 'Interactive submit from CLI',
@@ -221,7 +158,7 @@ describe('forge_feedback submit', () => {
   it('hostile targetRef: signalKey contains no control chars or frame sentinels', async () => {
     const tool = forgeFeedbackTool(makeCtx());
 
-    queueSlugAndMember();
+    queueMemberOnly();
     selectLimit.mockResolvedValueOnce([
       { jobId: JOB_ID, runId: RUN_ID, issueId: ISSUE_ID, stage: 'code' },
     ]);
@@ -234,6 +171,7 @@ describe('forge_feedback submit', () => {
 
     await tool.handler({
       action: 'submit',
+      projectId: PROJECT_ID,
       kind: 'friction',
       target: 'skill',
       // Contains zero-width space, bidi override, and a forged END_UNTRUSTED_DATA sentinel
@@ -254,11 +192,11 @@ describe('forge_feedback submit', () => {
   it('missing required fields throw BAD_REQUEST', async () => {
     const tool = forgeFeedbackTool(makeCtx());
 
-    queueSlugAndMember();
+    queueMemberOnly();
     // cm:why only two rows are queued: the handler throws on the missing `summary` before it resolves the token's job, so a third would never be consumed and would leak into the next test
 
     await expect(
-      tool.handler({ action: 'submit', kind: 'friction', target: 'skill' }),
+      tool.handler({ action: 'submit', projectId: PROJECT_ID, kind: 'friction', target: 'skill' }),
     ).rejects.toThrow('summary is required');
   });
 });

@@ -40,6 +40,8 @@ const WHOLE =
 function filing(over: Record<string, unknown> = {}) {
   return {
     projectId: 'p1',
+    prefixes: [],
+    activePrefix: null,
     title: 'A malformed filing is refused at the door',
     body: WHOLE,
     category: 'feature',

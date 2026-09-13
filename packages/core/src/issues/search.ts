@@ -13,6 +13,7 @@ import {
   usageRecords,
 } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { listResponse } from '../lib/pagination.js';
 import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -22,6 +23,7 @@ import {
   buildOriginCondition,
   hydrateCreatorsForIssues,
 } from './creator.js';
+import { activeIssuePrefix } from './issue-prefix-read.js';
 import { listModulesForIssues, resolveModuleIdsTolerant } from './label-service.js';
 import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
 import { buildIssueSearchCondition, issueSearchMatchedFields } from './search-predicate.js';
@@ -256,9 +258,10 @@ searchRoutes.get(
     const total = Number(n);
 
     // cm:why ISS-960 — `matchedFields` appears ONLY when `q` was sent, so a caller can tell "this row matched on its acceptance criteria" from "this row was not searched for at all"; the fields are already on `r` (the select is whole-row), so naming them costs no second read
+    const searchPrefix = await activeIssuePrefix(projectId);
     let serialized: Record<string, unknown>[] = rows.map((r) => ({
       ...r,
-      displayId: `ISS-${(r as { issSeq: number }).issSeq}`,
+      displayId: formatIssueRef(searchPrefix, (r as { issSeq: number }).issSeq),
       ...(q.q ? { matchedFields: issueSearchMatchedFields(q.q, r) } : {}),
     }));
 
