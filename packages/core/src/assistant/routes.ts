@@ -1,13 +1,14 @@
 /**
- * v1 EPIC 1 (ISS-270 / PR-B) — `POST /api/chat` SSE with session persistence
+ * v1 EPIC 1 (ISS-270 / PR-B) — `POST /api/chat` SSE over a durable conversation
  * + chat_logs audit. Cookie / Bearer authenticated.
  *
- * The shared streaming + persistence logic lives in `./run-turn.ts`; this
- * file owns auth, project membership lookup, and session source tagging.
+ * The shared streaming + persistence logic lives in `./run-turn.ts`; this file
+ * owns auth, project membership lookup, and opening the web venue.
  *
  * The whole route is gated by feature flag `chatProvider`.
  */
 
+import { randomUUID } from 'node:crypto';
 import { zValidator } from '@hono/zod-validator';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
@@ -21,8 +22,9 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { PROVIDER_HISTORY_WINDOW } from './context-budget.js';
 import { defaultChatProviderId } from './providers/bootstrap.js';
 import { resolveForProject } from './providers/registry.js';
+import { addPerson } from '../conversations/participants.js';
+import { appendUserMessage, openTurn, toProviderMessages } from './conversation-turn.js';
 import { runChatTurn } from './run-turn.js';
-import { appendUserMessage, loadOrCreateSession, toProviderMessages } from './session.js';
 import { buildSystemPrompt } from './system-prompt.js';
 import { buildChatToolContext } from './tools/principal.js';
 import { buildProjectToolset } from './tools/registry.js';
@@ -32,7 +34,7 @@ const chatRequestSchema = z
   .object({
     projectId: z.uuid(),
     message: z.string().min(1).max(40_000),
-    sessionId: z.uuid().optional(),
+    conversationId: z.uuid().optional(),
     pageContext: z.record(z.string(), z.unknown()).optional(),
   })
   .strict();
@@ -52,7 +54,7 @@ chatRoutes.post(
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
-    const { projectId, message, sessionId, pageContext } = c.req.valid('json');
+    const { projectId, message, conversationId, pageContext } = c.req.valid('json');
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
@@ -80,38 +82,46 @@ chatRoutes.post(
       fallbackProviderId: defaultChatProviderId(),
     });
 
-    const session = await loadOrCreateSession({
+    // cm:guard a NEW web conversation gets a venue id of its own rather than reusing the row's: `(adapter, external_id)` is what a transport names a room by, and a web conversation's transport is the browser that opened it — minting the id here keeps the pair the single way in for every adapter, including this one.
+    const turn = await openTurn({
       projectId,
-      sessionId,
-      userId,
-      source: 'web',
+      adapter: 'web',
+      conversationId,
+      ...(conversationId ? {} : { externalId: randomUUID() }),
+      shape: 'direct',
+      readerUserId: userId,
     });
+    if (!conversationId) {
+      await addPerson({ conversationId: turn.conversationId, userId, actorUserId: userId });
+    }
 
-    appendUserMessage(session, message);
+    appendUserMessage(turn, message, { authorUserId: userId });
 
     const systemPrompt = buildSystemPrompt({ project, appConfig: appCfg ?? null });
     const providerMessages = applyTurnContext(
       [
         { role: 'system' as const, content: systemPrompt },
-        ...toProviderMessages(session).slice(-PROVIDER_HISTORY_WINDOW),
+        ...toProviderMessages(turn).slice(-PROVIDER_HISTORY_WINDOW),
       ],
       { pageContext },
     );
 
-    // Read-only Forge toolset, fenced to this project + the calling user.
+    // cm:guard the toolset is read-only and fenced to this project and this caller — a chat turn is
+    // not an authorization to write, and widening it here widens it for every room.
     const tools = buildProjectToolset(
       buildChatToolContext({ userId, projectId, projectSlug: project.slug }),
     );
 
     return runChatTurn({
       c,
-      session,
+      turn,
       resolved,
       providerMessages,
       tools,
       projectSlug: project.slug,
       userMessage: message,
       userKey: userId,
+      adapter: 'web',
       contextBudgetTokens: env.CHAT_CONTEXT_BUDGET_TOKENS,
     });
   },

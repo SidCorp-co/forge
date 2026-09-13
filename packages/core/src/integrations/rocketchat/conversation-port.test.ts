@@ -1,0 +1,241 @@
+/**
+ * ISS-1001 — Rocket.Chat as the first adapter, tested at the seam the store
+ * sees: a venue key, a speaker, and one outbound door.
+ *
+ * The key's test is the one that matters. A rid is unique inside ONE
+ * Rocket.Chat installation, so the same rid on two servers is two rooms; the
+ * planted collision here is what the namespace prefix exists for, and it goes
+ * red if the prefix is ever dropped.
+ */
+
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const fetchRoomShape = vi.fn();
+vi.mock('./room-shape.js', async (importOriginal) => {
+  const actual = await importOriginal<object>();
+  return { ...actual, resolveRoomShape: (...a: unknown[]) => fetchRoomShape(...a) };
+});
+
+const sendFixedReply = vi.fn(async () => ({ messageId: 'rc-msg-1' }));
+vi.mock('./outbound.js', async (importOriginal) => {
+  const actual = await importOriginal<object>();
+  return { ...actual, sendFixedReply: (...a: unknown[]) => sendFixedReply(...a) };
+});
+
+const fetchRoomHistory = vi.fn();
+const fetchThreadMessages = vi.fn();
+vi.mock('./rest-client.js', async (importOriginal) => {
+  const actual = await importOriginal<object>();
+  return {
+    ...actual,
+    fetchRoomHistory: (...a: unknown[]) => fetchRoomHistory(...a),
+    fetchThreadMessages: (...a: unknown[]) => fetchThreadMessages(...a),
+  };
+});
+
+const resolveForgeSpeaker = vi.fn();
+vi.mock('../../assistant/identity/speaker-link.js', () => ({
+  resolveSpeaker: (...a: unknown[]) => resolveForgeSpeaker(...a),
+}));
+
+/** The active `rocketchat` connections `authForNamespace` scans. */
+let connections: Array<{ config: { serverUrl: string }; secrets: unknown }> = [];
+vi.mock('../../db/client.js', () => ({
+  db: {
+    select: () => ({ from: () => ({ where: async () => connections }) }),
+  },
+}));
+vi.mock('../store.js', () => ({
+  decryptConnectionSecrets: (row: { secrets: unknown }) => row.secrets,
+}));
+
+const { parseRocketChatVenueId, rocketChatConversationPorts, rocketChatVenueId } = await import(
+  './conversation-port.js'
+);
+const { codeAuthored, screened } = await import('../../conversations/ports.js');
+
+const AUTH = { serverUrl: 'https://chat.example.co', authToken: 't', userId: 'bot' };
+const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
+
+function frame(over: Record<string, unknown> = {}) {
+  return {
+    m: { rid: 'ROOM1', msg: 'hi', userId: 'u1', username: 'ana', _id: 'm1' },
+    auth: AUTH,
+    projectId: PROJECT_ID,
+    shape: 'direct' as const,
+    ...over,
+  } as never;
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  connections = [{ config: { serverUrl: AUTH.serverUrl }, secrets: { authToken: 't', userId: 'bot' } }];
+});
+
+describe('the venue key', () => {
+  it('carries the server, so one rid on two installations is two venues', () => {
+    const here = rocketChatVenueId('chat.example.co', 'ROOM1');
+    const there = rocketChatVenueId('chat.other.io', 'ROOM1');
+    expect(here).not.toBe(there);
+  });
+
+  it('separates a thread from the room it hangs under', () => {
+    expect(rocketChatVenueId('chat.example.co', 'ROOM1', 'T9')).not.toBe(
+      rocketChatVenueId('chat.example.co', 'ROOM1'),
+    );
+  });
+
+  it('reads back exactly what was written, thread or no thread', () => {
+    expect(parseRocketChatVenueId(rocketChatVenueId('chat.example.co', 'ROOM1'))).toEqual({
+      namespace: 'chat.example.co',
+      rid: 'ROOM1',
+      tmid: null,
+    });
+    expect(parseRocketChatVenueId(rocketChatVenueId('chat.example.co', 'ROOM1', 'T9'))).toEqual({
+      namespace: 'chat.example.co',
+      rid: 'ROOM1',
+      tmid: 'T9',
+    });
+  });
+
+  it('refuses a string that is not one of its keys', () => {
+    expect(parseRocketChatVenueId('ROOM1')).toBeNull();
+    expect(parseRocketChatVenueId('a b c d')).toBeNull();
+    expect(parseRocketChatVenueId(' ROOM1')).toBeNull();
+  });
+});
+
+describe('resolveVenue', () => {
+  it('takes the caller resolved shape without asking the server again', async () => {
+    const venue = await rocketChatConversationPorts.resolveVenue(frame({ shape: 'group' }));
+    expect(venue).toEqual({
+      adapter: 'rocketchat',
+      externalId: 'chat.example.co ROOM1',
+      shape: 'group',
+      projectId: PROJECT_ID,
+    });
+    expect(fetchRoomShape).not.toHaveBeenCalled();
+  });
+
+  it('resolves the shape itself when the caller has none', async () => {
+    fetchRoomShape.mockResolvedValue('direct');
+    const venue = await rocketChatConversationPorts.resolveVenue(frame({ shape: undefined }));
+    expect(venue?.shape).toBe('direct');
+    expect(fetchRoomShape).toHaveBeenCalledOnce();
+  });
+
+  it('answers null rather than a guessed shape when the room type cannot be read', async () => {
+    fetchRoomShape.mockResolvedValue(null);
+    expect(await rocketChatConversationPorts.resolveVenue(frame({ shape: undefined }))).toBeNull();
+  });
+
+  it('answers null when the server address is not a readable namespace', async () => {
+    const venue = await rocketChatConversationPorts.resolveVenue(
+      frame({ auth: { ...AUTH, serverUrl: 'not a url' } }),
+    );
+    expect(venue).toBeNull();
+  });
+});
+
+describe('resolveSpeaker', () => {
+  it('refuses by name when the server address is not a readable namespace', async () => {
+    const r = await rocketChatConversationPorts.resolveSpeaker(
+      frame({ auth: { ...AUTH, serverUrl: 'not a url' } }),
+    );
+    expect(r).toMatchObject({ linked: false, refusal: { code: 'SPEAKER_DIRECTORY_UNREACHABLE' } });
+    expect(resolveForgeSpeaker).not.toHaveBeenCalled();
+  });
+
+  it('hands the assistant resolver the namespace and the speaker', async () => {
+    resolveForgeSpeaker.mockResolvedValue({ linked: true, userId: 'u-forge' });
+    await rocketChatConversationPorts.resolveSpeaker(frame());
+    expect(resolveForgeSpeaker).toHaveBeenCalledWith({
+      source: 'rocketchat',
+      namespace: 'chat.example.co',
+      externalId: 'u1',
+      label: 'ana',
+    });
+  });
+});
+
+describe('deliver', () => {
+  const venue = {
+    adapter: 'rocketchat' as const,
+    externalId: 'chat.example.co ROOM1 T9',
+    shape: 'group' as const,
+    projectId: PROJECT_ID,
+  };
+
+  it('posts through the one outbound door, to the room and the thread in the key', async () => {
+    const receipt = await rocketChatConversationPorts.deliver(venue, codeAuthored('answer'));
+    expect(receipt).toEqual({ messageId: 'rc-msg-1' });
+    expect(sendFixedReply).toHaveBeenCalledWith(
+      { kind: 'rest', auth: AUTH, rid: 'ROOM1', tmid: 'T9' },
+      'answer',
+      expect.anything(),
+    );
+  });
+
+  it('carries a screened text with its own problems as the proof', async () => {
+    const message = screened('answer', { ok: true, problems: ['tone'] });
+    expect(message).not.toBeNull();
+    await rocketChatConversationPorts.deliver(venue, message as never);
+    expect(sendFixedReply.mock.calls[0]?.[2]).toEqual({ ok: true, problems: ['tone'] });
+  });
+
+  it('refuses by name when no active connection serves the venue server', async () => {
+    connections = [];
+    await expect(rocketChatConversationPorts.deliver(venue, codeAuthored('x'))).rejects.toThrow(
+      /no active connection serves chat\.example\.co/,
+    );
+    expect(sendFixedReply).not.toHaveBeenCalled();
+  });
+
+  it('refuses a venue key that is not a Rocket.Chat one', async () => {
+    await expect(
+      rocketChatConversationPorts.deliver({ ...venue, externalId: 'ROOM1' }, codeAuthored('x')),
+    ).rejects.toThrow(/is not a Rocket\.Chat venue id/);
+  });
+});
+
+describe('fetchHistory', () => {
+  const room = {
+    adapter: 'rocketchat' as const,
+    externalId: 'chat.example.co ROOM1',
+    shape: 'group' as const,
+    projectId: PROJECT_ID,
+  };
+
+  it('reads the room when the key names no thread', async () => {
+    fetchRoomHistory.mockResolvedValue([
+      { text: 'hello', userId: 'u1', username: 'ana', isSystem: false },
+      { text: 'hi', userId: 'bot', username: 'forge', isSystem: false },
+    ]);
+    expect(await rocketChatConversationPorts.fetchHistory(room, 20)).toEqual([
+      { role: 'user', authorLabel: 'ana', content: 'hello' },
+      { role: 'assistant', authorLabel: 'forge', content: 'hi' },
+    ]);
+    expect(fetchRoomHistory).toHaveBeenCalledWith(AUTH, 'ROOM1', { count: 20 });
+  });
+
+  it('reads the thread when the key names one', async () => {
+    fetchThreadMessages.mockResolvedValue([]);
+    await rocketChatConversationPorts.fetchHistory(
+      { ...room, externalId: 'chat.example.co ROOM1 T9' },
+      5,
+    );
+    expect(fetchThreadMessages).toHaveBeenCalledWith(AUTH, 'T9', 5);
+    expect(fetchRoomHistory).not.toHaveBeenCalled();
+  });
+
+  it('drops system rows and blank text rather than carrying them into a prompt', async () => {
+    fetchRoomHistory.mockResolvedValue([
+      { text: 'joined', userId: 'u1', username: 'ana', isSystem: true },
+      { text: '   ', userId: 'u1', username: 'ana', isSystem: false },
+      { text: 'real', userId: 'u1', username: null, isSystem: false },
+    ]);
+    expect(await rocketChatConversationPorts.fetchHistory(room, 20)).toEqual([
+      { role: 'user', authorLabel: null, content: 'real' },
+    ]);
+  });
+});

@@ -12,8 +12,19 @@
 -- otherwise violate `runners_device_type_uq` on `(device_id, type)` mid-INSERT
 -- and roll the whole transaction back. Then backfill, then install the new
 -- per-project unique index, then drop the source table.
-
-BEGIN;
+--
+-- The BEGIN/COMMIT this file used to carry is gone, and its absence is the
+-- point. drizzle runs EVERY migration of a run inside one transaction it opens
+-- itself (`pg-core/dialect.ts:migrate`), and this file carries no statement
+-- breakpoint, so it reached the server as one multi-statement string over the
+-- simple protocol: the `BEGIN` was a no-op inside a live
+-- transaction, and the `COMMIT` ended DRIZZLE's. Every migration numbered above
+-- 0067 therefore auto-committed statement by statement — 171 of them, each free
+-- to half-apply and still be recorded as applied. Nothing reported it, because
+-- the only symptom is a failure that does not roll back. Found while writing
+-- 0238, whose `ON COMMIT DROP` temp table was dropped under it (ISS-1001).
+-- Editing an applied migration is inert here: drizzle decides what to replay
+-- from `created_at` alone and never compares the stored hash.
 
 DROP INDEX IF EXISTS runners_device_type_uq;
 
@@ -44,5 +55,3 @@ CREATE UNIQUE INDEX runners_project_device_type_uq
   WHERE device_id IS NOT NULL;
 
 DROP TABLE IF EXISTS project_devices;
-
-COMMIT;

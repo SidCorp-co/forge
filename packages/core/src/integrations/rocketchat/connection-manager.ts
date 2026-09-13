@@ -43,9 +43,12 @@ import { startQuestionDrainLoop } from './question-delivery.js';
 import { consumeQuestionThreadReply } from './question-inbound.js';
 import { screenStakeholderReply } from './reply-screen.js';
 import { fetchOwnUsername } from './rest-client.js';
+import { registerConversationTransport } from '../../conversations/ports.js';
+import { openConversation } from '../../conversations/store.js';
+import { rocketChatConversationPorts } from './conversation-port.js';
 import { type RoomShape, resolveRoomShape } from './room-shape.js';
 import { subjectForThread } from './thread-registry.js';
-import { conversationKey, resolveTurnPrincipal } from './turn-principal.js';
+import { resolveTurnPrincipal } from './turn-principal.js';
 import type { RocketChatBindingConfig, RocketChatConfig, RocketChatSecrets } from './types.js';
 
 // cm:guard the first CORS origin IS the web app's origin (operators must allow it for the UI to work at all); exported so the escalation bridge's Bao turn builds the same issue-link base as the sync path
@@ -138,8 +141,6 @@ interface ActiveConnection {
 
 class RocketChatConnectionManager {
   private readonly conns = new Map<string, ActiveConnection>();
-  // cm:guard keyed by the CONVERSATION and never the room: a thread exists so a side conversation need not be followed by the room, and one key per rid put two live threads in one `chat_sessions` row reading each other's turns back as their own history (ISS-987). The room's own messages are their own conversation under the same rule.
-  private readonly sessionByConversation = new Map<string, string>();
   private started = false;
   private listenClient?: pg.Client | undefined;
   private listenRetryTimer?: NodeJS.Timeout | undefined;
@@ -151,6 +152,7 @@ class RocketChatConnectionManager {
     this.started = true;
     // cm:why listen even with zero connections — the first-ever connect arrives as a NOTIFY from whichever instance served the HTTP request
     this.startReloadListener();
+    registerConversationTransport(rocketChatConversationPorts);
     this.stopQuestionDrain = startQuestionDrainLoop(() => this.started);
     this.stopCommentMirror = startCommentMirrorLoop(() => this.started, hooks);
     const rows = await db
@@ -437,7 +439,6 @@ class RocketChatConnectionManager {
     shape: RoomShape,
   ): Promise<void> {
     const restAuth = { serverUrl: ac.serverUrl, authToken: ac.authToken, userId: ac.botUserId };
-    const conversation = conversationKey(m);
     const principal = await resolveTurnPrincipal({
       serverUrl: ac.serverUrl,
       routePrincipalUserId: route.principalUserId,
@@ -447,6 +448,7 @@ class RocketChatConnectionManager {
       onRefusal: (d) => logger.warn(d, 'rocketchat: direct speaker unresolved; refusing the turn'),
     });
     // cm:guard the refusal is the deliverable and the turn does NOT run: a DM's authority is its one human, so with nobody resolved there is no identity to compute an answer under — falling back to the organization's creator would answer a stranger with the creator's read access (ISS-987, consuming ISS-977).
+    // cm:guard it also runs BEFORE the venue is opened, so a speaker being refused does not leave a conversation row behind for a turn that was never had (ISS-1001).
     if (!principal.ok) {
       const client = ac.client;
       if (client) {
@@ -458,6 +460,21 @@ class RocketChatConnectionManager {
       }
       return;
     }
+    // cm:guard the room's conversation is resolved from the DATABASE on every message, never from a map on this instance: the pointer used to live in `sessionByConversation`, so a core restart — which every deploy is, and which the reconciler makes nearly certain to catch a live session — silently began a fresh transcript for every room that had been talking (ISS-1001 criterion 1).
+    const venue = await rocketChatConversationPorts.resolveVenue({
+      m,
+      auth: restAuth,
+      projectId: route.projectId,
+      shape,
+    });
+    if (!venue) {
+      logger.error(
+        { connectionId, rid: m.rid, msgId: m.id, projectId: route.projectId },
+        'rocketchat: venue unresolved; refusing the message, not inventing one',
+      );
+      return;
+    }
+    const conversation = await openConversation(venue);
     // cm:guard two nested guards so a stall NEVER leaves the mention in silence: `abort` cancels the provider, `withTimeout` backstops a hang the abort cannot reach; either fire sends a fallback AND captures to Sentry tagged with `phase`
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(), TURN_TIMEOUT_MS);
@@ -531,8 +548,8 @@ class RocketChatConnectionManager {
           phase = 'turn';
           const result = await runExternalChatTurn({
             projectId: route.projectId,
-            source: 'rocketchat',
-            sessionId: this.sessionByConversation.get(conversation),
+            adapter: 'rocketchat',
+            conversationId: conversation.id,
             message: m.text,
             tools: fast.tools,
             userKey: m.userId,
@@ -542,7 +559,6 @@ class RocketChatConnectionManager {
             resolveImage: fast.resolveImage,
             signal: abort.signal,
           });
-          this.sessionByConversation.set(conversation, result.sessionId);
 
           // ISS-675 — escalation short-circuits the normal verify/reply path:
           // the model chose to hand this question to a deeper research agent
@@ -609,10 +625,7 @@ class RocketChatConnectionManager {
         HANDLE_TIMEOUT_MS,
       );
     } catch (err) {
-      // The mention was seen — never leave the user in silence. Cancel a still
-      // running provider call, drop the room's session pointer (a poisoned
-      // session can't wedge every future turn), capture with the phase we hung
-      // in, and reply with an honest fallback.
+      // cm:guard the mention was seen, so the room never goes silent — but the CONVERSATION is not dropped on the way out, which is what the in-memory pointer used to do here. A room whose turn failed keeps its transcript; a turn that cannot be answered is recorded as a silence with its reason by `external-chat.ts`, and the read window moves past a poisoned turn on its own (ISS-1001).
       abort.abort();
       const timedOut = err instanceof HandleTimeoutError;
       logger.error(
@@ -628,7 +641,6 @@ class RocketChatConnectionManager {
           user: m.username,
         },
       });
-      this.sessionByConversation.delete(conversation);
       outcome = fixed(errorFallbackReply(ac.botName));
     } finally {
       clearTimeout(timer);
@@ -673,8 +685,8 @@ class RocketChatConnectionManager {
       setPhase('retry');
       result = await runExternalChatTurn({
         projectId: route.projectId,
-        source: 'rocketchat',
-        sessionId: result.sessionId,
+        adapter: 'rocketchat',
+        conversationId: result.conversationId ?? undefined,
         message: correctiveMessage(verdict.problems),
         tools: fast.tools,
         userKey: m.userId,
@@ -683,7 +695,6 @@ class RocketChatConnectionManager {
         resolveImage: fast.resolveImage,
         signal,
       });
-      this.sessionByConversation.set(conversationKey(m), result.sessionId);
       verdict = result.reply.trim()
         ? await screen(result)
         : { ok: false, problems: ['empty retry reply'] };

@@ -11,13 +11,13 @@
 import { and, desc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { db } from '../../db/client.js';
-import type { ChatSessionSource } from '../../db/schema.js';
+import type { ConversationAdapter } from '../../db/schema-conversations.js';
 import { assistantSpeakerLinks } from '../../db/schema-speaker-links.js';
 import { assertProjectAccess } from '../../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { proposeCandidates, type SpeakerCandidate } from './candidates.js';
 import { lookupSpeakerProfile, type SpeakerProfile } from './directory.js';
-import { isChatSessionSource, type SpeakerRefusal, sourceUnknownRefusal } from './speaker-link.js';
+import { isConversationAdapter, type SpeakerRefusal, sourceUnknownRefusal } from './speaker-link.js';
 
 interface SpeakerBody {
   source?: unknown;
@@ -26,7 +26,7 @@ interface SpeakerBody {
 
 function readBody(
   raw: SpeakerBody,
-): { source: ChatSessionSource; externalId: string } | SpeakerRefusal {
+): { source: ConversationAdapter; externalId: string } | SpeakerRefusal {
   const source = typeof raw.source === 'string' ? raw.source.trim() : '';
   const externalId = typeof raw.externalId === 'string' ? raw.externalId.trim() : '';
   if (!source || !externalId) {
@@ -36,7 +36,7 @@ function readBody(
         'both "source" and "externalId" are required. "source" is the chat channel, "externalId" is that channel\'s own user id for the speaker — never their display name.',
     };
   }
-  if (!isChatSessionSource(source)) return sourceUnknownRefusal(source);
+  if (!isConversationAdapter(source)) return sourceUnknownRefusal(source);
   return { source, externalId };
 }
 
@@ -66,7 +66,7 @@ function describe(profile: SpeakerProfile, candidates: SpeakerCandidate[], userI
 
 async function profileAndCandidates(
   projectId: string,
-  source: ChatSessionSource,
+  source: ConversationAdapter,
   externalId: string,
 ): Promise<{ profile: SpeakerProfile; candidates: SpeakerCandidate[] } | SpeakerRefusal> {
   const lookup = await lookupSpeakerProfile({ projectId, source, externalId });
@@ -191,7 +191,7 @@ speakerLinkMeRoutes.get('/me/speaker-links', async (c) => {
 // cm:guard DELETE removes the row — there is no disabled state, because a row present IS the authorization. Scoped to the caller's own userId in the same WHERE as the key, so no id in the path can reach somebody else's link.
 speakerLinkMeRoutes.delete('/me/speaker-links/:source/:namespace/:externalId', async (c) => {
   const source = c.req.param('source');
-  if (!isChatSessionSource(source)) {
+  if (!isConversationAdapter(source)) {
     const refusal = sourceUnknownRefusal(source);
     return c.json({ error: refusal.message, code: refusal.code }, 400);
   }

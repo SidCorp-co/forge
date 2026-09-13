@@ -1,28 +1,41 @@
 import { describe, expect, it, vi } from 'vitest';
 
-// Mock the module boundaries so the test exercises external-chat's glue
-// (resolve → session → drain loop → persist → return reply) without a DB.
+// cm:why the module boundaries are mocked so this file exercises the glue — resolve, open the turn,
+// drain, persist, reply — rather than the store or the provider.
 const appended: string[] = [];
-vi.mock('./session.js', () => ({
-  loadOrCreateSession: async (o: { projectId: string; source: string; userId: string | null }) => ({
-    id: 'sess-1',
-    projectId: o.projectId,
-    userId: o.userId,
-    source: o.source,
-    messages: [] as unknown[],
+const silences: string[] = [];
+vi.mock('./conversation-turn.js', () => ({
+  openTurn: async (o: { adapter: string }) => ({
+    conversationId: 'conv-1',
+    adapter: o.adapter,
+    history: [] as unknown[],
+    pending: [] as unknown[],
   }),
-  appendUserMessage: (s: { messages: unknown[] }, c: string, images: unknown[] = []) =>
-    s.messages.push({ role: 'user', content: c, ...(images.length > 0 ? { images } : {}) }),
-  appendAssistantMessage: (s: { messages: unknown[] }, c: string) => {
+  appendUserMessage: (
+    t: { pending: unknown[] },
+    c: string,
+    opts: { images?: unknown[] } = {},
+  ) => {
+    const images = opts.images ?? [];
+    t.pending.push({ role: 'user', content: c, images });
+  },
+  appendAssistantMessage: (t: { pending: unknown[] }, c: string) => {
     appended.push(c);
-    s.messages.push({ role: 'assistant', content: c });
+    t.pending.push({ role: 'assistant', content: c, images: [] });
+  },
+  appendSilence: (t: { pending: unknown[] }, reason: string) => {
+    silences.push(reason);
+    t.pending.push({ role: 'assistant', content: '', images: [], silenceReason: reason });
   },
   persistMessages: async () => undefined,
   toProviderMessages: (
-    s: { messages: Array<{ role: string; content: string; images?: Array<{ ref: string }> }> },
+    t: {
+      history: Array<{ role: string; content: string; images?: Array<{ ref: string }> }>;
+      pending: Array<{ role: string; content: string; images?: Array<{ ref: string }> }>;
+    },
     resolved?: Map<string, string>,
   ) =>
-    s.messages.map((m) => {
+    [...t.history, ...t.pending].map((m) => {
       const url = m.images?.[0] ? resolved?.get(m.images[0].ref) : undefined;
       return url
         ? {
@@ -101,11 +114,12 @@ describe('runExternalChatTurn', () => {
     buildSystemPromptCalls.length = 0;
     const out = await runExternalChatTurn({
       projectId: 'p1',
-      source: 'rocketchat',
+      adapter: 'rocketchat' as const,
+      conversationId: 'conv-1',
       message: 'what is the answer?',
       userId: null,
     });
-    expect(out.sessionId).toBe('sess-1');
+    expect(out.conversationId).toBe('conv-1');
     expect(out.reply).toBe('The answer is 42.');
     expect(out.terminal).toBe('done');
     expect(appended).toEqual(['The answer is 42.']);
@@ -116,7 +130,8 @@ describe('runExternalChatTurn', () => {
     selectCall = 0;
     const out = await runExternalChatTurn({
       projectId: 'p1',
-      source: 'rocketchat',
+      adapter: 'rocketchat' as const,
+      conversationId: 'conv-1',
       message: 'how is the project progressing?',
       userId: null,
     });
@@ -138,7 +153,8 @@ describe('runExternalChatTurn — images', () => {
     selectCall = 0;
     await runExternalChatTurn({
       projectId: 'p1',
-      source: 'rocketchat',
+      adapter: 'rocketchat' as const,
+      conversationId: 'conv-1',
       message: 'what is wrong here?',
       images: [IMAGE],
       userId: null,
@@ -157,7 +173,8 @@ describe('runExternalChatTurn — images', () => {
     selectCall = 0;
     await runExternalChatTurn({
       projectId: 'p1',
-      source: 'rocketchat',
+      adapter: 'rocketchat' as const,
+      conversationId: 'conv-1',
       message: 'plain question',
       userId: null,
     });
@@ -175,7 +192,8 @@ describe('runExternalChatTurn — turn context placement', () => {
     buildSystemPromptCalls.length = 0;
     await runExternalChatTurn({
       projectId: 'p1',
-      source: 'rocketchat',
+      adapter: 'rocketchat' as const,
+      conversationId: 'conv-1',
       message: 'what broke?',
       conversationContext: '[an]: deploy is failing',
     });

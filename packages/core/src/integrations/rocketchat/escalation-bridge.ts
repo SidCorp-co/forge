@@ -155,7 +155,7 @@ async function synthesizeViaBao(
 
   const result = await runExternalChatTurn({
     projectId: session.projectId,
-    source: 'rocketchat',
+    adapter: 'rocketchat',
     message: buildSynthesisMessage(meta.question, payload, meta.askedByUsername),
     tools,
     turnKind: tools ? 'agentic' : 'relay',

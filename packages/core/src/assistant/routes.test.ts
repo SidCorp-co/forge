@@ -36,6 +36,49 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
+// cm:why the store has its own suites; this file owns what the ROUTE owns — auth, membership,
+// opening the turn, and the prompt it builds.
+const persisted: Array<{ role: string; content: string; silenceReason: string | null }> = [];
+const openTurnCalls: Array<Record<string, unknown>> = [];
+let seededHistory: Array<{ role: string; content: string }> = [];
+vi.mock('./conversation-turn.js', () => ({
+  openTurn: async (o: Record<string, unknown>) => {
+    openTurnCalls.push(o);
+    return {
+      conversationId: CONVERSATION_ID,
+      adapter: 'web',
+      history: seededHistory.map((m) => ({ ...m, images: [], silenceReason: null })),
+      pending: [] as Array<Record<string, unknown>>,
+    };
+  },
+  appendUserMessage: (t: { pending: unknown[] }, content: string) => {
+    t.pending.push({ role: 'user', content, images: [], silenceReason: null });
+  },
+  appendAssistantMessage: (t: { pending: unknown[] }, content: string) => {
+    t.pending.push({ role: 'assistant', content, images: [], silenceReason: null });
+  },
+  appendSilence: (t: { pending: unknown[] }, reason: string) => {
+    t.pending.push({ role: 'assistant', content: '', images: [], silenceReason: reason });
+  },
+  persistMessages: async (t: {
+    pending: Array<{ role: string; content: string; silenceReason: string | null }>;
+  }) => {
+    persisted.push(...t.pending.splice(0));
+  },
+  toProviderMessages: (t: {
+    history: Array<{ role: string; content: string }>;
+    pending: Array<{ role: string; content: string; silenceReason: string | null }>;
+  }) =>
+    [...t.history, ...t.pending]
+      .filter((m) => (m as { silenceReason?: string | null }).silenceReason == null && m.content)
+      .map((m) => ({ role: m.role, content: m.content })),
+}));
+
+const addPerson = vi.fn(async () => undefined);
+vi.mock('../conversations/participants.js', () => ({
+  addPerson: (...args: unknown[]) => addPerson(...(args as [never])),
+}));
+
 // cm:guard a chat turn must NOT broadcast over WS — the chat.message publisher was deleted because no client listened to it (the widget streams over the SSE response body, not WS), so a roomManager.publish re-introduced in assistant/routes.ts or run-turn.ts is caught by this mock and fails the success-path test's assertion (ISS-71)
 const wsPublish = vi.fn();
 vi.mock('../ws/server.js', () => ({
@@ -51,7 +94,7 @@ const { isEnabled } = await import('../lib/feature-flags.js');
 
 const USER_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '33333333-3333-4333-8333-333333333333';
-const SESSION_ID = '99999999-9999-4999-8999-999999999999';
+const CONVERSATION_ID = '99999999-9999-4999-8999-999999999999';
 
 function buildApp(opts: { mountChat: boolean }) {
   const app = new Hono<{ Variables: import('../middleware/request-id.js').RequestIdVars }>();
@@ -101,28 +144,8 @@ function appConfigProviderRow(row: { chatProviderId: string | null; chatModel: s
   selectLimit.mockResolvedValueOnce([row]);
 }
 
-function sessionRow(messages: unknown[] = []) {
-  selectLimit.mockResolvedValueOnce([
-    {
-      id: SESSION_ID,
-      projectId: PROJECT_ID,
-      userId: USER_ID,
-      source: 'web',
-      messages,
-    },
-  ]);
-}
-
-function newSessionInsert() {
-  insertReturning.mockResolvedValueOnce([
-    {
-      id: SESSION_ID,
-      projectId: PROJECT_ID,
-      userId: USER_ID,
-      source: 'web',
-      messages: [],
-    },
-  ]);
+function seedConversation(messages: Array<{ role: string; content: string }> = []) {
+  seededHistory = messages;
 }
 
 function chatLogsInsert() {
@@ -136,6 +159,9 @@ async function token() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  persisted.length = 0;
+  openTurnCalls.length = 0;
+  seededHistory = [];
   selectLimit.mockReset();
   insertReturning.mockReset();
   insertValues.mockClear();
@@ -144,8 +170,8 @@ beforeEach(() => {
   dbInsert.mockClear();
   dbUpdate.mockClear();
   wsPublish.mockClear();
-  // values() is both a Promise (chat_logs path: `await db.insert(...).values(...)`)
-  // AND has a `.returning()` method (chat_sessions path).
+  // cm:guard `values()` is both a Promise, for `await db.insert(...).values(...)` on the audit path,
+  // AND carries a `.returning()` — drop either half and a caller this route makes stops resolving.
   insertValues.mockImplementation((() => {
     const p = Promise.resolve(undefined) as Promise<undefined> & {
       returning: typeof insertReturning;
@@ -225,7 +251,7 @@ describe('POST /api/chat (mounted)', () => {
     projectInfoRow({});
     appConfigOverrideRow(null);
     appConfigProviderRow({ chatProviderId: 'mock', chatModel: null });
-    newSessionInsert();
+    seedConversation();
     chatLogsInsert();
 
     const res = await buildApp({ mountChat: true }).request('/api/chat', {
@@ -237,20 +263,15 @@ describe('POST /api/chat (mounted)', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type') ?? '').toContain('text/event-stream');
     const body = await res.text();
-    expect(body).toContain('event: session');
-    expect(body).toContain(SESSION_ID);
+    expect(body).toContain('event: conversation');
+    expect(body).toContain(CONVERSATION_ID);
     expect(body).toContain('event: chunk');
     expect(body).toContain('"text":"hi "');
     expect(body).toContain('event: done');
 
-    // session persisted with both turns
-    expect(updateSet).toHaveBeenCalled();
-    const setArg = updateSet.mock.calls[0]?.[0] as {
-      messages: Array<{ role: string; content: string }>;
-    };
-    expect(setArg.messages).toHaveLength(2);
-    expect(setArg.messages[0]).toMatchObject({ role: 'user', content: 'hi' });
-    expect(setArg.messages[1]).toMatchObject({ role: 'assistant', content: 'hi there' });
+    expect(persisted).toHaveLength(2);
+    expect(persisted[0]).toMatchObject({ role: 'user', content: 'hi' });
+    expect(persisted[1]).toMatchObject({ role: 'assistant', content: 'hi there' });
 
     // chat_logs row written exactly once with the accumulated reply + usage
     const logsCalls = insertValues.mock.calls.filter((c) => {
@@ -276,7 +297,7 @@ describe('POST /api/chat (mounted)', () => {
     expect(wsPublish).not.toHaveBeenCalled();
   });
 
-  it('second turn with same sessionId includes prior turn in provider call', async () => {
+  it('second turn with the same conversationId includes prior turn in provider call', async () => {
     let captured: ChatMessage[] = [];
     register('mock', () => ({
       id: 'mock',
@@ -294,15 +315,19 @@ describe('POST /api/chat (mounted)', () => {
     projectInfoRow({});
     appConfigOverrideRow(null);
     appConfigProviderRow({ chatProviderId: 'mock', chatModel: null });
-    sessionRow([
-      { role: 'user', content: 'first', ts: '2026-04-26T00:00:00.000Z' },
-      { role: 'assistant', content: 'reply-1', ts: '2026-04-26T00:00:01.000Z' },
+    seedConversation([
+      { role: 'user', content: 'first' },
+      { role: 'assistant', content: 'reply-1' },
     ]);
 
     const res = await buildApp({ mountChat: true }).request('/api/chat', {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
-      body: JSON.stringify({ projectId: PROJECT_ID, message: 'second', sessionId: SESSION_ID }),
+      body: JSON.stringify({
+        projectId: PROJECT_ID,
+        message: 'second',
+        conversationId: CONVERSATION_ID,
+      }),
     });
 
     expect(res.status).toBe(200);
@@ -340,7 +365,7 @@ describe('POST /api/chat (mounted)', () => {
     projectInfoRow({});
     appConfigOverrideRow(null);
     appConfigProviderRow({ chatProviderId: 'mock', chatModel: null });
-    newSessionInsert();
+    seedConversation();
 
     const res = await buildApp({ mountChat: true }).request('/api/chat', {
       method: 'POST',

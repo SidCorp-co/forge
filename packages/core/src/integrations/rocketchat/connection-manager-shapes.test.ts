@@ -107,6 +107,20 @@ vi.mock('./room-shape.js', () => ({
   roomShapeFromType: (t: string) => (t === 'd' ? 'direct' : 'group'),
 }));
 
+const openConversation = vi.fn(async (venue: { adapter: string; externalId: string }) => ({
+  id: `conv:${venue.externalId}`,
+  adapter: venue.adapter,
+  externalId: venue.externalId,
+  shape: 'direct',
+  title: null,
+}));
+vi.mock('../../conversations/store.js', () => ({
+  openConversation: (...args: unknown[]) => openConversation(...(args as [never])),
+}));
+vi.mock('../../conversations/ports.js', () => ({
+  registerConversationTransport: vi.fn(),
+}));
+
 const { rocketChatManager } = await import('./connection-manager.js');
 
 interface Loose {
@@ -159,10 +173,11 @@ const MESSAGE = {
   images: [],
 };
 
-// cm:why the conversation, not the room, is what a chat session belongs to: two live threads keyed on one rid shared a `chat_sessions` row and read each other's turns back as their own history, which is exactly the failure a thread was opened to avoid (ISS-987 criteria 13-17)
+// cm:why a turn's conversation is a ROW resolved per message, not a pointer on this instance: the Map it
+// lived in emptied on every restart, so a room talking for weeks restarted empty (ISS-1001 criterion 1).
 describe('connection-manager conversation identity', () => {
   const answered = {
-    sessionId: 'chat-session-1',
+    conversationId: 'conv:chat.example.co room-1',
     reply: 'an answer',
     terminal: 'done',
     error: null,
@@ -174,89 +189,89 @@ describe('connection-manager conversation identity', () => {
     vi.clearAllMocks();
     selectLimit.mockResolvedValue([{ agentConfig: null, repoPath: null }]);
     screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
+    resolveRoomShape.mockResolvedValue('group');
   });
 
-  const sessionIdSentOn = (call: number) =>
-    (runExternalChatTurn.mock.calls[call]?.[0] as { sessionId?: string } | undefined)?.sessionId;
+  const conversationSentOn = (call: number) =>
+    (runExternalChatTurn.mock.calls[call]?.[0] as { conversationId?: string } | undefined)
+      ?.conversationId;
 
-  it('gives two threads in one room two different chat sessions', async () => {
+  it('gives two threads in one room two different conversations', async () => {
     const ac = makeAc();
     const room = { ...ROUTE, rid: 'room-two-threads' };
     const m = { ...MESSAGE, rid: 'room-two-threads' };
-    runExternalChatTurn.mockResolvedValueOnce({ ...answered, sessionId: 'session-thread-a' });
-    await handle(ac, room, { ...m, tmid: 'thread-a' }, 'conn-1', 'group');
+    runExternalChatTurn.mockResolvedValue(answered);
 
-    runExternalChatTurn.mockResolvedValueOnce({ ...answered, sessionId: 'session-thread-b' });
+    await handle(ac, room, { ...m, tmid: 'thread-a' }, 'conn-1', 'group');
     await handle(ac, room, { ...m, id: 'msg-2', tmid: 'thread-b' }, 'conn-1', 'group');
 
-    expect(sessionIdSentOn(0)).toBeUndefined();
-    expect(sessionIdSentOn(1)).toBeUndefined();
+    expect(conversationSentOn(0)).toBe('conv:chat.example.co room-two-threads thread-a');
+    expect(conversationSentOn(1)).toBe('conv:chat.example.co room-two-threads thread-b');
   });
 
-  it('does not hand a thread the session the room main channel is holding', async () => {
+  it('does not hand a thread the conversation the room main channel is in', async () => {
     const ac = makeAc();
     const room = { ...ROUTE, rid: 'room-holding' };
     const m = { ...MESSAGE, rid: 'room-holding' };
-    runExternalChatTurn.mockResolvedValueOnce({ ...answered, sessionId: 'session-room' });
-    await handle(ac, room, m, 'conn-1', 'group');
+    runExternalChatTurn.mockResolvedValue(answered);
 
-    runExternalChatTurn.mockResolvedValueOnce({ ...answered, sessionId: 'session-thread' });
+    await handle(ac, room, m, 'conn-1', 'group');
     await handle(ac, room, { ...m, id: 'msg-2', tmid: 'thread-fresh' }, 'conn-1', 'group');
 
-    expect(sessionIdSentOn(1)).toBeUndefined();
+    expect(conversationSentOn(0)).toBe('conv:chat.example.co room-holding');
+    expect(conversationSentOn(1)).toBe('conv:chat.example.co room-holding thread-fresh');
   });
 
-  it('continues the session a second message in the same thread belongs to', async () => {
+  it('continues the conversation a second message in the same thread belongs to', async () => {
     const ac = makeAc();
     const room = { ...ROUTE, rid: 'room-continue-thread' };
     const m = { ...MESSAGE, rid: 'room-continue-thread' };
-    runExternalChatTurn.mockResolvedValue({ ...answered, sessionId: 'session-thread-a' });
+    runExternalChatTurn.mockResolvedValue(answered);
 
     await handle(ac, room, { ...m, tmid: 'thread-a' }, 'conn-1', 'group');
     await handle(ac, room, { ...m, id: 'msg-2', tmid: 'thread-a' }, 'conn-1', 'group');
 
-    expect(sessionIdSentOn(1)).toBe('session-thread-a');
+    expect(conversationSentOn(1)).toBe('conv:chat.example.co room-continue-thread thread-a');
   });
 
-  it('continues the room own session for a second unthreaded message', async () => {
+  // cm:guard the conversation is looked up on EVERY message rather than remembered: a manager that cached
+  // it would pass every other test here and still lose the room the moment the process died.
+  it('resolves the venue from the store on every message rather than remembering it', async () => {
     const ac = makeAc();
-    const room = { ...ROUTE, rid: 'room-continue-main' };
-    const m = { ...MESSAGE, rid: 'room-continue-main' };
-    runExternalChatTurn.mockResolvedValue({ ...answered, sessionId: 'session-room' });
+    const room = { ...ROUTE, rid: 'room-restart' };
+    const m = { ...MESSAGE, rid: 'room-restart' };
+    runExternalChatTurn.mockResolvedValue(answered);
 
     await handle(ac, room, m, 'conn-1', 'group');
     await handle(ac, room, { ...m, id: 'msg-2' }, 'conn-1', 'group');
 
-    expect(sessionIdSentOn(1)).toBe('session-room');
+    expect(openConversation).toHaveBeenCalledTimes(2);
   });
 
-  it('clears only the failing conversation session and leaves the room own in place', async () => {
+  // cm:guard this REPLACES "clears only the failing conversation session": the manager used to drop the
+  // room's pointer when a turn threw, and a failed turn is now recorded as a silence instead.
+  it('keeps the room in its conversation after a turn throws', async () => {
     const ac = makeAc();
     const room = { ...ROUTE, rid: 'room-failing' };
     const m = { ...MESSAGE, rid: 'room-failing' };
-    runExternalChatTurn.mockResolvedValueOnce({ ...answered, sessionId: 'session-room' });
+
+    runExternalChatTurn.mockResolvedValueOnce(answered);
     await handle(ac, room, m, 'conn-1', 'group');
 
-    runExternalChatTurn.mockResolvedValueOnce({ ...answered, sessionId: 'session-thread' });
-    await handle(ac, room, { ...m, id: 'msg-2', tmid: 'thread-a' }, 'conn-1', 'group');
-
     runExternalChatTurn.mockRejectedValueOnce(new Error('provider exploded'));
-    await handle(ac, room, { ...m, id: 'msg-3', tmid: 'thread-a' }, 'conn-1', 'group');
+    await handle(ac, room, { ...m, id: 'msg-2' }, 'conn-1', 'group');
 
-    runExternalChatTurn.mockResolvedValueOnce({ ...answered, sessionId: 'session-room' });
-    await handle(ac, room, { ...m, id: 'msg-4' }, 'conn-1', 'group');
-    expect(sessionIdSentOn(3)).toBe('session-room');
+    runExternalChatTurn.mockResolvedValueOnce(answered);
+    await handle(ac, room, { ...m, id: 'msg-3' }, 'conn-1', 'group');
 
-    runExternalChatTurn.mockResolvedValueOnce({ ...answered, sessionId: 'session-thread-2' });
-    await handle(ac, room, { ...m, id: 'msg-5', tmid: 'thread-a' }, 'conn-1', 'group');
-    expect(sessionIdSentOn(4)).toBeUndefined();
+    expect(conversationSentOn(2)).toBe('conv:chat.example.co room-failing');
   });
 });
 
 // cm:why a DM has exactly one human and runs as them, while a channel has many speakers and no single authority and deliberately keeps the organization's creator (ISS-987 criteria 21-24, consuming ISS-977)
 describe('connection-manager turn authority', () => {
   const answered = {
-    sessionId: 'chat-session-1',
+    conversationId: 'conv:chat.example.co room-1',
     reply: 'an answer',
     terminal: 'done',
     error: null,
@@ -411,7 +426,7 @@ describe('connection-manager routing order', () => {
     resolveRoomShape.mockResolvedValue('direct');
     resolveSpeaker.mockResolvedValue({ linked: true, userId: 'speaker-user-9' });
     runExternalChatTurn.mockResolvedValue({
-      sessionId: 's',
+      conversationId: 'conv:x',
       reply: 'an answer',
       terminal: 'done',
       error: null,

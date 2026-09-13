@@ -198,7 +198,7 @@ describe('deliverEscalationReplyOnce', () => {
     expect(runExternalChatTurn).toHaveBeenCalledWith(
       expect.objectContaining({
         projectId: 'proj-1',
-        source: 'rocketchat',
+        adapter: 'rocketchat',
         message: expect.stringContaining('raw PM answer'),
         tools: undefined,
         persona: 'PERSONA',
@@ -327,7 +327,7 @@ describe('deliverEscalationReplyOnce', () => {
     updateReturning.mockResolvedValue([{ id: 'session-1' }]);
     findConnectionById.mockResolvedValue({ config: { serverUrl: 'https://chat.example.co' } });
     decryptConnectionSecrets.mockReturnValue({ authToken: 'tok', userId: 'bot-1' });
-    selectLimit.mockResolvedValueOnce([]); // no project row found
+    selectLimit.mockResolvedValueOnce([]);
 
     await deliverEscalationReplyOnce(
       makeSession({ messages: [{ type: 'assistant', content: '```json\n{"answer": "x"}\n```' }] }),

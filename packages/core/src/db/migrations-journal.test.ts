@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const metaDir = fileURLToPath(new URL('../../drizzle/migrations/meta/', import.meta.url));
+const migrationsDir = fileURLToPath(new URL('../../drizzle/migrations/', import.meta.url));
 const journalPath = `${metaDir}_journal.json`;
 const migrationsDir = fileURLToPath(new URL('../../drizzle/migrations/', import.meta.url));
 
@@ -91,6 +92,34 @@ describe('drizzle migration journal', () => {
           : [`${cur.idx}_snapshot.prevId does not point at snapshot ${chain[i]?.idx}`],
       );
     expect(broken).toEqual([]);
+  });
+
+  // cm:guard a migration may NOT open or close a transaction of its own: drizzle wraps the whole run
+  // in one, so a file's own `COMMIT` ends drizzle's and every migration after it auto-commits.
+  // cm:why `0067_unify_runners.sql` did exactly that for 171 migrations, each free to half-apply and
+  // still be recorded as applied — found by ISS-1001, whose temp table was dropped under it.
+  it('contains no migration that opens or closes a transaction itself', () => {
+    // cm:why `BEGIN`/`END` inside `$$ ... $$` are PL/pgSQL block markers, so the scan tracks the
+    // dollar quote it is inside rather than reading them as transaction control.
+    const offences: string[] = [];
+    for (const file of readdirSync(migrationsDir).filter((f) => f.endsWith('.sql'))) {
+      const sql = readFileSync(`${migrationsDir}${file}`, 'utf8');
+      let inBlock = false;
+      for (const [i, line] of sql.split('\n').entries()) {
+        const text = line.trim();
+        const dollars = text.match(/\$[a-z_]*\$/gi)?.length ?? 0;
+        if (!text.startsWith('--') && !inBlock) {
+          const bare = text.replace(/;$/, '').toUpperCase();
+          // cm:why `END` is absent though it commits: it also closes a `CASE`, which three live
+          // migrations do on its own line, and a rule needing three waivers is a rule nobody reads.
+          if (['BEGIN', 'COMMIT', 'ROLLBACK', 'START TRANSACTION'].includes(bare)) {
+            offences.push(`${file}:${i + 1} ${bare}`);
+          }
+        }
+        if (dollars % 2 === 1) inBlock = !inBlock;
+      }
+    }
+    expect(offences).toEqual([]);
   });
 
   // cm:guard the HEAD snapshot is what `drizzle-kit generate` diffs the schema against, so it must belong to a real journal entry. A head that ran ahead of the journal makes generate believe applied work is still pending; one that lags makes it re-emit DDL the database already has.

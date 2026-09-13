@@ -21,15 +21,21 @@ vi.mock('hono/streaming', () => ({
   },
 }));
 
-// chat_logs audit + session persistence both touch the DB — stub them out.
+// cm:why the audit row and the message rows both reach the database, and this file is about the SSE
+// stream rather than either of them.
 vi.mock('../db/client.js', () => ({
   db: { insert: () => ({ values: async () => undefined }) },
 }));
 const appended: string[] = [];
-vi.mock('./session.js', () => ({
-  appendAssistantMessage: (s: { messages: unknown[] }, text: string) => {
+const silences: string[] = [];
+vi.mock('./conversation-turn.js', () => ({
+  appendAssistantMessage: (t: { pending: unknown[] }, text: string) => {
     appended.push(text);
-    s.messages.push({ role: 'assistant', content: text });
+    t.pending.push({ role: 'assistant', content: text });
+  },
+  appendSilence: (t: { pending: unknown[] }, reason: string) => {
+    silences.push(reason);
+    t.pending.push({ role: 'assistant', content: '', silenceReason: reason });
   },
   persistMessages: async () => undefined,
 }));
@@ -37,15 +43,15 @@ vi.mock('./session.js', () => ({
 const { runChatTurn } = await import('./run-turn.js');
 
 import type { ChatProvider, ChatStreamEvent } from './providers/types.js';
-import type { ChatSessionRow } from './session.js';
+import type { ConversationTurn } from './conversation-turn.js';
 import type { ChatToolset } from './tools/mcp-adapter.js';
 
 function fakeCtx() {
   return { header: () => {} } as never;
 }
 
-function session(): ChatSessionRow {
-  return { id: 's1', projectId: 'p1', userId: 'u1', source: 'web', messages: [] };
+function turn(): ConversationTurn {
+  return { conversationId: 'c1', adapter: 'web', history: [], pending: [] };
 }
 
 describe('runChatTurn tool loop', () => {
@@ -88,13 +94,14 @@ describe('runChatTurn tool loop', () => {
 
     await runChatTurn({
       c: fakeCtx(),
-      session: session(),
+      turn: turn(),
       resolved: { provider, model: 'm' },
       providerMessages: [{ role: 'user', content: 'how many open issues?' }],
       tools,
       projectSlug: 'proj',
       userMessage: 'how many open issues?',
       userKey: 'u1',
+      adapter: 'web',
     });
 
     // The tool ran with the model's arguments.
@@ -127,13 +134,14 @@ describe('runChatTurn tool loop', () => {
 
     await runChatTurn({
       c: fakeCtx(),
-      session: session(),
+      turn: turn(),
       resolved: { provider, model: 'm' },
       providerMessages: [{ role: 'user', content: 'hi' }],
       tools: { tools: [], execute: async () => ({ content: [] }) },
       projectSlug: 'proj',
       userMessage: 'hi',
       userKey: 'u1',
+      adapter: 'web',
     });
 
     expect(appended).toEqual(['hi']);

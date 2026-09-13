@@ -38,6 +38,14 @@ export function synthesizeAgentEmail(handle: string): string {
   return `${handle}.${randomBytes(6).toString('hex')}@${AGENT_EMAIL_DOMAIN}`;
 }
 
+/**
+ * The handle back out of the address {@link synthesizeAgentEmail} built.
+ */
+// cm:guard the address is the ONLY place an agent's handle is stored — `users` has no name column — so every reader that wants to print `@forge-dev` splits this same way; a second spelling of the split is how one screen starts showing the random suffix (ISS-1001).
+export function handleFromAgentEmail(email: string): string {
+  return email.split('.')[0] ?? email;
+}
+
 export const AGENT_CANNOT_LOGIN =
   'this account is an agent and cannot sign in — an agent authenticates with its ' +
   'Agent Access Token and holds no password, no session and no mailbox. An org ' +

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { StoredChatMessage } from './session.js';
+import type { ImageBearingMessage } from './vision.js';
 import {
   base64Bytes,
   resolveVisionImages,
@@ -16,13 +16,15 @@ function img(n: number): { name: string; mime: string; ref: string } {
   };
 }
 
-function userTurn(text: string, images: Array<{ name: string; mime: string; ref: string }> = []) {
-  return {
-    role: 'user' as const,
-    content: text,
-    ts: '2026-08-31T00:00:00.000Z',
-    ...(images.length > 0 ? { images } : {}),
-  } satisfies StoredChatMessage;
+function userTurn(
+  text: string,
+  images: Array<{ name: string; mime: string; ref: string }> = [],
+): ImageBearingMessage & { role: 'user'; content: string } {
+  return { role: 'user', content: text, images };
+}
+
+function assistantTurn(text: string): ImageBearingMessage & { role: 'assistant'; content: string } {
+  return { role: 'assistant', content: text, images: [] };
 }
 
 const b64 = (bytes: number) => 'A'.repeat(Math.ceil(bytes / 3) * 4);
@@ -47,7 +49,7 @@ describe('resolveVisionImages', () => {
     const resolve = vi.fn().mockResolvedValue('QUJD');
     const messages = [
       userTurn('analyse this', [img(1)]),
-      { role: 'assistant' as const, content: 'ok', ts: 'x' },
+      assistantTurn('ok'),
       userTurn('so what should change?'),
     ];
     const out = await resolveVisionImages(messages, [], resolve);

@@ -1,0 +1,202 @@
+// Who is in a conversation: people, and the handles that give it its scope.
+//
+// Membership is the authorization. A handle may be added only by somebody who
+// already holds a role on that handle's project, and a room is readable only by
+// somebody holding a role on every project its handles derive — so nothing here
+// asks a per-message question that `scope.ts` cannot answer from the join.
+
+import { and, eq, isNull, sql } from 'drizzle-orm';
+import { HTTPException } from 'hono/http-exception';
+import { handleFromAgentEmail } from '../auth/agent-account.js';
+import { db as defaultDb } from '../db/client.js';
+import {
+  type ConversationParticipantKind,
+  conversationParticipants,
+} from '../db/schema-conversations.js';
+import { projectMembers, users } from '../db/schema.js';
+import { effectiveProjectRole } from '../lib/authz.js';
+import type { Executor } from './db-executor.js';
+
+const forbidden = (message: string, code: string) =>
+  new HTTPException(403, { message, cause: { code } });
+
+const badRequest = (message: string, code: string) =>
+  new HTTPException(400, { message, cause: { code } });
+
+export interface ParticipantRow {
+  id: string;
+  kind: ConversationParticipantKind;
+  userId: string | null;
+  externalKey: string | null;
+  label: string | null;
+}
+
+export async function listParticipants(
+  conversationId: string,
+  tx: Executor = defaultDb,
+): Promise<ParticipantRow[]> {
+  return tx
+    .select({
+      id: conversationParticipants.id,
+      kind: conversationParticipants.kind,
+      userId: conversationParticipants.userId,
+      externalKey: conversationParticipants.externalKey,
+      label: conversationParticipants.label,
+    })
+    .from(conversationParticipants)
+    .where(
+      and(
+        eq(conversationParticipants.conversationId, conversationId),
+        isNull(conversationParticipants.removedAt),
+      ),
+    );
+}
+
+/** The projects a handle's scope comes from. */
+export async function projectsOfHandle(
+  handleUserId: string,
+  tx: Executor = defaultDb,
+): Promise<string[]> {
+  const rows = await tx
+    .select({ projectId: projectMembers.projectId })
+    .from(projectMembers)
+    .where(eq(projectMembers.userId, handleUserId));
+  return rows.map((r) => r.projectId).sort();
+}
+
+export interface AddHandleArgs {
+  conversationId: string;
+  handleUserId: string;
+  /** Who is doing the adding; their roles are what the door checks. */
+  actorUserId: string | null | undefined;
+  tx?: Executor;
+}
+
+/**
+ * Put a handle in a room. This is the moment a room's scope widens, so it is
+ * the moment the authorization is checked.
+ */
+// cm:guard checked at the DOOR and per PROJECT: a handle carries its projects with it, so admitting one a caller holds no role on hands them a room whose answers are computed with an access they do not have. The refusal names the project rather than saying no, because "which of its projects" is the whole of what the caller has to fix (ISS-1001 criteria 8, 9).
+export async function addHandle(args: AddHandleArgs): Promise<void> {
+  const tx = args.tx ?? defaultDb;
+  const [handle] = await tx
+    .select({ id: users.id, kind: users.kind, email: users.email })
+    .from(users)
+    .where(eq(users.id, args.handleUserId))
+    .limit(1);
+  if (!handle) {
+    throw badRequest(`no user ${args.handleUserId}, so it is no handle`, 'HANDLE_NOT_FOUND');
+  }
+  if (handle.kind !== 'agent') {
+    throw badRequest(
+      `user ${args.handleUserId} is a person, not an agent; a handle is an agent account and a person joins as a person`,
+      'HANDLE_NOT_AN_AGENT',
+    );
+  }
+
+  const handleProjects = await projectsOfHandle(args.handleUserId, tx);
+  for (const projectId of handleProjects) {
+    const access = await effectiveProjectRole(args.actorUserId, projectId);
+    if (!access?.role) {
+      throw forbidden(
+        `@${handleFromAgentEmail(handle.email)} works on project ${projectId} and you hold no role on it; a handle is added to a room by somebody who holds a role on its project`,
+        'HANDLE_PROJECT_FORBIDDEN',
+      );
+    }
+  }
+
+  await tx
+    .insert(conversationParticipants)
+    .values({
+      conversationId: args.conversationId,
+      kind: 'handle',
+      userId: args.handleUserId,
+      addedBy: args.actorUserId ?? null,
+      label: handleFromAgentEmail(handle.email),
+    })
+    .onConflictDoNothing();
+}
+
+export interface AddPersonArgs {
+  conversationId: string;
+  userId?: string | null;
+  externalKey?: string | null;
+  label?: string | null;
+  actorUserId?: string | null;
+  tx?: Executor;
+}
+
+// cm:guard a person may join with NO `users` row — an unlinked speaker has only the key their adapter gave, which is what `chat_sessions.user_key` held. That key authorizes nothing: `assistant_speaker_links` stays the only path from an outside speaker to a Forge identity.
+export async function addPerson(args: AddPersonArgs): Promise<void> {
+  const tx = args.tx ?? defaultDb;
+  if (!args.userId && !args.externalKey) {
+    throw badRequest(
+      'a person joins a conversation as a Forge user or as the key their channel gave; with neither there is nobody to add',
+      'PARTICIPANT_UNIDENTIFIED',
+    );
+  }
+  await tx
+    .insert(conversationParticipants)
+    .values({
+      conversationId: args.conversationId,
+      kind: 'person',
+      userId: args.userId ?? null,
+      externalKey: args.externalKey ?? null,
+      label: args.label ?? null,
+      addedBy: args.actorUserId ?? null,
+    })
+    .onConflictDoNothing();
+}
+
+export interface RemoveParticipantArgs {
+  conversationId: string;
+  participantId: string;
+  tx?: Executor;
+}
+
+/** Stamp a participant as gone. */
+// cm:guard the LAST handle may not leave: a room with none derives an empty scope, and `scope.ts` then refuses every reader — so the removal does not fail loudly, it makes the room silently unreachable for everybody including the person who removed it. Atomic creation holds the invariant only until the first removal; this is the other half (ISS-1001 criterion 42).
+export async function removeParticipant(args: RemoveParticipantArgs): Promise<void> {
+  const tx = args.tx ?? defaultDb;
+  const [row] = await tx
+    .select({ id: conversationParticipants.id, kind: conversationParticipants.kind })
+    .from(conversationParticipants)
+    .where(
+      and(
+        eq(conversationParticipants.id, args.participantId),
+        eq(conversationParticipants.conversationId, args.conversationId),
+        isNull(conversationParticipants.removedAt),
+      ),
+    )
+    .limit(1);
+  if (!row) {
+    throw new HTTPException(404, {
+      message: `no live participant ${args.participantId} in conversation ${args.conversationId}`,
+      cause: { code: 'NOT_FOUND' },
+    });
+  }
+
+  if (row.kind === 'handle') {
+    const [{ live } = { live: 0 }] = await tx
+      .select({ live: sql<number>`count(*)::int` })
+      .from(conversationParticipants)
+      .where(
+        and(
+          eq(conversationParticipants.conversationId, args.conversationId),
+          eq(conversationParticipants.kind, 'handle'),
+          isNull(conversationParticipants.removedAt),
+        ),
+      );
+    if (live <= 1) {
+      throw badRequest(
+        `conversation ${args.conversationId} has one handle left and a room with none is about no project, so nobody could read it again; add another handle first, or delete the conversation`,
+        'CONVERSATION_LAST_HANDLE',
+      );
+    }
+  }
+
+  await tx
+    .update(conversationParticipants)
+    .set({ removedAt: new Date() })
+    .where(eq(conversationParticipants.id, args.participantId));
+}
