@@ -28,7 +28,7 @@ const STATE_META: Record<StepState, { dot: string; label: string }> = {
   failed: { dot: "var(--red-500)", label: "Failed" },
 };
 
-// Payload keys handled specially / hidden from the generic body (ids + envelope).
+// cm:guard the envelope keys are hidden from the generic body on purpose: a handoff payload repeats the step name and its schema version, which the card already has from its own row, so printing them gave every step two lines of noise above the sentence a person came for
 const SKIP_KEYS = new Set(["step", "schema_version", "schemaVersion"]);
 
 function fmtDuration(seconds: number): string {
@@ -94,6 +94,7 @@ export function StepArtifactCard({ outcome, open, onToggle }: StepArtifactCardPr
   }
   const hasBody = paragraphs.length > 0 || lists.length > 0;
 
+  // cm:guard the header row below WRAPS and its figures are flex-none: at 375px `ml-auto` on a non-wrapping row pushed the duration and the cost past the card's edge, so a step's two measured numbers were unreadable on a phone while the document reported no horizontal overflow, because the card clipped rather than the page scrolling (ISS-999)
   return (
     <div
       id={`step-card-${outcome.step}`}
@@ -104,7 +105,7 @@ export function StepArtifactCard({ outcome, open, onToggle }: StepArtifactCardPr
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left"
+        className="flex w-full flex-wrap items-center gap-x-2.5 gap-y-1 px-3 py-2.5 text-left"
       >
         <Icon name={open ? "chevronDown" : "chevronRight"} size={14} />
         <span
@@ -117,9 +118,9 @@ export function StepArtifactCard({ outcome, open, onToggle }: StepArtifactCardPr
           className="inline-block h-3 w-0.5 flex-none rounded-pill"
           style={{ background: stageColor(outcome.step) }}
         />
-        <span className="fg-label font-mono">{outcome.step}</span>
+        <span className="fg-label min-w-0 truncate font-mono">{outcome.step}</span>
         <span className="fg-caption text-muted">{meta.label}</span>
-        <span className="ml-auto flex items-center gap-3">
+        <span className="ml-auto flex flex-none items-center gap-3">
           {outcome.durationSeconds != null && (
             <span className="fg-caption inline-flex items-center gap-1 text-muted">
               <Icon name="clock" size={12} />
