@@ -75,6 +75,14 @@ if (!tracked) {
 }
 
 const testFiles = tracked.filter((f) => TEST_FILE_RE.test(f));
+// cm:guard `git ls-files` reads the INDEX, so a test file deleted on disk and not yet staged is still listed and the read below dies on a raw ENOENT stack that names node:fs and not the file. Say which file and what to do about it — the gate's own crash must not read as vitest breaking (ISS-998).
+const vanished = testFiles.filter((f) => !existsSync(join(ROOT, f)));
+if (vanished.length > 0) {
+  console.error(
+    `test-reachability: could not run — ${vanished.length} test file(s) are in the git index but not on disk: ${vanished.join(', ')}. Stage the deletion (git add -A <path>) and run again.`,
+  );
+  process.exit(2);
+}
 const configs = tracked.filter((f) => CONFIG_RE.test(f));
 
 if (configs.length === 0) {

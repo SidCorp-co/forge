@@ -124,12 +124,15 @@ export interface ProjectRunSessionRow
   observedAt: string;
   /** Core's own reading of the session, never the box's claim. */
   sessionStatus: string | null;
+  /** Why core failed the session, where it did. `null` both on a clean end and on a session that
+   *  has not ended — `sessionStatus` is what separates those two, never this field's absence. */
+  sessionFailureReason: string | null;
   lastActivityAt: string | null;
   masterTitle: string | null;
 }
 
 /** Every run the fleet has reported for one project, newest report first. */
-// cm:guard `lastActivityAt` and `sessionStatus` come from the JOINED `agent_sessions` row and never from the snapshot. A box reporting its own liveness is a box marking its own homework — the heartbeat core already receives is the independent reading, and the two disagreeing is the signal a reader needs (ISS-934 criterion 11).
+// cm:guard `lastActivityAt`, `sessionStatus` and `sessionFailureReason` come from the JOINED `agent_sessions` row and never from the snapshot. A box reporting its own liveness is a box marking its own homework — the heartbeat core already receives is the independent reading, and the two disagreeing is the signal a reader needs (ISS-934 criterion 11).
 export async function readProjectRunSessions(projectId: string): Promise<ProjectRunSessionRow[]> {
   const rows = await db
     .select({
@@ -153,6 +156,9 @@ export async function readProjectRunSessions(projectId: string): Promise<Project
       sessionStatus: sql<
         string | null
       >`(SELECT s.status FROM agent_sessions s WHERE s.id = ${deviceRunLedger.sessionId})`,
+      sessionFailureReason: sql<
+        string | null
+      >`(SELECT s.failure_reason FROM agent_sessions s WHERE s.id = ${deviceRunLedger.sessionId})`,
       lastActivityAt: sql<
         string | null
       >`(SELECT s.last_heartbeat_at FROM agent_sessions s WHERE s.id = ${deviceRunLedger.sessionId})`,

@@ -234,9 +234,7 @@ export function IssueDetailScreen({
     }
   };
 
-  // Header action set (ISS-360) — wired to EXISTING transition / nav endpoints
-  // only (no fabricated APIs). The contextual primary button depends on where
-  // the issue sits in its lifecycle; the rest live in the ⋯ menu.
+  // cm:guard every header action below routes to an EXISTING transition or nav endpoint — one contextual primary button chosen by lifecycle position, the rest in the ⋯ menu (ISS-360)
   const isTerminal = issue.status === "awaiting_release" || issue.status === "closed";
   const isParked = issue.status === "on_hold";
   const isRunActive =
@@ -299,6 +297,7 @@ export function IssueDetailScreen({
             ? "failed"
             : null;
 
+  // cm:guard the one-column track is written out as `minmax(0,1fr)` and is never left implicit: an `auto` track takes its max-content width, so at 375px the column grew to 495px and every card in it was clipped off the right edge (ISS-999)
   return (
     <PageContainer className="min-h-dvh">
       {/* Sticky action + state bar — keeps the id, live status, and the primary
@@ -399,7 +398,7 @@ export function IssueDetailScreen({
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="min-w-0 space-y-4">
           {blocker && (
             <BlockerBanner

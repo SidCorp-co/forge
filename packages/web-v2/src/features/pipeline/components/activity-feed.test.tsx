@@ -61,6 +61,7 @@ function run(attempts: PipelineRunAttempt[]): PipelineRunSummary {
       sampleCount: 0,
     },
     liveJobs: 0,
+    lastSessionBeatAt: null,
     attempts,
     retrySummary: null,
   };

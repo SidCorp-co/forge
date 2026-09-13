@@ -22,12 +22,14 @@ vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast }) }));
 vi.mock("../hooks", () => ({
   useCreateIssue: () => ({ mutateAsync, isPending: false, reset: vi.fn() }),
 }));
+// cm:guard nothing here asserts on the editor, but the dialog contains one and a REAL CodeMirror cannot mount in a shared worker — the stub module carries why.
+vi.mock("@uiw/react-codemirror", async () => (await import("@/test/codemirror-stub")).codeMirrorStub());
 
 const { NewIssueDialog } = await import("./new-issue-dialog");
 
 const SCOPE = { projectId: "p1", slug: "forge-dev" } as never;
 
-// cm:why BodyEditor fetches the component registry, so the tree needs a QueryClient even though nothing here asserts on it — without one every case fails on "No QueryClient set" rather than on the rule it is testing
+// cm:why BodyEditor runs a preview query, so the tree needs a QueryClient even though nothing here asserts on it — without one every case fails on "No QueryClient set" rather than on the rule it is testing
 function mount() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(

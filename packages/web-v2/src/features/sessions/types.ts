@@ -20,6 +20,8 @@ import type { StatusKey } from "@/design/status";
  * non-failure terminal markers written by the recovery-by-verification path
  * (ISS-197).
  */
+// cm:guard EVERY value `agentSessionStatuses` holds, and `cancelled` is the one that was missing: core has written it since ISS-964's cancel path, and without it a cancelled session fell through `statusToChip`'s default and rendered as "queued" — a session somebody stopped, drawn as one waiting to start (ISS-998).
+// cm:edge contract -> packages/core/src/db/schema.ts#agentSessionStatuses — the same eight, and core may not be value-imported here; a status added there must be added here or its rows render as the default.
 export type AgentSessionStatus =
   | "idle"
   | "queued"
@@ -27,7 +29,17 @@ export type AgentSessionStatus =
   | "completed"
   | "failed"
   | "completed_via_recovery"
-  | "cancelled_stale";
+  | "cancelled_stale"
+  | "cancelled";
+
+// cm:edge contract -> packages/core/src/db/schema.ts#terminalAgentSessionStatuses — the statuses after which nothing more happens in a session. Read by the Agents runs row to tell core's reading apart from the box's claim.
+export const TERMINAL_SESSION_STATUSES: ReadonlySet<string> = new Set<AgentSessionStatus>([
+  "completed",
+  "failed",
+  "completed_via_recovery",
+  "cancelled_stale",
+  "cancelled",
+]);
 
 /** Synthetic UI-only state derived from heartbeat freshness. The backend only
  *  persists `running`; the `stalled` distinction is presentational. */
@@ -383,6 +395,9 @@ export function statusToChip(display: AgentSessionDisplayStatus): StatusKey {
       return "failed";
     case "cancelled_stale":
       return "swept";
+    // cm:guard `cancelled` is a person or a control call stopping the session, so it reads `paused`-family calm and never `failed`: nothing broke, and red here is the tone this design system reserves for a real failure.
+    case "cancelled":
+      return "archived";
     case "stalled":
       return "zombie";
     default:
@@ -455,6 +470,16 @@ export function classifySessionOutcome(
       label: "Swept (overdue)",
       tooltip:
         "Swept after going stale (no recent heartbeat). This is automatic cleanup, not a failure.",
+    };
+  }
+
+  // cm:guard `cancelled` is TERMINAL and is not a failure, and it needs its own branch rather than the fall-through below: that one returns bucket `active` for anything it does not name and labels the chip with the raw wire word, so a session somebody deliberately stopped read as still-working and said "cancelled" in lower case (ISS-998).
+  if (display === "cancelled") {
+    return {
+      bucket: "cleanup",
+      statusKey: "archived",
+      label: "Cancelled",
+      tooltip: "Stopped on purpose — not a failure.",
     };
   }
 

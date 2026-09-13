@@ -117,6 +117,10 @@ export interface PipelineRunSummary {
   /** ISS-789 — jobs on this run not yet terminal. A `running` run with 0 has
    *  nothing working on it; status alone cannot tell that apart. */
   liveJobs: number;
+  /** ISS-998 — newest heartbeat of a non-terminal session on this run, or null. */
+  // cm:guard the OTHER half of `liveJobs`, and it rides on the same row on purpose: `agent_sessions` hangs off the run rather than off a job, so a master-lane run reads `liveJobs: 0` while fully live. Fetched separately it could not be read consistently at all — `agent_sessions` is paged, and an offset walk over a set that moves loses a row it never names (ISS-998).
+  // cm:edge contract -> packages/core/src/pipeline/runs-rollup.ts — `loadLastSessionBeatByRunIds` is what fills this; it is `null` both for a run with no session and for a caller that did not batch the load, and neither is a claim that the run is dead.
+  lastSessionBeatAt: string | null;
   /** ISS-411 — per-attempt device/retry timeline. */
   attempts: PipelineRunAttempt[];
   /** ISS-411 — round-robin headline; null when the run never retried. */
