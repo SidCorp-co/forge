@@ -307,11 +307,14 @@ describe('an announcement is owed until it is made', () => {
 
 describe('an unannounced comment is announced by the drain', () => {
   function recordingBus() {
-    const seen: Array<{ commentId: string; actor: string }> = [];
+    const seen: Array<{ commentId: string; actor: string; authored: string }> = [];
     return {
       seen,
       bus: {
-        emit: async (topic: string, p: { commentId: string; actor: { type: string } }) => {
+        emit: async (
+          topic: string,
+          p: { commentId: string; actor: { type: string }; authored: string },
+        ) => {
           if (topic === 'commentCreated')
             seen.push({ commentId: p.commentId, actor: p.actor.type, authored: p.authored });
         },
