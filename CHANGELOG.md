@@ -1823,6 +1823,14 @@
   over the last 7 days" was right — and drew an empty box above the sentence, because each bar's
   height was a percentage of a box the browser gave no height to.
 
+  **An issue's page fits a phone.** The page laid its two columns out with a grid that named its
+  columns only on a wide screen; on a narrow one the single column was sized to its widest contents
+  instead of to the screen, so at 375px it rendered 495px wide and the right-hand edge of every card
+  on it — Description, Steps, Session continuity — was cut off with no way to scroll to it. The
+  column is now sized to the screen, and a wide table inside it scrolls on its own. The step rows in
+  the Steps list wrap rather than push, so a step's duration and its cost stay on the card instead
+  of being pushed past the edge.
+
   **A running session names the step it is on, or no step at all.** "running · code" appeared beside
   every live agent on the sessions list, the fleet strip, the session screen, the chat header and the
   run thread's rail — including the ones running `drive`, which is every agent an autonomous project
