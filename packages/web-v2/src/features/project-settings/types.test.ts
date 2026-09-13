@@ -1,4 +1,8 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import * as projectSettingsTypes from "./types";
 import {
   API_ONLY_KEYS,
   denylistBaseline,
@@ -6,6 +10,7 @@ import {
   humanizeToolName,
   knownToolIds,
   type PipelineConfig,
+  type ProjectUpdateInput,
   summarizeStageConfig,
   withStagePatch,
 } from "./types";
@@ -147,6 +152,27 @@ describe("API_ONLY_KEYS", () => {
       expect(row.key).not.toMatch(/skillName/);
       expect(row.key).not.toMatch(/stateContext/);
       expect(row.reason).not.toMatch(/per-jobType/i);
+    }
+  });
+});
+
+describe("the two retired knobs", () => {
+  it("offers no stateContext on the update payload", () => {
+    // @ts-expect-error ISS-1000 — core's PATCH /projects/:id refuses `stateContext` by name, so a payload type that still offered the field would compile a request that can only answer 400. This directive goes unused, and the build red, if the field comes back.
+    const payload: ProjectUpdateInput = { stateContext: { code: { modelOverride: "opus" } } };
+    expect(payload).toBeDefined();
+  });
+
+  it("exports no state-context value", () => {
+    const exported = Object.keys(projectSettingsTypes).filter((k) => /state_?context/i.test(k));
+    expect(exported).toEqual([]);
+  });
+
+  // cm:guard this one reads the SOURCE because the type system cannot represent the failure: `PipelineStateConfig` and `ProjectAgentConfig` both end in `[key: string]: unknown`, so a restored `skillName?: string` or `stateContext?: StateContextEntry` typechecks everywhere and a `@ts-expect-error` placed on it would be the thing that goes red, by being unused. A declared field is what invites the next editor control, which is the knob ISS-1000 removed.
+  it("declares neither retired field, nor the type that described one", () => {
+    const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "types.ts"), "utf8");
+    for (const gone of [/\bskillName\b/, /\bstateContext\b/, /\bStateContextEntry\b/, /\bSTATE_CONTEXT_JOB_TYPES\b/]) {
+      expect(source).not.toMatch(gone);
     }
   });
 });

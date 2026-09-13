@@ -133,13 +133,17 @@ describe('migration 0237 removes stateContext and the stage skillName (ISS-1000)
     expect(Object.keys(afterAc).sort()).toEqual(['personaStyle', 'pipelineConfig', 'plugins']);
   });
 
+  // cm:why the whole guard, not the token `CASE`: an assertion that only looks for the keyword stays green against `CASE WHEN true THEN ... END`, which walks a malformed `states` again and aborts the deploy — so it names the type test, the branch it guards and the empty-object fallback.
+  const GUARDED_TRAVERSAL =
+    /^\s*CASE\s+WHEN\s+jsonb_typeof\(\s*[\w.]+\s*->\s*'pipelineConfig'\s*->\s*'states'\s*\)\s*=\s*'object'\s+THEN\s+[\w.]+\s*->\s*'pipelineConfig'\s*->\s*'states'\s+ELSE\s+'\{\}'::jsonb\s+END\s*\)\s*AS e\(stage, cfg\)/;
+
   // cm:guard the row fixture below CANNOT tell the guarded traversal from the unguarded one — Postgres happens to evaluate the `jsonb_typeof` conjunct first here, so the unguarded form passes too. `AND` promises no order, so what is actually being defended is a plan this server did not choose, and only reading the statement can assert it. Both assertions stand: one says the migration survives such a row, the other says it is not surviving by luck.
   it('hands no unguarded jsonb_each a states value it has not proved is an object', () => {
     const sqlText = readFileSync(migrationPath, 'utf8');
-    const traversals = sqlText.match(/jsonb_each\(\s*[^)]*?'states'[^)]*?\)/gs) ?? [];
-    expect(traversals.length).toBeGreaterThan(0);
+    const traversals = sqlText.split('jsonb_each(').slice(1);
+    expect(traversals.length).toBe(3);
     for (const traversal of traversals) {
-      expect(traversal).toContain('CASE');
+      expect(traversal).toMatch(GUARDED_TRAVERSAL);
     }
   });
 
