@@ -377,7 +377,7 @@ app.route('/api/update-packets', updatePacketRoutes);
 app.route('/api/notifications', notificationRoutes);
 app.route('/api/me', meAttentionRoutes);
 app.route('/api/me', mePulseRoutes);
-app.route('/api', questionRoutes);
+app.route('/api/questions', questionRoutes);
 app.route('/api', speakerLinkProjectRoutes);
 app.route('/api', speakerLinkMeRoutes);
 app.route('/api/me', meRecentChangesRoutes);
@@ -506,9 +506,6 @@ if (isMain) {
   registerOutboxWorker();
   await registerReconciler();
 
-  // ISS-392 — periodically re-ingest the latest `runner-v*` GitHub Release so a
-  // freshly cut runner build is served (and auto-pulled by runners) without a
-  // manual core redeploy. No-op when RUNNER_RELEASE_DIR is unset.
   registerRunnerReleaseRefetch();
 
   const server = serve({ fetch: app.fetch, port }, (info) => {

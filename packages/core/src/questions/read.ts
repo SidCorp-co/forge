@@ -1,20 +1,23 @@
-// Reading a question as somebody, and answering it as somebody.
+// Asking a question as somebody, reading one as somebody, answering one as somebody.
 //
 // Everything here answers from a ROW. The websocket tells a box to look; it
 // never carries the answer, so a box offline for the whole episode loses
 // latency and nothing else (ISS-964 criterion 12).
 
+import { randomUUID } from 'node:crypto';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, type ProjectMemberRole } from '../db/schema.js';
 import {
   agentQuestions,
+  type QuestionBlockerKind,
   type QuestionOption,
+  type QuestionStatus,
   type QuestionStep,
   questionWaiters,
 } from '../db/schema-questions.js';
-import { effectiveProjectRole } from '../lib/authz.js';
-import { answerQuestion, mayChoose, QuestionRefused } from './write.js';
+import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
+import { answerQuestion, askQuestion, mayChoose, QuestionRefused } from './write.js';
 
 export type VisibleOption = QuestionOption & { locked: boolean };
 
@@ -32,6 +35,76 @@ function seenBy<T extends { steps: QuestionStep[] }>(row: T, role: ProjectMember
     locked: !mayChoose(o, role),
   }));
   return { ...row, options, recommendedOptionId: current?.recommendedOptionId ?? '' };
+}
+
+/**
+ * Ask a question against one issue, as somebody, or `null` when that somebody
+ * cannot reach the issue.
+ */
+// cm:guard the project is READ OFF THE ISSUE and never taken from the caller, so a row whose `project_id` and `issue_id` name different projects is unrepresentable through this door rather than merely refused — `QUESTION_ISSUE_ELSEWHERE` is unreachable from here, and an issue this caller may not reach is the same `null` as an issue that does not exist (ISS-989).
+// cm:guard core allocates the id HERE and the runner still mints its own on `POST /api/devices/me/questions`, which is the difference between a caller that has already written half a park locally and one that has not. The guard on `agentQuestions.id` carries which door does which.
+export type AskAsInput = {
+  userId: string;
+  issueId: string;
+  prompt: string;
+  blockerKind: QuestionBlockerKind;
+  options: QuestionOption[];
+  recommendedOptionId: string;
+  assumed?: Record<string, unknown> | undefined;
+  maxRounds?: number | undefined;
+  parkDeadlineAt?: Date | undefined;
+};
+
+export async function askAs(args: AskAsInput) {
+  const [issue] = await db
+    .select({ projectId: issues.projectId })
+    .from(issues)
+    .where(eq(issues.id, args.issueId))
+    .limit(1);
+  if (!issue?.projectId) return null;
+  const role = await roleOn(issue.projectId, args.userId);
+  if (!role) return null;
+  if (!projectRoleAtLeast(role, 'member')) {
+    throw new QuestionRefused(
+      'asking a question writes a row, and this caller is a viewer on the project the issue belongs to',
+    );
+  }
+  return askQuestion({
+    id: randomUUID(),
+    projectId: issue.projectId,
+    issueId: args.issueId,
+    prompt: args.prompt,
+    blockerKind: args.blockerKind,
+    options: args.options,
+    recommendedOptionId: args.recommendedOptionId,
+    ...(args.assumed ? { assumed: args.assumed } : {}),
+    ...(args.maxRounds === undefined ? {} : { maxRounds: args.maxRounds }),
+    ...(args.parkDeadlineAt ? { parkDeadlineAt: args.parkDeadlineAt } : {}),
+  });
+}
+
+/**
+ * Every question of one project, newest first, or null when the caller cannot
+ * reach the project.
+ */
+// cm:guard the `id` tie-break is what makes the order total: two questions asked in the same transaction share a `created_at` to the microsecond, and an order that leaves them free reads a different queue on each call, which is the one thing a caller draining "what is waiting" cannot work with (the same pair `readQuestionsForIssue` orders by).
+export async function projectQuestionsFor(
+  projectId: string,
+  userId: string,
+  status?: QuestionStatus,
+) {
+  const role = await roleOn(projectId, userId);
+  if (!role) return null;
+  const rows = await db
+    .select()
+    .from(agentQuestions)
+    .where(
+      status
+        ? and(eq(agentQuestions.projectId, projectId), eq(agentQuestions.status, status))
+        : eq(agentQuestions.projectId, projectId),
+    )
+    .orderBy(desc(agentQuestions.createdAt), desc(agentQuestions.id));
+  return rows.map((row) => seenBy(row, role));
 }
 
 export async function readQuestionFor(questionId: string, userId: string) {

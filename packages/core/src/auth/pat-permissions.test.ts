@@ -53,6 +53,7 @@ const REACHABLE_ON_2026_09_10 = [
   '/api/pipeline-runs',
   '/api/projects',
   '/api/prompts',
+  '/api/questions',
   '/api/schedules',
   '/api/skill-facts',
   '/api/skills',
