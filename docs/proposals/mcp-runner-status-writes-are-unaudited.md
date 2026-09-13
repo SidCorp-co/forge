@@ -52,3 +52,15 @@ ISS-990 corrected the false claim to a `cm:guard` that says what is actually tru
 decide is what a device-only caller should mean: the union of the device's runners, the row for a
 project the caller has not named, or a signature that takes the project too. That is the same
 question as above wearing different clothes — whether a per-device fact is really a per-binding one.
+
+## Honest costs
+
+What adopting either fix takes from whoever adopts it — not what the gap costs today.
+
+| Cost | Who pays it |
+|---|---|
+| `retire` and `update_capabilities` stop returning the row their writer hands back: the audited writer answers with a transition, so each handler needs a read-back and a second round trip per call | every MCP caller's latency, and the two handlers' tests, which mock a bare `update` today and would mock a transaction |
+| `runner_events` grows a row per agent-driven status write, on a table the Activity panel paginates and nothing prunes | the operator reading a timeline that now mixes their own actions with every automated one, and whoever later writes the retention rule |
+| Giving `readDeviceClaudeCodeCapabilities` a project parameter changes a signature used by callers that genuinely hold only a device id | those callers, each of which must find a project to name or justify reading across all of them |
+| Deciding the device-only question the other way — a union across the device's runners — makes `capabilities.pm` a fact with no single owner | whoever debugs a box whose PM opt-in is true on one project and false on another |
+| Both fixes are invisible to users and buy no behaviour they can see | the reviewer's time, against work that changes what somebody can do |
