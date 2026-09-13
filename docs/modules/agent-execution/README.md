@@ -38,6 +38,8 @@ flowchart LR
 | Job preparation and event stream | `core/src/jobs/`, `schema.ts:jobEvents`, `schema.ts:jobEventKinds` |
 | Agent sessions and their inbox | `core/src/agent-sessions/`, `schema.ts:agentSessions`, `schema.ts:sessionInbox` |
 | Interactive chat (not a pipeline job) | `core/src/assistant/`, `core/src/chat-logs/` |
+| The durable conversation behind a chat, and who is in it | `core/src/conversations/`, `schema-conversations.ts` |
+| A conversation over a channel, adapter by adapter | `core/src/conversations/ports.ts` (the four ports), `core/src/integrations/rocketchat/conversation-port.ts` (the first adapter) |
 | Transport | `core/src/ws/` |
 | Worktree and git work | `core/src/git/` |
 | Git credential for a checkout | `core/src/git/github-app-credential.ts` (mint), `packages/runner` `cmd/git_credential.rs` (helper) |

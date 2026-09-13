@@ -10,6 +10,11 @@
 -- a discard: every field of every consumed row is reachable from
 -- `conversations.origin` without consulting a membership.
 --
+-- Not idempotent, and it does not need to be: the whole run is ONE transaction
+-- (which it was not until this issue removed `0067_unify_runners.sql`'s stray
+-- `COMMIT;`), so an abort anywhere below leaves the database exactly as it was
+-- and the retry starts from the same place this run did.
+--
 -- WHAT THIS CANNOT CARRY, AND SAYS SO RATHER THAN PRETENDING: which Rocket.Chat
 -- room a migrated transcript belonged to. That mapping only ever lived in
 -- `RocketChatConnectionManager.sessionByConversation`, an in-process Map, so it

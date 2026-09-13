@@ -77,6 +77,23 @@ hand-write a `NNNN_name.sql`, you **must also**:
    The migrator splits on this exact marker and runs each statement
    in its own command.
 
+4. Open no transaction of your own. The migrator wraps the WHOLE run in one,
+   so a `BEGIN;`/`COMMIT;` in a file ends drizzle's and every migration after
+   it in the chain auto-commits statement by statement — free to half-apply
+   and still be recorded as applied. `0067_unify_runners.sql` did exactly that
+   for 171 migrations until ISS-1001 removed it;
+   `db/migrations-journal.test.ts` is now the gate.
+
+**A hand-written migration emits no snapshot, and that is allowed** — the
+snapshot chain is `drizzle-kit`'s own, and `db/migrations-journal.test.ts`
+asserts the links between the snapshots that EXIST rather than one per journal
+entry. The consequence is real and worth knowing before you next run
+`pnpm db:generate`: it diffs against the newest snapshot, so everything
+hand-written since is re-emitted as if it were new. Measured 2026-09-14 on
+0238 — the head snapshot is 0235, and a generate stops on interactive
+"created or renamed?" prompts covering 0232, 0234, 0236 and 0238. Answer those
+prompts deliberately, or write the next migration by hand too.
+
 ## Common failure modes
 
 ### Symptom: column from a new migration "does not exist" in prod

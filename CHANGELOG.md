@@ -114,6 +114,32 @@
 
 ### Added
 
+- **A conversation now outlives the process that was holding it, and belongs to the projects of the
+  agents in it.** A Rocket.Chat room's transcript lived in a Map inside the running core, keyed by
+  room id, and the row behind it kept every message of a conversation in one JSON blob on one
+  `chat_sessions` row. Three things followed from that, all of them visible to whoever was talking
+  to the bot. A deploy or a restart emptied the Map, so a room that had been talking for weeks
+  answered the next message as though it had never met you — and because the blob was capped, the
+  oldest turns were deleted outright as newer ones arrived, so even the row could not give them
+  back. Two people answering in the same room at the same moment each read the blob, each wrote it
+  back, and one of the two answers was gone with nothing reporting it. And a session belonged to
+  exactly one project, chosen when the room first spoke, so a room could never be about more than
+  one — while the one project it did name was carried on the row rather than derived, which meant
+  taking somebody's access away left every room they had been in still answering under it.
+
+  A conversation is now three tables: the room, who is in it, and one row per message in its own
+  place. A restart changes nothing, because there is nothing in memory to lose. Two simultaneous
+  answers are two rows, numbered by the database rather than by whoever wrote last. And a room no
+  longer names a project at all — it is about the projects of the agents in it, read fresh at the
+  moment somebody reads the room, so a revoked role takes the room with it with no write anywhere
+  and nothing to remember to clean up. A room with no agent left in it is refused to everybody by
+  name rather than opened to anybody, and removing the last agent is refused for the same reason.
+  Rocket.Chat is now one adapter over that store rather than the place the store lives, so a second
+  channel is four functions and no new copy of the machinery. Rooms that existed before this keep
+  every message they held, with one loss stated rather than glossed: which Rocket.Chat room a
+  migrated transcript belonged to only ever lived in that in-process Map, so a migrated transcript
+  is readable under its own name and the room it came from starts a fresh one.
+
 - **The Agents screen now says what a run is actually doing, and holds the decisions runs are waiting on.**
   A run row read its two words off the box that was running it — `live` and `runnable` — and drew
   "Working". That is the box's own word for "I have a process", and a pane stopped on a prompt has a
