@@ -125,7 +125,8 @@ describe('0239 forward — the assertion is the thing that says no', () => {
     const hit = conversations.filter((s) => s.includes(marker));
     if (hit.length !== 1) throw new Error(`${hit.length} statements contain ${marker}, wanted 1`);
     const out = conversations.flatMap((s) => (s.includes(marker) ? edit(s) : [s]));
-    if (out.join('\n') === conversations.join('\n')) throw new Error(`${marker} edit changed nothing`);
+    if (out.join('\n') === conversations.join('\n'))
+      throw new Error(`${marker} edit changed nothing`);
     return out;
   }
 
@@ -236,10 +237,9 @@ describe('0239 forward — a temp relation of the same name is not the source', 
          ) ON COMMIT DROP`,
       ]);
 
-      const [c] = await db.sql.unsafe(
-        `SELECT title FROM public.conversations WHERE id = $1`,
-        [session.id],
-      );
+      const [c] = await db.sql.unsafe(`SELECT title FROM public.conversations WHERE id = $1`, [
+        session.id,
+      ]);
       expect(c?.title).toBe('in the real table');
       const [m] = await db.sql.unsafe(
         `SELECT content FROM public.conversation_messages WHERE conversation_id = $1`,

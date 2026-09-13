@@ -140,7 +140,6 @@ describe('0239 forward — what every legacy row becomes', () => {
       await db.drop();
     }
   });
-
 });
 
 describe('0239 forward — the handle each project gets', () => {
