@@ -225,6 +225,25 @@ describe('a reply inside a question thread', () => {
     expect(runExternalChatTurn).not.toHaveBeenCalled();
   });
 
+  // cm:guard each of these three is dropped by `decideSkip` BEFORE the thread is resolved, so the assertion is that an owned issue thread does not buy the message a second chance: a skip moved below the thread lookup would make a reaction on a root into a comment saying nothing (ISS-981 criteria 14, 15, 16).
+  it.each([
+    [
+      'a reaction, which Rocket.Chat re-emits as an edit of the message it is on',
+      { isEdited: true },
+    ],
+    ['an edit of a message already said', { isEdited: true }],
+    ['a system event carrying no words', { isSystem: true }],
+    ['text that is empty', { text: '' }],
+    ['text that is only whitespace', { text: '   \n  ' }],
+  ])('writes no comment for %s', async (_name, overrides) => {
+    connected();
+    subjectForThread.mockResolvedValue({ kind: 'issue', issueId: 'iss-1', retired: false });
+    await routeMessage('conn-1', { ...MESSAGE, tmid: 'thread-2', mentions: [], ...overrides });
+    await flush();
+    expect(consumeIssueThreadReply).not.toHaveBeenCalled();
+    expect(runExternalChatTurn).not.toHaveBeenCalled();
+  });
+
   it('consumes a retired issue thread rather than letting it reach a model', async () => {
     connected();
     subjectForThread.mockResolvedValue({ kind: 'issue', issueId: 'iss-1', retired: true });
