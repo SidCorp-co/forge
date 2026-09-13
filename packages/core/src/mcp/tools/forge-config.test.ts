@@ -11,7 +11,7 @@ vi.mock('../../config/env.js', () => ({
 
 const selectLimit = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
-// lib/authz.ts effectiveProjectRole chains TWO leftJoins before where().limit(1).
+// cm:guard the chain is TWO leftJoins before `where().limit(1)`, matching `effectiveProjectRole` in lib/authz.ts — a mock one join short resolves `undefined` and every principal reads as a non-member, which passes any test asserting a refusal.
 const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
 const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
 const selectFrom = vi.fn(() => ({ where: selectWhere, leftJoin: selectLeftJoin }));
@@ -231,6 +231,38 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
     for (const text of [tool.description, factText, guideText]) {
       expect(text).not.toContain('stateContext');
     }
+  });
+
+  // cm:guard this is the only `action=update` case that reaches `assertPrincipalIsAdmin`: the refusal below short-circuits before the gate, so deleting this one takes the admin gate's coverage with it.
+  it('action=update writes a projectFacts patch for an admin principal', async () => {
+    const tool = forgeConfigTool({
+      principal: fakePrincipal,
+      projectSlug: null,
+    });
+
+    selectLimit
+      .mockResolvedValueOnce([adminAccessRow])
+      .mockResolvedValueOnce([{ agentConfig: { projectFacts: { 'build-commands': 'keep' } } }])
+      .mockResolvedValueOnce([
+        {
+          id: PROJECT_ID,
+          slug: 'my-proj',
+          name: 'My Project',
+          baseBranch: 'develop',
+          productionBranch: 'release',
+          agentConfig: { projectFacts: { 'build-commands': 'keep', 'done-means': 'new' } },
+        },
+      ]);
+
+    await tool.handler({
+      action: 'update',
+      projectId: PROJECT_ID,
+      projectFacts: { 'done-means': 'new' },
+    });
+
+    expect(updateSet).toHaveBeenCalledWith({
+      agentConfig: { projectFacts: { 'build-commands': 'keep', 'done-means': 'new' } },
+    });
   });
 
   it('action=update refuses a stateContext argument by name, and writes nothing', async () => {

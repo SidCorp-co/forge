@@ -14,7 +14,9 @@
 --     Declared on `stageConfigSchema` and read by no symbol: `StageOverrides` does not
 --     carry the field, and the driver skill name comes from `autonomousStepFor`. Zero
 --     projects on this fleet store one; the statement runs anyway, because a document
---     written before this deploy is not bound by a count taken before it.
+--     written before this deploy is not bound by a count taken before it. It walks EVERY
+--     key of `states` rather than the four the schema now names: a document holding a
+--     stage ISS-897 deleted would otherwise keep a `skillName` the raw reads still show.
 --
 -- Deletion only, and only of keys with no reader — nothing here is data a reader would
 -- want back. Every other key of every document is untouched. Follows
@@ -33,11 +35,18 @@ BEGIN
   WHERE agent_config ? 'stateContext';
 
   SELECT count(*) INTO with_skill_name
-  FROM projects
-  WHERE agent_config -> 'pipelineConfig' -> 'states' -> 'open' ? 'skillName'
-     OR agent_config -> 'pipelineConfig' -> 'states' -> 'in_progress' ? 'skillName'
-     OR agent_config -> 'pipelineConfig' -> 'states' -> 'needs_info' ? 'skillName'
-     OR agent_config -> 'pipelineConfig' -> 'states' -> 'awaiting_release' ? 'skillName';
+  FROM projects p
+  WHERE EXISTS (
+    SELECT 1
+    FROM jsonb_each(
+      CASE
+        WHEN jsonb_typeof(p.agent_config -> 'pipelineConfig' -> 'states') = 'object'
+          THEN p.agent_config -> 'pipelineConfig' -> 'states'
+        ELSE '{}'::jsonb
+      END
+    ) AS e(stage, cfg)
+    WHERE jsonb_typeof(cfg) = 'object' AND cfg ? 'skillName'
+  );
 
   UPDATE projects
   SET agent_config = agent_config #- '{stateContext}'
@@ -45,18 +54,28 @@ BEGIN
 
   GET DIAGNOSTICS changed_ac = ROW_COUNT;
 
-  UPDATE projects
-  SET agent_config =
-    agent_config
-      #- '{pipelineConfig,states,open,skillName}'
-      #- '{pipelineConfig,states,in_progress,skillName}'
-      #- '{pipelineConfig,states,needs_info,skillName}'
-      #- '{pipelineConfig,states,awaiting_release,skillName}'
-  WHERE agent_config ? 'pipelineConfig';
+  UPDATE projects p
+  SET agent_config = jsonb_set(
+    p.agent_config,
+    '{pipelineConfig,states}',
+    (
+      SELECT jsonb_object_agg(
+        e.stage,
+        CASE WHEN jsonb_typeof(e.cfg) = 'object' THEN e.cfg - 'skillName' ELSE e.cfg END
+      )
+      FROM jsonb_each(p.agent_config -> 'pipelineConfig' -> 'states') AS e(stage, cfg)
+    )
+  )
+  WHERE jsonb_typeof(p.agent_config -> 'pipelineConfig' -> 'states') = 'object'
+    AND EXISTS (
+      SELECT 1
+      FROM jsonb_each(p.agent_config -> 'pipelineConfig' -> 'states') AS e(stage, cfg)
+      WHERE jsonb_typeof(cfg) = 'object' AND cfg ? 'skillName'
+    );
 
   GET DIAGNOSTICS changed_pc = ROW_COUNT;
 
   RAISE NOTICE
-    'ISS-1000: removed stateContext from % project(s) (% carried one); rewrote % pipelineConfig document(s), % of which carried a stage skillName',
+    'ISS-1000: removed stateContext from % project(s) (% carried one); rewrote the states map of % project(s), % of which carried a stage skillName',
     changed_ac, with_state_context, changed_pc, with_skill_name;
 END $$;

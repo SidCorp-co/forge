@@ -16,7 +16,7 @@ const innerJoin = vi.fn(() => ({ on: selectOn, where: selectWhere }));
 const selectFrom = vi.fn(() => ({
   where: selectWhere,
   innerJoin,
-  // chained without limit/where (e.g. project_members for /:id detail)
+  // cm:why the `innerJoin` arm ends here with no `limit`/`where`, because the queries that take it (project_members for the /:id detail) chain neither
 }));
 
 // GET / visibility query:
@@ -748,7 +748,11 @@ describe('PATCH /api/projects/:id', () => {
       { stateContext: { code: { modelOverride: 'opus' } } },
       'agentConfig.stateContext decides nothing',
     ],
-    ['a null scoped stateContext', { stateContext: null }, 'agentConfig.stateContext decides nothing'],
+    [
+      'a null scoped stateContext',
+      { stateContext: null },
+      'agentConfig.stateContext decides nothing',
+    ],
     [
       'stateContext inside a wholesale agentConfig',
       { agentConfig: { stateContext: { code: {} } } },

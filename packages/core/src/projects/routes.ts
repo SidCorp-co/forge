@@ -39,7 +39,7 @@ import {
 } from '../pipeline/pipeline-config-schema.js';
 import { updatePipelineConfig } from '../pipeline/pipeline-config-service.js';
 import { pluginDesignationsPatchSchema } from '../plugins/designation.js';
-import { readAgentConfig, RETIRED_STATE_CONTEXT_MESSAGE } from './agent-config.js';
+import { RETIRED_STATE_CONTEXT_MESSAGE, readAgentConfig } from './agent-config.js';
 import { applyIssuePrefixPatch } from './issue-prefix-patch.js';
 import { projectOnboardRoutes } from './onboard-routes.js';
 import { pipelineConfigHttpError } from './pipeline-config-http.js';
@@ -107,9 +107,7 @@ export const updateProjectSchema = z
     issuePrefix: z.string().trim().max(16).nullable().optional(),
     defaultDeviceId: z.uuid().nullable().optional(),
     agentConfig: z.record(z.string(), z.unknown()).nullable().optional(),
-    // ISS-609 follow-up — scoped write for `agentConfig.personaStyle` (the
-    // chat/RC-bot reply-style knob) so the UI never round-trips the whole
-    // agentConfig jsonb. null/'' clears the style.
+    // cm:why ISS-609 follow-up — a scoped write for the chat/RC-bot reply-style knob, so the UI never round-trips the whole `agentConfig` jsonb to change one string; `null` and `''` both clear it
     personaStyle: z.string().trim().max(4000).nullable().optional(),
     // ISS-727 — scoped write for `agentConfig.rocketChatAnswerMode` (the RC
     // bot answer-engine knob: `fast` provider-chat vs `agent` runner Claude).
@@ -138,26 +136,15 @@ export const updateProjectSchema = z
 // cm:guard the walk refuses ONLY what has been retired. Widening it to validate `agentConfig` generally closes an escape hatch four other settings surfaces write through, and none of them is declared on this schema.
 function refuseRetiredProjectKeys(raw: unknown, ctx: z.RefinementCtx): void {
   if (!raw || typeof raw !== 'object') return;
+  const retired = (path: (string | number)[]) =>
+    ctx.addIssue({ code: 'custom', path, message: RETIRED_STATE_CONTEXT_MESSAGE });
   const body = raw as { stateContext?: unknown; agentConfig?: unknown };
-  if ('stateContext' in body) {
-    ctx.addIssue({ code: 'custom', path: ['stateContext'], message: RETIRED_STATE_CONTEXT_MESSAGE });
-  }
-  const ac = body.agentConfig;
+  if ('stateContext' in body) retired(['stateContext']);
+  const ac = body.agentConfig as { pipelineConfig?: unknown } | null | undefined;
   if (!ac || typeof ac !== 'object') return;
-  if ('stateContext' in ac) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['agentConfig', 'stateContext'],
-      message: RETIRED_STATE_CONTEXT_MESSAGE,
-    });
-  }
-  const pipelineConfig = (ac as { pipelineConfig?: unknown }).pipelineConfig;
-  if (!pipelineConfig || typeof pipelineConfig !== 'object') return;
-  refuseRetiredStageKeys((pipelineConfig as { states?: unknown }).states, ctx, [
-    'agentConfig',
-    'pipelineConfig',
-    'states',
-  ]);
+  if ('stateContext' in ac) retired(['agentConfig', 'stateContext']);
+  const states = (ac.pipelineConfig as { states?: unknown } | null | undefined)?.states;
+  refuseRetiredStageKeys(states, ctx, ['agentConfig', 'pipelineConfig', 'states']);
 }
 
 export const updateProjectPatchSchema = z

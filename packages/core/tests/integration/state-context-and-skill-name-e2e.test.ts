@@ -1,5 +1,5 @@
 /**
- * ISS-1000 — migration 0236 against a real Postgres, over a document shaped like
+ * ISS-1000 — migration 0237 against a real Postgres, over a document shaped like
  * the ones on the fleet, plus the permissive read the retirement depends on.
  *
  * A unit test over the schema shows what a PARSE drops. It cannot show what a
@@ -44,6 +44,8 @@ const STORED_PIPELINE = {
     in_progress: { enabled: true, skillName: 'forge-code' },
     needs_info: { disallowedTools: ['Workflow'] },
     awaiting_release: { enabled: true, skillName: 'forge-release' },
+    // cm:guard a stage ISS-897 deleted, and the reason the migration rebuilds the whole `states` map rather than deleting four named paths: a document holding one of the old stage names would otherwise keep its `skillName`, which `GET /api/projects/:id` and `forge_config` action=get both still show raw.
+    confirmed: { skillName: 'forge-review', model: 'sonnet' },
   },
 };
 
@@ -56,7 +58,7 @@ const STORED_STATE_CONTEXT = {
 
 type StoredConfig = Record<string, unknown> & { states?: Record<string, unknown> };
 
-describe('migration 0236 removes stateContext and the stage skillName (ISS-1000)', () => {
+describe('migration 0237 removes stateContext and the stage skillName (ISS-1000)', () => {
   let harness: TestDatabase;
   let projectId: string;
   let untouchedId: string;
@@ -95,11 +97,19 @@ describe('migration 0236 removes stateContext and the stage skillName (ISS-1000)
     expect(afterAc).not.toHaveProperty('stateContext');
   });
 
-  it('removes skillName from every stage of the stored pipelineConfig', () => {
+  it('removes skillName from every stage of the stored pipelineConfig, deleted stages included', () => {
     const pc = afterAc.pipelineConfig as StoredConfig;
-    for (const stage of ['open', 'in_progress', 'needs_info', 'awaiting_release']) {
+    for (const stage of Object.keys(pc.states ?? {})) {
       expect(pc.states?.[stage]).not.toHaveProperty('skillName');
     }
+    expect(Object.keys(pc.states ?? {}).sort()).toEqual([
+      'awaiting_release',
+      'confirmed',
+      'in_progress',
+      'needs_info',
+      'open',
+    ]);
+    expect(pc.states?.confirmed).toEqual({ model: 'sonnet' });
   });
 
   it('leaves every other key of the stage documents alone, open.mode included', () => {
@@ -126,7 +136,8 @@ describe('migration 0236 removes stateContext and the stage skillName (ISS-1000)
 
   // cm:guard the READ stays permissive and that asymmetry is deliberate: a canonical schema that REFUSED a stored `skillName` would make every project still holding one parse to `cfg = null`, `isAutonomous` false, and dispatch nothing in silence — the shape ISS-994's own guard measured on 2026-09-10. This is the assertion that goes red if the refusal is moved onto the canonical schema.
   it('parses a document that still stores both keys, dropping skillName rather than refusing', () => {
-    const parsed = pipelineConfigSchema.parse(STORED_PIPELINE);
+    const { confirmed: _deletedStage, ...states } = STORED_PIPELINE.states;
+    const parsed = pipelineConfigSchema.parse({ ...STORED_PIPELINE, states });
     expect(parsed.states?.open).toEqual({ enabled: true, mode: 'manual', model: 'opus' });
     expect(parsed.states?.in_progress).toEqual({ enabled: true });
   });

@@ -141,7 +141,9 @@ describe('stageConfigSchema per-state overrides', () => {
         states: { [stage]: { skillName: 'forge-review' } },
       });
       expect(result.success).toBe(false);
-      const issue = result.error?.issues.find((i) => i.path.join('.') === `states.${stage}.skillName`);
+      const issue = result.error?.issues.find(
+        (i) => i.path.join('.') === `states.${stage}.skillName`,
+      );
       expect(issue?.message).toContain('skillName selects nothing');
       expect(issue?.message).toContain('issue-flow');
     });
@@ -155,17 +157,9 @@ describe('stageConfigSchema per-state overrides', () => {
   });
 
   it('accepts systemPrompt append/replace + extras', () => {
-    const parsed = pipelineConfigSchema.parse({
-      states: {
-        awaiting_release: {
-          systemPrompt: { mode: 'replace', extras: 'CUSTOM RULES' },
-        },
-      },
-    });
-    expect(parsed.states?.awaiting_release?.systemPrompt).toEqual({
-      mode: 'replace',
-      extras: 'CUSTOM RULES',
-    });
+    const systemPrompt = { mode: 'replace', extras: 'CUSTOM RULES' } as const;
+    const parsed = pipelineConfigSchema.parse({ states: { awaiting_release: { systemPrompt } } });
+    expect(parsed.states?.awaiting_release?.systemPrompt).toEqual(systemPrompt);
   });
 
   it('rejects unknown systemPrompt mode', () => {
@@ -194,20 +188,15 @@ describe('stageConfigSchema per-state overrides', () => {
     }
   });
 
-  it('accepts replace mode when extras has real content', () => {
-    expect(() =>
-      pipelineConfigSchema.parse({
-        states: { awaiting_release: { systemPrompt: { mode: 'replace', extras: 'ONLY THIS' } } },
-      }),
-    ).not.toThrow();
-  });
-
-  it('accepts append mode with empty extras (no-op but valid)', () => {
-    expect(() =>
-      pipelineConfigSchema.parse({
-        states: { awaiting_release: { systemPrompt: { mode: 'append', extras: '' } } },
-      }),
-    ).not.toThrow();
+  it('accepts replace with real extras, and append with empty extras (a valid no-op)', () => {
+    for (const systemPrompt of [
+      { mode: 'replace', extras: 'ONLY THIS' },
+      { mode: 'append', extras: '' },
+    ]) {
+      expect(() =>
+        pipelineConfigSchema.parse({ states: { awaiting_release: { systemPrompt } } }),
+      ).not.toThrow();
+    }
   });
 
   it('accepts userPromptPolicy with all knobs', () => {
@@ -280,14 +269,12 @@ describe('stageConfigSchema per-state overrides', () => {
   });
 
   it('accepts budget action enum values', () => {
-    const parsedPause = pipelineConfigSchema.parse({
-      states: { open: { budget: { perMonthUsd: 50, action: 'pause' } } },
-    });
-    expect(parsedPause.states?.open?.budget?.action).toBe('pause');
-    const parsedWarn = pipelineConfigSchema.parse({
-      states: { open: { budget: { perMonthUsd: 50, action: 'warn' } } },
-    });
-    expect(parsedWarn.states?.open?.budget?.action).toBe('warn');
+    for (const action of ['pause', 'warn'] as const) {
+      const parsed = pipelineConfigSchema.parse({
+        states: { open: { budget: { perMonthUsd: 50, action } } },
+      });
+      expect(parsed.states?.open?.budget?.action).toBe(action);
+    }
   });
 
   it('rejects an unknown budget.action value', () => {
@@ -301,12 +288,10 @@ describe('stageConfigSchema per-state overrides', () => {
 
 describe('resume policy', () => {
   // cm:guard `maxResumeReopenCycles` was dropped from this schema by ISS-895 and must stay out. The schema STRIPS unknown keys, so re-adding the assertion without re-adding the key would fail here rather than silently — but re-adding the KEY is the real risk: it would restore a settings knob backing a bound that reads `reopen_count`, a column this lane never moves.
-  it('accepts maxResumeTokens as an optional non-negative integer', () => {
-    expect(pipelineConfigSchema.parse({ maxResumeTokens: 200_000 }).maxResumeTokens).toBe(200_000);
-  });
-
-  it('accepts 0 for maxResumeTokens (gate disabled)', () => {
-    expect(pipelineConfigSchema.parse({ maxResumeTokens: 0 }).maxResumeTokens).toBe(0);
+  it('accepts a non-negative maxResumeTokens, 0 included, which disables the gate', () => {
+    for (const maxResumeTokens of [200_000, 0]) {
+      expect(pipelineConfigSchema.parse({ maxResumeTokens }).maxResumeTokens).toBe(maxResumeTokens);
+    }
   });
 
   it('rejects negative maxResumeTokens', () => {

@@ -15,8 +15,8 @@ import {
 } from '../../plugins/designation.js';
 import {
   patchAgentConfigKey,
-  readAgentConfig,
   RETIRED_STATE_CONTEXT_MESSAGE,
+  readAgentConfig,
 } from '../../projects/agent-config.js';
 import {
   ALWAYS_INJECT_ENFORCEMENT_NOTE,
