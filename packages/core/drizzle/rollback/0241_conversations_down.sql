@@ -1,4 +1,4 @@
--- The reverse of 0240_conversations.sql, run BY HAND against a deployment whose
+-- The reverse of 0241_conversations.sql, run BY HAND against a deployment whose
 -- code has been reverted past ISS-1001. Drizzle has no down migrations; this
 -- file is what makes the forward drop a relocation rather than a discard, and it
 -- is exercised in `tests/integration/conversations-migration-e2e.test.ts` so it
@@ -6,7 +6,7 @@
 --
 -- Run it, then delete this migration's bookkeeping row so the reverted build
 -- does not consider it applied:
---   DELETE FROM drizzle.__drizzle_migrations WHERE created_at = 1794182400000;
+--   DELETE FROM drizzle.__drizzle_migrations WHERE created_at = 1794268800000;
 --
 -- TWO HALVES, AND THEY ARE NOT THE SAME GUARANTEE.
 --   * A conversation carrying `origin` was consumed from `chat_sessions`, and

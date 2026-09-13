@@ -108,7 +108,7 @@ set its `prevId` to the id of the snapshot it was diffed from — the two stagin
 snapshots are discarded, so the chain must link past them. Then delete both
 emitted `.sql` files and restore `meta/_journal.json`, which `generate` appends
 to. `pnpm db:generate` answering *"No schema changes, nothing to migrate"* is
-the check that it worked. Measured 2026-09-14 on `0240_conversations.sql`,
+the check that it worked. Measured 2026-09-14 on `0241_conversations.sql`,
 which creates three tables and drops one.
 
 **Declare every CHECK constraint in the schema module too**, not only in the

@@ -5,7 +5,7 @@
 -- copy, then ASSERT the copy source-driven, and only then drop. Nothing is
 -- nulled, emptied or deleted to make the schema apply.
 --
--- The reverse is `packages/core/drizzle/rollback/0240_conversations_down.sql`
+-- The reverse is `packages/core/drizzle/rollback/0241_conversations_down.sql`
 -- and it is executable, which is why this migration is a relocation rather than
 -- a discard: every field of every consumed row is reachable from
 -- `conversations.origin` without consulting a membership.
@@ -40,6 +40,14 @@
 -- Restored at the bottom: drizzle applies the whole run in ONE transaction, so
 -- leaving this set would silently change name resolution for every migration
 -- numbered after this one.
+--
+-- The same defect in a FUNCTION is pinned differently and that is deliberate:
+-- `0240_issue_prefix_search_path.sql` sets `search_path = pg_catalog, public`
+-- on the function, which is right for a body that only reads. A migration body
+-- CREATEs, and an unqualified CREATE targets the first named schema — so
+-- `pg_catalog` first would send these tables into the catalog. The population
+-- still carrying the defect is in
+-- `docs/proposals/trigger-functions-resolve-tables-through-the-caller.md`.
 SELECT set_config('forge.iss1001_prior_search_path', current_setting('search_path'), true);--> statement-breakpoint
 SET LOCAL search_path = public, pg_temp;--> statement-breakpoint
 

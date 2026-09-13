@@ -46,7 +46,7 @@ export interface ConversationOrigin {
   source: string;
   createdAt: string;
   updatedAt: string;
-  /** The handle 0240 minted for this project, or null where an existing agent account was reused. */
+  /** The handle 0241 minted for this project, or null where an existing agent account was reused. */
   mintedHandleUserId: string | null;
 }
 
@@ -60,7 +60,7 @@ export const conversations = pgTable(
     externalId: text('external_id').notNull(),
     shape: text('shape', { enum: conversationShapes }).notNull().default('direct'),
     title: text('title'),
-    // cm:guard provenance for the reverse migration and NOTHING else — scope may never be read from it, and a reader that took `origin.projectId` for the room's project would restore the column this table exists to remove. Null on every conversation opened after 0240 ran.
+    // cm:guard provenance for the reverse migration and NOTHING else — scope may never be read from it, and a reader that took `origin.projectId` for the room's project would restore the column this table exists to remove. Null on every conversation opened after 0241 ran.
     origin: jsonb('origin').$type<ConversationOrigin | null>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

@@ -1,5 +1,5 @@
 /**
- * ISS-1001 — `0240_conversations.sql`'s two ways of saying no, walked against a
+ * ISS-1001 — `0241_conversations.sql`'s two ways of saying no, walked against a
  * real Postgres: a source row the new schema cannot represent, and the
  * assertion block that checks the copy it just made.
  *
@@ -32,7 +32,7 @@ afterAll(async () => {
 
 const freshDb = () => ground.fresh();
 
-describe('0240 forward — a row it cannot represent stops the deploy', () => {
+describe('0241 forward — a row it cannot represent stops the deploy', () => {
   it('aborts naming the session whose messages are not an array, and keeps the table', async () => {
     const db = await freshDb();
     try {
@@ -111,7 +111,7 @@ describe('0240 forward — a row it cannot represent stops the deploy', () => {
   });
 });
 
-describe('0240 forward — the assertion is the thing that says no', () => {
+describe('0241 forward — the assertion is the thing that says no', () => {
   /** The real statement list with the statement matching `marker` removed. */
   function without(marker: string): string[] {
     const kept = conversations.filter((s) => !s.includes(marker));
@@ -120,7 +120,7 @@ describe('0240 forward — the assertion is the thing that says no', () => {
   }
 
   // cm:guard a plant that plants nothing runs the REAL migration and passes green: both mutators
-  // below silently missed once 0240 qualified its relations, so an edit that changed nothing throws
+  // below silently missed once 0241 qualified its relations, so an edit that changed nothing throws
   function edited(marker: string, edit: (stmt: string) => string[]): string[] {
     const hit = conversations.filter((s) => s.includes(marker));
     if (hit.length !== 1) throw new Error(`${hit.length} statements contain ${marker}, wanted 1`);
@@ -215,8 +215,8 @@ describe('0240 forward — the assertion is the thing that says no', () => {
   });
 });
 
-describe('0240 forward — a temp relation of the same name is not the source', () => {
-  // cm:guard drop either half of 0240's search_path defence — the pin or the `public.` — and this
+describe('0241 forward — a temp relation of the same name is not the source', () => {
+  // cm:guard drop either half of 0241's search_path defence — the pin or the `public.` — and this
   // goes red on the missing conversation, which is the migration orphaning every real transcript
   it('copies the real rows even when the deploying session carries a temp chat_sessions', async () => {
     const db = await freshDb();

@@ -6,7 +6,7 @@
  * `tests/integration/conversation-scope-e2e.test.ts` against a real Postgres,
  * including the two-connection race the lock exists for. What is testable here
  * is the rule that turns a project into an addressable name, and it is the one
- * `0240_conversations.sql` holds a third copy of.
+ * `0241_conversations.sql` holds a third copy of.
  */
 
 import { describe, expect, it } from 'vitest';

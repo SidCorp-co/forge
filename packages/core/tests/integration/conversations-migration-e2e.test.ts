@@ -1,5 +1,5 @@
 /**
- * ISS-1001 — `0240_conversations.sql` forward, walked against a real Postgres
+ * ISS-1001 — `0241_conversations.sql` forward, walked against a real Postgres
  * from the schema that existed BEFORE it.
  *
  * The omission cases are the point of the assertion block. Each one runs the
@@ -31,7 +31,7 @@ afterAll(async () => {
 
 const freshDb = () => ground.fresh();
 
-describe('0240 forward — what every legacy row becomes', () => {
+describe('0241 forward — what every legacy row becomes', () => {
   it('turns a chat session into one direct conversation carrying its messages in order', async () => {
     const db = await freshDb();
     try {
@@ -142,7 +142,7 @@ describe('0240 forward — what every legacy row becomes', () => {
   });
 });
 
-describe('0240 forward — the handle each project gets', () => {
+describe('0241 forward — the handle each project gets', () => {
   it('gives the project a handle with its two memberships and NO access token', async () => {
     const db = await freshDb();
     try {
@@ -245,7 +245,7 @@ describe('0240 forward — the handle each project gets', () => {
   // cm:guard this is the correction of the issue's own filing, held as a test: ISS-1001's body says every legacy row becomes "a direct conversation with one person and one handle", and 34 of the 35 live rows record no person at all. The landed rule is one handle and AT MOST one person; a change that starts inventing a stand-in person reds here.
 });
 
-describe('0240 forward — the person a row did or did not record', () => {
+describe('0241 forward — the person a row did or did not record', () => {
   it('leaves a session that recorded nobody with its handle and no invented person', async () => {
     const db = await freshDb();
     try {
@@ -297,7 +297,7 @@ describe('0240 forward — the person a row did or did not record', () => {
   });
 });
 
-describe('0240 forward — what it takes away', () => {
+describe('0241 forward — what it takes away', () => {
   // cm:guard nothing is deleted or nulled to make the schema apply: the counts and the field values
   // are read BEFORE the run and compared after, so a migration that tidied a row to fit reds here.
   it('drops the chat_sessions table and no chat row or field with it', async () => {
