@@ -139,12 +139,13 @@ export function isReopenEntry(from: IssueStatus, to: IssueStatus): boolean {
 
 // cm:guard the soft-skip resolver was deleted here by ISS-897, and re-adding one is re-adding the staged lane. `STAGE_FORWARD`, `SKIPPABLE_STAGES`, `MAX_SKIP_CHAIN`, `resolveSkipTarget` and `validateStatesConfig` walked a nine-rung ladder past stages an operator had disabled; there are four statuses now, only `open` dispatches, and disabling it is the human gate rather than a dead end to route around.
 
+// cm:why the structural shape `pipeline-config-service.ts` reads a patch through, deliberately looser than `statesConfigSchema` — it walks `Object.entries` over whatever arrived and only needs the two keys it branches on. `mode` is not among them: it is entry-status-only and its own schema owns it (ISS-994).
 export type StagesConfig = Partial<
   Record<
     IssueStatus,
     {
       enabled?: boolean;
-      mode?: 'auto' | 'manual';
+      deviceIds?: string[];
       [extra: string]: unknown;
     }
   >

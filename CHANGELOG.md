@@ -2179,6 +2179,26 @@
   collided with, what state that one is in, and whether to bring it back or unassign it first —
   instead of failing with a database error.
 
+- **A per-stage "manual" setting that held nothing no longer looks like an approval gate.** Every
+  stage in a project's pipeline settings carried a mode of Auto or Manual, and exactly one of them
+  meant anything: the first, where an issue waits to be started. Set the others to Manual — to hold
+  work in progress, to hold an issue that had asked a question, to hold one waiting to be released
+  — and the setting saved, came back on the next read, and was reported as Manual by the tool a
+  planning agent asks before it hands out work. It held nothing. Work carried on. Setting it at a
+  stage that has no such gate is now refused, saying which stage you asked for and where the one
+  real gate lives; a setting already stored on one of those stages is dropped rather than shown, so
+  nobody reads a hold that was never there. The gate at the first stage is untouched and works as
+  it always has — it is still the way to stop new work starting without you.
+
+- **Three settings that read like a retry budget, and bounded nothing, are gone.** A project's
+  configuration listed a maximum number of recovery attempts, a window in hours, and a per-cause
+  breakdown. Anyone reading them would take them for the limits on how hard the system retries
+  failed work. Nothing had read them since May, when the recovery mechanism they configured was
+  replaced wholesale; the retry limits that are actually enforced live elsewhere and were never
+  these numbers. They stayed visible because the settings document keeps whatever it is given.
+  They have been removed from every project's stored settings, so the only numbers on show are the
+  ones that decide something.
+
 - **A paused job no longer restarts itself by writing a note.** When a job stops to ask a person
   something, it is supposed to stay stopped until someone answers. It did not: the job's own
   follow-up note — a finding it owed the ticket, a correction, a record of what it had already
