@@ -65,10 +65,7 @@ export interface HookPayloads {
      */
     outboxId?: string;
   };
-  // ISS-20 (Epic 4) — terminal job lifecycle events. PM subscribers branch on
-  // `failureKind` so they react differently per class (ISS-450 taxonomy:
-  // code/infra/transient-cc/timeout). Emitted from `jobs/lifecycle-routes.ts`
-  // after `scheduleRetry` writes the classification onto the row.
+  // cm:edge ordering -> packages/core/src/jobs/lifecycle-routes.ts — emitted there AFTER `scheduleRetry` has written the classification onto the row, and PM subscribers branch on `failureKind` (ISS-450: code/infra/transient-cc/timeout); emitting before that write hands every subscriber the pre-classification value and each one reacts as though the class were unknown
   jobFailed: {
     jobId: string;
     projectId: string;
@@ -102,6 +99,14 @@ export interface HookPayloads {
     body: string;
     // cm:guard undefined and null both mean TOP-LEVEL and must stay interchangeable — the emit sites that pre-date threading send neither, and the activity logger records this only when it is set.
     parentId?: string | null;
+  };
+  // cm:guard `body` is what a parked session is handed, and it is built where the SHAPE is known: a choice answer renders as its option's label and a free-text one as the words themselves. A subscriber that rebuilt it would have to re-read the row and re-learn the shape, and the two renderings would drift.
+  questionAnswered: {
+    questionId: string;
+    projectId: string;
+    issueId: string | null;
+    answeredBy: string;
+    body: string;
   };
   commentUpdated: {
     issueId: string;

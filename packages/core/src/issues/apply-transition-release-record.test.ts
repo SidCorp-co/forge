@@ -53,6 +53,12 @@ vi.mock('./transition-reason.js', async (importActual) => {
   const actual = await importActual<typeof import('./transition-reason.js')>();
   return { ...actual, postTransitionReasonComment: vi.fn(async () => undefined) };
 });
+// cm:guard stubbed for the same reason the park suite stubs it: this file's subject is the close record, the mint writes through a transaction handle this stub does not carry, and the mint's own behaviour is owned by `tests/integration/park-mints-a-question-e2e.test.ts` (ISS-996).
+vi.mock('./park-question.js', () => ({
+  NEED_NOT_STATED: 'not stated',
+  mintParkQuestion: vi.fn(async () => undefined),
+}));
+
 vi.mock('./transition-evidence.js', () => ({ checkTransitionEvidence: vi.fn(async () => null) }));
 vi.mock('./merged-at.js', () => ({
   markMergedIfLeavingBase: vi.fn(async () => ({ stamped: false })),

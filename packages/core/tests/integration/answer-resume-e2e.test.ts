@@ -1,10 +1,21 @@
 /**
- * A human answer restarts the autonomous driver — against real Postgres.
+ * An answer restarts the autonomous driver — against real Postgres.
  *
- * The session that asked the question is gone by the time anyone reads it, so
- * the answer is the only thing that can bring one back. Everything here is a
- * claim about which comments count, and each negative is a way the issue would
- * silently never restart (or restart when a person meant it to stay stopped).
+ * The session that asked is gone by the time anyone reads the question, so the
+ * answer is the only thing that can bring one back. Every claim here is about
+ * which answers count, and each negative is a way the issue would silently
+ * never restart, or restart when a person meant it to stay stopped.
+ *
+ * It drove these same claims through a COMMENT until ISS-996 cut that lane.
+ * The trigger changed and the claims did not: what may be resumed is a property
+ * of the park rather than of the message that reaches it.
+ *
+ * Two claims went with the lane, and both were about a comment's AUTHOR: the
+ * driver must not resume itself, and an agent on its owner's PAT reads as a
+ * person on every field but `authored`. An answer carries no such field — it is
+ * authorised instead, against a signed-in project role. What that does not yet
+ * stop is an agent holding a person's credential answering the question it
+ * asked, because a park's question records no asker to compare against.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -68,59 +79,34 @@ describe('answer-resume E2E', () => {
     return rows[0]?.status;
   }
 
-  async function comment(
-    issueId: string,
-    actorType: 'user' | 'device',
-    authored: 'human' | 'agent' = actorType === 'device' ? 'agent' : 'human',
-  ): Promise<void> {
+  async function answer(issueId: string, by: 'human' | 'agent' = 'human'): Promise<void> {
     const { HooksBus } = await import('../../src/pipeline/hooks.js');
     const { registerAnswerResume } = await import('../../src/pipeline/answer-resume.js');
     const bus = new HooksBus();
     registerAnswerResume(bus);
-    await bus.emit('commentCreated', {
-      issueId,
+    await bus.emit('questionAnswered', {
+      questionId: randomUUID(),
       projectId,
-      actor: { type: actorType, id: ownerId, agency: actorType === 'device' ? 'agent' : 'human' },
-      authored,
-      commentId: randomUUID(),
-      body: 'the answer',
+      issueId,
+      answeredBy: ownerId,
+      body: by === 'agent' ? 'the agent answering itself' : 'the answer',
     });
   }
 
-  it('returns a needs_info issue to the driver when a person answers', async () => {
+  it('returns a needs_info issue to the driver when the question is answered', async () => {
     await setMode('autonomous');
     const id = await insertIssue('needs_info');
 
-    await comment(id, 'user');
+    await answer(id);
 
     expect(await statusOf(id)).toBe('open');
-  });
-
-  // cm:guard the driver's own comments carry a `device` actor — if this ever passes, the agent's question resumes the issue it just parked and the pair loops with no human in it
-  it('ignores the driver answering itself', async () => {
-    await setMode('autonomous');
-    const id = await insertIssue('needs_info');
-
-    await comment(id, 'device');
-
-    expect(await statusOf(id)).toBe('needs_info');
-  });
-
-  // cm:guard the shape the `device` case above could never reach: an agent on a PAT is a `user` actor with `human` agency, because a PAT resolves to its OWNER and agency comes from that owner's `users.kind`. Both of the fields this module used to read say `person` here. ISS-978 un-parked itself this way on 2026-09-13 and ISS-962 on 2026-09-08, with the old assertion green through both.
-  it('ignores an agent writing through a human owner PAT, which reads as a person on every other field', async () => {
-    await setMode('autonomous');
-    const id = await insertIssue('needs_info');
-
-    await comment(id, 'user', 'agent');
-
-    expect(await statusOf(id)).toBe('needs_info');
   });
 
   it('leaves a project whose config does not parse on needs_info', async () => {
     await setMode('unreadable');
     const id = await insertIssue('needs_info');
 
-    await comment(id, 'user');
+    await answer(id);
 
     expect(await statusOf(id)).toBe('needs_info');
   });
@@ -130,7 +116,7 @@ describe('answer-resume E2E', () => {
     await setMode(null);
     const id = await insertIssue('needs_info');
 
-    await comment(id, 'user');
+    await answer(id);
 
     expect(await statusOf(id)).toBe('open');
   });
@@ -141,8 +127,8 @@ describe('answer-resume E2E', () => {
     const waiting = await insertIssue('waiting');
     const onHold = await insertIssue('on_hold');
 
-    await comment(waiting, 'user');
-    await comment(onHold, 'user');
+    await answer(waiting);
+    await answer(onHold);
 
     expect(await statusOf(waiting)).toBe('waiting');
     expect(await statusOf(onHold)).toBe('on_hold');

@@ -116,12 +116,13 @@ describe('a park mints the question it is owed', () => {
     expect(await questionsOn(issueId)).toHaveLength(0);
   });
 
-  // cm:guard the absence of `needs` is TODAY'S behaviour preserved, not a defect: the driver that would send it ships from another repo on its own clock, and a park refused for want of the field would stop every run in the fleet the day this deployed.
-  it('leaves a park with no stated need exactly as it was — reason comment, no question', async () => {
+  // cm:guard a park that stated no need still mints a question, carrying the sentence that says so. The comment lane was cut on 2026-09-13, so a park with nothing to answer is a park nobody can resume — and the number of parks arriving without a stated need is now visible on the issue rather than only in a query.
+  it('mints a question even when the park stated no need, saying that it did not', async () => {
     const owner = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, owner.id);
     const device = await createTestDevice(harness.db, owner.id);
     const issueId = await anIssue(project.id, owner.id);
+    const { NEED_NOT_STATED } = await import('../../src/issues/park-question.js');
 
     const out = await park(
       { issueId, projectId: project.id },
@@ -130,11 +131,14 @@ describe('a park mints the question it is owed', () => {
     );
 
     expect(out.status).toBe('needs_info');
-    expect(await questionsOn(issueId)).toHaveLength(0);
-    const comments = await harness.db.execute<{ n: number }>(sql`
-      SELECT count(*)::int AS n FROM comments WHERE issue_id = ${issueId}
-    `);
-    expect((comments[0] as { n: number }).n).toBeGreaterThan(0);
+    const rows = await questionsOn(issueId);
+    expect(rows).toHaveLength(1);
+    const step = (rows[0] as { steps: Array<Record<string, unknown>> }).steps[0] as Record<
+      string,
+      unknown
+    >;
+    expect(step.needed).toBe(NEED_NOT_STATED);
+    expect(step.prompt).toContain('cannot name yet');
   });
 
   // cm:guard an agent's `waiting` is rewritten to `needs_info` at write time, and the mint must follow the REWRITE rather than the ask — reading the requested status here would skip every park that arrived by this door, which is the one 27 parks used before the rewrite existed.

@@ -58,7 +58,6 @@ let schema: typeof import('../../src/db/schema.js');
 let rcSchema: typeof import('../../src/db/schema-rocketchat.js');
 let rcLinks: typeof import('../../src/db/schema-speaker-links.js');
 let rcQuestions: typeof import('../../src/db/schema-questions.js');
-let rcInbox: typeof import('../../src/db/schema-session-inbox.js');
 type RcMessage =
   import('../../src/integrations/rocketchat/ddp-client.js').RocketChatIncomingMessage;
 
@@ -79,7 +78,6 @@ beforeAll(async () => {
   rcSchema = await import('../../src/db/schema-rocketchat.js');
   rcLinks = await import('../../src/db/schema-speaker-links.js');
   rcQuestions = await import('../../src/db/schema-questions.js');
-  rcInbox = await import('../../src/db/schema-session-inbox.js');
   ({ db } = await import('../../src/db/client.js'));
 });
 
@@ -348,24 +346,6 @@ describe('a reply on a parked issue reaches the session that asked', () => {
     return row?.id ?? '';
   }
 
-  it('carries the words into the parked session through the existing send path', async () => {
-    const { sessionId } = await parkOnNeedsInfo();
-    const commentId = await replyInRoom();
-
-    // cm:guard the inbox row is the evidence the reply REACHED the session rather than merely being written down: `intentId` is the comment id, which is what makes the send idempotent when a lapsed announce lease emits twice (ISS-981 criterion 12).
-    const inbox = await db
-      .select({
-        kind: rcInbox.sessionInbox.kind,
-        intentId: rcInbox.sessionInbox.intentId,
-        agentSessionId: rcInbox.sessionInbox.agentSessionId,
-      })
-      .from(rcInbox.sessionInbox);
-    expect(inbox).toHaveLength(1);
-    expect(inbox[0]?.kind).toBe('answer');
-    expect(inbox[0]?.agentSessionId).toBe(sessionId);
-    expect(inbox[0]?.intentId).toBe(commentId);
-  });
-
   it('dispatches no second job beside the session already parked', async () => {
     const { jobId } = await parkOnNeedsInfo();
     await replyInRoom();
@@ -375,7 +355,7 @@ describe('a reply on a parked issue reaches the session that asked', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]?.id).toBe(jobId);
 
-    // cm:guard the issue STAYING at `needs_info` is what makes the job count above mean something: the fallback dispatches by moving the status, so a bus with no orchestrator on it would leave the count at one however the answer was carried, and the assertion would pass without the send path ever being taken (ISS-981 criterion 13).
+    // cm:guard the issue STAYING at `needs_info` is what makes the job count above mean something: the dispatch happens by moving the status, so a bus with no orchestrator on it would leave the count at one however the reply was handled. Since ISS-996 cut the comment lane this holds for a wider reason than ISS-981 gave it — no comment resumes anything — and the assertion still reddens if that lane is ever restored.
     const [issue] = await db
       .select({ status: schema.issues.status })
       .from(schema.issues)

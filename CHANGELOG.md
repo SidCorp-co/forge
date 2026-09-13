@@ -4244,6 +4244,15 @@
 
 ### Changed
 
+- **A run that stops to ask you something is now restarted by answering it, and by nothing else.**
+  Every time a run stops on an issue it now leaves a question you can answer — where it said what
+  would settle it, the question says that; where it did not, the question says so and asks for
+  whatever the run needs. Answering restarts the work. Commenting does not, and that is the change
+  you will feel: until now any comment at all sent the work off again, so "thanks, looking" could
+  restart a run that was waiting on a decision nobody had made. There is one way in and one way out,
+  which is worth more than two half-working ones. **Issues that stopped before this change carry no
+  question**, so a comment will not restart them either — they have to be moved on by hand, once.
+
 - **When a run stops to ask you something, it can now leave you a question instead of only a note.**
   A run that parks on an issue has always had to say why, and that reason is posted as a comment —
   but there was nothing to answer, only a thread to reply in, and any reply at all restarted the

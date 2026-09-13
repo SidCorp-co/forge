@@ -54,6 +54,13 @@ vi.mock('./transition-reason.js', async (importActual) => {
   return { ...actual, postTransitionReasonComment: (...a: unknown[]) => postReasonMock(...a) };
 });
 
+// cm:guard stubbed because this file's subject is the park REWRITE, and the mint writes through the transaction's `insert`, which this stub does not carry. `tests/integration/park-mints-a-question-e2e.test.ts` owns the mint against a real database; what belongs here is that a park still CALLS it (ISS-996).
+const mintMock = vi.fn(async (..._a: unknown[]) => undefined);
+vi.mock('./park-question.js', () => ({
+  NEED_NOT_STATED: 'not stated',
+  mintParkQuestion: (...a: unknown[]) => mintMock(...a),
+}));
+
 vi.mock('./transition-evidence.js', () => ({ checkTransitionEvidence: vi.fn(async () => null) }));
 vi.mock('./merged-at.js', () => ({
   markMergedIfLeavingBase: vi.fn(async () => undefined),

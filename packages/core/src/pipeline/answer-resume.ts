@@ -21,13 +21,7 @@
 import { and, eq, isNull, notInArray, sql } from 'drizzle-orm';
 import { requestSessionSend, resolveSessionSend } from '../agent-sessions/session-send.js';
 import { db } from '../db/client.js';
-import {
-  agentSessions,
-  comments,
-  issues,
-  jobs,
-  terminalAgentSessionStatuses,
-} from '../db/schema.js';
+import { agentSessions, issues, jobs, terminalAgentSessionStatuses } from '../db/schema.js';
 import { agentQuestions, questionWaiters } from '../db/schema-questions.js';
 import { sessionInbox } from '../db/schema-session-inbox.js';
 import { transitionIssueStatus } from '../issues/apply-transition.js';
@@ -98,33 +92,16 @@ async function deliverToPark(issueId: string, commentId: string, body: string): 
 }
 
 /**
- * Whether a run parked with no process is waiting for an answer on this issue.
- *
- * The answer itself does not travel this path: a person settles the question by
- * choosing an option (`questions/read.ts:answerAs`), and the box reads it back
- * from `GET /me/questions/:id`. What this decides is only whether the FALLBACK
- * may run — and for a parked run it may not (ISS-964 criterion 26).
+ * Whether a box registered itself to read THIS answer back.
  */
-// cm:guard `blocker_kind = 'human'` and nothing wider. A machine or master-or-peer park carries an open question too and KEEPS its process, so it is `deliverToPark`'s to serve — claiming it here would silence the duplex send that works today.
-// cm:guard the WAITER row is the evidence, not the question alone: it names the device and run that will come back for the answer. An open question nobody registered against is a park with nothing on the other end, and returning true for it would hold the issue at the question status forever.
-// cm:guard a comment on a parked issue is NOT the answer, and this returning true is not a dead end for the human: `recommended` is mandatory on every question (criterion 14), so their route out is one click in the bucket, which reaches the box through the question row.
-// cm:guard the question is bound to its OWN `project_id` and not only to the issue it hangs off. The two columns are independent, so a row naming project A on an issue of project B is representable, and matching on `issue_id` alone would let such a row decide that another project's parked run may resume (ISS-989).
-export async function answerReachesAParkedRun(issueId: string): Promise<boolean> {
+// cm:guard keyed on the QUESTION, never on "does this issue carry an open question": by the time this runs the question is `answered` by construction, so an open-question predicate answers false for every box-minted one and core dispatches a second agent onto the worktree the first still holds (ISS-996).
+// cm:guard this is the code behind the `answer-resume-park` protection core advertises at `GET /me/protections`, and `questions/park-protections.test.ts` reads this file for it. A box releases its process on that advertisement; renaming this without moving the proof leaves the promise pointing at nothing (ISS-964 criterion 27).
+// cm:guard the question id and the issue id on this event come from ONE row, so they agree by construction — which is why no project join is needed here and its absence is not the ISS-989 hazard it would be on a predicate keyed off the issue alone.
+export async function aBoxWillReadThisAnswer(questionId: string): Promise<boolean> {
   const [row] = await db
-    .select({ id: agentQuestions.id })
-    .from(agentQuestions)
-    .innerJoin(questionWaiters, eq(questionWaiters.questionId, agentQuestions.id))
-    .innerJoin(
-      issues,
-      and(eq(issues.id, agentQuestions.issueId), eq(issues.projectId, agentQuestions.projectId)),
-    )
-    .where(
-      and(
-        eq(agentQuestions.issueId, issueId),
-        eq(agentQuestions.status, 'open'),
-        eq(agentQuestions.blockerKind, 'human'),
-      ),
-    )
+    .select({ id: questionWaiters.id })
+    .from(questionWaiters)
+    .where(eq(questionWaiters.questionId, questionId))
     .limit(1);
   return row !== undefined;
 }
@@ -135,43 +112,44 @@ export async function answerReachesAParkedRun(issueId: string): Promise<boolean>
  * driver — a staged project takes the early return and pays one issue read.
  */
 export function registerAnswerResume(bus: HooksBus): void {
+  // cm:guard the ONLY way an answer to a park's own question reaches the work. A question the RUNNER minted registers a waiter and the box reads the answer back itself; a park mints its question inside the transition with no box on the other end, so without this the issue sits at the question status with an answered question on it (ISS-996).
+  // cm:guard the same three hops, in the same order, as the comment subscriber above: send to a live session, stand down for a box that will come back, dispatch otherwise. A fourth shape here would be a second answer to what "resumed" means.
   bus.on(
-    'commentCreated',
+    'questionAnswered',
     async (p) => {
-      // cm:guard `authored`, NEVER `actor.type` or `actor.agency`. This line read `actor.type !== 'user'` until 2026-09-13 on the premise that every AI path emits a `device` actor; `comments/routes.ts` emits `restActor`, which is `user` for every REST caller, and `agency` comes from the PAT owner's `users.kind`, so an agent on a human's token reads `human` too. ISS-978's own Extra-fixes comment un-parked it 4ms after posting and ISS-962 recorded the same through the merged-mark comment four days earlier.
-      if (p.authored !== 'human') return;
+      if (!p.issueId) return;
+      const issueId = p.issueId;
       try {
-        const issue = await resumableIssue(p.issueId);
+        const issue = await resumableIssue(issueId);
         if (!issue) return;
-        if (await deliverToPark(p.issueId, p.commentId, p.body)) {
+        if (await deliverToPark(issueId, p.questionId, p.body)) {
           logger.info(
-            { issueId: p.issueId, commentId: p.commentId },
-            'answer-resume: human answered, sent to the session that asked',
+            { issueId, questionId: p.questionId },
+            'answer-resume: question answered, sent to the session that asked',
           );
           return;
         }
-        // cm:guard BEFORE the fallback and AFTER `deliverToPark`, and both halves of that order matter: a processless park matches neither of `parkedSessionFor`'s two conditions, while a park that DOES hold a process must still be served by the send above (ISS-964 criterion 26).
-        if (await answerReachesAParkedRun(p.issueId)) {
+        if (await aBoxWillReadThisAnswer(p.questionId)) {
           logger.info(
-            { issueId: p.issueId, commentId: p.commentId },
-            'answer-resume: a parked run is waiting on this issue, dispatching nothing',
+            { issueId, questionId: p.questionId },
+            'answer-resume: a box is registered to read this answer back, dispatching nothing',
           );
           return;
         }
         await transitionIssueStatus(issue, AUTONOMOUS_ENTRY_STATUS, {
           type: 'user',
-          id: p.actor.id,
+          id: p.answeredBy,
         });
         logger.info(
-          { issueId: p.issueId, commentId: p.commentId },
-          'answer-resume: human answered, issue returned to the driver',
+          { issueId, questionId: p.questionId },
+          'answer-resume: question answered, issue returned to the driver',
         );
       } catch (err) {
-        logger.error({ err, issueId: p.issueId }, 'answer-resume: transition failed');
+        logger.error({ err, issueId }, 'answer-resume: resuming on an answer failed');
         throw err;
       }
     },
-    { name: 'answer-resume' },
+    { name: 'answer-resume-question' },
   );
 }
 
@@ -190,14 +168,19 @@ export async function resumeLapsedAnswers(
   now: Date = new Date(),
   scope: LoopScope = {},
 ): Promise<number> {
-  // cm:guard the ORIGINAL commenter carries the fallback transition, recovered by joining on `intentId` — which is the comment id, the same idempotency key the send was opened under. A transition attributed to anyone else would put a status move in someone's activity feed that they did not make.
-  // cm:guard the cast is REQUIRED and its absence is a runtime error, not a type error: `intent_id` is `text` because an intent is not always a comment, and Postgres has no `uuid = text` operator. An INNER join that throws would take the whole hop down, not just this row.
+  // cm:guard the person who ANSWERED carries the fallback transition, recovered by joining `agent_questions` on `intentId` — which is the question id, the same idempotency key the send was opened under. This joined `comments` on the comment id until ISS-996 cut the comment lane, and leaving it there would have dropped every row on the one lane that remains: an answer's `intentId` is a question id, and no comment has it.
+  // cm:guard `answeredBy` is read off the LAST step rather than a column, because an answer lives in `steps`. A question with no answered step yields NULL and the row falls out of the INNER join, which is correct — an unanswered question opened no send.
+  // cm:guard the cast is REQUIRED and its absence is a runtime error, not a type error: `intent_id` is `text` because an intent is not always a uuid, and Postgres has no `uuid = text` operator. An INNER join that throws would take the whole hop down, not just this row.
   const rows = await db
-    .select({ inbox: sessionInbox, issueId: jobs.issueId, authorId: comments.authorId })
+    .select({
+      inbox: sessionInbox,
+      issueId: jobs.issueId,
+      authorId: sql<string>`${agentQuestions.steps} -> -1 ->> 'answeredBy'`,
+    })
     .from(sessionInbox)
     .innerJoin(jobs, eq(jobs.agentSessionId, sessionInbox.agentSessionId))
     .innerJoin(issues, eq(issues.id, jobs.issueId))
-    .innerJoin(comments, sql`${comments.id}::text = ${sessionInbox.intentId}`)
+    .innerJoin(agentQuestions, sql`${agentQuestions.id}::text = ${sessionInbox.intentId}`)
     .where(
       and(
         eq(sessionInbox.kind, 'answer'),
@@ -211,7 +194,7 @@ export async function resumeLapsedAnswers(
   let resumed = 0;
   for (const { inbox, issueId, authorId } of rows) {
     const { outcome } = await resolveSessionSend(inbox, now.getTime());
-    if (outcome !== 'gone' || !issueId) continue;
+    if (outcome !== 'gone' || !issueId || !authorId) continue;
     const issue = await resumableIssue(issueId);
     if (!issue) continue;
     await transitionIssueStatus(issue, AUTONOMOUS_ENTRY_STATUS, { type: 'user', id: authorId });

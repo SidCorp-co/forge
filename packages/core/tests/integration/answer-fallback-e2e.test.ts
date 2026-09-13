@@ -1,5 +1,5 @@
 /**
- * What a human answer does when the session that asked is still alive — real
+ * What an answer does when the session that asked is still alive — real
  * Postgres.
  *
  * ISS-873 phase 3. Under `print` an answer could only ever be a fresh dispatch:
@@ -110,23 +110,35 @@ async function askingSession(opts: {
   return sessId;
 }
 
+// cm:guard the intent id is the QUESTION's, which is what `resumeLapsedAnswers` joins on since ISS-996 cut the comment lane. A helper that kept minting comment ids would leave every lapsed-answer assertion below green against a join that matches nothing in production.
 async function humanAnswers(body = 'yes, use postgres'): Promise<string> {
-  const commentId = randomUUID();
+  const questionId = randomUUID();
   await harness.db.execute(sql`
-    INSERT INTO comments (id, issue_id, author_id, body)
-    VALUES (${commentId}, ${issueId}, ${ownerId}, ${body})
+    INSERT INTO agent_questions (id, project_id, issue_id, status, blocker_kind, steps)
+    VALUES (${questionId}, ${projectId}, ${issueId}, 'answered', 'human',
+            ${JSON.stringify([
+              {
+                round: 1,
+                prompt: 'which store?',
+                answerShape: 'free_text',
+                needed: 'the store to use',
+                askedAt: new Date().toISOString(),
+                answeredAt: new Date().toISOString(),
+                answerText: body,
+                answeredBy: ownerId,
+              },
+            ])}::jsonb)
   `);
   const bus = new HooksBus();
   registerAnswerResume(bus);
-  await bus.emit('commentCreated', {
-    issueId,
+  await bus.emit('questionAnswered', {
+    questionId,
     projectId,
-    actor: { type: 'user', id: ownerId, agency: 'human' },
-    authored: 'human',
-    commentId,
+    issueId,
+    answeredBy: ownerId,
     body,
   });
-  return commentId;
+  return questionId;
 }
 
 async function issueStatus(): Promise<string> {

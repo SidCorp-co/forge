@@ -17,6 +17,7 @@ import {
   type QuestionStep,
 } from '../db/schema-questions.js';
 import type { IssueDependencyExecutor } from '../issues/dependency-executor.js';
+import { hooks } from '../pipeline/hooks.js';
 import { wakeMastersForAnswer } from '../ws/master-wake.js';
 
 // cm:guard the shape is DECLARED by the asker, never derived from which field arrived. A caller that sends an option list and a needed-text line has asked two questions in one round, and deriving would silently pick one of them for the person to answer (ISS-996).
@@ -338,6 +339,16 @@ export async function answerQuestion(args: AnswerInput) {
       .where(eq(agentQuestions.id, args.questionId));
     return { ...row, steps, status: 'answered' as const };
   });
+  // cm:guard emitted after the transaction RESOLVES, for the same reason the wake below is: a subscriber that resumes the issue on an answer a rejected commit never left would dispatch against a question still open (ISS-996).
+  // cm:guard AWAITED, unlike the wake below, and the difference is what each one does. The wake only decides whether a box reads the answer now or on its next sweep; this one IS the resume, and firing it unawaited both hides its failure from the caller and races the answer's own transaction — measured as a deadlock between the subscriber's read and the transition it goes on to make. `comments/routes.ts` awaits `commentCreated` for the same reason.
+  // cm:edge contract -> packages/core/src/pipeline/answer-resume.ts — that subscriber is what makes a core-minted park question resumable at all. A question the runner minted registers a waiter and the box comes back for it; a park's question has no box on the other end, so the answer reaches the work through this event or not at all.
+  await hooks.emit('questionAnswered', {
+    questionId: args.questionId,
+    projectId: committed.projectId,
+    issueId: committed.issueId ?? null,
+    answeredBy: args.by,
+    body: answeredBody(committed.steps.at(-1)),
+  });
   // cm:guard published after the transaction RESOLVES — not merely after the statement inside it — and never awaited for its result, because the answer is already on the record: the box reads it back through `GET /me/questions/:id`, so this wake only decides whether that read happens now or on the next 30s sweep. A wake published from inside the transaction sends a box to read an answer a rejected commit never left (ISS-964 criteria 12, 44).
   void wakeMastersForAnswer({ projectId: committed.projectId, questionId: args.questionId });
   return view(committed);
@@ -403,6 +414,13 @@ async function load(id: string) {
   const [row] = await db.select().from(agentQuestions).where(eq(agentQuestions.id, id)).limit(1);
   if (!row) throw new QuestionRefused(`no question ${id}`);
   return row;
+}
+
+// cm:guard the option's LABEL and not its id: this string is handed to a parked agent as the human's answer, and an id it never printed tells it nothing about what was chosen.
+function answeredBody(step: QuestionStep | undefined): string {
+  if (!step) return '';
+  if (!isChoiceStep(step)) return step.answerText ?? '';
+  return step.options.find((o) => o.id === step.chosenOptionId)?.label ?? '';
 }
 
 function view<T extends { steps: QuestionStep[] }>(row: T) {
