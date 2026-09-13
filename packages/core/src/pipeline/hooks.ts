@@ -96,10 +96,11 @@ export interface HookPayloads {
     issueId: string;
     projectId: string;
     actor: Actor;
+    // cm:guard REQUIRED, and the only field on this payload that answers "was a person at the keyboard". `actor.type` answers who OWNS the write and `actor.agency` comes from the PAT owner's `users.kind`, so both read `user`/`human` for an agent running on a human's token — `pipeline/answer-resume.ts` resumed a parked run on the run's own comment twice before this existed (ISS-978 2026-09-13, ISS-962 2026-09-08). A new emit site must decide this rather than inherit it.
+    authored: 'human' | 'agent';
     commentId: string;
     body: string;
-    // Optional: existing emit sites pre-date threading. Treat undefined and
-    // null as "top-level". The activity logger only records this when set.
+    // cm:guard undefined and null both mean TOP-LEVEL and must stay interchangeable — the emit sites that pre-date threading send neither, and the activity logger records this only when it is set.
     parentId?: string | null;
   };
   commentUpdated: {

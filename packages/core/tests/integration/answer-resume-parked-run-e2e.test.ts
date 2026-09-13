@@ -190,6 +190,7 @@ describe('the whole episode: a person comments while a run is parked', () => {
       issueId,
       projectId,
       actor: { type: 'user', id: ownerId, agency: 'human' },
+      authored: 'human',
       commentId: randomUUID(),
       body: 'go with the second one',
     });

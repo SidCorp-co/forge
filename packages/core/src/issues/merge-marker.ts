@@ -177,6 +177,8 @@ export async function applyMergeMarker(args: {
       issueId: before.id,
       projectId: before.projectId,
       actor: args.actor.hookActor,
+      // cm:guard `agent` whoever pressed Mark merged: this comment is the machine recording a stamp, and reading it as an answer resumed a parked ISS-962 on 2026-09-08.
+      authored: 'agent',
       commentId: auditComment.id,
       body: auditComment.body,
       parentId: auditComment.parentId,

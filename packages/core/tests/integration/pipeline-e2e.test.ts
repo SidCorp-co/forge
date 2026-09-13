@@ -215,7 +215,7 @@ describe('F6 pipeline E2E', () => {
         actor: { type: 'user' as const, id: user.id, agency: 'human' as const },
         commentId,
       };
-      await bus.emit('commentCreated', { ...common, body: 'hello' });
+      await bus.emit('commentCreated', { ...common, authored: 'human', body: 'hello' });
       await bus.emit('commentUpdated', { ...common, before: 'hello', after: 'hi' });
       await bus.emit('commentDeleted', common);
 
@@ -278,7 +278,7 @@ describe('F6 pipeline E2E', () => {
       await insertIssue(project.id, user.id, { title: '100% done', description: null });
       await insertIssue(project.id, user.id, { title: '50 percent', description: null });
 
-      // Without escaping, `%` would be a wildcard and both rows would match.
+      // cm:why `%` is escaped because LIKE would otherwise read it as a wildcard and match both rows, which is the bug this case exists to catch.
       const res = await authedGet(
         `/api/projects/${project.id}/issues/search?q=${encodeURIComponent('100%')}`,
         user.id,

@@ -2108,6 +2108,27 @@
 
 ### Fixed
 
+- **A paused job no longer restarts itself by writing a note.** When a job stops to ask a person
+  something, it is supposed to stay stopped until someone answers. It did not: the job's own
+  follow-up note — a finding it owed the ticket, a correction, a record of what it had already
+  done — was read as that answer, and the work restarted within the minute. Nobody saw it happen,
+  because the line written at that moment says a person answered. Three cases are on the record a
+  week apart, and in the worst of them the restarted work had already been finished, reviewed and
+  shipped; a second run would have built it again from the beginning. What the check was reading
+  could not tell the two apart: a job reaches the tracker with its owner's credential, so on every
+  field it looked at, the job's own note and a person typing were the same thing. Notes now carry,
+  and the check now reads, whether a person was actually at the keyboard.
+
+  The trade: answering a paused job from a script or the terminal no longer restarts it, and it
+  fails quietly rather than saying so — the same silence pointed the other way. That is deliberate,
+  because the two failures do not cost the same: a restart nobody asked for repeats work that is
+  already done and leaves no trace, while an answer that does not take is visible to the person who
+  typed it and one command from being fixed. It ends when a person's terminal can prove itself a
+  person, which is a credential question rather than this one. Still open either way: an unrelated
+  note from a real person also restarts a job that was waiting on something else entirely —
+  narrower than what shipped here, and the only route that closes it is a paused job declaring what
+  would answer it.
+
 - **A dead run gives back a rung, never a landing.** The return path shipped an hour earlier took
   an issue back from any status that differed from the one at open, which walks over work the run
   had actually landed: a run claimed at `open`, advanced to `developed`, then losing its pane would

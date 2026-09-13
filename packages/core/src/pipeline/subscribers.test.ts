@@ -225,13 +225,13 @@ describe('registerActivitySubscribers', () => {
 
   it('commentCreated → records comment.created with 240-char snippet', async () => {
     const bus = newBus();
-    const body = 'a'.repeat(400);
     await bus.emit('commentCreated', {
       issueId: ISSUE_ID,
       projectId: PROJECT_ID,
       actor: ACTOR,
+      authored: 'human',
       commentId: COMMENT_ID,
-      body,
+      body: 'a'.repeat(400),
     });
     const call = safeRecordActivity.mock.calls[0]?.[0];
     expect(call?.action).toBe('comment.created');

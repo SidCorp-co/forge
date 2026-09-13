@@ -122,6 +122,7 @@ async function humanAnswers(body = 'yes, use postgres'): Promise<string> {
     issueId,
     projectId,
     actor: { type: 'user', id: ownerId, agency: 'human' },
+    authored: 'human',
     commentId,
     body,
   });

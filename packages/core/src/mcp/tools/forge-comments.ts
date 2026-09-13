@@ -231,6 +231,8 @@ async function run(principal: Principal, input: ToolInput): Promise<unknown> {
         issueId,
         projectId,
         actor: principalHookActor(principal),
+        // cm:guard `agent` unconditionally: this door has no session JWT to distinguish, and a human writing through MCP is still writing through a tool.
+        authored: 'agent',
         commentId: inserted.id,
         body: inserted.body,
         parentId: inserted.parentId,

@@ -68,7 +68,11 @@ describe('answer-resume E2E', () => {
     return rows[0]?.status;
   }
 
-  async function comment(issueId: string, actorType: 'user' | 'device'): Promise<void> {
+  async function comment(
+    issueId: string,
+    actorType: 'user' | 'device',
+    authored: 'human' | 'agent' = actorType === 'device' ? 'agent' : 'human',
+  ): Promise<void> {
     const { HooksBus } = await import('../../src/pipeline/hooks.js');
     const { registerAnswerResume } = await import('../../src/pipeline/answer-resume.js');
     const bus = new HooksBus();
@@ -77,6 +81,7 @@ describe('answer-resume E2E', () => {
       issueId,
       projectId,
       actor: { type: actorType, id: ownerId, agency: actorType === 'device' ? 'agent' : 'human' },
+      authored,
       commentId: randomUUID(),
       body: 'the answer',
     });
@@ -97,6 +102,16 @@ describe('answer-resume E2E', () => {
     const id = await insertIssue('needs_info');
 
     await comment(id, 'device');
+
+    expect(await statusOf(id)).toBe('needs_info');
+  });
+
+  // cm:guard the shape the `device` case above could never reach: an agent on a PAT is a `user` actor with `human` agency, because a PAT resolves to its OWNER and agency comes from that owner's `users.kind`. Both of the fields this module used to read say `person` here. ISS-978 un-parked itself this way on 2026-09-13 and ISS-962 on 2026-09-08, with the old assertion green through both.
+  it('ignores an agent writing through a human owner PAT, which reads as a person on every other field', async () => {
+    await setMode('autonomous');
+    const id = await insertIssue('needs_info');
+
+    await comment(id, 'user', 'agent');
 
     expect(await statusOf(id)).toBe('needs_info');
   });

@@ -135,13 +135,12 @@ describe('F3 memory search + indexer integration', () => {
     await harness.db.execute(
       sql`UPDATE users SET email_verified_at = now() WHERE id = ${stranger.id}`,
     );
-    const strangerToken = await signUserToken(stranger.id);
     stubEmbedding(hotVector(0));
     const res = await app.request('/api/memory/search', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        authorization: `Bearer ${strangerToken}`,
+        authorization: `Bearer ${await signUserToken(stranger.id)}`,
       },
       body: JSON.stringify({ projectId, query: 'hi' }),
     });
@@ -315,8 +314,6 @@ describe('F3 memory search + indexer integration', () => {
     expect(body.code).toBe('EMBEDDING_UNAVAILABLE');
   });
 
-  // ---------- INDEXER ----------
-
   async function registerIndexerFresh() {
     const { hooks } = await import('../../src/pipeline/hooks.js');
     const { registerMemoryIndexer, resetMemoryIndexerRegistration } = await import(
@@ -427,6 +424,7 @@ describe('F3 memory search + indexer integration', () => {
       issueId: randomUUID(),
       projectId,
       actor: { type: 'user', id: randomUUID(), agency: 'human' },
+      authored: 'human',
       commentId,
       body: 'comment body',
     });
@@ -440,9 +438,7 @@ describe('F3 memory search + indexer integration', () => {
     });
     await new Promise((r) => setTimeout(r, 50));
 
-    // The indexer subscribes to issue lifecycle only — comments are mostly bot
-    // status chatter in a pipeline project and have no automatic read path.
-    // Agents persist a comment-worthy lesson explicitly as source:'knowledge'.
+    // cm:why the indexer subscribes to issue lifecycle only: in a pipeline project comments are mostly bot status chatter with no automatic read path, and an agent persists a comment-worthy lesson explicitly as source:'knowledge' (removed for perf, a8d5d17b)
     expect(embedCalls).toBe(0);
     const rows = await harness.db.execute<{ count: string }>(
       sql`SELECT count(*)::text AS count FROM memories WHERE source_ref = ${commentId}`,

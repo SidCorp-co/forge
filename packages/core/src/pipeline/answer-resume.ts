@@ -138,8 +138,8 @@ export function registerAnswerResume(bus: HooksBus): void {
   bus.on(
     'commentCreated',
     async (p) => {
-      // cm:guard every AI comment path emits a `device` actor (mcp/tools/forge-comments.ts, forge-issues.ts) — widening this to any actor would let the driver's own question resume the issue it just parked, in a loop nothing else stops
-      if (p.actor.type !== 'user') return;
+      // cm:guard `authored`, NEVER `actor.type` or `actor.agency`. This line read `actor.type !== 'user'` until 2026-09-13 on the premise that every AI path emits a `device` actor; `comments/routes.ts` emits `restActor`, which is `user` for every REST caller, and `agency` comes from the PAT owner's `users.kind`, so an agent on a human's token reads `human` too. ISS-978's own Extra-fixes comment un-parked it 4ms after posting and ISS-962 recorded the same through the merged-mark comment four days earlier.
+      if (p.authored !== 'human') return;
       try {
         const issue = await resumableIssue(p.issueId);
         if (!issue) return;

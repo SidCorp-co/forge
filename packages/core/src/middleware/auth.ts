@@ -12,10 +12,7 @@ import { beginPatRequest, withPatScope } from './pat-rest-surface.js';
 
 export type AuthVars = {
   userId: string;
-  // Set only when the principal is a device (a CLI runner), not a user — see
-  // `requireUserOrDevice`. `userId` is left unset in that case, so handlers
-  // that authorize via `loadProjectAccess(projectId, userId)` fail closed for
-  // a device unless they explicitly honor the device principal.
+  // cm:guard set ONLY for a device principal, and `userId` is left unset beside it on purpose — every handler authorizing through `loadProjectAccess(projectId, userId)` then fails closed for a device unless it honours the device principal by name (`requireUserOrDevice`).
   deviceId?: string;
   principal?: 'user' | 'device' | 'pat';
   // cm:guard REST must carry this or the whole agency axis stops at the door: `requireAuth` reduces a rich principal to `principal:'pat'`, a string tag, and every route downstream then hardcodes a `user` actor. That is how an agent holding a PAT reached `PATCH /api/issues/batch` — which DOES transition, via transitionIssueStatus — and skipped the ISS-786/812 gates while `/mcp` enforced them, because MCP synthesizes a device for a PAT and REST has none to synthesize.
@@ -34,6 +31,16 @@ export function restActor(c: Context<{ Variables: { userId: string; agency?: Act
   agency: ActorAgency;
 } {
   return { type: 'user', id: c.get('userId'), agency: c.get('agency') ?? 'human' };
+}
+
+/**
+ * Whether a person is at the keyboard on THIS request, as the hook bus asks it.
+ */
+// cm:guard a session JWT is the whole test and `agency` cannot stand in for it: a PAT resolves to its owner and `agency` comes from that owner's `users.kind`, so an agent on a human's token reads `human` (measured 2026-09-13 on ISS-978). Every REST door that emits `commentCreated` reads this one function, because two doors computing it apart is how one gets fixed and the other keeps resuming parked runs.
+export function restAuthored(
+  c: Context<{ Variables: { userId: string; principal?: 'user' | 'device' | 'pat' } }>,
+): 'human' | 'agent' {
+  return c.get('principal') === 'user' ? 'human' : 'agent';
 }
 
 /**

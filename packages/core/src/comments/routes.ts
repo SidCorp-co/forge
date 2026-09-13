@@ -13,7 +13,13 @@ import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { cursorList, listResponse, paginationSchema } from '../lib/pagination.js';
 import { logger } from '../logger.js';
-import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
+import {
+  type AuthVars,
+  assertEmailVerified,
+  requireAuth,
+  restActor,
+  restAuthored,
+} from '../middleware/auth.js';
 import { requireAnyAuth } from '../middleware/require-any-auth.js';
 import { hooks } from '../pipeline/hooks.js';
 import { getStorage, isEnoent } from '../storage/index.js';
@@ -155,6 +161,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
         issueId,
         projectId: issue.projectId,
         actor: restActor(c),
+        authored: restAuthored(c),
         commentId: inserted.id,
         body: inserted.body,
         parentId: inserted.parentId,
@@ -305,13 +312,7 @@ function attachmentErrorToHttp(err: AttachmentError): HTTPException {
 
 const commentIdParamSchema = z.object({ commentId: z.uuid() });
 
-// NOTE: no `commentRoutes.use('*', ...)` wildcard here — ISS-706. A router-wide
-// wildcard on this Hono instance would also run for every path Hono merges in
-// from a second router mounted at the same `/api/comments` prefix (Hono
-// flattens use('*') from BOTH routers into one linear chain at that prefix),
-// so a strict JWT-only wildcard here would shadow a sibling router's more
-// permissive per-route auth before it ever runs. Each route below carries its
-// own auth middleware instead.
+// cm:guard NO `commentRoutes.use('*', ...)` wildcard on this instance, ever: Hono flattens `use('*')` from BOTH routers mounted at `/api/comments` into one chain, so a strict JWT-only wildcard here shadows a sibling router's more permissive per-route auth before it runs (ISS-706). Every route below carries its own auth middleware instead.
 export const commentRoutes = new Hono<{ Variables: AuthVars }>();
 
 commentRoutes.get(

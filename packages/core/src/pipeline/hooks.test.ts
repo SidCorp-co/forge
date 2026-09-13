@@ -16,6 +16,7 @@ function basePayload() {
     issueId: ISSUE_ID,
     projectId: PROJECT_ID,
     actor: { type: 'user' as const, id: USER_ID, agency: 'human' as const },
+    authored: 'human' as const,
     commentId: '44444444-4444-4444-8444-444444444444',
     body: 'hi',
   };

@@ -16,7 +16,13 @@ import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { logger } from '../logger.js';
 import { deleteMemory, indexMemoryBestEffort } from '../memory/indexer.js';
-import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
+import {
+  type AuthVars,
+  assertEmailVerified,
+  requireAuth,
+  restActor,
+  restAuthored,
+} from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
 import { type SpawnPmSessionResult, spawnPmSession } from './spawner.js';
 
@@ -193,6 +199,7 @@ pmRoutes.post(
         issueId,
         projectId,
         actor: restActor(c),
+        authored: restAuthored(c),
         commentId: inserted.id,
         body: inserted.body,
         parentId: inserted.parentId,
@@ -232,8 +239,6 @@ pmRoutes.post(
     return c.json({ ok: true, jobId: spawn.jobId });
   },
 );
-
-// ------------------ pm_config (Epic 6) ------------------
 
 pmRoutes.get(
   '/:projectId/pm/config',
@@ -303,8 +308,6 @@ pmRoutes.put(
     return c.json(updated);
   },
 );
-
-// ------------------ pm_policies (Epic 6) ------------------
 
 pmRoutes.get(
   '/:projectId/pm/policies',
@@ -463,8 +466,6 @@ pmRoutes.delete(
     return c.body(null, 204);
   },
 );
-
-// ------------------ pm_decisions (Epic 6 read) ------------------
 
 pmRoutes.get(
   '/:projectId/pm/decisions',
