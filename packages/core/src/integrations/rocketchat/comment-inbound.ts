@@ -236,8 +236,9 @@ async function announceComment(
   await hooks.emit('commentCreated', {
     issueId: target.issueId,
     projectId: target.projectId,
-    // cm:guard a `user` actor, because that is what `answer-resume.ts` requires before it will carry the words into the parked session — a device actor there is how the driver's own question would resume the issue it just parked.
     actor: { type: 'user', id: speaker.userId, agency: 'human' },
+    // cm:guard `human` is DECIDED here and never inherited: this emit site exists because a person typed the words in a chat room, and `answer-resume.ts` reads this field alone — not `actor.type`, not `actor.agency` — to decide whether to wake the parked session the reply was written to reach (ISS-981 criterion 12).
+    authored: 'human',
     commentId: target.commentId,
     body: speaker.body,
     parentId: null,

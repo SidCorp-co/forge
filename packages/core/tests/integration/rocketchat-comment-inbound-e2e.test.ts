@@ -313,7 +313,7 @@ describe('an unannounced comment is announced by the drain', () => {
       bus: {
         emit: async (topic: string, p: { commentId: string; actor: { type: string } }) => {
           if (topic === 'commentCreated')
-            seen.push({ commentId: p.commentId, actor: p.actor.type });
+            seen.push({ commentId: p.commentId, actor: p.actor.type, authored: p.authored });
         },
       } as unknown as import('../../src/pipeline/hooks.js').HooksBus,
     };
@@ -336,8 +336,8 @@ describe('an unannounced comment is announced by the drain', () => {
     const { seen, bus } = recordingBus();
 
     expect(await inbound.drainOwedAnnouncements(bus)).toBe(1);
-    // cm:guard the actor must be `user` or `answer-resume.ts` returns early and the parked session is never woken — the whole point of announcing this at all (ISS-981 criteria 5, 12).
-    expect(seen).toEqual([{ commentId, actor: 'user' }]);
+    // cm:guard `authored` is what `answer-resume.ts` reads — it stopped reading `actor.type` on 2026-09-13, because an agent on a human's PAT reads `user`/`human` on both actor fields — so this emit carrying anything but `human` leaves the parked session never woken (ISS-981 criteria 5, 12).
+    expect(seen).toEqual([{ commentId, actor: 'user', authored: 'human' }]);
 
     const [row] = await db
       .select()
