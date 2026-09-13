@@ -16,6 +16,7 @@ import {
   devices,
   issues,
   type JobStatus,
+  jobStatuses,
   jobs,
   type PipelineRunKind,
   type PipelineRunStatus,
@@ -299,7 +300,7 @@ async function loadAttemptsForRun(runId: string): Promise<{
     } satisfies PipelineRunAttempt;
   });
 
-  // Headline from the most-recent attempt that carries rotation state.
+  // cm:guard the headline is taken from the MOST RECENT attempt carrying rotation state, walking backwards: an earlier attempt's round counter and target are a fact about a rotation that has since moved on, and reading the first match forwards would show a reader the box the run has already given up on.
   let retrySummary: PipelineRunRetrySummary | null = null;
   for (let i = attempts.length - 1; i >= 0; i--) {
     const ar = attempts[i]?.autoRetry;
@@ -398,12 +399,20 @@ export async function loadPipelineRunSummary(runId: string): Promise<PipelineRun
  * Runs with no usage rows are absent from the map; callers should fall back
  * to {@link EMPTY_COST}.
  */
-// cm:guard the status lists are BUILT from the shared constants rather than spelled into the SQL: a status added to `jobStatuses` or `terminalAgentSessionStatuses` and not to a literal here changes what "live" means with nothing going red, and the two halves of this query would then disagree with every other reader of the same tables.
-const LIVE_JOB_STATUSES = [
-  'queued',
-  'dispatched',
-  'running',
-] as const satisfies readonly JobStatus[];
+// cm:guard the classification is EXHAUSTIVE over `jobStatuses` by its TYPE and is not a hand-list checked for membership: `satisfies readonly JobStatus[]` catches a status removed from the schema and says nothing about one added, so a new non-terminal state would silently stop counting as work in flight and its run would read stalled. A `Record<JobStatus, …>` refuses to compile until the new status is classified here (ISS-998).
+// cm:guard `held` is classified FALSE deliberately and is not an oversight: it is non-terminal but SLOTLESS — a job waiting on a mechanical condition, per `db/schema.ts#jobStatuses` — so counting it as work in flight would keep a run whose only job is parked out of the stalled band for as long as it waits.
+const JOB_STATUS_IS_LIVE: Record<JobStatus, boolean> = {
+  queued: true,
+  dispatched: true,
+  running: true,
+  held: false,
+  done: false,
+  failed: false,
+  cancelled: false,
+};
+const LIVE_JOB_STATUSES = jobStatuses.filter((s) => JOB_STATUS_IS_LIVE[s]);
+// cm:guard the session side needs no such table: it is the shared `terminalAgentSessionStatuses` inverted in SQL, and `agent_sessions.status` is `notNull()` with a default, so `NOT IN` cannot drop a row for a null status.
+
 const sqlList = (values: readonly string[]) =>
   sql.join(
     values.map((v) => sql`${v}`),

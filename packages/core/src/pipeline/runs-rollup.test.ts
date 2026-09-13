@@ -71,7 +71,8 @@ vi.mock('../db/schema.js', () => ({
     failureDetail: 'agent_sessions.failure_detail',
     lastHeartbeatAt: 'agent_sessions.last_heartbeat_at',
   },
-  // cm:edge contract -> packages/core/src/db/schema.ts#terminalAgentSessionStatuses — the same five, copied because this suite mocks the whole schema module; a status added there and not here leaves this file asserting the heartbeat rollup against a list production no longer uses, and nothing goes red (ISS-998).
+  // cm:edge contract -> packages/core/src/db/schema.ts#terminalAgentSessionStatuses — the same five, and `jobStatuses` the same seven, copied because this suite mocks the whole schema module; a status added there and not here leaves this file asserting the rollup against lists production no longer uses, and nothing goes red (ISS-998).
+  jobStatuses: ['queued', 'dispatched', 'running', 'held', 'done', 'failed', 'cancelled'],
   terminalAgentSessionStatuses: [
     'completed',
     'failed',
