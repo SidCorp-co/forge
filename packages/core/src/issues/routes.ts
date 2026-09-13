@@ -22,6 +22,7 @@ import {
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { listResponse, paginationSchema } from '../lib/pagination.js';
+import { queryBadRequest } from '../lib/query-strict.js';
 import { logger } from '../logger.js';
 import { deleteMemory } from '../memory/indexer.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
@@ -129,15 +130,28 @@ export const issuePatchSchema = z
 
 export type IssuePatchInput = z.infer<typeof issuePatchSchema>;
 
-export const issueFiltersSchema = paginationSchema.extend({
-  status: z.enum(issueStatuses).optional(),
-  priority: z.enum(issuePriorities).optional(),
-  assigneeId: z.uuid().optional(),
-  category: z.string().trim().min(1).max(100).optional(),
-  sort: z.enum(issueSortValues).optional().default('createdAt:desc'),
-  // cm:why default false rather than true: hydration is a second query per page, and the callers that want sessions are the two screens that render them
-  withAgentSessions: z.coerce.boolean().optional().default(false),
-});
+// cm:why 9 digits rather than an unbounded run: `issSeq` is int4, and a longer literal reaches Postgres as an out-of-range integer — a 500 on what is a caller's typo and belongs in the 400 beside every other bad `key`
+const issueKeyFilterSchema = z
+  .string()
+  .trim()
+  .regex(/^(?:ISS-)?\d{1,9}$/i, 'expected a display id like `ISS-42`, or its bare sequence number')
+  .transform((v) => Number(v.replace(/^ISS-/i, '')))
+  .refine((n) => n >= 1, 'a display id counts from 1');
+
+// cm:guard `.strict()` is the whole point of this schema, not a flourish: without it zod STRIPS an unregistered key, the handler builds its WHERE from the four it knows, and a filtered ask is answered with the project's unfiltered list at 200 (ISS-991). `list-query-strict.test.ts` is the case that goes red if it is removed.
+export const issueFiltersSchema = paginationSchema
+  .extend({
+    status: z.enum(issueStatuses).optional(),
+    priority: z.enum(issuePriorities).optional(),
+    assigneeId: z.uuid().optional(),
+    category: z.string().trim().min(1).max(100).optional(),
+    // cm:why the filter ISS-991's caller reached for and did not have — it asked this route for `ISS-376` by hand. Scoping stays the project's: the `key` condition is ANDed onto `projectId`, so a sequence number another project holds matches nothing here.
+    key: issueKeyFilterSchema.optional(),
+    sort: z.enum(issueSortValues).optional().default('createdAt:desc'),
+    // cm:why default false rather than true: hydration is a second query per page, and the callers that want sessions are the two screens that render them
+    withAgentSessions: z.coerce.boolean().optional().default(false),
+  })
+  .strict();
 
 export type IssueFilters = z.infer<typeof issueFiltersSchema>;
 
@@ -305,7 +319,7 @@ issueProjectRoutes.get(
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   zValidator('query', issueFiltersSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw queryBadRequest(issueFiltersSchema, r.error);
   }),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
@@ -320,6 +334,7 @@ issueProjectRoutes.get(
     if (q.priority) conditions.push(eq(issues.priority, q.priority));
     if (q.assigneeId) conditions.push(eq(issues.assigneeId, q.assigneeId));
     if (q.category) conditions.push(eq(issues.category, q.category));
+    if (q.key !== undefined) conditions.push(eq(issues.issSeq, q.key));
     const where = conditions.length === 1 ? conditions[0] : and(...conditions);
 
     const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(issues).where(where);
@@ -433,11 +448,8 @@ issueRoutes.get(
   },
 );
 
-// W2.1.4 (ISS-202) — Inspector History tab. Returns every job of a given
-// pipeline step on the issue, newest first, with token/cost rolled up from
-// usage_records using the same `session_id::uuid = jobs.id` cast as
-// loadActualUsage in jobs/routes.ts. LEFT JOIN keeps queued/running rows
-// visible (tokens=0, cost=0). 403 contract matches GET /api/issues/:id.
+// cm:edge contract -> packages/core/src/jobs/routes.ts — the rollup joins `usage_records` on the same `session_id::uuid = jobs.id` cast `loadActualUsage` uses; let the two spellings drift and one surface prices a job the other reports at zero (ISS-202)
+// cm:guard the LEFT JOIN is what keeps queued and running jobs in the history at tokens=0/cost=0 — an inner join drops every job that has not produced a usage row yet, and a step in flight vanishes from its own history
 const jobHistoryQuerySchema = z.object({
   step: z.enum(jobTypes),
 });

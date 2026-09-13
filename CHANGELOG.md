@@ -2129,6 +2129,23 @@
   narrower than what shipped here, and the only route that closes it is a paused job declaring what
   would answer it.
 
+- **Asking the issue list to filter on something it does not have is now refused, instead of
+  answered with every issue in the project.** `GET /api/projects/:id/issues` quietly ignored any
+  query parameter it did not recognise and returned the unfiltered list at 200. There is no way to
+  tell that page apart from a real match, and the first row of it is a plausible-looking issue: one
+  automated run asked for `ISS-376` by hand, was handed the whole list, read the first row, and
+  spent an hour building, reviewing and recording a different issue's work — four records and four
+  status changes landed on the wrong one. The route now answers 400, names the parameter it does
+  not have, and lists the ones it does take, the way this API already refused an unknown field in a
+  request body. A parameter whose value will not parse is reported in the same refusal rather than
+  on a second round trip. The sibling search endpoint refuses in that same shape, so the two lists
+  on one surface no longer answer the same mistake two different ways.
+
+- **The issue list will now narrow to a single tracker key.** `?key=ISS-42`, or the bare `?key=42`,
+  returns that issue and nothing else — the filter the caller above was reaching for. A key the
+  project does not hold comes back as an empty page rather than somebody else's issue, and a key
+  that is not a key is refused by name.
+
 - **A dead run gives back a rung, never a landing.** The return path shipped an hour earlier took
   an issue back from any status that differed from the one at open, which walks over work the run
   had actually landed: a run claimed at `open`, advanced to `developed`, then losing its pane would

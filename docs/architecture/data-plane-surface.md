@@ -70,7 +70,7 @@ anything.
 
 | MCP tool | REST | 
 |---|---|
-| `forge_issues` list | `/api/projects/:id/issues` — **there is no `GET /api/issues`**; the collection is project-scoped only |
+| `forge_issues` list | `/api/projects/:id/issues` — **there is no `GET /api/issues`**; the collection is project-scoped only. Its query string is strict (`issueFiltersSchema`): an unregistered parameter is a 400 naming it and listing what the route takes, never a 200 carrying an unfiltered page. One tracker key is `?key=ISS-42` or `?key=42` |
 | `forge_issues` get / update / delete | `/api/issues/:id`, and `PATCH /api/issues/batch` |
 | `forge_issues` mark_merged / unmark | `POST` / `DELETE /api/issues/:id/merge` |
 | `forge_comments` create / list | `/api/issues/:id/comments` — `/api/comments/:id` is edit, delete and replies only, and has no collection route |
@@ -166,6 +166,7 @@ this passthrough couples the plugin to a binary version the box happens to hold.
 
 ```
 forge-runner api projects/<id>/issues            # GET  the issue list — project-scoped
+forge-runner api "projects/<id>/issues?key=ISS-42"  # GET  that one issue, by tracker key
 forge-runner api issues/<id>                     # GET  one issue
 forge-runner api issues/<id>/comments -X POST -d '{"body":"..."}'
 forge-runner api issues/<id>/merge -X POST -d '{"target":"main"}'
