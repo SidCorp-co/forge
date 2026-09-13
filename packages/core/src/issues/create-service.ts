@@ -30,6 +30,8 @@ import {
 } from './attachment-service.js';
 import { claimDetectorKey, isValidDetectorKey } from './detector-key.js';
 import { applyIntakeGate, finalizeIntake } from './intake-gate.js';
+import { activeIssuePrefix } from './issue-prefix-read.js';
+import { formatIssueRef } from './issue-ref.js';
 import {
   type LabelAttachInput,
   type ResolvedLabelAttach,
@@ -170,7 +172,9 @@ export async function createIssue(
         deduped: true,
         detectorKey,
         existingIssueId,
-        existingIssueDisplayId: live ? `ISS-${live.issSeq}` : null,
+        existingIssueDisplayId: live
+          ? formatIssueRef(await activeIssuePrefix(input.projectId), live.issSeq)
+          : null,
         existingIssueStatus: live?.status ?? null,
       };
     }

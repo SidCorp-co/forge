@@ -17,6 +17,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
 import { agentSessions, devices, issues, projects, runners, schedules } from '../db/schema.js';
+import { formatIssueRef } from '../issues/issue-ref.js';
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import {
   findAvailableDeviceForProject,
@@ -112,14 +113,24 @@ agentSessionLifecycleRoutes.post(
     let title: string;
     if (input.issueIds && input.issueIds.length > 0) {
       const issueRows = await db
-        .select({ id: issues.id, issSeq: issues.issSeq, title: issues.title })
+        .select({
+          id: issues.id,
+          issSeq: issues.issSeq,
+          issuePrefix: projects.issuePrefix,
+          title: issues.title,
+        })
         .from(issues)
+        .innerJoin(projects, eq(projects.id, issues.projectId))
         .where(inArray(issues.id, input.issueIds));
-      if (issueRows.length === 1) {
-        title = `ISS-${issueRows[0]?.issSeq} ${issueRows[0]?.title ?? ''}`.slice(0, 120);
+      const first = issueRows[0];
+      if (issueRows.length === 1 && first) {
+        title = `${formatIssueRef(first.issuePrefix, first.issSeq)} ${first.title ?? ''}`.slice(
+          0,
+          120,
+        );
       } else if (issueRows.length > 1) {
         title = issueRows
-          .map((i) => `ISS-${i.issSeq}`)
+          .map((i) => formatIssueRef(i.issuePrefix, i.issSeq))
           .join(', ')
           .slice(0, 120);
       } else {
@@ -476,7 +487,7 @@ agentSessionLifecycleRoutes.post(
   },
 );
 
-// Static path mounted before `:id` to avoid uuid validator collisions.
+// cm:why mounted before `:id` — a static segment declared after it is swallowed by the uuid validator and never matches
 agentSessionLifecycleRoutes.post(
   '/desktop/status',
   zValidator('json', desktopStatusSchema, (r) => {

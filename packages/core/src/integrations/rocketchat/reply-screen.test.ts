@@ -1,14 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 
-// Parity check for the guard composition extracted from
-// `connection-manager.ts`'s old `checkReply`/`verifyReplyClaims` — the ISS-675
-// async escalation bridge shares this exact module so neither reply path can
-// silently diverge from the other's ISS-672 kernel guards.
+// cm:why Parity check for the guard composition extracted from `connection-manager.ts`'s old `checkReply`/`verifyReplyClaims` — the ISS-675 async escalation bridge shares this exact module so neither reply path can silently diverge from the other's ISS-672 kernel guards.
 
 const selectWhere = vi.fn();
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
 vi.mock('../../db/client.js', () => ({
   db: { select: vi.fn(() => ({ from: selectFrom })) },
+}));
+vi.mock('../../issues/issue-prefix-read.js', () => ({
+  activeIssuePrefix: async () => null,
+  heldIssuePrefixes: async () => [],
 }));
 vi.mock('../../ws/server.js', () => ({ roomManager: { publish: vi.fn() } }));
 vi.mock('../../pipeline/outbox-session.js', () => ({ withActorContext: vi.fn() }));

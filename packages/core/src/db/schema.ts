@@ -14,6 +14,7 @@ import {
   real,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
   varchar,
@@ -264,6 +265,25 @@ export const organizationMembersRelations = relations(organizationMembers, ({ on
   user: one(users, { fields: [organizationMembers.userId], references: [users.id] }),
 }));
 
+// cm:guard a prefix is a claim on the whole deployment and is NEVER given up: this table is only ever inserted into, and `project_id` goes NULL when its project is deleted rather than the row going with it. Freeing a dead project's prefix would let a second project claim it and silently re-point every published `FD-977` at a different issue 977, which is the one failure ISS-992 exists to prevent.
+// cm:guard `prefix` is stored UPPER CASE and compared as stored — a `lower(prefix)` expression index cannot back a foreign key, and `projects.issue_prefix` needs one (see `projectsIssuePrefixFk`)
+export const issuePrefixAliases = pgTable(
+  'issue_prefix_aliases',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id').references((): AnyPgColumn => projects.id, {
+      onDelete: 'set null',
+    }),
+    prefix: text('prefix').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    prefixUq: uniqueIndex('issue_prefix_aliases_prefix_uq').on(t.prefix),
+    // cm:guard the target of `projects_issue_prefix_fk`, so it is a UNIQUE CONSTRAINT and not an index — drop it and a project can be pointed at a prefix another project holds
+    projectPrefixUq: unique('issue_prefix_aliases_project_prefix_uq').on(t.projectId, t.prefix),
+  }),
+);
+
 export const projects = pgTable(
   'projects',
   {
@@ -295,6 +315,8 @@ export const projects = pgTable(
     previewDeploy: jsonb('preview_deploy'),
     webhookSecret: text('webhook_secret'),
     apiKey: text('api_key'),
+    // cm:guard the ACTIVE issue-reference prefix, and NULL is not "unset" but the legacy `ISS` every project answered to before ISS-992. It may only name a prefix this project already holds in `issue_prefix_aliases` — `projects_issue_prefix_fk` enforces that in Postgres, so a pointer the parser would reject is unrepresentable rather than merely checked.
+    issuePrefix: text('issue_prefix'),
     // cm:guard a soft archive that DESTROYS nothing: it hides the project from the default list and pauses auto-dispatch, and every archive is restorable (ISS-353).
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -305,6 +327,12 @@ export const projects = pgTable(
     apiKeyUq: uniqueIndex('projects_api_key_uq').on(t.apiKey).where(sql`api_key IS NOT NULL`),
     defaultDeviceIdx: index('projects_default_device_id_idx').on(t.defaultDeviceId),
     archivedAtIdx: index('projects_archived_at_idx').on(t.archivedAt),
+    // cm:edge lockstep -> packages/core/src/db/schema.ts:issuePrefixAliases — MATCH SIMPLE skips the check while `issue_prefix` is NULL, which is what leaves the legacy `ISS` default free; measured against Postgres 2026-09-13, seven probes
+    issuePrefixFk: foreignKey({
+      name: 'projects_issue_prefix_fk',
+      columns: [t.id, t.issuePrefix],
+      foreignColumns: [issuePrefixAliases.projectId, issuePrefixAliases.prefix],
+    }),
   }),
 );
 
@@ -473,7 +501,7 @@ export const mcpAuditLog = pgTable(
     tool: text('tool').notNull(),
     action: text('action'),
     projectId: uuid('project_id').references(() => projects.id, { onDelete: 'set null' }),
-    // 'ok' | 'forbidden' | 'not_found' | 'error' | 'revoked' | 'rate_limited' | http code
+    // cm:why 'ok' | 'forbidden' | 'not_found' | 'error' | 'revoked' | 'rate_limited' | http code
     resultCode: text('result_code').notNull(),
     requestId: text('request_id'),
     ip: text('ip'),
@@ -495,9 +523,7 @@ export const pairingCodes = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    // Nullable — user-scoped pairing codes leave this null. Set when the code
-    // is minted via `POST /api/projects/:id/devices/pairing-codes` so the
-    // redeemer can auto-bind the new device to the project.
+    // cm:why Nullable — user-scoped pairing codes leave this null. Set when the code is minted via `POST /api/projects/:id/devices/pairing-codes` so the redeemer can auto-bind the new device to the project.
     projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     usedAt: timestamp('used_at', { withTimezone: true }),

@@ -14,6 +14,7 @@
 import { and, eq, inArray, or } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { issues } from '../../db/schema.js';
+import { activeIssuePrefix, heldIssuePrefixes } from '../../issues/issue-prefix-read.js';
 import { computeProjectProgress } from '../../issues/progress.js';
 import { logger } from '../../logger.js';
 import {
@@ -48,8 +49,10 @@ async function verifyReplyClaims(
   projectId: string,
   reply: string,
   toolCalls: Array<{ name: string; arguments: string }>,
+  prefixes: readonly string[],
+  prefix: string | null,
 ): Promise<ClaimVerdict> {
-  const claims = extractIssueClaims(reply);
+  const claims = extractIssueClaims(reply, prefixes);
   let ids = new Set<string>();
   let seqs = new Set<number>();
   if (claims.urlIds.length > 0 || claims.issSeqs.length > 0) {
@@ -75,7 +78,7 @@ async function verifyReplyClaims(
       };
     }
   }
-  const verdict = judgeIssueClaims(claims, { ids, seqs }, toolCalls);
+  const verdict = judgeIssueClaims(claims, { ids, seqs }, toolCalls, prefix);
   return { ...verdict, verifiedSeqs: seqs, verifiedUrlIds: ids, dbError: false };
 }
 
@@ -111,10 +114,16 @@ export async function screenStakeholderReply(
   toolCalls: Array<{ name: string; arguments: string }>,
   progress: ProgressFacts | null | 'legacy-session',
 ): Promise<ReplyScreenVerdict> {
-  const claim = await verifyReplyClaims(projectId, reply, toolCalls);
+  const [prefix, prefixes] = await Promise.all([
+    activeIssuePrefix(projectId),
+    heldIssuePrefixes(projectId),
+  ]);
+  const claim = await verifyReplyClaims(projectId, reply, toolCalls, prefixes, prefix);
   const lint = lintStakeholderReply(reply, {
     verifiedSeqs: claim.verifiedSeqs,
     skipIssueIdRule: claim.dbError,
+    prefix,
+    prefixes,
   });
   const promise = detectEmptyPromise(reply);
   const facts = progress === 'legacy-session' ? await computeProjectProgress(projectId) : progress;

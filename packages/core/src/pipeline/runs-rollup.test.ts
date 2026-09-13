@@ -18,6 +18,11 @@ const attemptsQueue: SelectQueue = [];
 
 let nextSelectKind: 'steps' | 'cost' | 'runRow' | 'bulkCost' = 'steps';
 
+// cm:why the prefix reader is a collaborator with a query shape of its own, stubbed so this file stays a check of what the module under test does with the reference rather than of how the prefix is read (ISS-992)
+vi.mock('../issues/issue-prefix-read.js', () => ({
+  activeIssuePrefix: async () => null,
+  heldIssuePrefixes: async () => [],
+}));
 vi.mock('drizzle-orm', () => ({
   and: (...args: unknown[]) => ({ _and: args }),
   eq: (...args: unknown[]) => ({ _eq: args }),
@@ -29,8 +34,7 @@ vi.mock('drizzle-orm', () => ({
   }) as never,
 }));
 
-// ISS-411 — runs-rollup now imports the pure retry-state helpers; mock them so
-// the suite does not transitively pull in the dispatch/queue graph (env-gated).
+// cm:why ISS-411 — runs-rollup now imports the pure retry-state helpers; mock them so the suite does not transitively pull in the dispatch/queue graph (env-gated).
 vi.mock('../jobs/retry.js', () => ({
   RETRY_MAX_ROUNDS: 10,
   readAutoRetryPayload: (payload: unknown) => {
@@ -80,7 +84,13 @@ vi.mock('../db/schema.js', () => ({
   },
   devices: { id: 'devices.id', name: 'devices.name' },
   pipelineRuns: { id: 'pipeline_runs.id' },
-  issues: { id: 'issues.id', issSeq: 'issues.iss_seq', title: 'issues.title' },
+  issues: {
+    id: 'issues.id',
+    issSeq: 'issues.iss_seq',
+    projectId: 'issues.project_id',
+    title: 'issues.title',
+  },
+  projects: { id: 'projects.id', issuePrefix: 'projects.issue_prefix' },
   usageRecords: {
     id: 'usage_records.id',
     estimatedCost: 'usage_records.estimated_cost',

@@ -9,6 +9,8 @@ import { and, eq, or } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../db/client.js';
 import { type IssueDependencyKind, issueDependencies, issues } from '../db/schema.js';
+import { activeIssuePrefix } from './issue-prefix-read.js';
+import { formatIssueRef } from './issue-ref.js';
 
 export type IssueDependencyEdge = {
   id: string;
@@ -73,12 +75,15 @@ export async function loadIssueDependencyEdges(
       ),
     );
 
+  // cm:guard both endpoints of an edge are in THIS project — `issueDependencies.projectId` scopes
+  // the query above — so one prefix answers for both sides
+  const prefix = await activeIssuePrefix(projectId);
   const enrich = <T extends { fromIssSeq: number | null; toIssSeq: number | null }>(edge: T) => {
     const { fromIssSeq, toIssSeq, ...rest } = edge;
     return {
       ...rest,
-      fromDisplayId: fromIssSeq != null ? `ISS-${fromIssSeq}` : null,
-      toDisplayId: toIssSeq != null ? `ISS-${toIssSeq}` : null,
+      fromDisplayId: fromIssSeq != null ? formatIssueRef(prefix, fromIssSeq) : null,
+      toDisplayId: toIssSeq != null ? formatIssueRef(prefix, toIssSeq) : null,
     };
   };
 

@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { db } from '../db/client.js';
 import { issues, pipelineRuns, projectMembers, projects, runners, users } from '../db/schema.js';
 import { activityLog } from '../db/schema-activity.js';
+import { formatIssueRef } from '../issues/issue-ref.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 
@@ -95,10 +96,12 @@ projectHealthRoutes.get('/health', async (c) => {
       projectId: issues.projectId,
       id: issues.id,
       issSeq: issues.issSeq,
+      issuePrefix: projects.issuePrefix,
       status: issues.status,
       updatedAt: issues.updatedAt,
     })
     .from(issues)
+    .innerJoin(projects, eq(projects.id, issues.projectId))
     .where(
       and(inArray(issues.projectId, projectIds), inArray(issues.status, [...BLOCKED_STATUSES])),
     )
@@ -168,7 +171,6 @@ projectHealthRoutes.get('/health', async (c) => {
     )
     .groupBy(pipelineRuns.projectId);
 
-  // Online runners per project.
   const runnerRows = await db
     .select({
       projectId: runners.projectId,
@@ -244,7 +246,11 @@ projectHealthRoutes.get('/health', async (c) => {
   const blockersByProject = new Map<string, ProjectHealthRow['blockers']>();
   for (const r of blockerRows) {
     const arr = blockersByProject.get(r.projectId) ?? [];
-    arr.push({ issueId: `ISS-${r.issSeq}`, documentId: r.id, status: r.status });
+    arr.push({
+      issueId: formatIssueRef(r.issuePrefix, r.issSeq),
+      documentId: r.id,
+      status: r.status,
+    });
     blockersByProject.set(r.projectId, arr);
   }
 

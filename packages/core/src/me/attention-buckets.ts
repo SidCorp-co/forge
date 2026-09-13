@@ -120,6 +120,7 @@ const retryJobs = alias(jobs, 'retry_jobs');
 export interface AttentionIssueRow {
   id: string;
   issSeq: number;
+  issuePrefix: string | null;
   title: string;
   status: string;
   updatedAt: Date;
@@ -141,6 +142,7 @@ export interface AttentionMentionRow {
   mentionedAt: Date;
   issueDocId: string;
   issSeq: number;
+  issuePrefix: string | null;
   projectSlug: string;
   projectName: string;
 }
@@ -152,6 +154,7 @@ export interface AttentionFailedJobRow {
   error: string | null;
   issueDocId: string | null;
   issSeq: number | null;
+  issuePrefix: string | null;
   projectSlug: string;
   projectName: string;
 }
@@ -176,6 +179,7 @@ export function ownedForAnswer(userId: string) {
 const issueFields = {
   id: issues.id,
   issSeq: issues.issSeq,
+  issuePrefix: projects.issuePrefix,
   title: issues.title,
   status: issues.status,
   updatedAt: issues.updatedAt,
@@ -340,6 +344,7 @@ export function selectMentions(userId: string): Promise<AttentionMentionRow[]> {
       mentionedAt: commentMentions.createdAt,
       issueDocId: issues.id,
       issSeq: issues.issSeq,
+      issuePrefix: projects.issuePrefix,
       projectSlug: projects.slug,
       projectName: projects.name,
     })
@@ -375,6 +380,7 @@ export function selectFailedJobs(userId: string): Promise<AttentionFailedJobRow[
       error: jobs.error,
       issueDocId: issues.id,
       issSeq: issues.issSeq,
+      issuePrefix: projects.issuePrefix,
       projectSlug: projects.slug,
       projectName: projects.name,
     })

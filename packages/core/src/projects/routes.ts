@@ -18,6 +18,11 @@ import {
   runners,
 } from '../db/schema.js';
 import {
+  type AssignPrefixResult,
+  assignIssuePrefix,
+  retireIssuePrefix,
+} from '../issues/issue-prefix-service.js';
+import {
   assertOrgAccess,
   assertOrgRoleOnProject,
   assertProjectRole,
@@ -56,8 +61,7 @@ export const createProjectSchema = z.object({
     .max(64),
   name: z.string().trim().min(1).max(200),
   description: z.string().trim().max(2000).nullable().optional(),
-  // ISS-387 — project kind. `standard` (default) = code repo project;
-  // `website` = an Epodsystem storefront project (git repo optional).
+  // cm:why ISS-387 — project kind. `standard` (default) = code repo project; `website` = an Epodsystem storefront project (git repo optional).
   kind: z.enum(projectKinds).optional(),
   // Org tier — every project belongs to exactly one org. Omitted = the
   // caller's personal org. Any org role (incl. member) may create projects.
@@ -104,6 +108,8 @@ export const updateProjectSchema = z
     workspaceSetup: z.string().trim().max(8000).nullable().optional(),
     baseBranch: z.string().trim().max(100).nullable().optional(),
     productionBranch: z.string().trim().max(100).nullable().optional(),
+    // cm:guard ISS-992 — the shape is checked in the handler, not here, because three of the four refusals need the database (the reserved name, the prefix another project holds, and whether the caller may be told which one). A zod regex here would answer the first and let the other three reach Postgres as a 500 on an ordinary conflict.
+    issuePrefix: z.string().trim().max(16).nullable().optional(),
     defaultDeviceId: z.uuid().nullable().optional(),
     agentConfig: z.record(z.string(), z.unknown()).nullable().optional(),
     // ISS-609 follow-up — scoped write for `agentConfig.personaStyle` (the
@@ -128,6 +134,38 @@ export type UpdateProjectInput = z.infer<typeof updateProjectSchema>;
 const idParamSchema = z.object({
   id: z.uuid(),
 });
+
+// cm:guard the holder is named ONLY to a caller who can already see it. Probing candidate prefixes would otherwise enumerate the private projects on the deployment one refusal at a time, and the issue asks for uniqueness, not for disclosure (codex review of ISS-992).
+async function issuePrefixRefusal(
+  refusal: Exclude<AssignPrefixResult, { ok: true }>,
+  userId: string,
+): Promise<HTTPException> {
+  if (refusal.reason !== 'taken') {
+    return new HTTPException(400, {
+      message: refusal.message,
+      cause: { code: 'BAD_REQUEST' },
+    });
+  }
+  const holder = refusal.holderProjectId
+    ? await loadProjectAccess(refusal.holderProjectId, userId)
+    : null;
+  const visible = holder?.role ? await readProjectName(refusal.holderProjectId as string) : null;
+  return new HTTPException(409, {
+    message: visible
+      ? `that issue prefix is already held by the project \`${visible}\`. A prefix names one project for good, so it is never handed on.`
+      : 'that issue prefix is already held by another project. A prefix names one project for good, so it is never handed on.',
+    cause: { code: 'ISSUE_PREFIX_TAKEN' },
+  });
+}
+
+async function readProjectName(projectId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ name: projects.name })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  return row?.name ?? null;
+}
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, {
@@ -217,6 +255,7 @@ projectRoutes.get('/', async (c) => {
       memberRole: projectMembers.role,
       orgRole: organizationMembers.role,
       apiKey: projects.apiKey,
+      issuePrefix: projects.issuePrefix,
       archivedAt: projects.archivedAt,
       createdAt: projects.createdAt,
     })
@@ -289,6 +328,7 @@ projectRoutes.get(
         previewDeploy: projects.previewDeploy,
         webhookSecret: projects.webhookSecret,
         apiKey: projects.apiKey,
+        issuePrefix: projects.issuePrefix,
         archivedAt: projects.archivedAt,
         createdAt: projects.createdAt,
       })
@@ -418,6 +458,14 @@ projectRoutes.patch(
     if (patch.workspaceSetup !== undefined) updates.workspaceSetup = patch.workspaceSetup;
     if (patch.productionBranch !== undefined) updates.productionBranch = patch.productionBranch;
     if (patch.defaultDeviceId !== undefined) updates.defaultDeviceId = patch.defaultDeviceId;
+    if (patch.issuePrefix !== undefined) {
+      if (patch.issuePrefix === null || patch.issuePrefix === '') {
+        await retireIssuePrefix(id);
+      } else {
+        const assigned = await assignIssuePrefix(id, patch.issuePrefix);
+        if (!assigned.ok) throw await issuePrefixRefusal(assigned, userId);
+      }
+    }
     if (patch.stateContext !== undefined) {
       // Read-modify-write rather than Postgres's `jsonb || jsonb` (shallow
       // merge) so a `stateContext`-only patch can't wipe sibling keys
@@ -488,6 +536,7 @@ projectRoutes.patch(
       agentConfig: projects.agentConfig,
       previewDeploy: projects.previewDeploy,
       webhookSecret: projects.webhookSecret,
+      issuePrefix: projects.issuePrefix,
       createdAt: projects.createdAt,
     });
     if (!updated) throw notFound();

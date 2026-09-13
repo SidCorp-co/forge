@@ -5,9 +5,10 @@
 
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issues, type MemorySource, memories } from '../db/schema.js';
+import { issues, type MemorySource, memories, projects } from '../db/schema.js';
 import { memoryChunks } from '../db/schema-memory-chunks.js';
 import { embedBatch } from '../embeddings/index.js';
+import { formatIssueRef } from '../issues/issue-ref.js';
 import { chunkText, contextPrefix, isChunkedSource } from './chunker.js';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -38,11 +39,12 @@ export async function invalidateChunks(tx: Tx, memoryId: string): Promise<number
 async function issueLabel(parent: ChunkParent): Promise<string | undefined> {
   if (parent.source !== 'issue') return undefined;
   const [row] = await db
-    .select({ issSeq: issues.issSeq })
+    .select({ issSeq: issues.issSeq, issuePrefix: projects.issuePrefix })
     .from(issues)
+    .innerJoin(projects, eq(projects.id, issues.projectId))
     .where(eq(issues.id, parent.sourceRef))
     .limit(1);
-  return row ? `ISS-${row.issSeq}` : undefined;
+  return row ? formatIssueRef(row.issuePrefix, row.issSeq) : undefined;
 }
 
 /** Steps 2 and 3: embed the prefixed passages (an outage throws EmbeddingUnavailableError to the caller), then publish under the parent's generation. */

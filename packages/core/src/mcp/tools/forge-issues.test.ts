@@ -2,6 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { issueAttachments } from '../../db/schema.js';
 import { makeFakeJobPrincipal } from '../fake-principal.fixture.js';
 
+// cm:why the prefix reader is a collaborator with a query shape of its own, stubbed so this file stays a check of what the module under test does with the reference rather than of how the prefix is read (ISS-992)
+vi.mock('../../issues/issue-prefix-read.js', () => ({
+  activeIssuePrefix: async () => null,
+  heldIssuePrefixes: async () => [],
+}));
 vi.mock('../../config/env.js', () => ({
   env: {
     JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef',
@@ -62,8 +67,7 @@ const txInsertValues = vi.fn((_values?: unknown) => ({
 const txInsert = vi.fn(() => ({ values: txInsertValues }));
 const txDeleteWhere = vi.fn(async () => undefined);
 const txDelete = vi.fn(() => ({ where: txDeleteWhere }));
-// ISS-196 — `withActorContext` calls `tx.execute(SELECT set_config(...))`
-// before the UPDATE; stub it so the in-memory db mock doesn't blow up.
+// cm:why ISS-196 — `withActorContext` calls `tx.execute(SELECT set_config(...))` before the UPDATE; stub it so the in-memory db mock doesn't blow up.
 const txExecute = vi.fn(async () => undefined);
 // cm:guard every tx read stubbed here must resolve EMPTY by default and offer both `.limit()` and `.orderBy().limit()` — `markMergedIfLeavingBase` (ISS-232), ISS-633's label replace-set and the attachment name check (ISS-963) each read through this one chain, so a missing link throws for callers that never staged a value
 const txSelectLimit = vi.fn(async () => [] as unknown[]);

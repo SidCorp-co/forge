@@ -31,6 +31,8 @@ import {
   type TransitionErrorCode,
   transitionIssueStatus,
 } from './apply-transition.js';
+import { activeIssuePrefix } from './issue-prefix-read.js';
+import { formatIssueRef } from './issue-ref.js';
 import { triggerTerminalDispatch } from './transition.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
@@ -141,7 +143,7 @@ issueExtrasRoutes.patch(
           const access = await loadProjectAccess(projectId, userId);
           return [
             projectId,
-            // Batch patch mutates issues — viewer (read-only) is not allowed.
+            // cm:why Batch patch mutates issues — viewer (read-only) is not allowed.
             { allowed: projectRoleAtLeast(access.role, 'member') },
           ];
         } catch (err) {
@@ -155,6 +157,18 @@ issueExtrasRoutes.patch(
     for (const [projectId, state] of accessResolutions) {
       accessMap.set(projectId, state);
     }
+
+    // cm:guard one prefix per PROJECT, resolved with the access map and not once for the batch — a batch may span projects, and a single prefix would render one project's issues under another's name, which is the confusion ISS-992 removed rather than one to introduce here
+    const prefixMap = new Map<string, string | null>(
+      await Promise.all(
+        distinctProjects.map(
+          async (projectId): Promise<[string, string | null]> => [
+            projectId,
+            await activeIssuePrefix(projectId),
+          ],
+        ),
+      ),
+    );
 
     // cm:why collected across the whole batch and fanned out ONCE at the end — the children read is a single inArray, so the cost stays flat in N rather than one query per transitioned issue
     // cm:guard derive this from the fan-out's own parameter type, never restate it — a local copy is how the batch path silently stops carrying a field the single-issue path added
@@ -179,11 +193,7 @@ issueExtrasRoutes.patch(
           const fromStatus = row.status as IssueStatus;
           const toStatus = data.status;
           try {
-            // Same core as single-issue `/transition` — guard semantics,
-            // conditional UPDATE, merged_at stamp, WS publish and run close
-            // are shared. No `override` in batch — bulk bar has no UI for
-            // owner-bypass. Terminal fan-out is collected below so the
-            // Layer-2 dispatch tick fires once per request, not per issue.
+            // cm:why Same core as single-issue `/transition` — guard semantics, conditional UPDATE, merged_at stamp, WS publish and run close are shared. No `override` in batch — bulk bar has no UI for owner-bypass. Terminal fan-out is collected below so the Layer-2 dispatch tick fires once per request, not per issue.
             const transitioned = await transitionIssueStatus(
               {
                 id: row.id,
@@ -258,7 +268,7 @@ issueExtrasRoutes.patch(
       if (touched) {
         const entry: { id: string; displayId: string; skipReason?: BatchSkipReason } = {
           id: row.id,
-          displayId: `ISS-${row.issSeq}`,
+          displayId: formatIssueRef(prefixMap.get(row.projectId) ?? null, row.issSeq),
         };
         // A status request that was rejected for this issue (no_op, illegal,
         // reopen-cap, stale) must not be silently swallowed when other fields

@@ -31,6 +31,8 @@ import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { AttachmentError } from './attachment-service.js';
 import { createIssue, IssueCreateError } from './create-service.js';
 import { hydrateCreatorsForIssues } from './creator.js';
+import { activeIssuePrefix, heldIssuePrefixes } from './issue-prefix-read.js';
+import { formatIssueRef, issueRefNeedsHeldPrefixes, parseIssueRef } from './issue-ref.js';
 import {
   LabelResolutionError,
   listIssueLabels,
@@ -130,14 +132,14 @@ export const issuePatchSchema = z
 
 export type IssuePatchInput = z.infer<typeof issuePatchSchema>;
 
-// cm:guard the bound is int4's own range and NOT a digit count — `issSeq` is int4, an out-of-range literal reaches Postgres as a 500 on what is a caller's typo, and a 9-digit cap refuses the 1.1 billion sequence numbers from 1000000000 up that the column can actually hold
-const ISS_SEQ_MAX = 2_147_483_647;
+// cm:guard the STRING survives validation, not a number — which prefix is legal depends on the project the request is scoped to, and this schema has no project. `parseIssueRef` in the handler is what refuses a foreign prefix by name; widening the shape here to swallow one would answer a caller's cross-project reference with this project's issue of that number (ISS-992).
 const issueKeyFilterSchema = z
   .string()
   .trim()
-  .regex(/^(?:ISS-)?\d{1,10}$/i, 'expected a display id like `ISS-42`, or its bare sequence number')
-  .transform((v) => Number(v.replace(/^ISS-/i, '')))
-  .refine((n) => n >= 1 && n <= ISS_SEQ_MAX, `a display id runs from 1 to ${ISS_SEQ_MAX}`);
+  .regex(
+    /^(?:[A-Za-z][A-Za-z0-9]{1,5}-)?\d{1,10}$/,
+    'expected a display id like `ISS-42`, or its bare sequence number',
+  );
 
 // cm:guard `.strict()` is the whole point of this schema, not a flourish: without it zod STRIPS an unregistered key, the handler builds its WHERE from the four it knows, and a filtered ask is answered with the project's unfiltered list at 200 (ISS-991). `list-query-strict.test.ts` is the case that goes red if it is removed.
 export const issueFiltersSchema = paginationSchema
@@ -185,10 +187,11 @@ interface IssueBodyColumns {
 // cm:guard the tree ships from HERE, the one projection both issue-detail surfaces already share, and never from a call site. web-v2 has no `@forge/core` dependency and cannot parse a component body, so a surface that forgets the field renders literal `<forge-…>` markup with every unit test still green (ISS-967).
 function serializeIssue<T extends { issSeq: number } & IssueBodyColumns>(
   row: T,
+  prefix: string | null,
 ): T & { displayId: string; descriptionNodes: BodyNode[] | null } {
   return {
     ...row,
-    displayId: `ISS-${row.issSeq}`,
+    displayId: formatIssueRef(prefix, row.issSeq),
     descriptionNodes: bodyNodes(row.description ?? '', row.descriptionFormat),
   };
 }
@@ -244,7 +247,10 @@ issueProjectRoutes.post(
     // cm:why a detectorKey that already tracks a live issue is a successful no-op, not a conflict — the caller asked for "one issue per detector" and got it; 200 says nothing was created without making it an error the client must special-case as a failure
     if (result.deduped) return c.json(result, 200);
 
-    const response: Record<string, unknown> = serializeIssue(result.issue as IssueRow);
+    const response: Record<string, unknown> = serializeIssue(
+      result.issue as IssueRow,
+      await activeIssuePrefix(projectId),
+    );
     response.attachments = result.attachments;
     if (result.attachmentErrors.length > 0) response.attachmentErrors = result.attachmentErrors;
     if (result.relations.length > 0) response.relations = result.relations;
@@ -277,7 +283,7 @@ function toHttpCreateError(err: unknown): unknown {
 
 const displayIdParamSchema = z.object({
   id: z.uuid(),
-  displayId: z.string().regex(/^ISS-\d+$/i),
+  displayId: z.string().regex(/^[A-Za-z][A-Za-z0-9]{1,5}-\d+$/),
 });
 
 issueProjectRoutes.get(
@@ -292,13 +298,17 @@ issueProjectRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     if (!access.role) throw forbidden('not a project member');
 
-    const issSeq = Number(displayId.slice(4));
-    const issue = await findIssueByDisplaySeq(projectId, issSeq);
+    const parsed = parseIssueRef(
+      displayId,
+      issueRefNeedsHeldPrefixes(displayId) ? await heldIssuePrefixes(projectId) : [],
+    );
+    if (!parsed.ok) throw badRequest({ formErrors: [parsed.message], fieldErrors: {} });
+    const issue = await findIssueByDisplaySeq(projectId, parsed.issSeq);
     if (!issue) throw notFound('issue not found');
 
     const labelRows = await listIssueLabels(issue.id);
 
-    const serialized = serializeIssue(issue);
+    const serialized = serializeIssue(issue, await activeIssuePrefix(projectId));
     const healthMap = await safeHydratePipelineHealthForIssues(projectId, [issue.id]);
     const creatorMap = await hydrateCreatorsForIssues([
       { id: issue.id, createdById: issue.createdById, createdVia: issue.createdVia },
@@ -335,7 +345,14 @@ issueProjectRoutes.get(
     if (q.priority) conditions.push(eq(issues.priority, q.priority));
     if (q.assigneeId) conditions.push(eq(issues.assigneeId, q.assigneeId));
     if (q.category) conditions.push(eq(issues.category, q.category));
-    if (q.key !== undefined) conditions.push(eq(issues.issSeq, q.key));
+    if (q.key !== undefined) {
+      const parsed = parseIssueRef(
+        q.key,
+        issueRefNeedsHeldPrefixes(q.key) ? await heldIssuePrefixes(projectId) : [],
+      );
+      if (!parsed.ok) throw badRequest({ formErrors: [parsed.message], fieldErrors: {} });
+      conditions.push(eq(issues.issSeq, parsed.issSeq));
+    }
     const where = conditions.length === 1 ? conditions[0] : and(...conditions);
 
     const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(issues).where(where);
@@ -352,7 +369,8 @@ issueProjectRoutes.get(
 
     const total = Number(n);
 
-    const serialized = rows.map((r) => serializeIssue(r as IssueRow));
+    const listPrefix = await activeIssuePrefix(projectId);
+    const serialized = rows.map((r) => serializeIssue(r as IssueRow, listPrefix));
     if (serialized.length === 0) {
       return c.json(listResponse(c, serialized, total, q));
     }
@@ -429,7 +447,7 @@ issueRoutes.get(
     const labelRows = await listIssueLabels(id);
 
     const healthMap = await safeHydratePipelineHealthForIssues(issue.projectId, [issue.id]);
-    const serialized = serializeIssue(issue);
+    const serialized = serializeIssue(issue, await activeIssuePrefix(issue.projectId));
     // cm:guard the detail payload hydrates `agentStatus` like the list and search payloads do — without it PipelineTracker falls back to a status-only bead and an issue whose agent FAILED still draws green (ISS-308).
     const agentMap = await hydrateAgentSessionsForIssues(issue.projectId, [issue.id]);
     const agentBucket = agentMap.get(issue.id);
@@ -585,7 +603,7 @@ issueRoutes.patch(
       });
     }
 
-    const patched = serializeIssue(updated);
+    const patched = serializeIssue(updated, await activeIssuePrefix(issue.projectId));
     return c.json(
       collected.warnings.length > 0 ? { ...patched, warnings: collected.warnings } : patched,
     );

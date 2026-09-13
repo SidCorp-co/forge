@@ -100,7 +100,7 @@ describe('GET /api/projects/:id/issues/by-display/:displayId', () => {
       role: 'admin',
       orgRole: 'owner',
     });
-    selectLimit.mockResolvedValueOnce([]); // issue lookup empty
+    selectLimit.mockResolvedValueOnce([]);
 
     const res = await buildApp().request(`/api/projects/${PROJECT_ID}/issues/by-display/ISS-999`, {
       headers: { authorization: `Bearer ${await token()}` },
@@ -133,7 +133,8 @@ describe('GET /api/projects/:id/issues/by-display/:displayId', () => {
         updatedAt: new Date(),
       },
     ]);
-    innerJoinWhere.mockResolvedValueOnce([]); // labels query result
+    innerJoinWhere.mockResolvedValueOnce([]);
+    selectLimit.mockResolvedValueOnce([{ issuePrefix: null }]);
 
     const res = await buildApp().request(`/api/projects/${PROJECT_ID}/issues/by-display/ISS-7`, {
       headers: { authorization: `Bearer ${await token()}` },

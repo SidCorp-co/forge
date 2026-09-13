@@ -5,6 +5,8 @@ import { logger } from '../logger.js';
 import type { TransitionActor } from './actor-agency.js';
 import type { TransitionIssueRow } from './apply-transition.js';
 import type { UnblockedDependent } from './drop-cascade.js';
+import { activeIssuePrefix } from './issue-prefix-read.js';
+import { formatIssueRef } from './issue-ref.js';
 
 export async function recordDropUnblock(
   issue: TransitionIssueRow,
@@ -17,7 +19,9 @@ export async function recordDropUnblock(
       .from(issues)
       .where(eq(issues.id, issue.id))
       .limit(1);
-    const label = blocker ? `ISS-${blocker.issSeq}` : issue.id;
+    const label = blocker
+      ? formatIssueRef(await activeIssuePrefix(issue.projectId), blocker.issSeq)
+      : issue.id;
     const authorId = actor.type === 'user' ? actor.id : actor.ownerId;
     // cm:guard write this on each DEPENDENT, never only on the dropped issue. The question it answers — "why did this start?" — is asked on the issue that moved, and once the edge is expired no surface in this repo can still show the pair.
     await db.insert(comments).values(

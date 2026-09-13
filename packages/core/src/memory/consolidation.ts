@@ -3,6 +3,8 @@ import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { activityLog, comments, issues, memories } from '../db/schema.js';
 import { EmbeddingUnavailableError, embed } from '../embeddings/index.js';
+import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
+import { formatIssueRef } from '../issues/issue-ref.js';
 import { BASE_MERGE_STATE } from '../issues/merged-at.js';
 import { searchKnowledge } from '../knowledge/search.js';
 import { logger } from '../logger.js';
@@ -467,8 +469,7 @@ export const RECONCILE_TOP_K = 15;
 export const RECONCILE_MAX_CANDIDATES = 10;
 const RECONCILE_SOURCES = ['note', 'knowledge'] as const;
 
-// Concurrency guard, keyed per (project, issue) — a reopen→re-release racing
-// the outbox retry must not run the sweep twice concurrently.
+// cm:why Concurrency guard, keyed per (project, issue) — a reopen→re-release racing the outbox retry must not run the sweep twice concurrently.
 const runningReconciles = new Set<string>();
 
 const RECONCILE_PROMPT = `You are a memory reconciliation agent for a software project management AI pipeline.
@@ -570,7 +571,7 @@ async function reconcile(projectId: string, issueId: string): Promise<ReconcileR
     .limit(1);
   if (!issueRow) return emptyReconcileResult('issue-not-found', 'issue not found');
 
-  const issRef = `ISS-${issueRow.issSeq}`;
+  const issRef = formatIssueRef(await activeIssuePrefix(projectId), issueRow.issSeq);
   const decisionRef = `reconcile:${issRef}`;
 
   // Idempotency: skip if this issue was already reconciled (reopen → re-release

@@ -11,6 +11,8 @@ import { db } from '../db/client.js';
 import { type IssueStatus, issues, pipelineRuns } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
+import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
+import { formatIssueRef } from '../issues/issue-ref.js';
 import { issuesMissingReleaseRecord } from '../issues/release-record-required.js';
 import { logger } from '../logger.js';
 import { ActiveJobConflictError, insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
@@ -218,6 +220,7 @@ export async function createReleaseBatch(
     .from(issues)
     .where(inArray(issues.id, issueIds));
 
+  const batchPrefix = await activeIssuePrefix(projectId);
   const promptString = buildReleaseBatchPrompt({
     runId: run.id,
     projectId,
@@ -226,7 +229,7 @@ export async function createReleaseBatch(
     plan,
     issues: issueRows.map((r) => ({
       id: r.id,
-      displayId: r.issSeq != null ? `ISS-${r.issSeq}` : r.id,
+      displayId: r.issSeq != null ? formatIssueRef(batchPrefix, r.issSeq) : r.id,
       title: r.title ?? '(untitled)',
     })),
   });
@@ -319,6 +322,7 @@ export async function loadReleaseBatchContext(runId: string): Promise<ReleaseBat
     .from(issues)
     .where(eq(issues.releaseBatchRunId, runId));
 
+  const claimedPrefix = await activeIssuePrefix(run.projectId);
   return {
     runId,
     projectId: run.projectId,
@@ -329,7 +333,7 @@ export async function loadReleaseBatchContext(runId: string): Promise<ReleaseBat
     productionMergePlanned,
     issues: claimedIssues.map((r) => ({
       id: r.id,
-      displayId: r.issSeq != null ? `ISS-${r.issSeq}` : r.id,
+      displayId: r.issSeq != null ? formatIssueRef(claimedPrefix, r.issSeq) : r.id,
       title: r.title ?? '(untitled)',
       releaseNotes: r.releaseNotes,
       status: r.status,

@@ -13,6 +13,7 @@ import {
   runners,
   runnerTypes,
 } from '../db/schema.js';
+import { formatIssueRef } from '../issues/issue-ref.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { projectRoom } from '../ws/rooms.js';
@@ -113,7 +114,6 @@ runnerRoutes.get(
     const q = c.req.valid('query');
     const filters = [];
     if (q.projectId) {
-      // Verify access first.
       const access = await loadProjectAccess(q.projectId, userId);
       if (!access.role) throw forbidden('not a project member');
       filters.push(eq(runners.projectId, q.projectId));
@@ -159,6 +159,7 @@ runnerRoutes.get(
       dispatched_at: string | null;
       issue_id: string | null;
       iss_seq: number | null;
+      issue_prefix: string | null;
       issue_title: string | null;
     }>(sql`
       SELECT
@@ -171,6 +172,7 @@ runnerRoutes.get(
         j.dispatched_at AS dispatched_at,
         i.id          AS issue_id,
         i.iss_seq     AS iss_seq,
+        rp.issue_prefix AS issue_prefix,
         i.title       AS issue_title
       FROM runners r
       -- Orphan exclusion (ISS-258) lives in the JOIN, not a WHERE clause, so a
@@ -204,7 +206,7 @@ runnerRoutes.get(
             stage: row.job_type,
             startedAt: row.dispatched_at,
             issueId: row.issue_id,
-            issueRef: row.iss_seq != null ? `ISS-${row.iss_seq}` : null,
+            issueRef: row.iss_seq != null ? formatIssueRef(row.issue_prefix, row.iss_seq) : null,
             issueTitle: row.issue_title,
           }
         : null,

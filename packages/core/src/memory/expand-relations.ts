@@ -5,8 +5,9 @@
 
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issues, memories } from '../db/schema.js';
+import { issues, memories, projects } from '../db/schema.js';
 import { loadIssueRelations } from '../issues/dependency-read.js';
+import { formatIssueRef } from '../issues/issue-ref.js';
 import { deriveMemoryStaleness, type MemoryHit, type MemoryVia } from './search.js';
 
 export const EXPAND_SEED_LIMIT = 5;
@@ -27,10 +28,11 @@ function isExpandable(kind: string): kind is MemoryVia['relation'] {
 async function displayIds(issueIds: string[]): Promise<Map<string, string>> {
   if (issueIds.length === 0) return new Map();
   const rows = await db
-    .select({ id: issues.id, issSeq: issues.issSeq })
+    .select({ id: issues.id, issSeq: issues.issSeq, issuePrefix: projects.issuePrefix })
     .from(issues)
+    .innerJoin(projects, eq(projects.id, issues.projectId))
     .where(inArray(issues.id, issueIds));
-  return new Map(rows.map((r) => [r.id, `ISS-${r.issSeq}`]));
+  return new Map(rows.map((r) => [r.id, formatIssueRef(r.issuePrefix, r.issSeq)]));
 }
 
 // cm:guard both directions are walked (`blocks` and `blockedBy`) and expired edges are dropped — the blocked issue is as relevant to a reader as its blocker, and an edge past `validUntil` was retracted on purpose (forge_issues.update with validUntil in the past is the documented retraction), so surfacing it would resurrect a relation someone removed

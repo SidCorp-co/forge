@@ -12,6 +12,10 @@ vi.mock('../../config/env.js', () => ({
 }));
 vi.mock('../../db/client.js', () => ({ db: {} }));
 vi.mock('./issue-ref.js', () => ({ resolveIssueDisplayId: async () => null }));
+vi.mock('../../issues/issue-prefix-read.js', () => ({
+  activeIssuePrefix: async () => null,
+  heldIssuePrefixes: async () => [],
+}));
 vi.mock('./issue-dedup.js', () => ({
   findDuplicateIssue: async () => ({ id: 'x', issSeq: 7, title: 'Dark mode broken on settings' }),
 }));

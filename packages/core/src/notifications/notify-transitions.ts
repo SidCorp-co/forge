@@ -3,6 +3,8 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { issues, notifications } from '../db/schema.js';
+import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
+import { formatIssueRef } from '../issues/issue-ref.js';
 import { logger } from '../logger.js';
 import { AUTONOMOUS_QUESTION_STATUS } from '../pipeline/autonomous-mode.js';
 import type { HooksBus } from '../pipeline/hooks.js';
@@ -196,7 +198,7 @@ export function registerTransitionNotifications(bus: HooksBus): void {
 
       if (p.actor.type === 'user' && p.actor.id === recipient) return;
 
-      const displayId = `ISS-${row.issSeq}`;
+      const displayId = formatIssueRef(await activeIssuePrefix(p.projectId), row.issSeq);
       const label = row.title ? `${displayId} — ${row.title}` : displayId;
 
       await emitNotification({

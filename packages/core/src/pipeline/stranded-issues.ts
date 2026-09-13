@@ -15,6 +15,7 @@
 import { and, eq, gte, isNotNull, isNull, lt, notInArray, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueStatuses, issues, notifications, projects } from '../db/schema.js';
+import { formatIssueRef } from '../issues/issue-ref.js';
 import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
 import { projectAdminUserIds } from '../notifications/project-admins.js';
@@ -124,6 +125,7 @@ export async function detectStrandedIssues(
       .select({
         id: issues.id,
         projectId: issues.projectId,
+        issuePrefix: projects.issuePrefix,
         issSeq: issues.issSeq,
         title: issues.title,
         mergedAt: issues.mergedAt,
@@ -143,7 +145,7 @@ export async function detectStrandedIssues(
     let notified = 0;
     let unreachable = 0;
     for (const row of rows) {
-      const ref = row.issSeq !== null ? `ISS-${row.issSeq}` : 'An issue';
+      const ref = row.issSeq !== null ? formatIssueRef(row.issuePrefix, row.issSeq) : 'An issue';
       const since = row.mergedAt ?? row.updatedAt;
       const days = Math.floor((now.getTime() - since.getTime()) / 86_400_000);
       const age = days >= 1 ? `${days} day${days === 1 ? '' : 's'}` : 'hours';
@@ -204,6 +206,7 @@ export async function detectOwedCloses(
       .select({
         id: issues.id,
         projectId: issues.projectId,
+        issuePrefix: projects.issuePrefix,
         issSeq: issues.issSeq,
         status: issues.status,
         mergedAt: issues.mergedAt,
@@ -226,7 +229,7 @@ export async function detectOwedCloses(
     let notified = 0;
     let unreachable = 0;
     for (const row of rows) {
-      const ref = row.issSeq !== null ? `ISS-${row.issSeq}` : 'An issue';
+      const ref = row.issSeq !== null ? formatIssueRef(row.issuePrefix, row.issSeq) : 'An issue';
       const days = Math.floor((now.getTime() - (row.mergedAt?.getTime() ?? 0)) / 86_400_000);
       const age = days >= 1 ? `${days} day${days === 1 ? '' : 's'}` : 'hours';
       const sent = await surfaceOnce({

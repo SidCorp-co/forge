@@ -1,6 +1,7 @@
 import { and, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
+import { formatIssueRef } from '../issues/issue-ref.js';
 import { ageSeconds, emptyBuckets, foldBuckets } from './pulse-folds.js';
 import { idList } from './pulse-sql.js';
 import {
@@ -26,7 +27,7 @@ async function selectAbandoned(
   now: Date,
 ): Promise<{ total: number; shown: PulseIssueIdentity[]; byProject: Map<string, number> }> {
   const rows = (await db.execute(sql`
-    SELECT i.id, i.iss_seq, i.title, i.status, i.project_id, p.slug AS project_slug,
+    SELECT i.id, i.iss_seq, i.title, i.status, i.project_id, p.slug AS project_slug, p.issue_prefix,
            coalesce(
              (SELECT max(coalesce(j.finished_at, j.acked_at, j.dispatched_at, j.queued_at))
               FROM jobs j LEFT JOIN pipeline_runs r ON r.id = j.pipeline_run_id
@@ -49,6 +50,7 @@ async function selectAbandoned(
     status: string;
     project_id: string;
     project_slug: string;
+    issue_prefix: string | null;
     idle_since: string;
   }>;
 
@@ -63,7 +65,7 @@ async function selectAbandoned(
     byProject,
     shown: stale.slice(0, thresholds.identityCap).map((r) => ({
       documentId: r.id,
-      issueRef: `ISS-${r.iss_seq}`,
+      issueRef: formatIssueRef(r.issue_prefix, r.iss_seq),
       title: r.title,
       status: r.status,
       projectSlug: r.project_slug,
@@ -78,7 +80,7 @@ async function selectReleaseWaiting(
   now: Date,
 ): Promise<{ total: number; shown: PulseIssueIdentity[] }> {
   const rows = (await db.execute(sql`
-    SELECT i.id, i.iss_seq, i.title, i.status, i.updated_at, p.slug AS project_slug
+    SELECT i.id, i.iss_seq, i.title, i.status, i.updated_at, p.slug AS project_slug, p.issue_prefix
     FROM issues i JOIN projects p ON p.id = i.project_id
     WHERE i.project_id IN (${idList(projectIds)})
       AND i.status IN ('awaiting_release', 'releasing')
@@ -91,12 +93,13 @@ async function selectReleaseWaiting(
     status: string;
     updated_at: string;
     project_slug: string;
+    issue_prefix: string | null;
   }>;
   return {
     total: rows.length,
     shown: rows.slice(0, thresholds.identityCap).map((r) => ({
       documentId: r.id,
-      issueRef: `ISS-${r.iss_seq}`,
+      issueRef: formatIssueRef(r.issue_prefix, r.iss_seq),
       title: r.title,
       status: r.status,
       projectSlug: r.project_slug,

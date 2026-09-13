@@ -10,6 +10,12 @@
 import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, issues, pipelineRuns, terminalAgentSessionStatuses } from '../db/schema.js';
+import { heldIssuePrefixes } from '../issues/issue-prefix-read.js';
+import {
+  canonicalIssueKey,
+  issueRefNeedsHeldPrefixes,
+  parseIssueRef,
+} from '../issues/issue-ref.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
@@ -38,17 +44,33 @@ export interface RunSession {
 // cm:guard a key with NO row is left out rather than recorded as null: the return path treats an absent entry as "nothing known, leave it alone", and a null would have to be told apart from a status at every reader.
 async function readIssueStatuses(
   projectId: string,
-  issueKeys: string[],
+  seqs: number[],
 ): Promise<Record<string, string>> {
-  const seqs = issueKeys
-    .map((k) => Number.parseInt(k.replace(/^ISS-/, ''), 10))
-    .filter((n) => Number.isInteger(n));
   if (seqs.length === 0) return {};
   const rows = await db
     .select({ issSeq: issues.issSeq, status: issues.status })
     .from(issues)
     .where(and(eq(issues.projectId, projectId), inArray(issues.issSeq, seqs)));
-  return Object.fromEntries(rows.map((r) => [`ISS-${r.issSeq}`, r.status]));
+  return Object.fromEntries(rows.map((r) => [canonicalIssueKey(r.issSeq), r.status]));
+}
+
+/** Every key this run will be recorded under, in the ONE form the metadata holds. */
+// cm:guard the caller may type the project's own prefix or the legacy one — `pool list` shows the first — and what is STORED is always canonical. The stored keys are matched by string containment in SQL (`admissible.ts`, `runSessionsForIssue` below) and never parsed, so a run opened under `FD-977` among historical `ISS-977` rows is a set no single query matches and its issues never come back (ISS-992).
+// cm:edge lockstep -> packages/core/src/issues/issue-ref.ts:canonicalIssueKey
+async function canonicaliseIssueKeys(
+  projectId: string,
+  issueKeys: string[],
+): Promise<{ keys: string[]; seqs: number[] }> {
+  const accepts = issueKeys.some((k) => issueRefNeedsHeldPrefixes(k))
+    ? await heldIssuePrefixes(projectId)
+    : [];
+  const seqs: number[] = [];
+  for (const raw of issueKeys) {
+    const parsed = parseIssueRef(raw, accepts);
+    if (!parsed.ok) throw new Error(`openRunSession: ${parsed.message}`);
+    seqs.push(parsed.issSeq);
+  }
+  return { keys: seqs.map(canonicalIssueKey), seqs };
 }
 
 /**
@@ -64,15 +86,16 @@ export async function openRunSession(args: {
   if (args.issueKeys.length === 0) {
     throw new Error('openRunSession: a run session must carry at least one issue');
   }
+  const canonical = await canonicaliseIssueKeys(args.projectId, args.issueKeys);
   // cm:guard read the statuses BEFORE the run exists, because the agent this run is about to spawn starts moving them immediately — a read taken afterwards records `in_progress` as the status to return to, and returning an issue to `in_progress` gives it back to nobody.
-  const openingStatuses = await readIssueStatuses(args.projectId, args.issueKeys);
+  const openingStatuses = await readIssueStatuses(args.projectId, canonical.seqs);
   const run = await openOneShotRun({
     projectId: args.projectId,
     kind: 'system',
     metadata: {
       type: RUN_SESSION_TYPE,
       deviceId: args.deviceId,
-      [RUN_ISSUES_METADATA_KEY]: args.issueKeys,
+      [RUN_ISSUES_METADATA_KEY]: canonical.keys,
       [RUN_ISSUE_STATUSES_METADATA_KEY]: openingStatuses,
     },
   });
@@ -91,7 +114,7 @@ export async function openRunSession(args: {
     .returning({ id: agentSessions.id });
   if (!row) throw new Error('openRunSession: insert returned no row');
   logger.info(
-    { runSessionId: row.id, runId: run.id, deviceId: args.deviceId, issues: args.issueKeys },
+    { runSessionId: row.id, runId: run.id, deviceId: args.deviceId, issues: canonical.keys },
     'run-session: opened',
   );
   return { sessionId: row.id, runId: run.id };

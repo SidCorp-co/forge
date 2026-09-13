@@ -19,6 +19,8 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
 import { jobs } from '../db/schema.js';
+import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
+import { formatIssueRef } from '../issues/issue-ref.js';
 import { endJobForBudgetBreach } from '../jobs/budget-breach.js';
 import { checkMonthlyBudget, shouldEmitWarn } from '../jobs/budget-check.js';
 import {
@@ -166,7 +168,10 @@ export async function prepareJobForMaster(args: {
   return {
     ok: true,
     jobId: claimed.job.id,
-    issueKey: claimed.issSeq == null ? null : `ISS-${claimed.issSeq}`,
+    issueKey:
+      claimed.issSeq == null
+        ? null
+        : formatIssueRef(await activeIssuePrefix(claimed.job.projectId), claimed.issSeq),
     prepared,
   };
 }

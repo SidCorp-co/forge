@@ -8,6 +8,8 @@
 import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, jobs } from '../db/schema.js';
+import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
+import { formatIssueRef } from '../issues/issue-ref.js';
 import { readRunnerLoad } from './runner-load-service.js';
 
 const ACTIVE_JOB_STATUSES = ['queued', 'dispatched', 'running'] as const;
@@ -94,12 +96,13 @@ export async function readPmSnapshot(projectId: string) {
     inFlight: r.inFlight,
   }));
 
+  const snapshotPrefix = await activeIssuePrefix(projectId);
   return {
     countsByStatus,
     activeJobs: activeJobsRows,
     stalledIssues: stalledIssuesRows.map((r) => ({
       id: r.id,
-      issueId: `ISS-${r.issueId}`,
+      issueId: formatIssueRef(snapshotPrefix, r.issueId),
       status: r.status,
       updatedAt: r.updatedAt,
     })),

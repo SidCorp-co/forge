@@ -15,6 +15,8 @@
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { devices, issueLabels, issues, jobs, labels, projects, runners } from '../db/schema.js';
+import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
+import { formatIssueRef } from '../issues/issue-ref.js';
 import { buildPipelinePreambleStructured } from '../lib/chat-preamble.js';
 import { logger } from '../logger.js';
 import { injectAfterInvocation, injectTurnLevelRules } from '../prompt/user.js';
@@ -241,14 +243,16 @@ export async function prepareClaimedJob(args: {
   const model = stageOverrides.model ?? job.modelTier ?? 'default';
   const repoPath = await loadRepoPath(job.projectId);
 
-  const [project, issueRow] = await Promise.all([
+  const [project, issueRow, issuePrefix] = await Promise.all([
     sessionSettingsOf(job.projectId),
     job.issueId
       ? db.select({ issSeq: issues.issSeq }).from(issues).where(eq(issues.id, job.issueId)).limit(1)
       : Promise.resolve([]),
+    activeIssuePrefix(job.projectId),
   ]);
   // cm:guard `issueKey` no longer names any checkout. It used to be the agent's branch, and salvage found the tree by matching it; since the master names its own agent the branch is the master's word and salvage matches that exactly, so this is now prompt/display context only. Do not rebuild a branch name from it anywhere — a master that groups two issues into one agent has a branch no issue key predicts.
-  const issueKey = issueRow[0]?.issSeq == null ? null : `ISS-${issueRow[0].issSeq}`;
+  const issueKey =
+    issueRow[0]?.issSeq == null ? null : formatIssueRef(issuePrefix, issueRow[0].issSeq);
   await persistPromptSnapshot({
     jobId: job.id,
     systemPrompt,

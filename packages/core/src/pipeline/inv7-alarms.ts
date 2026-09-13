@@ -16,6 +16,7 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { formatIssueRef } from '../issues/issue-ref.js';
 import { HOLD_PAYLOAD_KEY, holdResumesItself } from '../jobs/hold.js';
 import { RESULT_QUIET_MINUTES } from '../jobs/loop-monitor.js';
 import { gateReasonsForQueuedJobs } from '../jobs/queued-gates.js';
@@ -47,6 +48,7 @@ interface AgedHoldRow extends Record<string, unknown> {
   hold_reason: string | null;
   held_at: string | null;
   iss_seq: number | null;
+  issue_prefix: string | null;
 }
 
 /**
@@ -63,15 +65,17 @@ export async function alarmAgedHolds(now: Date = new Date()): Promise<Inv7AlarmR
            j.type AS job_type,
            j.payload -> ${HOLD_PAYLOAD_KEY} ->> 'reason' AS hold_reason,
            j.payload -> ${HOLD_PAYLOAD_KEY} ->> 'heldAt' AS held_at,
-           i.iss_seq
+           i.iss_seq,
+           p.issue_prefix
     FROM jobs j
     LEFT JOIN issues i ON i.id = j.issue_id
+    JOIN projects p ON p.id = j.project_id
     WHERE j.status = 'held'
       AND (j.payload -> ${HOLD_PAYLOAD_KEY} ->> 'heldAt') < ${cutoffIso}
   `);
 
   for (const row of rows) {
-    const label = row.iss_seq ? `ISS-${row.iss_seq}` : 'A step';
+    const label = row.iss_seq ? formatIssueRef(row.issue_prefix, row.iss_seq) : 'A step';
     const hours = Math.round(HOLD_AGE_ALARM_MS / 3_600_000);
     // cm:guard ask `holdResumesItself`, never assume — three of the five hold reasons never self-release, and this wedge is the operator's ONLY notification for a hold. Telling them "it resumes on its own" about a permanent hold is how a step sat for weeks with everyone believing it was handled.
     const selfResuming = holdResumesItself(row.hold_reason);
@@ -107,6 +111,7 @@ interface StalledQueuedRow extends Record<string, unknown> {
   job_type: string;
   created_at: string;
   iss_seq: number | null;
+  issue_prefix: string | null;
 }
 
 /** How long a job may sit `queued` with nothing gating it before it is worth a human's attention. */
@@ -128,10 +133,12 @@ export async function alarmStalledQueuedJobs(now: Date = new Date()): Promise<In
            j.issue_id,
            j.type AS job_type,
            j.created_at,
-           i.iss_seq
+           i.iss_seq,
+           p.issue_prefix
     FROM jobs j
     JOIN pipeline_runs pr ON pr.id = j.pipeline_run_id
     LEFT JOIN issues i ON i.id = j.issue_id
+    JOIN projects p ON p.id = j.project_id
     WHERE j.status = 'queued'
       AND pr.status = 'running'
       AND j.created_at < ${cutoffIso}
@@ -152,7 +159,7 @@ export async function alarmStalledQueuedJobs(now: Date = new Date()): Promise<In
     const gated = await gateReasonsForQueuedJobs(projectId);
     for (const row of candidates) {
       if (gated.has(row.job_id)) continue;
-      const label = row.iss_seq ? `ISS-${row.iss_seq}` : 'A step';
+      const label = row.iss_seq ? formatIssueRef(row.issue_prefix, row.iss_seq) : 'A step';
       await emitPipelineWedge({
         projectId,
         issueId: row.issue_id,
@@ -185,6 +192,7 @@ interface PausedRunRow extends Record<string, unknown> {
   queued_jobs: number;
   queued_types: string;
   iss_seq: number | null;
+  issue_prefix: string | null;
 }
 
 /**
@@ -219,13 +227,15 @@ export async function alarmPausedRunsWithQueuedWork(
            r.updated_at AS paused_since,
            count(j.id)::int AS queued_jobs,
            string_agg(DISTINCT j.type, ', ') AS queued_types,
-           i.iss_seq
+           i.iss_seq,
+           p2.issue_prefix
     FROM pipeline_runs r
     LEFT JOIN jobs j ON j.pipeline_run_id = r.id AND j.status = 'queued'
     LEFT JOIN issues i ON i.id = r.issue_id
+    JOIN projects p2 ON p2.id = r.project_id
     WHERE r.status = 'paused'
       AND r.updated_at < ${cutoffIso}
-    GROUP BY r.id, i.iss_seq
+    GROUP BY r.id, i.iss_seq, p2.issue_prefix
     ORDER BY (count(j.id) = 0) ASC, r.updated_at ASC
     LIMIT ${PAUSED_RUN_SCAN_LIMIT}
   `);
@@ -233,7 +243,7 @@ export async function alarmPausedRunsWithQueuedWork(
   const hours = Math.round(PAUSED_RUN_ALARM_MS / 3_600_000);
   let alerted = 0;
   for (const row of rows) {
-    const label = row.iss_seq ? `ISS-${row.iss_seq}` : 'A pipeline run';
+    const label = row.iss_seq ? formatIssueRef(row.issue_prefix, row.iss_seq) : 'A pipeline run';
     const steps = Number(row.queued_jobs);
     // cm:guard the LEFT JOIN returns paused runs with ZERO queued jobs on purpose, so this pass clears its own notification when the queue behind the pause empties — the run leaving `paused` is not the only way the condition ends (an operator can cancel the queued steps and leave the pause standing) and the subscriber only watches the run. Without this arm the bell asserts N frozen steps when there are none.
     if (steps === 0) {
@@ -282,6 +292,7 @@ interface RejectionStreakRow extends Record<string, unknown> {
   project_id: string;
   issue_id: string;
   iss_seq: number | null;
+  issue_prefix: string | null;
   title: string | null;
   streak: number;
   threshold: number;
@@ -310,6 +321,7 @@ export async function alarmRejectionStreaks(): Promise<Inv7AlarmResult> {
            i.project_id,
            i.id AS issue_id,
            i.iss_seq,
+           p.issue_prefix,
            i.title,
            count(*)::int AS streak,
            COALESCE(
@@ -325,7 +337,7 @@ export async function alarmRejectionStreaks(): Promise<Inv7AlarmResult> {
       AND (la.at IS NULL OR v.started_at > la.at)
       AND pr.status = 'running'
       AND i.status NOT IN ('closed', 'awaiting_release', 'draft')
-    GROUP BY v.run_id, i.project_id, i.id, i.iss_seq, i.title, p.id
+    GROUP BY v.run_id, i.project_id, i.id, i.iss_seq, i.title, p.id, p.issue_prefix
     HAVING count(*) >= COALESCE(
              (p.agent_config -> 'pipelineConfig' -> 'reopenPolicy' ->> 'noProgressRounds')::int,
              ${DEFAULT_NO_PROGRESS_ROUNDS}
@@ -333,7 +345,7 @@ export async function alarmRejectionStreaks(): Promise<Inv7AlarmResult> {
   `);
 
   for (const row of rows) {
-    const label = row.iss_seq ? `ISS-${row.iss_seq}` : 'An issue';
+    const label = row.iss_seq ? formatIssueRef(row.issue_prefix, row.iss_seq) : 'An issue';
     await emitPipelineWedge({
       projectId: row.project_id,
       issueId: row.issue_id,

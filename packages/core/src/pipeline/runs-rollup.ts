@@ -19,8 +19,10 @@ import {
   type PipelineRunKind,
   type PipelineRunStatus,
   pipelineRuns,
+  projects,
   usageRecords,
 } from '../db/schema.js';
+import { formatIssueRef } from '../issues/issue-ref.js';
 import { RETRY_MAX_ROUNDS, readAutoRetryPayload } from '../jobs/retry.js';
 
 export type PipelineStepStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
@@ -175,7 +177,6 @@ async function loadStepsForRun(runId: string): Promise<PipelineRunStepSummary[]>
     else status = 'pending';
 
     const startedAt = toIso(r.startedAt);
-    // Only stamp finishedAt for terminal sessions.
     const finishedAt = status === 'completed' || status === 'failed' ? toIso(r.finishedAt) : null;
     const durationMs =
       startedAt && finishedAt
@@ -339,12 +340,18 @@ async function loadIssueRefs(
   const out = new Map<string, { issueRef: string | null; issueTitle: string | null }>();
   if (issueIds.length === 0) return out;
   const rows = await db
-    .select({ id: issues.id, issSeq: issues.issSeq, title: issues.title })
+    .select({
+      id: issues.id,
+      issSeq: issues.issSeq,
+      issuePrefix: projects.issuePrefix,
+      title: issues.title,
+    })
     .from(issues)
+    .innerJoin(projects, eq(projects.id, issues.projectId))
     .where(inArray(issues.id, issueIds));
   for (const r of rows) {
     out.set(r.id, {
-      issueRef: r.issSeq != null ? `ISS-${r.issSeq}` : null,
+      issueRef: r.issSeq != null ? formatIssueRef(r.issuePrefix, r.issSeq) : null,
       issueTitle: r.title ?? null,
     });
   }

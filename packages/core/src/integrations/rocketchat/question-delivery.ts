@@ -14,6 +14,8 @@ import {
   rocketchatQuestionDeliveries,
   rocketchatQuestionThreads,
 } from '../../db/schema-rocketchat.js';
+import { activeIssuePrefix } from '../../issues/issue-prefix-read.js';
+import { formatIssueRef } from '../../issues/issue-ref.js';
 import { logger } from '../../logger.js';
 import { resolveNotifications } from '../../notifications/auto-resolve.js';
 import { emitNotification } from '../../notifications/emit.js';
@@ -266,7 +268,9 @@ export async function deliverOwedRound(
     : [];
   const existingThread = await threadOfQuestion(owed.questionId);
   const text = renderRound({
-    issueKey: issue?.issSeq ? `ISS-${issue.issSeq}` : null,
+    issueKey: issue?.issSeq
+      ? formatIssueRef(await activeIssuePrefix(owed.projectId), issue.issSeq)
+      : null,
     step,
     rounds: question.steps.length,
     parkDeadlineAt: question.parkDeadlineAt ?? null,
