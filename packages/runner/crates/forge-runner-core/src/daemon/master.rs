@@ -359,7 +359,7 @@ async fn sweep(
                 runner.slug,
                 runner.status
             );
-            // cm:guard a drained runner still gets `supervise`, and only the START of new work is skipped. A master already running on a project being moved off this box must still be watched and still give its holds back when it dies — a drain that stopped watching would leave a dead master's work unclaimable with nothing reporting why, which is the drain doing damage rather than nothing.
+            // cm:guard a drained runner still gets `supervise`, and only the START of new work is skipped. A master already running on a project being moved off this box must still be watched and still have its row closed when it dies — a drain that stopped watching would leave a dead master's session live in core with nothing reporting why, which is the drain doing damage rather than nothing.
             supervise(client, masters, &runner.project_id, &runner.slug).await;
             continue;
         }
@@ -817,15 +817,14 @@ async fn nudge_master(masters: &Arc<Masters>, project_id: &str, slug: &str) {
 /// B3: the daemon is no longer the master's parent, so a dead master drops no
 /// socket. What it does do is stop existing as a tmux session, and this is the
 /// thing that notices — one sweep, not the three minutes core's reaper costs.
-// cm:guard the holds come back on BOTH arms, and that is the load-bearing half. A master that dies holding a preparation parks claimable work until core's reaper notices; `pool::release` with no job id is the same "everything this session holds" call the socket-drop path used to make, and losing it would leave the fast detector detecting and not repairing.
-// cm:guard close the row AFTER releasing, never before. Core's reaper reads a terminal status as reason enough to sweep, so a close that landed with the release still to come would race the reaper for the same rows — harmless twice over, but only in that order; the reverse leaves a live row with no holds and nothing to say why.
+// cm:guard this closes the ROW on the fast path, one sweep instead of the three minutes core's reaper costs. There is nothing to release alongside it any more — a master's runs are subagents of its own process and their leases lapse with the pane — so a caller tempted to add a release here is reaching for a hold this box no longer takes.
 async fn supervise(client: &CoreClient, masters: &Arc<Masters>, project_id: &str, slug: &str) {
     let Some((session_id, name)) = masters.get(project_id) else {
         return;
     };
 
     if !terminal::alive(&name).await {
-        tracing::warn!("[master] {slug}: resident session {name} is gone — returning its holds");
+        tracing::warn!("[master] {slug}: resident session {name} is gone — closing its row");
         end_master(
             client,
             masters,
