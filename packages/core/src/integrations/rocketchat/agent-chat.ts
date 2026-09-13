@@ -386,6 +386,7 @@ async function postDelayedAck(args: {
       ?.agentChat?.deliveredAt;
     if (deliveredAt) return;
 
+    // cm:why the interim ack alone does NOT re-read the binding, where the two bridges and the live path all do: it carries no project content — it is this bot saying it is working — and its window is one unref'd timer.
     const auth = await resolveRoomPostAuth(args.connectionId, { sessionId: args.sessionId });
     if (!auth) return;
     await sendFixedReply(

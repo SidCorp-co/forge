@@ -22,6 +22,14 @@ vi.mock('../../config/env.js', () => ({
 const selectLimit = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
+/** Whether the room is still bound to the turn's project; flipped by the rebind case. */
+let roomBound = true;
+// cm:why stubbed: this file's fake db answers only the subject's own queries, and the room-is-still-ours check has its cases in room-delivery.test.ts.
+vi.mock('./room-delivery.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./room-delivery.js')>()),
+  roomStillBoundTo: async () => roomBound,
+}));
+
 vi.mock('../../db/client.js', () => ({
   db: { select: vi.fn(() => ({ from: selectFrom })) },
 }));
@@ -230,6 +238,47 @@ describe('what the transcript keeps of a delivered reply', () => {
         deliveryProof: { messageId: 'rc-server-id-9' },
       }),
     );
+  });
+
+  // cm:guard the rejected answer and the corrective instruction never reach the room's transcript: the room saw the RETRY, and a transcript holding what the guard refused is a record of a conversation nobody had.
+  it('records the question, and the answer only once the room has been shown one', async () => {
+    const ac = makeAc();
+    ac.client.sendMessage.mockResolvedValue('rc-server-id-9');
+    screenStakeholderReply
+      .mockResolvedValueOnce({ ok: false, problems: ['unverified'] })
+      .mockResolvedValueOnce({ ok: true, problems: [] });
+    runExternalChatTurn
+      .mockResolvedValueOnce({ ...answered, reply: 'rejected text', assistantMessageId: null })
+      .mockResolvedValueOnce({ ...answered, reply: 'the retry answer', assistantMessageId: null });
+
+    await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
+
+    const first = runExternalChatTurn.mock.calls[0]?.[0] as Record<string, unknown>;
+    const retry = runExternalChatTurn.mock.calls[1]?.[0] as Record<string, unknown>;
+    expect(first.record).toBe('question-only');
+    expect(retry.record).toBe('nothing');
+    expect(ac.client.sendMessage.mock.calls.at(-1)?.[1]).toBe('the retry answer');
+    expect(appendMessage).toHaveBeenCalledTimes(1);
+    expect(appendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ role: 'assistant', content: 'the retry answer' }),
+    );
+  });
+
+  // cm:guard a turn runs for up to HANDLE_TIMEOUT_MS and the binding can move while it does: the
+  // answer computed for this project must not be posted into a room another project now owns.
+  it('posts nothing when the room was rebound while the turn ran', async () => {
+    const ac = makeAc();
+    ac.client.sendMessage.mockResolvedValue('rc-server-id-9');
+    runExternalChatTurn.mockResolvedValue({ ...answered, assistantMessageId: 'row-7' });
+    roomBound = false;
+    try {
+      await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
+    } finally {
+      roomBound = true;
+    }
+    expect(ac.client.sendMessage).not.toHaveBeenCalled();
+    expect(recordDelivery).not.toHaveBeenCalled();
+    expect(appendMessage).not.toHaveBeenCalled();
   });
 
   it('appends nothing extra when the turn already wrote the row that was sent', async () => {

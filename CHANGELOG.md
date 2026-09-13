@@ -143,12 +143,14 @@
   migrated transcript belonged to only ever lived in that in-process Map, so a migrated transcript
   is readable under its own name and the room it came from starts a fresh one.
 
-  What the transcript holds is now what the room actually saw. Every answer is attributed to the
-  agent that gave it — including the ones an escalation delivered later, and including a turn that
-  produced nothing, which is recorded as a silence by that same agent rather than as a row by
-  nobody — and when the bot replies with one of its own fixed sentences because the model's answer
-  could not be verified, that sentence is what the transcript keeps, instead of the unverified
-  answer that was never sent. A room that has been moved to another project stops being answered
+  What the transcript holds is now what the room was actually shown, plus the turns that answered
+  nothing and why. Every answer is attributed to the agent that gave it — including the ones an
+  escalation delivered later, and including a turn that produced nothing, which is recorded as a
+  silence by that same agent rather than as a row by nobody. When the bot replies with one of its
+  own fixed sentences because the model's answer could not be verified, that sentence is what the
+  transcript keeps, instead of the unverified answer nobody was shown; and when a first answer is
+  sent back to the model to be rewritten, neither the draft nor the instruction to rewrite it is
+  filed as something anyone said. A room that has been moved to another project stops being answered
   under the old one: a reply computed before the move is refused by name rather than posted into a
   room its project no longer owns.
 

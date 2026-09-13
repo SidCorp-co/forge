@@ -148,16 +148,18 @@ describe('a turn opening or resuming a venue', () => {
     ).rejects.toMatchObject({ cause: { code: 'CONVERSATION_OUT_OF_SCOPE' } });
   });
 
-  // cm:why a turn naming NO user is still admitted here, and this is not an oversight: an external speaker has no Forge account to hold a role, and that turn's authority is the binding that routed the message — refusing it here would silence every Rocket.Chat room.
-  it('admits an adapter turn that names no user at all', async () => {
+  // cm:guard a turn naming no authority is refused as THAT, on this door as on the other one: an adapter whose speaker has no Forge account still runs under the authority the adapter resolved, so an absent one is a caller that forgot (ISS-1001).
+  it('refuses a turn that names no authority at all, by name, and opens no room', async () => {
     const externalId = `chat.example.co ${randomUUID()}`;
-    const turn = await turns.openTurn({
-      projectId: projectA,
-      adapter: 'rocketchat',
-      externalId,
-      shape: 'group',
-      readerUserId: null,
-    });
-    expect(turn.conversationId).toBeTruthy();
+    await expect(
+      turns.openTurn({
+        projectId: projectA,
+        adapter: 'rocketchat',
+        externalId,
+        shape: 'group',
+        readerUserId: null,
+      }),
+    ).rejects.toMatchObject({ cause: { code: 'CONVERSATION_NO_AUTHORITY' } });
+    expect(await store.findConversation('rocketchat', externalId)).toBeNull();
   });
 });

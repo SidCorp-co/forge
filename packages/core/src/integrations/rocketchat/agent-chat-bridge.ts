@@ -17,6 +17,7 @@ import {
   extractFinalAssistantText,
   readRoomReplyMeta,
   resolveRoomPostAuth,
+  roomStillBoundTo,
 } from './room-delivery.js';
 
 type SessionRow = typeof agentSessionsTable.$inferSelect;
@@ -81,6 +82,21 @@ export async function deliverAgentChatReplyOnce(session: SessionRow): Promise<vo
   ) {
     const failover = await redispatchAgentChatSessionOnFailover(session);
     if (failover.ok) return;
+  }
+
+  // cm:guard the room is checked against THIS session's project before anything is posted: an agent session runs long, and a room rebound while it ran is not this project's to answer into (ISS-1001).
+  if (
+    !(await roomStillBoundTo({
+      connectionId: meta.connectionId,
+      projectId: session.projectId,
+      rid: meta.rid,
+    }))
+  ) {
+    logger.error(
+      { sessionId: session.id, rid: meta.rid, projectId: session.projectId },
+      'rocketchat.agent-chat-bridge: the room is no longer bound to this project; the answer is not posted',
+    );
+    return;
   }
 
   const auth = await resolveRoomPostAuth(meta.connectionId, {

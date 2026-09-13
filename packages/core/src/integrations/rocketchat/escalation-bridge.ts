@@ -32,6 +32,7 @@ import {
   type RoomReplyMeta,
   readRoomReplyMeta,
   resolveRoomPostAuth,
+  roomStillBoundTo,
 } from './room-delivery.js';
 
 type SessionRow = typeof agentSessionsTable.$inferSelect;
@@ -185,6 +186,22 @@ export async function deliverEscalationReplyOnce(session: SessionRow): Promise<v
   if (!meta) return;
   if (meta.deliveredAt) return;
   if (!(await claimRoomReplyDelivery(session, 'escalation'))) return;
+
+  // cm:guard the room is checked against THIS session's project before anything is posted: an escalation is minutes or hours long, and a room rebound in the meantime is not this project's to answer into (ISS-1001).
+  // cm:why the claim above is taken FIRST deliberately: it stops the sweeper retrying a delivery that can never succeed, and this log is then the only place that says why nothing was posted.
+  if (
+    !(await roomStillBoundTo({
+      connectionId: meta.connectionId,
+      projectId: session.projectId,
+      rid: meta.rid,
+    }))
+  ) {
+    logger.error(
+      { sessionId: session.id, rid: meta.rid, projectId: session.projectId },
+      'rocketchat.escalation-bridge: the room is no longer bound to this project; the answer is not posted',
+    );
+    return;
+  }
 
   const auth = await resolveRoomPostAuth(meta.connectionId, {
     sessionId: session.id,

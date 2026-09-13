@@ -135,17 +135,21 @@ export async function openTurn(opts: OpenTurnOptions): Promise<ConversationTurn>
     );
   }
 
-  // cm:guard a NAMED authority is checked on the venue path too, to the same `member` bar the conversation-id branch uses: unchecked, knowing a room's transport id was a way past the check the other door makes on the same rows (ISS-1001 invariant 2).
+  // cm:guard the venue door takes the SAME authority the conversation-id door takes, to the same `member` bar: unchecked, knowing a room's transport id was a way past the check the other door makes on the very same rows (ISS-1001 invariant 2).
   // cm:guard BEFORE the open so a refused caller leaves no room behind, and again after it, because the first check knows only the project this turn named and the second knows every project the room turns out to be about.
-  // cm:why a turn naming NO user is still admitted: an external speaker has no Forge account to hold a role and its authority is the binding that routed the message, so `assertConversationWritable` alone — which refuses a null authority by name — would silence every Rocket.Chat room.
-  if (opts.readerUserId) {
-    const access = await effectiveProjectRole(opts.readerUserId, opts.projectId);
-    if (!projectRoleAtLeast(access?.role ?? null, 'member')) {
-      throw forbidden(
-        `a turn in ${opts.adapter} venue ${opts.externalId} arrives under project ${opts.projectId} and you hold no member role on it; a turn writes to the room it runs in, so it takes the role that writing takes`,
-        'CONVERSATION_OUT_OF_SCOPE',
-      );
-    }
+  // cm:why a turn naming no user is refused HERE rather than admitted as the adapter's: a room whose speaker has no Forge account still runs under the authority its adapter resolved (`turn-principal.ts` refuses the DM it cannot resolve and gives a channel the organization's creator), so "no authority" is a caller that forgot one. A turn that belongs to no room — the escalation synthesis — opens no turn at all and reaches none of this.
+  if (!opts.readerUserId) {
+    throw forbidden(
+      `a turn in ${opts.adapter} venue ${opts.externalId} was opened with no authority named; a turn writes to the room it runs in, and nothing here is anonymous`,
+      'CONVERSATION_NO_AUTHORITY',
+    );
+  }
+  const access = await effectiveProjectRole(opts.readerUserId, opts.projectId);
+  if (!projectRoleAtLeast(access?.role ?? null, 'member')) {
+    throw forbidden(
+      `a turn in ${opts.adapter} venue ${opts.externalId} arrives under project ${opts.projectId} and you hold no member role on it; a turn writes to the room it runs in, so it takes the role that writing takes`,
+      'CONVERSATION_OUT_OF_SCOPE',
+    );
   }
 
   const conversation = await openConversation(
@@ -158,7 +162,7 @@ export async function openTurn(opts: OpenTurnOptions): Promise<ConversationTurn>
     },
     { db: dbi },
   );
-  if (opts.readerUserId) await assertConversationWritable(conversation.id, opts.readerUserId);
+  await assertConversationWritable(conversation.id, opts.readerUserId);
   return {
     conversationId: conversation.id,
     adapter: conversation.adapter,

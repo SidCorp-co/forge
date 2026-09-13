@@ -7,10 +7,10 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { messageRoleToTurnRole } from '../../agent-sessions/turns-helpers.js';
 import { db } from '../../db/client.js';
-import { agentSessions } from '../../db/schema.js';
+import { agentSessions, integrationBindings } from '../../db/schema.js';
 import { logger } from '../../logger.js';
 import { decryptConnectionSecrets, findConnectionById } from '../store.js';
-import type { RocketChatConfig, RocketChatSecrets } from './types.js';
+import type { RocketChatBindingConfig, RocketChatConfig, RocketChatSecrets } from './types.js';
 
 type SessionRow = typeof agentSessions.$inferSelect;
 
@@ -43,6 +43,28 @@ export async function resolveRoomPostAuth(
     return null;
   }
   return { serverUrl: config.serverUrl, authToken: secrets.authToken, userId: secrets.userId };
+}
+
+/** The room is still this project's to post into, right now. */
+// cm:guard a stored rid is a claim about the PAST: a session records the room it began in, and the binding that put it there can move while the work runs — so posting on the strength of the connection alone lands one project's answer in a room another project owns (ISS-1001 invariant 2).
+// cm:edge contract -> packages/core/src/integrations/rocketchat/conversation-port.ts — `authForVenue` makes this same check for the live delivery path; this is it for every path that reads a rid out of stored metadata.
+export async function roomStillBoundTo(args: {
+  connectionId: string;
+  projectId: string;
+  rid: string;
+}): Promise<boolean> {
+  const rows = await db
+    .select({ config: integrationBindings.config })
+    .from(integrationBindings)
+    .where(
+      and(
+        eq(integrationBindings.provider, 'rocketchat'),
+        eq(integrationBindings.active, true),
+        eq(integrationBindings.connectionId, args.connectionId),
+        eq(integrationBindings.projectId, args.projectId),
+      ),
+    );
+  return rows.some((r) => ((r.config ?? {}) as RocketChatBindingConfig).rids?.includes(args.rid));
 }
 
 export interface RoomReplyMeta {

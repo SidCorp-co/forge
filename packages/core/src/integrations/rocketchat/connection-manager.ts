@@ -47,6 +47,7 @@ import { startQuestionDrainLoop } from './question-delivery.js';
 import { consumeQuestionThreadReply } from './question-inbound.js';
 import { errorFallbackReply, fixed, screenWithRetry, type TurnOutcome } from './reply-verdict.js';
 import { fetchOwnUsername } from './rest-client.js';
+import { roomStillBoundTo } from './room-delivery.js';
 import { type RoomShape, resolveRoomShape } from './room-shape.js';
 import { subjectForThread } from './thread-registry.js';
 import { resolveTurnPrincipal } from './turn-principal.js';
@@ -130,8 +131,16 @@ async function deliverAndRecord(
   door: Parameters<typeof sendFixedReply>[0],
   outcome: Extract<TurnOutcome, { send: true }>,
   conversationId: string,
-  projectId: string,
+  route: Route & { connectionId: string },
 ): Promise<void> {
+  // cm:guard the binding is read again at DELIVERY and not trusted from the route this turn started under: a turn runs for up to HANDLE_TIMEOUT_MS, and an answer computed for project A must not be posted into a room project B now owns (ISS-1001 invariant 2).
+  if (!(await roomStillBoundTo(route))) {
+    logger.error(
+      { rid: route.rid, projectId: route.projectId, connectionId: route.connectionId },
+      'rocketchat: the room was rebound while this turn ran; the answer is not posted',
+    );
+    return;
+  }
   const receipt = await sendFixedReply(door, outcome.text, outcome.proof);
   try {
     if (outcome.messageId) {
@@ -142,7 +151,7 @@ async function deliverAndRecord(
       conversationId,
       role: 'assistant',
       content: outcome.text,
-      authorUserId: await handleForProject(conversationId, projectId),
+      authorUserId: await handleForProject(conversationId, route.projectId),
       deliveryProof: receipt,
     });
   } catch (err) {
@@ -563,6 +572,8 @@ class RocketChatConnectionManager {
             projectId: route.projectId,
             adapter: 'rocketchat',
             conversationId: conversation.id,
+            // cm:guard the question is recorded here and the ANSWER by `deliverAndRecord`, because this adapter screens: the row has to be the sentence the room was actually shown.
+            record: 'question-only',
             message: m.text,
             tools: fast.tools,
             // cm:guard the room is read under the authority its TOOLS run as; omitting it silenced every room
@@ -664,7 +675,7 @@ class RocketChatConnectionManager {
         tmid: m.tmid,
         authToken: ac.authToken,
       };
-      await deliverAndRecord(door, outcome, conversation.id, route.projectId);
+      await deliverAndRecord(door, outcome, conversation.id, { ...route, connectionId });
     }
   }
 

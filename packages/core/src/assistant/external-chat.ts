@@ -43,7 +43,7 @@ export interface ExternalChatTurnArgs {
   projectId: string;
   adapter: ConversationAdapter;
   message: string;
-  /** The Forge user this turn runs as, or null for a speaker nothing has linked. */
+  /** The Forge user this turn runs as. A turn that names a room REQUIRES one; an ephemeral turn, which names none, does not. */
   userId?: string | null;
   /** Continue this conversation. */
   conversationId?: string | undefined;
@@ -67,6 +67,12 @@ export interface ExternalChatTurnArgs {
   responseFormat?: ChatResponseFormat | undefined;
   /** Picks `app_config.chat_model_by_kind[kind]`; defaults to `'agentic'`. */
   turnKind?: ChatTurnKind | undefined;
+  /**
+   * What this turn WRITES to the room it reads. Default: the question and the answer.
+   */
+  // cm:guard a SCREENED adapter passes `question-only` and records the answer itself: the model's first answer can fail the reply guard and be replaced by a corrective retry or a fixed fallback, and a transcript holding the rejected text is a record of a conversation nobody had (ISS-1001).
+  // cm:guard `nothing` is for the RETRY of such a turn — its message is a code-authored instruction, and persisting it files words the speaker never said under their name — while a SILENCE is written under `question-only` all the same, because nothing replaces it and the reason is the row's whole point.
+  record?: 'question-and-answer' | 'question-only' | 'nothing';
   db?: typeof defaultDb;
 }
 
@@ -187,10 +193,11 @@ export async function runExternalChatTurn(
     );
   }
 
+  const record = args.record ?? 'question-and-answer';
   let assistantMessageId: string | null = null;
-  if (turn) {
+  if (turn && record !== 'nothing') {
     if (result.terminal === 'done' && result.finalText.length > 0) {
-      appendAssistantMessage(turn, result.finalText);
+      if (record === 'question-and-answer') appendAssistantMessage(turn, result.finalText);
     } else {
       appendSilence(
         turn,

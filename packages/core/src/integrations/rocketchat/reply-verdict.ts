@@ -75,6 +75,8 @@ export async function screenWithRetry(args: ScreenWithRetryArgs): Promise<TurnOu
       projectId,
       adapter: 'rocketchat',
       conversationId: result.conversationId ?? undefined,
+      // cm:guard the retry WRITES nothing to the room: its own message is this file's corrective instruction, and a persisted one is words the speaker never said, replayed to the model every turn after. It still READS the room, which is why it names the conversation (ISS-1001).
+      record: 'nothing',
       message: correctiveMessage(verdict.problems),
       tools: fast.tools,
       userId: args.principalUserId,

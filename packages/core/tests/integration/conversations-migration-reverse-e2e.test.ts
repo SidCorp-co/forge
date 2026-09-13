@@ -337,7 +337,9 @@ describe('0241 reverse — the principals it minted, and the ones it must not ta
       await db.drop();
     }
   });
+});
 
+describe('0241 reverse — the two fields the blob does not carry back by itself', () => {
   // cm:guard `origin` carries EVERY consumed field, title included, while the reverse restores the current title so a rename after the deploy survives exactly as the messages appended after it do.
   // cm:why a claim that every consumed field is reconstructible from `origin` alone is true by accident when the only copy of one lives in the column being read (ISS-1001).
   it('keeps the consumed title in `origin` and still restores a rename made after the deploy', async () => {
@@ -401,6 +403,13 @@ describe('0241 reverse — the principals it minted, and the ones it must not ta
         [session.id],
       );
 
+      // cm:guard the archive is keyed by the MESSAGE id: a `(session, seq)` key would name a different message on a second forward-and-back cycle, and `DO NOTHING` would then drop the new silence.
+      const [silenceRow] = await db.sql.unsafe(
+        `SELECT id FROM conversation_messages WHERE conversation_id = $1 AND seq = 2`,
+        [session.id],
+      );
+      const messageId = (silenceRow as unknown as { id: string }).id;
+
       await db.sql.unsafe(rollback);
 
       const [back] = await db.sql.unsafe(`SELECT messages FROM chat_sessions WHERE id = $1`, [
@@ -413,11 +422,16 @@ describe('0241 reverse — the principals it minted, and the ones it must not ta
       ]);
 
       const archived = await db.sql.unsafe(
-        `SELECT session_id, seq, reason FROM chat_session_silences WHERE session_id = $1`,
+        `SELECT message_id, session_id, seq, reason FROM chat_session_silences WHERE session_id = $1`,
         [session.id],
       );
       expect(archived).toEqual([
-        { session_id: session.id, seq: 2, reason: 'the provider timed out' },
+        {
+          message_id: messageId,
+          session_id: session.id,
+          seq: 2,
+          reason: 'the provider timed out',
+        },
       ]);
     } finally {
       await db.drop();

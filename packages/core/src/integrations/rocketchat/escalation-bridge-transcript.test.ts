@@ -27,6 +27,14 @@ vi.mock('../../db/client.js', () => ({
 
 const findConnectionById = vi.fn();
 const decryptConnectionSecrets = vi.fn();
+/** Whether the room is still the session project's; flipped by the rebind case. */
+let roomBound = true;
+// cm:why stubbed: this file's fake db answers only the subject's own queries, and the room-is-still-ours check has its cases in room-delivery.test.ts.
+vi.mock('./room-delivery.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./room-delivery.js')>()),
+  roomStillBoundTo: async () => roomBound,
+}));
+
 vi.mock('../store.js', () => ({
   findConnectionById: (...a: unknown[]) => findConnectionById(...a),
   decryptConnectionSecrets: (...a: unknown[]) => decryptConnectionSecrets(...a),
@@ -164,6 +172,20 @@ describe(`the room transcript after an escalated answer`, () => {
   it('invents no conversation for a room that has none', async () => {
     findConversation.mockResolvedValue(null);
     await escalated();
+    expect(appendMessage).not.toHaveBeenCalled();
+  });
+
+  // cm:guard an escalation is minutes or hours long: a room rebound in the meantime is not this
+  // project's to answer into, and the claim is taken first so the sweeper stops retrying it.
+  it('posts nothing when the room was rebound while the escalation ran', async () => {
+    findConversation.mockResolvedValue({ id: 'conv-9' });
+    roomBound = false;
+    try {
+      await escalated();
+    } finally {
+      roomBound = true;
+    }
+    expect(sendFixedReply).not.toHaveBeenCalled();
     expect(appendMessage).not.toHaveBeenCalled();
   });
 

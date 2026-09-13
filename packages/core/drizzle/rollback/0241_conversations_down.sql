@@ -176,17 +176,22 @@ ON CONFLICT (id) DO NOTHING;
 -- So they leave the dropped table into one of their own, in full, and this reverse is not
 -- finished until whoever ran it has read that table and dropped it deliberately:
 --   SELECT * FROM chat_session_silences;  -- then: DROP TABLE chat_session_silences;
+-- Keyed by the MESSAGE's own id and not by (session, seq): a forward run after a rollback
+-- renumbers, because the blob this reverse rebuilt no longer holds the archived silence — so
+-- `(session, seq)` names a different message on the second cycle, and `DO NOTHING` would keep the
+-- first cycle's row and drop the new one just before its table is dropped. A message id is the one
+-- value that survives the cycle unchanged.
 CREATE TABLE IF NOT EXISTS public.chat_session_silences (
+  "message_id" uuid PRIMARY KEY,
   "session_id" uuid NOT NULL,
   "seq" integer NOT NULL,
   "reason" text NOT NULL,
   "author_user_id" uuid,
-  "created_at" timestamp with time zone NOT NULL,
-  PRIMARY KEY ("session_id", "seq")
+  "created_at" timestamp with time zone NOT NULL
 );
 
-INSERT INTO public.chat_session_silences (session_id, seq, reason, author_user_id, created_at)
-SELECT m.conversation_id, m.seq, m.silence_reason, m.author_user_id, m.created_at
+INSERT INTO public.chat_session_silences (message_id, session_id, seq, reason, author_user_id, created_at)
+SELECT m.id, m.conversation_id, m.seq, m.silence_reason, m.author_user_id, m.created_at
 FROM public.conversation_messages m
 WHERE m.silence_reason IS NOT NULL
 ON CONFLICT DO NOTHING;

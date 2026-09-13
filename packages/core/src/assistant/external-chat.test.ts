@@ -4,6 +4,8 @@ import { describe, expect, it, vi } from 'vitest';
 // drain, persist, reply — rather than the store or the provider.
 const appended: string[] = [];
 const silences: string[] = [];
+/** One entry per persistMessages call: `role:content`, or `role:!reason` for a silence. */
+const persisted: string[][] = [];
 vi.mock('./conversation-turn.js', () => ({
   openTurn: async (o: { adapter: string }) => ({
     conversationId: 'conv-1',
@@ -25,7 +27,13 @@ vi.mock('./conversation-turn.js', () => ({
   },
   persistMessages: async (t: {
     pending: Array<{ role: string; content: string; silenceReason?: string }>;
-  }) => t.pending.splice(0).map((m, i) => ({ ...m, id: `msg-${i}` })),
+  }) => {
+    const written = t.pending.splice(0).map((m, i) => ({ ...m, id: `msg-${i}` }));
+    persisted.push(
+      written.map((m) => `${m.role}:${m.silenceReason ? `!${m.silenceReason}` : m.content}`),
+    );
+    return written;
+  },
   toProviderMessages: (
     t: {
       history: Array<{ role: string; content: string; images?: Array<{ ref: string }> }>;
@@ -71,12 +79,15 @@ vi.mock('../issues/progress.js', () => ({
 }));
 
 const seenRequests: Array<{ messages: unknown[] }> = [];
+/** What the provider answers this turn; empty is a turn that produced nothing. */
+let replyText = 'The answer is 42.';
+
 const mockProvider = {
   id: 'mock',
   defaultModel: 'm',
   async *stream(req: { messages: unknown[] }) {
     seenRequests.push({ messages: req.messages });
-    yield { type: 'chunk' as const, text: 'The answer is 42.' };
+    if (replyText) yield { type: 'chunk' as const, text: replyText };
     yield { type: 'done' as const };
   },
 };
@@ -202,5 +213,57 @@ describe('runExternalChatTurn — turn context placement', () => {
     expect(messages.at(-1)?.content).toContain('[an]: deploy is failing');
     expect(messages.at(-1)?.content).toMatch(/---\n\nwhat broke\?$/);
     expect(buildSystemPromptCalls[0]).not.toHaveProperty('conversationContext');
+  });
+});
+
+// cm:guard a SCREENED adapter's transcript holds the sentence the room was SHOWN, and the model's first answer is not that sentence: it can be replaced by a corrective retry or a fixed fallback, so the answer is the caller's to record once it knows what went out.
+describe('runExternalChatTurn — what a turn writes to the room it reads', () => {
+  const base = {
+    projectId: 'p1',
+    adapter: 'rocketchat' as const,
+    conversationId: 'conv-1',
+    userId: 'u-1',
+  };
+
+  it('writes the question and not the answer under `question-only`, and names no row to stamp', async () => {
+    persisted.length = 0;
+    selectCall = 0;
+    const out = await runExternalChatTurn({ ...base, message: 'asked', record: 'question-only' });
+    expect(persisted).toEqual([['user:asked']]);
+    expect(out.assistantMessageId).toBeNull();
+    expect(out.reply).toBe('The answer is 42.');
+  });
+
+  it('writes nothing at all under `nothing`, so a corrective retry files no words the speaker never said', async () => {
+    persisted.length = 0;
+    selectCall = 0;
+    const out = await runExternalChatTurn({
+      ...base,
+      message: '[SYSTEM CHECK] rewrite it',
+      record: 'nothing',
+    });
+    expect(persisted).toEqual([]);
+    expect(out.assistantMessageId).toBeNull();
+  });
+
+  // cm:guard a SILENCE is still written under `question-only`: there is no answer for the caller to
+  // record in its place, and the reason the turn produced nothing is the row's whole point.
+  it('still writes the silence under `question-only`, because nothing replaces it', async () => {
+    persisted.length = 0;
+    selectCall = 0;
+    replyText = '';
+    try {
+      await runExternalChatTurn({ ...base, message: 'asked', record: 'question-only' });
+    } finally {
+      replyText = 'The answer is 42.';
+    }
+    expect(persisted).toEqual([['user:asked', 'assistant:!empty-reply']]);
+  });
+
+  it('writes the question AND the answer when nothing says otherwise', async () => {
+    persisted.length = 0;
+    selectCall = 0;
+    await runExternalChatTurn({ ...base, message: 'asked' });
+    expect(persisted).toEqual([['user:asked', 'assistant:The answer is 42.']]);
   });
 });

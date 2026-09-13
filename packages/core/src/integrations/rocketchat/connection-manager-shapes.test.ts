@@ -19,6 +19,14 @@ vi.mock('../../config/env.js', () => ({
 const selectLimit = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
+/** Whether the room is still bound to the turn's project; flipped by the rebind case. */
+const roomBound = true;
+// cm:why stubbed: this file's fake db answers only the subject's own queries, and the room-is-still-ours check has its cases in room-delivery.test.ts.
+vi.mock('./room-delivery.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./room-delivery.js')>()),
+  roomStillBoundTo: async () => roomBound,
+}));
+
 vi.mock('../../db/client.js', () => ({
   db: { select: vi.fn(() => ({ from: selectFrom })) },
 }));

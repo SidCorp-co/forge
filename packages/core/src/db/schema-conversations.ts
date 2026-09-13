@@ -43,7 +43,11 @@ export interface ConversationOrigin {
   projectId: string;
   userId: string | null;
   userKey: string | null;
+  /** The title AS CONSUMED; the conversation's own column carries any rename made since. */
+  title: string | null;
   source: string;
+  /** The consumed transcript VERBATIM — what makes the reverse exact rather than equivalent. */
+  messages: unknown;
   createdAt: string;
   updatedAt: string;
   /** The handle 0241 minted for this project, or null where an existing agent account was reused. */

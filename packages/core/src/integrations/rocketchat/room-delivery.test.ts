@@ -13,9 +13,52 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('../../config/env.js', () => ({
   env: { JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef', NODE_ENV: 'test' },
 }));
-vi.mock('../../db/client.js', () => ({ db: {} }));
+/** The active `rocketchat` bindings the query would return, already narrowed by its WHERE. */
+let bindingRows: Array<{ config: { rids?: string[] } }> = [];
+let lastWhere: unknown;
+vi.mock('../../db/client.js', () => ({
+  db: {
+    select: () => ({
+      from: () => ({
+        where: async (w: unknown) => {
+          lastWhere = w;
+          return bindingRows;
+        },
+      }),
+    }),
+  },
+}));
 
-const { extractFinalAssistantText, readRoomReplyMeta } = await import('./room-delivery.js');
+const { extractFinalAssistantText, readRoomReplyMeta, roomStillBoundTo } = await import(
+  './room-delivery.js'
+);
+
+// cm:guard the rule every path that posts from a STORED rid depends on: a session records the room
+// it began in, and the binding that put it there can move while the work runs (ISS-1001).
+describe('roomStillBoundTo', () => {
+  const args = { connectionId: 'conn-1', projectId: 'proj-1', rid: 'ROOM1' };
+
+  it('is true when an active binding of that connection and project names the room', async () => {
+    bindingRows = [{ config: { rids: ['ROOM9', 'ROOM1'] } }];
+    expect(await roomStillBoundTo(args)).toBe(true);
+    expect(lastWhere).toBeDefined();
+  });
+
+  it('is false when the connection and project match but the room is not in the binding', async () => {
+    bindingRows = [{ config: { rids: ['ROOM9'] } }];
+    expect(await roomStillBoundTo(args)).toBe(false);
+  });
+
+  it('is false when nothing on that connection is bound to that project at all', async () => {
+    bindingRows = [];
+    expect(await roomStillBoundTo(args)).toBe(false);
+  });
+
+  it('is false when the binding carries no room list rather than treating it as all rooms', async () => {
+    bindingRows = [{ config: {} }];
+    expect(await roomStillBoundTo(args)).toBe(false);
+  });
+});
 
 describe('extractFinalAssistantText', () => {
   it('reads the desktop/chat shape (entry.role)', () => {
