@@ -78,6 +78,38 @@ describe("the runs nothing is working on", () => {
     expect(stalledRuns([run({ status: "paused" })], NOW)).toHaveLength(1);
   });
 
+  // cm:guard the startup pair. A run is committed `running` before its first job row exists, so for that instant it reads zero jobs and no beat exactly as an abandoned one does; the only thing separating them is how long it has been true. A version with no grace passes the second assertion and fails the first.
+  it("gives a run that has never reported a startup grace, and takes one that outlived it", () => {
+    const starting = run({ id: "pr-starting", startedAt: ago(1_000), lastSessionBeatAt: null });
+    const silent = run({
+      id: "pr-silent",
+      startedAt: ago(HEARTBEAT_REAP_MS + 1),
+      lastSessionBeatAt: null,
+    });
+
+    expect(stalledRuns([starting, silent], NOW).map((r) => r.id)).toEqual(["pr-silent"]);
+  });
+
+  // cm:guard the grace is bought by silence-since-birth alone: a run that beat once and stopped is counted however young it is, because its quiet is a fact about a process that existed.
+  it("gives no grace to a young run whose beat has already gone stale", () => {
+    const out = stalledRuns(
+      [
+        run({
+          id: "pr-died-young",
+          startedAt: ago(1_000),
+          lastSessionBeatAt: ago(HEARTBEAT_REAP_MS + 1),
+        }),
+      ],
+      NOW,
+    );
+    expect(out.map((r) => r.id)).toEqual(["pr-died-young"]);
+  });
+
+  // cm:guard an unreadable `startedAt` buys nothing: a run is counted on what is known about it, and a timestamp nobody can parse is not a claim that it just started.
+  it("gives no grace to a run whose start time cannot be read", () => {
+    expect(stalledRuns([run({ startedAt: "not a date", lastSessionBeatAt: null })], NOW)).toHaveLength(1);
+  });
+
   it("counts nothing when there is nothing to count", () => {
     expect(stalledRuns(undefined, NOW)).toEqual([]);
     expect(stalledRuns([], NOW)).toEqual([]);
