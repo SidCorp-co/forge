@@ -132,9 +132,7 @@
   Three of those rules are enforced by Postgres rather than by code remembering to check: the
   pointer may only name an alias of the project's own, the stored shape is checked where a restore
   and a `psql` session are held to it too, and the alias table refuses every delete and every
-  rename, and the tombstone a deleted project leaves belongs to that deletion alone — writing one
-  by hand while the project is still there is refused, because it would orphan a live project's
-  claim and stop its published references resolving. ISS-992.
+  rename. ISS-992.
 
 - **`forge_feedback action=submit` no longer guesses which project a report is about.**
   `projectId` was optional, and an omitted one fell back to the project the caller happened to be
@@ -2195,6 +2193,17 @@
   set is now 59.
 
 ### Fixed
+
+- **An issue prefix a live project holds can no longer be taken from it by a hand-written database
+  write.** A prefix belongs to one project for good, and the only mutation the design allows is the
+  tombstone a project's deletion leaves behind — the row stays, pointing at nobody, so the prefix is
+  never handed on. That tombstone is written by the foreign key itself, but nothing stopped an
+  operator, a restore, or later code writing the same shape by hand against a project that still
+  exists, which quietly orphaned that project's claim and stopped every reference published under it
+  from resolving. The two are now told apart where they actually differ: the deletion's own write
+  happens after its project row is gone, so a write that still finds the project there is refused by
+  name. Changing a row's id or its creation time is refused too, which insert-only always meant.
+  ISS-992.
 
 - **A retired build machine can be put back from the Runners screen.** A machine can be retired
   several ways — an operator action elsewhere in the product, an agent, or the system reaping a box
