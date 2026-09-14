@@ -1707,7 +1707,14 @@
       "idx": 245,
       "version": "7",
       "when": 1794614400000,
-      "tag": "0245_persona_style_backfill",
+      "tag": "0245_issue_attributes",
+      "breakpoints": true
+    },
+    {
+      "idx": 246,
+      "version": "7",
+      "when": 1794700800000,
+      "tag": "0246_persona_style_backfill",
       "breakpoints": true
     }
   ]

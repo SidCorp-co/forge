@@ -132,6 +132,11 @@ vi.mock('../../issues/intake-gate.js', () => ({
   finalizeIntake: vi.fn(async () => undefined),
 }));
 
+// cm:why Mocked independently of the shared `db.select` queue, the same way work-evidence is below: the attribute read is its own query and every `get` test would otherwise have to stage one. What it returns is unit-tested in `issues/attributes/attributes.test.ts`; the `get` contract itself is asserted in the test that overrides this.
+vi.mock('../../issues/attributes/read.js', () => ({
+  loadIssueAttributes: vi.fn(async () => []),
+}));
+
 vi.mock('../../pipeline/hooks.js', () => ({
   hooks: { emit: vi.fn().mockResolvedValue(undefined) },
 }));
@@ -686,12 +691,11 @@ describe('forge_issues tool', () => {
       unknown
     >;
 
-    // Full body: status and other scalars present
     expect(result.status).toBe('open');
-    // Attachments join runs in the full path
     expect(listIssueAttachmentsMock).toHaveBeenCalledWith(ISSUE_ID);
     expect(result.attachments).toEqual([]);
-    // bodyTruncated NOT set (that is only for step_start lean path)
+    // cm:guard `attributes` rides this read rather than a surface of its own — an agent asking what an issue owes must not need a second call (ISS-1010).
+    expect(result.attributes).toEqual([]);
     expect(result.bodyTruncated).toBeUndefined();
   });
 

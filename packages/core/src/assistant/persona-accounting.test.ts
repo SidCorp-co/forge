@@ -30,7 +30,7 @@ const { rocketChatChannelLines, rocketChatPersona } = await import(
 const HERE = dirname(fileURLToPath(import.meta.url));
 // cm:guard the personaStyle fragment is read off the shipped MIGRATION rather than from a constant a test could drift from: that file is the only thing that puts the sentence in front of a live project, so a ledger entry claiming `personaStyle` owns it has to be checked against the statement that actually writes it (ISS-1007).
 const MIGRATION_SQL = readFileSync(
-  join(HERE, '../../drizzle/migrations/0245_persona_style_backfill.sql'),
+  join(HERE, '../../drizzle/migrations/0246_persona_style_backfill.sql'),
   'utf8',
 );
 

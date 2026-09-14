@@ -13,6 +13,9 @@ import {
 import { actorAgency } from '../../issues/actor-agency.js';
 import { transitionIssueStatus } from '../../issues/apply-transition.js';
 import { AttachmentError, listIssueAttachments } from '../../issues/attachment-service.js';
+import { loadIssueAttributes } from '../../issues/attributes/read.js';
+import { setIssueAttributes } from '../../issues/attributes/service.js';
+import { AttributeRefusal } from '../../issues/attributes/write.js';
 import { createIssue, IssueCreateError } from '../../issues/create-service.js';
 import { loadIssueRelations } from '../../issues/dependency-read.js';
 import { isValidDetectorKey } from '../../issues/detector-key.js';
@@ -238,11 +241,26 @@ const inputSchema = z
       'deleteTask',
       'mark_merged',
       'unmark',
+      'setAttributes',
     ]),
     projectId: z.uuid().optional(),
     documentId: z.uuid().optional(),
     filters: filtersSchema,
     data: dataSchema,
+    // cm:why Kept off `dataSchema`, which is `.strict()` and shared with create/update; an attribute write is its own shape and folding it in would widen the body every other action validates against (ISS-1010).
+    attributes: z
+      .array(
+        z
+          .object({
+            key: z.string().min(1),
+            value: z.union([z.string(), z.number(), z.boolean()]),
+            sourceCommentId: z.uuid().nullish(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(50)
+      .optional(),
     limit: z.number().int().min(1).max(500).optional(),
     /**
      * For action=get only: fetch only the listed fields (+ documentId/issueId)
@@ -635,11 +653,38 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           return projected;
         }
         // cm:edge contract -> packages/core/src/issues/dependency-read.ts — the ONLY read path an agent has onto its own edges; REST GET /api/issues/:id/dependencies is JWT-only, so without this a token that can write an edge still cannot verify one landed
-        const [full, relations] = await Promise.all([
+        const [full, relations, attributes] = await Promise.all([
           serializeWithAttachments(issue),
           loadIssueRelations(issue.id, issue.projectId),
+          loadIssueAttributes(issue.id),
         ]);
-        return { ...full, relations };
+        // cm:why The typed fields ride the read an agent already makes, rather than a surface of their own: what the issue owes and who owes it is part of the issue, not a second thing to go and fetch (ISS-1010).
+        return { ...full, relations, attributes };
+      }
+
+      case 'setAttributes': {
+        if (!input.documentId)
+          throw new Error('BAD_REQUEST: documentId is required for setAttributes');
+        if (!input.attributes || input.attributes.length === 0)
+          throw new Error(
+            'BAD_REQUEST: attributes is required for setAttributes — each entry is { key, value }, and the registered keys come back on action=get under `attributes`',
+          );
+        const issue = await loadIssue(input.documentId);
+        await assertPrincipalIsWriter(principal, issue.projectId);
+        try {
+          return await setIssueAttributes(
+            input.attributes.map((a) => ({
+              issueId: issue.id,
+              key: a.key,
+              value: a.value,
+              sourceCommentId: a.sourceCommentId ?? null,
+              assertedByUserId: principal.userId,
+            })),
+          );
+        } catch (err) {
+          if (err instanceof AttributeRefusal) throw new Error(`${err.code}: ${err.message}`);
+          throw err;
+        }
       }
 
       case 'create': {

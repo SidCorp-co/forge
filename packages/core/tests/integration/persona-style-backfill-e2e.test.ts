@@ -28,7 +28,7 @@ import {
 } from '../helpers/index.js';
 
 const migrationPath = fileURLToPath(
-  new URL('../../drizzle/migrations/0245_persona_style_backfill.sql', import.meta.url),
+  new URL('../../drizzle/migrations/0246_persona_style_backfill.sql', import.meta.url),
 );
 const MIGRATION = readFileSync(migrationPath, 'utf8');
 

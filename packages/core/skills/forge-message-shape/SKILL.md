@@ -132,6 +132,58 @@ would repeat exactly what was just deleted, and this contract will not carry one
 
 So: write the sentence you mean. If it is true and it fits the cell, it passes.
 
+## Whether to ask at all
+
+Every rule above governs what a question **looks like** once the decision to ask
+has been made. None of them asks whether the question deserved to interrupt a
+person, and that is the more expensive mistake: a well-formed question nobody
+needed costs a human context switch, and a park wrapping a binary choice in six
+hundred words passes every rule on this page.
+
+**Uncertainty alone never earns an interruption. Consequential uncertainty does.**
+Before you ask, say what becomes irreversible if you guess wrong. If you can name
+it — a deploy, a schema change, a message to a customer, a decision somebody else
+has already made — ask. If you cannot, you are asking to be relieved of a
+judgement that is yours, and the answer is to make it, act, and record what you
+decided so it can be corrected cheaply.
+
+The test is reversibility, not confidence. A wrong guess you can undo in an
+afternoon is not worth a question; a wrong guess that ships is, even when you
+are fairly sure.
+
+This is **judgement, not a screen**. No rule on this page refuses a question for
+failing it, because nothing in free text can be checked against it. What is
+checked is the typed field: `irreversible_if_wrong` on the issue carries your
+answer, and a park that cannot fill it is a park to reconsider rather than one
+the platform will refuse for you. Presenting this as enforced when it is not is
+the failure mode this section exists to avoid.
+
+## What the message says, and what the issue holds
+
+A message is authored; state is derived. The two are not the same channel, and
+putting state in prose is how an issue ends up with everything written and
+nothing readable.
+
+So when your comment reports what changed, the facts a surface needs go into the
+issue's typed attributes as well — not instead of your comment, and not as a
+summary of it:
+
+| what you are saying | the attribute that carries it |
+|---|---|
+| this part is still owed | `obligation` |
+| and this is who owes it | `obligation_owner`, or `obligation_carrier` for the issue it moved to |
+| I landed 1 of the 5 things named | `delivered`, `delivered_of` |
+| this cannot proceed without a person | `human_required` |
+| guessing wrong here is irreversible because… | `irreversible_if_wrong` |
+
+Write them with `forge_issues action=setAttributes`. An `obligation` sent with
+neither an owner nor a carrier is refused by name — an obligation nobody owns is
+not recorded, it is lost, which is how steps 2-5 of ISS-1002 left without anyone
+noticing.
+
+Your prose stays exactly as long as it needs to be. **Brevity is never enforced
+on evidence; boundedness is enforced on the views built from it.**
+
 ## The doors: where a cell is read, and what happens when it refuses
 
 A cell says **what is required**. It says nothing about how many times a message
