@@ -143,6 +143,11 @@ export const conversationMessages = pgTable(
     // cm:guard the name the transport gave a speaker nothing has linked, kept for the reader and never for authorization — a row with a null `author_user_id` is a message by nobody Forge knows, which is a fact and not a gap to fill.
     authorLabel: text('author_label'),
     content: text('content').notNull(),
+    /**
+     * The transport's own id for an inbound message, where it named one.
+     */
+    // cm:guard the one thing a collected row loses otherwise: the window routes long after the message arrived, so without this there is no way to tell the room's own history reader which lines it has already been given, and the model is shown the same messages twice — once as seed context and once as its own transcript. Null for anything this codebase wrote (ISS-1004).
+    externalId: text('external_id'),
     images: jsonb('images'),
     // cm:guard the receipt the adapter's own `deliver` returned, and a chip may claim only what it holds: a null here means the transport took the text without naming a message, which is NOT delivered (ISS-1001 invariant 8).
     deliveryProof: jsonb('delivery_proof'),
@@ -159,9 +164,103 @@ export const conversationMessages = pgTable(
   }),
 );
 
+/**
+ * Why a window stopped, in the vocabulary rule 4 of ISS-1004 names.
+ */
+// cm:guard the five silences are told APART and are not one `silent`: a person asking why nothing was said is owed the difference between nobody having anything to add, a guard pacing the room, authority refusing, an agent that could not be reached, and an outcome nobody knows yet. Collapsing them is the unreadable silence ISS-1004 exists to remove.
+// cm:guard `undetermined` is NOT a failure and no caller may act on it as one: the reply may still arrive by the path the turn was handed to, and re-routing the window on it is how one answer becomes two (ISS-1004 rule 4).
+export const conversationWindowDecisions = [
+  'answered',
+  'nothing-to-say',
+  'guard-backoff',
+  'guard-agent-loop',
+  'guard-dormant',
+  'authority-refused',
+  'unreachable',
+  'undetermined',
+] as const;
+export type ConversationWindowDecision = (typeof conversationWindowDecisions)[number];
+
+/**
+ * The unit a routing decision is taken over: the messages that arrived together.
+ */
+// cm:guard a ROW and not a timer in a process: a window living only in memory is a silence with no owner when the core restarts, and the messages inside it are never routed and never noticed. The row is what a restart finds and what a second core is refused (ISS-1004 rule 1).
+export const conversationWindows = pgTable(
+  'conversation_windows',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    conversationId: uuid('conversation_id')
+      .notNull()
+      .references(() => conversations.id, { onDelete: 'cascade' }),
+    /** The project whose handle answers in this window — the venue's binding, not the room's scope. */
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    // cm:guard carried on the window rather than joined off the conversation so a drain loop asks for ITS OWN adapter's work in one index scan: a loop that read every open window and then filtered would claim windows for a transport it cannot deliver through.
+    adapter: text('adapter', { enum: conversationAdapters }).notNull(),
+    openedAt: timestamp('opened_at', { withTimezone: true }).notNull().defaultNow(),
+    // cm:guard the SETTLE clock, moved by every later message: a window closes on quiet rather than on a count, so two messages typed seconds apart are one decision and one cost.
+    extendedAt: timestamp('extended_at', { withTimezone: true }).notNull().defaultNow(),
+    firstSeq: integer('first_seq').notNull(),
+    lastSeq: integer('last_seq').notNull(),
+    claimedAt: timestamp('claimed_at', { withTimezone: true }),
+    /**
+     * When this window's reply was handed to the transport.
+     */
+    // cm:guard stamped BEFORE the send and never after it, which is the only order that makes at-most-once true across a crash: a core that posts a reply and dies before recording it leaves this stamp and no delivered row, and the next claimant reads that pair as "a delivery was started and nobody knows how it ended" — which is `undetermined`, not a second attempt. Recording it after the send would make the commonest loss look like a delivery that never happened (ISS-1004 rule 2).
+    deliveryReservedAt: timestamp('delivery_reserved_at', { withTimezone: true }),
+    /** Which core holds it — for the log, never for the claim, which is the conditional UPDATE. */
+    claimedBy: text('claimed_by'),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    decision: text('decision', { enum: conversationWindowDecisions }),
+    decisionDetail: jsonb('decision_detail'),
+  },
+  (t) => ({
+    // cm:guard ONE COLLECTING window per conversation, as a database fact rather than a convention: without it two messages seconds apart become two decisions and two costs. The predicate is `claimed_at IS NULL` and NOT `closed_at IS NULL` on purpose — a window being routed has already snapshotted its messages, so a message arriving mid-route must open the SUCCESSOR rather than join a turn that will never read it or collide with an index (ISS-1004 rule 1).
+    oneCollecting: uniqueIndex('conversation_windows_one_collecting')
+      .on(t.conversationId)
+      .where(sql`claimed_at IS NULL AND closed_at IS NULL`),
+    dueIdx: index('conversation_windows_due_idx')
+      .on(t.adapter, t.extendedAt)
+      .where(sql`closed_at IS NULL`),
+    conversationIdx: index('conversation_windows_conversation_idx').on(
+      t.conversationId,
+      t.closedAt,
+    ),
+    // cm:guard every enum column in this file carries its CHECK, for the reason the header gives: the drizzle snapshot records `checkConstraints` per table, and a column typed in TypeScript alone is a value the database will take from anything that writes to it by hand.
+    adapterKnown: check(
+      'conversation_windows_adapter_known',
+      sql`${t.adapter} IN ('web','widget','rocketchat','telegram')`,
+    ),
+    decisionKnown: check(
+      'conversation_windows_decision_known',
+      sql`${t.decision} IS NULL OR ${t.decision} IN ('answered','nothing-to-say','guard-backoff','guard-agent-loop','guard-dormant','authority-refused','unreachable','undetermined')`,
+    ),
+    // cm:guard a closed window ALWAYS carries its decision and an open one never does: a close with no decision is the unreadable silence this table was added to make impossible, and the constraint is what stops a caller inventing a third state.
+    closedHasDecision: check(
+      'conversation_windows_closed_has_decision',
+      sql`(${t.closedAt} IS NULL) = (${t.decision} IS NULL)`,
+    ),
+    // cm:guard claimed BEFORE it routes, and a close is a route: an unclaimed close is a decision two cores could both have taken (ISS-1004 rule 1).
+    closedWasClaimed: check(
+      'conversation_windows_closed_was_claimed',
+      sql`${t.closedAt} IS NULL OR ${t.claimedAt} IS NOT NULL`,
+    ),
+    seqOrder: check('conversation_windows_seq_order', sql`${t.lastSeq} >= ${t.firstSeq}`),
+  }),
+);
+
 export const conversationsRelations = relations(conversations, ({ many }) => ({
   participants: many(conversationParticipants),
   messages: many(conversationMessages),
+  windows: many(conversationWindows),
+}));
+
+export const conversationWindowsRelations = relations(conversationWindows, ({ one }) => ({
+  conversation: one(conversations, {
+    fields: [conversationWindows.conversationId],
+    references: [conversations.id],
+  }),
 }));
 
 export const conversationParticipantsRelations = relations(conversationParticipants, ({ one }) => ({

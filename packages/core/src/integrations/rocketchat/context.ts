@@ -1,6 +1,6 @@
 /**
- * ISS-609 — conversation-context seeding + the bounded `rocketchat_history` chat tool. A mention
- * SEEDS the turn with the last ~20 room messages (plus the full thread when threaded); deeper recall
+ * ISS-609 — conversation-context seeding + the bounded `rocketchat_history` chat tool. A turn is
+ * SEEDED with the last ~20 room messages (plus the full thread when threaded); deeper recall
  * is agentic — the model gets `rocketchat_history` (50 msgs/call, 3 calls/turn) and decides itself.
  */
 
@@ -47,54 +47,60 @@ export function extractQuotedMessageIds(
   return ids;
 }
 
-/** Render REST messages as `[user]: text` lines (oldest first), dropping system messages, the bot's own replies unless `includeBot`, empty bodies and the triggering mention. Null when nothing remains. */
+/** Render REST messages as `[user]: text` lines (oldest first), dropping system messages, the bot's own replies unless `includeBot`, empty bodies and the messages that triggered this turn. Null when nothing remains. */
+// cm:guard a SET of ids and not one, because a turn is now taken over a window of messages rather than over the single one that named the bot: excluding only the newest would seed the model with the rest of its own question, which it is about to be shown again as its own transcript (ISS-1004).
 export function formatConversationLines(
   messages: RocketChatRestMessage[],
-  opts: { botUserId: string; excludeMessageId?: string | undefined; includeBot?: boolean },
+  opts: { botUserId: string; excludeMessageIds?: readonly string[]; includeBot?: boolean },
 ): string | null {
+  const excluded = new Set(opts.excludeMessageIds ?? []);
   const seen = new Set<string>();
   const lines: string[] = [];
   for (const m of messages) {
     if (m.isSystem || (m.userId === opts.botUserId && !opts.includeBot)) continue;
-    if (m.id === opts.excludeMessageId || seen.has(m.id)) continue;
+    if (excluded.has(m.id) || seen.has(m.id)) continue;
     if (!m.text.trim()) continue;
     seen.add(m.id);
     lines.push(`[${m.username}]: ${clip(m.text.trim(), MESSAGE_CHAR_CAP)}`);
   }
   if (lines.length === 0) return null;
   let block = lines.join('\n');
-  // cm:guard keep the TAIL, never the head — the newest lines are the ones the mention is about, so slicing the other way hands the model a transcript that stops before the question it was asked
+  // cm:guard keep the TAIL, never the head — the newest lines are the ones the turn is about, so slicing the other way hands the model a transcript that stops before the question it was asked
   if (block.length > BLOCK_CHAR_CAP)
     block = `… [older messages truncated]\n${block.slice(-BLOCK_CHAR_CAP)}`;
   return block;
 }
 
-/** Seed context for one mention: last {@link SEED_MESSAGE_COUNT} room messages plus the full thread when threaded. Best-effort — a fetch failure degrades to null. */
+/** Seed context for one turn: last {@link SEED_MESSAGE_COUNT} room messages plus the full thread when threaded. Best-effort — a fetch failure degrades to null. */
 export async function buildConversationContext(
   auth: RocketChatRestAuth,
   opts: {
     rid: string;
     tmid?: string | undefined;
-    excludeMessageId: string;
-    /** The triggering mention's text — scanned for quote-links so the quoted
+    /** The messages this turn was triggered by, newest last; excluded from the seed. */
+    excludeMessageIds: readonly string[];
+    /** The triggering text — scanned for quote-links so the quoted
      *  messages can be fetched in full. */
     triggerText?: string | undefined;
   },
 ): Promise<string | null> {
+  // cm:guard the permalink anchors on the NEWEST triggering message, which is the one a person clicking the link expects to land on; a window's oldest message would open the room scrolled above the thing that was actually answered (ISS-1004).
+  const newest = opts.excludeMessageIds[opts.excludeMessageIds.length - 1];
   try {
     const [room, thread, threadRoot, permalink] = await Promise.all([
       fetchRoomHistory(auth, opts.rid, { count: SEED_MESSAGE_COUNT }),
       opts.tmid ? fetchThreadMessages(auth, opts.tmid, HISTORY_MAX_PER_CALL) : Promise.resolve([]),
       // cm:why getThreadMessages returns REPLIES only — without the root message, "the task above" in a threaded mention resolves against unrelated room noise
       opts.tmid ? fetchMessage(auth, opts.tmid) : Promise.resolve(null),
-      // Deterministic source link for issues the bot files — the model can
-      // only cite the chat if the permalink is handed to it.
-      buildMessagePermalink(auth, opts.rid, opts.tmid ?? opts.excludeMessageId).catch(() => null),
+      // cm:why the model can only cite the chat if the permalink is handed to it, so an issue the bot files carries a source link rather than a description of where it came from.
+      newest || opts.tmid
+        ? buildMessagePermalink(auth, opts.rid, opts.tmid ?? (newest as string)).catch(() => null)
+        : Promise.resolve(null),
     ]);
     // cm:why a quote-reply carries only the parent's `msg` snippet, so the referenced messages are fetched in full or a quoted webhook card's body and task link never reach the model
     const quotedIds = extractQuotedMessageIds(
       [opts.triggerText, threadRoot?.text, ...thread.map((t) => t.text)],
-      new Set([opts.excludeMessageId, ...(opts.tmid ? [opts.tmid] : [])]),
+      new Set([...opts.excludeMessageIds, ...(opts.tmid ? [opts.tmid] : [])]),
     );
     const quoted = (await Promise.all(quotedIds.map((id) => fetchMessage(auth, id)))).filter(
       (q): q is RocketChatRestMessage => q !== null,
@@ -102,14 +108,14 @@ export async function buildConversationContext(
 
     const roomBlock = formatConversationLines(room, {
       botUserId: auth.userId,
-      excludeMessageId: opts.excludeMessageId,
+      excludeMessageIds: opts.excludeMessageIds,
     });
     const threadMessages = threadRoot ? [threadRoot, ...thread] : thread;
     const threadBlock =
       threadMessages.length > 0
         ? formatConversationLines(threadMessages, {
             botUserId: auth.userId,
-            excludeMessageId: opts.excludeMessageId,
+            excludeMessageIds: opts.excludeMessageIds,
             // The bot's earlier replies in the thread are part of the dialogue.
             includeBot: true,
           })
@@ -124,7 +130,7 @@ export async function buildConversationContext(
     // background and often webhook noise.
     if (threadBlock) {
       parts.push(
-        `The mention was posted INSIDE A THREAD — the thread below (root message first) is what the user is referring to:\n${threadBlock}`,
+        `The message was posted INSIDE A THREAD — the thread below (root message first) is what the user is referring to:\n${threadBlock}`,
       );
     }
     const quotedBlock =

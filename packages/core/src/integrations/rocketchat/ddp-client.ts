@@ -30,8 +30,6 @@ export interface RocketChatIncomingMessage {
   isSystem: boolean;
   /** An edit of an existing message, not a new one. */
   isEdited: boolean;
-  /** User ids @-mentioned in the message — used for bot mention-gating. */
-  mentions: string[];
   /** Parent thread message id when the message was posted inside a thread. */
   tmid?: string | undefined;
   /** Images uploaded with the message, as absolute credentialed refs. */
@@ -77,21 +75,16 @@ export function parseStreamMessage(arg: unknown, serverUrl = ''): RocketChatInco
   const rid = m.rid;
   const u = m.u as { _id?: string; username?: string } | undefined;
   if (typeof rid !== 'string' || typeof m._id !== 'string' || !u?._id) return null;
-  const mentions = Array.isArray(m.mentions)
-    ? (m.mentions as Array<{ _id?: string }>).map((x) => x?._id).filter((x): x is string => !!x)
-    : [];
   return {
     id: m._id,
     rid,
-    // Includes attachment text — a reply-quote's quoted content (and a webhook
-    // bot's entire body) lives in attachments, not msg.
+    // cm:why attachment text is included: a reply-quote's quoted content, and a webhook bot's entire body, live in `attachments` rather than in `msg`, so reading `msg` alone loses the whole message for a webhook post.
     text: extractMessageText(m as Parameters<typeof extractMessageText>[0], serverUrl),
     userId: u._id,
     username: u.username,
     ts: typeof m.ts === 'string' ? m.ts : undefined,
     isSystem: typeof m.t === 'string' && m.t.length > 0,
     isEdited: m.editedAt != null,
-    mentions,
     tmid: typeof m.tmid === 'string' ? m.tmid : undefined,
     images: extractMessageImages(m as Parameters<typeof extractMessageImages>[0], serverUrl),
   };

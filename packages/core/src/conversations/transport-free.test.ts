@@ -21,8 +21,19 @@ function storeFiles(): string[] {
   return readdirSync(dir).filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'));
 }
 
-/** What an adapter may import from here: the contract it implements, and the turn it is a caller of. */
-const ADAPTER_FACING = ['ports.js', 'inbound-turn.js', 'turn-runner.js', 'transcript.js'];
+/**
+ * What an adapter may import from here: the contract it implements, and the neutral machinery it is
+ * a CALLER of.
+ */
+// cm:guard `inbound-turn.js` left this list because the module left the tree: ISS-1004 split the turn-per-message into a collect and a later route, and `collect-inbound.js` + `route-window.js` + `windows.js` are what an adapter now calls in its place. What has NOT widened is the rule — no store function is on this list, and `store.js` appearing here would mean an adapter reading rows directly again, which is the coupling this file exists to fail CI on.
+const ADAPTER_FACING = [
+  'ports.js',
+  'turn-runner.js',
+  'transcript.js',
+  'collect-inbound.js',
+  'route-window.js',
+  'windows.js',
+];
 
 /**
  * Who may reach the store from outside this directory, whole-tree and frozen.

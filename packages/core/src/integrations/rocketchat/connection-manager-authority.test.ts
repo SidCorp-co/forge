@@ -33,7 +33,10 @@ vi.mock('./room-delivery.js', async (importOriginal) => ({
 }));
 
 vi.mock('../../db/client.js', () => ({
-  db: { select: vi.fn(() => ({ from: selectFrom })) },
+  db: {
+    select: vi.fn(() => ({ from: selectFrom })),
+    transaction: async (fn: (tx: unknown) => unknown) => fn({}),
+  },
 }));
 
 const runExternalChatTurn = vi.fn();
@@ -120,15 +123,72 @@ vi.mock('./room-shape.js', () => ({
   roomShapeFromType: (t: string) => (t === 'd' ? 'direct' : 'group'),
 }));
 
-const openConversation = vi.fn(async (venue: { adapter: string; externalId: string }) => ({
-  id: `conv:${venue.externalId}`,
-  adapter: venue.adapter,
-  externalId: venue.externalId,
-  shape: 'direct',
-  title: null,
+const openConversation = vi.fn(
+  async (venue: { adapter: string; externalId: string; shape: string }) => ({
+    id: `conv:${venue.externalId}`,
+    adapter: venue.adapter,
+    externalId: venue.externalId,
+    shape: venue.shape,
+    title: null,
+  }),
+);
+
+// cm:why ISS-1004 split the old `handle()` in two: a message is COLLECTED into its conversation and its window, and the turn is taken later over everything the window holds. These fakes stand in for the rows that path reads, and `handle` below drives both halves so every assertion in this file still measures one message in and one reply out.
+const collected: Array<Record<string, unknown>> = [];
+const conversationsById = new Map<
+  string,
+  { id: string; shape: 'direct' | 'group'; externalId: string }
+>();
+let lastOpened: { id: string; shape: 'direct' | 'group'; externalId: string } | null = null;
+
+vi.mock('../../conversations/windows.js', () => ({
+  windowDeliveryKey: (id: string) => `window:${id}`,
+  openOrExtendWindow: async (a: { conversationId: string }) => ({
+    id: `win:${a.conversationId}`,
+    conversationId: a.conversationId,
+  }),
+  claimDueWindows: async () => [],
+  closeWindow: async () => null,
+  releaseWindow: async () => undefined,
+  reserveDelivery: async () => undefined,
+  recentDecisions: async () => [],
 }));
+
+vi.mock('../../conversations/proactivity.js', () => ({
+  decideProactivity: async () => ({ speak: true }),
+}));
+
 vi.mock('../../conversations/store.js', () => ({
-  openConversation: (...args: unknown[]) => openConversation(...(args as [never])),
+  openConversation: async (...args: unknown[]) => {
+    const row = (await openConversation(...(args as [never]))) as {
+      id: string;
+      shape: 'direct' | 'group';
+      externalId: string;
+    };
+    conversationsById.set(row.id, row);
+    lastOpened = row;
+    return row;
+  },
+  getConversation: async (id: string) => conversationsById.get(id) ?? null,
+  readMessages: async () => collected,
+  deliveredUnderKey: async () => false,
+  appendMessagesIn: async (_tx: unknown, args: { messages: Array<Record<string, unknown>> }) => {
+    const rows = args.messages.map((msg, i) => ({
+      id: `cm-${collected.length + i}`,
+      seq: collected.length + i,
+      role: msg.role,
+      authorUserId: msg.authorUserId ?? null,
+      authorLabel: msg.authorLabel ?? null,
+      externalId: msg.externalId ?? null,
+      content: msg.content,
+      images: msg.images ?? [],
+      deliveryProof: null,
+      silenceReason: null,
+      createdAt: new Date(),
+    }));
+    collected.push(...rows);
+    return rows;
+  },
 }));
 const recordDeliveredReply = vi.fn(async (..._a: unknown[]) => undefined);
 vi.mock('../../conversations/transcript.js', () => ({
@@ -141,19 +201,59 @@ const { clearConversationTransports, registerConversationTransport } = await imp
 );
 
 const { rocketChatManager } = await import('./connection-manager.js');
+// cm:why the route half left the manager for `window-drain.ts` when the manager reached the size budget; the harness still drives collect-then-route as one call because that is the pair production runs.
+const { routeOne } = await import('./window-drain.js');
 
 interface Loose {
-  handle(
+  collect(
     ac: unknown,
     route: unknown,
     m: unknown,
     connectionId: string,
     shape: 'direct' | 'group',
   ): Promise<void>;
-  conns: Map<string, unknown>;
 }
 const loose = rocketChatManager as unknown as Loose;
-const handle = loose.handle.bind(rocketChatManager);
+const collectOne = loose.collect.bind(rocketChatManager);
+
+async function handle(
+  ac: unknown,
+  route: unknown,
+  m: unknown,
+  connectionId: string,
+  shape: 'direct' | 'group',
+): Promise<void> {
+  collected.length = 0;
+  lastOpened = null;
+  const r = route as { rid: string; projectId: string };
+  (ac as { routes: Map<string, unknown> }).routes.set(r.rid, route);
+  await collectOne(ac, route, m, connectionId, shape);
+  const opened = lastOpened as { id: string; shape: 'direct' | 'group'; externalId: string } | null;
+  if (!opened) return;
+  await routeOne(
+    ac as never,
+    connectionId,
+    {
+      id: `win:${opened.id}`,
+      conversationId: opened.id,
+      projectId: r.projectId,
+      adapter: 'rocketchat',
+      venueExternalId: opened.externalId,
+      venueShape: opened.shape,
+      openedAt: new Date(),
+      extendedAt: new Date(),
+      firstSeq: 0,
+      lastSeq: Math.max(0, collected.length - 1),
+      claimedAt: new Date(),
+      claimedBy: 'test',
+      deliveryReservedAt: null,
+      closedAt: null,
+      decision: null,
+      decisionDetail: null,
+    },
+    undefined,
+  );
+}
 
 function makeAc() {
   return {
@@ -193,6 +293,11 @@ const MESSAGE = {
 // cm:why a turn's conversation is a ROW resolved per message, not a pointer on this instance: the Map it lived in emptied on every restart, so a room talking for weeks restarted empty (ISS-1001 criterion 1).
 // cm:guard the fake transport is the FOUR ports and the registry is the real one: `handle` is a caller of the neutral turn now, and a suite that stubbed the registry would prove the adapter against a delivery path production does not have (ISS-1002).
 beforeEach(() => {
+  // cm:why every message now resolves its speaker, whatever the room's shape — ISS-1004 attributes a collected message to whoever actually spoke, while authority still follows the shape. In a group room an unlinked speaker is a fact and not a refusal, so this default is the ordinary case.
+  resolveSpeaker.mockResolvedValue({
+    linked: false,
+    refusal: { code: 'SPEAKER_UNLINKED', message: 'UNLINKED' },
+  });
   clearConversationTransports();
   registerConversationTransport({
     adapter: 'rocketchat',
@@ -232,11 +337,14 @@ describe('connection-manager turn authority', () => {
     expect(principalUsed()).toBe('speaker-user-9');
   });
 
-  it('runs a group room turn as the organization creator and resolves no speaker at all', async () => {
+  // cm:guard authority and ATTRIBUTION are different questions and this asserts both on one message: the turn runs as the binding's principal, and the speaker is resolved all the same so the row says who actually spoke. ISS-1004 needs that second half — a second agent's message filed under the binding's human is invisible to the loop breaker — and it must never become the authority (ISS-987, ISS-1003).
+  it('runs a group room turn as the organization creator, whoever spoke', async () => {
+    resolveSpeaker.mockResolvedValue({ linked: true, userId: 'somebody-else' });
+
     await handle(makeAc(), ROUTE, MESSAGE, 'conn-1', 'group');
 
     expect(principalUsed()).toBe('user-1');
-    expect(resolveSpeaker).not.toHaveBeenCalled();
+    expect(resolveSpeaker).toHaveBeenCalled();
   });
 
   it('runs no turn in a direct room whose speaker resolves to no Forge user', async () => {

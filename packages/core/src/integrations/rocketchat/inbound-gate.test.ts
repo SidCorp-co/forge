@@ -1,104 +1,73 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { RocketChatIncomingMessage } from './ddp-client.js';
-import { createSeenTracker, decideHandling, decideSkip } from './inbound-gate.js';
+import { createSeenTracker, decideSkip } from './inbound-gate.js';
 
 const BOT = 'bot-id';
 function msg(over: Partial<RocketChatIncomingMessage>): RocketChatIncomingMessage {
   return {
     id: 'm',
     rid: 'r',
-    text: '@bot hi',
+    text: 'hi',
     userId: 'someone',
     isSystem: false,
     isEdited: false,
-    mentions: [BOT],
     images: [],
     ...over,
   };
 }
 
-describe('decideHandling in a group room', () => {
-  it('handles a mention from another user', () => {
-    expect(decideHandling(msg({}), BOT, 'group')).toEqual({ handle: true, reason: 'ok' });
-  });
-  it('ignores the bot own messages (loop guard)', () => {
-    expect(decideHandling(msg({ userId: BOT }), BOT, 'group').handle).toBe(false);
-  });
-  it('ignores system + edited messages', () => {
-    expect(decideHandling(msg({ isSystem: true }), BOT, 'group').handle).toBe(false);
-    expect(decideHandling(msg({ isEdited: true }), BOT, 'group').handle).toBe(false);
-  });
-  it('ignores empty text', () => {
-    expect(decideHandling(msg({ text: '   ' }), BOT, 'group').handle).toBe(false);
-  });
-  it('ignores messages that do not mention the bot', () => {
-    expect(decideHandling(msg({ mentions: ['other'] }), BOT, 'group').reason).toBe('not-mentioned');
-  });
-  it('still requires the mention inside a thread', () => {
-    expect(
-      decideHandling(msg({ mentions: ['other'], tmid: 'thread-a' }), BOT, 'group').reason,
-    ).toBe('not-mentioned');
-  });
-});
-
-// cm:why the deliverable is the DIFFERENCE between the two shapes on one unchanged message, so both halves are asserted on the same text: either assertion alone passes with the shape ignored entirely (ISS-987 criteria 1, 2, 3)
-describe('decideHandling in a direct room', () => {
-  const unaddressed = msg({ text: 'how does the pipeline work?', mentions: [] });
-
-  it('handles a message that mentions nobody', () => {
-    expect(decideHandling(unaddressed, BOT, 'direct')).toEqual({ handle: true, reason: 'ok' });
-  });
-
-  it('is the shape alone that decides it — the same message is refused in a group room', () => {
-    expect(decideHandling(unaddressed, BOT, 'group')).toEqual({
-      handle: false,
-      reason: 'not-mentioned',
-    });
-  });
-
-  it('still skips the bot own messages, so a DM cannot become a loop', () => {
-    expect(decideHandling(msg({ userId: BOT, mentions: [] }), BOT, 'direct').reason).toBe(
-      'own-message',
-    );
-  });
-
-  it('still skips system events', () => {
-    expect(decideHandling(msg({ isSystem: true, mentions: [] }), BOT, 'direct').reason).toBe(
-      'system',
-    );
-  });
-
-  it('still skips edits', () => {
-    expect(decideHandling(msg({ isEdited: true, mentions: [] }), BOT, 'direct').reason).toBe(
-      'edited',
-    );
-  });
-
-  it('still skips empty text', () => {
-    expect(decideHandling(msg({ text: '   ', mentions: [] }), BOT, 'direct').reason).toBe('empty');
-  });
-
-  it('handles an unmentioned message inside a thread in a direct room', () => {
-    expect(decideHandling(msg({ mentions: [], tmid: 'thread-a' }), BOT, 'direct').handle).toBe(
-      true,
-    );
-  });
-});
-
 describe('decideSkip', () => {
-  it('answers null for a message no shape-free rule rejects, so the caller pays for a shape', () => {
-    expect(decideSkip(msg({ mentions: [] }), BOT)).toBeNull();
+  it('answers null for a message no rule rejects', () => {
+    expect(decideSkip(msg({}), BOT)).toBeNull();
   });
 
-  it('names the rule for each shape-free rejection', () => {
+  it('names the rule for each rejection', () => {
     expect(decideSkip(msg({ userId: BOT }), BOT)).toBe('own-message');
     expect(decideSkip(msg({ isSystem: true }), BOT)).toBe('system');
     expect(decideSkip(msg({ isEdited: true }), BOT)).toBe('edited');
     expect(decideSkip(msg({ text: '' }), BOT)).toBe('empty');
   });
 
-  it('does not reject an unmentioned message, which is addressing and not a skip', () => {
-    expect(decideSkip(msg({ mentions: ['other'] }), BOT)).toBeNull();
+  // cm:why the point of ISS-1004 asserted at the level the gate lives on: the message that used to be dropped here for naming nobody is now the message the collector is handed.
+  it('admits a message that names nobody, in any room', () => {
+    expect(decideSkip(msg({ text: 'how does the pipeline work?' }), BOT)).toBeNull();
+    expect(
+      decideSkip(msg({ text: 'anyone know why CI is red?', tmid: 'thread-a' }), BOT),
+    ).toBeNull();
+  });
+
+  it('holds the loop guard whatever the text says', () => {
+    expect(decideSkip(msg({ userId: BOT, text: 'a perfectly ordinary sentence' }), BOT)).toBe(
+      'own-message',
+    );
+  });
+});
+
+// cm:guard the criterion is about the TREE and not about this module, so it is measured over the tree: a mention gate reintroduced anywhere — a second helper, a branch in the connection manager, a field on the frame — would leave this file's own assertions perfectly green (ISS-1004 criterion 22).
+describe('the @-mention gate', () => {
+  const SRC = join(import.meta.dirname, '..', '..');
+  const FILES = [
+    'integrations/rocketchat/inbound-gate.ts',
+    'integrations/rocketchat/connection-manager.ts',
+    'integrations/rocketchat/conversation-port.ts',
+    'integrations/rocketchat/ddp-client.ts',
+    'integrations/rocketchat/turn-inputs.ts',
+    'conversations/collect-inbound.ts',
+    'conversations/route-window.ts',
+  ];
+
+  it('is named by no module on the inbound path', () => {
+    const offenders = FILES.filter((rel) => {
+      const src = readFileSync(join(SRC, rel), 'utf8');
+      const code = src
+        .split('\n')
+        .filter((line) => !line.trimStart().startsWith('*') && !line.trimStart().startsWith('//'))
+        .join('\n');
+      return /mentions/.test(code);
+    });
+    expect(offenders).toEqual([]);
   });
 });
 
@@ -115,29 +84,5 @@ describe('createSeenTracker', () => {
     for (let i = 0; i < 11; i++) seen(`m${i}`);
     expect(seen('m0')).toBe(false);
     expect(seen('m10')).toBe(true);
-  });
-});
-
-describe('an owned question thread', () => {
-  it('is handled in a group room with no @-mention of the bot', () => {
-    expect(decideHandling(msg({ mentions: [] }), BOT, 'group', true)).toEqual({
-      handle: true,
-      reason: 'ok',
-    });
-  });
-
-  it('leaves the mention requirement standing everywhere else in a group room', () => {
-    expect(decideHandling(msg({ mentions: [] }), BOT, 'group', false).handle).toBe(false);
-    expect(decideHandling(msg({ mentions: [] }), BOT, 'group').handle).toBe(false);
-  });
-
-  it('does not relax a single skip — the loop guard holds inside an owned thread', () => {
-    expect(decideHandling(msg({ userId: BOT }), BOT, 'group', true)).toEqual({
-      handle: false,
-      reason: 'own-message',
-    });
-    expect(decideHandling(msg({ isSystem: true }), BOT, 'group', true).handle).toBe(false);
-    expect(decideHandling(msg({ isEdited: true }), BOT, 'group', true).handle).toBe(false);
-    expect(decideHandling(msg({ text: '  ' }), BOT, 'group', true).handle).toBe(false);
   });
 });

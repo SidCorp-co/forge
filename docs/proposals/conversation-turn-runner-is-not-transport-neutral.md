@@ -1,64 +1,52 @@
-# The turn runner is neutral; four steps of the second adapter are not built
+# The Forge UI is not the second adapter, and the store it would read has no send
 
-Status: step 1 of five landed on ISS-1002. Steps 2 to 5 are not implemented. Verified against the
-tree 2026-09-14.
+Status: ISS-1002 step 1 landed on ISS-1002; steps 2, 3 and 4 landed on ISS-1004. **Step 5 is not
+implemented.** Verified against the tree 2026-09-14.
 
-## What is landed, and how it is held
+## What is landed
 
-ISS-1001 extracted the conversation store out of the first adapter: `conversations`,
-`conversation_participants` and `conversation_messages`, keyed by `(adapter, external_id)`, with
-scope derived per read from handle memberships. It also declared what a transport must supply, as
-four ports in `packages/core/src/conversations/ports.ts` — `resolveVenue`, `resolveSpeaker`,
-`deliver`, `fetchHistory`.
+- **The store** (ISS-1001): `conversations`, `conversation_participants`, `conversation_messages`,
+  keyed by `(adapter, external_id)`, scope derived per read from handle memberships, and the four
+  ports a transport must supply in `packages/core/src/conversations/ports.ts`.
+- **The turn** (ISS-1002): `packages/core/src/conversations/turn-runner.ts` opens the venue, runs the
+  model, screens the reply at the door the caller named, delivers through the registered transport
+  and records what the venue was shown.
+- **The collector, the guards and the end of the @-mention gate** (ISS-1004):
+  `conversations/windows.ts` (the window row, the claim, the lease, the delivery key),
+  `collect-inbound.ts`, `proactivity.ts`, `route-window.ts`. A message in a bound Rocket.Chat room is
+  collected rather than gated, and nothing in the tree decides whether a turn runs by looking for the
+  bot's name.
 
-ISS-1002 landed the thing that calls them. `packages/core/src/conversations/turn-runner.ts` opens
-the venue, runs the model turn, screens the reply at the door the caller named, delivers through the
-registered transport's `deliver`, and records what the venue was shown. The screening decision is
-the runner's: a caller names a door, and the door's row in `packages/core/src/messaging/doors.ts`
-carries the audience, the intent and the repair budget, so no adapter names a cell of its own.
+## What is not built: step 5, the Forge UI as the second adapter
 
-`packages/core/src/conversations/transport-free.test.ts` holds both directions. No store module
-names a transport, and **no file under `packages/core/src/integrations/` imports the store** — the
-count that was three named Rocket.Chat files is zero, and the only conversation modules an adapter
-may import are the ports, the turn and the transcript door.
+`packages/core/src/assistant/conversation-routes.ts` serves `/api/conversations` — list, read,
+rename, delete. It has **no send**, no `web` transport is registered against
+`registerConversationTransport`, and **web-v2 calls none of it**: the Conversations screen
+(`packages/web-v2/src/features/conversations/`), the chat surface
+(`features/session/components/chat-screen.tsx`) and its three mounts — the workspace layout overlay,
+the chat dock, and the conversations split view — all read `agent_sessions` rows. Two paths are still
+live: the one people use, which has none of the store, and the one the store has, which nobody uses.
 
-## What is not built
+That is the whole of what ISS-1004's second condition is still open on.
 
-The four steps ISS-1002 names after the first, in the order it gives, each the precondition of the
-next:
+## Why it was left whole rather than half-landed
 
-1. **The collector window as rows.** It still lives in a process, so a window is lost on restart and
-   the messages inside it are never routed — a silence with nobody to notice it. This is a migration
-   and a change of behaviour, not a move.
-2. **The proactivity guards**, derived from the message log rather than stored, and denominated in
-   concurrency as well as in money: one handle in forty rooms can be reasonable in every room and
-   unaffordable in total, and one busy room can exhaust the single provider login a box holds.
-3. **Removing the @-mention gate.** It may not go before the guards that replace it exist, and it
-   has to be argued as a replacement rather than added beside one.
-4. **The Forge UI as the second adapter**, replacing the Conversations screen's use of session rows
-   as conversations. That is the proof of the whole extraction: four functions, and no turn.
+`ChatScreen` carries model pick, runner pick, invokable skills, the reader's working lenses, fork,
+rerun, per-turn edit and regenerate. `conversation_messages` holds a role, a body, image references,
+a delivery proof and a silence reason — none of the rest. Porting the screen is therefore a product
+decision about which of those affordances are *conversation* and which are *run telemetry* that
+belongs on the session surface, and neither half of that question is answerable by the diff that
+moves the reads.
 
-Two defects belong with steps 2 and 3 rather than to any of them alone: a loop breaker that counts
-hops kills the feature's own purpose (cut on hops that introduce no new identifier), and a send into
-an agent holding no job row is unaudited — the surface carrying content from one project into an
-action under another's authority is the one with no record.
+Half-porting it would have been the worse outcome in both directions: a second conversation UI beside
+the first is the two live paths this work exists to remove, and building the `web` transport with no
+screen reading it is an endpoint nobody calls — which is the same defect wearing the other face.
 
-## What this deliberately gave up, and the price of it
+## Honest costs, for whoever picks it up
 
-Delivery now resolves its own credential from the venue, because the venue is all a neutral runner
-holds. On the first adapter that means a reply is posted by whichever active connection binds the
-room under this conversation's project, rather than by the socket the message arrived on. The
-project-ownership guard is unchanged and is now a property of the door rather than a step each
-caller remembers. The affinity is gone: where two connections on one server both bind one room under
-one project, the answering bot can change between replies. The pick is ordered and logged so it at
-least cannot change for no reason; carrying the connection into the venue would put a transport's
-identifier inside the store, which is the thing the extraction exists to prevent.
-
-## Honest costs
-
-| Cost | What it takes from whoever picks this up |
+| Cost | What it takes |
 |---|---|
-| A migration, not a move | Step 1 was a move and added no schema. The collector window is rows, and a window half-written when a core restarts has to be claimable by exactly one core afterwards — which is a claim protocol to design, not a table to add. |
-| A guard nobody can read the state of | The guards must be derived from the message log and never stored, because a stored counter makes "a human spoke, so proactivity resumes" a write that can be missed, leaving a room muted with no readable cause. Deriving it on every decision costs a query per turn, and that is the price of the property. |
-| Removing a gate that currently bounds the bill | The @-mention requirement is what keeps cost and noise in a group room bounded today. It may only be removed by the change that lands its replacement, so steps 3 and 4 are one landing or none. |
-| Paid on arrival, still | Nothing breaks while there is one adapter. The bill falls due when the second one arrives — and step 1 means it is now four functions rather than four functions plus a copy of the turn path. |
+| A product decision before a line of code | Which of fork, rerun, regenerate, per-turn edit, model pick and runner pick survive on a conversation, and which move to the session surface. A port that silently drops one is a regression nobody wrote down. |
+| Four functions, and this time they are real | `resolveVenue`, `resolveSpeaker`, `deliver`, `fetchHistory` for `web`. `deliver` has no socket to post to: the durable row IS the delivery, and the receipt has to be something a reader can trust — a WebSocket broadcast proof, not a shrug. |
+| A send endpoint | `POST /api/conversations/:id/messages`, running the neutral turn under the caller's own authority. The read routes already exist and already derive scope. |
+| The old path leaves with it | `agent_sessions` keeps every run-shaped verb it has; what it loses is being the thing a person's chat is stored in. A change that adds the new reads and leaves the old ones is the defect, not the milestone. |

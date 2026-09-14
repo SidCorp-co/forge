@@ -6,6 +6,11 @@
  * The turn itself belongs to `conversations/turn-runner.ts`. Everything in this
  * file is an input to it or a diversion from it — which is the whole of what an
  * adapter owes a turn (ISS-1002).
+ *
+ * The subject is a WINDOW of messages rather than the single message that named
+ * the bot, because since ISS-1004 there is no such message: a turn answers
+ * everything that arrived together, and the seed has to be told about all of it
+ * or it hands the model back the rest of its own question.
  */
 
 import { eq } from 'drizzle-orm';
@@ -15,11 +20,8 @@ import {
   type ExternalMcpToolsets,
 } from '../../assistant/tools/external-mcp.js';
 import { codeAuthored } from '../../conversations/ports.js';
-import type {
-  ConversationTurnRequest,
-  TurnInputs,
-  TurnReply,
-} from '../../conversations/turn-runner.js';
+import type { WindowTurnInputs } from '../../conversations/route-window.js';
+import type { TurnInputs, TurnReply } from '../../conversations/turn-runner.js';
 import { db } from '../../db/client.js';
 import { projects } from '../../db/schema.js';
 import {
@@ -29,7 +31,6 @@ import {
 } from './agent-chat.js';
 import { readRocketChatAnswerMode } from './answer-mode.js';
 import { buildConversationContext } from './context.js';
-import type { RocketChatIncomingMessage } from './ddp-client.js';
 import {
   ESCALATION_ACK,
   ESCALATION_DEDUP_REPLY,
@@ -38,7 +39,7 @@ import {
 } from './escalation.js';
 import { prepareFastTurn } from './images.js';
 import { rocketChatPersona } from './persona.js';
-import type { RocketChatRestAuth } from './rest-client.js';
+import type { RocketChatImageRef, RocketChatRestAuth } from './rest-client.js';
 import type { RoomShape } from './room-shape.js';
 import type { Route } from './routes.js';
 
@@ -50,20 +51,31 @@ export interface TurnBot {
   botUserId: string;
 }
 
+/** The messages one window collected, in the terms this transport needs them in. */
+export interface RocketChatTurnSubject {
+  rid: string;
+  tmid: string | undefined;
+  /** Everything the window collected, as one body — what the diversions and the quote scan read. */
+  text: string;
+  /** Who spoke last, for the persona. */
+  username: string | undefined;
+  /** Rocket.Chat's own ids for the collected messages, oldest first. */
+  messageIds: readonly string[];
+  /** Every image reference the window carried. */
+  images: readonly RocketChatImageRef[];
+}
+
 export interface RocketChatTurnArgs {
   bot: TurnBot;
   route: Route;
-  m: RocketChatIncomingMessage;
+  subject: RocketChatTurnSubject;
   connectionId: string;
   shape: RoomShape;
   webBaseUrl: string | undefined;
 }
 
-/** Everything the neutral turn takes bar what the ports and the venue's shape settle. */
-export type RocketChatTurn = Omit<
-  ConversationTurnRequest,
-  'venue' | 'principalUserId' | 'speakerKey' | 'message'
->;
+/** Everything the neutral turn takes bar what the window and its venue settle. */
+export type RocketChatTurn = WindowTurnInputs;
 
 interface Seed {
   persona: string;
@@ -77,7 +89,7 @@ interface Seed {
  */
 // cm:guard the seed is read ONCE and shared by both diversions and the model turn: agent mode, escalation and the fast path all need the same persona and the same room context, and re-reading it per branch is three round trips for one answer.
 export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
-  const { bot, route, m } = args;
+  const { bot, route, subject } = args;
   const restAuth: RocketChatRestAuth = {
     serverUrl: bot.serverUrl,
     authToken: bot.authToken,
@@ -91,10 +103,10 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
     if (seed) return seed;
     const [conversationContext, projectRow] = await Promise.all([
       buildConversationContext(restAuth, {
-        rid: m.rid,
-        tmid: m.tmid,
-        excludeMessageId: m.id,
-        triggerText: m.text,
+        rid: subject.rid,
+        tmid: subject.tmid,
+        excludeMessageIds: subject.messageIds,
+        triggerText: subject.text,
       }),
       db
         .select({ agentConfig: projects.agentConfig, repoPath: projects.repoPath })
@@ -106,7 +118,7 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
       conversationContext,
       agentConfig: projectRow[0]?.agentConfig ?? null,
       repoPath: projectRow[0]?.repoPath ?? null,
-      persona: rocketChatPersona(route.projectName, m.username, {
+      persona: rocketChatPersona(route.projectName, subject.username, {
         projectSlug: route.projectSlug,
         webBaseUrl: args.webBaseUrl,
         botName: bot.botName,
@@ -120,7 +132,12 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
   return {
     door: 'chat-sync',
     handleName: bot.botName,
-    log: { connectionId: args.connectionId, rid: m.rid, msgId: m.id, projectId: route.projectId },
+    log: {
+      connectionId: args.connectionId,
+      rid: subject.rid,
+      msgIds: subject.messageIds,
+      projectId: route.projectId,
+    },
 
     // cm:guard `agent` mode routes the WHOLE turn to a runner-hosted session and sends nothing but an ack synchronously — the reply lands later through the completion bridge (ISS-727).
     divertBeforeTurn: async ({ setPhase }): Promise<TurnReply | null> => {
@@ -132,11 +149,11 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
         projectId: route.projectId,
         project: { ...project, repoPath: s.repoPath },
         connectionId: args.connectionId,
-        rid: m.rid,
-        tmid: m.tmid,
+        rid: subject.rid,
+        tmid: subject.tmid,
         botName: bot.botName,
-        message: m.text,
-        askedByUsername: m.username,
+        message: subject.text,
+        askedByUsername: subject.username,
         persona: s.persona,
         conversationContext: s.conversationContext,
       });
@@ -159,8 +176,8 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
         route,
         principalUserId,
         restAuth,
-        rid: m.rid,
-        images: m.images,
+        rid: subject.rid,
+        images: subject.images,
         externalToolsets: external.toolsets,
       });
       return {
@@ -182,11 +199,11 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
         projectId: route.projectId,
         project: { ...project, repoPath: s.repoPath },
         connectionId: args.connectionId,
-        rid: m.rid,
-        tmid: m.tmid,
+        rid: subject.rid,
+        tmid: subject.tmid,
         botName: bot.botName,
-        question: escalationQuestion(escalateCall.arguments, m.text),
-        askedByUsername: m.username,
+        question: escalationQuestion(escalateCall.arguments, subject.text),
+        askedByUsername: subject.username,
         shape: args.shape,
         principalUserId,
       });

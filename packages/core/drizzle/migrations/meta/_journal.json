@@ -1695,6 +1695,13 @@
       "when": 1794441600000,
       "tag": "0243_participant_records_its_project",
       "breakpoints": true
+    },
+    {
+      "idx": 244,
+      "version": "7",
+      "when": 1794528000000,
+      "tag": "0244_conversation_windows",
+      "breakpoints": true
     }
   ]
 }

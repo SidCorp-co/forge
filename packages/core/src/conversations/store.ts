@@ -17,7 +17,7 @@ import {
   conversationParticipants,
   conversations,
 } from '../db/schema-conversations.js';
-import type { Executor } from './db-executor.js';
+import type { Executor, TxOnly } from './db-executor.js';
 import { resolveProjectHandle } from './handles.js';
 import { attachOpeningHandle } from './participants.js';
 import type { ConversationVenue } from './ports.js';
@@ -44,6 +44,8 @@ export interface ConversationImage {
 export interface StoredConversationMessage {
   id: string;
   seq: number;
+  /** The transport's own id for this message, where it had one. */
+  externalId: string | null;
   role: ConversationMessageRole;
   authorUserId: string | null;
   authorLabel: string | null;
@@ -161,6 +163,7 @@ export interface AppendMessageArgs {
   content: string;
   authorUserId?: string | null;
   authorLabel?: string | null;
+  externalId?: string | null;
   images?: readonly ConversationImage[] | undefined;
   deliveryProof?: unknown;
   silenceReason?: string | null;
@@ -194,7 +197,19 @@ export async function appendMessages(
 ): Promise<StoredConversationMessage[]> {
   const dbi = args.db ?? defaultDb;
   if (args.messages.length === 0) return [];
-  return dbi.transaction(async (tx) => {
+  return dbi.transaction((tx) => appendMessagesIn(tx, args));
+}
+
+/**
+ * The same append, for a caller that already holds the transaction.
+ */
+// cm:guard the collector needs the message and the window it belongs to committed TOGETHER: a message durable with no window is owed an answer nothing knows to give, and the only way to have both under one commit is for the append to take somebody else's transaction (ISS-1004, review F3).
+export async function appendMessagesIn(
+  tx: TxOnly,
+  args: Omit<AppendMessagesArgs, 'db'>,
+): Promise<StoredConversationMessage[]> {
+  if (args.messages.length === 0) return [];
+  {
     const [live] = await tx
       .select({ id: conversations.id })
       .from(conversations)
@@ -225,6 +240,7 @@ export async function appendMessages(
           authorUserId: m.authorUserId ?? null,
           authorLabel: m.authorLabel ?? null,
           content: m.content,
+          externalId: m.externalId ?? null,
           images: (m.images && m.images.length > 0 ? [...m.images] : null) as never,
           deliveryProof: (m.deliveryProof ?? null) as never,
           silenceReason: m.silenceReason ?? null,
@@ -241,7 +257,7 @@ export async function appendMessages(
       .where(eq(conversations.id, args.conversationId));
 
     return rows.map(toStored);
-  });
+  }
 }
 
 /** The last `limit` turns, oldest first. */
@@ -257,6 +273,28 @@ export async function readMessages(
     .orderBy(desc(conversationMessages.seq))
     .limit(limit);
   return rows.reverse().map(toStored);
+}
+
+/**
+ * Has this conversation already been shown the reply for this delivery key?
+ */
+// cm:guard the key is the AT-MOST-ONCE proof and it is checked against what was DELIVERED, never against what was attempted: a window re-claimed after its holder died is owed an answer only if the room never got one, and the row carrying the key is the only evidence either way (ISS-1004 rule 2).
+export async function deliveredUnderKey(
+  conversationId: string,
+  deliveryKey: string,
+  tx: Executor = defaultDb,
+): Promise<boolean> {
+  const [row] = await tx
+    .select({ id: conversationMessages.id })
+    .from(conversationMessages)
+    .where(
+      and(
+        eq(conversationMessages.conversationId, conversationId),
+        sql`${conversationMessages.deliveryProof}->>'deliveryKey' = ${deliveryKey}`,
+      ),
+    )
+    .limit(1);
+  return Boolean(row);
 }
 
 export async function countMessages(
@@ -362,6 +400,7 @@ function toStored(row: typeof conversationMessages.$inferSelect): StoredConversa
     authorUserId: row.authorUserId,
     authorLabel: row.authorLabel,
     content: row.content,
+    externalId: row.externalId,
     images: asImages(row.images),
     deliveryProof: row.deliveryProof ?? null,
     silenceReason: row.silenceReason,

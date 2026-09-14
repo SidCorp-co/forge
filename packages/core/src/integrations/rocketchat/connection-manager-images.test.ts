@@ -1,12 +1,13 @@
 /**
- * The ISS-675 escalation wiring and the ISS-727 answer-mode routing, through
- * `handle()`. The room-shape suites left for `connection-manager-shapes.test.ts`
- * and the image suite for `connection-manager-images.test.ts`, each time this
- * file reached the size budget. Heavy dependencies (registry/embeddings graph,
- * RC REST/DDP) are stubbed so this stays a fast, hermetic unit suite; `handle()`
- * is private, invoked via a loose cast (TS `private` is compile-time only).
+ * The image path through `handle()`: the bytes the model is shown, the
+ * credential they are fetched with, and what happens when the fetch fails.
+ * Split from `connection-manager.test.ts` to keep both files inside the size
+ * budget, following the room-shape split before it.
+ *
+ * Heavy dependencies (registry/embeddings graph, RC REST/DDP) are stubbed so
+ * this stays a fast, hermetic unit suite; `handle()` is private, invoked via a
+ * loose cast (TS `private` is compile-time only).
  */
-// cm:ignore CM013 — the one frozen comment left in this file is an `i18n-allow` pragma the language gate reads; deleting it to pay the drain reds that gate instead.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -74,6 +75,12 @@ vi.mock('./agent-chat.js', () => ({
   AGENT_CHAT_DEDUP_REPLY: (botName: string) => `AGENT_DEDUP:${botName}`,
   AGENT_CHAT_NO_DEVICE_REPLY: (botName: string) => `AGENT_NO_DEVICE:${botName}`,
   startAgentChat: (...args: unknown[]) => startAgentChat(...args),
+}));
+
+const fetchAttachmentBytes = vi.fn();
+vi.mock('./rest-client.js', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  fetchAttachmentBytes: (...args: unknown[]) => fetchAttachmentBytes(...args),
 }));
 
 vi.mock('../store.js', () => ({
@@ -283,222 +290,78 @@ beforeEach(() => {
   recordDeliveredReply.mockClear();
 });
 
-describe('connection-manager escalation wiring', () => {
+describe('connection-manager image handling', () => {
+  const IMAGE = {
+    name: 'shot.png',
+    mime: 'image/png',
+    ref: 'https://chat.example.co/file-upload/a/shot.png',
+  };
+
+  interface TurnArgs {
+    images: Array<{ name: string; mime: string; ref: string; dataBase64: string }>;
+    resolveImage: (i: { ref: string }) => Promise<string | null>;
+  }
+  const turnArgs = () => runExternalChatTurn.mock.calls[0]?.[0] as TurnArgs;
+
   beforeEach(() => {
-    selectLimit.mockReset();
-    selectLimit.mockResolvedValue([{ agentConfig: null, repoPath: '/repo' }]);
-    runExternalChatTurn.mockReset();
-    startEscalation.mockReset();
-    startAgentChat.mockReset();
-    screenRoomReply.mockReset();
+    vi.clearAllMocks();
+    selectLimit.mockResolvedValue([{ agentConfig: null, repoPath: null }]);
     screenRoomReply.mockResolvedValue({ ok: true });
-  });
-
-  it('posts the ACK and invokes startEscalation when the model calls escalate(); skips the normal reply', async () => {
     runExternalChatTurn.mockResolvedValue({
       conversationId: 'conv:chat.example.co room-1',
-      reply: '',
-      terminal: 'done',
-      error: null,
-      iterations: 1,
-      toolCalls: [{ name: 'escalate', arguments: '{"question":"How does the pipeline work?"}' }],
-    });
-    startEscalation.mockResolvedValue({ started: true, sessionId: 'escalation-session-1' });
-
-    const ac = makeAc();
-    await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
-
-    expect(startEscalation).toHaveBeenCalledWith(
-      expect.objectContaining({
-        projectId: 'proj-1',
-        connectionId: 'conn-1',
-        rid: 'room-1',
-        botName: 'Babo',
-        question: 'How does the pipeline work?',
-      }),
-    );
-    expect(deliver.mock.calls[0]?.[1]).toMatchObject({ text: 'ACK:Babo' });
-    // cm:why the escalate branch returns before the output-guard verify step, so this reply never reaches the screener
-    expect(screenRoomReply).not.toHaveBeenCalled();
-  });
-
-  it('replies with the dedup message and does not double-dispatch on a second in-flight escalation', async () => {
-    runExternalChatTurn.mockResolvedValue({
-      conversationId: 'conv:chat.example.co room-1',
-      reply: '',
-      terminal: 'done',
-      error: null,
-      iterations: 1,
-      toolCalls: [{ name: 'escalate', arguments: '{"question":"How does the pipeline work?"}' }],
-    });
-    startEscalation.mockResolvedValue({ started: false, reason: 'deduped' });
-
-    const ac = makeAc();
-    await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
-
-    expect(deliver.mock.calls[0]?.[1]).toMatchObject({ text: 'DEDUP:Babo' });
-  });
-
-  it('replies with the no-device message when no runner is available', async () => {
-    runExternalChatTurn.mockResolvedValue({
-      conversationId: 'conv:chat.example.co room-1',
-      reply: '',
-      terminal: 'done',
-      error: null,
-      iterations: 1,
-      toolCalls: [{ name: 'escalate', arguments: '{"question":"How does the pipeline work?"}' }],
-    });
-    startEscalation.mockResolvedValue({ started: false, reason: 'no-device' });
-
-    const ac = makeAc();
-    await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
-
-    expect(deliver.mock.calls[0]?.[1]).toMatchObject({ text: 'NO_DEVICE:Babo' });
-  });
-
-  it('sends nothing over DDP on dispatch-failed — the completion bridge already delivers the fallback', async () => {
-    runExternalChatTurn.mockResolvedValue({
-      conversationId: 'conv:chat.example.co room-1',
-      reply: '',
-      terminal: 'done',
-      error: null,
-      iterations: 1,
-      toolCalls: [{ name: 'escalate', arguments: '{"question":"How does the pipeline work?"}' }],
-    });
-    startEscalation.mockResolvedValue({ started: false, reason: 'dispatch-failed' });
-
-    const ac = makeAc();
-    await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
-
-    expect(deliver).not.toHaveBeenCalled();
-  });
-
-  it('takes the normal verify/reply path (not escalation) when the model answers without escalating', async () => {
-    runExternalChatTurn.mockResolvedValue({
-      conversationId: 'conv:chat.example.co room-1',
-      reply: 'Đơn hàng của bạn đã xử lý xong.', // i18n-allow: a plain-language bot reply exercised by the guard
+      reply: 'that toggle reads the wrong tier',
       terminal: 'done',
       error: null,
       iterations: 1,
       toolCalls: [],
-    });
-
-    const ac = makeAc();
-    await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
-
-    expect(startEscalation).not.toHaveBeenCalled();
-    expect(screenRoomReply).toHaveBeenCalled();
-    expect(deliver.mock.calls[0]?.[1]).toMatchObject({
-      text: 'Đơn hàng của bạn đã xử lý xong.', // i18n-allow: a plain-language bot reply exercised by the guard
+      progress: null,
     });
   });
-});
 
-describe('connection-manager ISS-727 answer-mode routing', () => {
-  beforeEach(() => {
-    selectLimit.mockReset();
-    runExternalChatTurn.mockReset();
-    startAgentChat.mockReset();
-    screenRoomReply.mockReset();
-    screenRoomReply.mockResolvedValue({ ok: true });
+  it('shows the model the bytes of the image posted in the room', async () => {
+    fetchAttachmentBytes.mockResolvedValue(Buffer.from('PNG'));
+    await handle(makeAc(), ROUTE, { ...MESSAGE, images: [IMAGE] }, 'conn-1', 'group');
+
+    expect(turnArgs().images).toEqual([{ ...IMAGE, dataBase64: 'UE5H' }]);
+    expect(Buffer.from(turnArgs().images[0]?.dataBase64 ?? '', 'base64').toString()).toBe('PNG');
   });
 
-  it("mode='agent' routes to startAgentChat, skips the fast turn, and sends NO synchronous ack", async () => {
-    selectLimit.mockResolvedValue([
-      { agentConfig: { rocketChatAnswerMode: 'agent' }, repoPath: '/repo' },
-    ]);
-    startAgentChat.mockResolvedValue({ started: true, sessionId: 'agent-session-1' });
+  it('fetches the image with the bot credential, not anonymously', async () => {
+    fetchAttachmentBytes.mockResolvedValue(Buffer.from('PNG'));
+    await handle(makeAc(), ROUTE, { ...MESSAGE, images: [IMAGE] }, 'conn-1', 'group');
 
-    const ac = makeAc();
-    await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
-
-    expect(startAgentChat).toHaveBeenCalledWith(
-      expect.objectContaining({
-        projectId: 'proj-1',
-        connectionId: 'conn-1',
-        rid: 'room-1',
-        botName: 'Babo',
-        message: 'How does the pipeline work?',
-        askedByUsername: 'alice',
-        persona: expect.any(String),
-      }),
-    );
-    expect(runExternalChatTurn).not.toHaveBeenCalled();
-    // cm:guard no immediate ack: a fast turn's answer arrives through the completion bridge, and only a slow turn gets the delayed ack, scheduled inside `startAgentChat` rather than sent from here.
-    expect(deliver).not.toHaveBeenCalled();
+    const [auth, ref, cap] = fetchAttachmentBytes.mock.calls[0] as [
+      { authToken: string; userId: string; serverUrl: string },
+      string,
+      number,
+    ];
+    expect(auth.authToken).toBe('bot-token');
+    expect(auth.serverUrl).toBe('https://chat.example.co');
+    expect(ref).toBe(IMAGE.ref);
+    expect(cap).toBeGreaterThan(0);
   });
 
-  it("mode='agent' replies with the dedup message on an in-flight agent-chat turn", async () => {
-    selectLimit.mockResolvedValue([
-      { agentConfig: { rocketChatAnswerMode: 'agent' }, repoPath: '/repo' },
-    ]);
-    startAgentChat.mockResolvedValue({ started: false, reason: 'deduped' });
-
+  it('still answers the question when the image cannot be fetched', async () => {
+    fetchAttachmentBytes.mockResolvedValue(null);
     const ac = makeAc();
-    await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
+    await handle(ac, ROUTE, { ...MESSAGE, images: [IMAGE] }, 'conn-1', 'group');
 
-    expect(deliver.mock.calls[0]?.[1]).toMatchObject({ text: 'AGENT_DEDUP:Babo' });
+    expect(turnArgs().images).toEqual([]);
+    expect(deliver.mock.calls[0]?.[0]).toMatchObject({ externalId: 'chat.example.co room-1' });
+    expect(deliver.mock.calls[0]?.[1]).toMatchObject({ text: 'that toggle reads the wrong tier' });
   });
 
-  it("mode='agent' replies with the no-device message when no runner is available", async () => {
-    selectLimit.mockResolvedValue([
-      { agentConfig: { rocketChatAnswerMode: 'agent' }, repoPath: '/repo' },
-    ]);
-    startAgentChat.mockResolvedValue({ started: false, reason: 'no-device' });
+  it('offers a resolver that re-reads an image from an earlier turn', async () => {
+    fetchAttachmentBytes.mockResolvedValue(Buffer.from('OLD'));
+    await handle(makeAc(), ROUTE, MESSAGE, 'conn-1', 'group');
 
-    const ac = makeAc();
-    await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
-
-    expect(deliver.mock.calls[0]?.[1]).toMatchObject({ text: 'AGENT_NO_DEVICE:Babo' });
+    expect(await turnArgs().resolveImage(IMAGE)).toBe('T0xE');
   });
 
-  it("mode='agent' sends nothing over DDP on dispatch-failed — the completion bridge delivers the fallback", async () => {
-    selectLimit.mockResolvedValue([
-      { agentConfig: { rocketChatAnswerMode: 'agent' }, repoPath: '/repo' },
-    ]);
-    startAgentChat.mockResolvedValue({ started: false, reason: 'dispatch-failed' });
+  it('downloads nothing for a plain message with no images', async () => {
+    await handle(makeAc(), ROUTE, MESSAGE, 'conn-1', 'group');
 
-    const ac = makeAc();
-    await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
-
-    expect(deliver).not.toHaveBeenCalled();
-  });
-
-  it('absent answerMode (null agentConfig) runs the existing fast path unchanged — regression guard', async () => {
-    selectLimit.mockResolvedValue([{ agentConfig: null, repoPath: '/repo' }]);
-    runExternalChatTurn.mockResolvedValue({
-      conversationId: 'conv:chat.example.co room-1',
-      reply: 'Đơn hàng của bạn đã xử lý xong.', // i18n-allow: a plain-language bot reply exercised by the guard
-      terminal: 'done',
-      error: null,
-      iterations: 1,
-      toolCalls: [],
-    });
-
-    const ac = makeAc();
-    await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
-
-    expect(startAgentChat).not.toHaveBeenCalled();
-    expect(runExternalChatTurn).toHaveBeenCalled();
-  });
-
-  it("mode='fast' (explicit) runs the existing fast path unchanged — regression guard", async () => {
-    selectLimit.mockResolvedValue([
-      { agentConfig: { rocketChatAnswerMode: 'fast' }, repoPath: '/repo' },
-    ]);
-    runExternalChatTurn.mockResolvedValue({
-      conversationId: 'conv:chat.example.co room-1',
-      reply: 'Đơn hàng của bạn đã xử lý xong.', // i18n-allow: a plain-language bot reply exercised by the guard
-      terminal: 'done',
-      error: null,
-      iterations: 1,
-      toolCalls: [],
-    });
-
-    const ac = makeAc();
-    await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
-
-    expect(startAgentChat).not.toHaveBeenCalled();
-    expect(runExternalChatTurn).toHaveBeenCalled();
+    expect(fetchAttachmentBytes.mock.calls).toEqual([]);
+    expect(turnArgs().images).toEqual([]);
   });
 });

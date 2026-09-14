@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { screenCarriedComment } from './comment-carry.js';
 import { threadRootText } from './comment-render.js';
 import type { RocketChatIncomingMessage } from './ddp-client.js';
-import { decideHandling } from './inbound-gate.js';
+import { decideSkip } from './inbound-gate.js';
 
 const msg = (over: Partial<RocketChatIncomingMessage> = {}): RocketChatIncomingMessage =>
   ({
@@ -11,7 +11,6 @@ const msg = (over: Partial<RocketChatIncomingMessage> = {}): RocketChatIncomingM
     text: 'a reply on a root nobody registered',
     userId: 'person',
     username: 'person',
-    mentions: [],
     ...over,
   }) as RocketChatIncomingMessage;
 
@@ -45,21 +44,13 @@ describe('a comment carried into a room', () => {
   });
 });
 
+// cm:guard the residual the at-least-once root leaves, asserted rather than wished away: a reply on an orphan root DOES reach the conversation path, and a change that made this go red would be a change to ordinary conversation routing (ISS-981 criterion 34). ISS-1004 made the residual LARGER rather than smaller — the reply used to need the bot's name in a group room and now needs nothing — so the assertion is the same one with the mention arm gone.
 describe('a reply on a root the registry does not know', () => {
-  it('is dropped in a group room when it does not mention the bot', () => {
-    const verdict = decideHandling(msg({ tmid: 'orphan' }), 'bot', 'group', false);
-    expect(verdict.handle).toBe(false);
-    expect(verdict.reason).toBe('not-mentioned');
+  it('reaches the conversation path in every room shape', () => {
+    expect(decideSkip(msg({ tmid: 'orphan' }), 'bot')).toBeNull();
   });
 
-  // cm:guard these two are the residual the at-least-once root leaves, asserted rather than wished away: a reply on an orphan root DOES reach the conversation handler in a direct room or when it mentions the bot, and a change that made this test go red would be a change to ordinary conversation routing (ISS-981 criterion 34).
-  it('still reaches the conversation handler in a direct room', () => {
-    expect(decideHandling(msg({ tmid: 'orphan' }), 'bot', 'direct', false).handle).toBe(true);
-  });
-
-  it('still reaches the conversation handler when it mentions the bot', () => {
-    expect(
-      decideHandling(msg({ tmid: 'orphan', mentions: ['bot'] }), 'bot', 'group', false).handle,
-    ).toBe(true);
+  it('is still refused when it is the bot own message', () => {
+    expect(decideSkip(msg({ tmid: 'orphan', userId: 'bot' }), 'bot')).toBe('own-message');
   });
 });

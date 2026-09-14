@@ -2,28 +2,26 @@
  * ISS-604 (P2d) — pure inbound-message gate for the Rocket.Chat bot.
  *
  * Kept dependency-free (type-only import) so it's unit-testable without booting
- * env/db. Decides whether an incoming room message should trigger a bot reply:
- * skip the bot's own messages (loop guard), system/edit events, empty text, and
- * — in a group room — anything that doesn't @-mention the bot (trigger-gating
- * for noise + cost).
+ * env/db. What is left of the gate is the loop guard and nothing else: the bot's
+ * own messages, system and edit events, and empty text.
  *
- * ISS-987 split the decision in two. The skips are facts about the message and
- * need no room; addressing is a fact about the room, so it needs the shape and
- * the shape needs a round trip.
- *
- * ISS-978 added the one other way in: a reply inside a thread this bot opened
- * to ask a parked run's question.
+ * ISS-1004 removed the @-mention requirement, and with it the whole notion of a
+ * message being "addressed". A group-room message that named nobody used to be
+ * dropped here, so a question asked without summoning anyone was never seen.
+ * What bounds a room's cost now is the collector window and the three
+ * proactivity guards (`conversations/windows.ts`, `conversations/proactivity.ts`)
+ * — which is a replacement rather than an addition beside one, and why nothing
+ * in this file reads `msg.mentions` any more.
  */
 
 import type { RocketChatIncomingMessage } from './ddp-client.js';
-import type { RoomShape } from './room-shape.js';
 
 export type InboundSkipReason = 'own-message' | 'system' | 'edited' | 'empty';
 
 /**
- * The skips that hold whatever room the message came from, so the caller can
- * drop a message before paying for its shape. Null when none of them applies.
+ * The facts about a message that hold in any room it came from.
  */
+// cm:guard these are about LOOPS and NOISE and apply to every room shape alike — a direct room relaxed only addressing, which no longer exists. Making one of them conditional would let the bot answer its own message, which is an unbounded loop with nothing left to stop it (ISS-987, ISS-1004).
 export function decideSkip(
   msg: RocketChatIncomingMessage,
   botUserId: string,
@@ -33,23 +31,6 @@ export function decideSkip(
   if (msg.isEdited) return 'edited';
   if (!msg.text.trim()) return 'empty';
   return null;
-}
-
-// cm:guard the skips are about loops and noise and apply to a direct room exactly as they do to a channel — only ADDRESSING is what a direct room relaxes. Moving one of them under the `group` branch would let the bot answer its own message in a DM, which is an unbounded loop with no mention gate left to stop it (ISS-987).
-export function decideHandling(
-  msg: RocketChatIncomingMessage,
-  botUserId: string,
-  shape: RoomShape,
-  threadOwned = false,
-): { handle: boolean; reason: string } {
-  const skip = decideSkip(msg, botUserId);
-  if (skip) return { handle: false, reason: skip };
-  // cm:why a person alone in a direct room with the bot has already addressed it by opening the room; requiring the bot's own name there is the mention gate applied where there is no noise to gate. A thread inside a direct room is still a direct room for addressing — what its `tmid` decides is which conversation the turn belongs to, not whether it runs.
-  if (shape === 'direct') return { handle: true, reason: 'ok' };
-  // cm:guard a thread THIS bot opened to ask a question is the one new way in, and it is addressing that has already happened: the bot posted the thread's root, so a reply in it is directed at the bot by construction. It relaxes nothing else — the skips above still run first, and a message anywhere but an owned thread still owes its mention (ISS-978 criteria 22, 23).
-  if (threadOwned) return { handle: true, reason: 'ok' };
-  if (!msg.mentions.includes(botUserId)) return { handle: false, reason: 'not-mentioned' };
-  return { handle: true, reason: 'ok' };
 }
 
 /**

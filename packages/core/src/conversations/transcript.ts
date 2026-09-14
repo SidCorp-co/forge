@@ -17,6 +17,11 @@ export interface DeliveredReply {
   /** The exact text the venue was shown. */
   text: string;
   receipt: DeliveryReceipt;
+  /**
+   * The stable key this delivery answers, where the caller has one.
+   */
+  // cm:guard stored INSIDE the proof rather than beside it, because the proof is what a reader trusts: a key recorded on a row whose delivery failed would tell the next attempt the room already has an answer it never saw (ISS-1004 rule 2).
+  deliveryKey?: string | undefined;
 }
 
 /**
@@ -32,12 +37,39 @@ export async function recordDeliveredReply(reply: DeliveredReply): Promise<void>
       role: 'assistant',
       content: reply.text,
       authorUserId: await handleForProject(reply.conversationId, reply.projectId),
-      deliveryProof: reply.receipt,
+      deliveryProof: reply.deliveryKey
+        ? { ...reply.receipt, deliveryKey: reply.deliveryKey }
+        : reply.receipt,
     });
   } catch (err) {
     logger.warn(
       { err, conversationId: reply.conversationId },
       'conversations: delivered, but the transcript could not record it',
+    );
+  }
+}
+
+/**
+ * A turn that chose to say nothing, recorded as the reason rather than as nothing.
+ */
+// cm:guard written HERE and nowhere else for a declined turn, and never for an empty or errored one: `external-chat.ts` already files those with their own reason, and two writers would give one silence two rows saying different things (ISS-1004 rule 4).
+export async function recordSilence(args: {
+  conversationId: string;
+  projectId: string;
+  reason: string;
+}): Promise<void> {
+  try {
+    await appendMessage({
+      conversationId: args.conversationId,
+      role: 'assistant',
+      content: '',
+      authorUserId: await handleForProject(args.conversationId, args.projectId),
+      silenceReason: args.reason,
+    });
+  } catch (err) {
+    logger.warn(
+      { err, conversationId: args.conversationId },
+      'conversations: a turn declined and the silence could not be recorded',
     );
   }
 }
