@@ -84,7 +84,8 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			}
 			return;
 		}
-		// cm:edge contract -> packages/core/src/assistant/conversation-adapter.ts — the `deliver` half of the Forge UI's conversation transport publishes this into each person's own user room; the name and the payload are settled there, and a rename on either side leaves the open thread correct only after a reload (ISS-1004 step 5).
+		// cm:edge contract -> packages/core/src/assistant/conversation-adapter.ts — the `deliver` half of the Forge UI's conversation transport publishes this into each person's own user room; the name and the payload are settled there, and a rename on either side leaves the open thread correct only after a reload. `conversation.settled` is the second half of the pair and arrives after the row is durable, which is why both invalidate rather than either one appending (ISS-1004 step 5).
+		case "conversation.settled":
 		case "conversation.message": {
 			if (data?.conversationId) {
 				qc.invalidateQueries({ queryKey: ["conversations", data.conversationId] });
@@ -111,10 +112,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "agent-session.turn.appended":
 		case "agent-session.turn.edited":
 		case "agent-session.turn.truncated": {
-			// ISS-292 — the conversation detail (`features/session`) keys turns under
-			// ['agent-session', id, 'turns']; the streaming caret + live turn updates
-			// ride on this invalidation. The streaming-tail `turn.appended` is
-			// debounced ~100ms server-side (core `agent-sessions/broadcast.ts`).
+			// cm:guard these three are the RUN detail's, not a conversation's: since ISS-1004 step 5 `features/session` is the screen whose subject is a session on a runner, and the chat surface reads `conversation.message` / `conversation.settled` above instead. The streaming-tail `turn.appended` is debounced ~100ms server-side (core `agent-sessions/broadcast.ts`), so a caret that stops moving is that debounce before it is this key (ISS-292).
 			if (data?.sessionId) {
 				qc.invalidateQueries({
 					queryKey: ["agent-session", data.sessionId, "turns"],

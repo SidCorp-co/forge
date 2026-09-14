@@ -68,13 +68,16 @@ export function useOpenConversation() {
 /**
  * Say something, and put what came back where the thread reads it.
  */
-// cm:guard the response is WRITTEN into the detail cache rather than only invalidated: this one request carries the question, the answer and the window's decision, and an invalidate-and-refetch would throw all three away and ask for them again — which is a second round trip for data already in hand, and a visible flicker on the reply that just arrived.
-export function useSendMessage(conversationId: string | undefined) {
+// cm:guard the room is named PER CALL and never closed over: a draft opens its room and sends in one chain, so a mutation built from the render's `conversationId` still holds `undefined` when the send runs and posts to `/conversations/undefined/messages` — the first message of every new conversation, failing, leaving the room empty behind it (ISS-1004 step 5, review F3).
+// cm:guard the response is WRITTEN into the detail cache, keyed by the id the SERVER answered with, and the room's own read is CANCELLED first: this one request carries the question, the answer and the window's decision, so an invalidate-and-refetch would throw all three away for a second round trip — and a read already in flight when the send landed would otherwise resolve afterwards and put the room back as it was before the answer. A client holding no cached room is not written to and does not need to be: its own `useConversation` is fetching.
+export function useSendMessage() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (content: string) => conversationsApi.send(conversationId as string, content),
-    onSuccess: (result) => {
-      qc.setQueryData<ConversationDetail>(["conversations", conversationId], (prev) =>
+    mutationFn: ({ conversationId, content }: { conversationId: string; content: string }) =>
+      conversationsApi.send(conversationId, content),
+    onSuccess: async (result) => {
+      await qc.cancelQueries({ queryKey: ["conversations", result.conversationId] });
+      qc.setQueryData<ConversationDetail>(["conversations", result.conversationId], (prev) =>
         prev ? { ...prev, messages: result.messages, windows: result.windows } : prev,
       );
       qc.invalidateQueries({ queryKey: ["conversations", "list"] });

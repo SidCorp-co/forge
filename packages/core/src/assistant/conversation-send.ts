@@ -29,7 +29,12 @@ import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import type { ConversationShape } from '../db/schema-conversations.js';
 import { logger } from '../logger.js';
-import { type WebConversationFrame, webConversationPorts } from './conversation-adapter.js';
+import {
+  publishToConversationReaders,
+  WEB_CONVERSATION_SETTLED_EVENT,
+  type WebConversationFrame,
+  webConversationPorts,
+} from './conversation-adapter.js';
 import { buildChatToolContext } from './tools/principal.js';
 import { buildProjectToolset } from './tools/registry.js';
 
@@ -175,6 +180,20 @@ async function routeWebWindow(
         askedBy: messages.filter((m) => m.role === 'user').at(-1)?.authorLabel ?? null,
       }),
   });
+  // cm:guard published AFTER `routeWindow` has recorded the reply and closed the window, which is the whole point of it being a second event: the delivery event goes out before the row commits, so a tab that refetched on that alone could read the room back without the answer in it. Every decision publishes, not only `answered`, because a silence is equally something a second tab is sitting and waiting for (ISS-1004 step 5, review F2).
+  await publishToConversationReaders(window.conversationId, {
+    event: WEB_CONVERSATION_SETTLED_EVENT,
+    data: {
+      conversationId: window.conversationId,
+      windowId: window.id,
+      decision: outcome.decision,
+    },
+  }).catch((err: unknown) =>
+    logger.warn(
+      { err, windowId: window.id },
+      'web conversations: the settled event was not published',
+    ),
+  );
   logger.info(
     { windowId: window.id, projectId: window.projectId, ...outcome },
     'web conversations: window routed',

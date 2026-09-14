@@ -23,12 +23,16 @@ vi.mock('../ws/room-manager.js', () => ({
 
 const findConversation = vi.fn();
 const listParticipants = vi.fn();
+const assertConversationReadable = vi.fn();
 
 vi.mock('../conversations/store.js', () => ({
   findConversation: (...args: unknown[]) => findConversation(...args),
 }));
 vi.mock('../conversations/participants.js', () => ({
   listParticipants: (...args: unknown[]) => listParticipants(...args),
+}));
+vi.mock('../conversations/scope.js', () => ({
+  assertConversationReadable: (...args: unknown[]) => assertConversationReadable(...args),
 }));
 
 const { WEB_CONVERSATION_EVENT, webConversationPorts } = await import('./conversation-adapter.js');
@@ -44,6 +48,8 @@ beforeEach(() => {
   published.length = 0;
   findConversation.mockReset();
   listParticipants.mockReset();
+  assertConversationReadable.mockReset();
+  assertConversationReadable.mockResolvedValue(['project-1']);
   findConversation.mockResolvedValue({ id: 'conv-1', adapter: 'web', externalId: 'venue-1' });
   listParticipants.mockResolvedValue([
     { kind: 'person', userId: 'alice' },
@@ -76,6 +82,16 @@ describe('the Forge UI adapter · deliver', () => {
       content: 'the answer',
       problems: ['softened'],
     });
+  });
+
+  // cm:guard a participant row is not a permission: a person keeps their row after losing the access the room's scope is derived from, and the reads refuse them while a push addressed by kind alone hands them the whole answer (review F1).
+  it('publishes to nobody whose access to the room has gone', async () => {
+    assertConversationReadable.mockImplementation(async (_id: string, userId: string) => {
+      if (userId === 'bob') throw new Error('no role on this project any more');
+      return ['project-1'];
+    });
+    await webConversationPorts.deliver(venue, { text: 'hello', problems: [] });
+    expect(published.map((p) => p.room)).toEqual(['user:alice']);
   });
 
   it('refuses by name when the room went while the turn ran', async () => {

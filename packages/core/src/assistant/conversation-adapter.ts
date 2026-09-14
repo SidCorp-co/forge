@@ -22,6 +22,7 @@ import type {
   DeliveryReceipt,
   ScreenedMessage,
 } from '../conversations/ports.js';
+import { assertConversationReadable } from '../conversations/scope.js';
 import { findConversation } from '../conversations/store.js';
 import type { ConversationShape } from '../db/schema-conversations.js';
 import { roomManager } from '../ws/room-manager.js';
@@ -42,6 +43,42 @@ export interface WebConversationFrame {
  */
 // cm:edge contract -> packages/web-v2/src/lib/ws/event-router.ts — the other half is the case that appends this payload to the open thread; a rename here without one there leaves the screen correct only after a reload.
 export const WEB_CONVERSATION_EVENT = 'conversation.message';
+
+/**
+ * The event that says this room has settled — whatever it settled on.
+ */
+// cm:guard a SECOND event and not a substitute for the first: the delivery above happens before `recordDeliveredReply` commits, so a tab that refetched on it alone can read the room back without the reply in it and sit on "nobody has answered this yet" until something unrelated refetches. This one is published after the window closes, and it is what makes the answer and every silent decision reach a second tab at all (ISS-1004 step 5, review F2).
+export const WEB_CONVERSATION_SETTLED_EVENT = 'conversation.settled';
+
+/**
+ * Whose sockets may be shown this room, right now.
+ */
+// cm:guard a participant row is not a permission and must not be used as one: a person keeps their row after losing the project access the room derives its scope from, and the reads refuse them while a push addressed by kind alone would hand them the whole answer. The check is the SAME one `conversation-routes.ts` applies — `assertConversationReadable` — rather than a second, weaker copy of it here (ISS-1004 step 5, review F1).
+async function readersOf(conversationId: string): Promise<string[]> {
+  const out: string[] = [];
+  for (const person of await listParticipants(conversationId)) {
+    if (person.kind !== 'person' || !person.userId) continue;
+    try {
+      await assertConversationReadable(conversationId, person.userId);
+      out.push(person.userId);
+    } catch {
+      // cm:why a refusal here is the ordinary case for a person whose access went, not an error: they are dropped from the fan-out and the room's own rows still refuse them on the next read
+    }
+  }
+  return out;
+}
+
+/** Publish to every socket that may currently see this room. Returns how many took it. */
+export async function publishToConversationReaders(
+  conversationId: string,
+  envelope: { event: string; data: unknown },
+): Promise<number> {
+  let sockets = 0;
+  for (const userId of await readersOf(conversationId)) {
+    sockets += roomManager.publish(userRoom(userId), envelope);
+  }
+  return sockets;
+}
 
 /**
  * The Forge UI's four ports.
@@ -75,21 +112,16 @@ export const webConversationPorts: ConversationAdapterPorts<WebConversationFrame
       );
     }
     const messageId = randomUUID();
-    const people = await listParticipants(conversation.id);
-    let sockets = 0;
-    for (const person of people) {
-      if (person.kind !== 'person' || !person.userId) continue;
-      sockets += roomManager.publish(userRoom(person.userId), {
-        event: WEB_CONVERSATION_EVENT,
-        data: {
-          conversationId: conversation.id,
-          messageId,
-          role: 'assistant',
-          content: message.text,
-          problems: message.problems,
-        },
-      });
-    }
+    const sockets = await publishToConversationReaders(conversation.id, {
+      event: WEB_CONVERSATION_EVENT,
+      data: {
+        conversationId: conversation.id,
+        messageId,
+        role: 'assistant',
+        content: message.text,
+        problems: message.problems,
+      },
+    });
     return { messageId, sockets } as DeliveryReceipt & { sockets: number };
   },
 

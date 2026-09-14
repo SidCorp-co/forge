@@ -16,6 +16,7 @@ const claimDueWindows = vi.fn();
 const routeWindow = vi.fn();
 const releaseWindow = vi.fn();
 const resolveProjectHandle = vi.fn();
+const published: Array<{ event: string; data: unknown }> = [];
 
 vi.mock('../conversations/collect-inbound.js', () => ({
   collectInboundMessage: (...a: unknown[]) => collectInboundMessage(...a),
@@ -29,6 +30,19 @@ vi.mock('../conversations/windows.js', () => ({
     row.claimedAt && row.claimedBy ? { claimedAt: row.claimedAt, claimedBy: row.claimedBy } : null,
   releaseWindow: (...a: unknown[]) => releaseWindow(...a),
 }));
+vi.mock('./conversation-adapter.js', async (orig) => {
+  const real = (await orig()) as Record<string, unknown>;
+  return {
+    ...real,
+    publishToConversationReaders: async (
+      _id: string,
+      envelope: { event: string; data: unknown },
+    ) => {
+      published.push(envelope);
+      return 1;
+    },
+  };
+});
 vi.mock('../conversations/handles.js', () => ({
   resolveProjectHandle: (...a: unknown[]) => resolveProjectHandle(...a),
 }));
@@ -61,6 +75,7 @@ const claimed = {
 };
 
 beforeEach(() => {
+  published.length = 0;
   for (const m of [
     collectInboundMessage,
     claimDueWindows,
@@ -104,6 +119,21 @@ describe('a send', () => {
       settleMs: 0,
       venuePrefixes: ['venue-1'],
     });
+  });
+
+  // cm:guard the settle event is published AFTER `routeWindow` returns, which is the whole reason it exists beside the delivery event: the delivery goes out before the reply row commits, so a second tab that refetched on that alone reads the room back without the answer in it (review F2).
+  it('tells the room it has settled, after the window closed and whatever it decided', async () => {
+    routeWindow.mockImplementation(async () => {
+      expect(published).toEqual([]);
+      return { decision: 'guard-dormant' };
+    });
+    await send();
+    expect(published).toEqual([
+      {
+        event: 'conversation.settled',
+        data: { conversationId: 'conv-1', windowId: 'win-1', decision: 'guard-dormant' },
+      },
+    ]);
   });
 
   it('returns the decision the window settled on', async () => {

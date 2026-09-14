@@ -49,7 +49,7 @@ export function ConversationChat({
 
   const roomQ = useConversation(resolvedId);
   const open = useOpenConversation();
-  const send = useSendMessage(resolvedId);
+  const send = useSendMessage();
 
   const messages = useMemo(() => roomQ.data?.messages ?? [], [roomQ.data]);
   const windows = useMemo(() => roomQ.data?.windows ?? [], [roomQ.data]);
@@ -63,7 +63,7 @@ export function ConversationChat({
   });
 
   // cm:guard the send is AWAITED and a failure rejects up into the composer, which is what keeps the typed text for a retry: resolving on a failure clears the box and the words are gone (ISS-462's contract, kept across the port).
-  // cm:guard a draft opens its room and sends in ONE call chain, and the room id is adopted before the send: a send against a room the caller has not adopted would answer into a room this screen is not watching, and the reply would arrive nowhere.
+  // cm:guard the id that just came back from `open` is handed to the send DIRECTLY and not read off `resolvedId`: state set in this same chain has not re-rendered yet, so the render's value is still undefined and the send would post to `/conversations/undefined/messages` (review F3).
   const handleSend = async (message: string) => {
     let id = resolvedId;
     if (!id) {
@@ -71,7 +71,7 @@ export function ConversationChat({
       setActiveId(id);
       onConversationActive?.(id);
     }
-    await send.mutateAsync(message);
+    await send.mutateAsync({ conversationId: id, content: message });
   };
 
   if (resolvedId && roomQ.isLoading) {
