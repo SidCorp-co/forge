@@ -7,7 +7,21 @@
 // conversation is an append-only log, and all four rewrite a run's turns.
 
 import { apiClient, apiClientList } from "@/lib/api/client";
-import type { ConversationDetail, ConversationRow } from "./types";
+import type {
+  ConversationCandidates,
+  ConversationDetail,
+  ConversationMembership,
+  ConversationRow,
+} from "./types";
+
+/** What a room is opened with, beside whoever is opening it. */
+export interface OpenConversationArgs {
+  projectId: string;
+  title?: string | null;
+  people?: string[];
+  // cm:guard the agent id is optional for the same reason it is on `addHandle`: a room may be opened about a project whose agent has never been minted, and the server mints it inside the same transaction that opens the room (ISS-1011).
+  handles?: Array<{ userId?: string | null; projectId: string }>;
+}
 
 export interface SendResult extends Pick<ConversationDetail, "messages" | "windows"> {
   conversationId: string;
@@ -27,11 +41,55 @@ export const conversationsApi = {
   /** `GET /api/conversations/:id` — the room, its people, its messages and its window decisions. */
   detail: (id: string) => apiClient<ConversationDetail>(`/conversations/${id}`),
 
-  /** `POST /api/conversations` — open a room in this project. */
-  open: (projectId: string, title?: string | null) =>
+  /** `POST /api/conversations` — open a room in this project, with whoever it starts with. */
+  open: (args: OpenConversationArgs) =>
     apiClient<ConversationRow>("/conversations", {
       method: "POST",
-      body: JSON.stringify({ projectId, ...(title !== undefined ? { title } : {}) }),
+      body: JSON.stringify({
+        projectId: args.projectId,
+        ...(args.title !== undefined ? { title: args.title } : {}),
+        ...(args.people?.length ? { people: args.people } : {}),
+        ...(args.handles?.length
+          ? {
+              handles: args.handles.map((h) => ({
+                projectId: h.projectId,
+                ...(h.userId ? { userId: h.userId } : {}),
+              })),
+            }
+          : {}),
+      }),
+    }),
+
+  /** `GET /api/conversations/:id/candidates` — who this caller could still put in this room. */
+  candidates: (id: string) =>
+    apiClient<ConversationCandidates>(`/conversations/${id}/candidates`),
+
+  /** `GET /api/conversations/candidates?projectId=` — who a room in this project could open with. */
+  candidatesForProject: (projectId: string) =>
+    apiClient<ConversationCandidates>(
+      `/conversations/candidates?${new URLSearchParams({ projectId })}`,
+    ),
+
+  // cm:guard two calls and not one taking a kind, because adding a person and adding an agent are two acts with different blast radius: one changes who reads the room, the other changes what the room can see. A single call would make the screen's separation a convention rather than a shape (ISS-1011 criterion 14).
+  /** `POST /api/conversations/:id/people` — add a colleague. */
+  addPerson: (id: string, userId: string) =>
+    apiClient<ConversationMembership>(`/conversations/${id}/people`, {
+      method: "POST",
+      body: JSON.stringify({ userId }),
+    }),
+
+  /** `POST /api/conversations/:id/handles` — add an agent, for one of its projects. */
+  // cm:guard the agent id is OMITTED and not sent as null when the project has no handle yet: the route's schema is `.strict()` with `userId` optional, so a literal null is a refused body rather than the mint-on-add path (ISS-1011).
+  addHandle: (id: string, userId: string | null, projectId: string) =>
+    apiClient<ConversationMembership>(`/conversations/${id}/handles`, {
+      method: "POST",
+      body: JSON.stringify({ projectId, ...(userId ? { userId } : {}) }),
+    }),
+
+  /** `DELETE /api/conversations/:id/participants/:participantId` — take one member out. */
+  removeParticipant: (id: string, participantId: string) =>
+    apiClient<ConversationMembership>(`/conversations/${id}/participants/${participantId}`, {
+      method: "DELETE",
     }),
 
   // cm:guard this call RUNS the turn and returns what the room then holds, so it takes as long as an answer takes: a caller that treats it as a fire-and-forget would show the question and never the reply, because there is no second request that fetches one.

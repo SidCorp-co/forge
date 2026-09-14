@@ -61,13 +61,58 @@ export interface ConversationParticipant {
   id: string;
   kind: "person" | "handle";
   userId: string | null;
+  /** The project a handle brings to the room; null for a person. */
+  projectId: string | null;
   label: string | null;
+  /** What to print: the address for an agent, the account's own name for a person. */
+  displayName: string | null;
   reachable: boolean | null;
 }
 
-export interface ConversationDetail extends ConversationRow {
-  scope: string[];
+/** A project in a room's derived scope, named so a screen can say which it is. */
+export interface ConversationProject {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+/**
+ * A room's membership, as every membership call answers with it.
+ */
+// cm:guard the SHAPE is part of it and not an afterthought: a direct room is read by the people in it and a group room by everyone holding a role on its projects, so a roster rendered without knowing which cannot tell a person what adding somebody there will do (ISS-1011).
+export interface ConversationMembership {
+  shape: ConversationShape;
   participants: ConversationParticipant[];
+  /** The project ids, derived from the live agents — never chosen. */
+  scope: string[];
+  scopeProjects: ConversationProject[];
+  /** Whether THIS caller may change who is in the room. */
+  // cm:guard served, never inferred: the screen cannot compute it, because it turns on being a live person in the room AND holding a role on every project of a scope the screen does not decide. A client that guessed from the project role would offer the controls to somebody the server then refuses, which reads as a broken button rather than as a rule (ISS-1011).
+  canChangeMembership: boolean;
+}
+
+export interface PersonCandidate {
+  userId: string;
+  displayName: string | null;
+  email: string;
+}
+
+export interface HandleCandidate {
+  /** The agent account, or null where this project has never needed one. */
+  // cm:guard NULLABLE because core offers a project that has never been talked to under the name its agent will be given, and mints it on add. Typing this `string` made the add send `userId: undefined` and the advertised mint-on-add path unreachable from the screen (ISS-1011).
+  userId: string | null;
+  handle: string;
+  project: ConversationProject;
+  /** Who in the room today would lose it if this agent joined — already named. */
+  losesReaders: string[];
+}
+
+export interface ConversationCandidates {
+  people: PersonCandidate[];
+  handles: HandleCandidate[];
+}
+
+export interface ConversationDetail extends ConversationRow, ConversationMembership {
   messages: ConversationMessage[];
   windows: ConversationWindow[];
 }

@@ -18,18 +18,20 @@ import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { addPerson, listParticipants } from '../conversations/participants.js';
+import { resolveProjectHandle } from '../conversations/handles.js';
 import {
-  assertConversationReadable,
-  assertConversationWritable,
-  derivedScope,
-} from '../conversations/scope.js';
+  assertPersonReachesScope,
+  projectsNamed,
+  settleShape,
+} from '../conversations/membership.js';
+import { addHandle, addPerson, listParticipants } from '../conversations/participants.js';
+import { derivedScope } from '../conversations/scope.js';
 import {
   type ConversationRow,
   deleteConversation,
   getConversation,
   listConversationsInProject,
-  openConversation,
+  openConversationIn,
   readMessages,
   renameConversation,
 } from '../conversations/store.js';
@@ -39,6 +41,13 @@ import { users } from '../db/schema.js';
 import { assertProjectRole, effectiveProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import {
+  mayChangeMembership,
+  readableConversation,
+  writableConversation,
+} from './conversation-access.js';
+import { conversationMemberRoutes } from './conversation-member-routes.js';
+import { withDisplayNames } from './conversation-people.js';
 import { sendWebConversationMessage } from './conversation-send.js';
 
 const READ_WINDOW = 200;
@@ -63,6 +72,13 @@ const createSchema = z
   .object({
     projectId: z.uuid(),
     title: z.string().max(500).nullable().optional(),
+    /** Colleagues to open the room with, beside whoever is opening it. */
+    people: z.array(z.uuid()).max(50).optional(),
+    /** Agents to open the room with, beside the opening project's own. */
+    handles: z
+      .array(z.object({ projectId: z.uuid(), userId: z.uuid().optional() }).strict())
+      .max(20)
+      .optional(),
   })
   .strict();
 
@@ -87,37 +103,8 @@ const notFound = (message: string) =>
 export const conversationRoutes = new Hono<{ Variables: AuthVars }>();
 conversationRoutes.use('*', requireAuth(), assertEmailVerified());
 
-/**
- * A one-to-one room is read by the people IN it, whatever roles its scope would grant.
- */
-// cm:guard the scope check alone is the wrong rule for a `direct` room and became a live hole the moment a screen read this router: `derivedScope` answers what the room is ABOUT, so every member of the project passed it and one person's private chat was readable by all of them. `agent_sessions` has had this fence since ISS-522 (`eq(agentSessions.userId, userId)` on the interactive list) and the conversation store never needed one because nothing read it (ISS-1004 step 5).
-// cm:guard it refuses a `direct` room whose people were never recorded — a Rocket.Chat DM, where the collector opens the venue and adds no person — rather than falling back to the scope check. Nobody reading such a room in the Forge UI is the safe half of the trade and the visible one; the other half would be handing Bob the transcript of Alice's DM with the bot.
-async function assertInTheRoom(row: ConversationRow, userId: string): Promise<void> {
-  if (row.shape !== 'direct') return;
-  const people = await listParticipants(row.id);
-  if (people.some((p) => p.kind === 'person' && p.userId === userId)) return;
-  throw new HTTPException(403, {
-    message: `conversation ${row.id} is a one-to-one room and you are not one of its people, so there is nothing here for you to read`,
-    cause: { code: 'NOT_IN_THE_ROOM' },
-  });
-}
-
-async function readable(id: string, userId: string): Promise<ConversationRow> {
-  const row = await getConversation(id);
-  if (!row) throw notFound('conversation not found');
-  await assertConversationReadable(row.id, userId);
-  await assertInTheRoom(row, userId);
-  return row;
-}
-
-/** Renaming and deleting are writes, and a write takes more than a look. */
-async function writable(id: string, userId: string): Promise<ConversationRow> {
-  const row = await getConversation(id);
-  if (!row) throw notFound('conversation not found');
-  await assertConversationWritable(row.id, userId);
-  await assertInTheRoom(row, userId);
-  return row;
-}
+// cm:guard mounted at the ROOT of this router and not under a path of its own, because its routes are `/:id/...` on the same rooms: a caller reaching `/api/conversations/:id/people` is reaching the same resource `/api/conversations/:id` serves, and a second mount point would make the room's membership live at an address the room's own answer does not mention (ISS-1011).
+conversationRoutes.route('/', conversationMemberRoutes);
 
 /**
  * The one project a web turn runs under.
@@ -195,14 +182,40 @@ conversationRoutes.post(
     const access = await loadProjectAccess(input.projectId, userId);
     assertProjectRole(access, 'member', 'not a project member');
 
-    const conversation = await openConversation({
-      adapter: 'web',
-      externalId: randomUUID(),
-      shape: 'direct',
-      projectId: input.projectId,
-      title: input.title ?? null,
+    const handles = input.handles ?? [];
+    const people = input.people ?? [];
+
+    // cm:guard the WHOLE opening is one transaction — the room, its own handle, the opener, every agent named, every colleague named and the shape that follows from them. A room opened in a transaction of its own leaves a committed room behind every refusal the membership doors make afterwards: a room nobody asked for holding half the people they named, with the request they made reported as a failure (ISS-1011, review F1).
+    const conversation = await db.transaction(async (handle) => {
+      const tx = handle as unknown as typeof db;
+      const room = await openConversationIn(tx, {
+        adapter: 'web',
+        externalId: randomUUID(),
+        // cm:guard opened `direct` and PROMOTED from the live rows at the end, rather than computed from how many agents were asked for: a request naming the project's own handle, or naming one twice, is a request for fewer live handles than entries, and a shape read off the entry count would make such a room readable by everyone with a role on its project while holding one agent. Nothing can observe the intermediate value, because it never commits (ISS-1011, review F3).
+        shape: 'direct',
+        projectId: input.projectId,
+        title: input.title ?? null,
+      });
+      await addPerson({ conversationId: room.id, userId, actorUserId: userId, tx });
+      for (const named of handles) {
+        await addHandle({
+          conversationId: room.id,
+          handleUserId: named.userId ?? (await resolveProjectHandle(tx, named.projectId)).userId,
+          projectId: named.projectId,
+          actorUserId: userId,
+          tx,
+        });
+      }
+      await settleShape(tx, room.id);
+      // cm:guard the people are checked against the scope the room ENDED UP with, read back from the rows rather than projected from the request: the projection cannot know that a named agent was already the room's own, and a colleague refused on a project the room does not actually hold is a refusal about nothing.
+      const scope = await derivedScope(room.id, tx);
+      for (const person of people) {
+        await assertPersonReachesScope(person, scope, tx);
+        await addPerson({ conversationId: room.id, userId: person, actorUserId: userId, tx });
+      }
+      const settled = await getConversation(room.id, tx);
+      return settled ?? room;
     });
-    await addPerson({ conversationId: conversation.id, userId, actorUserId: userId });
 
     return c.json(conversation, 201);
   },
@@ -216,14 +229,25 @@ conversationRoutes.get(
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
-    const conversation = await readable(id, userId);
+    const conversation = await readableConversation(id, userId);
     const [participants, messages, scope, windows] = await Promise.all([
       listParticipants(id),
       readMessages(id, READ_WINDOW),
       derivedScope(id),
       listWindowsForConversation(id, WINDOW_PAGE),
     ]);
-    return c.json({ ...conversation, scope, participants, messages, windows });
+    // cm:guard the projects are NAMED here rather than left as ids for the client to resolve: the scope is derived, so a screen printing it has no list of its own to look them up in, and a banner reading "this room is about 2 projects" with two uuids under it says nothing a person can act on (ISS-1011 criteria 5, 30).
+    const scopeProjects = await projectsNamed(scope);
+    return c.json({
+      ...conversation,
+      scope,
+      scopeProjects,
+      // cm:guard the CAPABILITY travels with the room rather than being derived on the client from a project role: a group room is readable by anybody holding a role on its projects, and a screen deciding on that alone offers Add agent to somebody every press of which is refused (ISS-1011, review F6).
+      canChangeMembership: await mayChangeMembership(conversation, userId),
+      participants: await withDisplayNames(participants),
+      messages,
+      windows,
+    });
   },
 );
 
@@ -239,7 +263,7 @@ conversationRoutes.patch(
     const { id } = c.req.valid('param');
     const { title } = c.req.valid('json');
     const userId = c.get('userId');
-    await writable(id, userId);
+    await writableConversation(id, userId);
     const updated = await renameConversation(id, title);
     if (!updated) throw notFound('conversation not found');
     return c.json(updated);
@@ -254,7 +278,7 @@ conversationRoutes.delete(
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
-    await writable(id, userId);
+    await writableConversation(id, userId);
     await deleteConversation(id);
     return c.body(null, 204);
   },
@@ -278,7 +302,7 @@ conversationRoutes.post(
     const { content } = c.req.valid('json');
     const userId = c.get('userId');
 
-    const conversation = await writable(id, userId);
+    const conversation = await writableConversation(id, userId);
     if (conversation.adapter !== 'web') {
       throw new HTTPException(409, {
         message: `conversation ${id} is a ${conversation.adapter} room, and the Forge UI speaks only in the rooms it opened — answer there instead`,
