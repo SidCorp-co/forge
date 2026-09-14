@@ -65,7 +65,11 @@ describe('the Forge UI reply door, against a real database', () => {
       projectId: project.id,
       role: 'admin',
     });
-    const rows = await harness.db.execute<{ issue_prefix: string | null; slug: string; name: string }>(sql`
+    const rows = await harness.db.execute<{
+      issue_prefix: string | null;
+      slug: string;
+      name: string;
+    }>(sql`
       SELECT issue_prefix, slug, name FROM projects WHERE id = ${project.id}
     `);
     const row = rows[0] as { issue_prefix: string | null; slug: string; name: string };
@@ -96,7 +100,11 @@ describe('the Forge UI reply door, against a real database', () => {
     return (rows[0] as { iss_seq: number }).iss_seq;
   }
 
-  const screen = (projectId: string, project: { id: string; slug: string; name: string }, text: string) =>
+  const screen = (
+    projectId: string,
+    project: { id: string; slug: string; name: string },
+    text: string,
+  ) =>
     screenReplyAtDoor(webDoor(project), {
       projectId,
       segments: [text],

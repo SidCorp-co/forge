@@ -188,23 +188,38 @@ own door refused its own persona's output, burned the single repair, and served 
 nothing of the sort had happened.</p>
 <table>
   <tr><th></th><th>chat-sync</th><th>web-chat-reply</th></tr>
-  <tr><td>Cell</td><td><code>public:report</code></td><td><code>role:report</code></td></tr>
+  <tr><td>Cell</td><td><code>public:report</code></td><td><code>role:chat</code></td></tr>
   <tr><td>Reader</td><td>Holds no role; cannot open the tracker</td><td>Holds a role, by the route's
   own checks</td></tr>
-  <tr><td>Refuses a file path, a fence, a status word</td><td class="bad">yes</td><td
-  class="ok">no</td></tr>
-  <tr><td>Checks a merge claim against the row</td><td class="bad">no</td><td class="ok">yes,
-  <code>status-matches-the-row</code></td></tr>
+  <tr><td><code>no-developer-detail</code> &mdash; refuses a file path, a fence, a status
+  word</td><td class="bad">yes</td><td class="ok">no &mdash; this is the whole reason the cell
+  exists</td></tr>
+  <tr><td><code>issue-references-exist</code></td><td>yes</td><td>no, for the reason
+  <code>role:report</code> drops it</td></tr>
+  <tr><td><code>status-matches-the-row</code> &mdash; a merge claim against the row</td><td
+  class="bad">no</td><td class="ok">yes</td></tr>
+  <tr><td><code>only-verified-citations</code>, <code>no-empty-promise</code>,
+  <code>progress-figures-match</code></td><td>yes</td><td class="ok">yes &mdash; carried over
+  deliberately</td></tr>
   <tr><td>Ending, repairs</td><td><code>fallback</code>, 1</td><td><code>fallback</code>, 1 &mdash;
   unchanged, and for the same reason: a repair is a full model turn inside
   <code>HANDLE_TIMEOUT_MS</code> and somebody pressed enter</td></tr>
 </table>
-<p><code>chat-sync</code> is untouched and still serves Rocket.Chat. <code>role:report</code> is now
-the second cell read at two doors, and it carries the split the other way round from
-<code>public:report</code>: there the endings match and the repair counts differ, here the endings
-themselves differ &mdash; a comment write refuses and tells its author, a browser reply falls back
-because somebody is waiting. One policy on the cell could not have been both, which is the property
-the cell/door split exists for.</p>
+<div class="rule"><span class="warn">The three carried-over rules are the part that nearly went
+wrong.</span> The first cut of this change put the reply on <code>role:report</code> &mdash; the
+comment cell &mdash; and that silently dropped <code>only-verified-citations</code>,
+<code>no-empty-promise</code> and <code>progress-figures-match</code>. None of the three is about
+what the reader may be <em>shown</em>: a citation this project does not hold is wrong wherever it is
+read, a promise no later turn will keep is a property of the turn ending, and figures are checked
+against the snapshot the model was actually given. Adding them to <code>role:report</code> instead
+was not available either: <code>comments/screen.ts:screenAgentComment</code> gathers facts with no
+progress snapshot and <code>progress-figures-match</code> fails <em>closed</em> on a null one, so
+that would have refused every agent comment on the tracker. Hence a cell of its own, which reaches
+nothing else.</div>
+<p><code>chat-sync</code> is untouched and still serves Rocket.Chat. A third intent costs a row and
+no branch: nothing under <code>messaging/</code> switches on an intent value, which is the same
+property <code>audiences.ts</code> states for a third audience and the one ISS-997 built the tables
+to prove.</p>
 
 <h2>What the chat surface stopped being able to do</h2>
 <div class="rule"><span class="warn">A real loss, stated rather than discovered, and settled by

@@ -45,6 +45,16 @@ own persona assembly, and only one of them is reached. A change to the fenced to
 resolution or the venue rules has two sites, and a reader cannot tell from either which one runs.
 That is the same shape ISS-1005 exists to collapse, one level down.
 
+## Honest costs
+
+The price of deciding either way, not the price of the drift.
+
+| Cost | What it takes |
+|---|---|
+| Keeping it, and giving the conversation route a streaming sibling | Two surfaces stay, and the second grows: the send route answers inline today because that is what lets a caller tell a delivered answer from a lost one, and a streaming reply cannot. Every one of the three "no answer yet" states on screen has to be right before a 202-and-a-push is safe, which is the same bill `the-forge-ui-conversation-cannot-reach-a-runner.md` prices for a diverted turn |
+| Removing it | `assistant/routes.ts`, `run-turn.ts` and the `chatProvider` flag go together, and `run-turn.ts` is the only SSE turn loop in the codebase — there is no second copy to reach for if streaming is wanted later. `external-chat.ts` keeps the provider resolution the two live callers use, so the resolution itself is not lost. `routes.test.ts` goes with the route, and with it the only test that exercises the flag |
+| Leaving it as it is | The drift above: two constructions of the fenced toolset, two venue openings, two persona assemblies, and a reader who cannot tell which one runs. Every change to any of the three pays twice or silently pays once |
+
 ## The condition that ends this
 
 Somebody decides whether the Forge UI's chat should stream. If yes, `/api/chat` is the surface to

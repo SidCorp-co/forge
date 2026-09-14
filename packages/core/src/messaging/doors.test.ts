@@ -9,7 +9,7 @@ const EXPECTED: ReadonlyArray<[DoorId, string, string, number | null]> = [
   ['question-ask', 'role:ask', 'refusal', null],
   ['question-delivery', 'role:ask', 'refusal', null],
   ['chat-sync', 'public:report', 'fallback', 1],
-  ['web-chat-reply', 'role:report', 'fallback', 1],
+  ['web-chat-reply', 'role:chat', 'fallback', 1],
   ['escalation-synthesis', 'public:report', 'fallback', 1],
   ['agent-chat-completion', 'public:report', 'fallback', 0],
 ];
@@ -49,11 +49,21 @@ describe('the door table', () => {
     );
   });
 
-  // cm:guard `role:report` is the SECOND cell read at more than one door, and it carries the split the other way round from `public:report`: there the endings match and the repair counts differ, here the endings themselves differ — a comment write refuses and tells its author, a browser reply falls back because somebody pressed enter and is waiting. One policy on the cell could not have been both (ISS-1005).
-  it('gives the two role:report doors two different endings', () => {
-    const reported = DOORS.filter((d) => d.cell === 'role:report');
-    expect(reported.map((d) => d.id)).toEqual(['comment-write', 'web-chat-reply']);
-    expect(new Set(reported.map((d) => d.ending))).toEqual(new Set(['refusal', 'fallback']));
+  // cm:guard the Forge UI reply is on a cell of its OWN and must not drift back onto `role:report`: ISS-1005's review caught that move dropping `only-verified-citations`, `no-empty-promise` and `progress-figures-match`, three rules that are about the turn rather than the reader, and the last of those cannot be added to `role:report` because `screenAgentComment` gathers no progress and the rule fails closed. This reds if somebody folds the two back together (ISS-1005).
+  it('reads the browser reply at a cell no other door reads', () => {
+    const chat = DOORS.filter((d) => d.cell === 'role:chat');
+    expect(chat.map((d) => d.id)).toEqual(['web-chat-reply']);
+    const spec = cellFor('role', 'chat');
+    expect(spec?.rules.map((r) => r.id)).toEqual([
+      'non-empty',
+      'status-matches-the-row',
+      'only-verified-citations',
+      'no-empty-promise',
+      'progress-figures-match',
+      'no-redacted-secret',
+    ]);
+    // cm:guard the ONE rule the move was for, asserted as absent by name rather than left to the list above to imply: `no-developer-detail` is why this cell exists, and a reader adding it back would be undoing ISS-1005 without meeting anything that says so.
+    expect(spec?.rules.map((r) => r.id)).not.toContain('no-developer-detail');
   });
 
   // cm:guard every door's reason is its OWN, across the whole table: a row copied from the nearest existing one is the failure the door table exists to prevent, and it reads identically to a row that was thought about (ISS-1005).

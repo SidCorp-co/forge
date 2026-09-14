@@ -49,9 +49,7 @@ describe('the chat tool allowlist', () => {
   // cm:guard the WRITE actions are named again on their own, because this is the sentence the annotations above `buildProjectToolset` used to get wrong: the toolset is not read-only, and a reader who believes it is will not look for the guard that makes it safe (ISS-1005).
   it('is not read-only, and the writing tool carries a guard', () => {
     const issues = CHAT_TOOL_ALLOWLIST.find((s) => nameOf(s) === 'forge_issues');
-    expect(issues?.allowedActions).toEqual(
-      expect.arrayContaining(['create', 'update']),
-    );
+    expect(issues?.allowedActions).toEqual(expect.arrayContaining(['create', 'update']));
     expect(issues?.guard).toBeTypeOf('function');
   });
 });

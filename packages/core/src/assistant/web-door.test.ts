@@ -39,12 +39,19 @@ const webDoor = (): string =>
  * Judged with no gathered facts, and that is honest for these three.
  */
 // cm:guard `no-developer-detail` — the rule all three of these cases turn on — declares `needs: []`, so it reads nothing from the database and `NO_FACTS` withholds nothing it would have used. The one case that DOES need gathered facts, a status the row contradicts, is deliberately not here: it is judged against real Postgres in `messaging/web-door-facts.integration.test.ts`, because a unit test could only assert a pass that proved no facts were gathered (ISS-1005, review F2).
-const screenAtWebDoor = (text: string) =>
-  screenMessage({ ...doorCell(webDoor() as never), segments: [text], facts: NO_FACTS });
+const screenAtWebDoor = (text: string, facts = NO_FACTS) =>
+  screenMessage({ ...doorCell(webDoor() as never), segments: [text], facts });
+
+/** A progress snapshot, as `screenedTurnReply` hands the turn's own to the screen. */
+// cm:guard passed as an INPUT rather than gathered, which is what the production path does too: `external-chat.ts` computes the snapshot unconditionally on every turn and returns it on the result, and `screened-reply.ts` screens against that same snapshot rather than a re-query — so the reply is never bounced for failing to match figures the model was not shown.
+const PROGRESS = {
+  ...NO_FACTS,
+  progress: { shipped: 7, closedUnshipped: 1, inFlight: 2, remaining: 3, total: 13 },
+};
 
 describe('the Forge UI reply door', () => {
   it('is read at a cell for a reader who holds a role on the project', () => {
-    expect(doorPolicy(webDoor() as never).cell).toBe('role:report');
+    expect(doorPolicy(webDoor() as never).cell).toBe('role:chat');
   });
 
   it('answers somebody who is waiting, so it ends in a fallback rather than a refusal', () => {
@@ -66,6 +73,24 @@ describe('the Forge UI reply door', () => {
 
   it('lets a fenced code block through', () => {
     const v = screenAtWebDoor('Run it like this:\n```\npnpm verify\n```');
+    expect(v.ok).toBe(true);
+  });
+
+  // cm:guard the three rules that came across from `public:report` in the move, each asserted to still BITE at the new door. Without these the cell change reads as "screens less", and the review that caught this change dropping them would have been right (ISS-1005, review F1-F3).
+  it('still refuses a promise no later turn will keep', () => {
+    const v = screenAtWebDoor('I will look into that and get back to you shortly.');
+    expect(v.ok).toBe(false);
+    expect(v.ok ? [] : v.refusals.map((r) => r.rule)).toContain('no-empty-promise');
+  });
+
+  it('still refuses a figure the turn’s own snapshot contradicts', () => {
+    const v = screenAtWebDoor('9 remaining, and 4 in progress.', PROGRESS);
+    expect(v.ok).toBe(false);
+    expect(v.ok ? [] : v.refusals.map((r) => r.rule)).toContain('progress-figures-match');
+  });
+
+  it('lets the same figure through when it is the one the turn was shown', () => {
+    const v = screenAtWebDoor('3 remaining, and 2 in progress.', PROGRESS);
     expect(v.ok).toBe(true);
   });
 

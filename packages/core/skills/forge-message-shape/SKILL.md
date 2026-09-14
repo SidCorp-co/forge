@@ -38,7 +38,8 @@ Two by two makes **four cells**, and a cell is the only thing that holds rules:
 | cell | what it is |
 |---|---|
 | `role:ask` | a question put to somebody who can answer it |
-| `role:report` | a report to somebody holding a role — a comment on an issue, or the assistant's reply in a Forge UI room |
+| `role:report` | a comment on an issue, read by the person who decides |
+| `role:chat` | the assistant's reply to somebody holding a role, in a Forge UI room |
 | `public:ask` | **reserved** — see the bottom of this page |
 | `public:report` | a reply to somebody who cannot open the tracker to check it |
 
@@ -78,6 +79,29 @@ project: 6 of 391 comments in an 18-issue sample cite a `forge-plugin` key,
 which CLAUDE.md's own carve-out *requires* an agent to do. A reference this
 project does not hold is most likely another project's, so it is not judged. A
 status **asserted of** an issue this project does hold still is.
+
+### `role:chat`
+
+| rule | what it asks |
+|---|---|
+| `non-empty` | there is text |
+| `status-matches-the-row` | as in `role:report` |
+| `only-verified-citations` | every issue key named is a real issue of this project |
+| `no-empty-promise` | no commitment to do something later — a chat turn ends, and nothing will come back to keep it |
+| `progress-figures-match` | figures quoted match the progress snapshot this turn was shown |
+| `no-redacted-secret` | as above |
+
+This is `public:report` with two rules dropped and two added, and each of the
+four is the difference between the two readers. `no-developer-detail` is gone
+because this reader holds a role and can act on what it refuses — a file path, a
+fenced block, a raw status word are three of the things a person opens the Forge
+UI to ask for. `issue-references-exist` is gone for the reason `role:report`
+drops it. `status-matches-the-row` and `non-empty` are added.
+
+The three that carried over did so because none of them is about what the reader
+may be shown: a citation this project does not hold is wrong wherever it is read,
+a promise no later turn will keep is a property of the turn ending, and figures
+are checked against the snapshot the model was actually given.
 
 ### `public:report`
 
@@ -124,7 +148,7 @@ So the count lives on the **door**. There are seven.
 | `question-ask` | `role:ask` | refusal | — |
 | `question-delivery` | `role:ask` | refusal | — |
 | `chat-sync` | `public:report` | fallback | 1 |
-| `web-chat-reply` | `role:report` | fallback | 1 |
+| `web-chat-reply` | `role:chat` | fallback | 1 |
 | `escalation-synthesis` | `public:report` | fallback | 1 |
 | `agent-chat-completion` | `public:report` | fallback | 0 |
 
@@ -136,14 +160,11 @@ what broke *is* the answer.
 takes up to its repair count of corrective retries; if those are spent, one fixed
 fallback message is posted. Never more than two repairs anywhere.
 
-`web-chat-reply` and `comment-write` are the reason the split cuts both ways.
-They read the same cell and end differently: a comment write refuses and tells
-its author, because the author is on the line and can fix it; a Forge UI reply
-falls back, because somebody pressed enter and is owed something. `public:report`
-shows the other half of the same shape — three doors, one ending, two different
-repair counts. No single policy on either cell could have been right.
+`public:report` is what the door/cell split is for: three doors on one cell, one
+ending, two different repair counts. No single number on the cell could have been
+right for all three.
 
-The Forge UI reply is at `role:report` and **not** at `chat-sync`, and the
+The Forge UI reply is at `role:chat` and **not** at `chat-sync`, and the
 difference is who is reading. Nobody opens a conversation in the Forge web app
 without holding a role on that project, and every later reader is re-checked
 before the room is shown to them. So that reader can open the tracker and check —
