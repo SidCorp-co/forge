@@ -12,10 +12,10 @@ import { and, asc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import type { BodyFormat } from '../body/formats.js';
 import { prepareBody } from '../body/prepare.js';
 import { db, type Tx } from '../db/client.js';
-import { screenAgentComment } from './screen.js';
 import { comments, issues } from '../db/schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { type CommentCursor, encodeCommentCursor } from './cursor.js';
+import { screenAgentComment } from './screen.js';
 
 export type CommentThreadRow = {
   id: string;

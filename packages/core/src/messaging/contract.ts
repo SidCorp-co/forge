@@ -79,7 +79,7 @@ export interface CellSpec {
 /**
  * A door: where a message is screened, and what happens when it cannot pass.
  */
-// cm:guard the ending and the repair count live HERE and never on the cell, because `role:ask` is screened at four doors whose lifecycles differ — `question-ask` has the agent on the line and `question-delivery` posts minutes later with nobody to ask again. A count on the cell would have to be right for both and can only be right for one (ISS-997).
+// cm:guard the ending and the repair count live HERE and never on the cell, because one cell is screened at doors whose lifecycles differ — `question-ask` has the agent on the line and `question-delivery` posts minutes later with nobody to ask again. A count on the cell would have to be right for both and can only be right for one (ISS-997).
 export type DoorPolicy =
   | {
       readonly id: DoorId;

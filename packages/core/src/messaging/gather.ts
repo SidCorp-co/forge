@@ -11,6 +11,7 @@ import { db, type Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { activeIssuePrefix, heldIssuePrefixes } from '../issues/issue-prefix-read.js';
 import { computeProjectProgress } from '../issues/progress.js';
+import { LEGACY_ISSUE_PREFIX } from '../lib/issue-ref.js';
 import { cellFor } from './cells.js';
 import type { Audience, FactKind, Intent } from './contract.js';
 import { type IssueRow, type MessageFacts, NO_FACTS, type ProgressFacts } from './facts.js';
@@ -92,6 +93,23 @@ async function issueRowsFor(
   }
 }
 
+/**
+ * The prefixes a claim in this project's comments may be written in.
+ */
+// cm:guard `LEGACY_ISSUE_PREFIX` is folded in whenever the project stores no prefix of its own, because a NULL `projects.issue_prefix` is not "no prefix" — `formatIssueRef` renders that project's issues as `ISS-n` and its own agents write `ISS-n` back. Reading the column literally made the status rule abstain on every project that never set one, which is most of them: the screen would have passed `ISS-997 is merged` in silence while reporting itself green (found by the ISS-997 integration lane, where a fresh project has no prefix).
+// cm:edge contract -> packages/core/src/lib/issue-ref.ts — `formatIssueRef` is the renderer this mirrors. The two must agree on what a null column means, or the screen judges a key nobody writes and ignores the one everybody does.
+async function activePrefixes(
+  projectId: string,
+  tx: Tx,
+): Promise<[string | null, readonly string[]]> {
+  const [active, held] = await Promise.all([
+    activeIssuePrefix(projectId, tx),
+    heldIssuePrefixes(projectId, tx),
+  ]);
+  const prefix = active ?? LEGACY_ISSUE_PREFIX;
+  return [prefix, [...new Set([prefix, ...held])]];
+}
+
 /** Everything the cell's rules need, and nothing they do not. */
 export async function gatherFacts(input: GatherInput): Promise<MessageFacts> {
   const needs = needsOf(input.audience, input.intent);
@@ -106,10 +124,7 @@ export async function gatherFacts(input: GatherInput): Promise<MessageFacts> {
   if (!needs.has('progress') && !mentionsOne) return base;
 
   const [prefix, prefixes] = needs.has('prefixes')
-    ? await Promise.all([
-        activeIssuePrefix(input.projectId, tx),
-        heldIssuePrefixes(input.projectId, tx),
-      ])
+    ? await activePrefixes(input.projectId, tx)
     : [null, [] as readonly string[]];
 
   const issueFacts = needs.has('issue-rows')

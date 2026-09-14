@@ -72,8 +72,8 @@ describe('a round is screened where the agent is still on the line', () => {
   });
 
   it('carries a code of its own, so a surface does not print it as a permissions error', async () => {
-    const err = await ask('@all pick one').catch((e: { code?: string }) => e);
-    expect(err.code).toBe('QUESTION_MESSAGE_REFUSED');
+    const err: unknown = await ask('@all pick one').catch((e: unknown) => e);
+    expect((err as { code?: string }).code).toBe('QUESTION_MESSAGE_REFUSED');
   });
 
   it("screens a park's question too — the park writes inside a transition's transaction", async () => {

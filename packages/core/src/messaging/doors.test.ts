@@ -43,7 +43,9 @@ describe('the door table', () => {
   it('gives the three public:report doors two different repair counts', () => {
     const reported = DOORS.filter((d) => d.cell === 'public:report');
     expect(reported).toHaveLength(3);
-    expect(new Set(reported.map((d) => ('repairs' in d ? d.repairs : -1)))).toEqual(new Set([0, 1]));
+    expect(new Set(reported.map((d) => ('repairs' in d ? d.repairs : -1)))).toEqual(
+      new Set([0, 1]),
+    );
   });
 
   // cm:guard the two `role:ask` doors end the same way for DIFFERENT reasons, and the reasons are what the door table carries: one has the agent still on the line, the other posts into a room with nobody left to ask. One `why` shared between them would be the first step back to a policy on the cell.

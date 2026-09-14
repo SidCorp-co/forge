@@ -34,6 +34,8 @@ describe('the staged lane ships no skill body (ISS-895)', () => {
       .map((e) => e.name)
       .sort();
     expect(dirs).toEqual([
+      // cm:why served over the MCP prompt channel and never installed to a device (`MANAGED_META_SKILLS`) — it is the contract the message screen judges by, and a disk copy would be the version an agent reads while core refuses it by a newer one (ISS-997)
+      'forge-message-shape',
       'forge-onboard',
       'forge-product-map',
       'forge-reconcile',

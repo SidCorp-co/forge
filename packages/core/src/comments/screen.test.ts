@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const selectWhere = vi.fn();
@@ -16,7 +17,12 @@ const { db } = await import('../db/client.js');
 /** What the tracker holds for the issues a comment names. */
 const tracker = (rows: Array<{ issSeq: number; status: string; mergedAt: Date | null }>) => {
   selectWhere.mockResolvedValue(
-    rows.map((r) => ({ id: `id-${r.issSeq}`, issSeq: r.issSeq, status: r.status, mergedAt: r.mergedAt })),
+    rows.map((r) => ({
+      id: randomUUID(),
+      issSeq: r.issSeq,
+      status: r.status,
+      mergedAt: r.mergedAt,
+    })),
   );
 };
 
@@ -58,8 +64,9 @@ describe('what an agent may claim to the person who decides', () => {
   // cm:guard the measured reason this rule does NOT also refuse an unknown reference: 6 of 391 comments in the 18-issue sample cite a forge-plugin key, which CLAUDE.md's own carve-out REQUIRES an agent to do. An existence rule here would refuse the mandated behaviour once every 66 comments.
   it('says nothing about an issue this project does not hold, because that is another project’s key', async () => {
     tracker([]);
-    await expect(screen('Filed as forge-plugin ISS-1386; the workaround cost three hours.')).resolves
-      .toBeUndefined();
+    await expect(
+      screen('Filed as forge-plugin ISS-1386; the workaround cost three hours.'),
+    ).resolves.toBeUndefined();
   });
 
   it('writes a comment that denies a status', async () => {
@@ -72,7 +79,9 @@ describe('what an agent may claim to the person who decides', () => {
   });
 
   it('refuses a comment carrying what the scrubber would redact', async () => {
-    expect(await refusalOf('the call was token=abcdef123456')).toContain('rule: no-redacted-secret');
+    expect(await refusalOf('the call was token=abcdef123456')).toContain(
+      'rule: no-redacted-secret',
+    );
   });
 
   it('refuses a comment with no text at all', async () => {
@@ -83,12 +92,16 @@ describe('what an agent may claim to the person who decides', () => {
   it('writes the developer detail a report to somebody holding a role is made of', async () => {
     tracker([{ issSeq: 42, status: 'developed', mergedAt: new Date() }]);
     await expect(
-      screen('ISS-42 merged at 4366e63e; the fix is in packages/core/src/index.ts:44 and it is developed.'),
+      screen(
+        'ISS-42 merged at 4366e63e; the fix is in packages/core/src/index.ts:44 and it is developed.',
+      ),
     ).resolves.toBeUndefined();
   });
 
   it('makes no query at all for a comment that names no issue', async () => {
-    await expect(screen('The deploy is done and the walk is on the issue.')).resolves.toBeUndefined();
+    await expect(
+      screen('The deploy is done and the walk is on the issue.'),
+    ).resolves.toBeUndefined();
     expect(selectWhere).not.toHaveBeenCalled();
   });
 });

@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { BodyInvalidError } from '../../body/errors.js';
-import { MessageRefusedError } from '../../messaging/contract.js';
 import { BODY_FORMATS } from '../../body/formats.js';
 import { bodyText } from '../../body/prepare.js';
 import {
@@ -26,6 +25,7 @@ import {
 import type { CommentAttachmentLite } from '../../comments/tree.js';
 import { env } from '../../config/env.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../../lib/authz.js';
+import { MessageRefusedError } from '../../messaging/contract.js';
 import { hooks } from '../../pipeline/hooks.js';
 import { markUntrusted } from '../../prompt/sanitize.js';
 import {

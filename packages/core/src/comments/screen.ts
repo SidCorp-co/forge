@@ -17,11 +17,7 @@ import { screenMessage } from '../messaging/screen.js';
 
 // cm:guard agents ONLY, and the test is `authorAgency`, which `require-pat.ts` resolves from the token owner's `users.kind` rather than from anything the caller sends. A person writing on the web UI has a full markdown editor and is not the audience of any of these rules (ISS-997 out of scope); binding them here would be a gate on the wrong reader.
 // cm:guard the screen runs BEFORE the insert and through the CALLER's handle. Before, because a refused comment must leave no row; through the caller's handle, because a caller inside a transaction that read the pool here would hold one connection and wait for a second (ISS-981).
-export async function screenAgentComment(
-  projectId: string,
-  body: string,
-  tx: Tx,
-): Promise<void> {
+export async function screenAgentComment(projectId: string, body: string, tx: Tx): Promise<void> {
   const segments = [body];
   const facts = await gatherFacts({
     projectId,

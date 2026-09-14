@@ -8,7 +8,6 @@ import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { commentAttachments, commentMentions, comments, issues } from '../db/schema.js';
 import type { ActorRef } from '../issues/actor-identity.js';
-import { messageRefusalHttp } from './screen.js';
 import { resolveActors } from '../issues/actor-resolution.js';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
@@ -34,6 +33,7 @@ import {
 import { CommentCursorInvalidError, decodeCommentCursor } from './cursor.js';
 import { pgConstraintName, pgErrorCode } from './error-mapping.js';
 import { parseMentions, resolveMentions } from './mentions.js';
+import { messageRefusalHttp } from './screen.js';
 import {
   commentThreadColumns,
   insertComment,
@@ -164,9 +164,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
         parentId: inserted.parentId,
       });
 
-      // Parse + persist mentions outside the insert transaction. A failure
-      // here must not roll back the comment — log and continue. The hook
-      // fan-out (notification rows + WS) is fire-and-forget the same way.
+      // cm:guard mentions are parsed and persisted OUTSIDE the insert transaction, and a failure here is logged rather than thrown: the comment is already the caller's, and rolling it back because a notification row could not be written would lose the text to save the ping. The hook fan-out below is fire-and-forget for the same reason.
       const insertedId = inserted.id;
       try {
         const handles = parseMentions(inserted.body);
