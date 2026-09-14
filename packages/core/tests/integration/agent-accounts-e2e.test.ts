@@ -30,6 +30,7 @@ let harness: TestDatabase;
 let app: import('hono').Hono<AppVars>;
 let accounts: typeof import('../../src/orgs/agent-accounts.js');
 let pat: typeof import('../../src/auth/pat.js');
+let handles: typeof import('../../src/conversations/handles.js');
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
@@ -42,6 +43,7 @@ beforeAll(async () => {
   process.env.NODE_ENV = 'test';
   accounts = await import('../../src/orgs/agent-accounts.js');
   pat = await import('../../src/auth/pat.js');
+  handles = await import('../../src/conversations/handles.js');
   ({ app } = (await import('../../src/index.js')) as unknown as {
     app: import('hono').Hono<AppVars>;
   });
@@ -97,6 +99,34 @@ describe('the handle is a column, and the database is what keeps it unique', () 
     expect(refusal).not.toBeNull();
     expect(JSON.stringify(refusal)).toContain('organization_members_org_handle_uniq');
     expect(await accounts.listAgentAccounts(orgA)).toHaveLength(1);
+  });
+
+  // cm:guard a room minting a handle is the OTHER writer of this column, and its insert must abort on the collision rather than skip it. `onConflictDoNothing` there is the shape that looks safe and is not: the only conflict a freshly created user can reach is this index, so swallowing it commits an agent holding a project membership and NO org membership, and the room then fails later at `loadHandle` with `HANDLE_HAS_NO_NAME` — a message about the wrong thing entirely, in a transaction that already succeeded. Found by review, F2. Restore `onConflictDoNothing()` on the membership insert in `resolveProjectHandle` and this goes red.
+  it('aborts a room’s own handle mint on the collision instead of committing a nameless agent', async () => {
+    const slug = `gamma-${randomUUID().slice(0, 8)}`;
+    const project = await createTestProject(harness.db, ownerId, { slug, orgId: orgA });
+    await accounts.createAgentAccount({ orgId: orgA, projectId: projectA, handle: slug });
+
+    const before = await harness.db.execute<{ n: number }>(
+      sql`SELECT count(*)::int AS n FROM users`,
+    );
+    const refusal = await harness.db
+      .transaction((tx) => handles.resolveProjectHandle(tx as never, project.id))
+      .then(() => null)
+      .catch((e: unknown) => e);
+
+    expect(refusal).not.toBeNull();
+    expect(JSON.stringify(refusal)).toContain('organization_members_org_handle_uniq');
+    const after = await harness.db.execute<{ n: number }>(
+      sql`SELECT count(*)::int AS n FROM users`,
+    );
+    expect(Number(after[0]?.n)).toBe(Number(before[0]?.n));
+    const agentsOn = await harness.db.execute<{ n: number }>(sql`
+      SELECT count(*)::int AS n FROM project_members pm
+      JOIN users u ON u.id = pm.user_id
+      WHERE pm.project_id = ${project.id} AND u.kind = 'agent'
+    `);
+    expect(Number(agentsOn[0]?.n)).toBe(0);
   });
 
   // cm:guard the other direction, and it is why the unique index is on `(org_id, handle)` rather than on `handle`: two organizations each holding a `@forge-dev` is the case the synthesized address's random suffix exists to make possible under `users.email`'s system-wide unique index.
@@ -222,6 +252,18 @@ describe('a credential for an agent that already exists', () => {
     expect(await pat.verifyPat(first?.plaintext)).toBeNull();
     expect((await pat.verifyPat(second?.plaintext))?.row.userId).toBe(agentId);
     expect((await accounts.listAgentAccounts(orgA))[0]?.canAct).toBe(true);
+  });
+
+  // cm:guard `canAct` is BOTH halves — a live credential and a project for it to act on — and this is the row that separates them. The token is fenced to one project and `effectiveProjectRole` answers on the other side, so an agent whose project membership is removed after minting holds a credential that opens nothing. Reported as the credential fact alone, the console tells an admin to mint another one that will not help either, and the screen's own "belongs to no project" remedy is unreachable code. Found by review, F4. Make `canAct` `activeTokens > 0` again and this goes red.
+  it('reports an agent with a live credential and no project as unable to act', async () => {
+    const agentId = await tokenlessAgent('room-handle');
+    await accounts.mintAgentCredential(orgA, agentId);
+    await harness.db.execute(sql`DELETE FROM project_members WHERE user_id = ${agentId}`);
+
+    const [listed] = await accounts.listAgentAccounts(orgA);
+    expect(listed?.activeTokens).toBe(1);
+    expect(listed?.projectId).toBe('');
+    expect(listed?.canAct).toBe(false);
   });
 
   it('answers null for an id that is no agent of this org, and mints nothing', async () => {

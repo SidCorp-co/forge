@@ -184,6 +184,16 @@ export async function attachOpeningHandle(
   projectId: string,
 ): Promise<void> {
   const handle = await loadHandle(tx, handleUserId);
+
+  // cm:guard the ONE check this unchecked door does keep, and it is not an authorization check: that the handle is actually a member of the project being recorded. There is nobody to authorize here, but `project_id` is what `derivedScope` reads, so a mismatch writes a room whose scope names work its only handle can never do — and it writes it silently, since no later reader compares the two. The ordinary caller resolves the venue's own handle and cannot mismatch; this refuses the call that does, rather than trusting that the only caller stays the only caller (ISS-1003 criteria 16, 17).
+  const handleProjects = await projectsOfHandle(handleUserId, tx);
+  if (!handleProjects.includes(projectId)) {
+    throw badRequest(
+      `@${handle.handle} is a member of ${handleProjects.length === 0 ? 'no project' : handleProjects.join(', ')} and not of ${projectId}, so it cannot be the opening handle for a room about that project`,
+      'HANDLE_NOT_ON_PROJECT',
+    );
+  }
+
   await tx
     .insert(conversationParticipants)
     .values({

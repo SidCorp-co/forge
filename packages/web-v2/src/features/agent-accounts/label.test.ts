@@ -7,6 +7,7 @@ const AGENT = {
   email: "forge-dev.a1b2c3d4e5f6@agents.forge.invalid",
   canAct: true,
   projectId: "p1",
+  activeTokens: 1,
 };
 
 describe("what a person reads for an agent (ISS-1003)", () => {
@@ -49,7 +50,17 @@ describe("whether an agent can act", () => {
   });
 
   it("names the different remedy when it belongs to no project", () => {
-    const reach = reachOf({ canAct: false, projectId: "" });
+    const reach = reachOf({ canAct: false, projectId: "", activeTokens: 0 });
     expect(reach).toMatchObject({ why: "belongs to no project" });
+    expect((reach as { remedy: string }).remedy).toContain("give it a credential");
+  });
+
+  // cm:guard the two project-less rows are NOT one row: an agent that already holds a credential is told to add a project and nothing else, because minting it a second one changes nothing — the token is fenced to a project and the fence resolves to nothing. Collapsed into one message, the screen sends an admin to mint credentials that cannot help, which is the wasted next step this remedy exists to replace.
+  it("does not tell an agent that already holds a credential to mint another", () => {
+    const reach = reachOf({ canAct: false, projectId: "", activeTokens: 2 });
+    expect(reach).toMatchObject({ why: "belongs to no project" });
+    const remedy = (reach as { remedy: string }).remedy;
+    expect(remedy).toContain("Add it to a project");
+    expect(remedy).not.toContain("give it a credential");
   });
 });

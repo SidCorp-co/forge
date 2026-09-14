@@ -179,7 +179,8 @@ export async function listAgentAccounts(orgId: string): Promise<AgentAccount[]> 
       projectRole: row.projectRole ?? 'member',
       createdAt: row.createdAt,
       activeTokens,
-      canAct: activeTokens > 0,
+      // cm:guard BOTH halves, because a live credential is only half of being able to act: the token is fenced to one project and `effectiveProjectRole` is what answers on the other side, so an agent whose project membership was removed after its token was minted holds a credential that opens nothing. Reported as the credential fact alone, `reachOf`'s "belongs to no project" branch is unreachable and the console tells an admin to mint a second credential that will not help either (ISS-1003 criteria 2, 6, 7).
+      canAct: activeTokens > 0 && row.projectId != null,
     };
   });
 }
@@ -272,7 +273,7 @@ async function mintDistinctlyNamed(
     }
   }
   throw badRequest(
-    `every name this route would give a credential for agent ${userId} is already taken (${names.join(', ')}); revoke or rename one of its existing tokens first`,
+    `every name this route would give a credential for agent ${userId} is already taken (${names.join(', ')}); ask again and the third name is drawn fresh — revoking will not free one, because a revoked row keeps its name under pat_user_name_uniq`,
     'AGENT_CREDENTIAL_NAME_TAKEN',
   );
 }

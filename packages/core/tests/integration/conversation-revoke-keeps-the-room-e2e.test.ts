@@ -103,3 +103,24 @@ describe('removing an agent’s authority', () => {
     expect(await scope.derivedScope(room.id)).toEqual([projectA]);
   });
 });
+
+describe('the opening door checks the one thing it can', () => {
+  // cm:guard `attachOpeningHandle` authorizes nobody by design — a message arriving opens the room and there is no caller to hold a role. That is not a licence to write ANY project into the participant: `project_id` is what `derivedScope` reads, so a handle recorded against a project it is no member of gives the room a scope its only handle can never act within, and no later reader compares the two. Found by review, F1. Drop the membership check and this goes green while writing that room.
+  it('refuses to record a handle against a project it is not a member of', async () => {
+    const roomA = await openRoom(projectA);
+    const [handle] = await participants.listParticipants(roomA.id);
+    const roomB = await openRoom(projectB);
+
+    await expect(
+      participants.attachOpeningHandle(
+        harness.db as never,
+        roomB.id,
+        handle?.userId as string,
+        projectB,
+      ),
+    ).rejects.toThrow(/not of/);
+
+    const rows = await participants.listParticipants(roomB.id);
+    expect(rows.some((r) => r.userId === handle?.userId)).toBe(false);
+  });
+});

@@ -30,13 +30,17 @@ export type Reach = { canAct: true } | { canAct: false; why: string; remedy: str
  * Whether this agent can act, and what to do about it when it cannot.
  */
 // cm:guard an agent that cannot act is given a REMEDY and not just a badge. The population this screen exists for is the handles a conversation minted — a name in a room with no token, permanently unable to answer — and "no credential" with no next step is the state that went unnoticed long enough to become this issue.
-export function reachOf(agent: Pick<AgentAccountRow, "canAct" | "projectId">): Reach {
+export function reachOf(
+  agent: Pick<AgentAccountRow, "canAct" | "projectId" | "activeTokens">,
+): Reach {
   if (agent.canAct) return { canAct: true };
   if (!agent.projectId) {
     return {
       canAct: false,
       why: "belongs to no project",
-      remedy: "Add it to a project, then give it a credential.",
+      remedy: agent.activeTokens > 0
+        ? "Add it to a project — its credential is fenced to one and reaches nothing until then."
+        : "Add it to a project, then give it a credential.",
     };
   }
   return {

@@ -47,6 +47,8 @@ export function AgentsTab() {
   const mint = useMintAgentCredential(orgId);
   const revoke = useRevokeAgentCredentials(orgId);
   const rename = useSetAgentDisplayName(orgId);
+  // cm:guard ONE flag across both credential actions, not one each: mint and revoke are independent mutations against the same agent's token set, so left separately disabled an admin can start a revoke while a mint is in flight and the two land in either order — the screen announces the credentials are gone and a live one exists, or it shows plaintext the revoke has already killed. Renaming is deliberately outside it: a display name decides nothing, so it races with nothing (ISS-1003 criteria 3, 5).
+  const busy = mint.isPending || revoke.isPending;
   const { toast } = useToast();
 
   const [revealed, setRevealed] = useState<{ userId: string; plaintext: string } | null>(null);
@@ -220,14 +222,14 @@ export function AgentsTab() {
                         <div className="flex gap-2">
                           <Button
                             variant="secondary"
-                            disabled={mint.isPending}
+                            disabled={busy}
                             onClick={() => onMint(agent)}
                           >
-                            {agent.canAct ? "Mint another" : "Give a credential"}
+                            {agent.activeTokens > 0 ? "Mint another" : "Give a credential"}
                           </Button>
                           <Button
                             variant="ghost"
-                            disabled={revoke.isPending || !agent.canAct}
+                            disabled={busy || agent.activeTokens === 0}
                             onClick={() => onRevoke(agent)}
                           >
                             Revoke

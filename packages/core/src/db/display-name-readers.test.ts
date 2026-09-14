@@ -39,11 +39,17 @@ const PRESENTATION_AND_MAPPING: Record<string, string> = {
 
 /**
  * Every spelling of the column this scan can see. The snake_case form catches
- * raw SQL; the camelCase drizzle property catches a query builder read.
+ * raw SQL; the rest catch a query builder read.
  */
 const SELF = 'db/display-name-readers.test.ts';
 
-const SPELLINGS = [/\busers\.displayName\b/, /\bdisplay_name\b/];
+// cm:guard four spellings, not one, because a scan that sees only `users.displayName` is a scan a reader escapes by TYPING it differently — `users["displayName"]` and `const { displayName } = users` are the two an editor's own autocomplete offers, and either one walks a deciding module past this test while it stays green. The regex is not an AST and never will be exhaustive; it is wide enough that evading it has to be deliberate rather than incidental (ISS-1003 criterion 15).
+const SPELLINGS = [
+  /\busers\s*\.\s*displayName\b/,
+  /\busers\s*\[\s*['"`]displayName['"`]\s*\]/,
+  /\{[^{}]*\bdisplayName\b[^{}]*\}\s*=\s*users\b/,
+  /\bdisplay_name\b/,
+];
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
