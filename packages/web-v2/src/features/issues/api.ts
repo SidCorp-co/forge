@@ -95,6 +95,8 @@ export const issuesApi = {
     params.set("withPipelineHealth", "1");
     // cm:why ISS-594 — the row's module attributions, and the only source for the list's Module cell: the search response carries no labels otherwise
     params.set("withModules", "1");
+    // cm:why the tab counts ride this response rather than an endpoint of their own: the figure on a tab and the rows beneath it are then one read of one narrowing, and cannot describe two different moments (ISS-1010)
+    params.set("withBuckets", "1");
     if (opts.q) params.set("q", opts.q);
     if (opts.priority) params.set("priority", opts.priority);
     if (opts.createdBy) params.set("createdBy", opts.createdBy);
@@ -106,7 +108,9 @@ export const issuesApi = {
     for (const s of opts.status ?? status ?? []) params.append("status", s);
     for (const s of statusNot ?? []) params.append("statusNot", s);
     if (origin) params.set("origin", origin);
-    return apiClientList<IssueRow>(`/projects/${projectId}/issues/search?${params}`);
+    return apiClientList<IssueRow, { buckets?: IssueBuckets }>(
+      `/projects/${projectId}/issues/search?${params}`,
+    );
   },
 
   /** `PATCH /api/issues/:id` — priority/complexity/description (status is NOT
@@ -189,6 +193,13 @@ export const issuesApi = {
       body: JSON.stringify(body),
     }),
 };
+
+// cm:edge contract -> packages/core/src/issues/search.ts#IssueBuckets — the raw per-status figures the tabs are built from. Deliberately NOT counts per tab: the status→tab mapping lives once, in the contracts label axis, and a second copy on the server is the drift that axis exists to prevent.
+export interface IssueBuckets {
+  byStatus: Partial<Record<IssueStatus, number>>;
+  detector: number;
+  humanDraft: number;
+}
 
 /** ISS-764 — batch release API. Separate from issuesApi since these are
  *  project-level endpoints (not per-issue). */

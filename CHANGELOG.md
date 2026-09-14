@@ -114,6 +114,30 @@
 
 ### Added
 
+- **The Issues list opens on the work that is waiting for you, and every tab says how much it
+  holds.** Opening a project's issues showed all of them, newest first — measured on this project,
+  1,011 rows of which 986 were closed, so the default view was 97% finished work and the eleven
+  live issues were somewhere inside it. The tabs are now counted, and the page opens on the one
+  that matters: **Needs you**. Each tab carries its figure, so where the work sits is legible
+  before anything is clicked rather than after several are.
+
+  The tabs also stopped naming rungs and started naming **who holds the work**. The old set —
+  Active, Review, Blocked — was a hand-written partition of the status ladder, so it went wrong
+  every time the ladder moved: one bucket still offered a verification status that had been
+  removed from the ladder months earlier, and could never fill. Each tab now resolves through the
+  same label axis the rest of the product renders from, which means a status added to the kernel
+  lands in a tab without anybody remembering to edit a list. Two placements are deliberate and are
+  not where a reader might expect: an issue at the **release gate** and an issue that was
+  **reopened** are yours, not the agent's — the first is waiting for a person to approve it, and
+  nothing picks up the second on its own.
+
+  **Dropped issues have somewhere to be.** An issue closed as "not work" was in no tab at all and
+  could only be found by listing everything — twelve of them on this project. They now sit with the
+  closed ones, told apart rather than blended in, because deciding not to do the work and finishing
+  it are different outcomes. And an issue at the release gate left the finished tab: it is not
+  finished, it is waiting for somebody, which is exactly the kind of gate that stops being noticed
+  when it is counted as done.
+
 - **An issue can now say what it still owes and who owes it, as fields rather than as a sentence
   somebody has to find.** An issue accumulated everything and surfaced nothing: an issue closed
   having landed one of the five things it named read exactly like one that landed all five, because

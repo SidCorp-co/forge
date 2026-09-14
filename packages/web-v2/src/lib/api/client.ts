@@ -17,9 +17,7 @@ export class ApiError extends Error {
   readonly status: number;
   readonly code?: string;
   readonly details?: unknown;
-  // Raw parsed JSON response body. Captured so callers can read non-error-shaped
-  // payloads on 4xx/5xx (e.g. the 410 `{ archived: true, path }` envelope from
-  // `GET /api/jobs/:id/prompt`). Undefined when the body wasn't JSON.
+  // cm:why captured so a caller can read a non-error-shaped payload on a 4xx/5xx — the 410 `{ archived: true, path }` from `GET /api/jobs/:id/prompt` is the case; undefined when the body was not JSON.
   readonly body?: unknown;
 
   constructor(
@@ -108,17 +106,23 @@ export async function apiMultipart<T>(endpoint: string, formData: FormData): Pro
 // cm:guard a paginated response must carry its own total — in the BODY, or in `X-Total-Count` for the routes still on the array shape. Neither present is an ERROR, never `items.length`: that fallback made a truncated page indistinguishable from a complete list, silently, and 50 of 900 rows read as "900 of 900" while every caller comparing the two to decide whether to fetch more simply stopped.
 // cm:edge contract -> packages/core/src/lib/pagination.ts — `listResponse` builds the envelope this reads, and `setTotalCount` writes the header form; a paginated route that emits neither fails here rather than under-reporting its own size
 // cm:edge contract -> packages/core/src/index.ts — `exposeHeaders: ['X-Total-Count']` is what lets a browser read the header form at all; drop it and every array-shaped list throws rather than quietly truncating
-export async function apiClientList<T>(
+// cm:why `extra` carries whatever else the envelope held, unread and untyped by this helper: a route that answers with its rows AND a figure about the set they came from (the issues search and its tab counts) would otherwise need a second endpoint, and two reads of one set can describe two different moments.
+export async function apiClientList<T, E = unknown>(
   endpoint: string,
   options: RequestInit = {},
-): Promise<{ items: T[]; totalCount: number }> {
+): Promise<{ items: T[]; totalCount: number; extra?: E }> {
   const res = await fetchRaw(endpoint, options);
   // cm:why 204 carries no body and no header by design — an empty list is complete at zero, and demanding a total here would fail every route that answers "nothing" without one
   if (res.status === 204) return { items: [], totalCount: 0 };
 
-  const body = (await res.json()) as T[] | { items: T[]; total: number };
+  const body = (await res.json()) as T[] | ({ items: T[]; total: number } & Record<string, unknown>);
   if (!Array.isArray(body)) {
-    return { items: body.items ?? [], totalCount: body.total };
+    const { items, total, returned, limit, offset, hasMore, ...rest } = body;
+    return {
+      items: items ?? [],
+      totalCount: total,
+      ...(Object.keys(rest).length > 0 ? { extra: rest as E } : {}),
+    };
   }
 
   const items = body ?? [];

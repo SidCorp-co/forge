@@ -1,5 +1,16 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, count, desc, eq, exists, inArray, isNotNull, notInArray, sql } from 'drizzle-orm';
+import {
+  and,
+  count,
+  desc,
+  eq,
+  exists,
+  inArray,
+  isNotNull,
+  notInArray,
+  type SQL,
+  sql,
+} from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -28,6 +39,38 @@ import { listModulesForIssues, resolveModuleIdsTolerant } from './label-service.
 import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
 import { buildIssueSearchCondition, issueSearchMatchedFields } from './search-predicate.js';
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
+
+export interface IssueBuckets {
+  /** How many issues sit at each kernel status, under every filter except status and origin. */
+  readonly byStatus: Record<string, number>;
+  /** Machine-filed issues (a detectorKey), at any status. */
+  readonly detector: number;
+  /** Drafts a person filed, which is what the Draft tab means. */
+  readonly humanDraft: number;
+}
+
+// cm:guard counts come from the caller's own narrowing minus status and origin, never from a fresh `where`. The tabs map statuses to buckets on the client, through the contracts label axis, so this returns raw per-status numbers and no bucket names: a second copy of that mapping here is exactly the drift the axis exists to prevent.
+async function countBuckets(axisFree: SQL[]): Promise<IssueBuckets> {
+  const base = axisFree.length === 1 ? axisFree[0] : and(...axisFree);
+  const [rows, [detector] = [{ n: 0 }], [humanDraft] = [{ n: 0 }]] = await Promise.all([
+    db
+      .select({ status: issues.status, n: count() })
+      .from(issues)
+      .where(base)
+      .groupBy(issues.status),
+    db
+      .select({ n: count() })
+      .from(issues)
+      .where(and(base, buildOriginCondition('detector'))),
+    db
+      .select({ n: count() })
+      .from(issues)
+      .where(and(base, eq(issues.status, 'draft'), buildOriginCondition('human'))),
+  ]);
+  const byStatus: Record<string, number> = {};
+  for (const r of rows) byStatus[r.status] = Number(r.n);
+  return { byStatus, detector: Number(detector?.n ?? 0), humanDraft: Number(humanDraft?.n ?? 0) };
+}
 
 const coerceArray = <T>(v: T | T[] | undefined): T[] | undefined =>
   v === undefined ? undefined : Array.isArray(v) ? v : [v];
@@ -76,6 +119,8 @@ const searchQuerySchema = z
     withFailureInfo: z.coerce.boolean().optional().default(false),
     // cm:why opt-in like withCost/withFailureInfo: it costs ~9 batched round trips, and the callers that need it are the board and the issues list, where a queued-but-undispatched issue otherwise renders as actively worked
     withPipelineHealth: z.coerce.boolean().optional().default(false),
+    // cm:why opt-in like the hydrators above: it is two grouped reads, and only the issues list needs them. What it returns is a count PER STATUS plus the two origin counts, never a count per tab — the tabs are the client's mapping (contracts `statusesForLabels`), and a second copy of that mapping here is the drift the label axis exists to prevent.
+    withBuckets: z.coerce.boolean().optional().default(false),
     // cm:why ISS-594 — the ONLY way a list row learns its modules: this response serializes the raw `issues` row, which has no label columns, and the alternative for web-v2's module cell was one `GET /issues/:id` per row
     withModules: z.coerce.boolean().optional().default(false),
   })
@@ -186,9 +231,15 @@ searchRoutes.get(
     if (!access.role) throw forbidden();
 
     const conditions = [eq(issues.projectId, projectId)];
+    // cm:why the tab counts are built from the SAME narrowing with only the two axes the tabs select — status and origin — left out, so a count and the list beneath it can disagree about which tab a row belongs to and about nothing else. A second query with filters of its own is how a tab says 5 and shows 4.
+    const axisFree = [eq(issues.projectId, projectId)];
+    const both = (c: SQL) => {
+      conditions.push(c);
+      axisFree.push(c);
+    };
 
     if (q.q) {
-      conditions.push(buildIssueSearchCondition(q.q));
+      both(buildIssueSearchCondition(q.q));
     }
     if (q.status && q.status.length > 0) {
       conditions.push(inArray(issues.status, q.status));
@@ -197,23 +248,23 @@ searchRoutes.get(
       conditions.push(notInArray(issues.status, q.statusNot));
     }
     if (q.priority && q.priority.length > 0) {
-      conditions.push(inArray(issues.priority, q.priority));
+      both(inArray(issues.priority, q.priority));
     }
     if (q.assignee) {
-      conditions.push(eq(issues.assigneeId, q.assignee));
+      both(eq(issues.assigneeId, q.assignee));
     }
     if (q.createdBy) {
-      conditions.push(buildCreatedByCondition(q.createdBy));
+      both(buildCreatedByCondition(q.createdBy));
     }
     if (q.origin) {
       conditions.push(buildOriginCondition(q.origin));
     }
     if (q.category) {
-      conditions.push(eq(issues.category, q.category));
+      both(eq(issues.category, q.category));
     }
     if (q.label && q.label.length > 0) {
       const labelIds = q.label;
-      conditions.push(
+      both(
         exists(
           db
             .select({ one: sql`1` })
@@ -229,7 +280,7 @@ searchRoutes.get(
       if (moduleIds.length === 0) {
         return c.json(listResponse(c, [], 0, { limit: q.limit, offset: q.offset }));
       }
-      conditions.push(
+      both(
         exists(
           db
             .select({ one: sql`1` })
@@ -244,6 +295,8 @@ searchRoutes.get(
     const where = conditions.length === 1 ? conditions[0] : and(...conditions);
 
     const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(issues).where(where);
+
+    const buckets = q.withBuckets ? await countBuckets(axisFree) : null;
 
     const orderBy = buildIssueOrderBy(q.sort);
 
@@ -320,8 +373,11 @@ searchRoutes.get(
       }));
     }
 
+    // cm:why `buckets` rides the envelope rather than a second endpoint: the numbers a tab shows and the rows under it are then read in one request, from one narrowing, and cannot describe different moments.
+    const withBuckets = <T>(env: T) => (buckets ? { ...env, buckets } : env);
+
     if (!q.withAgentSessions || serialized.length === 0) {
-      return c.json(listResponse(c, serialized, total, q));
+      return c.json(withBuckets(listResponse(c, serialized, total, q)));
     }
 
     const map = await hydrateAgentSessionsForIssues(
@@ -329,18 +385,20 @@ searchRoutes.get(
       serialized.map((r) => r.id as string),
     );
     return c.json(
-      listResponse(
-        c,
-        serialized.map((r) => {
-          const bucket = map.get(r.id as string);
-          return {
-            ...r,
-            agentSessions: bucket?.agentSessions ?? [],
-            agentStatus: bucket?.agentStatus ?? null,
-          };
-        }),
-        total,
-        q,
+      withBuckets(
+        listResponse(
+          c,
+          serialized.map((r) => {
+            const bucket = map.get(r.id as string);
+            return {
+              ...r,
+              agentSessions: bucket?.agentSessions ?? [],
+              agentStatus: bucket?.agentStatus ?? null,
+            };
+          }),
+          total,
+          q,
+        ),
       ),
     );
   },

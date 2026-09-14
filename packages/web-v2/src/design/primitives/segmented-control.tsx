@@ -11,6 +11,10 @@ export interface SegmentOption<T extends string> {
   disabled?: boolean;
   /** Native title tooltip explaining why it's disabled. */
   title?: string;
+  /** A figure rendered after the label. Omitted rather than zeroed when unknown — a count that is still loading must not read as an empty bucket. */
+  count?: number;
+  /** Paint the count as something that wants attention rather than as a neutral total. */
+  countTone?: "neutral" | "attention";
 }
 
 export interface SegmentedControlProps<T extends string> {
@@ -48,6 +52,20 @@ export function SegmentedControl<T extends string>({
           >
             {opt.icon && <Icon name={opt.icon} size={15} />}
             {opt.label}
+            {opt.count !== undefined && (
+              <span
+                className={cn(
+                  "ml-0.5 rounded-full px-1.5 py-px text-[11px] font-semibold tabular-nums",
+                  opt.count === 0
+                    ? "bg-sunken text-muted"
+                    : opt.countTone === "attention"
+                      ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200"
+                      : "bg-sunken text-muted",
+                )}
+              >
+                {opt.count}
+              </span>
+            )}
           </button>
         );
       })}

@@ -506,21 +506,45 @@ describe("filterToQueryParams", () => {
 	it("all applies no filter — every issue incl. drafts + closed (ISS-360)", () => {
 		expect(filterToQueryParams("all")).toEqual({});
 	});
-	it("review targets the verification band", () => {
-		expect(filterToQueryParams("review").status).toContain("developed");
-		expect(filterToQueryParams("review").status).toContain("testing");
+	it("`you` holds every status a person must act on, from the label axis", () => {
+		const s = filterToQueryParams("you").status ?? [];
+		for (const parked of ["needs_info", "waiting", "on_hold"]) {
+			expect(s, parked).toContain(parked);
+		}
 	});
-	// cm:guard ISS-970 — this arm asks the contracts label axis which statuses are parked and does NOT hand-write a tuple. The three surfaces that each kept their own copy disagreed, and the tab was the copy that both carried a pause nobody must answer and omitted `waiting`, a real question. Re-typing the literal here is the drift, whatever values it holds.
-	it("blocked targets every parked status the label axis names", () => {
-		expect(filterToQueryParams("blocked")).toEqual({
-			status: ["waiting", "on_hold", "needs_info"],
-		});
+	// cm:guard the release gate waits for a PERSON to approve it, and nothing has dispatched at `reopen` since 2026-09-10. Either one filed under the machine's tab is a row its owner never goes back to.
+	it("counts the release gate and a reopen as the person's, not the machine's", () => {
+		const you = filterToQueryParams("you").status ?? [];
+		const agent = filterToQueryParams("agent").status ?? [];
+		for (const mine of ["awaiting_release", "reopen"]) {
+			expect(you, mine).toContain(mine);
+			expect(agent, mine).not.toContain(mine);
+		}
+	});
+	it("`agent` never claims a status a person has to answer", () => {
+		const s = filterToQueryParams("agent").status ?? [];
+		for (const parked of ["waiting", "on_hold", "needs_info"]) {
+			expect(s, parked).not.toContain(parked);
+		}
+	});
+	// cm:guard 12 of forge-dev's issues were reachable only through `all` because no bucket named `dropped`. A terminal status with no tab is a row nobody finds.
+	it("`done` carries dropped as well as closed", () => {
+		const s = filterToQueryParams("done").status ?? [];
+		expect(s).toContain("closed");
+		expect(s).toContain("dropped");
+	});
+	it("every non-terminal status is reachable from exactly one of the three work tabs", () => {
+		const buckets = (["you", "agent", "done"] as const).map(
+			(f) => filterToQueryParams(f).status ?? [],
+		);
+		const drafts = ["draft"];
+		for (const s of REGISTRY_ISSUE_STATUSES) {
+			if (drafts.includes(s)) continue;
+			const hits = buckets.filter((b) => b.includes(s)).length;
+			expect(hits, `${s} appears in ${hits} tabs`).toBe(1);
+		}
 	});
 
-	it("does not claim a paused issue as active work", () => {
-		expect(filterToQueryParams("active").status).not.toContain("waiting");
-		expect(filterToQueryParams("active").status).not.toContain("on_hold");
-	});
 	it("draft targets only drafts", () => {
 		expect(filterToQueryParams("draft")).toEqual({
 			status: ["draft"],
@@ -535,9 +559,10 @@ describe("filterToQueryParams", () => {
 	it("all stays unfiltered so nothing is unreachable", () => {
 		expect(filterToQueryParams("all")).toEqual({});
 	});
-	it("done targets shipped work (released + closed)", () => {
+	// cm:guard `awaiting_release` left this bucket deliberately: an issue at the release gate is NOT finished, it is waiting for somebody to approve the release, and counting it as done is how a gate stops being noticed.
+	it("done is terminal only — the release gate is not finished work", () => {
 		expect(filterToQueryParams("done")).toEqual({
-			status: ["awaiting_release", "closed"],
+			status: ["closed", "dropped"],
 		});
 	});
 });

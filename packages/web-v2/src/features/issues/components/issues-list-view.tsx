@@ -40,8 +40,9 @@ import { usePathname } from "next/navigation";
 // change — a pinned-view click on this same route, back/forward — restores the
 // exact view without a remount (the old hydrate-once useState went stale).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ISSUES_PAGE_SIZE } from "../api";
+import { type IssueBuckets, ISSUES_PAGE_SIZE } from "../api";
 import {
+  filterToQueryParams,
   FORGE_AGENT_LABEL,
   groupRows,
   priorityLabel,
@@ -59,6 +60,7 @@ import {
   ISSUE_PRIORITIES,
   type IssueFilter,
   type IssuePriority,
+  type IssueStatus,
   type IssueSort,
 } from "../types";
 import { BulkActionBar } from "./bulk-action-bar";
@@ -66,20 +68,41 @@ import { IssueMobileCard, IssueTableRow } from "./issue-row-actions";
 import type { RowActions } from "./issue-table-row";
 import { useGuardedTransition } from "./use-guarded-transition";
 
-// "All" includes drafts (ISS-360 — no "All + drafts" split). Draft and Done are
-// explicit narrowing buckets (ISS-438): pipeline order left→right, with the
-// not-yet-started and shipped ends on the edges. Stale
-// `?filter=everything|drafts` deep-links fall back to "all".
+// cm:guard an unknown `?filter=` falls back to the default rather than refusing, so a deep-link written against the old buckets (`everything`, `drafts`, `active`, `review`, `blocked`) still opens the page.
+// cm:guard order is the reading order of the question "is this mine?": what waits on a person first, what a machine is doing second, what is finished third. Putting `all` first is what made the page open on 1011 rows of which 986 were closed.
 const FILTERS: SegmentOption<IssueFilter>[] = [
-  { value: "all", label: "All" },
+  { value: "you", label: "Needs you" },
+  { value: "agent", label: "With agent" },
   { value: "draft", label: "Draft" },
   { value: "findings", label: "Findings" },
-  { value: "active", label: "Active" },
-  { value: "review", label: "Review" },
-  { value: "blocked", label: "Blocked" },
-  { value: "done", label: "Done" },
+  { value: "done", label: "Finished" },
+  { value: "all", label: "All" },
 ];
-const VALID_FILTERS: IssueFilter[] = ["all", "draft", "findings", "active", "review", "blocked", "done"];
+const VALID_FILTERS: IssueFilter[] = ["all", "draft", "findings", "you", "agent", "done"];
+// cm:guard a DEFAULT, never a narrowing the reader chose: `isFiltered` compares against this and not against `all`, or a project with no issues greets its owner with "No issues match this search or filter" and a Clear-filters button that clears nothing.
+const DEFAULT_FILTER: IssueFilter = "you";
+
+// cm:edge contract -> packages/web-v2/src/features/issues/derive.ts#filterToQueryParams — a tab's count is the sum of the statuses that same function asks the server for, so the two cannot name different sets. Counting a tab by any other rule is how a tab says 5 and lists 4.
+function withCounts(
+  options: SegmentOption<IssueFilter>[],
+  buckets: IssueBuckets | undefined,
+): SegmentOption<IssueFilter>[] {
+  if (!buckets) return options;
+  const sum = (ss: IssueStatus[] | undefined) =>
+    (ss ?? []).reduce((n, s) => n + (buckets.byStatus[s] ?? 0), 0);
+  const all = Object.values(buckets.byStatus).reduce<number>((n, v) => n + (v ?? 0), 0);
+  return options.map((o) => {
+    const count =
+      o.value === "all"
+        ? all
+        : o.value === "findings"
+          ? buckets.detector
+          : o.value === "draft"
+            ? buckets.humanDraft
+            : sum(filterToQueryParams(o.value).status);
+    return { ...o, count, countTone: o.value === "you" ? "attention" : "neutral" };
+  });
+}
 
 const GROUP_OPTIONS: SelectOption[] = [
   { value: "none", label: "No grouping" },
@@ -127,7 +150,8 @@ export function IssuesListView({
   const search = useLocationSearch();
   const sp = useMemo(() => new URLSearchParams(search), [search]);
   const q = sp.get("q") ?? "";
-  const rawFilter = decodeFilter<IssueFilter>(sp, "filter", "all");
+  // cm:guard the page opens on work a person still owes, never on `all`: measured on forge-dev 2026-09-14, `all` is 1011 rows of which 986 are closed, so the default view was 97% finished work.
+  const rawFilter = decodeFilter<IssueFilter>(sp, "filter", DEFAULT_FILTER);
   const filter = VALID_FILTERS.includes(rawFilter) ? rawFilter : "all";
   const rawPriority = sp.get("priority") ?? "";
   const priority = (ISSUE_PRIORITIES as string[]).includes(rawPriority)
@@ -277,6 +301,11 @@ export function IssuesListView({
 
   const rows = useMemo(() => issuesQ.data?.items ?? [], [issuesQ.data]);
   const total = issuesQ.data?.totalCount ?? 0;
+  // cm:guard the tabs carry a count only once the response that produced the rows has arrived. A zero standing in for "not loaded yet" is the one reading a person cannot recover from — an empty bucket and an unknown one look the same, and they mean opposite things.
+  const tabs = useMemo(
+    () => withCounts(FILTERS, issuesQ.data?.extra?.buckets),
+    [issuesQ.data],
+  );
   const pageCount = Math.max(1, Math.ceil(total / ISSUES_PAGE_SIZE));
 
   const groups = useMemo(() => groupRows(rows, groupBy), [rows, groupBy]);
@@ -326,7 +355,14 @@ export function IssuesListView({
   );
 
   const isFiltered =
-    q !== "" || filter !== "all" || !!priority || !!createdBy || !!label || !!moduleId;
+    q !== "" ||
+    filter !== DEFAULT_FILTER ||
+    !!priority ||
+    !!createdBy ||
+    !!label ||
+    !!moduleId;
+  // cm:why "nothing is waiting on you" and "this project has no issues" are opposite readings of one empty table, and only the bucket totals tell them apart — without it the default tab tells a busy project it is empty.
+  const projectHasIssues = tabs.some((o) => (o.count ?? 0) > 0);
 
   // ── Mobile "Filters" SlideOver (<sm): the 5 advanced Selects collapse behind
   // a single trigger with an active-count badge so the header fits ~2 rows on
@@ -355,7 +391,7 @@ export function IssuesListView({
         />
         <div className="overflow-x-auto">
           <SegmentedControl
-            options={FILTERS}
+            options={tabs}
             value={filter}
             onChange={(v) =>
               setParams({ filter: v !== "all" ? v : "", page: "" })
@@ -548,7 +584,13 @@ export function IssuesListView({
       {!issuesQ.isLoading && !issuesQ.isError && rows.length === 0 && (
         <EmptyState
           title={
-            moduleId ? "No issues in this module" : isFiltered ? "Nothing here" : "No issues yet"
+            moduleId
+              ? "No issues in this module"
+              : isFiltered
+                ? "Nothing here"
+                : projectHasIssues
+                  ? "Nothing is waiting on you"
+                  : "No issues yet"
           }
           message={
             moduleId
@@ -560,7 +602,9 @@ export function IssuesListView({
                   }.`
                 : isFiltered
                   ? "No issues match this search or filter."
-                  : "Issues for this project will appear here as work is filed."
+                  : projectHasIssues
+                    ? "Work is moving without you — the other tabs say where it is."
+                    : "Issues for this project will appear here as work is filed."
           }
           mascot={!isFiltered}
           action={

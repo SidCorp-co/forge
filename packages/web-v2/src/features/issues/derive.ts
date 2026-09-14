@@ -377,25 +377,22 @@ export function filterToQueryParams(filter: IssueFilter): {
 		// cm:why unreviewed machine findings get their own lane because on one project they outnumbered the real parked backlog and made the Draft tab unreadable
 		case "findings":
 			return { origin: "detector" };
-		// cm:why `waiting` is absent although it once sat here: the label axis calls it parked, so it belongs to the Blocked arm below, and a status in two tabs is one claim a reader can reach from two places and believe twice (ISS-970).
-		case "active":
+		// cm:edge contract -> packages/contracts/src/issue-vocabulary.ts#KERNEL_TO_LABEL — every bucket below is resolved through the label axis, so a status whose label moves changes tab in the same commit and a status added to the kernel lands somewhere without an edit here. Typing the tuples back in is what let `tested` sit in a tab after ISS-897 took it off the ladder.
+		// cm:guard `awaiting_release` and `reopened` belong to the PERSON, not the machine, and putting them with `running` is the mistake this arm exists to prevent: the release gate waits for somebody to approve it, and nothing has dispatched at `reopen` since the reopen→open rewrite was retired on 2026-09-10 — a row shown as the machine's is a row nobody goes back to.
+		case "you":
 			return {
-				status: [
-					"open",
-					"confirmed",
-					"clarified",
-					"approved",
-					"in_progress",
-					"reopen",
-				],
+				status: statusesForLabels(
+					"needs_human",
+					"paused",
+					"awaiting_release",
+					"reopened",
+				),
 			};
-		case "review":
-			return { status: ["developed", "testing", "tested"] };
-		// cm:edge contract -> packages/contracts/src/issue-vocabulary.ts#KERNEL_TO_LABEL — the tab asks the axis which statuses are parked, so a status whose label moves changes tab in the same commit. Typing the tuple back in restores the drift: this copy is the one that carried `on_hold`, a pause nobody must answer, while omitting `waiting`, a question somebody is owed.
-		case "blocked":
-			return { status: statusesForLabels("needs_human", "paused") };
+		case "agent":
+			return { status: statusesForLabels("open", "running") };
+		// cm:guard `dropped` belongs here and nowhere else. It is terminal, so it is not live work, and leaving it out of every bucket is what made 12 of forge-dev's issues reachable only through All. It renders distinctly from `done` because deciding not to do the work and finishing it are different outcomes.
 		case "done":
-			return { status: ["awaiting_release", "closed"] };
+			return { status: statusesForLabels("done", "dropped") };
 		default:
 			return {};
 	}
