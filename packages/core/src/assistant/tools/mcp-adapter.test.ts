@@ -154,7 +154,8 @@ describe('chat mcp-adapter', () => {
     expect((received as unknown as { data: { status: string } }).data.status).toBe('draft');
   });
 
-  it('guard rejects a hollow issue create (kernel quality floor)', async () => {
+  // cm:guard the fixture refuses on its TITLE, not its body: ISS-1006 moved the body's floor out of `guardIssueWrites` and onto the plugin's shape reader, which names the missing section instead of counting characters. What this case owns is the ADAPTER contract — a guard that rejects stops the handler — so it must refuse for a reason this guard still holds. The body rule is proven in `registry-dedup.test.ts`.
+  it('guard rejects a create under the title floor, and the handler never runs', async () => {
     let called = false;
     const { execute } = buildToolset(ctx, [
       {
@@ -169,7 +170,7 @@ describe('chat mcp-adapter', () => {
     ]);
     const out = await execute(
       'forge_issues',
-      '{"action":"create","data":{"title":"Fix category","description":"Category too long, use the last one."}}',
+      '{"action":"create","data":{"title":"Fix cat","description":"Category too long, use the last one."}}',
     );
     expect(called).toBe(false);
     expect(body(out).error).toMatch(/too thin to be actionable/);
@@ -188,7 +189,7 @@ describe('chat mcp-adapter', () => {
         guard: guardIssueWrites,
       },
     ]);
-    // Every registry status dispatches a job on transition — all must bounce.
+    // cm:guard every status in this list dispatches a pipeline job on transition, so all six must bounce — a status added to the registry as dispatching and not added here is one a chat turn can set, which is the fence `guardIssueWrites` exists to hold.
     for (const status of [
       'open',
       'approved',

@@ -149,6 +149,17 @@
   halfway through leaves the work findable by whatever picks it up next; two servers cannot both
   answer the same thing; and a reply that was handed over and never confirmed is reported as exactly
   that rather than sent again.
+- **An issue you ask the assistant to file is now held to the same shape as one you file by hand.**
+  Ask in chat for an issue and you would get one — but nothing read the body you got. The terminal
+  refuses a filing that names no category, or leaves out what happened, or why it happens, or what
+  is true once it is fixed, or what is out of scope; the assistant refused none of that. It asked
+  only that the description reach two hundred characters, which a model clears by writing more
+  words rather than by finding out more: asked to file "login broken", it produced a bug report
+  with an invented scope section and a line admitting the reproduction steps had not been provided.
+  A chat filing is now read against the sections its category owes, and a body missing one comes
+  back naming the section, what was looked for and the one thing that clears it — so the next
+  attempt asks you the question instead of padding around it. Nothing about what you can file
+  changed, and an issue filed this way still arrives as a draft for a person to open.
 
 - **An agent now has a name you can read, an address you can type, and a credential that says it is
   the one speaking.** Settings → Agents lists every agent account in your organization, says

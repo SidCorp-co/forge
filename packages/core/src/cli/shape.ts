@@ -44,6 +44,16 @@ export interface CliGap {
   readonly clear: string;
 }
 
+/**
+ * What a door may set for itself. Absent is the CLI door's own, so a caller
+ * that names nothing reads bit-identically to every call made before ISS-1006.
+ */
+// cm:guard a way out only, never a rule: both doors refuse the same filings for the same reasons, and the only thing a door may say differently is how the filer gets out. A gap, a threshold or a section reached through here would make two shapes wearing one reader.
+export interface CliWaysOut {
+  /** How a parts claim is cleared at this door. */
+  readonly partsClear?: (keys: readonly string[]) => string;
+}
+
 export interface CliShape {
   readonly gaps: readonly CliGap[];
   /** Sections this kind only suggests, and this body left out. */
@@ -159,6 +169,15 @@ const governedRe = (prefixes: readonly string[]): RegExp => {
   );
 };
 
+/** The CLI door's own way out of a parts claim: it may carry the edge in the same create. */
+// cm:edge contract -> packages/core/src/assistant/tools/registry.ts — the chat door supplies its own, because it refuses `data.relations` by name and this sentence would send a filer straight at that refusal (ISS-1006).
+export const CLI_PARTS_CLEAR = (keys: readonly string[]): string =>
+  `take the claim off the line and relate ${keys.join(', ')} in the same create`;
+
+function partsClear(keys: readonly string[], ways: CliWaysOut): string {
+  return (ways.partsClear ?? CLI_PARTS_CLEAR)(keys);
+}
+
 /** Two keys the phrase GOVERNS, never a line that merely holds both — that is a cross-reference (ISS-336); two because one may cite the issue this body sits beside. */
 export function partsIn(
   body: string,
@@ -230,7 +249,7 @@ function amongOf(text: string): string {
     : 'and the body has no heading at all';
 }
 
-function claimGaps(text: string, prefixes: readonly string[]): CliGap[] {
+function claimGaps(text: string, prefixes: readonly string[], ways: CliWaysOut): CliGap[] {
   const out: CliGap[] = [];
   const split = twoChangesIn(text);
   if (split) {
@@ -250,7 +269,7 @@ function claimGaps(text: string, prefixes: readonly string[]): CliGap[] {
         'parts',
         `a line naming ${parts.keys.join(' and ')} as this issue's parts`,
         "the parts themselves as issues, held on an edge rather than claimed in this body's prose",
-        `take the claim off the line and relate ${parts.keys.join(', ')} in the same create`,
+        partsClear(parts.keys, ways),
       ),
     );
   }
@@ -280,13 +299,16 @@ export function categoryGap(given: string | null | undefined): CliGap | null {
 }
 
 /** The kind is decided BEFORE the sections and they are never read without one: a category nobody has decided the sections of is not made one by the body looking tidy. */
-export function readFiling(filing: {
-  title?: string | null;
-  body?: string | null;
-  category?: string | null;
-  /** Every prefix the project holds, so the parts arm sees a reference under its own name. */
-  prefixes?: readonly string[];
-}): CliShape {
+export function readFiling(
+  filing: {
+    title?: string | null;
+    body?: string | null;
+    category?: string | null;
+    /** Every prefix the project holds, so the parts arm sees a reference under its own name. */
+    prefixes?: readonly string[];
+  },
+  ways: CliWaysOut = {},
+): CliShape {
   const text = String(filing.body ?? '');
   const kind = filing.category ?? null;
   if (!text.trim()) {
@@ -304,7 +326,7 @@ export function readFiling(filing: {
     };
   }
   const gaps = titleGaps(filing.title ?? '');
-  gaps.push(...claimGaps(text, filing.prefixes ?? []));
+  gaps.push(...claimGaps(text, filing.prefixes ?? [], ways));
   const missing = categoryGap(kind);
   if (missing) {
     gaps.push(missing);
