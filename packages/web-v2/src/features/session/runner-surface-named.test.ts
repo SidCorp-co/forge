@@ -43,7 +43,8 @@ describe("the runner surface the web assistant names", () => {
 		[
 			"a row on that list opens the session route under it",
 			"src/features/sessions/components/sessions-screen.tsx",
-			"/agents/${row.id}",
+			// cm:why split so neither half is a plain string carrying `${`, which `noTemplateCurlyInString` flags — the needle is source text being searched for, not an interpolation this file meant to write
+			`/agents/$${"{row.id}"}`,
 		],
 		[
 			"that route renders the session screen",
