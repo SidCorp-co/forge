@@ -252,6 +252,13 @@ describe('a creation claim is what a refused create can contradict', () => {
     expect(probe.suspected).toBe(false);
   });
 
+  // cm:guard the precedence rule had no case that could fail: a sentence answered by BOTH a targeted refusal and a refused create must report once, naming the row, never twice with a null subject beside it. Nothing but this asserts the `continue` that holds it.
+  it('reports a sentence once when a targeted refusal and a refused create both answer it', () => {
+    const probe = detectStateConfab('ISS-2 has been created.', [REFUSED_UPDATE, refusedCreate]);
+    expect(probe.claims).toHaveLength(1);
+    expect(probe.claims[0]?.subject).toBe('ISS-2');
+  });
+
   it('names the first refused create in call order, whichever tool it came from', () => {
     const second = call({
       name: 'forge_comments',
