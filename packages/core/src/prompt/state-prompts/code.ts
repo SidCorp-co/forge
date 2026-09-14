@@ -23,4 +23,4 @@ Implement the approved plan on the ISS-* branch (cut from \`baseBranch\`).
   \`docs/proposals/\` line, or \`waiting\` with the reason — never a new issue.
 Exit:
 - Implemented and pushed → set status \`developed\`.
-- The plan is wrong or unworkable → set status \`reopen\` (or \`needs_info\`) with the reason.`;
+- The plan is wrong or unworkable → set status \`reopen\` (or \`needs_info\`) with the reason; on \`needs_info\` add \`needs\`, the call you cannot make yourself.`;

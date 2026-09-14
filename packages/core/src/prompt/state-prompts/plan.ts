@@ -10,4 +10,4 @@ Explore the codebase and write a concrete implementation plan into the issue \`p
 - Right-size: don't over-plan trivial work; don't under-plan cross-package change.
 Exit:
 - Plan ready → set status \`approved\`.
-- Blocked by missing requirements → set status \`needs_info\`.`;
+- Blocked by missing requirements → set status \`needs_info\` with \`reason\` AND \`needs\`, naming the requirement you are missing.`;

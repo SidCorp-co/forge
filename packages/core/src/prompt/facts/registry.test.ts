@@ -53,7 +53,7 @@ describe('forge facts registry', () => {
     expect(text).toContain('QUOTE that human');
     expect(text).toContain('NEW `needs_info`');
     const fact = getFact('pipeline-rules');
-    expect(fact?.version).toBe(8);
+    expect(fact?.version).toBe(9);
   });
 
   // cm:guard the prompt and the lifecycle guide must agree about `waiting`, and guides/registry.test.ts asserts the same three things — an agent reads the prompt, a human reads the guide, and the two disagreeing about who may write a status is how ISS-163 became six interventions
@@ -67,6 +67,15 @@ describe('forge facts registry', () => {
     expect(text).not.toContain('Reopens are capped');
   });
 
+  // cm:guard keep this in step with guides/registry.test.ts, which asserts the same of the guide a HUMAN reads. `needs` is what mints the question a park is answered through, and the rule reached no agent for the day it lived only in a `cm:guard` on the field — this is the assertion that the prompt carries it (ISS-996).
+  it('pipeline-rules teaches the two fields a `needs_info` park takes, not one', () => {
+    const text = renderFact('pipeline-rules') ?? '';
+    expect(text).toContain('`needs`');
+    expect(text).toContain('ANSWERED, not commented back to life');
+    // cm:guard the FALSE half, kept as a negative because it read as true for eleven months and would read as true again to anyone editing this bullet: `reason` stopped being the only thing a reporter sees the day a park started minting a question.
+    expect(text).not.toContain('it is the only place the reporter sees it');
+  });
+
   it('mcp-tool-reference names forge_guide + the public /api/guides pointer (ISS-746)', () => {
     const text = renderFact('mcp-tool-reference') ?? '';
     expect(text).toContain('forge_guide');
@@ -75,12 +84,8 @@ describe('forge facts registry', () => {
 
   it('pipeline-rules carries the Operating affordances table + red flags (ISS-541)', () => {
     const text = renderFact('pipeline-rules') ?? '';
-    // The canonical affordances block is appended into the mandatory
-    // pipeline-rules so every job preamble teaches affordances as
-    // trigger → tool → red-flag (not a noun-list).
     expect(text).toContain('## Operating affordances');
     expect(text).toContain(OPERATING_AFFORDANCES_TEXT);
-    // The five affordances the issue requires + the red-flags list.
     expect(text).toContain('set_dependency kind:blocks');
     expect(text).toContain('draft');
     expect(text).toContain('forge_memory.search');

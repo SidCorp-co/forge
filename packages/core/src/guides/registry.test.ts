@@ -39,6 +39,14 @@ describe('FORGE_GUIDES registry', () => {
     expect(body).not.toContain('data.unblock');
   });
 
+  // cm:guard keep this in step with prompt/facts/registry.test.ts, which asserts the same of the prompt an AGENT reads — the guide and the prompt disagreeing about what a park owes is the shape of ISS-163, one rung further on.
+  it('the lifecycle guide teaches the two fields a `needs_info` park takes', () => {
+    const body = getGuide('pipeline-and-issue-lifecycle')?.body ?? '';
+    expect(body).toContain('`needs`');
+    expect(body).toContain('what a person must supply for it to start again');
+    expect(body).toContain('session only, a PAT is refused');
+  });
+
   it('every guide has a non-empty title, single-line summary, and body', () => {
     for (const guide of FORGE_GUIDES) {
       expect(guide.title.trim().length).toBeGreaterThan(0);

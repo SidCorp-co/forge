@@ -2409,6 +2409,23 @@
 
 ### Fixed
 
+- **An agent parking an issue is now told how to ask its question, and told when nobody heard it.**
+  Parking work at "needs a human" takes two things: why the work stopped, and what a person has to
+  supply for it to start again. Only the second one produces the question with an answer box on it —
+  and nothing told the agent that. Every place an agent reads said to put the question in the reason,
+  which had been the way to do it until parks started minting real questions, and stopped being true
+  the day they did. The field that mints one was reachable but undescribed, so an agent that found it
+  had to guess what it was for. The result was parks that read as a question and were not one:
+  a decision written out in full in a comment, and an issue page with nothing to answer.
+
+  The instructions now say it in every place an agent looks — the rules carried into every job, the
+  stage instructions themselves, the lifecycle guide a person reads, and the field's own description
+  in the tool schema, which had none. And when the ask reaches nobody, the reply says so instead of
+  succeeding in silence: sending it with a status that mints no question, or from a credential that
+  belongs to a person rather than to an agent, now comes back with a warning naming which of the two
+  it was and what to do about it. A person parking their own work still mints nothing and is still
+  told nothing, because they are not waiting on an answer.
+
 - **The guard protecting a project's issue prefix can no longer be switched off by the session that
   calls it.** The rule that a prefix is never taken from a live project is enforced inside the
   database, by asking whether the project being orphaned is still there. It asked using an

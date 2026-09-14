@@ -23,6 +23,7 @@ import {
 } from './apply-transition.js';
 import type { UnblockedDependent } from './drop-cascade.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
+import { parkQuestionNotMinted } from './park-question.js';
 
 const transitionBodySchema = z
   .object({
@@ -276,11 +277,18 @@ transitionRoutes.post(
       ]);
     }
 
+    const unasked = parkQuestionNotMinted({
+      issue: { id: issue.id, projectId: issue.projectId },
+      toStatus,
+      actor: restActor(c),
+      options: { needs },
+    });
     return c.json({
       id: result.id,
       status: result.status,
       reopenCount: result.reopenCount,
       transitionedAt: result.updatedAt,
+      ...(unasked ? { warnings: [unasked] } : {}),
     });
   },
 );

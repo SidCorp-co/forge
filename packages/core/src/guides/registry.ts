@@ -387,6 +387,23 @@ The kind is REQUIRED and core never guesses it. A plan awaiting approval and a t
 
 **A step that cannot RUN is not \`waiting\`.** No runner, provider quota, project budget, retries spent — the JOB is \`held\` and the issue stays at its stage. \`pipelineHealth.waitingOn.reason = 'job_held'\` names the condition, and nothing is being asked of you: a capacity hold resumes itself when capacity returns.
 
+### \`needs_info\` is a question, and a question has an answer box
+
+It takes **two** fields, and they are not the same sentence:
+
+| Field | Says | Required |
+|---|---|---|
+| \`reason\` | why the work stopped | yes — 422 without it |
+| \`needs\` | what a person must supply for it to start again | no, and send it anyway |
+
+\`needs\` mints a free-text question in the SAME transaction as the status write and the reason comment, so a park either carries its question or does not commit. **That question is the only thing a person can answer** — the comment lane that used to revive a park was cut on 2026-09-13. Omitting \`needs\` does not skip the question: it mints one saying the run did not say what would settle this, which is true and is a worse thing to have said.
+
+Write it as the ask, not as the reason again. *"Choose: (a) accept the landed part and close with criterion 35 recorded as failing, or (b) keep this open and the turn runner is its remaining work"* is answerable. *"blocked on a decision"* is the reason wearing the ask's clothes.
+
+**Who answers, and how.** A person, on the issue page, in the project's chat room, or at \`POST /api/questions/:id/answer { text | optionId, round }\` — session only, a PAT is refused, and \`round\` is required because an answer binds to the round the person was shown. Then, in order: a live session is sent the answer on stdin; a box that registered a waiter reads it back itself and nothing is dispatched; otherwise the issue returns to its entry status with the answer on the record.
+
+**The mint is gated on agency, not on the field.** A park by a person mints nothing — they stopped their own work and own their own resume. Only an agent-held credential (an agent account or a paired device) mints, so a \`needs\` sent by a human-owned token reaches no reader.
+
 ### Stopping the pipeline costs you a written reason
 \`reopen\`, \`waiting\` and \`needs_info\` are the three statuses that stop the pipeline, and all three are **rejected without a \`reason\`** (422). Pass it on the \`forge_issues\` call (\`note\` also counts); it is posted as a comment before the status flips, so it cannot go missing afterwards. \`waiting\` additionally requires \`waitingKind\`, and \`waitingKind\` is REFUSED on every other target (422 \`WAITING_KIND_NOT_APPLICABLE\`) — no other status stores it, so put the ask in \`reason\`.
 

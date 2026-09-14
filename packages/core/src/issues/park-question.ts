@@ -39,3 +39,18 @@ export async function mintParkQuestion(input: MintParkQuestionInput, tx: Drizzle
     needed: input.options.needs?.trim() || NEED_NOT_STATED,
   });
 }
+
+/**
+ * Why this park minted nothing, for a caller that asked it to.
+ */
+// cm:guard the answer to `needs` reaching no reader is a SENTENCE, never a refusal: `needs_info` is the escape hatch a stuck run takes, and a door that rejects the park itself strands the run over a field that is optional. It is also never silence — nothing in the product sends `needs` except a tool caller (the web UI has no such field), so a `needs` that mints nothing is a caller who believes a person was asked and will wait for an answer that was never on the record (ISS-996).
+export function parkQuestionNotMinted(input: MintParkQuestionInput): string | null {
+  if (!input.options.needs?.trim()) return null;
+  if (input.toStatus !== AUTONOMOUS_QUESTION_STATUS) {
+    return `\`needs\` was sent with \`${input.toStatus}\`, which mints no question — only \`${AUTONOMOUS_QUESTION_STATUS}\` does. What you sent is on no record; put it in \`reason\`, or park at \`${AUTONOMOUS_QUESTION_STATUS}\` instead.`;
+  }
+  if (actorAgency(input.actor) !== 'agent') {
+    return `\`needs\` was sent on a credential owned by a person, which mints no question — a person parking their own work owns their own resume. Nobody has been asked anything. If an agent made this call, it is running on the wrong credential: it wants an agent account or a paired device.`;
+  }
+  return null;
+}

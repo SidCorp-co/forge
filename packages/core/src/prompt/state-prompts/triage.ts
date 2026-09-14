@@ -11,4 +11,4 @@ Gate quality fast and cheap. Operate on issue data via MCP only — do NOT read 
 - Classify complexity; set category/priority only if missing; link clearly-related issues.
 Exit:
 - Actionable → set status \`confirmed\`.
-- Incomplete or unclear → set status \`needs_info\` with specific questions, then stop.`;
+- Incomplete or unclear → set status \`needs_info\` with \`reason\` (why you stopped) AND \`needs\` (what the reporter must supply), then stop. \`needs\` is what mints the question they answer.`;

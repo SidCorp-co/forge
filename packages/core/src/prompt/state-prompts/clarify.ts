@@ -13,4 +13,4 @@ Validate understanding before planning: reproduce bugs, verify UX expectations, 
 - Draft the release-notes summary if the issue lacks one.
 Exit:
 - Reproduced / UX validated → set status \`clarified\` (plan runs next).
-- Cannot reproduce, or requirements only the reporter can resolve → set status \`needs_info\` with precise questions.`;
+- Cannot reproduce, or requirements only the reporter can resolve → set status \`needs_info\` with \`reason\` AND \`needs\` — the precise question goes in \`needs\`, which is what the reporter answers.`;

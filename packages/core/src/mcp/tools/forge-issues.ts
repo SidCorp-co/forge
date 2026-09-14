@@ -30,6 +30,7 @@ import {
   MergeMarkerError,
   mergedCommitShaSchema,
 } from '../../issues/merge-marker.js';
+import { parkQuestionNotMinted } from '../../issues/park-question.js';
 import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from '../../issues/patch-fields.js';
 import { findIssueById, findIssueProjectId, type IssueRow } from '../../issues/read-service.js';
 import { applyIssueRelations, issueRelationInputSchema } from '../../issues/relations-service.js';
@@ -175,8 +176,16 @@ const dataObject = z
     reason: z.string().trim().min(1).max(10_000).optional(),
     // cm:guard say WHICH kind whenever you write `waiting` (RFC 0002 INV-5) — core never derives it, so an omitted kind leaves the board rendering "a human is needed" with no hint of what is being asked; it is cleared automatically on any exit
     waitingKind: z.enum(waitingKinds).optional(),
-    // cm:guard what would SETTLE the park, and not the reason said twice: `reason` is why the work stopped, this is what the person has to supply for it to start again. Sending it mints a free-text question a person answers on the issue and in the project's room; omitting it leaves the park as prose nobody can answer except by commenting (ISS-996).
-    needs: z.string().trim().min(1).max(2_000).optional(),
+    // cm:guard the caller-facing half of this rule is the `.describe()` below and NOT this line: nothing but a description reaches an agent reading the tool schema, and the rule was invisible to every caller for the day it lived only here (ISS-996). Keep the two in step, and keep them distinct from `reason` — a park that says why it stopped twice mints a question nobody can act on.
+    needs: z
+      .string()
+      .trim()
+      .min(1)
+      .max(2_000)
+      .optional()
+      .describe(
+        'What a person must supply for a `needs_info` park to start again — NOT `reason`, which is why the work stopped. Sending it mints the free-text question that person answers; omitting it mints one saying the run did not say what would settle this. Minted only for an agent-held credential.',
+      ),
     // cm:guard REPLACE-SET, not additive — `[]` clears every label and `undefined` means no change, so a caller that has not read the issue's current `labels[]` clobbers the set it did not send (ISS-633)
     // cm:guard the object arm mirrors REST's `labelAttachItemSchema` exactly — `labelId` takes a NAME or a uuid like the bare string, `isPrimary` is legal only on a module, and both arms resolve through `resolveLabelIdsForWrite`, so the two surfaces cannot drift apart
     labels: z
@@ -743,11 +752,18 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           input.data.relations,
         );
 
+        let unasked: string | null = null;
         if (input.data.status && input.data.status !== issue.status) {
           await transitionIssueStatus(issue, input.data.status, principalActor(principal), {
             transitionReason: input.data.reason ?? input.data.note,
             waitingKind: input.data.waitingKind,
             needs: input.data.needs,
+          });
+          unasked = parkQuestionNotMinted({
+            issue,
+            toStatus: input.data.status,
+            actor: principalActor(principal),
+            options: { needs: input.data.needs },
           });
         }
 
@@ -757,7 +773,8 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           ...(await serializeWithAttachments(fresh)),
           action: 'updated',
         };
-        if (bodyWarnings.length > 0) updateResult.warnings = bodyWarnings;
+        const allWarnings = unasked ? [...bodyWarnings, unasked] : bodyWarnings;
+        if (allWarnings.length > 0) updateResult.warnings = allWarnings;
         if (r.length > 0) updateResult.relations = r;
         return updateResult;
       }
@@ -777,6 +794,13 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         });
         const fresh = await loadIssue(issue.id);
         const transitionOutput: Record<string, unknown> = await serializeWithAttachments(fresh);
+        const unheard = parkQuestionNotMinted({
+          issue,
+          toStatus: target,
+          actor: principalActor(principal),
+          options: { needs: input.data?.needs },
+        });
+        if (unheard) transitionOutput.warnings = [unheard];
         return transitionOutput;
       }
 

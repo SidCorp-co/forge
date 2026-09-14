@@ -126,3 +126,12 @@ describe('state-prompts — code stage resolves deploy target from reality, not 
     expect(code).toMatch(/no safe pre-prod merge target/);
   });
 });
+
+// cm:guard every stage that can park must name `needs` and not only `reason`: the question a person answers is minted from `needs` alone, and a stage prompt saying "with specific questions" sends those questions into prose nobody can answer (ISS-996).
+describe('state-prompts — a `needs_info` park names what would settle it', () => {
+  it.each(['triage', 'clarify', 'plan', 'code'] as const)('%s names `needs`', (step) => {
+    const prompt = getStatePrompt(step) ?? '';
+    expect(prompt).toContain('needs_info');
+    expect(prompt).toContain('`needs`');
+  });
+});
