@@ -25,7 +25,8 @@ import type {
 import { type ChatToolset, toolError, toolResultText } from './tools/mcp-adapter.js';
 
 // cm:guard 8 (was 5, ISS-609 follow-up) because investigating an external hub takes multi-hop chains — issue-search retries, schema introspection, query, act — and it counts PROVIDER rounds, not tool rounds: the final round MUST be invoked with NO tools (so 7 of the 8 carry them) — a model offered them on the round the loop will not iterate past answers with tool calls and no prose, and finalizing on THAT round returns '' as a `done` turn: seven round-trips of tool work billed, a chat_logs row that reads like a healthy answer. What the cap buys is that the eighth round is SPENT on an answer instead of being discarded; it does NOT make a last-round tool call visible — that round carries no schemas and a call invented there is dropped, which is the rule of the guard on the tool_call branch below, not this one's to restate
-export const MAX_TOOL_ITERATIONS = 8;
+// cm:guard 16 (was 8) because the CLI tool's method is a READ before every act — `forge -h`, then `forge <verb> -h`, then the verb, then the refusal it printed, then the verb again — and a measured filing turn on 2026-09-15 spent all seven tool rounds reaching the first `forge new` and reported failure on the eighth with nothing left to retry. The cost of a round the model does not need is nothing; the cost of one it needed and lacked was the filing (ISS-1009).
+export const MAX_TOOL_ITERATIONS = 16;
 
 /** What `chat_logs.tool_calls` keeps of a result: enough to see what the model was shown, never the full 24k body. */
 const RESULT_PREVIEW_CHARS = 500;
@@ -43,6 +44,8 @@ export interface TurnCoreArgs {
   /** Estimated-token cap on each provider request; `context-budget.ts` elides to fit. */
   contextBudgetTokens?: number | undefined;
   responseFormat?: ChatResponseFormat | undefined;
+  // cm:guard taken as an ARGUMENT and never read from env here: `config/env.js` validates at import time and throws without DATABASE_URL, so importing it into the turn loop makes three provider-mocked suites fail to load — the doors already hold env, and this file stays testable without one (ISS-1009).
+  reasoningEffort?: string | undefined;
   signal?: AbortSignal | undefined;
 }
 
@@ -101,7 +104,7 @@ async function safeExecute(toolset: ChatToolset, tc: CollectedToolCall): Promise
   }
 }
 
-// cm:guard calls that share a tool NAME run sequentially in model order and only distinct names run concurrently — `tools/registry.ts:guardIssueWritesDeduped` is a SELECT-then-INSERT with no uniqueness constraint behind it, so two concurrent `forge_issues create` would both pass `findDuplicateIssue`, and the RC history toolset's per-turn call counter is the same shape; a toolset that needed serial execution across DIFFERENT names would need a flag here, not a wider lock
+// cm:guard calls that share a tool NAME run sequentially in model order and only distinct names run concurrently — the `forge` tool's `new` is a neighbour read then an insert with no uniqueness constraint behind it, so two concurrent `forge new` would both pass the fold, and the RC history toolset's per-turn call counter is the same shape; a toolset that needed serial execution across DIFFERENT names would need a flag here, not a wider lock
 async function executeToolRound(
   toolset: ChatToolset,
   calls: CollectedToolCall[],
@@ -192,6 +195,7 @@ export async function* runTurnEvents(
           args.requireInitialToolUse && iterations === 1 && offered ? 'required' : undefined,
         // cm:guard `response_format` goes only on a round that offers NO tools — Gemini rejects function calling combined with a JSON response schema, and on a tool round the schema would constrain the prose-with-tool-calls shape this loop reads; a tool-less turn gets it on its single round, a tool turn on the final one
         responseFormat: offered ? undefined : args.responseFormat,
+        ...(args.reasoningEffort ? { reasoningEffort: args.reasoningEffort } : {}),
         signal,
       })) {
         if (event.type === 'chunk') {

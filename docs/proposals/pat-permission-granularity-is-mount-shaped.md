@@ -78,3 +78,13 @@ The price of adopting the patterned declaration above, not of the affordance def
 | It breaks live tokens, once, and the free window is closing | All 17 tokens measured on forge-beta are ungranted, so re-attribution is free today. A token granted `projects:read` after this ships reaches the project-scoped issue list; after the change it would not — a live integration breaking on a deploy, with nothing that would announce it. |
 | Doing it properly is a phase, not an edit | Declaration shape, runtime resolver, the gate's walker and the frozen literal all move together, and none of them can move alone without the others certifying something false. |
 | Leaving it costs the plain reading of the names | `issues:read` not covering the route callers actually use to read issues teaches the wrong lesson, paid one confused operator at a time. Bounded by the 403 naming the permission it wanted, which is why this was recorded rather than rushed. |
+
+## The same defect on the other axis: the scope is method-shaped
+
+Measured 2026-09-15 (ISS-1009): `POST /api/memory/search` is a read behind a POST body, and
+`scopeForMethod` reads every non-GET as `write`, so a token narrowed to `knowledge:read` is
+refused the one query `forge new` runs to find an issue's neighbours — the filing goes ahead
+with the fold never tried, and the CLI says so ("the check did not run whole"). The chat door
+pays for it by granting its ten-minute token `knowledge:write` it never uses for a write. The fix
+has the shape above: the declaration names which POST routes are reads, and the runtime and
+`check-pat-surface.mjs` read that one declaration rather than the method.

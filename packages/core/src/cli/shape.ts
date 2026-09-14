@@ -170,7 +170,7 @@ const governedRe = (prefixes: readonly string[]): RegExp => {
 };
 
 /** The CLI door's own way out of a parts claim: it may carry the edge in the same create. */
-// cm:edge contract -> packages/core/src/assistant/tools/registry.ts — the chat door supplies its own, because it refuses `data.relations` by name and this sentence would send a filer straight at that refusal (ISS-1006).
+// cm:why this sentence is the CLI door's alone: the chat door files through the `forge` tool and so reads this same refusal, and the `forge_issues` tool chat still holds refuses `data.relations` by name and offers no create (ISS-1006, ISS-1009).
 export const CLI_PARTS_CLEAR = (keys: readonly string[]): string =>
   `take the claim off the line and relate ${keys.join(', ')} in the same create`;
 

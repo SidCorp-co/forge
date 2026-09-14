@@ -1,6 +1,7 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { env } from '../config/env.js';
+import { logger } from '../logger.js';
 import * as baseSchema from './schema.js';
 import * as activitySchema from './schema-activity.js';
 import * as adminThresholdsSchema from './schema-admin-thresholds.js';
@@ -40,7 +41,24 @@ const queryClient = postgres(env.DATABASE_URL, {
   },
 });
 
-export const db = drizzle(queryClient, { schema });
+// cm:guard OFF unless `DB_QUERY_LOG=1`, and it prints the statement rather than the params: this exists to count round trips per request and read their shape — measured 2026-09-15, one `GET /issues?limit=1` ran ~40 of them — and a logger that printed params would put row contents into the log on every query (ISS-1009).
+const queryLog =
+  process.env.DB_QUERY_LOG === '1'
+    ? {
+        logger: {
+          logQuery(query: string) {
+            queryCount += 1;
+            logger.info(
+              { n: queryCount, sql: query.replace(/\s+/g, ' ').slice(0, 220) },
+              'db.query',
+            );
+          },
+        },
+      }
+    : {};
+let queryCount = 0;
+
+export const db = drizzle(queryClient, { schema, ...queryLog });
 
 export type Db = typeof db;
 

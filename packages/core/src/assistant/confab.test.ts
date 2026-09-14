@@ -279,3 +279,63 @@ describe('the denial list is bounded, and says so', () => {
     ).toBe(false);
   });
 });
+
+describe('the forge CLI is the tracker door, and its writes are read by verb', () => {
+  const cli = (argv: string[], over: Partial<ToolCallRecord> = {}) =>
+    call({ name: 'forge', arguments: JSON.stringify({ argv, body: '## Outcome' }), ...over });
+  const refusedNew = cli(['new', '-', '--title', 'Dark mode', '--category', 'bug'], {
+    isError: true,
+    resultPreview: '{"exitCode":1,"stdout":"","stderr":"Hold — one issue per problem"}',
+  });
+  const refusedSet = cli(['issue', 'ISS-2', '--set', 'status=open', '--why', 'asked'], {
+    isError: true,
+  });
+
+  // cm:guard this is the case the second reader named on 2026-09-15: with `forge` offered and the probe reading `action` alone, "ISS-999 has been created" over a refused `forge new` went unreported — the probe was blind to the one tracker door chat has (ISS-1009).
+  it('reports an invented ref over a refused `forge new`', () => {
+    const probe = detectStateConfab('ISS-999 has been created.', [refusedNew]);
+    expect(probe.suspected).toBe(true);
+    expect(probe.claims[0]?.tool).toBe('forge');
+    expect(probe.claims[0]?.subject).toBeNull();
+  });
+
+  it('reports a status claim over a refused `forge issue --set`', () => {
+    const probe = detectStateConfab('ISS-2 has been set to open.', [refusedSet]);
+    expect(probe.suspected).toBe(true);
+    expect(probe.claims[0]?.subject).toBe('ISS-2');
+  });
+
+  it('reports an update claim over a refused comment with a body', () => {
+    const refused = cli(['comment', 'ISS-2', '-', '--title', 'Seen again'], { isError: true });
+    expect(detectStateConfab('ISS-2 has been updated.', [refused]).suspected).toBe(true);
+  });
+
+  it('says nothing when the `forge new` landed', () => {
+    const landed = cli(['new', '-', '--title', 'Dark mode', '--category', 'bug']);
+    expect(detectStateConfab("I've filed it as ISS-7.", [landed]).suspected).toBe(false);
+  });
+
+  it('ignores a refused read, whatever ref it named', () => {
+    const refusedRead = cli(['issue', 'ISS-2', '--full'], { isError: true });
+    const refusedSearch = cli(['issue', '--search', 'ISS-2 dark mode'], { isError: true });
+    const text = 'ISS-2 has been set to open.';
+    expect(detectStateConfab(text, [refusedRead]).suspected).toBe(false);
+    expect(detectStateConfab(text, [refusedSearch]).suspected).toBe(false);
+  });
+
+  it('ignores a refused thread read — `comment` with no body path', () => {
+    const refused = cli(['comment', 'ISS-2'], { isError: true });
+    expect(detectStateConfab('ISS-2 has been updated.', [refused]).suspected).toBe(false);
+  });
+
+  it('reads the target from the positional, not from a `--relates` ref beside it', () => {
+    const refused = cli(['issue', 'ISS-1', '--relates', 'ISS-2'], { isError: true });
+    expect(detectStateConfab('ISS-2 has been updated.', [refused]).suspected).toBe(false);
+    expect(detectStateConfab('ISS-1 has been updated.', [refused]).suspected).toBe(true);
+  });
+
+  it('survives argv that is not an array', () => {
+    const broken = call({ name: 'forge', arguments: '{"argv":"new"}', isError: true });
+    expect(detectStateConfab('ISS-2 has been set to open.', [broken]).suspected).toBe(false);
+  });
+});

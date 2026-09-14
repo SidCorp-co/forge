@@ -79,11 +79,7 @@ const LEDGER: readonly Claim[] = [
   {
     id: 'issue-web-link',
     owner: 'sharedOpening',
-    clauses: [
-      'include its web link',
-      '/issues/<documentId>',
-      'forge_issues returns the documentId',
-    ],
+    clauses: ['include its web link', '/issues/<documentId>', '`forge new` echoes the documentId'],
     origin: 'moved',
   },
 
@@ -140,6 +136,47 @@ const LEDGER: readonly Claim[] = [
       'refuses a filing that is missing one, NAMING the heading',
     ],
     origin: 'moved',
+  },
+  // cm:guard the four rows below are ISS-1009's and `new`: the tracker moved from two wrapper tools to the `forge` CLI while this ledger was being written, and its method rides the same guide so both doors read it — a Rocket.Chat-only copy would leave the web door filing by hand (ISS-1009).
+  {
+    id: 'tracker-is-forge',
+    owner: 'guide',
+    clauses: [
+      'THE TRACKER IS THE `forge` TOOL',
+      '`forge -h`, then `forge <verb> -h`',
+      'NEVER guess a flag or a verb',
+    ],
+    origin: 'new',
+  },
+  {
+    id: 'file-with-forge-new',
+    owner: 'guide',
+    clauses: [
+      'FILE WITH `forge new`, NOT BY HAND',
+      'folds this onto a near neighbour',
+      'offer `--new`',
+      '--relates ISS-<near>',
+    ],
+    origin: 'new',
+  },
+  {
+    id: 'ask-only-reporter-knows',
+    owner: 'guide',
+    clauses: [
+      'ASK ONLY FOR WHAT ONLY THE REPORTER KNOWS',
+      'write it yourself',
+      'Always write `## Where`',
+    ],
+    origin: 'new',
+  },
+  {
+    id: 'never-claim-unread-write',
+    owner: 'guide',
+    clauses: [
+      'NEVER SAY A WRITE LANDED THAT YOU DID NOT READ BACK',
+      'do not describe the state you intended',
+    ],
+    origin: 'new',
   },
   {
     id: 'urls-carry-ids',
@@ -354,7 +391,7 @@ describe('the persona claim ledger', () => {
     expect(LEDGER.filter((c) => c.origin === 'kept' && c.owner === 'rocketchatOnly')).toHaveLength(
       5,
     );
-    expect(LEDGER).toHaveLength(26);
+    expect(LEDGER).toHaveLength(30);
   });
 
   it('gives each claim exactly one owner', () => {

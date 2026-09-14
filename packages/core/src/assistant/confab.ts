@@ -58,7 +58,38 @@ export interface ConfabProbe {
 
 const NOTHING: ConfabProbe = { suspected: false, claims: [] };
 
+/** The `forge` CLI verbs that change a row, read as the `action` the wrapper tools used to carry: `new` creates, and every other write below targets the ref its own argument names. A verb with a body path (`-`) is a write; the same verb without one is the thread read. */
+// cm:guard the CLI is read as a WRITE by its verb and arguments, never by its exit code or its output: `forge issue ISS-2 --set status=open` and `forge comment ISS-2 -` are the writes chat can make, `forge issue ISS-2` and `forge issue --search q` are reads whose refusal claims nothing about a row. Measured 2026-09-15: with `forge` offered and this probe reading `action` alone, every refused CLI write audited as a read and the probe was blind to the one tracker door chat has (ISS-1009).
+const CLI_TOOL = 'forge';
+const CLI_SET_FLAGS: ReadonlySet<string> = new Set(['--set', '--blocks', '--relates', '--unlink']);
+
+function cliArgvOf(record: ToolCallRecord): string[] | null {
+  if (record.name !== CLI_TOOL) return null;
+  try {
+    const parsed = JSON.parse(record.arguments || '{}') as { argv?: unknown };
+    return Array.isArray(parsed.argv) && parsed.argv.every((a) => typeof a === 'string')
+      ? (parsed.argv as string[])
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function cliWriteOf(argv: readonly string[]): { action: string; target: string | null } | null {
+  const [verb] = argv;
+  const firstRef = argv.slice(1).flatMap((a) => refsIn(a))[0] ?? null;
+  if (verb === 'new') return { action: 'create', target: null };
+  if (verb === 'comment' && argv.includes('-')) return { action: 'update', target: firstRef };
+  if (verb === 'issue' && argv.some((a) => CLI_SET_FLAGS.has(a)))
+    return { action: 'update', target: firstRef };
+  if (verb === 'attach' || verb === 'advance' || verb === 'claim' || verb === 'record')
+    return { action: 'update', target: firstRef };
+  return null;
+}
+
 function actionOf(record: ToolCallRecord): string | null {
+  const argv = cliArgvOf(record);
+  if (argv) return cliWriteOf(argv)?.action ?? null;
   try {
     const parsed = JSON.parse(record.arguments || '{}') as { action?: unknown };
     return typeof parsed.action === 'string' ? parsed.action : null;
@@ -77,6 +108,11 @@ const TARGET_FIELDS = ['documentId', 'issueId'] as const;
 
 // cm:guard the ref a write TARGETS, never every ref its arguments mention: a body quoting `ISS-2` inside a successful update of `ISS-1` would otherwise mark ISS-2 written and silence a real claim about it, and the same quote inside a refused call would be reported as that call's subject. Both directions are wrong and neither is visible in a passing test that puts one ref in the arguments (ISS-1008).
 function targetRefsOf(record: ToolCallRecord): string[] {
+  const argv = cliArgvOf(record);
+  if (argv) {
+    const target = cliWriteOf(argv)?.target;
+    return target ? [target] : [];
+  }
   try {
     const parsed = JSON.parse(record.arguments || '{}') as Record<string, unknown>;
     const refs: string[] = [];
