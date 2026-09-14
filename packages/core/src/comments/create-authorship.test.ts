@@ -14,11 +14,8 @@
  * test below is what holds that line: a client that sends `authorAgency` must
  * not be able to move it.
  *
- * ISS-1003 made the stored value three-valued, and the cases here are the three
- * real credentials rather than three values of one variable: a session, an
- * agent's own token, and a person's token — which establishes nobody and so
- * stores NULL. It stored `human` until that issue, which was the wrong claim
- * about the majority of agents, because most of them run on a person's token.
+ * ISS-1003 made the stored value three-valued: the cases here are the three
+ * real credentials rather than three values of one variable.
  */
 
 import { Hono } from 'hono';

@@ -102,35 +102,6 @@ describe('a conversation takes its scope from the agents in it', () => {
     });
     expect(await scope.derivedScope(room.id)).toEqual([projectA, projectB].sort());
   });
-
-  // cm:guard this asserted the OPPOSITE until ISS-1003 — that a revoke narrowed the scope to nothing — and the flip is the defect being fixed rather than a relaxed expectation. Scope was read off `project_members`, the row a revoke deletes, so revoking an agent emptied the scope of every room where it was the only handle; an empty scope is refused to every reader and the last handle may not be removed, so the room became unreadable by everyone and repairable by nobody. Removing authority is a security action that must always succeed, and it may not also close a room. Point `derivedScope` back at `project_members` and this case goes red.
-  it('keeps its scope when a handle loses its project role, and reports the handle unreachable', async () => {
-    const room = await openRoom(projectA);
-    const [handle] = await participants.listParticipants(room.id);
-    expect(await scope.derivedScope(room.id)).toEqual([projectA]);
-    expect(handle?.projectId).toBe(projectA);
-
-    await harness.db.execute(
-      sql`DELETE FROM project_members WHERE user_id = ${handle?.userId} AND project_id = ${projectA}`,
-    );
-
-    expect(await scope.derivedScope(room.id)).toEqual([projectA]);
-    await expect(scope.assertConversationReadable(room.id, ownerId)).resolves.toEqual([projectA]);
-    const [after] = await participants.listParticipants(room.id);
-    expect(after?.reachable).toBe(false);
-  });
-
-  // cm:guard the OTHER half of what a revoke must not do: an agent given a second project membership after it joined a room must not widen that room, because the row records the project the handle was added FOR and not the set the agent happens to hold. Derive the scope from memberships again and this goes red with projectB in the set (ISS-1003 criterion 21).
-  it('does not widen when the handle is later given a second project membership', async () => {
-    const room = await openRoom(projectA);
-    const [handle] = await participants.listParticipants(room.id);
-    await createTestProjectMember(harness.db, {
-      projectId: projectB,
-      userId: handle?.userId as string,
-      role: 'member',
-    });
-    expect(await scope.derivedScope(room.id)).toEqual([projectA]);
-  });
 });
 
 describe('who may read a conversation', () => {

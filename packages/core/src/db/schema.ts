@@ -45,7 +45,7 @@ export type UserKind = (typeof userKinds)[number];
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   email: text('email').notNull().unique(),
-  // cm:guard EVERY login entrance must refuse `agent`, and the column defaulting to `human` is why a new entrance is the dangerous one: an agent row carries a synthesized address it cannot receive mail at and a NULL `password_hash`, so a forgotten refusal turns creating an agent into creating an unapproved person's account with a live password-reset path. The refusals live in `auth/agent-login-refusal.ts` and every entrance calls that, never its own check.
+  // cm:guard EVERY login entrance must refuse `agent`, and the column defaulting to `human` is why a new entrance is the dangerous one: an agent row carries a synthesized address it cannot receive mail at and a NULL `password_hash`, so a forgotten refusal turns creating an agent into creating an unapproved person's account with a live password-reset path. The refusals live in `auth/agent-account.ts` — `assertNotAgent` — and every entrance calls that, never its own check.
   kind: text('kind', { enum: userKinds }).notNull().default('human'),
   /**
    * The label a person reads, and NOTHING else (ISS-1003).
