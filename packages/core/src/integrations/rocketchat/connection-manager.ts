@@ -359,14 +359,6 @@ class RocketChatConnectionManager {
       await this.sayWhyUnplaceable(ac, m, shape, frame);
       return;
     }
-    // cm:guard the refusal itself is DELIVERED by the neutral collector, through the same door the answer would have used; nothing is sent from here. A second outbound path for authority refusals is the copy ISS-1002 removed.
-    if (outcome.kind === 'speaker-refused') {
-      logger.warn(
-        { ...logCtx, code: outcome.code, delivered: outcome.delivered },
-        'rocketchat: direct speaker unresolved; refusing the turn',
-      );
-      return;
-    }
     logger.debug(
       { ...logCtx, windowId: outcome.windowId, seq: outcome.seq },
       'rocketchat: collected',

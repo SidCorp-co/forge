@@ -14194,6 +14194,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "author_key": {
+          "name": "author_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {

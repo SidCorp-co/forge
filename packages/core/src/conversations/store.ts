@@ -9,6 +9,7 @@ import { and, desc, eq, gte, isNull, lte, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db as defaultDb } from '../db/client.js';
 import { projectMembers } from '../db/schema.js';
+import type { ConversationWindowDecision } from '../db/schema-conversations.js';
 import {
   type ConversationAdapter,
   type ConversationMessageRole,
@@ -49,6 +50,8 @@ export interface StoredConversationMessage {
   role: ConversationMessageRole;
   authorUserId: string | null;
   authorLabel: string | null;
+  /** The transport's own id for whoever spoke, where it named one. */
+  authorKey: string | null;
   content: string;
   images: ConversationImage[];
   deliveryProof: unknown;
@@ -163,6 +166,7 @@ export interface AppendMessageArgs {
   content: string;
   authorUserId?: string | null;
   authorLabel?: string | null;
+  authorKey?: string | null;
   externalId?: string | null;
   images?: readonly ConversationImage[] | undefined;
   deliveryProof?: unknown;
@@ -239,6 +243,7 @@ export async function appendMessagesIn(
           role: m.role,
           authorUserId: m.authorUserId ?? null,
           authorLabel: m.authorLabel ?? null,
+          authorKey: m.authorKey ?? null,
           content: m.content,
           externalId: m.externalId ?? null,
           images: (m.images && m.images.length > 0 ? [...m.images] : null) as never,
@@ -308,8 +313,20 @@ export async function deliveredUnderKey(
   deliveryKey: string,
   tx: Executor = defaultDb,
 ): Promise<boolean> {
+  return (await deliveredDecisionUnderKey(conversationId, deliveryKey, tx)) !== null;
+}
+
+/**
+ * What was already delivered under this key, in the words of the decision that sent it.
+ */
+// cm:guard it answers the DECISION and not merely "something went", because the two are different records: a core that delivered an authority refusal and died before closing its window left the next claimant able to see a delivery and nothing to say what it was, so the window closed `answered` over a room that had been refused. `answered` is the default only because an ordinary reply writes no decision on its proof (ISS-1004 rule 4).
+export async function deliveredDecisionUnderKey(
+  conversationId: string,
+  deliveryKey: string,
+  tx: Executor = defaultDb,
+): Promise<ConversationWindowDecision | null> {
   const [row] = await tx
-    .select({ id: conversationMessages.id })
+    .select({ proof: conversationMessages.deliveryProof })
     .from(conversationMessages)
     .where(
       and(
@@ -318,7 +335,11 @@ export async function deliveredUnderKey(
       ),
     )
     .limit(1);
-  return Boolean(row);
+  if (!row) return null;
+  const proof = row.proof as { decision?: unknown } | null;
+  return typeof proof?.decision === 'string'
+    ? (proof.decision as ConversationWindowDecision)
+    : 'answered';
 }
 
 export async function countMessages(
@@ -423,6 +444,7 @@ function toStored(row: typeof conversationMessages.$inferSelect): StoredConversa
     role: row.role,
     authorUserId: row.authorUserId,
     authorLabel: row.authorLabel,
+    authorKey: row.authorKey,
     content: row.content,
     externalId: row.externalId,
     images: asImages(row.images),

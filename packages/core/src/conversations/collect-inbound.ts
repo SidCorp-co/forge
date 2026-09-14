@@ -13,13 +13,7 @@
  */
 
 import { db } from '../db/client.js';
-import { logger } from '../logger.js';
-import {
-  type ConversationAdapterPorts,
-  type ConversationVenue,
-  codeAuthored,
-  conversationTransport,
-} from './ports.js';
+import type { ConversationAdapterPorts } from './ports.js';
 import { appendMessagesIn, type ConversationImage, openConversation } from './store.js';
 import { openOrExtendWindow } from './windows.js';
 
@@ -44,42 +38,15 @@ export interface InboundCollection<Frame> {
 /**
  * How collecting a frame ended.
  */
-// cm:guard `venue-unresolved` ends BEFORE anything is written: a frame nobody could place has no conversation to write into. `speaker-refused` is the same ONLY when the refusal was delivered — where it was not, the message is collected anyway so the window can refuse durably, because a refusal nobody received and nothing retries is the silence rule 4 forbids (ISS-1004, review pass 1 F3).
+// cm:guard `venue-unresolved` is the ONLY ending before anything is written: a frame nobody could place has no conversation to write into. An unlinked speaker is NOT one of them any more — the message is collected and `route-window.ts` refuses it under the window's delivery key, which is the only arrangement that sends the refusal exactly once. Refusing here first meant a transport that accepted the text and then dropped the connection got a second refusal from the window (ISS-1004, review pass 1 F3 and the plan's own read).
 export type CollectOutcome =
   | { kind: 'collected'; conversationId: string; windowId: string; seq: number }
-  | { kind: 'venue-unresolved' }
-  | { kind: 'speaker-refused'; code: string; refusal: string; delivered: boolean };
-
-// cm:guard the refusal goes out the SAME door an answer would have, looked up by the VENUE's adapter: a second outbound path for authority refusals is the copy the extraction removed, and a door that refuses this is logged rather than thrown because the turn was never going to run.
-async function refuse(
-  venue: ConversationVenue,
-  refusal: { code: string; message: string },
-): Promise<CollectOutcome | null> {
-  const base = { kind: 'speaker-refused' as const, code: refusal.code, refusal: refusal.message };
-  try {
-    const transport = conversationTransport(venue.adapter);
-    if (!transport) throw new Error(`no transport is registered for adapter "${venue.adapter}"`);
-    await transport.deliver(venue, codeAuthored(refusal.message));
-    // cm:guard a refusal that reached the person is still RECORDED, and the log is the only place it can be: it happens before any conversation row exists, so there is no window to carry the decision and no transcript to hold the text. An operator asking why a room fell quiet must find this line rather than nothing, which is what rule 4 asks of every silence (ISS-1004, review pass 1 F3).
-    logger.info(
-      { adapter: venue.adapter, externalId: venue.externalId, code: refusal.code },
-      'conversations: the speaker was refused and told so; nothing was collected',
-    );
-    return { ...base, delivered: true };
-  } catch (err) {
-    // cm:guard a refusal the door would not take hands the message BACK to the collector rather than ending here: the window then holds it, and `route-window.ts` refuses again under a delivery key that cannot say it twice. Dropping it left a person who was owed an answer with neither one nor a record that they were (ISS-1004, review pass 1 F3).
-    logger.error(
-      { err, adapter: venue.adapter, externalId: venue.externalId, code: refusal.code },
-      'conversations: the refusal could not be delivered; collecting it for the window to refuse',
-    );
-    return null;
-  }
-}
+  | { kind: 'venue-unresolved' };
 
 /**
  * Take one inbound frame into its conversation and its window.
  */
-// cm:guard the authority follows the venue's SHAPE, the same rule `inbound-turn.ts` holds: a one-to-one venue has exactly one human and runs as them, a many-speaker venue runs under the binding's principal because there is no single authority to be (ISS-987).
+// cm:guard the authority follows the venue's SHAPE and is settled at ROUTE time, not here: a one-to-one venue has exactly one human and runs as them, a many-speaker venue runs under the binding's principal because there is no single authority to be (ISS-987). What this does is remember who spoke, as the transport names them, so the window can ask the directory the same question.
 // cm:guard ATTRIBUTION is the resolved SPEAKER and not the authority, and the two are different questions: filing every group-room message under the binding's principal makes a second agent's message look like a person's, which blinds the loop breaker to the exact case it exists for. A speaker nothing has linked is filed as nobody plus the label the transport gave, which is a fact rather than a gap (ISS-1003, ISS-1004).
 // cm:guard the append and the window are ONE transaction: a message durable with no window is owed an answer nothing knows to give, and a window with no message is a decision about nothing (ISS-1004 review F3).
 export async function collectInboundMessage<Frame>(
@@ -89,10 +56,6 @@ export async function collectInboundMessage<Frame>(
   if (!venue) return { kind: 'venue-unresolved' };
 
   const speaker = await inbound.ports.resolveSpeaker(inbound.frame);
-  if (venue.shape === 'direct' && !speaker.linked) {
-    const told = await refuse(venue, speaker.refusal as { code: string; message: string });
-    if (told) return told;
-  }
 
   const conversation = await openConversation(venue);
   const authorUserId = speaker.linked ? speaker.userId : null;
@@ -106,6 +69,7 @@ export async function collectInboundMessage<Frame>(
           content: inbound.message,
           authorUserId,
           authorLabel: inbound.speakerLabel ?? inbound.speakerKey,
+          authorKey: inbound.speakerKey,
           externalId: inbound.externalMessageId ?? null,
           ...(inbound.images && inbound.images.length > 0 ? { images: inbound.images } : {}),
         },

@@ -39,7 +39,7 @@ vi.mock('./store.js', () => ({
   readMessages: async () => messageRows,
   readMessagesInRange: async (_id: string, r: { firstSeq: number; lastSeq: number }) =>
     messageRows.filter((m) => m.seq >= r.firstSeq && m.seq <= r.lastSeq),
-  deliveredUnderKey: async () => delivered,
+  deliveredDecisionUnderKey: async () => (delivered ? 'answered' : null),
 }));
 
 const closeWindow = vi.fn(async () => null);
@@ -225,6 +225,33 @@ describe('authority', () => {
   });
 
   // cm:guard a refusal the door would not take is `undetermined` and not `authority-refused`: the window records that nobody was told, and the reservation stops the next claim saying it twice (rule 4).
+  // cm:guard a wording lookup that failed must leave the window claimable rather than reserved: `refusalFor` asks a directory, and a reservation burned by a lookup that sent nothing would leave the person never told (review of the plan, F1).
+  it('leaves the window unreserved when the refusal wording cannot be looked up', async () => {
+    conversationRow = { ...conversation, shape: 'direct' };
+    messageRows = messages.map((m) => ({ ...m, authorUserId: null }));
+    await expect(
+      routeWindow({
+        window: { ...WINDOW },
+        manySpeakersPrincipalUserId: 'principal-1',
+        inputs: () => ({ door: 'chat-sync', handleName: 'Babo' }),
+        refusalFor: async () => {
+          throw new Error('the directory is down');
+        },
+      }),
+    ).resolves.toMatchObject({ decision: 'unreachable' });
+    expect(reserveDelivery).not.toHaveBeenCalled();
+    expect(deliver).not.toHaveBeenCalled();
+  });
+
+  // cm:guard the proof carries WHICH decision sent it, so a crash between the refusal and the close cannot be recovered as an ordinary answer (review of the plan, F1).
+  it('recovers a delivered refusal as authority-refused and not as answered', async () => {
+    conversationRow = { ...conversation, shape: 'direct' };
+    messageRows = messages.map((m) => ({ ...m, authorUserId: null }));
+    await route();
+    const recorded = recordDeliveredReply.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(recorded.decision).toBe('authority-refused');
+  });
+
   it('does not claim to have refused when the door would not take it', async () => {
     conversationRow = { ...conversation, shape: 'direct' };
     messageRows = messages.map((m) => ({ ...m, authorUserId: null }));

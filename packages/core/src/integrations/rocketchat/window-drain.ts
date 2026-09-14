@@ -24,7 +24,7 @@ import {
 } from '../../conversations/windows.js';
 import { logger } from '../../logger.js';
 import type { ActiveConnection } from './connection-manager.js';
-import { parseRocketChatVenueId } from './conversation-port.js';
+import { parseRocketChatVenueId, rocketChatConversationPorts } from './conversation-port.js';
 import { rocketChatTurn } from './turn-inputs.js';
 
 /**
@@ -119,6 +119,21 @@ export async function routeOne(
   const outcome = await routeWindow({
     window,
     manySpeakersPrincipalUserId: route.principalUserId,
+    // cm:guard the refusal is asked of the SPEAKER PORT rather than written here, with the key the collector kept: it names the exact steps that link that chat account, which is ISS-977's contract, and a copy here would drift the day those endpoints move (ISS-1004).
+    refusalFor: async ({ authorKey, authorLabel }) => {
+      if (!authorKey) return null;
+      const resolved = await rocketChatConversationPorts.resolveSpeaker({
+        m: { rid: parts.rid, userId: authorKey, username: authorLabel ?? undefined },
+        auth: {
+          serverUrl: ac.serverUrl,
+          authToken: ac.authToken,
+          userId: ac.botUserId,
+        },
+        projectId: window.projectId,
+        shape: 'direct',
+      } as never);
+      return resolved.linked ? null : resolved.refusal.message;
+    },
     inputs: ({ venue, messages, reserve }) => {
       const spoken = messages.filter((m) => m.role === 'user');
       return rocketChatTurn({

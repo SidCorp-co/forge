@@ -16,7 +16,7 @@ import { logger } from '../logger.js';
 import { type ConversationVenue, codeAuthored, conversationTransport } from './ports.js';
 import { decideProactivity } from './proactivity.js';
 import {
-  deliveredUnderKey,
+  deliveredDecisionUnderKey,
   getConversation,
   readMessagesInRange,
   type StoredConversationMessage,
@@ -51,6 +51,14 @@ export interface RouteWindowArgs {
   manySpeakersPrincipalUserId: string;
   /** The adapter's own contribution to the turn, built for the window's last message. */
   inputs: (context: WindowContext) => WindowTurnInputs;
+  /**
+   * What to tell a one-to-one room whose speaker is linked to nobody.
+   */
+  // cm:guard the wording is the SPEAKER PORT's and is asked for here rather than written here: it names the exact steps that link that account, which is ISS-977's contract and would drift the day those endpoints move. A null falls back to the neutral line below, which is true of every transport but names no way out (ISS-1004).
+  refusalFor?: (speaker: {
+    authorKey: string | null;
+    authorLabel: string | null;
+  }) => Promise<string | null> | string | null;
 }
 
 /**
@@ -127,8 +135,9 @@ async function decide(
   const { window } = args;
 
   // cm:guard the delivery key is checked BEFORE the guards and before the turn: a window re-claimed after its holder died may already have been answered, and running the turn again to find out would cost a turn and post a second reply to discover the first one landed (ISS-1004 rule 2).
-  if (await deliveredUnderKey(window.conversationId, deliveryKey)) {
-    return { decision: 'answered', detail: { deliveryKey, alreadyDelivered: true } };
+  const already = await deliveredDecisionUnderKey(window.conversationId, deliveryKey);
+  if (already) {
+    return { decision: already, detail: { deliveryKey, alreadyDelivered: true } };
   }
 
   // cm:guard a reservation with no delivered row is the fourth state and NOT a licence to try again: the previous holder handed the text to the transport and died before it could say how that went, so the room may or may not be holding this answer already. Sending again to find out is how one reply becomes two, and calling it a failure is what rule 4 forbids outright (ISS-1004, review F2).
@@ -171,7 +180,10 @@ async function decide(
   let principalUserId = args.manySpeakersPrincipalUserId;
   if (venue.shape === 'direct') {
     if (!speaker?.authorUserId) {
-      return refuseAuthority(venue, window, deliveryKey, claim);
+      return refuseAuthority(args, venue, window, deliveryKey, claim, {
+        authorKey: speaker?.authorKey ?? null,
+        authorLabel: speaker?.authorLabel ?? null,
+      });
     }
     principalUserId = speaker.authorUserId;
   }
@@ -217,7 +229,7 @@ async function decide(
 /**
  * What a one-to-one room is told when nobody can be answered as.
  */
-// cm:guard code-authored and deliberately NOT the transport's own wording: the collector says it better because it still holds the frame, and this is the durable second attempt for when that one could not be delivered — so it says the thing that is true of every transport and names what would fix it (ISS-987, ISS-1004).
+// cm:guard the FALLBACK, used only when `RouteWindowArgs.refusalFor` names nothing — an adapter that supplies none, or a speaker the row kept no transport key for. It names the generic remedy — link the account — and deliberately not the endpoints that do it, because those are the speaker port's to name and a copy here would drift the day they move; this module asks for that wording rather than holding one (ISS-987, ISS-1004).
 export const AUTHORITY_REFUSED_REPLY =
   'I cannot answer in this room: the account speaking here is not linked to a Forge user, so there is nobody for me to act as. Link your chat account to your Forge account and ask again.';
 
@@ -226,25 +238,33 @@ export const AUTHORITY_REFUSED_REPLY =
  */
 // cm:guard the refusal is DELIVERED and not merely decided, and it goes out under the window's own delivery key with the reservation before it: `authority-refused` used to be a decision nobody outside the database could read, so a person whose synchronous refusal failed to send was left with silence and nothing retryable behind it (ISS-1004, review pass 1 F3).
 async function refuseAuthority(
+  args: RouteWindowArgs,
   venue: ConversationVenue,
   window: ConversationWindowRow,
   deliveryKey: string,
   claim: WindowClaim,
+  speaker?: { authorKey: string | null; authorLabel: string | null },
 ): Promise<RoutedWindow> {
   const detail = { reason: 'the speaker in this one-to-one room is linked to no Forge user' };
   const transport = conversationTransport(venue.adapter);
   if (!transport) return { decision: 'authority-refused', detail: { ...detail, told: false } };
+  // cm:guard the wording is settled BEFORE the reservation and the reservation immediately before the send: `refusalFor` asks a directory, so it can fail or hang, and a reservation burned by a lookup that sent nothing leaves the window `undetermined` for good with the person never told (ISS-1004, review of the plan F1).
+  const text =
+    (await args.refusalFor?.(speaker ?? { authorKey: null, authorLabel: null })) ??
+    AUTHORITY_REFUSED_REPLY;
   if (!(await reserveDelivery(window.id, claim))) {
     return { decision: 'undetermined', detail: { ...detail, superseded: true } };
   }
   try {
-    const receipt = await transport.deliver(venue, codeAuthored(AUTHORITY_REFUSED_REPLY));
+    const receipt = await transport.deliver(venue, codeAuthored(text));
+    // cm:guard the proof says WHICH decision sent it, so a crash before the close cannot be read as an ordinary answer: without it the next claimant saw a delivery, knew nothing of what it was, and wrote `answered` over a room that had been refused (ISS-1004 rule 4).
     await recordDeliveredReply({
       conversationId: window.conversationId,
       projectId: window.projectId,
-      text: AUTHORITY_REFUSED_REPLY,
+      text,
       receipt,
       deliveryKey,
+      decision: 'authority-refused',
     });
     return { decision: 'authority-refused', detail: { ...detail, told: true } };
   } catch (err) {

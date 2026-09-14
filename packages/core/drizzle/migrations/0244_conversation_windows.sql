@@ -31,8 +31,13 @@
 -- which lines it has already been handed, and the model is shown the same messages twice — once as
 -- seed context and once as its own transcript. Nullable, and null for everything this codebase wrote.
 --
--- One new table, one added nullable column, no row rewritten. The rollback is `DROP TABLE` plus
--- `DROP COLUMN`.
+-- `conversation_messages.author_key` is the transport's own id for whoever spoke. The authority
+-- refusal is taken at ROUTE time and no longer on the socket, so the row has to remember the
+-- speaker as the directory knows them; a display label is not something a directory can be asked
+-- about. Nullable, and null for everything this codebase wrote.
+--
+-- One new table, two added nullable columns, no row rewritten. The rollback is `DROP TABLE` plus
+-- two `DROP COLUMN`.
 --
 -- SEARCH PATH — pinned and every relation qualified, for the reason 0240 carries.
 SET LOCAL search_path = public, pg_temp;--> statement-breakpoint
@@ -66,4 +71,5 @@ CREATE INDEX "conversation_windows_due_idx" ON "conversation_windows" USING btre
 CREATE INDEX "conversation_windows_conversation_idx" ON "conversation_windows" USING btree ("conversation_id","closed_at");
 --> statement-breakpoint
 
-ALTER TABLE "conversation_messages" ADD COLUMN "external_id" text;
+ALTER TABLE "conversation_messages" ADD COLUMN "external_id" text;--> statement-breakpoint
+ALTER TABLE "conversation_messages" ADD COLUMN "author_key" text;

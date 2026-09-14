@@ -22,6 +22,11 @@ export interface DeliveredReply {
    */
   // cm:guard stored INSIDE the proof rather than beside it, because the proof is what a reader trusts: a key recorded on a row whose delivery failed would tell the next attempt the room already has an answer it never saw (ISS-1004 rule 2).
   deliveryKey?: string | undefined;
+  /**
+   * Which decision this delivery WAS, where it was not an ordinary answer.
+   */
+  // cm:guard it travels with the proof because the proof is what a later claimant reads: a core that delivered an authority refusal and died before closing its window left the next one able to see that something was sent, and nothing to say what — so it wrote `answered` over a room that had been refused (ISS-1004 rule 4).
+  decision?: string | undefined;
 }
 
 /**
@@ -38,7 +43,11 @@ export async function recordDeliveredReply(reply: DeliveredReply): Promise<void>
       content: reply.text,
       authorUserId: await handleForProject(reply.conversationId, reply.projectId),
       deliveryProof: reply.deliveryKey
-        ? { ...reply.receipt, deliveryKey: reply.deliveryKey }
+        ? {
+            ...reply.receipt,
+            deliveryKey: reply.deliveryKey,
+            ...(reply.decision ? { decision: reply.decision } : {}),
+          }
         : reply.receipt,
     });
   } catch (err) {

@@ -148,6 +148,11 @@ export const conversationMessages = pgTable(
      */
     // cm:guard the one thing a collected row loses otherwise: the window routes long after the message arrived, so without this there is no way to tell the room's own history reader which lines it has already been given, and the model is shown the same messages twice — once as seed context and once as its own transcript. Null for anything this codebase wrote (ISS-1004).
     externalId: text('external_id'),
+    /**
+     * The transport's own id for whoever spoke, where it named one.
+     */
+    // cm:guard kept so a window routed minutes later can still say who is being refused: the authority refusal is taken at ROUTE time, and without this the only speaker the row remembers is a display label, which no directory can be asked about. Null for anything this codebase wrote (ISS-1004).
+    authorKey: text('author_key'),
     images: jsonb('images'),
     // cm:guard the receipt the adapter's own `deliver` returned, and a chip may claim only what it holds: a null here means the transport took the text without naming a message, which is NOT delivered (ISS-1001 invariant 8).
     deliveryProof: jsonb('delivery_proof'),

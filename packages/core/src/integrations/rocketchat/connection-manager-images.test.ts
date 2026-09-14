@@ -150,7 +150,7 @@ vi.mock('../../conversations/store.js', () => ({
   getConversation: async (id: string) => conversationsById.get(id) ?? null,
   readMessages: async () => collected,
   readMessagesInRange: async () => collected,
-  deliveredUnderKey: async () => false,
+  deliveredDecisionUnderKey: async () => null,
   appendMessagesIn: async (_tx: unknown, args: { messages: Array<Record<string, unknown>> }) => {
     const rows = args.messages.map((msg, i) => ({
       id: `cm-${collected.length + i}`,
@@ -158,6 +158,7 @@ vi.mock('../../conversations/store.js', () => ({
       role: msg.role,
       authorUserId: msg.authorUserId ?? null,
       authorLabel: msg.authorLabel ?? null,
+      authorKey: msg.authorKey ?? null,
       externalId: msg.externalId ?? null,
       content: msg.content,
       images: msg.images ?? [],

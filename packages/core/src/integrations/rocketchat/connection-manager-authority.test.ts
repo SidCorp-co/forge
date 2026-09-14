@@ -175,7 +175,7 @@ vi.mock('../../conversations/store.js', () => ({
   getConversation: async (id: string) => conversationsById.get(id) ?? null,
   readMessages: async () => collected,
   readMessagesInRange: async () => collected,
-  deliveredUnderKey: async () => false,
+  deliveredDecisionUnderKey: async () => null,
   appendMessagesIn: async (_tx: unknown, args: { messages: Array<Record<string, unknown>> }) => {
     const rows = args.messages.map((msg, i) => ({
       id: `cm-${collected.length + i}`,
@@ -183,6 +183,7 @@ vi.mock('../../conversations/store.js', () => ({
       role: msg.role,
       authorUserId: msg.authorUserId ?? null,
       authorLabel: msg.authorLabel ?? null,
+      authorKey: msg.authorKey ?? null,
       externalId: msg.externalId ?? null,
       content: msg.content,
       images: msg.images ?? [],
@@ -359,21 +360,22 @@ describe('connection-manager turn authority', () => {
     expect(ac.client.sendMessage).not.toHaveBeenCalled();
   });
 
-  // cm:guard a refusal the door would not take does NOT end the message: it is collected so the window can refuse it durably, and a person owed an answer is not left with neither one nor a record that they were (ISS-1004, review pass 1 F3).
-  it('collects the message anyway when the refusal itself cannot be delivered', async () => {
+  // cm:guard the message is collected BEFORE the authority question is settled, and the refusal is the window's: refusing on the socket first meant a transport that accepted the text and then dropped the connection got a second refusal from the window, which criterion 36 forbids (ISS-1004, review pass 1 F3 and the plan's own read).
+  it('collects the message, then refuses it once from the window', async () => {
     resolveSpeaker.mockResolvedValue({
       linked: false,
       refusal: { code: 'SPEAKER_UNLINKED', message: 'unlinked' },
     });
-    deliver.mockRejectedValueOnce(new Error('the room would not take it'));
     collected.length = 0;
+    deliver.mockClear();
 
     await handle(makeAc(), ROUTE, MESSAGE, 'conn-1', 'direct');
 
     expect(collected.map((c) => c.content)).toContain(MESSAGE.text);
+    expect(deliver).toHaveBeenCalledTimes(1);
   });
 
-  it('collects nothing when the refusal did reach the person', async () => {
+  it('keeps the speaker the transport named, so the window can ask about them', async () => {
     resolveSpeaker.mockResolvedValue({
       linked: false,
       refusal: { code: 'SPEAKER_UNLINKED', message: 'unlinked' },
@@ -382,7 +384,7 @@ describe('connection-manager turn authority', () => {
 
     await handle(makeAc(), ROUTE, MESSAGE, 'conn-1', 'direct');
 
-    expect(collected).toHaveLength(0);
+    expect(collected[0]?.authorKey).toBe(MESSAGE.userId);
   });
 
   it('carries a non-unlinked refusal own message rather than rewording it', async () => {
