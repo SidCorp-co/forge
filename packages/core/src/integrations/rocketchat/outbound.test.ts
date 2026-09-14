@@ -63,8 +63,8 @@ describe('outbound chokepoint — no bypass (ISS-671 AC#1)', () => {
 });
 
 const screenRoomReply = vi.fn();
-vi.mock('./reply-screen.js', () => ({
-  screenRoomReply: (...args: unknown[]) => screenRoomReply(...args),
+vi.mock('../../messaging/reply-screen.js', () => ({
+  screenReplyAtDoor: (...args: unknown[]) => screenRoomReply(...args),
 }));
 
 const postRoomMessage = vi.fn();

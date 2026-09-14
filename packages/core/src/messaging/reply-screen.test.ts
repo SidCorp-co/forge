@@ -2,41 +2,52 @@ import { describe, expect, it, vi } from 'vitest';
 
 // cm:ignore CM013 — every frozen comment in this file is an `i18n-allow` pragma naming what its Vietnamese fixture exercises. The fixtures have to be Vietnamese, because the rules under test match Vietnamese phrasing, and deleting a pragma to pay the drain reds the language gate instead.
 
-// cm:why Parity check for the guard composition extracted from `connection-manager.ts`'s old `checkReply`/`verifyReplyClaims` — the ISS-675 async escalation bridge shares this exact module so neither reply path can silently diverge from the other's ISS-672 kernel guards.
+// cm:why every case here reaches the cell through a DOOR rather than through an audience and an intent, because that is the only way a caller can name one after ISS-1002: the pair comes off the door's row, so a door screened against the wrong cell is what these fixtures would catch.
 
 const selectWhere = vi.fn();
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
-vi.mock('../../db/client.js', () => ({
+vi.mock('../db/client.js', () => ({
   db: { select: vi.fn(() => ({ from: selectFrom })) },
 }));
-vi.mock('../../issues/issue-prefix-read.js', () => ({
+vi.mock('../issues/issue-prefix-read.js', () => ({
   activeIssuePrefix: async () => null,
   heldIssuePrefixes: async () => [],
 }));
-vi.mock('../../ws/server.js', () => ({ roomManager: { publish: vi.fn() } }));
-vi.mock('../../pipeline/outbox-session.js', () => ({ withActorContext: vi.fn() }));
-vi.mock('../../pipeline/runs.js', () => ({
+vi.mock('../ws/server.js', () => ({ roomManager: { publish: vi.fn() } }));
+vi.mock('../pipeline/outbox-session.js', () => ({ withActorContext: vi.fn() }));
+vi.mock('../pipeline/runs.js', () => ({
   closeOpenRunForIssue: vi.fn(),
   setCurrentStepForOpenIssueRun: vi.fn(),
 }));
 
-const { screenRoomReply } = await import('./reply-screen.js');
-const { problemsOf } = await import('../../messaging/contract.js');
+const { screenReplyAtDoor } = await import('./reply-screen.js');
+const { problemsOf } = await import('./contract.js');
+
+type Progress = Parameters<typeof screenReplyAtDoor>[1]['progress'];
 
 const screenStakeholderReply = async (
-  ...args: Parameters<typeof screenRoomReply>
+  projectId: string,
+  reply: string,
+  toolCalls: { name: string; arguments: string }[],
+  progress: Progress,
 ): Promise<{ ok: boolean; problems: string[] }> => {
-  const verdict = await screenRoomReply(...args);
+  const verdict = await screenReplyAtDoor('chat-sync', {
+    projectId,
+    segments: [reply],
+    toolCalls,
+    progress,
+  });
   return { ok: verdict.ok, problems: problemsOf(verdict) };
 };
 
 const UUID = '87153ba0-1d92-427d-bc28-f508a163f6a4';
 
-describe('screenRoomReply, the public:report door', () => {
+describe("screenReplyAtDoor, over the chat-sync door's public:report cell", () => {
   it('passes a clean, plain-language reply with no claims to verify', async () => {
     selectWhere.mockResolvedValue([]);
     const verdict = await screenStakeholderReply(
       'proj-1',
+      // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
       'Đơn hàng của bạn đã được xử lý xong.', // i18n-allow: a plain-language bot reply exercised by the guard
       [],
       null,
@@ -49,6 +60,7 @@ describe('screenRoomReply, the public:report door', () => {
     selectWhere.mockResolvedValue([]);
     const verdict = await screenStakeholderReply(
       'proj-1',
+      // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
       'Xem ISS-42 để biết chi tiết.', // i18n-allow: a bot reply citing an unverified ISS id
       [],
       null,
@@ -61,6 +73,7 @@ describe('screenRoomReply, the public:report door', () => {
     selectWhere.mockResolvedValue([{ id: UUID, issSeq: 42 }]);
     const verdict = await screenStakeholderReply(
       'proj-1',
+      // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
       'Xem ISS-42 để biết chi tiết.', // i18n-allow: a bot reply citing a now-verified ISS id
       [],
       null,
@@ -72,6 +85,7 @@ describe('screenRoomReply, the public:report door', () => {
     selectWhere.mockResolvedValue([]);
     const verdict = await screenStakeholderReply(
       'proj-1',
+      // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
       'Đây là log:\n```\nerror\n```', // i18n-allow: a bot reply leaking a code fence
       [],
       null,
@@ -83,6 +97,7 @@ describe('screenRoomReply, the public:report door', () => {
     selectWhere.mockResolvedValue([]);
     const verdict = await screenStakeholderReply(
       'proj-1',
+      // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
       'Để mình kiểm tra rồi báo lại nhé.', // i18n-allow: the empty-promise phrasing under test
       [],
       null,
@@ -94,6 +109,7 @@ describe('screenRoomReply, the public:report door', () => {
     selectWhere.mockRejectedValue(new Error('db down'));
     const verdict = await screenStakeholderReply(
       'proj-1',
+      // cm:ignore CM001 — i18n-allow directive required by scripts/check-source-language.mjs
       'Xem ISS-999 để biết chi tiết.', // i18n-allow: a bot reply citing an ISS id during a DB outage
       [],
       null,

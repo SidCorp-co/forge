@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { cellFor } from './cells.js';
 import type { DoorId, Intent } from './contract.js';
-import { DOORS, doorPolicy } from './doors.js';
+import { cellPair, DOORS, doorCell, doorPolicy } from './doors.js';
 import { withRepairs } from './repairs.js';
 
 const EXPECTED: ReadonlyArray<[DoorId, string, string, number | null]> = [
@@ -110,5 +110,25 @@ describe('the repair budget, counted in one place', () => {
       },
     });
     expect(asked).toBe(0);
+  });
+});
+
+describe('the pair a door screens at, read off its own row', () => {
+  it('gives every shipped door the audience and the intent its cell names', () => {
+    for (const [id, cell] of EXPECTED.map(([id, cell]) => [id, cell] as const)) {
+      const { audience, intent } = doorCell(id);
+      expect(`${audience}:${intent}`).toBe(cell);
+    }
+  });
+
+  // cm:guard an audience is an open string and nothing forbids a colon in one, so the cut is at the LAST colon: cutting at the first would hand `internal:operator:report` back as audience `internal` and intent `operator`, which names no cell, and that door would then refuse every message it screened while saying only that the pair is unknown.
+  it('keeps an audience that carries a colon of its own whole', () => {
+    const { audience, intent } = doorCell('chat-sync');
+    expect(`${audience}:${intent}`).toBe('public:report');
+
+    expect(cellPair('internal:operator:report')).toEqual({
+      audience: 'internal:operator',
+      intent: 'report',
+    });
   });
 });

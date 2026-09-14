@@ -20,20 +20,11 @@ import {
 import type { Executor } from './db-executor.js';
 import { resolveProjectHandle } from './handles.js';
 import { attachOpeningHandle } from './participants.js';
+import type { ConversationVenue } from './ports.js';
 import { derivedScope } from './scope.js';
 
 const conflict = (message: string, code: string) =>
   new HTTPException(409, { message, cause: { code } });
-
-/** Where a conversation happens, in the terms its transport uses for it. */
-export interface ConversationVenue {
-  adapter: ConversationAdapter;
-  externalId: string;
-  shape: ConversationShape;
-  /** The project whose handle speaks here — the venue's binding, not the room's scope. */
-  projectId: string;
-  title?: string | null;
-}
 
 export interface ConversationRow {
   id: string;
@@ -251,21 +242,6 @@ export async function appendMessages(
 
     return rows.map(toStored);
   });
-}
-
-/**
- * Stamp what the adapter's own server said when it took this message.
- */
-// cm:guard the receipt is written AFTER the send returns and is never predicted before it: a proof stamped at append time says the row was written, which is the one thing the row already proves. What `delivery_proof` is for is the other question — did the room actually receive it — and only the transport's answer can settle that (ISS-1001 criterion 15).
-export async function recordDelivery(
-  messageId: string,
-  proof: unknown,
-  dbi: Executor = defaultDb,
-): Promise<void> {
-  await dbi
-    .update(conversationMessages)
-    .set({ deliveryProof: (proof ?? null) as never })
-    .where(eq(conversationMessages.id, messageId));
 }
 
 /** The last `limit` turns, oldest first. */

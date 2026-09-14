@@ -4,54 +4,31 @@
  * core never double-answers, routing @-mentions to a reply in the same room.
  */
 
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import pg from 'pg';
-import { runExternalChatTurn } from '../../assistant/external-chat.js';
-import { ESCALATE_TOOL_NAME } from '../../assistant/tools/escalate.js';
-import {
-  buildExternalMcpToolsets,
-  type ExternalMcpToolsets,
-} from '../../assistant/tools/external-mcp.js';
 import { env } from '../../config/env.js';
-import { handleForProject } from '../../conversations/participants.js';
+import { runInboundTurn } from '../../conversations/inbound-turn.js';
 import { registerConversationTransport } from '../../conversations/ports.js';
-import { appendMessage, openConversation, recordDelivery } from '../../conversations/store.js';
 import { db } from '../../db/client.js';
-import { integrationConnections, organizations, projects } from '../../db/schema.js';
+import { integrationConnections } from '../../db/schema.js';
 import { logger } from '../../logger.js';
 import { Sentry } from '../../observability/sentry.js';
 import { hooks } from '../../pipeline/hooks.js';
-import { decryptConnectionSecrets, listBindingsForConnection } from '../store.js';
-import {
-  AGENT_CHAT_DEDUP_REPLY,
-  AGENT_CHAT_NO_DEVICE_REPLY,
-  startAgentChat,
-} from './agent-chat.js';
-import { readRocketChatAnswerMode } from './answer-mode.js';
+import { decryptConnectionSecrets } from '../store.js';
 import { consumeIssueThreadReply } from './comment-inbound.js';
 import { startCommentMirrorLoop } from './comment-mirror.js';
-import { buildConversationContext } from './context.js';
-import { rocketChatConversationPorts } from './conversation-port.js';
+import { type RocketChatFrame, rocketChatConversationPorts } from './conversation-port.js';
 import { RocketChatDdpClient, type RocketChatIncomingMessage } from './ddp-client.js';
-import {
-  ESCALATION_ACK,
-  ESCALATION_DEDUP_REPLY,
-  ESCALATION_NO_DEVICE_REPLY,
-  startEscalation,
-} from './escalation.js';
-import { prepareFastTurn } from './images.js';
 import { createSeenTracker, decideHandling, decideSkip } from './inbound-gate.js';
 import { FIXED_REPLY_CONSTANT, sendFixedReply } from './outbound.js';
-import { rocketChatPersona } from './persona.js';
 import { startQuestionDrainLoop } from './question-delivery.js';
 import { consumeQuestionThreadReply } from './question-inbound.js';
-import { errorFallbackReply, fixed, screenWithRetry, type TurnOutcome } from './reply-verdict.js';
 import { fetchOwnUsername } from './rest-client.js';
-import { roomStillBoundTo } from './room-delivery.js';
 import { type RoomShape, resolveRoomShape } from './room-shape.js';
+import { buildRoutes, type Route } from './routes.js';
 import { subjectForThread } from './thread-registry.js';
-import { resolveTurnPrincipal } from './turn-principal.js';
-import type { RocketChatBindingConfig, RocketChatConfig, RocketChatSecrets } from './types.js';
+import { rocketChatTurn } from './turn-inputs.js';
+import type { RocketChatConfig, RocketChatSecrets } from './types.js';
 
 // cm:guard the first CORS origin IS the web app's origin (operators must allow it for the UI to work at all); exported so the escalation bridge's Bao turn builds the same issue-link base as the sync path
 export const webBaseUrl = env.CORS_ORIGINS.split(',')[0]?.trim().replace(/\/+$/, '') || undefined;
@@ -65,45 +42,7 @@ const RELOAD_CHANNEL = 'forge_rocketchat_reload';
 const LISTEN_RETRY_MS = 5000;
 // cm:guard a subscription can die WITHOUT a `nosub` while server pings keep the link alive, so the watchdog never fires and the bot goes silently deaf; this periodic fresh login+sub bounds that window, and the `nosub` handler covers the signalled case
 const DDP_REFRESH_INTERVAL_MS = 10 * 60_000;
-// cm:why cancels the provider fetch/SSE read so a stalled upstream terminates as an error instead of hanging
-const TURN_TIMEOUT_MS = 90_000;
-// cm:guard must stay ABOVE TURN_TIMEOUT_MS so a normal provider-abort resolves first: the abort signal only reaches the provider, so an unbounded await BEFORE the turn (hung DB query, stuck session load) would wedge the handler in silence without this backstop
-const HANDLE_TIMEOUT_MS = 120_000;
-
-class HandleTimeoutError extends Error {
-  constructor(readonly ms: number) {
-    super(`rocketchat handle timed out after ${ms}ms`);
-    this.name = 'HandleTimeoutError';
-  }
-}
-
-// cm:guard does NOT cancel `p` — the caller aborts the provider separately; this only frees the handler to send a fallback and report
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const t = setTimeout(() => reject(new HandleTimeoutError(ms)), ms);
-    t.unref?.();
-    p.then(
-      (v) => {
-        clearTimeout(t);
-        resolve(v);
-      },
-      (e) => {
-        clearTimeout(t);
-        reject(e);
-      },
-    );
-  });
-}
-
 const capitalize = (s: string): string => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
-
-interface Route {
-  rid: string;
-  projectId: string;
-  projectSlug: string;
-  projectName: string;
-  principalUserId: string;
-}
 
 interface ActiveConnection {
   client?: RocketChatDdpClient;
@@ -120,46 +59,6 @@ interface ActiveConnection {
   // cm:guard MUST stay per-connection: the same bot user is subscribed on every org connection via `__my_messages__`, so a manager-global tracker let a routeless connection mark an id seen first and the routing connection dropped it as a false duplicate (root cause, 2026-07-15)
   seenMessage: (id: string) => boolean;
   closing: boolean;
-}
-
-/**
- * The reply goes out the one door, and the room's transcript holds what the room saw.
- */
-// cm:guard the receipt is stamped on whichever row IS the answer, and a fallback gets a row of its own: a fixed reply is composed by code and carries no message id, so without this the transcript kept the text the screen REJECTED and the sentence the person read existed nowhere (ISS-1001 criterion 15).
-// cm:guard failures here are logged and never thrown: the room HAS the message by the time this runs, and turning a delivered answer into an error is a lie in the other direction.
-async function deliverAndRecord(
-  door: Parameters<typeof sendFixedReply>[0],
-  outcome: Extract<TurnOutcome, { send: true }>,
-  conversationId: string,
-  route: Route & { connectionId: string },
-): Promise<void> {
-  // cm:guard the binding is read again at DELIVERY and not trusted from the route this turn started under: a turn runs for up to HANDLE_TIMEOUT_MS, and an answer computed for project A must not be posted into a room project B now owns (ISS-1001 invariant 2).
-  if (!(await roomStillBoundTo(route))) {
-    logger.error(
-      { rid: route.rid, projectId: route.projectId, connectionId: route.connectionId },
-      'rocketchat: the room was rebound while this turn ran; the answer is not posted',
-    );
-    return;
-  }
-  const receipt = await sendFixedReply(door, outcome.text, outcome.proof);
-  try {
-    if (outcome.messageId) {
-      await recordDelivery(outcome.messageId, receipt);
-      return;
-    }
-    await appendMessage({
-      conversationId,
-      role: 'assistant',
-      content: outcome.text,
-      authorUserId: await handleForProject(conversationId, route.projectId),
-      deliveryProof: receipt,
-    });
-  } catch (err) {
-    logger.warn(
-      { err, conversationId, messageId: outcome.messageId ?? null },
-      'rocketchat: delivered, but the transcript could not record it',
-    );
-  }
 }
 
 class RocketChatConnectionManager {
@@ -247,7 +146,7 @@ class RocketChatConnectionManager {
       userId: secrets.userId,
     };
     const [routes, ownUsername] = await Promise.all([
-      this.buildRoutes(connectionId),
+      buildRoutes(connectionId),
       fetchOwnUsername(restAuth),
     ]);
     const active: ActiveConnection = {
@@ -267,60 +166,6 @@ class RocketChatConnectionManager {
       'rocketchat: connection acquired, dialing',
     );
     await this.dial(connectionId);
-  }
-
-  private async buildRoutes(connectionId: string): Promise<Map<string, Route>> {
-    const routes = new Map<string, Route>();
-    // cm:why two batched lookups, not a projects+organizations pair per binding: this was 1+2N round-trips and `reload` fires on ANY connection/binding CRUD, so a 10-binding connection paid 21 of them every reload
-    const active = (await listBindingsForConnection(connectionId))
-      .map(({ binding: b }) => ({
-        b,
-        rids: (b.config as RocketChatBindingConfig | null)?.rids ?? [],
-      }))
-      .filter(({ b, rids }) => b.active && rids.length > 0);
-    if (active.length === 0) return routes;
-
-    const projectRows = await db
-      .select({ id: projects.id, slug: projects.slug, name: projects.name, orgId: projects.orgId })
-      .from(projects)
-      .where(inArray(projects.id, [...new Set(active.map(({ b }) => b.projectId))]));
-    const projectById = new Map(projectRows.map((p) => [p.id, p]));
-    const orgIds = [...new Set(projectRows.map((p) => p.orgId))];
-    const ownerByOrg = new Map(
-      orgIds.length === 0
-        ? []
-        : (
-            await db
-              .select({ id: organizations.id, createdBy: organizations.createdBy })
-              .from(organizations)
-              .where(inArray(organizations.id, orgIds))
-          ).map((o) => [o.id, o.createdBy] as const),
-    );
-
-    for (const { b, rids } of active) {
-      const proj = projectById.get(b.projectId);
-      if (!proj) continue;
-      const principalUserId = ownerByOrg.get(proj.orgId);
-      if (!principalUserId) continue;
-      for (const rid of rids) {
-        // cm:guard one room routes to exactly one project and the FIRST binding wins, which is only deterministic because listBindingsForConnection orders by desc(createdAt) — reorder that query and a re-bound room silently changes project
-        if (routes.has(rid)) {
-          logger.warn(
-            { connectionId, rid, projectId: b.projectId },
-            'rocketchat: room already routed to another project; skipping duplicate',
-          );
-          continue;
-        }
-        routes.set(rid, {
-          rid,
-          projectId: b.projectId,
-          projectSlug: proj.slug,
-          projectName: proj.name,
-          principalUserId,
-        });
-      }
-    }
-    return routes;
   }
 
   private async dial(connectionId: string): Promise<void> {
@@ -461,222 +306,72 @@ class RocketChatConnectionManager {
     connectionId: string,
     shape: RoomShape,
   ): Promise<void> {
-    const restAuth = { serverUrl: ac.serverUrl, authToken: ac.authToken, userId: ac.botUserId };
-    const principal = await resolveTurnPrincipal({
-      serverUrl: ac.serverUrl,
-      routePrincipalUserId: route.principalUserId,
-      projectId: route.projectId,
+    const logCtx = { connectionId, rid: m.rid, msgId: m.id, projectId: route.projectId };
+    // cm:guard the turn itself is the NEUTRAL runner's and this adapter only supplies its ports and its inputs: a turn path here again is the copy of it ISS-1002 removed, and `transport-free.test.ts` fails on the import that would bring it back.
+    const frame: RocketChatFrame = {
       m,
-      shape,
-      onRefusal: (d) => logger.warn(d, 'rocketchat: direct speaker unresolved; refusing the turn'),
-    });
-    // cm:guard the refusal is the deliverable and the turn does NOT run: a DM's authority is its one human, so with nobody resolved there is no identity to compute an answer under — falling back to the organization's creator would answer a stranger with the creator's read access (ISS-987, consuming ISS-977).
-    // cm:guard it also runs BEFORE the venue is opened, so a speaker being refused does not leave a conversation row behind for a turn that was never had (ISS-1001).
-    if (!principal.ok) {
-      if (ac.client) {
-        await sendFixedReply(
-          { kind: 'ddp', client: ac.client, rid: m.rid, tmid: m.tmid, authToken: ac.authToken },
-          principal.refusal,
-          FIXED_REPLY_CONSTANT,
-        );
-      }
-      return;
-    }
-    // cm:guard the room's conversation is resolved from the DATABASE on every message, never from a map on this instance: the pointer used to live in `sessionByConversation`, so a core restart — which every deploy is, and which the reconciler makes nearly certain to catch a live session — silently began a fresh transcript for every room that had been talking (ISS-1001 criterion 1).
-    const venue = await rocketChatConversationPorts.resolveVenue({
-      m,
-      auth: restAuth,
+      auth: { serverUrl: ac.serverUrl, authToken: ac.authToken, userId: ac.botUserId },
       projectId: route.projectId,
       shape,
-    });
-    if (!venue) {
-      logger.error(
-        { connectionId, rid: m.rid, msgId: m.id, projectId: route.projectId },
-        'rocketchat: venue unresolved; refusing the message, not inventing one',
-      );
-      return;
-    }
-    const conversation = await openConversation(venue);
-    // cm:guard two nested guards so a stall NEVER leaves the mention in silence: `abort` cancels the provider, `withTimeout` backstops a hang the abort cannot reach; either fire sends a fallback AND captures to Sentry tagged with `phase`
-    const abort = new AbortController();
-    const timer = setTimeout(() => abort.abort(), TURN_TIMEOUT_MS);
-    timer.unref?.();
-    let external: ExternalMcpToolsets | undefined;
-    let phase = 'start';
-    let outcome: TurnOutcome;
-    try {
-      outcome = await withTimeout(
-        (async (): Promise<TurnOutcome> => {
-          // cm:why the turn is seeded with the recent room discussion, and the full thread when threaded, because deeper recall stays agentic through the bounded history tool rather than being paid for on every turn (ISS-609).
-          phase = 'context';
-          const [conversationContext, projectRow] = await Promise.all([
-            buildConversationContext(restAuth, {
-              rid: m.rid,
-              tmid: m.tmid,
-              excludeMessageId: m.id,
-              triggerText: m.text,
-            }),
-            db
-              .select({ agentConfig: projects.agentConfig, repoPath: projects.repoPath })
-              .from(projects)
-              .where(eq(projects.id, route.projectId))
-              .limit(1),
-          ]);
-          const persona = rocketChatPersona(route.projectName, m.username, {
-            projectSlug: route.projectSlug,
-            webBaseUrl,
-            botName: ac.botName,
-          });
-
-          // cm:guard `agent` mode routes the WHOLE turn to a runner-hosted session and sends nothing but an ack synchronously — the reply lands later through the completion bridge, so code added below this branch runs only on the fast path and a reply written there is never seen in agent mode (ISS-727).
-          if (readRocketChatAnswerMode(projectRow[0]?.agentConfig) === 'agent') {
-            phase = 'agent-chat';
-            const started = await startAgentChat({
-              projectId: route.projectId,
-              project: {
-                id: route.projectId,
-                slug: route.projectSlug,
-                repoPath: projectRow[0]?.repoPath ?? null,
-              },
-              connectionId,
-              rid: m.rid,
-              tmid: m.tmid,
-              botName: ac.botName,
-              message: m.text,
-              askedByUsername: m.username,
-              persona,
-              conversationContext,
-            });
-            // cm:guard send NOTHING when the dispatch started: only a genuinely slow turn gets an interim ack, scheduled by startAgentChat itself (scheduleDelayedAck). Acking here would put a promise in front of an answer that usually arrives first
-            if (started.started) return { send: false };
-            if (started.reason === 'deduped') return fixed(AGENT_CHAT_DEDUP_REPLY(ac.botName));
-            if (started.reason === 'no-device')
-              return fixed(AGENT_CHAT_NO_DEVICE_REPLY(ac.botName));
-            // cm:guard 'dispatch-failed' sends nothing either — the session was created then marked failed, so the completion bridge already delivers the one honest fallback over REST; replying here too double-posts
-            return { send: false };
-          }
-
-          phase = 'mcp';
-          external = await buildExternalMcpToolsets(projectRow[0]?.agentConfig);
-          phase = 'images';
-          const fast = await prepareFastTurn({
-            route,
-            principalUserId: principal.userId,
-            restAuth,
-            rid: m.rid,
-            images: m.images,
-            externalToolsets: external.toolsets,
-          });
-          phase = 'turn';
-          const result = await runExternalChatTurn({
-            projectId: route.projectId,
-            adapter: 'rocketchat',
-            conversationId: conversation.id,
-            // cm:guard the question is recorded here and the ANSWER by `deliverAndRecord`, because this adapter screens: the row has to be the sentence the room was actually shown.
-            record: 'question-only',
-            message: m.text,
-            tools: fast.tools,
-            // cm:guard the room is read under the authority its TOOLS run as; omitting it silenced every room
-            userId: principal.userId,
-            userKey: m.userId,
-            persona,
-            conversationContext,
-            images: fast.images,
-            resolveImage: fast.resolveImage,
-            signal: abort.signal,
-          });
-
-          // cm:guard escalation short-circuits the verify/reply path deliberately: the ACK it posts is
-          // guard-exempt because a real follow-up lands through the completion bridge (ISS-675).
-          const escalateCall = result.toolCalls.find((t) => t.name === ESCALATE_TOOL_NAME);
-          if (escalateCall) {
-            phase = 'escalate';
-            let question = m.text;
-            try {
-              const parsed = JSON.parse(escalateCall.arguments) as { question?: unknown };
-              if (typeof parsed.question === 'string' && parsed.question.trim()) {
-                question = parsed.question.trim();
-              }
-            } catch {
-              // cm:why a malformed tool-call argument is not worth failing the turn over — the escalation still carries the user's own message text, which is what a research agent needs
-            }
-            const started = await startEscalation({
-              projectId: route.projectId,
-              project: {
-                id: route.projectId,
-                slug: route.projectSlug,
-                repoPath: projectRow[0]?.repoPath ?? null,
-              },
-              connectionId,
-              rid: m.rid,
-              tmid: m.tmid,
-              botName: ac.botName,
-              question,
-              askedByUsername: m.username,
-              shape,
-              principalUserId: principal.userId,
-            });
-            if (started.started) return fixed(ESCALATION_ACK(ac.botName));
-            if (started.reason === 'deduped') return fixed(ESCALATION_DEDUP_REPLY(ac.botName));
-            if (started.reason === 'no-device')
-              return fixed(ESCALATION_NO_DEVICE_REPLY(ac.botName));
-            // cm:guard same as agent mode: on 'dispatch-failed' the bridge delivers the single fallback, so this turn must post nothing
-            return { send: false };
-          }
-
-          // cm:guard a reply citing an issue that does not exist, leaking developer detail, or
-          // promising work no turn will do never reaches the room (`reply-guard.ts`, ISS-672).
-          return await screenWithRetry({
-            projectId: route.projectId,
-            rid: m.rid,
-            botName: ac.botName,
-            principalUserId: principal.userId,
-            speakerKey: m.userId,
-            first: result,
-            fast,
-            persona,
-            conversationContext,
-            signal: abort.signal,
-            setPhase: (p) => {
-              phase = p;
-            },
-          });
-        })(),
-        HANDLE_TIMEOUT_MS,
-      );
-    } catch (err) {
-      // cm:guard the mention was seen, so the room never goes silent — but the CONVERSATION is not dropped on the way out, which is what the in-memory pointer used to do here. A room whose turn failed keeps its transcript; a turn that cannot be answered is recorded as a silence with its reason by `external-chat.ts`, and the read window moves past a poisoned turn on its own (ISS-1001).
-      abort.abort();
-      const timedOut = err instanceof HandleTimeoutError;
-      logger.error(
-        { err, rid: m.rid, projectId: route.projectId, phase, timedOut },
-        'rocketchat: chat turn failed',
-      );
-      Sentry.captureException(err, {
-        tags: { area: 'rocketchat', phase, timed_out: String(timedOut) },
-        extra: {
-          rid: m.rid,
-          projectId: route.projectId,
-          projectSlug: route.projectSlug,
-          user: m.username,
+    };
+    const outcome = await runInboundTurn({
+      ports: rocketChatConversationPorts,
+      frame,
+      message: m.text,
+      speakerKey: m.userId,
+      manySpeakersPrincipalUserId: route.principalUserId,
+      turn: rocketChatTurn({
+        bot: {
+          botName: ac.botName,
+          serverUrl: ac.serverUrl,
+          authToken: ac.authToken,
+          botUserId: ac.botUserId,
         },
-      });
-      outcome = fixed(errorFallbackReply(ac.botName));
-    } finally {
-      clearTimeout(timer);
-      await external?.dispose();
+        route,
+        m,
+        connectionId,
+        shape,
+        webBaseUrl,
+      }),
+    });
+
+    if (outcome.kind === 'venue-unresolved') {
+      logger.error(logCtx, 'rocketchat: venue unresolved; refusing the message, not inventing one');
+      await this.sayWhyUnplaceable(ac, m, shape, frame);
+      return;
     }
-    // cm:why delivery only, never a second guard pass: every branch above already screened its text or replaced it with a code-authored constant, and the proof rides along on the outcome
-    if (outcome.send && ac.client) {
-      const door = {
-        kind: 'ddp' as const,
-        client: ac.client,
-        rid: m.rid,
-        tmid: m.tmid,
-        authToken: ac.authToken,
-      };
-      await deliverAndRecord(door, outcome, conversation.id, { ...route, connectionId });
+    // cm:guard the refusal itself is DELIVERED by the neutral inbound half, through the same door the answer would have used; nothing is sent from here. A second outbound path for authority refusals is the copy ISS-1002 removed.
+    if (outcome.kind === 'speaker-refused') {
+      logger.warn(
+        { ...logCtx, code: outcome.code, delivered: outcome.delivered },
+        'rocketchat: direct speaker unresolved; refusing the turn',
+      );
+      return;
     }
+    if (outcome.kind !== 'delivered') {
+      logger.info({ ...logCtx, outcome }, 'rocketchat: the turn posted nothing here');
+    }
+  }
+
+  /**
+   * The one reply this adapter still sends itself, and the reason it must.
+   */
+  // cm:guard a venue that could not be placed has no venue to deliver THROUGH, so the neutral door cannot be reached and this socket is the only way to the person. It is confined to a one-to-one room on purpose: a group room runs under the binding's principal and is owed no answer about an identity it never consults, which is the misdescription ISS-1002's review refused.
+  // cm:guard the text is the speaker port's own and is not rewritten here — for this fault it names the server address that could not be read, which is the thing an operator has to change.
+  private async sayWhyUnplaceable(
+    ac: ActiveConnection,
+    m: RocketChatIncomingMessage,
+    shape: RoomShape,
+    frame: RocketChatFrame,
+  ): Promise<void> {
+    if (shape !== 'direct' || !ac.client) return;
+    const speaker = await rocketChatConversationPorts.resolveSpeaker(frame);
+    if (speaker.linked) return;
+    await sendFixedReply(
+      { kind: 'ddp', client: ac.client, rid: m.rid, tmid: m.tmid, authToken: ac.authToken },
+      speaker.refusal.message,
+      FIXED_REPLY_CONSTANT,
+    );
   }
 
   private async teardown(connectionId: string): Promise<void> {

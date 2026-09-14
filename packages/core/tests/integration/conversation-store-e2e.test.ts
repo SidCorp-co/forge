@@ -27,6 +27,7 @@ let harness: TestDatabase;
 let store: typeof import('../../src/conversations/store.js');
 let participants: typeof import('../../src/conversations/participants.js');
 let scope: typeof import('../../src/conversations/scope.js');
+let transcript: typeof import('../../src/conversations/transcript.js');
 
 /** Independent pools, so a writer here is a writer Postgres sees as a stranger. */
 const clients: Sql[] = [];
@@ -45,6 +46,7 @@ beforeAll(async () => {
   store = await import('../../src/conversations/store.js');
   participants = await import('../../src/conversations/participants.js');
   scope = await import('../../src/conversations/scope.js');
+  transcript = await import('../../src/conversations/transcript.js');
 }, 120_000);
 
 afterAll(async () => {
@@ -108,15 +110,13 @@ describe('two writers opening the same unseen venue', () => {
     expect(live.filter((p) => p.kind === 'handle')).toHaveLength(1);
   });
 
-  // cm:guard the loser's branch is forced rather than hoped for: a third connection holds the row
-  // uncommitted, so the writer under test MUST take the `DO NOTHING` path and re-read.
+  // cm:guard the loser's branch is forced rather than hoped for: a third connection holds the row uncommitted, so the writer under test MUST take the `DO NOTHING` path and re-read.
   it('takes the conflict path and re-reads rather than trusting an empty return', async () => {
     const key = `chat.example.co ${randomUUID()}`;
     const blocker = postgres(harness.url, { max: 1, onnotice: () => {} });
     clients.push(blocker);
 
-    // cm:why the competing writer is a REAL one, committing the room and its handle together, because
-    // that is what the loser has to find when it re-reads.
+    // cm:why the competing writer is a REAL one, committing the room and its handle together, because that is what the loser has to find when it re-reads.
     const sibling = await store.openConversation(venue(`chat.example.co ${randomUUID()}`));
     const [handle] = await participants.listParticipants(sibling.id);
     const handleUserId = handle?.userId;
@@ -179,8 +179,7 @@ describe('two writers opening the same unseen venue', () => {
 });
 
 describe('two first-time venues of one project with no handle yet', () => {
-  // cm:guard the lock is what this proves: both writers are released at the same instant with neither
-  // able to see the other's uncommitted user row, and the project must still end with ONE handle.
+  // cm:guard the lock is what this proves: both writers are released at the same instant with neither able to see the other's uncommitted user row, and the project must still end with ONE handle.
   it('mint exactly one handle between them', async () => {
     const gate = postgres(harness.url, { max: 1, onnotice: () => {} });
     clients.push(gate);
@@ -237,8 +236,7 @@ describe('appending turns', () => {
     expect(new Set(rows.map((r) => r.content)).size).toBe(4);
   });
 
-  // cm:guard an append TOUCHES no row already there: the blob it replaced was rewritten whole on every
-  // turn, which is how a concurrent write lost one, and the ids and timestamps here are what say so.
+  // cm:guard an append TOUCHES no row already there: the blob it replaced was rewritten whole on every turn, which is how a concurrent write lost one, and the ids and timestamps here are what say so.
   it('leaves every row already in the conversation exactly as it was', async () => {
     const room = await store.openConversation(venue(`chat.example.co ${randomUUID()}`));
     const first = await store.appendMessage({
@@ -271,23 +269,24 @@ describe('appending turns', () => {
     expect(await store.countMessages(room.id)).toBe(5);
   });
 
-  it('stamps a delivered message with the receipt, and leaves the text alone', async () => {
+  // cm:guard the receipt reaches the row through the ONE record door and nothing else stamps it: a turn that screens writes no answer row of its own, so an answer with no receipt on it is an answer nothing can show was ever posted (ISS-1002 replaced `recordDelivery`, which by then had no caller a screened turn could reach).
+  it('records a delivered reply as the assistant row, with the receipt the transport returned', async () => {
     const room = await store.openConversation(venue(`chat.example.co ${randomUUID()}`));
-    const written = await store.appendMessage({
-      conversationId: room.id,
-      role: 'assistant',
-      content: 'the answer',
-    });
-    expect(written.deliveryProof).toBeNull();
 
-    await store.recordDelivery(written.id, { messageId: 'rc-server-id-9' });
+    await transcript.recordDeliveredReply({
+      conversationId: room.id,
+      projectId,
+      text: 'the answer',
+      receipt: { messageId: 'rc-server-id-9' },
+    });
 
     const [back] = await store.readMessages(room.id, 10);
     expect(back).toMatchObject({
-      id: written.id,
+      role: 'assistant',
       content: 'the answer',
       deliveryProof: { messageId: 'rc-server-id-9' },
     });
+    expect(back?.authorUserId).not.toBeNull();
   });
 
   it('keeps a silence as a row rather than as an empty turn', async () => {

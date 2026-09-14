@@ -10,10 +10,10 @@ import { logger } from '../../logger.js';
 import { problemsOf } from '../../messaging/contract.js';
 import type { ProgressFacts } from '../../messaging/facts.js';
 import { withRepairs } from '../../messaging/repairs.js';
+import { screenReplyAtDoor } from '../../messaging/reply-screen.js';
 import { resolveFailureCause } from '../../pipeline/failure-causes.js';
 import { AGENT_CHAT_FALLBACK_REPLY, redispatchAgentChatSessionOnFailover } from './agent-chat.js';
 import { FIXED_REPLY_CONSTANT, type ReplySendProof, sendFixedReply } from './outbound.js';
-import { screenRoomReply } from './reply-screen.js';
 import {
   claimRoomReplyDelivery,
   extractFinalAssistantText,
@@ -117,12 +117,12 @@ export async function deliverAgentChatReplyOnce(session: SessionRow): Promise<vo
     // cm:guard this door declares ZERO repairs and that is not an oversight: `finalText` is the last message of a runner session that has already ended, so there is no turn to ask again and a budget here would be one this door could never spend. It still goes through `withRepairs` so the count lives in the door table beside its reason rather than as an absent loop nobody can see (ISS-997).
     const outcome = await withRepairs('agent-chat-completion', [finalText], {
       screen: () =>
-        screenRoomReply(
-          session.projectId,
-          finalText,
-          extractToolCalls(session.messages),
-          readProgressFacts(session.metadata),
-        ),
+        screenReplyAtDoor('agent-chat-completion', {
+          projectId: session.projectId,
+          segments: [finalText],
+          toolCalls: extractToolCalls(session.messages),
+          progress: readProgressFacts(session.metadata),
+        }),
       rewrite: () => {
         throw new Error(
           'agent-chat-completion declares no repair; nothing can ask that session again',

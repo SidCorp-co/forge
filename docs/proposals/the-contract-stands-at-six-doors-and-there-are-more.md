@@ -34,8 +34,8 @@ re-finding from scratch:
   `candidateBody` is published as a skill body that a person reads and an agent then runs.
 - `jobs/lifecycle-routes.ts` — `summary` and `error`, 10,000 characters each, behind
   `requireDevice()`, re-read for the failure-cause surface.
-- `integrations/rocketchat/connection-manager.ts` `deliverAndRecord` and
-  `conversation-port.ts` `deliver` — the two send sites the screened bridges funnel into.
+- `conversations/turn-runner.ts` and each adapter's `deliver` port — the send path the screened
+  bridges funnel into, one door per transport since ISS-1002.
 - `activity_log` payloads read by the issue activity feed: park reasons, dependency-edge reasons,
   and `before`/`after` for every agent-written issue field.
 - The MCP field writes — `forge_issues` (`title`, `description`, `plan`, `acceptanceCriteria`,

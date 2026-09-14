@@ -62,8 +62,8 @@ vi.mock('./escalation.js', () => ({
 }));
 
 const screenRoomReply = vi.fn();
-vi.mock('./reply-screen.js', () => ({
-  screenRoomReply: (...args: unknown[]) => screenRoomReply(...args),
+vi.mock('../../messaging/reply-screen.js', () => ({
+  screenReplyAtDoor: (...args: unknown[]) => screenRoomReply(...args),
 }));
 
 const startAgentChat = vi.fn();
@@ -113,8 +113,15 @@ vi.mock('../../conversations/store.js', () => ({
   }),
 }));
 
-vi.mock('../../conversations/ports.js', () => ({
-  registerConversationTransport: vi.fn(),
+// cm:why `conversations/ports.js` is NOT stubbed: it is the registry the runner reads to find a venue's transport, so a stub would leave the adapter registering into one map and the turn reading another, and every delivery would refuse for a reason no room ever sees (ISS-1002).
+const deliver = vi.fn(async (..._a: unknown[]) => ({ messageId: 'rc-server-id-9' }));
+const { clearConversationTransports, registerConversationTransport } = await import(
+  '../../conversations/ports.js'
+);
+
+const recordDeliveredReply = vi.fn(async (..._a: unknown[]) => undefined);
+vi.mock('../../conversations/transcript.js', () => ({
+  recordDeliveredReply: (...a: unknown[]) => recordDeliveredReply(...(a as [never])),
 }));
 
 const resolveRoomShape = vi.fn();
@@ -171,6 +178,19 @@ const MESSAGE = {
   images: [],
 };
 
+// cm:guard the fake transport is the FOUR ports and the registry is the real one: `handle` is a caller of the neutral turn now, and a suite that stubbed the registry would prove the adapter against a delivery path production does not have (ISS-1002).
+beforeEach(() => {
+  clearConversationTransports();
+  registerConversationTransport({
+    adapter: 'rocketchat',
+    deliver,
+    fetchHistory: async () => [],
+  });
+  deliver.mockClear();
+  deliver.mockResolvedValue({ messageId: 'rc-server-id-9' });
+  recordDeliveredReply.mockClear();
+});
+
 describe('connection-manager escalation wiring', () => {
   beforeEach(() => {
     selectLimit.mockReset();
@@ -205,7 +225,7 @@ describe('connection-manager escalation wiring', () => {
         question: 'How does the pipeline work?',
       }),
     );
-    expect(ac.client.sendMessage).toHaveBeenCalledWith('room-1', 'ACK:Babo', undefined);
+    expect(deliver.mock.calls[0]?.[1]).toMatchObject({ text: 'ACK:Babo' });
     // cm:why the escalate branch returns before the output-guard verify step, so this reply never reaches the screener
     expect(screenRoomReply).not.toHaveBeenCalled();
   });
@@ -224,7 +244,7 @@ describe('connection-manager escalation wiring', () => {
     const ac = makeAc();
     await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
 
-    expect(ac.client.sendMessage).toHaveBeenCalledWith('room-1', 'DEDUP:Babo', undefined);
+    expect(deliver.mock.calls[0]?.[1]).toMatchObject({ text: 'DEDUP:Babo' });
   });
 
   it('replies with the no-device message when no runner is available', async () => {
@@ -241,7 +261,7 @@ describe('connection-manager escalation wiring', () => {
     const ac = makeAc();
     await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
 
-    expect(ac.client.sendMessage).toHaveBeenCalledWith('room-1', 'NO_DEVICE:Babo', undefined);
+    expect(deliver.mock.calls[0]?.[1]).toMatchObject({ text: 'NO_DEVICE:Babo' });
   });
 
   it('sends nothing over DDP on dispatch-failed — the completion bridge already delivers the fallback', async () => {
@@ -258,7 +278,7 @@ describe('connection-manager escalation wiring', () => {
     const ac = makeAc();
     await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
 
-    expect(ac.client.sendMessage).not.toHaveBeenCalled();
+    expect(deliver).not.toHaveBeenCalled();
   });
 
   it('takes the normal verify/reply path (not escalation) when the model answers without escalating', async () => {
@@ -276,11 +296,9 @@ describe('connection-manager escalation wiring', () => {
 
     expect(startEscalation).not.toHaveBeenCalled();
     expect(screenRoomReply).toHaveBeenCalled();
-    expect(ac.client.sendMessage).toHaveBeenCalledWith(
-      'room-1',
-      'Đơn hàng của bạn đã xử lý xong.', // i18n-allow: a plain-language bot reply exercised by the guard
-      undefined,
-    );
+    expect(deliver.mock.calls[0]?.[1]).toMatchObject({
+      text: 'Đơn hàng của bạn đã xử lý xong.', // i18n-allow: a plain-language bot reply exercised by the guard
+    });
   });
 });
 
@@ -314,9 +332,8 @@ describe('connection-manager ISS-727 answer-mode routing', () => {
       }),
     );
     expect(runExternalChatTurn).not.toHaveBeenCalled();
-    // cm:guard no immediate ack: a fast turn's answer arrives through the completion bridge, and only
-    // a slow turn gets the delayed ack, scheduled inside `startAgentChat` rather than sent from here.
-    expect(ac.client.sendMessage).not.toHaveBeenCalled();
+    // cm:guard no immediate ack: a fast turn's answer arrives through the completion bridge, and only a slow turn gets the delayed ack, scheduled inside `startAgentChat` rather than sent from here.
+    expect(deliver).not.toHaveBeenCalled();
   });
 
   it("mode='agent' replies with the dedup message on an in-flight agent-chat turn", async () => {
@@ -328,7 +345,7 @@ describe('connection-manager ISS-727 answer-mode routing', () => {
     const ac = makeAc();
     await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
 
-    expect(ac.client.sendMessage).toHaveBeenCalledWith('room-1', 'AGENT_DEDUP:Babo', undefined);
+    expect(deliver.mock.calls[0]?.[1]).toMatchObject({ text: 'AGENT_DEDUP:Babo' });
   });
 
   it("mode='agent' replies with the no-device message when no runner is available", async () => {
@@ -340,7 +357,7 @@ describe('connection-manager ISS-727 answer-mode routing', () => {
     const ac = makeAc();
     await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
 
-    expect(ac.client.sendMessage).toHaveBeenCalledWith('room-1', 'AGENT_NO_DEVICE:Babo', undefined);
+    expect(deliver.mock.calls[0]?.[1]).toMatchObject({ text: 'AGENT_NO_DEVICE:Babo' });
   });
 
   it("mode='agent' sends nothing over DDP on dispatch-failed — the completion bridge delivers the fallback", async () => {
@@ -352,7 +369,7 @@ describe('connection-manager ISS-727 answer-mode routing', () => {
     const ac = makeAc();
     await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
 
-    expect(ac.client.sendMessage).not.toHaveBeenCalled();
+    expect(deliver).not.toHaveBeenCalled();
   });
 
   it('absent answerMode (null agentConfig) runs the existing fast path unchanged — regression guard', async () => {
@@ -451,9 +468,8 @@ describe('connection-manager image handling', () => {
     await handle(ac, ROUTE, { ...MESSAGE, images: [IMAGE] }, 'conn-1', 'group');
 
     expect(turnArgs().images).toEqual([]);
-    const [rid, text] = ac.client.sendMessage.mock.calls[0] as [string, string];
-    expect(rid).toBe('room-1');
-    expect(text).toBe('that toggle reads the wrong tier');
+    expect(deliver.mock.calls[0]?.[0]).toMatchObject({ externalId: 'chat.example.co room-1' });
+    expect(deliver.mock.calls[0]?.[1]).toMatchObject({ text: 'that toggle reads the wrong tier' });
   });
 
   it('offers a resolver that re-reads an image from an earlier turn', async () => {

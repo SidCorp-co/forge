@@ -7,8 +7,18 @@
 // what the registry serves.
 
 import type { SpeakerResolution } from '../assistant/identity/speaker-link.js';
-import type { ConversationAdapter } from '../db/schema-conversations.js';
-import type { ConversationVenue } from './store.js';
+import type { ConversationAdapter, ConversationShape } from '../db/schema-conversations.js';
+
+/** Where a conversation happens, in the terms its transport uses for it. */
+// cm:guard the venue lives HERE and not in the store, so an adapter importing the contract it implements imports no store module at all — which is what `transport-free.test.ts` measures at zero (ISS-1002).
+export interface ConversationVenue {
+  adapter: ConversationAdapter;
+  externalId: string;
+  shape: ConversationShape;
+  /** The project whose handle speaks here — the venue's binding, not the room's scope. */
+  projectId: string;
+  title?: string | null;
+}
 
 /** What a transport returns for a message it posted. */
 export interface DeliveryReceipt {

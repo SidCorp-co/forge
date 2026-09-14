@@ -11,8 +11,7 @@ import { runExternalChatTurn } from '../../assistant/external-chat.js';
 import { namespaceFromServerUrl } from '../../assistant/identity/directory.js';
 import { buildChatToolContext } from '../../assistant/tools/principal.js';
 import { buildProjectToolset } from '../../assistant/tools/registry.js';
-import { handleForProject } from '../../conversations/participants.js';
-import { appendMessage, findConversation } from '../../conversations/store.js';
+import { recordDeliveredReplyToVenue } from '../../conversations/transcript.js';
 import { db } from '../../db/client.js';
 import {
   type agentSessions as agentSessionsTable,
@@ -22,12 +21,12 @@ import {
 import { logger } from '../../logger.js';
 import { type MessageVerdict, problemsOf } from '../../messaging/contract.js';
 import { withRepairs } from '../../messaging/repairs.js';
+import { screenReplyAtDoor } from '../../messaging/reply-screen.js';
 import { webBaseUrl } from './connection-manager.js';
 import { rocketChatVenueId } from './conversation-port.js';
 import { ESCALATION_FALLBACK_REPLY } from './escalation.js';
 import { FIXED_REPLY_CONSTANT, type ReplySendProof, sendFixedReply } from './outbound.js';
 import { rocketChatPersona } from './persona.js';
-import { screenRoomReply } from './reply-screen.js';
 import {
   claimRoomReplyDelivery,
   extractFinalAssistantText,
@@ -189,7 +188,12 @@ async function synthesizeViaBao(
     screen: async (segments): Promise<MessageVerdict> => {
       const text = (segments[0] ?? '').trim();
       if (!text) return { ok: false, refusals: [EMPTY_SYNTHESIS] };
-      return screenRoomReply(session.projectId, text, result.toolCalls, result.progress);
+      return screenReplyAtDoor('escalation-synthesis', {
+        projectId: session.projectId,
+        segments: [text],
+        toolCalls: result.toolCalls,
+        progress: result.progress,
+      });
     },
     rewrite: async (verdict) => {
       logger.warn(
@@ -294,9 +298,7 @@ export async function deliverEscalationReplyOnce(session: SessionRow): Promise<v
 /**
  * The room saw this answer, so the room's transcript holds it.
  */
-// cm:guard the synthesis TURN stays out of the transcript and only its answer goes in: the turn's own input is `buildSynthesisMessage`, an instruction the room never saw, so running it against the room's conversation would put words in a person's mouth. The answer is appended here instead, with the receipt the send returned — which is also the only way an escalated reply satisfies the same delivery-proof rule the fast path does (ISS-1001 criterion 15).
-// cm:guard a room with no conversation yet is left alone rather than given one: an escalation always follows a turn that opened the venue, so no row here means the venue key has moved and inventing a second room under the new key would split the transcript in two.
-// cm:guard the row is BY the project's handle and not by nobody: an escalated answer is the same assistant through a slower path, and the rule `appendAssistantMessage` keeps on the fast path has to be kept here too, by the door that bypasses it (ISS-1001).
+// cm:guard the synthesis TURN stays out of the transcript and only its answer goes in: the turn's own input is `buildSynthesisMessage`, an instruction the room never saw, so running it against the room's conversation would put words in a person's mouth. The answer goes through the neutral transcript door instead, with the receipt the send returned — which is also the only way an escalated reply satisfies the same delivery-proof rule the fast path does (ISS-1001 criterion 15).
 async function recordInRoomTranscript(
   serverUrl: string,
   projectId: string,
@@ -306,21 +308,11 @@ async function recordInRoomTranscript(
 ): Promise<void> {
   const namespace = namespaceFromServerUrl(serverUrl);
   if (!namespace) return;
-  const externalId = rocketChatVenueId(namespace, meta.rid, meta.tmid);
-  try {
-    const conversation = await findConversation('rocketchat', externalId);
-    if (!conversation) return;
-    await appendMessage({
-      conversationId: conversation.id,
-      role: 'assistant',
-      content: reply,
-      authorUserId: await handleForProject(conversation.id, projectId),
-      deliveryProof: receipt,
-    });
-  } catch (err) {
-    logger.warn(
-      { err, rid: meta.rid, externalId },
-      'rocketchat.escalation-bridge: delivered, but the transcript could not record it',
-    );
-  }
+  await recordDeliveredReplyToVenue({
+    adapter: 'rocketchat',
+    externalId: rocketChatVenueId(namespace, meta.rid, meta.tmid),
+    projectId,
+    text: reply,
+    receipt,
+  });
 }
