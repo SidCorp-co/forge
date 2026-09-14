@@ -55,6 +55,47 @@ it('refuses the dependency write before the create quality floor, so the reason 
   expect(out).not.toMatch(/too thin/);
 });
 
+// cm:guard the draft force is the fence against a chat turn spawning a pipeline run, and until ISS-1006 nothing held it: `grep -n draft guards.test.ts` returned nothing while `data.status = 'draft'` was the single most load-bearing line on this path.
+it('forces a chat-created issue to draft whatever status it asked for', () => {
+  const args = {
+    action: 'create',
+    data: {
+      title: '[Bug] Settings save button stays disabled',
+      description: 'x'.repeat(250),
+      status: 'open',
+    },
+  };
+  expect(guardIssueWrites(args)).toBeNull();
+  expect((args.data as { status: string }).status).toBe('draft');
+});
+
+it('forces draft even when the model named no status at all', () => {
+  const args = {
+    action: 'create',
+    data: { title: '[Bug] Settings save button stays disabled', description: 'x'.repeat(250) },
+  };
+  guardIssueWrites(args);
+  expect((args.data as { status?: string }).status).toBe('draft');
+});
+
+// cm:guard the BODY no longer carries a length floor here (ISS-1006) — `readFiling` reads it against its category's sections instead, and a case asserting a short body is refused would be asserting the branch this issue removed
+it('no longer refuses a create for the length of its description', () => {
+  expect(
+    guardIssueWrites({
+      action: 'create',
+      data: { title: '[Bug] Settings save button stays disabled', description: 'short' },
+    }),
+  ).toBeNull();
+});
+
+it('still refuses a create whose trimmed title is under ten characters', () => {
+  const out = guardIssueWrites({
+    action: 'create',
+    data: { title: '  Login  ', description: 'x'.repeat(250) },
+  });
+  expect(out).toMatch(/the title is too thin/);
+});
+
 it('leaves an ordinary chat update alone', () => {
   expect(guardIssueWrites({ action: 'update', data: { status: 'waiting' } })).toBeNull();
   expect(guardIssueWrites({ action: 'update', data: {} })).toBeNull();

@@ -146,7 +146,8 @@ const CHECKS = [
     label: 'archmap',
     cmd: ['./.forge/archmap/archmap', 'check'],
     scanned: /archmap · (\d+) files/,
-    needs: ['deps'],
+    needs: ['deps', 'observability-build'],
+    // cm:guard `observability-build` belongs here for the same reason `core typecheck` declares it: archmap resolves TypeScript module edges, so an unbuilt `@forge/observability` makes every edge through it unresolvable. Measured 2026-09-14 in a fresh worktree — 205 unresolvable against a 200 ceiling where a built tree reports 171, and conformance-audit R7 then declared the REPO does not meet `hardened`. That is a false claim about the code, which is the exact bug `lib/prerequisite.mjs` exists to stop.
   },
   {
     axis: 'form',

@@ -29,6 +29,7 @@ import { guardIssueWrites } from './guards.js';
 import { findDuplicateIssue } from './issue-dedup.js';
 import { resolveIssueDisplayId } from './issue-ref.js';
 import { buildToolset, type ChatToolSpec, type ChatToolset } from './mcp-adapter.js';
+import { HTML_BODY_REFUSAL, refuseChatFiling } from './plugin-shape.js';
 
 /**
  * ISS-687 — wrap the pure `guardIssueWrites` (draft-force + thin-issue floor)
@@ -46,14 +47,24 @@ async function guardIssueWritesDeduped(
 ): Promise<string | null> {
   const rejection = guardIssueWrites(args);
   if (rejection) return rejection;
+  // cm:why one read, two readers: `resolveIssueDisplayId` and the parts arm of `readFiling` both want every prefix this project holds, and asking twice is two round trips for one answer.
+  const prefixes = ctx?.projectId ? await heldIssuePrefixes(ctx.projectId) : [];
   if (ctx?.projectId) {
-    const unknownRef = await resolveIssueDisplayId(
-      db,
-      ctx.projectId,
-      args,
-      await heldIssuePrefixes(ctx.projectId),
-    );
+    const unknownRef = await resolveIssueDisplayId(db, ctx.projectId, args, prefixes);
     if (unknownRef) return unknownRef;
+  }
+  if (args.action === 'create') {
+    const data = (args.data ?? {}) as Record<string, unknown>;
+    if (data.descriptionFormat === 'html') return HTML_BODY_REFUSAL;
+    // cm:guard the shape is read BEFORE the duplicate query, the order `fileIssueThroughCli` takes: a filing that cannot be filed at all costs no read of the project's recent issues.
+    // cm:guard a filing naming NO category is read as a `feature` and passes, and that is the plugin's decision rather than an omission: `forge new -h` states it — "a create sent through the tracker's own tool carries no flag to refuse, so one arriving there is read as a feature". A refusal added here would be the server overruling the reader it delegates to (ISS-1006).
+    const shape = refuseChatFiling({
+      title: typeof data.title === 'string' ? data.title : '',
+      body: typeof data.description === 'string' ? data.description : '',
+      category: typeof data.category === 'string' ? data.category : null,
+      complexity: typeof data.complexity === 'string' ? data.complexity : null,
+    });
+    if (shape) return shape;
   }
   if (args.action === 'create' && ctx?.projectId) {
     const data = (args.data ?? {}) as Record<string, unknown>;

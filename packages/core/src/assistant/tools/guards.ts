@@ -20,10 +20,10 @@ const CHAT_SETTABLE_STATUSES = new Set(['draft', 'waiting', 'needs_info', 'on_ho
  * hatch) is a human's call. The bot answers whoever @-mentions it in the room,
  * so this is the hard fence against a prompt-injected dispatch.
  */
-/** Kernel floor for chat-created issues — a hollow one-liner is rejected so
+/** Kernel floor for a chat-created title — a hollow one-liner is rejected so
  *  the model rewrites it within the same turn (tool-error feedback loop). */
+// cm:guard the BODY has no length floor here and must not regain one: `readFiling` reads it against the sections its category owes, and a character count beside that teaches a second fix for one defect — a model told "too thin" pads, measured 2026-09-14, where a model told which section is missing writes it (ISS-1006). This floor stays because `titleGaps` passes a nine-character two-word title that it catches.
 const MIN_TITLE_CHARS = 10;
-const MIN_DESCRIPTION_CHARS = 200;
 
 /**
  * The `forge_issues` `data` keys chat is refused outright, and the ones it may
@@ -81,12 +81,10 @@ export function guardIssueWrites(args: Record<string, unknown>): string | null {
     data.status = 'draft';
     args.data = data;
     const title = typeof data.title === 'string' ? data.title.trim() : '';
-    const description = typeof data.description === 'string' ? data.description.trim() : '';
-    if (title.length < MIN_TITLE_CHARS || description.length < MIN_DESCRIPTION_CHARS) {
+    if (title.length < MIN_TITLE_CHARS) {
       return (
-        'issue rejected: too thin to be actionable. A developer must be able to identify the problem WITHOUT reading the chat. Rewrite and call create again with: ' +
-        '(1) a title naming the kind + affected feature (e.g. "[Bug] …"), ' +
-        '(2) a description with the problem or request in concrete detail — what happens, where, expected vs actual, quoting the reporter where useful — plus the source links from the context (the external task/feedback URL if one exists, and the chat permalink).'
+        'issue rejected: the title is too thin to be actionable. A developer must be able to identify the problem WITHOUT reading the chat. Rewrite and call create again with a title naming the kind and the affected feature (e.g. "[Bug] Settings save button stays disabled"). ' +
+        'The body is read separately, against the sections the category owes.'
       );
     }
     return null;
