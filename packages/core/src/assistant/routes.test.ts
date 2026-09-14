@@ -8,10 +8,11 @@ vi.mock('../config/env.js', () => ({
   env: { JWT_SECRET: TEST_SECRET, NODE_ENV: 'test' },
 }));
 
+import { ASSISTANT_METHOD_SLUG } from '../guides/assistant-method-guide.js';
+
 const selectLimit = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
-// loadProjectAccess (lib/authz) runs select().from().leftJoin().leftJoin()
-// .where().limit() — route the join chain back into the same where/limit FIFO.
+// cm:guard the leftJoin chain routes back into the SAME where/limit FIFO the plain select uses, because `loadProjectAccess` runs select().from().leftJoin().leftJoin().where().limit() — give the joins a queue of their own and every mock below answers the wrong query in the wrong order.
 const selectLeftJoin = vi.fn(
   (): Record<string, unknown> => ({
     leftJoin: selectLeftJoin,
@@ -400,5 +401,41 @@ describe('POST /api/chat (mounted)', () => {
     });
 
     expect(res.status).toBe(503);
+  });
+});
+
+// cm:guard this case sits in a describe of its own rather than inside `POST /api/chat (mounted)`, because that block is at its frozen function-length budget and the form axis may only improve — a case added inside it is a `--update-baseline` nobody priced (ISS-1007).
+describe('the system prompt POST /api/chat opens with', () => {
+  // cm:guard the system message is read for what it CONTAINS, not merely for its role: this door passed no persona until ISS-1007 and answered on `system-prompt.ts`'s one-sentence fallback, which asserting `role === 'system'` could never have told apart from a turn carrying the whole method.
+  it('opens with the web persona rather than the one-line fallback', async () => {
+    let captured: ChatMessage[] = [];
+    register('mock', () => ({
+      id: 'mock',
+      defaultModel: 'mock-default',
+      async *stream(req: { messages: ChatMessage[] }) {
+        captured = req.messages;
+        yield { type: 'chunk' as const, text: 'ok' };
+        yield { type: 'done' as const };
+      },
+    }));
+    authVerified();
+    projectAccessAsMember();
+    projectInfoRow({});
+    appConfigOverrideRow(null);
+    appConfigProviderRow({ chatProviderId: 'mock', chatModel: null });
+    seedConversation([]);
+
+    const res = await buildApp({ mountChat: true }).request('/api/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ projectId: PROJECT_ID, message: 'hello' }),
+    });
+    expect(res.status).toBe(200);
+    await res.text();
+
+    const system = captured[0]?.content ?? '';
+    expect(system).not.toBe('You are a helpful assistant for project "Forge Dev".');
+    expect(system).toContain(ASSISTANT_METHOD_SLUG);
+    expect(system).toContain('/projects/forge-dev/agents');
   });
 });

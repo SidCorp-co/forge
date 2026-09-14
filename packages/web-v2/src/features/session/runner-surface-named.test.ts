@@ -8,6 +8,9 @@
 // runner — so what is asserted here is the CHAIN from the route to the HTTP call, hop by hop, and
 // not that the persona contains a string or that some runner-backed verb exists somewhere.
 //
+// The persona itself lives in `core/src/assistant/door-persona.ts` since ISS-1007, which moved it
+// out of `conversation-send.ts` so both web doors read one copy.
+//
 // It lives under `features/session` and NOT under `features/conversations`, and that is the
 // judgement `no-agent-sessions.test.ts` freezes rather than a filing preference: this file's whole
 // assertion is that a run surface still reaches `agent-sessions`, and that scanner forbids that
@@ -20,7 +23,8 @@ import { describe, expect, it } from "vitest";
 
 const read = (p: string): string => readFileSync(join(process.cwd(), p), "utf8");
 
-const PERSONA = read("../core/src/assistant/conversation-send.ts");
+// cm:edge contract -> packages/core/src/assistant/door-persona.ts — read BY PATH, so a move of the persona reds this file rather than its own suite. ISS-1007 moved it out of `conversation-send.ts` and this line came with it; the sentence asserted below is the one in that module's guards, and it is still the web door's answer to a person who asks for a runner.
+const PERSONA = read("../core/src/assistant/door-persona.ts");
 const NAMED_ROUTE = "/projects/<slug>/agents";
 
 describe("the runner surface the web assistant names", () => {

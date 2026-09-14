@@ -4718,6 +4718,20 @@
 
 ### Changed
 
+- **Every place the assistant answers you now works to the same method, and your project chooses the
+  language it answers in.** Until now that method lived inside the team-chat integration and nowhere
+  else: the assistant in the Forge app answered on a single sentence, and a correction to any rule
+  had to be made in two places or it was not made. The method is now one document — the guide added
+  above — and every surface reads it. Each channel keeps only what is true of it: the chat bot keeps
+  its name, who "I" refers to in a room, how it reads a discussion back, that its reply is the only
+  message you will get, and plain text with no headings; the Forge app keeps what it cannot do for
+  you and where to start a session that can. **Answering in Vietnamese was hard-coded** for every
+  project with a chat channel, whatever language that team works in; it is now the project's own
+  **Bot personality** setting under Settings → Integrations → Rocket.Chat, and every project that
+  had a working channel keeps the instruction it was getting, ahead of anything it had already
+  written there. A project that connects a channel from now on is answered in the language the
+  person wrote in, and can set a fixed one if it wants.
+
 - **A personal access token no longer counts as "a person is typing this", so driving Forge from the
   command line on your own token now meets the same recorded-work check an agent meets.** The check
   that refuses to move an issue to `developed` with nothing recorded against it was written for

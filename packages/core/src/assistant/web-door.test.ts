@@ -25,7 +25,8 @@ vi.mock('./tools/principal.js', () => ({ buildChatToolContext: (a: unknown) => a
 import { doorCell, doorPolicy } from '../messaging/doors.js';
 import { NO_FACTS } from '../messaging/facts.js';
 import { screenMessage } from '../messaging/screen.js';
-import { webConversationPersona, webConversationTurn } from './conversation-send.js';
+import { webConversationTurn } from './conversation-send.js';
+import { webConversationPersona } from './door-persona.js';
 
 /** The door the code picks, not a door this file picked. */
 const webDoor = (): string =>
