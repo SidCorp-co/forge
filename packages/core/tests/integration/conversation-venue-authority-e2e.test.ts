@@ -19,8 +19,7 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-// cm:guard ONE harness for the whole file: `db/client.ts` binds to DATABASE_URL at import time, so a
-// second setupTestDatabase() puts the fixtures on one database and the code under test on another.
+// cm:guard ONE harness for the whole file: `db/client.ts` binds to DATABASE_URL at import time, so a second setupTestDatabase() puts the fixtures on one database and the code under test on another.
 let harness: TestDatabase;
 let participants: typeof import('../../src/conversations/participants.js');
 let store: typeof import('../../src/conversations/store.js');
@@ -84,8 +83,7 @@ describe('a turn opening or resuming a venue', () => {
         readerUserId: stranger.id,
       }),
     ).rejects.toMatchObject({ cause: { code: 'CONVERSATION_OUT_OF_SCOPE' } });
-    // cm:guard and the refusal leaves NO room behind: a refused turn that has already opened the
-    // venue hands the next caller a conversation that a refusal created.
+    // cm:guard and the refusal leaves NO room behind: a refused turn that has already opened the venue hands the next caller a conversation that a refusal created.
     expect(await store.findConversation('rocketchat', externalId)).toBeNull();
   });
 
@@ -129,6 +127,7 @@ describe('a turn opening or resuming a venue', () => {
     await participants.addHandle({
       conversationId: room.id,
       handleUserId: second.userId,
+      projectId: projectB,
       actorUserId: ownerId,
     });
     const memberOfAOnly = await createTestUser(harness.db);

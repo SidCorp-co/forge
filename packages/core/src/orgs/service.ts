@@ -39,7 +39,7 @@ export async function ensurePersonalOrg(
     .returning({ id: organizations.id });
   const org = inserted[0];
   if (!org) {
-    // Lost a race — the partial unique swallowed our insert; re-read.
+    // cm:guard an empty `returning` here is a LOST RACE and not a failure: the partial unique index swallowed the insert because a concurrent caller created this user's personal org first. Re-read rather than retry or throw — a retry races the same way and a throw fails a request whose work is already done.
     const [row] = await dbh
       .select({ id: organizations.id })
       .from(organizations)
@@ -86,6 +86,10 @@ export async function listOrgsForUser(userId: string): Promise<OrgMembership[]> 
 export type OrgMember = {
   userId: string;
   email: string;
+  /** The label a person reads, or null where nobody has typed one. */
+  displayName: string | null;
+  /** The address this member is reached at in this org, or null for a person. */
+  handle: string | null;
   role: string;
   lenses: unknown;
   createdAt: Date;
@@ -98,6 +102,9 @@ export async function listOrgMembers(orgId: string): Promise<OrgMember[]> {
     .select({
       userId: organizationMembers.userId,
       email: users.email,
+      // cm:guard both columns are returned and NEITHER is folded into the other here, because the caller decides which to show and it is not the same decision in every place: a member list renders `displayName` and falls back to `email`, while anything resolving an `@` mention reads `handle` and must never see a label. A service that returned one "name" would make that choice for every screen at once, and the wrong half of it would be invisible (ISS-1003 criterion 10).
+      displayName: users.displayName,
+      handle: organizationMembers.handle,
       role: organizationMembers.role,
       lenses: organizationMembers.lenses,
       createdAt: organizationMembers.createdAt,

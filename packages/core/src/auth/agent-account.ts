@@ -34,16 +34,9 @@ export function isAgentHandle(handle: string): boolean {
  * called `master` in another org possible without colliding on the unique
  * index.
  */
+// cm:guard the local part is no longer where the handle is READ from — `organization_members.handle` is (ISS-1003) — and the split that used to do it is deleted rather than left standing beside the column. The handle is still spelled into the address here, because `users.email` is NOT NULL UNIQUE and the suffix is what keeps two orgs' `@forge-dev` apart under that index; it is provenance, not a source.
 export function synthesizeAgentEmail(handle: string): string {
   return `${handle}.${randomBytes(6).toString('hex')}@${AGENT_EMAIL_DOMAIN}`;
-}
-
-/**
- * The handle back out of the address {@link synthesizeAgentEmail} built.
- */
-// cm:guard the address is the ONLY place an agent's handle is stored — `users` has no name column — so every reader that wants to print `@forge-dev` splits this same way; a second spelling of the split is how one screen starts showing the random suffix (ISS-1001).
-export function handleFromAgentEmail(email: string): string {
-  return email.split('.')[0] ?? email;
 }
 
 export const AGENT_CANNOT_LOGIN =

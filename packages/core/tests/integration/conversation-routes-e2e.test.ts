@@ -145,8 +145,7 @@ describe('a viewer may look at a room and not change it', () => {
 });
 
 describe('the page is cut from what the caller may see', () => {
-  // cm:guard the hidden room sorts FIRST and the page size is one: filter after paginating and this
-  // caller gets an empty page, never reaches the room they can read, and is told there are two.
+  // cm:guard the hidden room sorts FIRST and the page size is one: filter after paginating and this caller gets an empty page, never reaches the room they can read, and is told there are two.
   it('skips a room the caller cannot read instead of spending their page on it', async () => {
     const readable = await room(projectA);
     const shared = await room(projectA);
@@ -156,6 +155,7 @@ describe('the page is cut from what the caller may see', () => {
     await participants.addHandle({
       conversationId: shared.id,
       handleUserId: otherHandle.userId,
+      projectId: projectB,
       actorUserId: ownerId,
     });
     // cm:why the shared room is renamed last, so it sorts ahead of the one this caller may read
@@ -180,6 +180,7 @@ describe('the page is cut from what the caller may see', () => {
     await participants.addHandle({
       conversationId: shared.id,
       handleUserId: otherHandle.userId,
+      projectId: projectB,
       actorUserId: ownerId,
     });
 

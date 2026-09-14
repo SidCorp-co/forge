@@ -10,8 +10,7 @@ import { type AuthVars, requireAuth } from '../middleware/auth.js';
 
 export const meRoutes = new Hono<{ Variables: AuthVars }>();
 
-// Cover the whole /me/* surface — profile + preferences. requireAuth on the
-// prefix is fine here because every handler in this router is user-scoped.
+// cm:guard BOTH lines, and neither covers the other: Hono's `*` does not match the bare `/me` this router's profile GET and PATCH are served on, so dropping the first line answers every caller on the profile before any auth middleware runs. Covering the prefix rather than each handler is safe only because every handler here is user-scoped and reads `c.get('userId')`; a route added below that takes an id from the caller is not, and belongs behind its own gate.
 meRoutes.use('/me', requireAuth());
 meRoutes.use('/me/*', requireAuth());
 
@@ -21,6 +20,7 @@ meRoutes.get('/me', async (c) => {
     .select({
       id: users.id,
       email: users.email,
+      displayName: users.displayName,
       emailVerifiedAt: users.emailVerifiedAt,
       createdAt: users.createdAt,
       lastFreshAuthAt: users.lastFreshAuthAt,
@@ -48,6 +48,7 @@ meRoutes.get('/me', async (c) => {
   return c.json({
     id: row.id,
     email: row.email,
+    displayName: row.displayName,
     emailVerifiedAt: row.emailVerifiedAt,
     createdAt: row.createdAt,
     lastFreshAuthAt: row.lastFreshAuthAt,
@@ -55,6 +56,43 @@ meRoutes.get('/me', async (c) => {
     oauthProviders,
   });
 });
+
+/**
+ * The name a person is shown as, in their own words (ISS-1003).
+ *
+ * Trimmed and bounded, and otherwise anything they type — accents included.
+ * `null` clears it, which puts them back to being rendered by address.
+ */
+// cm:guard a person sets their OWN and only their own: the handler reads `c.get('userId')` and takes no id from the caller. An org admin editing somebody else's name would be a second writer of the same column with a different rule behind it, and the one org admins DO edit is an agent's, through `/api/orgs/:orgId/agents/:agentUserId` where the admin gate lives.
+const profileSchema = z
+  .object({ displayName: z.string().trim().min(1).max(200).nullable() })
+  .strict();
+
+meRoutes.patch(
+  '/me',
+  zValidator('json', profileSchema, (r) => {
+    if (!r.success) {
+      throw new HTTPException(400, {
+        message: 'Invalid input',
+        cause: { code: 'BAD_REQUEST', details: z.flattenError(r.error) },
+      });
+    }
+  }),
+  async (c) => {
+    const [row] = await db
+      .update(users)
+      .set({ displayName: c.req.valid('json').displayName })
+      .where(eq(users.id, c.get('userId')))
+      .returning({ id: users.id, email: users.email, displayName: users.displayName });
+    if (!row) {
+      throw new HTTPException(401, {
+        message: 'user not found',
+        cause: { code: 'UNAUTHENTICATED' },
+      });
+    }
+    return c.json(row);
+  },
+);
 
 // `system` follows the OS preference at render time; the value just gets
 // echoed back to the client. Languages enumerated narrowly so a typo on the
@@ -125,9 +163,7 @@ meRoutes.patch(
       });
     }
 
-    // Setting an active org requires the caller to actually be a member of it
-    // (ISS-469 AC7). assertOrgAccess throws 404 (org missing) / 403 (not a
-    // member). `null` clears the pointer and skips the check.
+    // cm:guard the membership check is what stops a preference being a back door into an org: `activeOrgId` is stored and then read by every screen that resolves "the org I am working in", so an unchecked write would let anyone name an org they hold no role on and have the product address them as a member of it. `assertOrgAccess` answers 404 for an org that is not there and 403 for one the caller does not reach; `null` clears the pointer and names no org to check (ISS-469 AC7).
     if (patch.activeOrgId != null) {
       await assertOrgAccess(patch.activeOrgId, userId, 'member');
     }

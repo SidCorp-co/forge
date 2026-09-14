@@ -79,7 +79,8 @@ describe('run liveJobs E2E (ISS-789)', () => {
     const project = await createTestProject(harness.db, owner.id);
     const principal: McpPrincipal = {
       kind: 'pat',
-      agency: 'human',
+      agency: null,
+      agentUserId: null,
       userId: owner.id,
       tokenId: randomUUID(),
       scopes: ['read', 'write'],

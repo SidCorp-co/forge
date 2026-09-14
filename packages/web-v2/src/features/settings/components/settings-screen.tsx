@@ -1,29 +1,28 @@
 "use client";
 
-// Workspace-tier Settings (`/settings`). User-scoped sub-tabs: Account, API
-// Tokens, MCP, Notifications. The unimplemented 'Sessions' tab is intentionally
-// dropped (ISS-299 AC). Tab state lives in `?tab=` via the shared `useTabParam`
-// hook (ISS-349) so a tab is linkable and the strip matches the other tabbed
-// screens; the body uses the shared wide PageContainer like every screen.
+// cm:guard tab state lives in `?tab=` through the shared `useTabParam` hook and never in component state, because a tab nobody can link to cannot be put in a bug report, a runbook or a message to a colleague — every other tabbed screen here is reachable that way and one that is not reads as broken (ISS-349). The 'Sessions' tab is deliberately absent rather than disabled: a tab that opens on nothing is a promise the product does not keep (ISS-299).
 import { PageContainer, ScreenTabs, type TabItem } from "@/design";
 import { useTabParam } from "@/lib/utils/use-tab-param";
+import { AgentsTab } from "@/features/agent-accounts/components/agents-tab";
 import { OrgsTab } from "@/features/orgs/components/orgs-tab";
 import { AccountTab } from "./account-tab";
 import { McpTab } from "./mcp-tab";
 import { NotificationsTab } from "./notifications-tab";
 import { TokensTab } from "./tokens-tab";
 
-const TAB_VALUES = ["account", "orgs", "tokens", "mcp", "notifications"] as const;
+const TAB_VALUES = ["account", "orgs", "agents", "tokens", "mcp", "notifications"] as const;
 type SettingsTab = (typeof TAB_VALUES)[number];
 
 const TABS: TabItem[] = [
   { value: "account", label: "Account" },
   { value: "orgs", label: "Organizations" },
+  { value: "agents", label: "Agents" },
   { value: "tokens", label: "API Tokens" },
   { value: "mcp", label: "MCP" },
   { value: "notifications", label: "Notifications" },
 ];
 
+// cm:guard the SHELL is the shared wide column and the form inside it is capped separately: the strip has to line up with every other screen's, while a text input stretched to 1700px is unusable. Cap the shell instead and this screen stops matching the ones beside it.
 export function SettingsScreen() {
   const [tab, setTab] = useTabParam<SettingsTab>(TAB_VALUES, "account");
 
@@ -42,11 +41,10 @@ export function SettingsScreen() {
       />
 
       <PageContainer>
-        {/* Shell (strip + padding) is the shared wide column; the form content
-            itself stays capped — full-width inputs at 1700px are unusable. */}
         <div className="max-w-4xl">
           {tab === "account" && <AccountTab />}
           {tab === "orgs" && <OrgsTab />}
+          {tab === "agents" && <AgentsTab />}
           {tab === "tokens" && <TokensTab />}
           {tab === "mcp" && <McpTab />}
           {tab === "notifications" && <NotificationsTab />}

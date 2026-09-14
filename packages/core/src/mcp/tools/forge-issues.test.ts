@@ -126,8 +126,7 @@ vi.mock('../../db/client.js', () => ({
   },
 }));
 
-// ISS-606: pass-through — the intake gate has its own unit tests
-// (issues/intake-gate.test.ts); create tests here exercise create mechanics.
+// cm:why the intake gate is a pass-through here and is proved in `issues/intake-gate.test.ts` instead: the cases in this file exercise create MECHANICS, and a real gate would make every one of them depend on gate policy that moves for its own reasons (ISS-606).
 vi.mock('../../issues/intake-gate.js', () => ({
   applyIntakeGate: vi.fn(async (_projectId: string, status: string) => ({ status, gated: false })),
   finalizeIntake: vi.fn(async () => undefined),
@@ -248,7 +247,8 @@ beforeEach(() => {
 const humanPat = (userId: string, tokenId: string, projectIds: string[] | null) =>
   ({
     kind: 'pat',
-    agency: 'human',
+    agency: null,
+    agentUserId: null,
     userId,
     tokenId,
     scopes: ['read', 'write'],
@@ -1709,25 +1709,21 @@ describe('forge_issues tool', () => {
       expect(txInsertValues).not.toHaveBeenCalled();
     });
 
-    it('mark_merged does NOT evidence-gate a PAT (human) principal', async () => {
+    // cm:guard this case asserted the OPPOSITE until ISS-1003, and the flip is the whole point: a person-owned token establishes nobody, and most agents run on one — so "PAT means human, therefore skip the evidence gate" was the exemption every agent borrowing a person's credential was taking. `agency: null` fails closed through `actorAgency`, so the gate that exists because agents fabricate evidence now meets exactly the callers it was written for. Plant `agency ?? 'human'` back into `actorAgency` and this is the case that goes red.
+    it('mark_merged evidence-gates a person-owned PAT, which establishes nobody', async () => {
       const tool = forgeIssuesTool({
         principal: humanPat(OWNER_ID, '55555555-5555-4555-8555-555555555555', null),
         projectSlug: PROJECT_SLUG,
       });
-      findMissingWorkEvidenceMock.mockResolvedValueOnce('no evidence at all');
       selectLimit.mockResolvedValueOnce([baseIssueRow]); // loadIssue
       selectLimit.mockResolvedValueOnce([memberAccessRow]); // membership/writer role
-      updateReturning.mockResolvedValueOnce([{ mergedAt: STAMPED }]);
-      insertReturning.mockResolvedValueOnce([auditCommentRow]); // audit comment
-      selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, mergedAt: STAMPED }]); // fresh
+      findMissingWorkEvidenceMock.mockResolvedValueOnce('no evidence at all');
 
-      const result = (await tool.handler({
-        action: 'mark_merged',
-        data: { issueId: ISSUE_ID, target: 'base' },
-      })) as { action: string };
-
-      expect(result.action).toBe('merged');
-      expect(findMissingWorkEvidenceMock).not.toHaveBeenCalled();
+      await expect(
+        tool.handler({ action: 'mark_merged', data: { issueId: ISSUE_ID, target: 'base' } }),
+      ).rejects.toThrow(/NO_WORK_EVIDENCE/);
+      expect(findMissingWorkEvidenceMock).toHaveBeenCalled();
+      expect(updateSet).not.toHaveBeenCalled();
     });
 
     it("unmark rejects with NOT_FOUND when the issue's project is outside the PAT allowlist", async () => {

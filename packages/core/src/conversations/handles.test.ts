@@ -10,11 +10,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import {
-  handleFromAgentEmail,
-  isAgentHandle,
-  synthesizeAgentEmail,
-} from '../auth/agent-account.js';
+import { isAgentHandle, synthesizeAgentEmail } from '../auth/agent-account.js';
 import { handleNameForProject } from './handles.js';
 
 const PROJECT_ID = 'da368b0a-8e21-4763-9d90-8f7b9d0c7115';
@@ -43,8 +39,11 @@ describe('handleNameForProject', () => {
     }
   });
 
-  it('survives the round trip through the address that is the only place it is stored', () => {
-    const handle = handleNameForProject('forge-dev', PROJECT_ID);
-    expect(handleFromAgentEmail(synthesizeAgentEmail(handle))).toBe(handle);
+  // cm:why the address stopped being where the handle is READ from in ISS-1003 — that is `organization_members.handle` now — but `0242_agent_handle_and_display_name.sql` backfills the column with `split_part(email, '.', 1)`, so the local part still has to be exactly the handle or every agent that predates the column is named wrong, once, permanently.
+  it('is recoverable from the address by the expression the backfill uses', () => {
+    for (const slug of ['forge-dev', 'Forge Dev', '***', '', 'x', 'a'.repeat(80), '\u4f60\u597d']) {
+      const handle = handleNameForProject(slug, PROJECT_ID);
+      expect(synthesizeAgentEmail(handle).split('.')[0]).toBe(handle);
+    }
   });
 });

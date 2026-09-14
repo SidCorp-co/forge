@@ -20,7 +20,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { users } from './schema.js';
+import { projects, users } from './schema.js';
 
 // cm:guard the transports a conversation can belong to, and the same list `assistant_speaker_links.source` is an authority over — a speaker linked under a source is linked for that transport alone. Renamed from `chatSessionSources` when the table it was named after was replaced (ISS-1001); adding a member here without an adapter registered in `conversations/ports.ts` gives a venue nothing can deliver to.
 export const conversationAdapters = ['web', 'widget', 'rocketchat', 'telegram'] as const;
@@ -69,8 +69,7 @@ export const conversations = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  // cm:guard every CHECK the migration creates is declared HERE too, because a drizzle snapshot
-  // records `checkConstraints` per table: one left in SQL alone is a constraint the snapshot denies
+  // cm:guard every CHECK the migration creates is declared HERE too, because a drizzle snapshot records `checkConstraints` per table: one left in SQL alone is a constraint the snapshot denies
   (t) => ({
     venueUnique: uniqueIndex('conversations_venue_unique').on(t.adapter, t.externalId),
     updatedIdx: index('conversations_updated_idx').on(t.updatedAt),
@@ -91,6 +90,12 @@ export const conversationParticipants = pgTable(
       .references(() => conversations.id, { onDelete: 'cascade' }),
     kind: text('kind', { enum: conversationParticipantKinds }).notNull(),
     userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    /**
+     * The project this handle was added FOR — the room's scope, recorded
+     * (ISS-1003).
+     */
+    // cm:guard this is NOT the second copy of a membership the `derivedScope` guard refuses, and the difference is what it answers: `project_members` says what the agent may DO and is deleted by a revoke, while this says what the ROOM is about and a revoke must not touch it. Reading scope off the authority table is what made revoking an agent leave a room nobody could read and nobody could repair. It is written by the caller that names the project, never derived from the agent's memberships at write time — an agent given a second membership later must not widen a room it already sits in.
+    projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
     // cm:guard the transport's own key for a speaker with no Forge user — the audit key `chat_sessions.user_key` carried. It is NOT an identity: nothing authorizes on it, and `assistant_speaker_links` stays the only path from a channel speaker to a `userId`.
     externalKey: text('external_key'),
     label: text('label'),
@@ -105,7 +110,13 @@ export const conversationParticipants = pgTable(
       .where(sql`removed_at IS NULL AND user_id IS NOT NULL`),
     conversationIdx: index('conversation_participants_conversation_idx').on(t.conversationId),
     userIdx: index('conversation_participants_user_idx').on(t.userId),
+    projectIdx: index('conversation_participants_project_idx').on(t.projectId),
     kindKnown: check('conversation_participants_kind_known', sql`${t.kind} IN ('person','handle')`),
+    // cm:guard a REMOVED handle is admitted with a null: it is in no scope, so there is nothing to record, and a value invented from today's memberships would date the row wrong.
+    handleHasProject: check(
+      'conversation_participants_handle_has_project',
+      sql`${t.kind} <> 'handle' OR ${t.removedAt} IS NOT NULL OR ${t.projectId} IS NOT NULL`,
+    ),
     handleHasUser: check(
       'conversation_participants_handle_has_user',
       sql`${t.kind} <> 'handle' OR ${t.userId} IS NOT NULL`,

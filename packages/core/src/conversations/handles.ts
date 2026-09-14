@@ -8,11 +8,7 @@
 
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import {
-  handleFromAgentEmail,
-  isAgentHandle,
-  synthesizeAgentEmail,
-} from '../auth/agent-account.js';
+import { isAgentHandle, synthesizeAgentEmail } from '../auth/agent-account.js';
 import { organizationMembers, projectMembers, projects, users } from '../db/schema.js';
 import type { Executor } from './db-executor.js';
 
@@ -53,14 +49,21 @@ export async function resolveProjectHandle(
   );
 
   const [existing] = await tx
-    .select({ userId: users.id, email: users.email })
+    .select({ userId: users.id, handle: organizationMembers.handle })
     .from(users)
     .innerJoin(projectMembers, eq(projectMembers.userId, users.id))
+    .leftJoin(organizationMembers, eq(organizationMembers.userId, users.id))
     .where(and(eq(projectMembers.projectId, projectId), eq(users.kind, 'agent')))
     .orderBy(asc(users.createdAt), asc(users.id))
     .limit(1);
+  if (existing?.handle) {
+    return { userId: existing.userId, handle: existing.handle, minted: false };
+  }
   if (existing) {
-    return { userId: existing.userId, handle: handleFromAgentEmail(existing.email), minted: false };
+    throw new HTTPException(500, {
+      message: `project ${projectId} has agent ${existing.userId} as its handle but that agent carries no handle on its org membership, so it has no address to be reached at`,
+      cause: { code: 'HANDLE_HAS_NO_NAME' },
+    });
   }
 
   const [project] = await tx
@@ -88,10 +91,11 @@ export async function resolveProjectHandle(
     .returning({ id: users.id });
   if (!created) throw new Error('conversations: agent-account insert returned no row');
 
+  // cm:guard the handle is written in the SAME insert as the membership it is unique within, never patched on afterwards: a membership that exists for one statement without its handle is a row the `(org_id, handle)` index cannot refuse, so two venues racing the same slug would both pass and the advisory lock above would have bought nothing.
+  // cm:guard NO `onConflictDoNothing` here, unlike every other insert in this file: `created.id` is a user this statement made, so the only conflict reachable is `(org_id, handle)` — another agent in this org already answering to this name. Swallowed, the transaction commits an agent with a project membership and no org membership, and the room then fails later at `loadHandle` with `HANDLE_HAS_NO_NAME`, which names the wrong thing entirely. Aborting names the constraint at the row that caused it (ISS-1003 criterion 12).
   await tx
     .insert(organizationMembers)
-    .values({ orgId: project.orgId, userId: created.id, role: 'member' })
-    .onConflictDoNothing();
+    .values({ orgId: project.orgId, userId: created.id, role: 'member', handle });
   await tx
     .insert(projectMembers)
     .values({ projectId: project.id, userId: created.id, role: 'member' })

@@ -28,13 +28,25 @@ import { getClientIp } from './rate-limit.js';
 export type PatPrincipal = {
   kind: 'pat';
   /**
-   * Who is at the keyboard, which `kind` cannot answer. A real PAT is a
-   * person; the chat surface builds a `pat` principal too but an agent drives
-   * it. Attribution follows `userId` either way — this decides whether the
-   * write is treated as a human's or a machine's.
+   * Who is speaking, where a credential can establish it — and `null` where it
+   * cannot (ISS-1003).
+   *
+   * `agent` when the token's owner is an agent account: the credential names
+   * the agent, so the identity is established. `null` when a person owns it:
+   * most agents run on a person's token, so this field answered `human` for the
+   * majority of agents, and a rule written on it refused real agents while
+   * admitting every agent borrowing a person's credential.
    */
-  // cm:guard NEVER derive this from `kind`. `assistant/tools/principal.ts` builds `kind:'pat'` for an agent-driven surface, so `kind === 'pat' ? human : agent` exempts every agent chat write from the ISS-812 fabrication guard — the guard that exists because agents were fabricating evidence. That mapping is live at mcp/tools/forge-release-batch.ts and is why this field exists.
-  agency: 'human' | 'agent';
+  // cm:guard `null` is UNESTABLISHED and is not a synonym for `human` — the only thing that establishes a person is a session, which is not this species of credential at all. Do not default it, do not coalesce it at a call site, and do not widen `ActorAgency` to carry it: `comments.author_agency` is nullable and stores the null as "nothing claimed", while every gate that must fail closed reads it through `issues/actor-agency.ts:actorAgency`, which maps unestablished to `agent` in one place (ISS-1003 criteria 22-25).
+  agency: 'agent' | null;
+  /**
+   * The agent account this credential belongs to, or `null` for a person's.
+   *
+   * This is the established identity `agency` used to be asked to deduce: it is
+   * what admits exactly one credential to an act reserved for an agent speaking
+   * as itself, rather than every token or none.
+   */
+  agentUserId: string | null;
   userId: string;
   tokenId: string;
   scopes: readonly string[];
@@ -261,10 +273,11 @@ export async function authenticatePat(
 
   touchPatUsage(row.id, getClientIp(c));
   maybeEmitPatUsed(row.id, row.userId);
-  // cm:guard derive `agency` from the token's OWNER and from nothing else — this is the ONE place a PAT principal is built, for `/mcp` AND for REST (`pat-rest-surface.ts:beginPatRequest` calls straight into here), so a wrong answer here is wrong on every surface at once. `agency` is what `principalActor`, `checkTransitionEvidence` and `mark_merged` read to decide whether the ISS-786/812 evidence gates apply, and those gates exist because agents fabricate evidence — so a machine credential reading `human` is the entire bypass. Every credential a machine holds is minted owned by a `kind:'agent'` user (ISS-932 wave 4), which is why the token's NAME buys nothing here and a person's token called `job:...` is inert.
+  // cm:guard the two fields below are ONE reading of the owner and they are the whole of what a token may claim: an agent account owns it, so the agent is named and its agency established; a person owns it, so NOTHING is established — not that a person is at the keyboard, which only a session can say, and not that an agent is, which only an agent's own credential can. This is the ONE place a PAT principal is built, for `/mcp` AND for REST (`pat-rest-surface.ts:beginPatRequest` calls straight into here), so a wrong answer here is wrong on every surface at once. Reading a person's token as `human` is what ISS-1003 removed: most agents run on one, so the field said `human` for the majority of agents and exempted every one of them from the ISS-786/812 evidence gates those gates were written for. The token's NAME still buys nothing: a person's token called `job:...` establishes no agent.
   return {
     kind: 'pat',
-    agency: ownerKind === 'agent' ? 'agent' : 'human',
+    agency: ownerKind === 'agent' ? 'agent' : null,
+    agentUserId: ownerKind === 'agent' ? row.userId : null,
     userId: row.userId,
     tokenId: row.id,
     scopes: row.scopes,

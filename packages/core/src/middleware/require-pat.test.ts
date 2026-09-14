@@ -101,8 +101,8 @@ describe('requirePat middleware (ISS-150, ISS-931)', () => {
     );
   });
 
-  // cm:guard the name is INERT — a person may hand-mint a token called `job:...` and it must reach `human`, because agency is a property of the PRINCIPAL since ISS-932 wave 4. The name-reading predicate this replaced stamped such a token `agent`, which let a hand-made credential skip the ISS-786/812 evidence gates.
-  it('stamps `human` on a person-owned token whose name imitates a machine token', async () => {
+  // cm:guard the name is INERT — a person may hand-mint a token called `job:...` and it must establish NOTHING, because agency is a property of the PRINCIPAL since ISS-932 wave 4 and of its OWNER since ISS-1003. Two spellings are wrong here and this case refuses both: reading the name would stamp `agent` and let a hand-made credential claim an identity, and reading the owner as `human` — what this asserted until ISS-1003 — would hand every agent borrowing a person's token the exemption from the ISS-786/812 evidence gates. `null` is neither claim, and `actorAgency` resolves it to `agent` so the gates still apply.
+  it('stamps nothing on a person-owned token, whatever its name imitates', async () => {
     const jobId = '77777777-7777-4777-8777-777777777777';
     vi.mocked(verifyPat).mockResolvedValue({
       ownerKind: 'human',
@@ -113,8 +113,13 @@ describe('requirePat middleware (ISS-150, ISS-931)', () => {
       headers: { authorization: `Bearer ${PAT_TOKEN}` },
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { agency: string; machine?: unknown };
-    expect(body.agency).toBe('human');
+    const body = (await res.json()) as {
+      agency: string | null;
+      agentUserId: string | null;
+      machine?: unknown;
+    };
+    expect(body.agency).toBeNull();
+    expect(body.agentUserId).toBeNull();
     expect(body.machine).toBeUndefined();
   });
 

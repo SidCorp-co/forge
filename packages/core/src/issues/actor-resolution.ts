@@ -3,13 +3,7 @@ import { db } from '../db/client.js';
 import { devices, users } from '../db/schema.js';
 import { type ActorRef, type ActorType, actorKey, type ResolvedActor } from './actor-identity.js';
 
-// ISS-519 — shared actor resolution. Comments and activity_log both store an
-// actor as a `(type, id)` pair where type is 'user' (a human, id → users.id) or
-// 'device' (an agent/runner, id → devices.id). Neither surface used to resolve
-// that id to a human-readable identity: the activity API returned the bare
-// actorType + raw UUID and the comment UI fell back to a truncated UUID. This
-// helper batch-resolves any set of actor refs to a display identity so both
-// surfaces (and any future caller) share one source of truth.
+// cm:guard ONE resolver for both surfaces, and that is the whole reason it exists rather than a convenience. `comments` and `activity_log` each store an actor as a `(type, id)` pair — `user` pointing at `users.id`, `device` at `devices.id` — and each used to render it on its own: the activity API returned the bare type plus the raw UUID, the comment UI a truncated one. Two renderers of one pair is how the same principal reads as two different people on two screens (ISS-519). Batch-resolve here; never fall back to printing an id at a call site.
 
 const UNKNOWN_LABEL = 'Unknown';
 
@@ -47,10 +41,10 @@ export async function resolveActors(refs: ActorRef[]): Promise<Map<string, Resol
   const userEmailById = new Map<string, string>();
   if (userIds.size > 0) {
     const rows = await db
-      .select({ id: users.id, email: users.email })
+      .select({ id: users.id, email: users.email, displayName: users.displayName })
       .from(users)
       .where(inArray(users.id, [...userIds]));
-    for (const r of rows) userEmailById.set(r.id, r.email);
+    for (const r of rows) userEmailById.set(r.id, r.displayName ?? r.email);
   }
 
   const deviceById = new Map<string, { name: string; ownerId: string }>();
@@ -70,10 +64,11 @@ export async function resolveActors(refs: ActorRef[]): Promise<Map<string, Resol
   }
   if (ownerIdsToFetch.size > 0) {
     const rows = await db
-      .select({ id: users.id, email: users.email })
+      .select({ id: users.id, email: users.email, displayName: users.displayName })
       .from(users)
       .where(inArray(users.id, [...ownerIdsToFetch]));
-    for (const r of rows) userEmailById.set(r.id, r.email);
+    // cm:guard the label prefers `display_name` and falls back to the address, and the fallback is not a stopgap: `display_name` is null until somebody types one, and an activity row for a user who never did must still say something (ISS-1003). What it must NOT do is decide anything — this map feeds rendering only.
+    for (const r of rows) userEmailById.set(r.id, r.displayName ?? r.email);
   }
 
   for (const ref of refs) {

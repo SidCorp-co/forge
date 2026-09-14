@@ -13,7 +13,7 @@
  */
 
 import argon2 from 'argon2';
-import { and, eq, gt, type InferSelectModel, isNull, or, sql } from 'drizzle-orm';
+import { and, eq, type InferSelectModel, isNull, sql } from 'drizzle-orm';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { personalAccessTokens, type UserKind, users } from '../db/schema.js';
@@ -24,6 +24,7 @@ import {
   patEnvForNodeEnv,
   patPrefixOf,
 } from './pat-format.js';
+import { patIsLive } from './pat-live.js';
 
 const ARGON2_OPTIONS = {
   type: argon2.argon2id,
@@ -33,6 +34,8 @@ const ARGON2_OPTIONS = {
 } as const;
 
 export type Pat = InferSelectModel<typeof personalAccessTokens>;
+
+export { patIsLive } from './pat-live.js';
 
 export interface MintPatInput {
   userId: string;
@@ -130,13 +133,7 @@ export async function verifyPat(plaintext: unknown): Promise<VerifiedPat | null>
     .select({ pat: personalAccessTokens, ownerKind: users.kind })
     .from(personalAccessTokens)
     .innerJoin(users, eq(users.id, personalAccessTokens.userId))
-    .where(
-      and(
-        eq(personalAccessTokens.tokenPrefix, prefix),
-        isNull(personalAccessTokens.revokedAt),
-        or(isNull(personalAccessTokens.expiresAt), gt(personalAccessTokens.expiresAt, sql`now()`)),
-      ),
-    );
+    .where(and(eq(personalAccessTokens.tokenPrefix, prefix), patIsLive()));
 
   if (rows.length === 0) {
     // cm:guard verify a dummy hash when the bucket is empty so an absent prefix costs the same as a wrong secret — skipping it makes prefix existence measurable by timing.

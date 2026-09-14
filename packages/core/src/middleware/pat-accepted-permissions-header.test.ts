@@ -57,7 +57,8 @@ const JWT = 'not-a-pat-token';
 function principal(permissions: readonly string[] | null, scopes = ['read', 'write']) {
   return {
     kind: 'pat',
-    agency: 'human',
+    agency: null,
+    agentUserId: null,
     userId: 'u1',
     tokenId: 't1',
     scopes,

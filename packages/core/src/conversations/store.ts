@@ -150,7 +150,7 @@ export async function openConversation(
     }
 
     // cm:guard the OPENING is not a person's act and takes no actor: a room opens because a message arrived, and there is nobody yet whose roles could be checked. `addHandle`'s door check guards a handle somebody ADDS to a live room, which is the only case with an actor to check — routing the open through it refuses every first message instead, which is what this call used to do.
-    await attachOpeningHandle(tx, inserted.id, handle.userId);
+    await attachOpeningHandle(tx, inserted.id, handle.userId, venue.projectId);
     return inserted;
   });
 }

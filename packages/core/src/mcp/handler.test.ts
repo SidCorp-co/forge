@@ -29,7 +29,8 @@ const fakePrincipal = makeFakePrincipal(
 const humanPat = (tokenId: string) =>
   ({
     kind: 'pat',
-    agency: 'human',
+    agency: null,
+    agentUserId: null,
     userId: fakePrincipal.userId,
     tokenId,
     scopes: ['read', 'write'],

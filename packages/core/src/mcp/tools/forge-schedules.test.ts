@@ -9,8 +9,7 @@ vi.mock('../../config/env.js', () => ({
   },
 }));
 
-// lib/authz.ts effectiveProjectRole chains TWO leftJoins before where().limit(1).
-// Declare without default impl so mockResolvedValueOnce accepts any value.
+// cm:guard `lib/authz.ts:effectiveProjectRole` chains TWO leftJoins before `where().limit(1)`, and the mock is declared with no default implementation so `mockResolvedValueOnce` accepts any value — a default here silently answers every call the cases did not queue.
 const selectLimit = vi.fn();
 const selectOrderBy = vi.fn();
 const selectWhere = vi.fn();
@@ -95,7 +94,8 @@ function buildPatCtx(scopes: string[], projectIds: string[] | null = null) {
   return {
     principal: {
       kind: 'pat' as const,
-      agency: 'human' as const,
+      agency: null,
+      agentUserId: null,
       userId: OWNER_ID,
       tokenId: TOKEN_ID,
       scopes,

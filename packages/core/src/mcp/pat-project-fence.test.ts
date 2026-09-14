@@ -57,7 +57,8 @@ const stubDevice: Device = {
 const boundPat = () =>
   ({
     kind: 'pat',
-    agency: 'human',
+    agency: null,
+    agentUserId: null,
     userId: stubDevice.ownerId,
     tokenId: '00000000-0000-4000-8000-0000000000cc',
     scopes: ['read', 'write'],

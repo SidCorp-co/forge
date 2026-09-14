@@ -114,6 +114,24 @@
 
 ### Added
 
+- **An agent now has a name you can read, an address you can type, and a credential that says it is
+  the one speaking.** Settings → Agents lists every agent account in your organization, says
+  plainly whether each one can act, and lets an org admin give a credential to an agent that
+  already has none, take every credential away without retiring the account, and re-type the name
+  people read. Until now none of that existed anywhere in the product: the only thing an agent
+  could be given a credential at was the moment it was created, so every agent a conversation had
+  minted — a name in a room, deliberately without a token — was permanently unable to answer in
+  that room, and nothing on any screen said so.
+
+- **Everybody gets a name, and it is separate from the address.** One string used to do three jobs:
+  the address you are registered at was also how an agent was addressed after an `@`, and also the
+  only thing any screen had to print for anybody. They are now three things. The registered address
+  stays the key that invitations, password resets and sign-in links are matched on. The handle is
+  the address — lowercase, machine-read, and unique within your organization, refused by the
+  database rather than by whoever remembered to check, so two agents in one organization can no
+  longer both answer to `@forge-dev` while only one of them can act. The name is free text you type
+  yourself, accents and all, and it is read by nothing that decides anything.
+
 - **What an agent is allowed to say to you no longer depends on where it says it.** A comment on an
   issue was checked for markup and never for truth, so a machine could write *merged, deployed,
   closed* to the person who decides and have it stored unread, while the same sentence headed for a
@@ -2409,6 +2427,29 @@
 
 ### Fixed
 
+- **Taking an agent's authority away no longer closes the rooms it was in.** A conversation worked
+  out what it was about by asking which projects its agents belonged to — the same record that
+  revoking an agent removes. Revoking therefore left every room where that agent was the only
+  handle about no project at all, and two rules that are each right on their own then met: a room
+  about nothing is refused to every reader, and a room's last handle may not be taken out. The
+  result was a conversation nobody could open and nobody could repair, including the person who
+  revoked. A room now records the project it is about at the moment an agent is added to it, which
+  is the moment somebody already had to hold a role on that project to do it. Revoking removes the
+  authority, the room stays readable by everyone who could read it before, and the agent shows as
+  unreachable rather than the room going quiet. The same change closes the other half of it: an
+  agent given a second project later no longer quietly widens the rooms it was already sitting in.
+
+- **A credential now says who is speaking, or says nothing — it no longer guesses.** Whether the
+  caller was a person or a machine was read off whoever owned the token. Most agents run on a
+  person's token, so that answered "a person" for the majority of agents and "a machine" for the
+  minority: every rule written to hold machines to account let through most of the machines and
+  refused the few that held their own credential. A token an agent owns now names that agent, a
+  browser session is the only thing that establishes a person, and a token a person owns establishes
+  nobody — it records no claim about who wrote something, and wherever a rule has to choose it is
+  treated as a machine. One consequence is new ability rather than new refusal: a decision parked
+  because another agent has to settle it can now be settled, by that agent holding its own
+  credential, and by nothing else. Before, no credential in the system could.
+
 - **An agent parking an issue is now told how to ask its question, and told when nobody heard it.**
   Parking work at "needs a human" takes two things: why the work stopped, and what a person has to
   supply for it to start again. Only the second one produces the question with an answer box on it —
@@ -4498,6 +4539,22 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+
+- **A personal access token no longer counts as "a person is typing this", so driving Forge from the
+  command line on your own token now meets the same recorded-work check an agent meets.** The check
+  that refuses to move an issue to `developed` with nothing recorded against it was written for
+  agents, and it was scoped so that a person hand-advancing their own issue would not be stopped by
+  it. But over REST the only thing it had to go on was who owned the credential, and in practice a
+  token a person owns is what nearly every agent runs on — so the carve-out written for the person
+  was being taken by exactly the population the check exists for, on the two routes that matter most
+  (`PATCH /api/issues/batch` and the merge claim). Ownership of a credential is now treated as
+  saying nothing about who is holding it: a browser session is the only thing that establishes a
+  person, and everything else is asked for its evidence. **The cost is real and is named here rather
+  than discovered:** if you advance or claim a merge from a shell using a PAT and you have recorded
+  no work on the issue, you now get `no_work_evidence` where you previously got a `200`. The two
+  ways through are the two that were always intended — record the work (which the `forge` CLI does
+  as a matter of course) or advance it from the web UI. Nothing about what a token may *reach*
+  changed; only what it may claim about who is behind it.
 
 - **A reply in a chat room now goes out the same door on every channel, and a turn that answers
   nothing says which kind of nothing it was.** Answering somebody in a Rocket.Chat room used to be a

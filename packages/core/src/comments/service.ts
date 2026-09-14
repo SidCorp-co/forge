@@ -191,7 +191,7 @@ export type NewComment = {
    * comment as a person's, which both exempts it from the mandate and drops it
    * out of the number that decides the mandate.
    */
-  authorAgency: ActorAgency;
+  authorAgency: ActorAgency | null;
   body: string;
   format?: BodyFormat | null | undefined;
   parentId: string | null;

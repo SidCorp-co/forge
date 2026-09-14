@@ -1,0 +1,243 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="flow-module" content="organization-access">
+<meta name="flow-answers" content="What an agent is called and what it is addressed as, why a credential says who is speaking or says nothing at all, and why taking an agent's authority away must not close the rooms it sits in">
+<title>Flow · organization-access — an agent's name, address and credential</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --faint:#9a9288; --line:#ddd7cf; --bg:#fbfaf8; --panel:#fff;
+          --acc:#1f6f4a; --accbg:#e6efe9; --bad:#8a3b52; --badbg:#f6ecef; --new:#5b3a8e; --newbg:#efeaf6; }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  code { font:12.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+
+  .bar { display:flex; align-items:baseline; gap:.9rem; flex-wrap:wrap;
+         padding:.85rem 1.4rem; background:var(--panel); border-bottom:1px solid var(--line); }
+  .bar h1 { font-size:1.05rem; margin:0; font-weight:650; letter-spacing:-.01em; }
+  .crumb { font:12px ui-monospace,Menlo,monospace; color:var(--faint); }
+  .crumb a { color:var(--faint); }
+  .pill { margin-left:auto; font-size:12px; padding:.22rem .6rem; border-radius:99px;
+          background:var(--accbg); color:var(--acc); border:1px solid #cfe0d6; font-weight:600; }
+
+  .cols { display:grid; grid-template-columns:minmax(0,1fr) 21rem; gap:1px; background:var(--line); }
+  @media (max-width:1100px){ .cols { grid-template-columns:minmax(0,1fr) } }
+  .canvas, .rail { background:var(--bg); padding:1.1rem 1.4rem; }
+  .stage { font:600 11.5px ui-sans-serif,system-ui,sans-serif; text-transform:uppercase;
+           letter-spacing:.06em; color:var(--faint); margin:1.4rem 0 .45rem; }
+  .stage:first-child { margin-top:0 }
+  .stage b { color:var(--acc); font-size:12.5px; margin-right:.4rem }
+  .board { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:.7rem; overflow-x:auto; }
+  .board svg { max-width:none !important; height:auto; }
+  .cap { color:var(--mut); font-size:13px; margin:.55rem .2rem 0; }
+  .cap b { color:var(--fg) }
+
+  .rail h2 { font-size:11.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--faint);
+             margin:0 0 .5rem; font-weight:700; }
+  .rail section + section { margin-top:1.4rem }
+  .gates { list-style:none; margin:0; padding:0; counter-reset:g }
+  .gates li { position:relative; padding:.45rem 0 .45rem 1.8rem; border-bottom:1px solid var(--line); font-size:12.5px }
+  .gates li:last-child { border-bottom:0 }
+  .gates li::before { counter-increment:g; content:counter(g); position:absolute; left:0; top:.5rem;
+    width:1.15rem; height:1.15rem; line-height:1.15rem; text-align:center; border-radius:4px;
+    background:var(--accbg); color:var(--acc); font:700 10.5px ui-monospace,Menlo,monospace }
+  .gates b { display:block; font:600 12px ui-monospace,Menlo,monospace }
+  .gates span { color:var(--mut) }
+  .rail p { font-size:12.5px; color:var(--mut); margin:.4rem 0 }
+  .rail p b { color:var(--fg) }
+
+  .tabs { display:flex; gap:.3rem; padding:0 1.4rem; background:var(--panel);
+          border-top:1px solid var(--line); border-bottom:1px solid var(--line); flex-wrap:wrap }
+  .tabs button { appearance:none; border:0; background:none; padding:.6rem .85rem; cursor:pointer;
+                 font:600 13px inherit; color:var(--mut); border-bottom:2px solid transparent; }
+  .tabs button[aria-selected=true] { color:var(--fg); border-bottom-color:var(--acc) }
+  .pane { padding:1.4rem 1.4rem 1.8rem; border-top:1px solid var(--line) }
+  .pane h2 { font:600 12.5px ui-sans-serif,system-ui,sans-serif; text-transform:uppercase;
+             letter-spacing:.05em; color:var(--mut); margin:0 0 .8rem }
+
+  table { border-collapse:collapse; width:100%; font-size:13.5px }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top }
+  th { font-weight:600; color:var(--faint); font-size:11.5px; text-transform:uppercase; letter-spacing:.05em }
+  td.sym { width:26%; }
+  .note { background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--bad);
+          padding:.6rem .9rem; border-radius:4px; margin:.9rem 0; font-size:13.5px }
+  .note.plan { border-left-color:var(--new) }
+  .foot { padding:1rem 1.4rem 2.5rem; font-size:13px; color:var(--mut) }
+</style>
+<header class="bar">
+  <span class="crumb"><a href="index.html">flows</a> / organization-access</span>
+  <h1>An agent's name, its address, and the credential that says it is speaking</h1>
+  <span class="pill">three columns, two axes, one thing a revoke may not do</span>
+</header>
+
+<div class="cols">
+<div class="canvas">
+
+  <p class="stage"><b>1</b>One string was doing three jobs</p>
+  <div class="board"><pre class="mermaid">
+flowchart LR
+  E["the address a person is registered at"] --> K["the KEY every invitation, reset and sign-in link is matched on<br/>unique across the whole system"]
+  E --> A["the ADDRESS typed after an @<br/>unique inside one organization"]
+  E --> L["the NAME a person reads<br/>not unique, freely re-typed, accented"]
+  K --- N1["stays where it was"]
+  A --- N2["moved out: two organizations may each have a @forge-dev,<br/>one organization may not have two"]
+  L --- N3["moved out: everybody gets one, people included"]
+  classDef ok fill:#e6efe9,stroke:#1f6f4a,color:#14532d
+  classDef gone fill:#f6ecef,stroke:#8a3b52,color:#7a2f44
+  class K,N1 ok
+  class E gone
+</pre></div>
+  <p>Until this change an agent's address was recovered by cutting its registered address at the
+  first dot, and nothing stopped two agents in one organization presenting as the same name — one
+  able to act, one not. Nobody of any kind had a name, so every member list, picker and confirmation
+  dialog printed a raw address.</p>
+
+  <p class="stage"><b>2</b>The name decides nothing, and that is the rule</p>
+  <div class="rule">
+    <b>A name a person can re-type may never be what a permission is looked up by.</b> Whoever takes
+    that name next inherits whatever the previous holder was allowed to do, and nothing in the
+    system would notice. So the name is rendered and never read to decide: not a key, not an
+    address, and no part in working out who an <code>@</code> refers to. The address is what a
+    mention resolves against, it is unique within the organization, and the database is what
+    refuses a second one rather than a caller remembering to check.
+  </div>
+  <p>The same rule already governs the table that maps an outside chat username to a Forge person,
+  for the same reason, and that is where this wording comes from.</p>
+
+  <p class="stage"><b>3</b>An agent that cannot act, and the way out of it</p>
+  <div class="board"><pre class="mermaid">
+flowchart TD
+  S["a project is spoken to in a room for the first time"] --> M["an agent is created to be that room's handle"]
+  M --> T["deliberately given NO credential"]
+  T --> D["it has a name in the room and cannot answer in it"]
+  D --> W{"is there a way to give it one?"}
+  W -- "before" --> X["no. Nothing in the product reached those three routes,<br/>and none of them credentialed an agent that already existed"]
+  W -- "now" --> Y["an org admin opens Settings → Agents,<br/>sees that it cannot act, and gives it a credential"]
+  classDef bad fill:#f6ecef,stroke:#8a3b52,color:#7a2f44
+  classDef ok fill:#e6efe9,stroke:#1f6f4a,color:#14532d
+  class X,D bad
+  class Y ok
+</pre></div>
+  <p>The credential is shown once, because only a hash of it is kept and there is nothing to read
+  back. Taking every credential away leaves the account and its memberships exactly where they were:
+  that is "stop it acting for now", which is a different act from retiring it.</p>
+
+  <p class="stage"><b>4</b>Two questions a credential is asked, and only one it can answer</p>
+  <div class="board"><pre class="mermaid">
+flowchart TD
+  C["a request arrives"] --> Q1["WHAT MAY THIS DO?<br/>answered by the memberships of whoever owns the credential"]
+  C --> Q2["WHO IS SPEAKING?"]
+  Q2 --> S1["signed in through a browser<br/>→ a person, established"]
+  Q2 --> S2["a token belonging to an agent account<br/>→ that agent, established"]
+  Q2 --> S3["a token belonging to a person<br/>→ NOTHING is established"]
+  S3 --> R1["records no claim about who wrote it"]
+  S3 --> R2["is treated as a machine wherever a rule has to choose,<br/>so the checks written for machines apply"]
+  classDef ok fill:#e6efe9,stroke:#1f6f4a,color:#14532d
+  classDef warn fill:#f6ecef,stroke:#8a3b52,color:#7a2f44
+  class S1,S2 ok
+  class S3 warn
+</pre></div>
+  <div class="rule">
+    <b>Borrowed authority may act. It may not claim an identity.</b> Most agents run on a person's
+    token, and the old rule read that as "a person is typing" — so every rule written to hold
+    machines to account let through the majority of the machines, and refused the minority that held
+    their own credential. Now a token a person owns claims nothing at all, and where a rule must
+    pick, it picks the careful answer.
+  </div>
+  <p>One consequence is new ability rather than new refusal: a decision parked because <em>another
+  agent</em> has to settle it can now be settled — by that agent, holding its own credential, and by
+  nothing else. Before, no credential could, because the only test available was the one that was
+  wrong.</p>
+
+  <p class="stage"><b>5</b>What a revoke may not do</p>
+  <div class="board"><pre class="mermaid">
+flowchart LR
+  RV["an admin removes an agent's authority"] --> B1["it may no longer act — correct, and the point"]
+  RV --> B2{"what is the room about?"}
+  B2 -- "before: read from the same record that was just removed" --> O1["the room is about nothing"]
+  O1 --> O2["a room about nothing is refused to every reader"]
+  O2 --> O3["and the last handle may not be taken out,<br/>so nobody can repair it"]
+  B2 -- "now: recorded on the room when the agent joined it" --> N1["the room is still about the same project"]
+  N1 --> N2["everyone who could read it still can"]
+  N1 --> N3["the agent shows as unreachable rather than going silent"]
+  classDef bad fill:#f6ecef,stroke:#8a3b52,color:#7a2f44
+  classDef ok fill:#e6efe9,stroke:#1f6f4a,color:#14532d
+  class O1,O2,O3 bad
+  class N1,N2,N3 ok
+</pre></div>
+  <div class="rule">
+    <b>Removing authority always succeeds, and never closes a room.</b> Two rules that were each
+    right on their own met and made a dead end: an empty room is refused to everybody, and a room's
+    last handle cannot be taken out. What made them meet was reading what a room is <em>about</em>
+    out of the record that says what an agent may <em>do</em>. Those are two questions; they are now
+    two records. The fact was already known at the door — a handle is only let into a room by
+    somebody who holds a role on the project it is joining for — so it is written down there rather
+    than worked out again later.
+  </div>
+  <p>The same change closes the other half: an agent given a second project later does not quietly
+  widen the rooms it was already sitting in, because each room recorded the project it was joined
+  for.</p>
+
+</div>
+
+<div class="rail">
+  <p class="stage"><b>·</b>What each party may do</p>
+  <table>
+    <tr><td class="sym">org admin</td><td>see every agent in the organization, read whether each can act, give a credential, take every credential away, re-type the name.</td></tr>
+    <tr><td class="sym">a person</td><td>set their own name, in their own words. Nobody else sets it for them.</td></tr>
+    <tr><td class="sym">an agent</td><td>act with its own credential, within the one project it belongs to. It settles a decision parked on another agent; it never settles one parked on a person.</td></tr>
+    <tr><td class="sym">an ordinary member</td><td>read the member list. The agent verbs are refused, and the screen does not offer them.</td></tr>
+  </table>
+
+  <p class="stage"><b>·</b>What the system refuses, and what it says</p>
+  <table>
+    <tr><td class="sym">a second agent of the same name in one organization</td><td>refused by the database, not by a caller remembering to look.</td></tr>
+    <tr><td class="sym">a person's token settling a decision parked on another agent</td><td>refused, naming the credential that would be accepted and where an admin gets one.</td></tr>
+    <tr><td class="sym">an agent settling a decision parked on a person</td><td>refused, and told to sign in. It was escalated to a person precisely because a machine should not decide it.</td></tr>
+    <tr><td class="sym">naming a project the agent does not belong to</td><td>refused by name rather than silently corrected to whichever project it does belong to.</td></tr>
+  </table>
+
+  <p class="stage"><b>·</b>What the upgrade refuses to paper over</p>
+  <div class="note">
+    Two agents in one organization that would end up with the same address stop the upgrade, and it
+    names <b>both</b> of them — because the next act is deciding which keeps the name, and naming one
+    does not say what the other is. Nothing is renamed to make the rule fit: whoever is addressing
+    that name is talking to one of the two, and quietly moving it hands them the other.
+  </div>
+  <div class="note">
+    A room whose agent is already in the broken state above — no project at all — also stops the
+    upgrade by name. It has to be repaired before the room can record what it is about, and the
+    upgrade will not invent an answer.
+  </div>
+
+  <p class="stage"><b>·</b>Measurements</p>
+  <table>
+    <tr><td class="sym">34</td><td>agent handles sitting in rooms with no credential when this was written — the whole population the new surface exists for.</td></tr>
+    <tr><td class="sym">3</td><td>routes that existed for agent accounts, with no caller anywhere in the product.</td></tr>
+    <tr><td class="sym">0</td><td>credentials that could settle a decision parked on another agent, before this change.</td></tr>
+  </table>
+</div>
+</div>
+
+<div class="foot">
+  Where the rules are carried: <code>packages/core/src/orgs/agent-accounts.ts</code> and its routes ·
+  <code>packages/core/src/conversations/scope.ts</code> and <code>participants.ts</code> ·
+  <code>packages/core/src/middleware/require-pat.ts</code> and <code>middleware/auth.ts</code> ·
+  <code>packages/core/src/questions/routes.ts</code> ·
+  <code>packages/web-v2/src/features/agent-accounts/</code>.
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({ startOnLoad: false, theme: 'neutral',
+    themeVariables: { fontSize: '12px', fontFamily: 'ui-sans-serif,system-ui,sans-serif' },
+    flowchart: { useMaxWidth: false, nodeSpacing: 30, rankSpacing: 42, padding: 6 } });
+  // .finally, not .then — mermaid.run() REJECTS on some diagram types after drawing them fine,
+  // and a .then here leaves those figures at mermaid's own shrunken width.
+  const fit = () => {
+    for (const s of document.querySelectorAll('.board svg')) {
+      const vb = (s.getAttribute('viewBox') || '').split(/\s+/);
+      if (vb.length === 4) { s.style.width = vb[2] + 'px'; s.style.maxWidth = 'none'; }
+    }
+  };
+  mermaid.run().catch(() => {}).finally(fit);
+</script>

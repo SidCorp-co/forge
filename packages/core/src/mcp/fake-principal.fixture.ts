@@ -19,8 +19,9 @@ export function makeFakePrincipal(
 ): McpPrincipal {
   return {
     kind: 'pat',
-    // cm:guard `human` is the fixture default because most suites assert ordinary member behaviour, and a suite that means an AGENT must say so — `agency` is what the ISS-786/812 evidence gates read, so a fixture defaulting to `agent` would silently put every unrelated suite behind those gates, and one defaulting the other way in the SOURCE is the hole `authenticatePat`'s guard describes. Fixture and source default oppositely on purpose.
-    agency: 'human',
+    // cm:guard `null` — unestablished — is the fixture default because that is what a person's token really carries since ISS-1003, and a suite that means an AGENT must say so by handing it one. It is NOT the lenient direction: `issues/actor-agency.ts:actorAgency` maps unestablished to `agent`, so a suite that forgets meets the ISS-786/812 evidence gates rather than slipping past them, which is the way round a default has to fail.
+    agency: null,
+    agentUserId: null,
     userId,
     tokenId,
     scopes: ['read', 'write'],
@@ -45,6 +46,7 @@ export function makeFakeJobPrincipal(
 ): McpPrincipal {
   return makeFakePrincipal(tokenId, userId, {
     agency: 'agent',
+    agentUserId: userId,
     deviceId,
     boundProjectId,
   });

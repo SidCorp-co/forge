@@ -31,8 +31,8 @@ import { markUntrusted } from '../../prompt/sanitize.js';
 import {
   assertPrincipalIsWriter,
   type ContextScopedMcpToolFactory,
-  principalAgency,
   principalAuthorDeviceId,
+  principalEstablishedAgency,
   principalHookActor,
   zodToMcpSchema,
 } from './lib.js';
@@ -208,7 +208,7 @@ async function run(principal: Principal, input: ToolInput): Promise<unknown> {
           issueId,
           authorId: principal.userId,
           authorDeviceId,
-          authorAgency: principalAgency(principal),
+          authorAgency: principalEstablishedAgency(principal),
           body,
           format: input.data?.format,
           parentId: input.data?.parentId ?? null,

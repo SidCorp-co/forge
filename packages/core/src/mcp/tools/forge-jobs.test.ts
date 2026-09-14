@@ -242,7 +242,8 @@ function makeDeviceCtx() {
 const makePatCtx = (projectIds: string[] | null) => ({
   principal: {
     kind: 'pat' as const,
-    agency: 'human' as const,
+    agency: null,
+    agentUserId: null,
     userId: OWNER_ID,
     tokenId: '77777777-7777-4777-8777-777777777777',
     scopes: ['read', 'write'],
@@ -400,7 +401,8 @@ describe('forge_jobs.cancel', () => {
     expect(result.cancellationRequested).toBe(true);
     expect(cancelJobMock).toHaveBeenCalledWith(JOB_ID, {
       actorUserId: OWNER_ID,
-      actorAgency: 'human',
+      // cm:guard `agent`, and it asserted `human` until ISS-1003: `cancelJob` takes the GATE's reading, which fails closed on a credential that established nobody. Attribution still follows the token's owner on the line above — the two answers are separate on purpose.
+      actorAgency: 'agent',
       reason: 'stuck ghost job',
       source: 'mcp',
     });

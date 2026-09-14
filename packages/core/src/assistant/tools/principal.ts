@@ -25,8 +25,10 @@ export function buildChatToolContext(opts: {
     kind: 'pat',
     // cm:edge contract -> packages/core/src/middleware/pat-rest-surface.ts — null is the whole menu, and it is right here because this principal never crosses `beginPatRequest`: the chat surface synthesizes it after its own auth, so there is no granted token behind it to narrow by.
     permissions: null,
-    // cm:guard `agent`, not `human` — the PAT shape here is a carrier for the user's identity, not a claim that a person is typing. Flipping it hands every chat write the human exemption from the ISS-812 fabrication guard.
+    // cm:guard `agent`, not `human` and not `null` — the PAT shape here is a carrier for the user's identity, not a claim that a person is typing, and the agent driving this surface IS established: it is core's own assistant, running in this process. Flipping it hands every chat write the human exemption from the ISS-812 fabrication guard, and nulling it says nothing was established when something was.
     agency: 'agent',
+    // cm:guard `null` beside an `agent` agency, and the pair is not a contradiction: `agentUserId` names an agent ACCOUNT holding this credential, and the assistant holds none — it is core acting on a signed-in person's behalf. A value here would let this synthetic principal through the one door reserved for an agent speaking as itself (`POST /api/questions/:id/answer`, ISS-1003), which is exactly the borrowed authority that door refuses.
+    agentUserId: null,
     // cm:guard `null`, and it may never become a device id. Chat runs in core's own process on behalf of a signed-in person, so it speaks for no box; a value here would let a synthetic principal through `requireDevice`-shaped checks that exist to gate a paired machine.
     deviceId: null,
     userId: opts.userId,

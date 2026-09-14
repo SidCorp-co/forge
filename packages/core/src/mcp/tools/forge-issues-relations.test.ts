@@ -334,6 +334,7 @@ it('get returns the edges on both sides of the issue', async () => {
   expect(result.relations.blockedBy[0]).toMatchObject({ edgeId: 'dep-id-1', expired: false });
 });
 
+// cm:guard the two halves of one principal, and they answer different questions: the edge is ATTRIBUTED to the person whose token it is (`id`), while the agency the gates read is `agent`, because a person's token establishes nobody and `actorAgency` fails closed there (ISS-1003). This asserted `agency: 'human'` until that issue, which is the claim that exempted every agent borrowing a personal token. Collapse the two back into one field and one of these goes red.
 it('attributes the edge to the PAT user — the synthetic device that used to stand in for it is gone', async () => {
   const PAT_USER = '55555555-5555-4555-8555-555555555555';
   stageUpdate();
@@ -341,7 +342,8 @@ it('attributes the edge to the PAT user — the synthetic device that used to st
   const patTool = forgeIssuesTool({
     principal: {
       kind: 'pat',
-      agency: 'human',
+      agency: null,
+      agentUserId: null,
       userId: PAT_USER,
       tokenId: '66666666-6666-4666-8666-666666666666',
       scopes: ['read', 'write'],
@@ -360,7 +362,7 @@ it('attributes the edge to the PAT user — the synthetic device that used to st
 
   expect(setEdgeMock).toHaveBeenCalledWith(
     expect.anything(),
-    expect.objectContaining({ actor: { type: 'user', id: PAT_USER, agency: 'human' } }),
+    expect.objectContaining({ actor: { type: 'user', id: PAT_USER, agency: 'agent' } }),
     expect.anything(),
   );
 });

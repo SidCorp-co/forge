@@ -45,8 +45,17 @@ export type UserKind = (typeof userKinds)[number];
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   email: text('email').notNull().unique(),
-  // cm:guard EVERY login entrance must refuse `agent`, and the column defaulting to `human` is why a new entrance is the dangerous one: an agent row carries a synthesized address it cannot receive mail at and a NULL `password_hash`, so a forgotten refusal turns creating an agent into creating an unapproved person's account with a live password-reset path. The refusals live in `auth/agent-login-refusal.ts` and every entrance calls that, never its own check.
+  // cm:guard EVERY login entrance must refuse `agent`, and the column defaulting to `human` is why a new entrance is the dangerous one: an agent row carries a synthesized address it cannot receive mail at and a NULL `password_hash`, so a forgotten refusal turns creating an agent into creating an unapproved person's account with a live password-reset path. The refusals live in `auth/agent-account.ts` — `assertNotAgent` — and every entrance calls that, never its own check.
   kind: text('kind', { enum: userKinds }).notNull().default('human'),
+  /**
+   * The label a person reads, and NOTHING else (ISS-1003).
+   *
+   * Free text, accented, changeable, not unique — a person sets their own and
+   * an org admin sets an agent's. Null until somebody types one, which is what
+   * every renderer's "or the email address" branch is for.
+   */
+  // cm:guard NEVER read to decide anything: not a key, not an address, no part in resolving a mention. The precedent is `assistant_speaker_links` — a re-assignable name used as a key hands the next holder of that name the previous holder's authority — and the address that IS safe to resolve on is `organization_members.handle`, which is unique within its org. `db/display-name-readers.test.ts` names the modules allowed to read this column and fails on any other.
+  displayName: text('display_name'),
   /**
    * Nullable since 0037: OAuth-only users have no local password. `/auth/local`
    * rejects a null hash, so a password-less account cannot be brute-forced
@@ -217,11 +226,26 @@ export const organizationMembers = pgTable(
     role: text('role', { enum: orgMemberRoles }).notNull().default('member'),
     // cm:guard the column takes any text — the lens vocabulary is enforced by the route's zod alone (`memberLenses`, mirroring `apiKeys.scopes`), so a writer that bypasses that route stores a lens nothing reads
     lenses: text('lenses').array().notNull().default(sql`ARRAY[]::text[]`),
+    /**
+     * The address, the thing typed after `@`. Lowercase, no spaces,
+     * machine-read, unique within this org (ISS-1003).
+     */
+    // cm:guard it sits HERE and not on `users` because the rule is unique-per-org, and `(org_id, handle)` is a real unique index only on the table that holds both columns. A handle on `users` could be asserted unique-per-org by a writer and enforced by nothing — the same defect somewhere a reviewer would not look for it. Null for a person, who holds no handle yet; the partial index and the CHECK both admit null so that day needs no migration.
+    handle: text('handle'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
+  // cm:guard every CHECK the migration creates is declared HERE too, because a drizzle snapshot
+  // records `checkConstraints` per table: one left in SQL alone is a constraint the snapshot denies
   (t) => ({
     pk: primaryKey({ columns: [t.orgId, t.userId] }),
     userIdIdx: index('organization_members_user_id_idx').on(t.userId),
+    orgHandleUnique: uniqueIndex('organization_members_org_handle_uniq')
+      .on(t.orgId, t.handle)
+      .where(sql`handle IS NOT NULL`),
+    handleShape: check(
+      'organization_members_handle_shape',
+      sql`${t.handle} IS NULL OR ${t.handle} ~ '^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$'`,
+    ),
   }),
 );
 
@@ -633,16 +657,12 @@ export const jobs = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
     issueId: uuid('issue_id').references((): AnyPgColumn => issues.id, { onDelete: 'set null' }),
-    // ISS-101 — every job belongs to a pipeline_run. Issue-driven jobs share
-    // the issue's run; PM jobs get a one-shot 'pm' run each. NOT NULL is
-    // enforced at the DB level by migration 0054.
+    // cm:guard NOT NULL here and `restrict` on the reference are one decision, and they are what makes the run/job terminal invariant checkable in BOTH directions: a job with no run cannot be swept by the run-axis reaper, and a run deleted out from under its jobs would leave the inverse half — no run stays non-terminal once every child job is terminal — reading an empty set and closing. Every job belongs to a run: an issue-driven job shares its issue's, a PM job gets a one-shot `pm` run of its own. The column has been NOT NULL in the database since 0054 (ISS-101).
     pipelineRunId: uuid('pipeline_run_id')
       .notNull()
       .references(() => pipelineRuns.id, { onDelete: 'restrict' }),
     deviceId: uuid('device_id').references(() => devices.id, { onDelete: 'set null' }),
-    // EPIC 2 (ISS-271): nullable runner FK. The dispatcher writes both
-    // deviceId and runnerId on dispatch; device-bound runners mirror
-    // runner.deviceId here, remote runners leave it null.
+    // cm:why nullable, and it stays nullable: the dispatcher writes `deviceId` and `runnerId` together, a device-bound runner mirrors its `runner.deviceId` here, and a remote runner has no device to mirror — so a NOT NULL would refuse exactly the remote case the column was added for (ISS-271).
     runnerId: uuid('runner_id').references((): AnyPgColumn => runners.id, { onDelete: 'set null' }),
     createdBy: uuid('created_by')
       .notNull()

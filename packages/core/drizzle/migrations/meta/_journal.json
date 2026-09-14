@@ -1681,6 +1681,20 @@
       "when": 1794268800000,
       "tag": "0241_conversations",
       "breakpoints": true
+    },
+    {
+      "idx": 242,
+      "version": "7",
+      "when": 1794355200000,
+      "tag": "0242_agent_handle_and_display_name",
+      "breakpoints": true
+    },
+    {
+      "idx": 243,
+      "version": "7",
+      "when": 1794441600000,
+      "tag": "0243_participant_records_its_project",
+      "breakpoints": true
     }
   ]
 }

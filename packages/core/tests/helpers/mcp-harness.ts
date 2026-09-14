@@ -25,7 +25,9 @@ export async function connectClientAsPat(patPlaintext: string) {
   const ctx = {
     principal: {
       kind: 'pat' as const,
-      agency: verified.ownerKind === 'agent' ? ('agent' as const) : ('human' as const),
+      // cm:guard the harness mirrors `authenticatePat` exactly, including the `null` a person's token now carries: a helper that resolved it to `human` here would test a principal the production door never builds, which is how an integration suite goes green over a hole (ISS-1003).
+      agency: verified.ownerKind === 'agent' ? ('agent' as const) : null,
+      agentUserId: verified.ownerKind === 'agent' ? row.userId : null,
       userId: row.userId,
       tokenId: row.id,
       scopes: row.scopes,
