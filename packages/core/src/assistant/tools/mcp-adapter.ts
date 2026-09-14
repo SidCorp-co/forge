@@ -36,7 +36,8 @@ function sanitizeName(name: string): string {
 }
 
 export const DESCRIPTION_CAP = 1024;
-export const RESULT_CAP = 24_000;
+// cm:guard raised from 24k on 2026-09-15 and the reason is the CLI tool: a `forge -h --full` or a whole issue body runs past it, and a cut result hands the model half an answer with no mark of what it lost except the trailing `[truncated]`. The context budget elides by age across the turn and is the bound that holds; this one only stops a single pathological result from filling the window on its own (ISS-1009).
+export const RESULT_CAP = 200_000;
 
 export function truncate(s: string, cap: number): string {
   return s.length > cap ? `${s.slice(0, cap)}… [truncated]` : s;
@@ -101,7 +102,8 @@ export function buildToolset(ctx: McpContext, specs: ChatToolSpec[]): ChatToolse
   for (const spec of specs) {
     const tool = spec.factory(ctx);
     const name = sanitizeName(tool.name);
-    if (bySanitized.has(name)) continue; // defensive: skip a name collision
+    // cm:why first spec wins on a sanitized-name collision: two MCP names differing only in a dot sanitize to one OpenAI name, and offering the model two entries it cannot tell apart is worse than offering the first.
+    if (bySanitized.has(name)) continue;
     const props = (tool.inputSchema as { properties?: Record<string, unknown> }).properties;
     const hasProjectId = !!props && 'projectId' in props;
     const willInject = hasProjectId && boundProjectId !== null;

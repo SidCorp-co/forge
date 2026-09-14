@@ -59,6 +59,8 @@ export function createOpenAIProvider(cfg: OpenAIConfig): ChatProvider {
       // cm:guard both of these degrade ONCE and then the field is gone for the rest of the call, so a rejecting endpoint costs one extra request, never a loop: `tool_choice:'required'` makes Vertex compile every tool schema into a constrained-decoding grammar and 400s "too many states" on a large toolset, and `response_format` is optional in the OpenAI contract so a compatible endpoint may 400 it as unsupported — in both cases the post-turn reply guard still polices the answer
       let toolChoice = req.toolChoice;
       let responseFormat = req.responseFormat;
+      // cm:guard degrades on the SAME once-only rule as the two above: `reasoning_effort` is not in the OpenAI chat contract, so an endpoint that has never seen it 400s, and a turn that lost the field still answers (ISS-1009).
+      let reasoningEffort = req.reasoningEffort;
       const init = (): RequestInit => {
         const i: RequestInit = {
           method: 'POST',
@@ -76,6 +78,7 @@ export function createOpenAIProvider(cfg: OpenAIConfig): ChatProvider {
             ...(req.tools && req.tools.length > 0 && toolChoice ? { tool_choice: toolChoice } : {}),
             ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
             ...(responseFormat ? { response_format: responseFormat } : {}),
+            ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
           }),
         };
         if (req.signal) i.signal = req.signal;
@@ -101,6 +104,10 @@ export function createOpenAIProvider(cfg: OpenAIConfig): ChatProvider {
             responseFormat = undefined;
             return true;
           }
+          if (reasoningEffort && /reasoning_effort|unsupported|unrecognized/i.test(body)) {
+            reasoningEffort = undefined;
+            return true;
+          }
           return false;
         },
       });
@@ -109,9 +116,7 @@ export function createOpenAIProvider(cfg: OpenAIConfig): ChatProvider {
         return;
       }
 
-      // Tool-call deltas arrive fragmented across chunks, keyed by `index`.
-      // Reassemble here and flush complete calls when `finish_reason` says so
-      // (or at stream end as a fallback).
+      // cm:why tool-call deltas arrive fragmented across chunks keyed by `index`, so they are reassembled here and flushed when `finish_reason` says so, or at stream end as the fallback.
       const toolAcc = new Map<number, ToolCallAccumulator>();
       const flushToolCalls = function* (): Generator<ChatStreamEvent> {
         for (const [, acc] of [...toolAcc.entries()].sort((a, b) => a[0] - b[0])) {

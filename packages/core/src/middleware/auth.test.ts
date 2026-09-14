@@ -77,6 +77,22 @@ describe('requireAuth', () => {
 });
 
 describe('assertEmailVerified', () => {
+  // cm:guard mounted TWICE on one path, the way a request that crosses two routers sees it: measured 2026-09-15, `GET /api/projects/:id/issues` read `email_verified_at` eight times, and this is the assertion that keeps it at one (ISS-1009).
+  it('reads the row once however many mounts a request crosses', async () => {
+    const token = await signUserToken('uuid-ok');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date('2026-01-01T00:00:00Z') }]);
+    const app = new Hono<{ Variables: Vars }>();
+    app.onError(errorHandler as unknown as Parameters<typeof app.onError>[0]);
+    app.use('*', requestId());
+    app.use('*', requireAuth(), assertEmailVerified());
+    app.use('/twice', requireAuth(), assertEmailVerified());
+    app.get('/twice', (c) => c.json({ ok: true }));
+    const before = selectLimit.mock.calls.length;
+    const res = await app.request('/twice', { headers: { authorization: `Bearer ${token}` } });
+    expect(res.status).toBe(200);
+    expect(selectLimit.mock.calls.length - before).toBe(1);
+  });
+
   it('403 EMAIL_NOT_VERIFIED when emailVerifiedAt is null', async () => {
     const token = await signUserToken('uuid-unverified');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: null }]);

@@ -145,6 +145,30 @@
   says anything. Rooms that open themselves when a message arrives keep working exactly as they did;
   this is a second way in, not a replacement.
 
+- **The Issues list opens on the work that is waiting for you, and every tab says how much it
+  holds.** Opening a project's issues showed all of them, newest first — measured on this project,
+  1,011 rows of which 986 were closed, so the default view was 97% finished work and the eleven
+  live issues were somewhere inside it. The tabs are now counted, and the page opens on the one
+  that matters: **Needs you**. Each tab carries its figure, so where the work sits is legible
+  before anything is clicked rather than after several are.
+
+  The tabs also stopped naming rungs and started naming **who holds the work**. The old set —
+  Active, Review, Blocked — was a hand-written partition of the status ladder, so it went wrong
+  every time the ladder moved: one bucket still offered a verification status that had been
+  removed from the ladder months earlier, and could never fill. Each tab now resolves through the
+  same label axis the rest of the product renders from, which means a status added to the kernel
+  lands in a tab without anybody remembering to edit a list. Two placements are deliberate and are
+  not where a reader might expect: an issue at the **release gate** and an issue that was
+  **reopened** are yours, not the agent's — the first is waiting for a person to approve it, and
+  nothing picks up the second on its own.
+
+  **Dropped issues have somewhere to be.** An issue closed as "not work" was in no tab at all and
+  could only be found by listing everything — twelve of them on this project. They now sit with the
+  closed ones, told apart rather than blended in, because deciding not to do the work and finishing
+  it are different outcomes. And an issue at the release gate left the finished tab: it is not
+  finished, it is waiting for somebody, which is exactly the kind of gate that stops being noticed
+  when it is counted as done.
+
 - **An issue can now say what it still owes and who owes it, as fields rather than as a sentence
   somebody has to find.** An issue accumulated everything and surfaced nothing: an issue closed
   having landed one of the five things it named read exactly like one that landed all five, because
@@ -4762,6 +4786,25 @@
   had a working channel keeps the instruction it was getting, ahead of anything it had already
   written there. A project that connects a channel from now on is answered in the language the
   person wrote in, and can set a fixed one if it wants.
+
+- **The chat assistant now works the tracker through the `forge` CLI, the same way a person at a
+  terminal does.** Filing through chat used to go through a tool of its own, and that tool knew
+  nothing of what the command line already does before it files: look for what is already open,
+  fold a report onto a near neighbour as a comment, or refuse with the exact command that clears
+  it. So the assistant wrote whole issues from one sentence, filed them beside issues that already
+  covered them, and told you it had found nothing when its search could not have found anything.
+  It now runs `forge` itself — reading `forge -h` and `forge <verb> -h` before it acts, filing
+  with `forge new`, and relaying what the command said rather than what it meant to do — as you,
+  scoped to the project you are talking about, with a credential minted for that one call and
+  revoked after it. The separate filing tool is gone from chat so there is one door, and the
+  assistant may take up to sixteen steps in a turn instead of eight, because reading the help
+  before acting is a step. Two things measured along the way are fixed with it: the tracker read
+  the same "is this email verified" row eight times on one request, and a command that ran out
+  of time reported nothing instead of saying it was stopped. A picture you post with a report
+  still lands on the issue: the assistant now attaches it with `forge attach` once the filing or
+  the comment has landed, and tells you if the upload was refused. And when `forge new` shows a
+  near neighbour it did not fold onto, the assistant relates the two issues and names both.
+
 
 - **A personal access token no longer counts as "a person is typing this", so driving Forge from the
   command line on your own token now meets the same recorded-work check an agent meets.** The check

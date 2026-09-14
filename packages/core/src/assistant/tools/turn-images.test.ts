@@ -1,7 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
+import { readFile } from 'node:fs/promises';
+import { describe, expect, it, type Mock, vi } from 'vitest';
 
 vi.mock('../../config/env.js', () => ({ env: { UPLOADS_MAX_BYTES: 10 * 1024 * 1024 } }));
 
+import type { CallToolResult } from '../../mcp/tool-result.js';
 import type { TurnImage } from '../vision.js';
 import type { ChatToolset } from './mcp-adapter.js';
 import { withTurnImages } from './turn-images.js';
@@ -13,94 +15,178 @@ const IMAGE: TurnImage = {
   dataBase64: 'QUJD',
 };
 
-function inner(): ChatToolset & { execute: ReturnType<typeof vi.fn> } {
-  const execute = vi.fn().mockResolvedValue({ content: [{ type: 'text', text: '{"ok":true}' }] });
-  return { tools: [], execute };
+const cliResult = (run: { exitCode: number; stdout: string; stderr?: string }): CallToolResult => ({
+  content: [{ type: 'text', text: JSON.stringify({ stderr: '', ...run }) }],
+});
+
+const FILED = cliResult({ exitCode: 0, stdout: 'ISS-7 is filed, as a bug with 0 gaps.' });
+const ATTACHED = cliResult({ exitCode: 0, stdout: 'shot.png is up on ISS-7' });
+
+interface Inner extends ChatToolset {
+  execute: Mock<ChatToolset['execute']>;
+  /** The bytes on disk at each attach path, read while the file still exists. */
+  bytesSeen: string[];
 }
 
-function attachmentsOf(spy: ReturnType<typeof vi.fn>): Array<{ name: string }> {
-  const attachments = parsed(spy).data?.attachments;
-  if (!Array.isArray(attachments)) throw new Error('the create call carried no attachments[]');
-  return attachments as Array<{ name: string }>;
+/** An inner toolset whose first `forge` call answers `first` and whose attach call answers `ATTACHED`. */
+function inner(first: CallToolResult): Inner {
+  const bytesSeen: string[] = [];
+  const execute = vi.fn<ChatToolset['execute']>(async (_name, argsJson) => {
+    const { argv } = JSON.parse(argsJson) as { argv?: string[] };
+    if (argv?.[0] !== 'attach') return first;
+    for (const path of argv.slice(3)) bytesSeen.push((await readFile(path)).toString('utf8'));
+    return ATTACHED;
+  });
+  return { tools: [], execute, bytesSeen };
 }
 
-const parsed = (spy: ReturnType<typeof vi.fn>) =>
-  JSON.parse(spy.mock.calls[0]?.[1] as string) as {
-    action: string;
-    data?: { attachments?: unknown[]; title?: string };
-  };
+const argvOf = (spy: Inner['execute'], call: number) =>
+  (JSON.parse(spy.mock.calls[call]?.[1] as string) as { argv: string[] }).argv;
 
-describe('withTurnImages', () => {
-  it('attaches the turn image to a created issue without the model asking', async () => {
-    const set = inner();
-    await withTurnImages(set, [IMAGE]).execute(
-      'forge_issues',
-      JSON.stringify({ action: 'create', data: { title: 'the toggle is stuck' } }),
+const textOf = (result: CallToolResult, i: number) => {
+  const block = result.content[i];
+  if (block?.type !== 'text') throw new Error(`block ${i} is not text`);
+  return JSON.parse(block.text) as Record<string, unknown>;
+};
+
+describe('a report that landed earns the pictures', () => {
+  it('attaches the turn image to the issue `forge new` filed, without the model asking', async () => {
+    const set = inner(FILED);
+    const out = await withTurnImages(set, [IMAGE]).execute(
+      'forge',
+      JSON.stringify({ argv: ['new', '-', '--title', 'the toggle is stuck'], body: '## Outcome' }),
     );
-    expect(parsed(set.execute).data?.attachments).toEqual([
-      { name: 'shot.png', mime: 'image/png', dataBase64: 'QUJD' },
-    ]);
-    expect(parsed(set.execute).data?.title).toBe('the toggle is stuck');
+    expect(set.execute).toHaveBeenCalledTimes(2);
+    const attachArgv = argvOf(set.execute, 1);
+    expect(attachArgv.slice(0, 3)).toEqual(['attach', 'issue', 'ISS-7']);
+    expect(attachArgv[3]).toMatch(/shot\.png$/);
+    expect(set.bytesSeen).toEqual(['ABC']);
+    expect(textOf(out, 1)).toMatchObject({
+      attached: { to: 'ISS-7', files: ['shot.png'], exitCode: 0 },
+    });
   });
 
-  it('replaces attachments the model invented — it has no bytes to supply', async () => {
-    const set = inner();
-    await withTurnImages(set, [IMAGE]).execute(
-      'forge_issues',
-      JSON.stringify({
-        action: 'create',
-        data: { attachments: [{ name: 'made-up.png', mime: 'image/png', dataBase64: 'ZZZZ' }] },
-      }),
+  // cm:guard the fold path is where the neighbour's key comes back in `new`'s stdout — a wrapper that only knew the fresh path would attach nothing on exactly the turn `forge new` chose to fold, which is the turn ISS-1009 is about.
+  it('follows a fold onto the neighbour the CLI named', async () => {
+    const set = inner(
+      cliResult({ exitCode: 0, stdout: 'Folded onto ISS-1446 as a comment; ISS-1446 is filed.' }),
     );
-    expect(parsed(set.execute).data?.attachments).toEqual([
-      { name: 'shot.png', mime: 'image/png', dataBase64: 'QUJD' },
-    ]);
+    await withTurnImages(set, [IMAGE]).execute('forge', JSON.stringify({ argv: ['new', '-'] }));
+    expect(argvOf(set.execute, 1).slice(0, 3)).toEqual(['attach', 'issue', 'ISS-1446']);
   });
 
-  it('leaves an update alone — the image belongs to the report, not every edit', async () => {
-    const set = inner();
-    const args = JSON.stringify({ action: 'update', data: { issueId: 'i1', status: 'closed' } });
-    await withTurnImages(set, [IMAGE]).execute('forge_issues', args);
-    expect(set.execute).toHaveBeenCalledWith('forge_issues', args);
+  it('attaches to the issue a comment with a body was posted on', async () => {
+    const set = inner(cliResult({ exitCode: 0, stdout: 'comment landed' }));
+    await withTurnImages(set, [IMAGE]).execute(
+      'forge',
+      JSON.stringify({ argv: ['comment', 'ISS-9', '-', '--title', 'Seen again'], body: 'x' }),
+    );
+    expect(argvOf(set.execute, 1).slice(0, 3)).toEqual(['attach', 'issue', 'ISS-9']);
   });
 
-  it('leaves another tool alone', async () => {
-    const set = inner();
-    const args = JSON.stringify({ action: 'create', data: { body: 'hi' } });
-    await withTurnImages(set, [IMAGE]).execute('forge_comments', args);
-    expect(set.execute).toHaveBeenCalledWith('forge_comments', args);
+  it('reports what the attach itself said, beside the write', async () => {
+    const set = inner(FILED);
+    set.execute.mockImplementation(async (_n, argsJson) =>
+      (JSON.parse(argsJson) as { argv: string[] }).argv[0] === 'attach'
+        ? cliResult({ exitCode: 1, stdout: '', stderr: 'shot.png is already on ISS-7' })
+        : FILED,
+    );
+    const out = await withTurnImages(set, [IMAGE]).execute(
+      'forge',
+      JSON.stringify({ argv: ['new', '-'] }),
+    );
+    expect(textOf(out, 0)).toMatchObject({ exitCode: 0 });
+    expect(textOf(out, 1)).toMatchObject({
+      attached: { exitCode: 1, stderr: 'shot.png is already on ISS-7' },
+    });
+  });
+});
+
+describe('what earns nothing', () => {
+  it('a refused `new` — there is no row yet, and the next call is the real filing', async () => {
+    const set = inner(
+      cliResult({ exitCode: 1, stdout: '', stderr: 'one issue per problem: ISS-1446 is near' }),
+    );
+    await withTurnImages(set, [IMAGE]).execute('forge', JSON.stringify({ argv: ['new', '-'] }));
+    expect(set.execute).toHaveBeenCalledTimes(1);
   });
 
-  it('is the identity wrapper on a turn with no images', () => {
-    const set = inner();
+  it('a comment with no body, which is the thread read', async () => {
+    const set = inner(cliResult({ exitCode: 0, stdout: 'ISS-9  three comments' }));
+    await withTurnImages(set, [IMAGE]).execute(
+      'forge',
+      JSON.stringify({ argv: ['comment', 'ISS-9'] }),
+    );
+    expect(set.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('a read, whatever key its output names', async () => {
+    const set = inner(cliResult({ exitCode: 0, stdout: 'ISS-7 high open the toggle' }));
+    await withTurnImages(set, [IMAGE]).execute(
+      'forge',
+      JSON.stringify({ argv: ['issue', '--search', 'toggle'] }),
+    );
+    expect(set.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('another tool, whatever it returns', async () => {
+    const set = inner(FILED);
+    const args = JSON.stringify({ query: 'ISS-7' });
+    await withTurnImages(set, [IMAGE]).execute('forge_memory_search', args);
+    expect(set.execute).toHaveBeenCalledTimes(1);
+    expect(set.execute).toHaveBeenCalledWith('forge_memory_search', args);
+  });
+
+  it('a turn with no images — the wrapper is the identity', () => {
+    const set = inner(FILED);
     expect(withTurnImages(set, [])).toBe(set);
   });
 
-  it('passes unparseable arguments straight through so the guard reports them', async () => {
-    const set = inner();
-    await withTurnImages(set, [IMAGE]).execute('forge_issues', '{not json');
-    expect(set.execute).toHaveBeenCalledWith('forge_issues', '{not json');
+  it('arguments that are not JSON pass straight through so the tool reports them', async () => {
+    const set = inner(FILED);
+    set.execute.mockResolvedValue(FILED);
+    const out = await withTurnImages(set, [IMAGE]).execute('forge', '{not json');
+    expect(set.execute).toHaveBeenCalledTimes(1);
+    expect(out).toBe(FILED);
   });
+});
 
-  it('drops what would exceed UPLOADS_MAX_BYTES rather than failing the whole create', async () => {
-    const set = inner();
+describe('the set is trimmed to what the ticket service takes, and says so', () => {
+  it('names an oversized file as skipped rather than dropping it in silence', async () => {
+    const set = inner(FILED);
     const big = {
       ...IMAGE,
       name: 'big.png',
-      dataBase64: 'A'.repeat(Math.ceil((6 * 1024 * 1024 * 4) / 3)),
+      dataBase64: 'A'.repeat(Math.ceil((11 * 1024 * 1024 * 4) / 3)),
     };
-    const second = { ...big, name: 'second.png' };
-    await withTurnImages(set, [big, second, IMAGE]).execute(
-      'forge_issues',
-      JSON.stringify({ action: 'create' }),
+    const out = await withTurnImages(set, [big, IMAGE]).execute(
+      'forge',
+      JSON.stringify({ argv: ['new', '-'] }),
     );
-    expect(attachmentsOf(set.execute).map((a) => a.name)).toEqual(['big.png', 'shot.png']);
+    expect(textOf(out, 1)).toMatchObject({
+      attached: { files: ['shot.png'], skipped: ['big.png'] },
+    });
   });
 
-  it('caps at the ten attachments forge_issues accepts', async () => {
-    const set = inner();
+  it('caps at ten files in one attach', async () => {
+    const set = inner(FILED);
     const many = Array.from({ length: 14 }, (_, i) => ({ ...IMAGE, name: `s${i}.png` }));
-    await withTurnImages(set, many).execute('forge_issues', JSON.stringify({ action: 'create' }));
-    expect(attachmentsOf(set.execute)).toHaveLength(10);
+    const out = await withTurnImages(set, many).execute(
+      'forge',
+      JSON.stringify({ argv: ['new', '-'] }),
+    );
+    expect(argvOf(set.execute, 1)).toHaveLength(13);
+    expect((textOf(out, 1).attached as { skipped: string[] }).skipped).toHaveLength(4);
+  });
+
+  it('keeps two files of one name apart on disk', async () => {
+    const set = inner(FILED);
+    await withTurnImages(set, [IMAGE, { ...IMAGE, dataBase64: 'REVG' }]).execute(
+      'forge',
+      JSON.stringify({ argv: ['new', '-'] }),
+    );
+    const paths = argvOf(set.execute, 1).slice(3);
+    expect(new Set(paths).size).toBe(2);
+    expect(set.bytesSeen.sort()).toEqual(['ABC', 'DEF']);
   });
 });

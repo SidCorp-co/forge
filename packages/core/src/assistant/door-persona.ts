@@ -30,7 +30,7 @@ export function assistantOpening(door: DoorOpening): string[] {
     // cm:guard the origin is a PREFIX and an absent one yields a root-relative path rather than dropping the line: a reader in a chat client is outside the product and needs the host, a reader in the app is already on it, and making the whole instruction conditional on an origin is how the web doors silently stopped being told to link an issue at all (ISS-1007).
     ...(door.projectSlug
       ? [
-          `- When you create or cite a Forge issue, include its web link: ${door.webBaseUrl ?? ''}/projects/${door.projectSlug}/issues/<documentId> (forge_issues returns the documentId).`,
+          `- When you create or cite a Forge issue, include its web link: ${door.webBaseUrl ?? ''}/projects/${door.projectSlug}/issues/<documentId> (\`forge new\` echoes the documentId).`,
         ]
       : []),
   ];

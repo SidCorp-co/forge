@@ -192,7 +192,8 @@ export interface IssueDependencies {
  *  excludes drafts" rule). `draft` and `done` are explicit buckets (ISS-438) —
  *  unlike the removed ISS-236 "All + drafts" split, they narrow rather than
  *  change what "All" means. */
-export type IssueFilter = "all" | "draft" | "findings" | "active" | "review" | "blocked" | "done";
+// cm:guard the tabs ask WHO HOLDS THE WORK, never which rung it is on. The rungs move — `tested` left the ladder with ISS-897 and a tab naming it kept offering a bucket nothing could fill — but "a person must act" and "a machine is acting" do not. Each bucket is resolved through `statusesForLabels`, so a status added to the kernel lands in a tab without anyone editing a tuple here.
+export type IssueFilter = "all" | "draft" | "findings" | "you" | "agent" | "done";
 
 /** Client-side grouping for the list. */
 export type GroupBy = "none" | "status" | "priority" | "creator";
