@@ -115,6 +115,17 @@ describe('agents bouncing', () => {
     await expect(decide()).resolves.toEqual({ speak: true });
   });
 
+  // cm:guard the identifier language reaching this guard is load-bearing, and this is the case that says so out loud: a shape identifiersIn stops naming turns a working exchange into a bounce, and the guard fires EARLY and silently. Planted against the landed head, where the doubled underscore named nothing and this run was cut (ISS-1004, triage of aa6980c3).
+  it('is not cut while every message names a new doubled-underscore token', async () => {
+    log(
+      say('person', 'settle it', 60_000),
+      ...Array.from({ length: LOOP_LIMIT }, (_, i) =>
+        say('agent', `next is w${i}__window`, 50_000 - i * 1000),
+      ),
+    );
+    await expect(decide()).resolves.toEqual({ speak: true });
+  });
+
   // cm:guard the time horizon, which the issue's own words carry: the guard is about agents bouncing QUICKLY, and an agent answering long afterwards with nothing new is a slow exchange (review F4).
   it('is not cut when the messages are further apart than the bounce interval', async () => {
     log(

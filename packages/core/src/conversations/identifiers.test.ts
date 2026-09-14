@@ -34,6 +34,21 @@ describe('what a message names', () => {
     expect(ids('ok will do')).toEqual([]);
   });
 
+  // cm:guard the failure this is planted to catch: making the classes disjoint against the ReDoS finding also made `_` a separator rather than a token character, and a separator that could not repeat, so `foo__bar` and `foo_bar_` — both named by the pattern this replaced — stopped being named at all. The direction is the dangerous one: fewer identifiers means the loop breaker fires EARLIER and cuts an exchange that was doing work (ISS-1004, triage of the landed head).
+  it('names a token whose underscores repeat, and one that ends on an underscore', () => {
+    expect(identifiersIn('foo__bar').has('foo__bar')).toBe(true);
+    expect(identifiersIn('foo_.bar').has('foo_.bar')).toBe(true);
+    expect(identifiersIn('foo._bar').has('foo._bar')).toBe(true);
+    expect(identifiersIn('foo_bar_').has('foo_bar_')).toBe(true);
+    expect(identifiersIn('a__b__c').has('a__b__c')).toBe(true);
+  });
+
+  // cm:guard the other half of the same rule, and the reason `_` and `.` are not interchangeable here: `.` is the ONE separator and it never repeats, so an ellipsis joining two prose words stays prose. Widening the separator class to `[_.]+` is the obvious fix to the case above, and it buys exactly this regression.
+  it('still names nothing for words an ellipsis joins', () => {
+    expect(ids('wait...maybe')).toEqual([]);
+    expect(ids('foo..bar')).toEqual([]);
+  });
+
   it('still names a number that is attached to something', () => {
     expect(identifiersIn('v1.2.3').has('v1.2.3')).toBe(true);
     expect(identifiersIn('ISS-42').has('iss-42')).toBe(true);
@@ -64,6 +79,11 @@ describe('a hostile string', () => {
 
   it('stays inside its budget on a long run of separated digits', () => {
     expect(millis(`a${'0_'.repeat(40)}!`)).toBeLessThan(BUDGET_MS);
+  });
+
+  it('stays inside its budget on a long run of separator characters', () => {
+    expect(millis(`a${'_'.repeat(400)}!`)).toBeLessThan(BUDGET_MS);
+    expect(millis(`${'a_.'.repeat(200)}!`)).toBeLessThan(BUDGET_MS);
   });
 
   it('stays inside its budget on a long run of mixed case', () => {
