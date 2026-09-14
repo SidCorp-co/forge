@@ -203,7 +203,7 @@ describe('a window is claimed before it routes', () => {
   it('goes back to collecting when it is released', async () => {
     await open(0);
     const [claimed] = await claim();
-    await windows.releaseWindow(claimed?.id as string);
+    await windows.releaseWindow(claimed?.id as string, windows.claimOf(claimed as never) as never);
 
     const again = await claim();
     expect(again).toHaveLength(1);
@@ -217,10 +217,13 @@ describe('a window that closes says why', () => {
     const [claimed] = await claim();
     const id = claimed?.id as string;
 
-    expect(await windows.closeWindow({ windowId: id, decision: 'guard-backoff' })).toMatchObject({
-      decision: 'guard-backoff',
-    });
-    expect(await windows.closeWindow({ windowId: id, decision: 'answered' })).toBeNull();
+    const held = windows.claimOf(claimed as never) as never;
+    expect(
+      await windows.closeWindow({ windowId: id, decision: 'guard-backoff', claim: held }),
+    ).toMatchObject({ decision: 'guard-backoff' });
+    expect(
+      await windows.closeWindow({ windowId: id, decision: 'answered', claim: held }),
+    ).toBeNull();
     expect((await windows.getWindow(id))?.decision).toBe('guard-backoff');
   });
 
@@ -264,10 +267,18 @@ describe('a window that closes says why', () => {
   it('lists the decisions a room has settled on, newest first', async () => {
     await open(0);
     const [one] = await claim();
-    await windows.closeWindow({ windowId: one?.id as string, decision: 'nothing-to-say' });
+    await windows.closeWindow({
+      windowId: one?.id as string,
+      decision: 'nothing-to-say',
+      claim: windows.claimOf(one as never) as never,
+    });
     await open(1);
     const [two] = await claim();
-    await windows.closeWindow({ windowId: two?.id as string, decision: 'answered' });
+    await windows.closeWindow({
+      windowId: two?.id as string,
+      decision: 'answered',
+      claim: windows.claimOf(two as never) as never,
+    });
 
     expect((await windows.recentDecisions(conversationId)).map((d) => d.decision)).toEqual([
       'answered',
@@ -307,10 +318,55 @@ describe('a window is delivered at most once', () => {
   it('records the reservation before the send, and leaves it readable afterwards', async () => {
     await open(0);
     const [claimed] = await claim();
-    await windows.reserveDelivery(claimed?.id as string);
+    const held = windows.claimOf(claimed as never) as never;
+    expect(await windows.reserveDelivery(claimed?.id as string, held)).toBe(true);
     expect((await windows.getWindow(claimed?.id as string))?.deliveryReservedAt).toBeInstanceOf(
       Date,
     );
+  });
+
+  // cm:guard the fence, planted: the lease that recovers a dead core also means two holders can believe they own one window, so the one whose lease expired must be REFUSED at the moment it writes. Unfenced, both reserved, both sent, and the room got two replies for one question (ISS-1004, review pass 1 F1).
+  it('refuses the reservation, the close and the release to a holder whose claim moved on', async () => {
+    await open(0);
+    const [first] = await claim();
+    const stale = windows.claimOf(first as never) as never;
+
+    const [second] = await claim({ claimant: 'core-2', leaseMs: 0 });
+    expect(second?.id).toBe(first?.id);
+    const live = windows.claimOf(second as never) as never;
+
+    expect(await windows.reserveDelivery(first?.id as string, stale)).toBe(false);
+    expect((await windows.getWindow(first?.id as string))?.deliveryReservedAt).toBeNull();
+
+    expect(
+      await windows.closeWindow({
+        windowId: first?.id as string,
+        decision: 'answered',
+        claim: stale,
+      }),
+    ).toBeNull();
+    expect((await windows.getWindow(first?.id as string))?.closedAt).toBeNull();
+
+    await windows.releaseWindow(first?.id as string, stale);
+    expect((await windows.getWindow(first?.id as string))?.claimedBy).toBe('core-2');
+
+    expect(await windows.reserveDelivery(first?.id as string, live)).toBe(true);
+    expect(
+      await windows.closeWindow({
+        windowId: first?.id as string,
+        decision: 'answered',
+        claim: live,
+      }),
+    ).toMatchObject({ decision: 'answered' });
+  });
+
+  // cm:guard the SAME holder may reserve twice and must not be refused the second time: one turn reserves before handing the answer to a diverted session and again before its own send, and a fence on `delivery_reserved_at IS NULL` would have made the second call read as a lost claim and silenced the reply (ISS-1004, review pass 2 F1).
+  it('lets the holder that owns the claim reserve more than once', async () => {
+    await open(0);
+    const [claimed] = await claim();
+    const held = windows.claimOf(claimed as never) as never;
+    expect(await windows.reserveDelivery(claimed?.id as string, held)).toBe(true);
+    expect(await windows.reserveDelivery(claimed?.id as string, held)).toBe(true);
   });
 });
 
@@ -370,6 +426,35 @@ describe('a collected message and its window', () => {
       venuePrefixes: [externalId],
     });
     expect(claimed?.firstSeq).toBe(rows[0]?.seq);
+  });
+
+  // cm:guard the range read, planted: a window claimed while its successor keeps collecting can have its whole contents pushed past the conversation's newest rows, and a reader that took the tail and filtered it found nothing — which closed a person's question `unreachable` for good (ISS-1004, review pass 1 F4).
+  it('reads an older window own messages from behind a busy successor', async () => {
+    const externalId = `chat.example.co ${randomUUID()}`;
+    await collectOne({ externalId, projectId, text: 'the question nobody answered' });
+    const conversation = await store.findConversation('rocketchat', externalId);
+    const id = conversation?.id as string;
+
+    const [mine] = await windows.claimDueWindows({
+      adapter: 'rocketchat',
+      claimant: 'core-1',
+      limit: 10,
+      settleMs: 0,
+      venuePrefixes: [externalId],
+    });
+    for (let i = 0; i < 60; i++) {
+      await collectOne({ externalId, projectId, text: `later chatter ${i}` });
+    }
+
+    const tail = await store.readMessages(id, 50);
+    expect(tail.some((m) => m.seq === mine?.firstSeq)).toBe(false);
+
+    const own = await store.readMessagesInRange(id, {
+      firstSeq: mine?.firstSeq as number,
+      lastSeq: mine?.lastSeq as number,
+      limit: 50,
+    });
+    expect(own.map((m) => m.content)).toEqual(['the question nobody answered']);
   });
 
   // cm:guard a venue arriving under a project the room is not about is refused BEFORE anything is written: the atomicity of the pair is proved in `conversation-collect-atomic-e2e.test.ts`, and what this holds is that a refused venue leaves no message and no window either (ISS-1001).

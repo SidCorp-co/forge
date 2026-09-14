@@ -15,8 +15,13 @@
 
 import { namespaceFromServerUrl } from '../../assistant/identity/directory.js';
 import { env } from '../../config/env.js';
-import { routeWindow } from '../../conversations/route-window.js';
-import { type ClaimedWindow, claimDueWindows, releaseWindow } from '../../conversations/windows.js';
+import { routeWindow, type WindowMessage } from '../../conversations/route-window.js';
+import {
+  type ClaimedWindow,
+  claimDueWindows,
+  claimOf,
+  releaseWindow,
+} from '../../conversations/windows.js';
 import { logger } from '../../logger.js';
 import type { ActiveConnection } from './connection-manager.js';
 import { parseRocketChatVenueId } from './conversation-port.js';
@@ -80,7 +85,13 @@ export async function drainConversationWindows(
       return [] as ClaimedWindow[];
     });
     for (const window of windows) {
-      await routeOne(ac, connectionId, window, webBaseUrl).catch((err) =>
+      // cm:guard the connection is re-read from the live map between the claim and EACH route, not trusted from the top of the tick: a reload replaces the object and a lock loss marks it closing, and neither clears the old object's route map — so a stale `ac` still places the room and would answer it with the former binding's principal and credentials (ISS-1004, review pass 2 F2).
+      await routeOne(
+        () => (conns.get(connectionId) === ac && !ac.closing ? ac : null),
+        connectionId,
+        window,
+        webBaseUrl,
+      ).catch((err) =>
         logger.error({ err, connectionId, windowId: window.id }, 'rocketchat: routing failed'),
       );
     }
@@ -88,22 +99,27 @@ export async function drainConversationWindows(
 }
 
 export async function routeOne(
-  ac: ActiveConnection,
+  current: () => ActiveConnection | null,
   connectionId: string,
   window: ClaimedWindow,
   webBaseUrl: string | undefined,
 ): Promise<void> {
+  const ac = current();
+  // cm:guard a window handed here without a claim is a caller error and not a case to absorb: every write below is fenced on the claim, and there is nothing to fence on without one (ISS-1004).
+  const claim = claimOf(window);
+  if (!claim)
+    throw new Error('rocketchat: a window is routed under its claim, and this one holds none');
   const parts = parseRocketChatVenueId(window.venueExternalId);
-  const route = parts ? ac.routes.get(parts.rid) : undefined;
+  const route = ac && parts ? ac.routes.get(parts.rid) : undefined;
   // cm:guard a window this connection can no longer place is RELEASED rather than closed: a binding can change between the claim and the route, the room may be bound on another core, and closing it here would record a decision nobody took and leave the person unanswered for good. A release puts it back where the next tick — here or elsewhere — finds it (ISS-1004 rule 4).
-  if (!route || !parts || route.projectId !== window.projectId) {
-    await releaseWindow(window.id);
+  if (!ac || !route || !parts || route.projectId !== window.projectId) {
+    await releaseWindow(window.id, claim);
     return;
   }
   const outcome = await routeWindow({
     window,
     manySpeakersPrincipalUserId: route.principalUserId,
-    inputs: ({ venue, messages }) => {
+    inputs: ({ venue, messages, reserve }) => {
       const spoken = messages.filter((m) => m.role === 'user');
       return rocketChatTurn({
         bot: {
@@ -116,14 +132,14 @@ export async function routeOne(
         subject: {
           rid: parts.rid,
           tmid: parts.tmid ?? undefined,
-          text: spoken.map((m) => m.content).join('\n'),
-          username: spoken[spoken.length - 1]?.authorLabel ?? undefined,
+          ...windowSubject(spoken),
           messageIds: spoken.flatMap((m) => (m.externalId ? [m.externalId] : [])),
           images: spoken.flatMap((m) => m.images),
         },
         connectionId,
         shape: venue.shape,
         webBaseUrl,
+        beforeDivert: reserve,
       });
     },
   });
@@ -131,4 +147,25 @@ export async function routeOne(
     { connectionId, windowId: window.id, projectId: window.projectId, ...outcome },
     'rocketchat: window routed',
   );
+}
+
+/**
+ * The window's words, and who to say they came from.
+ */
+// cm:guard a window with more than one speaker is LABELLED and has no single asker, because both are the same fact: Alice asking "deploy production?" and Bob answering "no, staging" is one body of text whose meaning is in who said which half. Joining it unlabelled under the newest speaker's name attributes Alice's question to Bob, and the collector stored the labels precisely so this would not have to guess (ISS-1004, review pass 2 F5).
+function windowSubject(spoken: readonly WindowMessage[]): {
+  text: string;
+  username: string | undefined;
+} {
+  const speakers = new Set(spoken.map((m) => m.authorLabel ?? ''));
+  if (speakers.size <= 1) {
+    return {
+      text: spoken.map((m) => m.content).join('\n'),
+      username: spoken[spoken.length - 1]?.authorLabel ?? undefined,
+    };
+  }
+  return {
+    text: spoken.map((m) => `${m.authorLabel ?? 'someone'}: ${m.content}`).join('\n'),
+    username: undefined,
+  };
 }

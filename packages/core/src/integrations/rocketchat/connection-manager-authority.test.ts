@@ -11,6 +11,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { claimedWindowFor } from './claimed-window.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -148,9 +149,11 @@ vi.mock('../../conversations/windows.js', () => ({
     conversationId: a.conversationId,
   }),
   claimDueWindows: async () => [],
+  claimOf: (row: { claimedAt: Date | null; claimedBy: string | null }) =>
+    row.claimedAt && row.claimedBy ? { claimedAt: row.claimedAt, claimedBy: row.claimedBy } : null,
   closeWindow: async () => null,
   releaseWindow: async () => undefined,
-  reserveDelivery: async () => undefined,
+  reserveDelivery: async () => true,
   recentDecisions: async () => [],
 }));
 
@@ -171,6 +174,7 @@ vi.mock('../../conversations/store.js', () => ({
   },
   getConversation: async (id: string) => conversationsById.get(id) ?? null,
   readMessages: async () => collected,
+  readMessagesInRange: async () => collected,
   deliveredUnderKey: async () => false,
   appendMessagesIn: async (_tx: unknown, args: { messages: Array<Record<string, unknown>> }) => {
     const rows = args.messages.map((msg, i) => ({
@@ -230,29 +234,8 @@ async function handle(
   await collectOne(ac, route, m, connectionId, shape);
   const opened = lastOpened as { id: string; shape: 'direct' | 'group'; externalId: string } | null;
   if (!opened) return;
-  await routeOne(
-    ac as never,
-    connectionId,
-    {
-      id: `win:${opened.id}`,
-      conversationId: opened.id,
-      projectId: r.projectId,
-      adapter: 'rocketchat',
-      venueExternalId: opened.externalId,
-      venueShape: opened.shape,
-      openedAt: new Date(),
-      extendedAt: new Date(),
-      firstSeq: 0,
-      lastSeq: Math.max(0, collected.length - 1),
-      claimedAt: new Date(),
-      claimedBy: 'test',
-      deliveryReservedAt: null,
-      closedAt: null,
-      decision: null,
-      decisionDetail: null,
-    },
-    undefined,
-  );
+  const window = claimedWindowFor(opened, r.projectId, Math.max(0, collected.length - 1));
+  await routeOne(() => ac as never, connectionId, window as never, undefined);
 }
 
 function makeAc() {
@@ -265,6 +248,7 @@ function makeAc() {
     routes: new Map(),
     reconnectAttempt: 0,
     seenMessage: () => false,
+    routeTails: new Map(),
     closing: false,
     client: { sendMessage: vi.fn() },
   };
@@ -373,6 +357,32 @@ describe('connection-manager turn authority', () => {
       text: 'UNLINKED:user-1:link-yourself-here',
     });
     expect(ac.client.sendMessage).not.toHaveBeenCalled();
+  });
+
+  // cm:guard a refusal the door would not take does NOT end the message: it is collected so the window can refuse it durably, and a person owed an answer is not left with neither one nor a record that they were (ISS-1004, review pass 1 F3).
+  it('collects the message anyway when the refusal itself cannot be delivered', async () => {
+    resolveSpeaker.mockResolvedValue({
+      linked: false,
+      refusal: { code: 'SPEAKER_UNLINKED', message: 'unlinked' },
+    });
+    deliver.mockRejectedValueOnce(new Error('the room would not take it'));
+    collected.length = 0;
+
+    await handle(makeAc(), ROUTE, MESSAGE, 'conn-1', 'direct');
+
+    expect(collected.map((c) => c.content)).toContain(MESSAGE.text);
+  });
+
+  it('collects nothing when the refusal did reach the person', async () => {
+    resolveSpeaker.mockResolvedValue({
+      linked: false,
+      refusal: { code: 'SPEAKER_UNLINKED', message: 'unlinked' },
+    });
+    collected.length = 0;
+
+    await handle(makeAc(), ROUTE, MESSAGE, 'conn-1', 'direct');
+
+    expect(collected).toHaveLength(0);
   });
 
   it('carries a non-unlinked refusal own message rather than rewording it', async () => {

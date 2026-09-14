@@ -26,7 +26,7 @@ import { consumeIssueThreadReply } from './comment-inbound.js';
 import { startCommentMirrorLoop } from './comment-mirror.js';
 import { type RocketChatFrame, rocketChatConversationPorts } from './conversation-port.js';
 import { RocketChatDdpClient, type RocketChatIncomingMessage } from './ddp-client.js';
-import { createSeenTracker, decideSkip } from './inbound-gate.js';
+import { createSeenTracker, decideSkip, type SeenTracker } from './inbound-gate.js';
 import { FIXED_REPLY_CONSTANT, sendFixedReply } from './outbound.js';
 import { startQuestionDrainLoop } from './question-delivery.js';
 import { consumeQuestionThreadReply } from './question-inbound.js';
@@ -64,7 +64,12 @@ export interface ActiveConnection {
   reconnectTimer?: NodeJS.Timeout | undefined;
   refreshTimer?: NodeJS.Timeout | undefined;
   // cm:guard MUST stay per-connection: the same bot user is subscribed on every org connection via `__my_messages__`, so a manager-global tracker let a routeless connection mark an id seen first and the routing connection dropped it as a false duplicate (root cause, 2026-07-15)
-  seenMessage: (id: string) => boolean;
+  seenMessage: SeenTracker;
+  /**
+   * The tail of the work already queued for each room.
+   */
+  // cm:guard routing is serialized PER ROOM and never fanned out: the shape and thread lookups are round trips, so two messages typed a moment apart can finish them in either order, and the one that finishes first takes the lower seq. The window then shows the model "deploy to staging" before "do not deploy", which is the pair reversed (ISS-1004, review pass 2 F4).
+  routeTails: Map<string, Promise<void>>;
   closing: boolean;
 }
 
@@ -170,6 +175,7 @@ class RocketChatConnectionManager {
       routes,
       reconnectAttempt: 0,
       seenMessage: createSeenTracker(),
+      routeTails: new Map(),
       closing: false,
     };
     this.conns.set(connectionId, active);
@@ -250,9 +256,16 @@ class RocketChatConnectionManager {
   }
 
   private onMessage(connectionId: string, m: RocketChatIncomingMessage): void {
-    void this.route(connectionId, m).catch((err) =>
-      logger.error({ err, connectionId, rid: m.rid }, 'rocketchat: routing failed'),
-    );
+    const ac = this.conns.get(connectionId);
+    if (!ac) return;
+    const prior = ac.routeTails.get(m.rid) ?? Promise.resolve();
+    const next = prior
+      .then(() => this.route(connectionId, m))
+      .catch((err) => logger.error({ err, connectionId, rid: m.rid }, 'rocketchat: routing failed'))
+      .finally(() => {
+        if (ac.routeTails.get(m.rid) === next) ac.routeTails.delete(m.rid);
+      });
+    ac.routeTails.set(m.rid, next);
   }
 
   // cm:guard the order is still the one ISS-987 built and each step is why the next is safe: the shape-free skips first because they need no round trip; the ROUTE before anything async, so a routeless connection neither resolves a shape nor touches its tracker; then the shape, which the venue needs; then the thread lookup, which decides WHICH handler; and the tracker last. What ISS-1004 removed is the addressing step between the shape and the tracker — every message in a bound room is now collected, so the tracker's entries are no longer rationed against unmentioned chatter and its only job is the duplicate re-emit it was added for.
@@ -301,7 +314,9 @@ class RocketChatConnectionManager {
       { ...logCtx, user: m.username, shape, threaded: Boolean(m.tmid) },
       'rocketchat: collecting message',
     );
-    void this.collect(ac, route, m, connectionId, shape).catch((err) => {
+    // cm:guard the collect is AWAITED inside the room's queue, which is what makes the seq order the arrival order; and a collect that failed takes its mark back off the tracker, so RC's enrichment re-emit of the same id is a second chance rather than a false duplicate (ISS-1004, review pass 2 F3, F4).
+    await this.collect(ac, route, m, connectionId, shape).catch((err) => {
+      ac.seenMessage.forget(m.id);
       logger.error({ err, connectionId, rid: m.rid }, 'rocketchat: message collection failed');
       Sentry.captureException(err, {
         tags: { area: 'rocketchat', phase: 'collect' },

@@ -37,15 +37,30 @@ let messageRows = messages;
 vi.mock('./store.js', () => ({
   getConversation: async () => conversationRow,
   readMessages: async () => messageRows,
+  readMessagesInRange: async (_id: string, r: { firstSeq: number; lastSeq: number }) =>
+    messageRows.filter((m) => m.seq >= r.firstSeq && m.seq <= r.lastSeq),
   deliveredUnderKey: async () => delivered,
 }));
 
 const closeWindow = vi.fn(async () => null);
-const reserveDelivery = vi.fn(async () => undefined);
+const reserveDelivery = vi.fn(async () => true);
 vi.mock('./windows.js', () => ({
   windowDeliveryKey: (id: string) => `window:${id}`,
+  claimOf: (row: { claimedAt: Date | null; claimedBy: string | null }) =>
+    row.claimedAt && row.claimedBy ? { claimedAt: row.claimedAt, claimedBy: row.claimedBy } : null,
   closeWindow: (...a: unknown[]) => closeWindow(...(a as [])),
   reserveDelivery: (...a: unknown[]) => reserveDelivery(...(a as [])),
+}));
+
+const deliver = vi.fn(async () => ({ messageId: 'rc-9' }));
+vi.mock('./ports.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./ports.js')>()),
+  conversationTransport: () => ({ deliver: (...a: unknown[]) => deliver(...(a as [])) }),
+}));
+
+const recordDeliveredReply = vi.fn(async (_reply?: unknown) => undefined);
+vi.mock('./transcript.js', () => ({
+  recordDeliveredReply: (...a: unknown[]) => recordDeliveredReply(...(a as [])),
 }));
 
 let verdict: unknown = { speak: true };
@@ -171,7 +186,10 @@ describe('a window is delivered at most once', () => {
     expect(req.questionAlreadyRecorded).toBe(true);
     expect(req.mayDecline).toBe(true);
     await req.onBeforeDeliver();
-    expect(reserveDelivery).toHaveBeenCalledWith('w1');
+    expect(reserveDelivery).toHaveBeenCalledWith('w1', {
+      claimedAt: expect.any(Date),
+      claimedBy: 'core-1',
+    });
   });
 });
 
@@ -184,11 +202,38 @@ describe('authority', () => {
     });
   });
 
-  it('refuses a one-to-one room whose speaker is linked to nobody', async () => {
+  // cm:guard the refusal is DELIVERED, reserved first and written to the transcript under the window's key: `authority-refused` used to be a decision nobody outside the database could read, so a person whose synchronous refusal failed to send got silence (review pass 1 F3).
+  it('refuses a one-to-one room whose speaker is linked to nobody, and says so in the room', async () => {
     conversationRow = { ...conversation, shape: 'direct' };
     messageRows = messages.map((m) => ({ ...m, authorUserId: null }));
-    await expect(route()).resolves.toMatchObject({ decision: 'authority-refused' });
+    await expect(route()).resolves.toMatchObject({
+      decision: 'authority-refused',
+      detail: { told: true },
+    });
     expect(runConversationTurn).not.toHaveBeenCalled();
+    expect(reserveDelivery).toHaveBeenCalledBefore(deliver);
+    const recorded = recordDeliveredReply.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(recorded).toMatchObject({ deliveryKey: 'window:w1' });
+  });
+
+  it('says nothing and takes no decision when the claim moved on mid-refusal', async () => {
+    conversationRow = { ...conversation, shape: 'direct' };
+    messageRows = messages.map((m) => ({ ...m, authorUserId: null }));
+    reserveDelivery.mockResolvedValueOnce(false);
+    await expect(route()).resolves.toMatchObject({ decision: 'undetermined' });
+    expect(deliver).not.toHaveBeenCalled();
+  });
+
+  // cm:guard a refusal the door would not take is `undetermined` and not `authority-refused`: the window records that nobody was told, and the reservation stops the next claim saying it twice (rule 4).
+  it('does not claim to have refused when the door would not take it', async () => {
+    conversationRow = { ...conversation, shape: 'direct' };
+    messageRows = messages.map((m) => ({ ...m, authorUserId: null }));
+    deliver.mockRejectedValueOnce(new Error('room is gone'));
+    await expect(route()).resolves.toMatchObject({
+      decision: 'undetermined',
+      detail: { told: false, attempted: true },
+    });
+    expect(recordDeliveredReply).not.toHaveBeenCalled();
   });
 
   it('runs a many-speaker room as the binding principal', async () => {

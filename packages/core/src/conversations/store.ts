@@ -5,7 +5,7 @@
 // knows the pair `(adapter, externalId)` that names it and the handle that
 // gives it its scope.
 
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull, lte, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db as defaultDb } from '../db/client.js';
 import { projectMembers } from '../db/schema.js';
@@ -258,6 +258,30 @@ export async function appendMessagesIn(
 
     return rows.map(toStored);
   }
+}
+
+/**
+ * The messages a closed seq range holds, oldest first.
+ */
+// cm:guard the range is applied in SQL and BEFORE the limit, never by filtering the newest rows afterwards: a window claimed while its successor collects can have its whole contents pushed out of the newest `cap` rows, and the filter would then find nothing and close a person's question `unreachable` for good (ISS-1004, review pass 1 F4).
+export async function readMessagesInRange(
+  conversationId: string,
+  range: { firstSeq: number; lastSeq: number; limit: number },
+  tx: Executor = defaultDb,
+): Promise<StoredConversationMessage[]> {
+  const rows = await tx
+    .select()
+    .from(conversationMessages)
+    .where(
+      and(
+        eq(conversationMessages.conversationId, conversationId),
+        gte(conversationMessages.seq, range.firstSeq),
+        lte(conversationMessages.seq, range.lastSeq),
+      ),
+    )
+    .orderBy(desc(conversationMessages.seq))
+    .limit(range.limit);
+  return rows.reverse().map(toStored);
 }
 
 /** The last `limit` turns, oldest first. */

@@ -29,7 +29,8 @@ export function decideSkip(
   if (msg.userId === botUserId) return 'own-message';
   if (msg.isSystem) return 'system';
   if (msg.isEdited) return 'edited';
-  if (!msg.text.trim()) return 'empty';
+  // cm:guard empty means NOTHING CARRIED, not blank text: a screenshot posted with no caption is a question, and dropping it here left the image out of the durable log entirely, so no window could ever be asked about it (ISS-1004, review pass 2 F6).
+  if (!msg.text.trim() && msg.images.length === 0) return 'empty';
   return null;
 }
 
@@ -40,9 +41,19 @@ export function decideSkip(
  * produced two contradictory replies. Track recently seen message ids with a
  * FIFO cap so reconnect replays are also swallowed.
  */
-export function createSeenTracker(cap = 1000): (id: string) => boolean {
+export interface SeenTracker {
+  /** True when this id has already been taken in. Marks it otherwise. */
+  (id: string): boolean;
+  /**
+   * Take the mark back off an id whose work did not survive.
+   */
+  // cm:guard the mark is a claim that this message is DURABLE somewhere, so a collect that rolled back must withdraw it: RC re-emits the same id after enrichment, and a mark left behind by a failed attempt turns that second delivery into a false duplicate — the message is then in no log and in no window, and nobody is owed an answer for a question that was asked (ISS-1004, review pass 2 F3).
+  forget(id: string): void;
+}
+
+export function createSeenTracker(cap = 1000): SeenTracker {
   const seen = new Set<string>();
-  return (id: string) => {
+  const track = (id: string) => {
     if (seen.has(id)) return true;
     seen.add(id);
     if (seen.size > cap) {
@@ -56,4 +67,8 @@ export function createSeenTracker(cap = 1000): (id: string) => boolean {
     }
     return false;
   };
+  track.forget = (id: string) => {
+    seen.delete(id);
+  };
+  return track;
 }

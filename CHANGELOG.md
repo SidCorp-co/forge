@@ -139,6 +139,11 @@
   landed. The last of those is explicitly not a failure, and nothing retries on it — which is what
   stops one answer turning into two after a restart.
 
+- **A screenshot posted with no caption is now a question like any other.** An image with nothing
+  typed beside it counted as an empty message and was dropped before anything saw it, so the one
+  way people most often ask "what is this?" reached nobody. It is now taken in with its image, and
+  the model is shown the picture.
+
 - **An answer survives a restart, and is never given twice.** The unit of work between a message and
   an answer is now a durable record rather than something living in a process. A server that stops
   halfway through leaves the work findable by whatever picks it up next; two servers cannot both

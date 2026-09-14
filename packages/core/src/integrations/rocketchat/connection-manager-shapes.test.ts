@@ -6,6 +6,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { claimedWindowFor } from './claimed-window.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -143,9 +144,11 @@ vi.mock('../../conversations/windows.js', () => ({
     conversationId: a.conversationId,
   }),
   claimDueWindows: async () => [],
+  claimOf: (row: { claimedAt: Date | null; claimedBy: string | null }) =>
+    row.claimedAt && row.claimedBy ? { claimedAt: row.claimedAt, claimedBy: row.claimedBy } : null,
   closeWindow: async () => null,
   releaseWindow: async () => undefined,
-  reserveDelivery: async () => undefined,
+  reserveDelivery: async () => true,
   recentDecisions: async () => [],
 }));
 
@@ -166,6 +169,7 @@ vi.mock('../../conversations/store.js', () => ({
   },
   getConversation: async (id: string) => conversationsById.get(id) ?? null,
   readMessages: async () => collected,
+  readMessagesInRange: async () => collected,
   deliveredUnderKey: async () => false,
   appendMessagesIn: async (_tx: unknown, args: { messages: Array<Record<string, unknown>> }) => {
     const rows = args.messages.map((msg, i) => ({
@@ -207,12 +211,10 @@ interface Loose {
     connectionId: string,
     shape: 'direct' | 'group',
   ): Promise<void>;
-  route(connectionId: string, m: unknown): Promise<void>;
   conns: Map<string, unknown>;
 }
 const loose = rocketChatManager as unknown as Loose;
 const collectOne = loose.collect.bind(rocketChatManager);
-const routeMessage = loose.route.bind(rocketChatManager);
 
 async function handle(
   ac: unknown,
@@ -228,29 +230,8 @@ async function handle(
   await collectOne(ac, route, m, connectionId, shape);
   const opened = lastOpened as { id: string; shape: 'direct' | 'group'; externalId: string } | null;
   if (!opened) return;
-  await routeOne(
-    ac as never,
-    connectionId,
-    {
-      id: `win:${opened.id}`,
-      conversationId: opened.id,
-      projectId: r.projectId,
-      adapter: 'rocketchat',
-      venueExternalId: opened.externalId,
-      venueShape: opened.shape,
-      openedAt: new Date(),
-      extendedAt: new Date(),
-      firstSeq: 0,
-      lastSeq: Math.max(0, collected.length - 1),
-      claimedAt: new Date(),
-      claimedBy: 'test',
-      deliveryReservedAt: null,
-      closedAt: null,
-      decision: null,
-      decisionDetail: null,
-    },
-    undefined,
-  );
+  const window = claimedWindowFor(opened, r.projectId, Math.max(0, collected.length - 1));
+  await routeOne(() => ac as never, connectionId, window as never, undefined);
 }
 
 function makeAc() {
@@ -263,6 +244,7 @@ function makeAc() {
     routes: new Map(),
     reconnectAttempt: 0,
     seenMessage: () => false,
+    routeTails: new Map(),
     closing: false,
     client: { sendMessage: vi.fn() },
   };
@@ -284,7 +266,6 @@ const MESSAGE = {
   username: 'alice',
   isSystem: false,
   isEdited: false,
-  mentions: ['bot-1'],
   images: [],
 };
 
@@ -395,97 +376,5 @@ describe('connection-manager conversation identity', () => {
     await handle(ac, room, { ...m, id: 'msg-3' }, 'conn-1', 'group');
 
     expect(conversationSentOn(2)).toBe('conv:chat.example.co room-failing');
-  });
-});
-
-// cm:why the steps are ordered so a routeless room costs no round trip (ISS-987 criteria 10-12). ISS-1004 removed the addressing step between the shape and the tracker, so the tracker now sees every message in a bound room and its only job is the duplicate re-emit it was added for.
-describe('connection-manager routing order', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    selectLimit.mockResolvedValue([{ agentConfig: null, repoPath: null }]);
-    screenRoomReply.mockResolvedValue({ ok: true });
-    resolveRoomShape.mockResolvedValue('group');
-    loggerError.mockReset();
-  });
-
-  function connect(
-    routes: Map<string, unknown>,
-    seenMessage: (id: string) => boolean = () => false,
-  ) {
-    const ac = { ...makeAc(), routes, seenMessage: vi.fn(seenMessage) };
-    loose.conns.set('conn-1', ac);
-    return ac;
-  }
-
-  it('drops a message for a room it has no binding for without resolving a shape', async () => {
-    const ac = connect(new Map());
-
-    await routeMessage('conn-1', MESSAGE);
-
-    expect(resolveRoomShape).not.toHaveBeenCalled();
-    expect(ac.seenMessage).not.toHaveBeenCalled();
-  });
-
-  // cm:guard the deliverable of ISS-1004 at this level: the message that used to be dropped for naming nobody is now the one that reaches the tracker and the collector. A change that put an addressing test back would make this the only assertion that went red.
-  it('takes in a group message that names nobody', async () => {
-    const ac = connect(new Map([['room-1', ROUTE]]));
-
-    await routeMessage('conn-1', { ...MESSAGE, text: 'anyone know why CI is red?' });
-    await new Promise((resolve) => setImmediate(resolve));
-
-    expect(ac.seenMessage).toHaveBeenCalledWith('msg-1');
-    expect(openConversation).toHaveBeenCalledTimes(1);
-  });
-
-  it('reaches the tracker for a message it will handle', async () => {
-    const ac = connect(new Map([['room-1', ROUTE]]));
-
-    await routeMessage('conn-1', MESSAGE);
-
-    expect(ac.seenMessage).toHaveBeenCalledWith('msg-1');
-  });
-
-  it('collects a re-emitted message id once, not twice', async () => {
-    resolveRoomShape.mockResolvedValue('direct');
-    resolveSpeaker.mockResolvedValue({ linked: true, userId: 'speaker-user-9' });
-    const seen = new Set<string>();
-    const ac = connect(new Map([['room-1', ROUTE]]), (id: string) => {
-      if (seen.has(id)) return true;
-      seen.add(id);
-      return false;
-    });
-
-    const unaddressed = { ...MESSAGE, rid: 'room-1' };
-    await routeMessage('conn-1', unaddressed);
-    await routeMessage('conn-1', unaddressed);
-    // cm:why `route` hands the message off with `void this.collect(...)`, so awaiting it settles the ROUTING and not the collect — without a macrotask flush this asserts on work that has not started
-    await new Promise((resolve) => setImmediate(resolve));
-
-    expect(ac.seenMessage).toHaveBeenCalledTimes(2);
-    expect(openConversation).toHaveBeenCalledTimes(1);
-  });
-
-  it('refuses a message whose room shape does not resolve, and runs no turn', async () => {
-    resolveRoomShape.mockResolvedValue(null);
-    const ac = connect(new Map([['room-1', ROUTE]]));
-
-    await routeMessage('conn-1', MESSAGE);
-
-    expect(runExternalChatTurn).not.toHaveBeenCalled();
-    expect(ac.seenMessage).not.toHaveBeenCalled();
-    expect(ac.client.sendMessage).not.toHaveBeenCalled();
-  });
-
-  // cm:why the room has to be IN the refusal, not merely absent from the reply: an unresolvable room is a fault somebody has to find, and a log line that does not say which room leaves them the whole fleet to search
-  it('names the room it could not resolve', async () => {
-    resolveRoomShape.mockResolvedValue(null);
-    connect(new Map([['room-1', ROUTE]]));
-
-    await routeMessage('conn-1', MESSAGE);
-
-    const [ctx, message] = loggerError.mock.calls[0] as [Record<string, unknown>, string];
-    expect(ctx.rid).toBe('room-1');
-    expect(ctx.msgId).toBe('msg-1');
-    expect(message).toContain('room type unresolved');
   });
 });

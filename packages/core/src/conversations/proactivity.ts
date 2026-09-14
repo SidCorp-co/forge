@@ -104,7 +104,7 @@ export async function decideProactivity(
     };
   }
 
-  const loop = agentLoop(messages, agents, anchor, now);
+  const loop = agentLoop(messages, agents, anchor);
   if (loop) return loop;
 
   return backoff(input.conversationId, anchorAt, tx);
@@ -119,28 +119,30 @@ function agentLoop(
   messages: readonly StoredConversationMessage[],
   agents: ReadonlySet<string>,
   anchor: StoredConversationMessage | null,
-  now: Date,
 ): ProactivityVerdict | null {
   const after = anchor
     ? messages.filter((m) => m.createdAt.getTime() > anchor.createdAt.getTime())
     : [...messages];
   if (after.length < LOOP_LIMIT) return null;
 
+  // cm:guard the classification is CHRONOLOGICAL and each message's identifiers join `seen` as it passes, so only the FIRST mention of a name introduces it: judged backwards against a set frozen before the run, agents repeating `ISS-42` at each other would each be introducing it again and the breaker would never fire, which is the escape hatch the whole guard exists to close (ISS-1004, review pass 1 F5).
   const seen = new Set<string>();
+  const carriedNothing: boolean[] = [];
   for (const m of messages) {
-    if (after.includes(m)) break;
+    const fresh = introducesSomethingNew(m.content, seen);
     for (const id of identifiersIn(m.content)) seen.add(id);
+    if (after.includes(m)) carriedNothing.push(!fresh);
   }
 
   let run = 0;
-  let previousAt = now.getTime();
+  let previousAt: number | null = null;
   for (let i = after.length - 1; i >= 0; i--) {
     const m = after[i];
     if (!m) break;
     if (!isAgentMessage(m, agents)) break;
-    // cm:guard the gap is measured against the message AFTER this one — the bounce is how fast the pair arrived, not how long ago the run started, so a burst an hour old is still a burst.
-    if (previousAt - m.createdAt.getTime() > LOOP_BOUNCE_MS) break;
-    if (introducesSomethingNew(m.content, seen)) break;
+    // cm:guard the gap is between this message and the one AFTER it, and the newest message is compared with NOTHING: measuring the newest against `now` would make a qualifying burst stop being one the moment a restart delayed its window, so the same three messages would be cut or not cut depending on how busy the drain loop was (ISS-1004, review pass 2 F6).
+    if (previousAt !== null && previousAt - m.createdAt.getTime() > LOOP_BOUNCE_MS) break;
+    if (!carriedNothing[i]) break;
     previousAt = m.createdAt.getTime();
     run += 1;
     if (run >= LOOP_LIMIT) {
@@ -168,6 +170,11 @@ async function backoff(
   let run = 0;
   for (const d of decisions) {
     if (d.decision === 'undetermined') continue;
+    // cm:guard a window already closed BY this guard keeps the run going instead of ending it: the back-off lifts when a person speaks and at no other moment, and reading its own decision as a terminator made it lift itself on the very next window — three quiet windows, one paced window, then speech again, for ever (ISS-1004 rule 3, review pass 1 F7).
+    if (d.decision === 'guard-backoff') {
+      run += 1;
+      continue;
+    }
     if (d.decision !== 'nothing-to-say') break;
     run += 1;
   }

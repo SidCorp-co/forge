@@ -9,6 +9,7 @@
 // cm:ignore CM013 — the one frozen comment left in this file is an `i18n-allow` pragma the language gate reads; deleting it to pay the drain reds that gate instead.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { claimedWindowFor } from './claimed-window.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -22,12 +23,10 @@ vi.mock('../../config/env.js', () => ({
 const selectLimit = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
-/** Whether the room is still bound to the turn's project; flipped by the rebind case. */
-const roomBound = true;
 // cm:why stubbed: this file's fake db answers only the subject's own queries, and the room-is-still-ours check has its cases in room-delivery.test.ts.
 vi.mock('./room-delivery.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./room-delivery.js')>()),
-  roomStillBoundTo: async () => roomBound,
+  roomStillBoundTo: async () => true,
 }));
 
 vi.mock('../../db/client.js', () => ({
@@ -114,9 +113,11 @@ vi.mock('../../conversations/windows.js', () => ({
     conversationId: a.conversationId,
   }),
   claimDueWindows: async () => [],
+  claimOf: (row: { claimedAt: Date | null; claimedBy: string | null }) =>
+    row.claimedAt && row.claimedBy ? { claimedAt: row.claimedAt, claimedBy: row.claimedBy } : null,
   closeWindow: async () => null,
   releaseWindow: async () => undefined,
-  reserveDelivery: async () => undefined,
+  reserveDelivery: async () => true,
   recentDecisions: async () => [],
 }));
 
@@ -139,6 +140,7 @@ vi.mock('../../conversations/store.js', () => ({
   },
   getConversation: async (id: string) => conversationsById.get(id) ?? null,
   readMessages: async () => collected,
+  readMessagesInRange: async () => collected,
   deliveredUnderKey: async () => false,
   appendMessagesIn: async (_tx: unknown, args: { messages: Array<Record<string, unknown>> }) => {
     const rows = args.messages.map((msg, i) => ({
@@ -206,29 +208,8 @@ async function handle(
   await collectOne(ac, route, m, connectionId, shape);
   const opened = lastOpened as { id: string; shape: 'direct' | 'group'; externalId: string } | null;
   if (!opened) return;
-  await routeOne(
-    ac as never,
-    connectionId,
-    {
-      id: `win:${opened.id}`,
-      conversationId: opened.id,
-      projectId: r.projectId,
-      adapter: 'rocketchat',
-      venueExternalId: opened.externalId,
-      venueShape: opened.shape,
-      openedAt: new Date(),
-      extendedAt: new Date(),
-      firstSeq: 0,
-      lastSeq: Math.max(0, collected.length - 1),
-      claimedAt: new Date(),
-      claimedBy: 'test',
-      deliveryReservedAt: null,
-      closedAt: null,
-      decision: null,
-      decisionDetail: null,
-    },
-    undefined,
-  );
+  const window = claimedWindowFor(opened, r.projectId, Math.max(0, collected.length - 1));
+  await routeOne(() => ac as never, connectionId, window as never, undefined);
 }
 
 function makeAc() {
@@ -241,6 +222,7 @@ function makeAc() {
     routes: new Map(),
     reconnectAttempt: 0,
     seenMessage: () => false,
+    routeTails: new Map(),
     closing: false,
     client: { sendMessage: vi.fn() },
   };

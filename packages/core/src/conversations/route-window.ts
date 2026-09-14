@@ -13,19 +13,22 @@
 
 import type { ConversationWindowDecision } from '../db/schema-conversations.js';
 import { logger } from '../logger.js';
-import type { ConversationVenue } from './ports.js';
+import { type ConversationVenue, codeAuthored, conversationTransport } from './ports.js';
 import { decideProactivity } from './proactivity.js';
 import {
   deliveredUnderKey,
   getConversation,
-  readMessages,
+  readMessagesInRange,
   type StoredConversationMessage,
 } from './store.js';
+import { recordDeliveredReply } from './transcript.js';
 import { type ConversationTurnRequest, runConversationTurn } from './turn-runner.js';
 import {
   type ConversationWindowRow,
+  claimOf,
   closeWindow,
   reserveDelivery,
+  type WindowClaim,
   windowDeliveryKey,
 } from './windows.js';
 
@@ -50,12 +53,23 @@ export interface RouteWindowArgs {
   inputs: (context: WindowContext) => WindowTurnInputs;
 }
 
+/**
+ * One message as a window carries it.
+ */
+// cm:guard re-exported HERE rather than imported from the store by the adapter: `transport-free.test.ts` fails CI on an adapter that reaches into the conversation store, and a type import is the first step of reaching in (ISS-1002, ISS-1004).
+export type WindowMessage = StoredConversationMessage;
+
 /** What the adapter is given to build its inputs from. */
 export interface WindowContext {
   venue: ConversationVenue;
   /** The messages this window collected, oldest first. */
   messages: StoredConversationMessage[];
   principalUserId: string;
+  /**
+   * Make this turn's right to answer durable, for an answer this turn will not deliver itself.
+   */
+  // cm:guard the same reservation the delivery path takes, handed to the adapter because only the adapter knows it is about to give the answer away to a session that replies later. It answers FALSE when the claim has moved on, and the adapter must then dispatch nothing (ISS-1004, review pass 2 F1).
+  reserve: () => Promise<boolean>;
 }
 
 export interface RoutedWindow {
@@ -66,7 +80,7 @@ export interface RoutedWindow {
 /**
  * How many messages back a window may reach for its own contents.
  */
-// cm:guard bounded, and the bound is why the seq range is read rather than trusted: a window left open across a restart can have collected more than a turn should carry, and reading all of it would put an unbounded query in the drain loop.
+// cm:guard bounded, and the bound is why the window READS its own seq range in SQL rather than filtering the conversation tail: a window left open across a restart can have collected more than a turn should carry, and an unbounded query in the drain loop is what this cap is for (ISS-1004, review pass 1 F4).
 const WINDOW_MESSAGE_CAP = 50;
 
 /**
@@ -76,9 +90,18 @@ const WINDOW_MESSAGE_CAP = 50;
 export async function routeWindow(args: RouteWindowArgs): Promise<RoutedWindow> {
   const { window } = args;
   const key = windowDeliveryKey(window.id);
+  // cm:guard a window arriving here unclaimed is a caller error and not a case to absorb: every write below is fenced on the claim, and an absent one would fence on nothing and let two holders settle the same window (ISS-1004, review pass 1 F1).
+  const claim = claimOf(window);
+  if (!claim)
+    throw new Error('conversations: a window is routed under its claim, and this one holds none');
   try {
-    const result = await decide(args, key);
-    await closeWindow({ windowId: window.id, decision: result.decision, detail: result.detail });
+    const result = await decide(args, key, claim);
+    await closeWindow({
+      windowId: window.id,
+      decision: result.decision,
+      detail: result.detail,
+      claim,
+    });
     return result;
   } catch (err) {
     // cm:guard a throw closes the window as `unreachable` rather than leaving it open to be retried for ever: the failure is recorded where a person can read it, and the room is not answered twice by a retry that finds the same fault (ISS-1004 rule 4).
@@ -90,12 +113,17 @@ export async function routeWindow(args: RouteWindowArgs): Promise<RoutedWindow> 
       windowId: window.id,
       decision: 'unreachable',
       detail: { error: err instanceof Error ? err.message : String(err) },
+      claim,
     });
     return { decision: 'unreachable' };
   }
 }
 
-async function decide(args: RouteWindowArgs, deliveryKey: string): Promise<RoutedWindow> {
+async function decide(
+  args: RouteWindowArgs,
+  deliveryKey: string,
+  claim: WindowClaim,
+): Promise<RoutedWindow> {
   const { window } = args;
 
   // cm:guard the delivery key is checked BEFORE the guards and before the turn: a window re-claimed after its holder died may already have been answered, and running the turn again to find out would cost a turn and post a second reply to discover the first one landed (ISS-1004 rule 2).
@@ -120,8 +148,11 @@ async function decide(args: RouteWindowArgs, deliveryKey: string): Promise<Route
     return { decision: 'unreachable', detail: { reason: 'the conversation no longer exists' } };
   }
 
-  const all = await readMessages(window.conversationId, WINDOW_MESSAGE_CAP);
-  const messages = all.filter((m) => m.seq >= window.firstSeq && m.seq <= window.lastSeq);
+  const messages = await readMessagesInRange(window.conversationId, {
+    firstSeq: window.firstSeq,
+    lastSeq: window.lastSeq,
+    limit: WINDOW_MESSAGE_CAP,
+  });
   if (messages.length === 0) {
     return { decision: 'unreachable', detail: { reason: 'the window holds no readable message' } };
   }
@@ -140,10 +171,7 @@ async function decide(args: RouteWindowArgs, deliveryKey: string): Promise<Route
   let principalUserId = args.manySpeakersPrincipalUserId;
   if (venue.shape === 'direct') {
     if (!speaker?.authorUserId) {
-      return {
-        decision: 'authority-refused',
-        detail: { reason: 'the speaker in this one-to-one room is linked to no Forge user' },
-      };
+      return refuseAuthority(venue, window, deliveryKey, claim);
     }
     principalUserId = speaker.authorUserId;
   }
@@ -151,7 +179,12 @@ async function decide(args: RouteWindowArgs, deliveryKey: string): Promise<Route
   const verdict = await decideProactivity({ conversationId: window.conversationId });
   if (!verdict.speak) return { decision: verdict.decision, detail: verdict.detail };
 
-  const inputs = args.inputs({ venue, messages, principalUserId });
+  const inputs = args.inputs({
+    venue,
+    messages,
+    principalUserId,
+    reserve: () => reserveDelivery(window.id, claim),
+  });
   const outcome = await runConversationTurn({
     ...inputs,
     venue,
@@ -161,7 +194,7 @@ async function decide(args: RouteWindowArgs, deliveryKey: string): Promise<Route
     questionAlreadyRecorded: true,
     mayDecline: true,
     deliveryKey,
-    onBeforeDeliver: () => reserveDelivery(window.id),
+    onBeforeDeliver: () => reserveDelivery(window.id, claim),
   });
 
   switch (outcome.kind) {
@@ -172,8 +205,54 @@ async function decide(args: RouteWindowArgs, deliveryKey: string): Promise<Route
     // cm:guard a DIVERTED turn is `undetermined` and never a failure: the answer arrives by the path the adapter handed it to, and a caller that retried on this would deliver a second one (ISS-1004 rule 4).
     case 'diverted':
       return { decision: 'undetermined', detail: { reason: outcome.reason } };
+    // cm:guard a SUPERSEDED turn writes nothing anyone reads, and it is `undetermined` only so this function has one shape: the close that follows is fenced on the same lapsed claim and applies to nothing, which is the point — the holder that took the window over is the one whose decision lands (ISS-1004, review pass 1 F1).
+    case 'superseded':
+      return { decision: 'undetermined', detail: { reason: outcome.reason, superseded: true } };
     // cm:guard an `undeliverable` transport error is `undetermined` and NOT `unreachable`, because the transport does not know either: a POST that timed out may have been accepted before the socket went. `unreachable` is reserved for what this module knows BEFORE anything was sent — no conversation, no readable message, no registered transport — which is the split ISS-1004 rule 4 draws between a failure and an outcome nobody knows yet (review F3).
     default:
       return { decision: 'undetermined', detail: { reason: outcome.reason, attempted: true } };
+  }
+}
+
+/**
+ * What a one-to-one room is told when nobody can be answered as.
+ */
+// cm:guard code-authored and deliberately NOT the transport's own wording: the collector says it better because it still holds the frame, and this is the durable second attempt for when that one could not be delivered — so it says the thing that is true of every transport and names what would fix it (ISS-987, ISS-1004).
+export const AUTHORITY_REFUSED_REPLY =
+  'I cannot answer in this room: the account speaking here is not linked to a Forge user, so there is nobody for me to act as. Link your chat account to your Forge account and ask again.';
+
+/**
+ * Refuse a one-to-one room by name, durably and at most once.
+ */
+// cm:guard the refusal is DELIVERED and not merely decided, and it goes out under the window's own delivery key with the reservation before it: `authority-refused` used to be a decision nobody outside the database could read, so a person whose synchronous refusal failed to send was left with silence and nothing retryable behind it (ISS-1004, review pass 1 F3).
+async function refuseAuthority(
+  venue: ConversationVenue,
+  window: ConversationWindowRow,
+  deliveryKey: string,
+  claim: WindowClaim,
+): Promise<RoutedWindow> {
+  const detail = { reason: 'the speaker in this one-to-one room is linked to no Forge user' };
+  const transport = conversationTransport(venue.adapter);
+  if (!transport) return { decision: 'authority-refused', detail: { ...detail, told: false } };
+  if (!(await reserveDelivery(window.id, claim))) {
+    return { decision: 'undetermined', detail: { ...detail, superseded: true } };
+  }
+  try {
+    const receipt = await transport.deliver(venue, codeAuthored(AUTHORITY_REFUSED_REPLY));
+    await recordDeliveredReply({
+      conversationId: window.conversationId,
+      projectId: window.projectId,
+      text: AUTHORITY_REFUSED_REPLY,
+      receipt,
+      deliveryKey,
+    });
+    return { decision: 'authority-refused', detail: { ...detail, told: true } };
+  } catch (err) {
+    // cm:guard a refusal the door would not take is `undetermined` and NOT `authority-refused`: the window stays a record that nobody was told, and the reservation above is what stops the next claim saying it twice (ISS-1004 rule 4).
+    logger.error(
+      { err, windowId: window.id, adapter: venue.adapter, externalId: venue.externalId },
+      'conversations: the authority refusal could not be delivered',
+    );
+    return { decision: 'undetermined', detail: { ...detail, told: false, attempted: true } };
   }
 }

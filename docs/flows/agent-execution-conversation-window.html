@@ -42,7 +42,7 @@ person reads when they ask why nothing was said. Owners:
 <code>packages/core/src/conversations/collect-inbound.ts</code> (taking a message in),
 <code>packages/core/src/conversations/proactivity.ts</code> (the three guards),
 <code>packages/core/src/conversations/route-window.ts</code> (the decision and where it is written),
-<code>packages/core/src/integrations/rocketchat/window-loop.ts</code> (the tick that settles one).</p>
+<code>packages/core/src/integrations/rocketchat/window-drain.ts</code> (the tick that settles one).</p>
 
 <div class="rule"><strong>Nothing decides whether a turn runs by looking for the bot's name.</strong>
 A message in a bound room is collected, every time. What bounds the bill is the window — messages
@@ -81,9 +81,9 @@ gate a turn on an @-mention: it must read <span class="ok">zero</span>.</div>
   <text class="m" x="160" y="218">quiet for a few seconds</text>
   <rect class="neut" x="20" y="232" width="260" height="90" rx="4"/>
   <text class="t" x="34" y="255">claimed before it is answered</text>
-  <text class="m" x="34" y="274">exactly one core takes it; the claim</text>
-  <text class="m" x="34" y="292">expires, so a core that stops does not</text>
-  <text class="m" x="34" y="310">leave the room waiting for ever</text>
+  <text class="m" x="34" y="274">exactly one core takes it; the claim expires,</text>
+  <text class="m" x="34" y="292">so a core that stops leaves nobody waiting,</text>
+  <text class="m" x="34" y="310">and a lapsed holder is refused when it writes</text>
 
   <path class="arrow" d="M150,322 L150,360"/>
   <rect class="pass" x="20" y="360" width="260" height="90" rx="4"/>

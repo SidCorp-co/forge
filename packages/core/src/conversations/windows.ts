@@ -57,6 +57,29 @@ export interface ConversationWindowRow {
 }
 
 /**
+ * Which claim a write belongs to.
+ */
+// cm:guard the claim's own `claimed_at` and `claimed_by` TOGETHER are the generation token, and every write a claimant makes carries it — REQUIRED on all three, never optional, because an optional fence is one an unchanged caller slips past in silence: the lease that recovers a dead core also means two holders can believe they own one window, so a holder whose lease ran out must be refused at the moment it writes rather than trusted to have noticed. Without this fence the reservation and the close were both unconditional and the stale holder sent a second reply (ISS-1004 rule 2, review pass 1 F1).
+export interface WindowClaim {
+  claimedAt: Date;
+  claimedBy: string;
+}
+
+/** The claim a row was returned under, for a caller that holds it. */
+export function claimOf(row: ConversationWindowRow): WindowClaim | null {
+  return row.claimedAt && row.claimedBy
+    ? { claimedAt: row.claimedAt, claimedBy: row.claimedBy }
+    : null;
+}
+
+function heldBy(claim: WindowClaim) {
+  return and(
+    eq(conversationWindows.claimedAt, claim.claimedAt),
+    eq(conversationWindows.claimedBy, claim.claimedBy),
+  );
+}
+
+/**
  * The delivery key for a window's reply.
  */
 // cm:guard derived from the window id and NOTHING else — not the attempt, not the clock, not a uuid minted here. A key that changes per attempt makes every retry a new delivery, which is the at-most-once property read backwards (ISS-1004 rule 2).
@@ -210,12 +233,13 @@ export async function claimDueWindows(
 /**
  * Close a claimed window under the decision that was taken.
  */
-// cm:guard conditional on the window still being OPEN, and the caller is told when it was not: a close that overwrites another core's decision is the same double route the claim refused, arriving one statement later.
+// cm:guard conditional on the window still being OPEN and still held by the CLAIM that is closing it, and the caller is told when it was not: a close that overwrites another core's decision is the same double route the claim refused, arriving one statement later, and a holder whose lease expired mid-turn would otherwise settle a window somebody else is already routing (ISS-1004, review pass 1 F1).
 export async function closeWindow(
   args: {
     windowId: string;
     decision: ConversationWindowDecision;
     detail?: unknown;
+    claim: WindowClaim;
     now?: Date;
   },
   tx: Executor = defaultDb,
@@ -227,7 +251,13 @@ export async function closeWindow(
       decision: args.decision,
       decisionDetail: (args.detail ?? null) as never,
     })
-    .where(and(eq(conversationWindows.id, args.windowId), isNull(conversationWindows.closedAt)))
+    .where(
+      and(
+        eq(conversationWindows.id, args.windowId),
+        isNull(conversationWindows.closedAt),
+        heldBy(args.claim),
+      ),
+    )
     .returning(selection);
   return (row as ConversationWindowRow | undefined) ?? null;
 }
@@ -236,26 +266,46 @@ export async function closeWindow(
  * Write down that this window's reply is about to be handed to the transport.
  */
 // cm:guard called BEFORE the send and never after: a reply the server accepted and a dying core never recorded is indistinguishable from one never sent, unless the intent was durable first. A later claimant that finds this stamp and no delivered row closes the window `undetermined` and sends nothing — which is the honest answer, and the one rule 4 forbids treating as a failure (ISS-1004 rule 2, review F2).
+// cm:guard it answers FALSE rather than throwing when the claim has moved on, and the caller must not send on a false: this is the only moment a holder whose lease expired can be told so, and it is deliberately re-callable by the holder that owns it, because one turn reserves both before a diversion and before its own send (ISS-1004, review pass 1 F1).
 export async function reserveDelivery(
   windowId: string,
+  claim: WindowClaim,
   tx: Executor = defaultDb,
   now: Date = new Date(),
-): Promise<void> {
-  await tx
+): Promise<boolean> {
+  const rows = await tx
     .update(conversationWindows)
     .set({ deliveryReservedAt: now })
-    .where(eq(conversationWindows.id, windowId));
+    .where(
+      and(
+        eq(conversationWindows.id, windowId),
+        isNull(conversationWindows.closedAt),
+        heldBy(claim),
+      ),
+    )
+    .returning({ id: conversationWindows.id });
+  return rows.length > 0;
 }
 
 /**
  * Give a claimed window back without deciding anything.
  */
 // cm:guard a release is NOT a close and the difference is the whole of rule 4: a core that finds it cannot deliver through this room has taken no decision, and writing one would tell a person their message was considered and refused when nobody looked at it. The window goes back to collecting and the next tick that CAN serve it takes it (ISS-1004).
-export async function releaseWindow(windowId: string, tx: Executor = defaultDb): Promise<void> {
+export async function releaseWindow(
+  windowId: string,
+  claim: WindowClaim,
+  tx: Executor = defaultDb,
+): Promise<void> {
   await tx
     .update(conversationWindows)
     .set({ claimedAt: null, claimedBy: null })
-    .where(and(eq(conversationWindows.id, windowId), isNull(conversationWindows.closedAt)));
+    .where(
+      and(
+        eq(conversationWindows.id, windowId),
+        isNull(conversationWindows.closedAt),
+        heldBy(claim),
+      ),
+    );
 }
 
 export async function getWindow(

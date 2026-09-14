@@ -112,7 +112,8 @@ export interface ConversationTurnRequest {
    * Called once, immediately before the text is handed to the transport.
    */
   // cm:guard the hook exists so a caller can make the ATTEMPT durable, and it is called before the send rather than after it because that is the only order a crash cannot beat: a reply accepted by the server and lost by a dying core is indistinguishable from one never sent, unless the intent to send was written first (ISS-1004 rule 2, review F2).
-  onBeforeDeliver?: () => Promise<void>;
+  // cm:guard a FALSE from it means the caller no longer holds the right to speak here and the text is NOT sent: this is how a holder whose lease expired mid-turn is stopped, and treating the refusal as an error would post the fallback into the room the second holder is already answering (ISS-1004, review pass 1 F1).
+  onBeforeDeliver?: () => Promise<boolean>;
   /** The answering handle's own name — the code-authored fallbacks speak as it. */
   handleName: string;
   /**
@@ -141,6 +142,7 @@ export interface ConversationTurnRequest {
 // cm:guard `diverted` is NOT a failure and no caller may treat it as one: it is the fourth state — not yet known — and the answer arrives by the path the adapter handed it to (ISS-1002 invariant 4).
 export type TurnOutcome =
   | { kind: 'delivered'; messageId: string | null }
+  | { kind: 'superseded'; reason: string }
   | { kind: 'diverted'; reason: string }
   | { kind: 'declined'; reason: string }
   | { kind: 'undeliverable'; reason: string };
@@ -276,7 +278,9 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
 
   let receipt: Awaited<ReturnType<typeof transport.deliver>>;
   try {
-    await req.onBeforeDeliver?.();
+    if (req.onBeforeDeliver && !(await req.onBeforeDeliver())) {
+      return { kind: 'superseded', reason: 'the right to answer here moved to another holder' };
+    }
     receipt = await transport.deliver(req.venue, reply.message);
   } catch (err) {
     // cm:guard nothing is recorded when the door refuses: the venue never saw this text, and a transcript row for it would say the opposite. The commonest refusal is a room rebound while the turn ran, which `deliver` names rather than swallows.

@@ -38,6 +38,13 @@ describe('decideSkip', () => {
     ).toBeNull();
   });
 
+  // cm:guard a captionless screenshot is a question and must reach the log: dropped here it was in no conversation and no window, so nothing could ever be asked about it (review pass 2 F6).
+  it('admits an image posted with no caption at all', () => {
+    const shot = [{ name: 's.png', mime: 'image/png', ref: 'https://chat/f/s.png' }];
+    expect(decideSkip(msg({ text: '   ', images: shot }), BOT)).toBeNull();
+    expect(decideSkip(msg({ text: '   ', images: [] }), BOT)).toBe('empty');
+  });
+
   it('holds the loop guard whatever the text says', () => {
     expect(decideSkip(msg({ userId: BOT, text: 'a perfectly ordinary sentence' }), BOT)).toBe(
       'own-message',
@@ -84,5 +91,27 @@ describe('createSeenTracker', () => {
     for (let i = 0; i < 11; i++) seen(`m${i}`);
     expect(seen('m0')).toBe(false);
     expect(seen('m10')).toBe(true);
+  });
+});
+
+// cm:guard the tracker's mark is a claim that the message is durable SOMEWHERE, so work that rolled back must withdraw it: RC re-emits the same id after enrichment, and a mark left by a failed attempt makes that second delivery a false duplicate — the question is then in no log at all (review pass 2 F3).
+describe('the duplicate tracker', () => {
+  it('swallows a second sighting of the same id', () => {
+    const seen = createSeenTracker();
+    expect(seen('m1')).toBe(false);
+    expect(seen('m1')).toBe(true);
+  });
+
+  it('gives an id back when the work it marked did not survive', () => {
+    const seen = createSeenTracker();
+    expect(seen('m1')).toBe(false);
+    seen.forget('m1');
+    expect(seen('m1')).toBe(false);
+    expect(seen('m1')).toBe(true);
+  });
+
+  it('forgets an id it never held without complaining', () => {
+    const seen = createSeenTracker();
+    expect(() => seen.forget('never-seen')).not.toThrow();
   });
 });

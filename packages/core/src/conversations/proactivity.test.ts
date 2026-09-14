@@ -126,6 +126,28 @@ describe('agents bouncing', () => {
     await expect(decide()).resolves.toEqual({ speak: true });
   });
 
+  // cm:guard the hole a set frozen before the run left open: repeating a name the run itself introduced must not count as introducing it, or two agents saying `ISS-42` at each other are never cut (review pass 1 F5).
+  it('is cut when the agents keep repeating an identifier one of them introduced', async () => {
+    log(
+      say('person', 'settle it', 60_000),
+      say('agent', 'ISS-42 is the one', 50_000),
+      say('agent', 'yes, ISS-42', 49_000),
+      say('agent', 'ISS-42 indeed', 48_000),
+      say('agent', 'ISS-42 it is', 47_000),
+    );
+    await expect(decide()).resolves.toMatchObject({ speak: false, decision: 'guard-agent-loop' });
+  });
+
+  // cm:guard the burst is judged on the gaps BETWEEN its messages and never against the clock reading it: a window routed late by a restart must reach the same verdict as one routed on time (review pass 2 F6).
+  it('is cut for a burst that happened long before the window was routed', async () => {
+    const old = LOOP_BOUNCE_MS * 20;
+    log(
+      say('person', 'settle ISS-1004 between you', old + 60_000),
+      ...Array.from({ length: LOOP_LIMIT }, (_, i) => bounce(old + 3000 - i * 1000)),
+    );
+    await expect(decide()).resolves.toMatchObject({ speak: false, decision: 'guard-agent-loop' });
+  });
+
   it('is lifted by a person speaking between the agents', async () => {
     log(
       ...Array.from({ length: LOOP_LIMIT }, (_, i) => bounce(50_000 - i * 1000)),
@@ -157,6 +179,16 @@ describe('a room where nothing has been worth saying', () => {
       ...Array.from({ length: BACKOFF_AFTER }, (_, i) => quiet(i + 1)),
     );
     await expect(decide()).resolves.toEqual({ speak: true });
+  });
+
+  // cm:guard the guard's own decision CONTINUES the run rather than ending it: read as a terminator, the back-off lifted itself on the very next window and paced nothing (rule 3, review pass 1 F7).
+  it('stays backed off while no person has spoken since it fired', async () => {
+    log(say('person', 'chatter', 60_000));
+    decisions.push(
+      { decision: 'guard-backoff', closedAt: ago(500) },
+      ...Array.from({ length: BACKOFF_AFTER - 1 }, (_, i) => quiet(i + 1)),
+    );
+    await expect(decide()).resolves.toMatchObject({ speak: false, decision: 'guard-backoff' });
   });
 
   // cm:guard `undetermined` is skipped and NOT counted toward the back-off: its outcome is not known, and counting it is a caller acting on it as a failure, which rule 4 forbids outright (ISS-1004).

@@ -44,7 +44,7 @@ export interface InboundCollection<Frame> {
 /**
  * How collecting a frame ended.
  */
-// cm:guard `venue-unresolved` and `speaker-refused` end BEFORE anything is written, exactly as they do on the turn path: a frame nobody could place and a speaker nobody could name leave no conversation row and no window behind for an answer that was never owed.
+// cm:guard `venue-unresolved` ends BEFORE anything is written: a frame nobody could place has no conversation to write into. `speaker-refused` is the same ONLY when the refusal was delivered — where it was not, the message is collected anyway so the window can refuse durably, because a refusal nobody received and nothing retries is the silence rule 4 forbids (ISS-1004, review pass 1 F3).
 export type CollectOutcome =
   | { kind: 'collected'; conversationId: string; windowId: string; seq: number }
   | { kind: 'venue-unresolved' }
@@ -54,19 +54,25 @@ export type CollectOutcome =
 async function refuse(
   venue: ConversationVenue,
   refusal: { code: string; message: string },
-): Promise<CollectOutcome> {
+): Promise<CollectOutcome | null> {
   const base = { kind: 'speaker-refused' as const, code: refusal.code, refusal: refusal.message };
   try {
     const transport = conversationTransport(venue.adapter);
     if (!transport) throw new Error(`no transport is registered for adapter "${venue.adapter}"`);
     await transport.deliver(venue, codeAuthored(refusal.message));
+    // cm:guard a refusal that reached the person is still RECORDED, and the log is the only place it can be: it happens before any conversation row exists, so there is no window to carry the decision and no transcript to hold the text. An operator asking why a room fell quiet must find this line rather than nothing, which is what rule 4 asks of every silence (ISS-1004, review pass 1 F3).
+    logger.info(
+      { adapter: venue.adapter, externalId: venue.externalId, code: refusal.code },
+      'conversations: the speaker was refused and told so; nothing was collected',
+    );
     return { ...base, delivered: true };
   } catch (err) {
+    // cm:guard a refusal the door would not take hands the message BACK to the collector rather than ending here: the window then holds it, and `route-window.ts` refuses again under a delivery key that cannot say it twice. Dropping it left a person who was owed an answer with neither one nor a record that they were (ISS-1004, review pass 1 F3).
     logger.error(
       { err, adapter: venue.adapter, externalId: venue.externalId, code: refusal.code },
-      'conversations: the speaker was refused and the refusal could not be delivered',
+      'conversations: the refusal could not be delivered; collecting it for the window to refuse',
     );
-    return { ...base, delivered: false };
+    return null;
   }
 }
 
@@ -84,7 +90,8 @@ export async function collectInboundMessage<Frame>(
 
   const speaker = await inbound.ports.resolveSpeaker(inbound.frame);
   if (venue.shape === 'direct' && !speaker.linked) {
-    return refuse(venue, speaker.refusal as { code: string; message: string });
+    const told = await refuse(venue, speaker.refusal as { code: string; message: string });
+    if (told) return told;
   }
 
   const conversation = await openConversation(venue);

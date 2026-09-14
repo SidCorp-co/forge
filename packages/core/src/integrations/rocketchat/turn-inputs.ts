@@ -72,6 +72,11 @@ export interface RocketChatTurnArgs {
   connectionId: string;
   shape: RoomShape;
   webBaseUrl: string | undefined;
+  /**
+   * Make this turn's right to answer durable before a dispatch somebody else finishes.
+   */
+  // cm:guard both diversions hand the answer to a session whose reply arrives LATER, out of this turn's reach and out of the delivery key's: so the intent is written down before the dispatch, and a window re-claimed after a crash reads that stamp and dispatches nothing. Without it the reclaim started a second session, whose in-flight dedup posted a "already working on it" line into the room the first session was about to answer (ISS-1004 rule 2, review pass 2 F1).
+  beforeDivert?: () => Promise<boolean>;
 }
 
 /** Everything the neutral turn takes bar what the window and its venue settle. */
@@ -145,6 +150,8 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
       const s = await readSeed();
       if (readRocketChatAnswerMode(s.agentConfig) !== 'agent') return null;
       setPhase('agent-chat');
+      if (args.beforeDivert && !(await args.beforeDivert()))
+        return { send: false, reason: 'superseded-before-agent-chat' };
       const started = await startAgentChat({
         projectId: route.projectId,
         project: { ...project, repoPath: s.repoPath },
@@ -194,6 +201,8 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
       const escalateCall = result.toolCalls.find((t) => t.name === ESCALATE_TOOL_NAME);
       if (!escalateCall) return null;
       setPhase('escalate');
+      if (args.beforeDivert && !(await args.beforeDivert()))
+        return { send: false, reason: 'superseded-before-escalation' };
       const s = await readSeed();
       const started = await startEscalation({
         projectId: route.projectId,
