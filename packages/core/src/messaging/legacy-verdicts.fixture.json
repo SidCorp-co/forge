@@ -1,0 +1,4169 @@
+{
+  "source": "packages/core/src/integrations/rocketchat/reply-guard.ts",
+  "sourceSha256": "5f3d403a5f89b925115f7894c7348e3d68cd65f4e562dd99af40b26a274aaa91",
+  "rows": [
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"\"",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "a comment with no text carries nothing to say"
+        ]
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"\" | false",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"\" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"\" | null",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"\" | []",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"   \" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"   \"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"   \"",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "a comment with no text carries nothing to say"
+        ]
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"   \" | false",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"   \" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"   \" | null",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"   \" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"   \" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"   \" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"   \" | []",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"   \" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"   \" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"   \" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"Everything is on track.\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"Everything is on track.\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"Everything is on track.\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"Everything is on track.\" | false",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"Everything is on track.\" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"Everything is on track.\" | null",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"Everything is on track.\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"Everything is on track.\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"Everything is on track.\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"Everything is on track.\" | []",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"Everything is on track.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"Everything is on track.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"Everything is on track.\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"ISS-1 is merged.\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [
+          1
+        ],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"ISS-1 is merged.\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"ISS-1 is merged.\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"ISS-1 is merged.\" | false",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"ISS-1 is merged.\" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"ISS-1 is merged.\" | null",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"ISS-1 is merged.\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"ISS-1 is merged.\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"ISS-1 is merged.\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"ISS-1 is merged.\" | []",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"ISS-1 is merged.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"ISS-1 is merged.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"ISS-1 is merged.\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"ISS-9999 does not exist yet.\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [
+          9999
+        ],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"ISS-9999 does not exist yet.\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"ISS-9999 does not exist yet.\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"ISS-9999 does not exist yet.\" | false",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply cites \"ISS-9999\" which was not verified this turn — rephrase for a non-technical stakeholder: no code, file paths, status codes, or issue ids"
+        ]
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"ISS-9999 does not exist yet.\" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"ISS-9999 does not exist yet.\" | null",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"ISS-9999 does not exist yet.\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"ISS-9999 does not exist yet.\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"ISS-9999 does not exist yet.\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"ISS-9999 does not exist yet.\" | []",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "ISS-9999 does not exist in this project"
+        ]
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"ISS-9999 does not exist yet.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "ISS-9999 does not exist in this project"
+        ]
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"ISS-9999 does not exist yet.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "ISS-9999 does not exist in this project"
+        ]
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"ISS-9999 does not exist yet.\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "ISS-9999 does not exist in this project"
+        ]
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"See /projects/forge-dev/issues/0f8f4a2b-1111-4222-8333-444455556666 for the detail.\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [
+          "0f8f4a2b-1111-4222-8333-444455556666"
+        ],
+        "malformedUrlIds": [],
+        "issSeqs": [],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"See /projects/forge-dev/issues/0f8f4a2b-1111-4222-8333-444455556666 for the detail.\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"See /projects/forge-dev/issues/0f8f4a2b-1111-4222-8333-444455556666 for the detail.\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"See /projects/forge-dev/issues/0f8f4a2b-1111-4222-8333-444455556666 for the detail.\" | false",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"See /projects/forge-dev/issues/0f8f4a2b-1111-4222-8333-444455556666 for the detail.\" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"See /projects/forge-dev/issues/0f8f4a2b-1111-4222-8333-444455556666 for the detail.\" | null",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"See /projects/forge-dev/issues/0f8f4a2b-1111-4222-8333-444455556666 for the detail.\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"See /projects/forge-dev/issues/0f8f4a2b-1111-4222-8333-444455556666 for the detail.\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"See /projects/forge-dev/issues/0f8f4a2b-1111-4222-8333-444455556666 for the detail.\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"See /projects/forge-dev/issues/0f8f4a2b-1111-4222-8333-444455556666 for the detail.\" | []",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"See /projects/forge-dev/issues/0f8f4a2b-1111-4222-8333-444455556666 for the detail.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"See /projects/forge-dev/issues/0f8f4a2b-1111-4222-8333-444455556666 for the detail.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"See /projects/forge-dev/issues/0f8f4a2b-1111-4222-8333-444455556666 for the detail.\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"See /projects/forge-dev/issues/not-a-uuid for the detail.\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [
+          "not-a-uuid"
+        ],
+        "issSeqs": [],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"See /projects/forge-dev/issues/not-a-uuid for the detail.\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"See /projects/forge-dev/issues/not-a-uuid for the detail.\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"See /projects/forge-dev/issues/not-a-uuid for the detail.\" | false",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"See /projects/forge-dev/issues/not-a-uuid for the detail.\" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"See /projects/forge-dev/issues/not-a-uuid for the detail.\" | null",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"See /projects/forge-dev/issues/not-a-uuid for the detail.\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"See /projects/forge-dev/issues/not-a-uuid for the detail.\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"See /projects/forge-dev/issues/not-a-uuid for the detail.\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"See /projects/forge-dev/issues/not-a-uuid for the detail.\" | []",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "issue link id \"not-a-uuid\" is not a real issue id"
+        ]
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"See /projects/forge-dev/issues/not-a-uuid for the detail.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "issue link id \"not-a-uuid\" is not a real issue id"
+        ]
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"See /projects/forge-dev/issues/not-a-uuid for the detail.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "issue link id \"not-a-uuid\" is not a real issue id"
+        ]
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"See /projects/forge-dev/issues/not-a-uuid for the detail.\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "issue link id \"not-a-uuid\" is not a real issue id"
+        ]
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"I created a new issue for that.\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [],
+        "claimsCreation": true
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"I created a new issue for that.\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"I created a new issue for that.\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"I created a new issue for that.\" | false",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"I created a new issue for that.\" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"I created a new issue for that.\" | null",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"I created a new issue for that.\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"I created a new issue for that.\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"I created a new issue for that.\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"I created a new issue for that.\" | []",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply claims an issue was created but no forge_issues create call was made"
+        ]
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"I created a new issue for that.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"I created a new issue for that.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply claims an issue was created but no forge_issues create call was made"
+        ]
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"I created a new issue for that.\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply claims an issue was created but no forge_issues create call was made"
+        ]
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"Đã tạo một issue cho việc đó.\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [],
+        "claimsCreation": true
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"Đã tạo một issue cho việc đó.\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"Đã tạo một issue cho việc đó.\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"Đã tạo một issue cho việc đó.\" | false",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"Đã tạo một issue cho việc đó.\" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"Đã tạo một issue cho việc đó.\" | null",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"Đã tạo một issue cho việc đó.\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"Đã tạo một issue cho việc đó.\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"Đã tạo một issue cho việc đó.\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"Đã tạo một issue cho việc đó.\" | []",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply claims an issue was created but no forge_issues create call was made"
+        ]
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"Đã tạo một issue cho việc đó.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"Đã tạo một issue cho việc đó.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply claims an issue was created but no forge_issues create call was made"
+        ]
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"Đã tạo một issue cho việc đó.\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply claims an issue was created but no forge_issues create call was made"
+        ]
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"```ts\\nconst x = 1;\\n```\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"```ts\\nconst x = 1;\\n```\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"```ts\\nconst x = 1;\\n```\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"```ts\\nconst x = 1;\\n```\" | false",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply contains a code block — rephrase for a non-technical stakeholder: no code, file paths, status codes, or issue ids"
+        ]
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"```ts\\nconst x = 1;\\n```\" | true",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply contains a code block — rephrase for a non-technical stakeholder: no code, file paths, status codes, or issue ids"
+        ]
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"```ts\\nconst x = 1;\\n```\" | null",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"```ts\\nconst x = 1;\\n```\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"```ts\\nconst x = 1;\\n```\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"```ts\\nconst x = 1;\\n```\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"```ts\\nconst x = 1;\\n```\" | []",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"```ts\\nconst x = 1;\\n```\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"```ts\\nconst x = 1;\\n```\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"```ts\\nconst x = 1;\\n```\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"The fix is in packages/core/src/index.ts:44.\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"The fix is in packages/core/src/index.ts:44.\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"The fix is in packages/core/src/index.ts:44.\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"The fix is in packages/core/src/index.ts:44.\" | false",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply exposes developer detail (`packages/core/src/index.ts:44`) — rephrase for a non-technical stakeholder: no code, file paths, status codes, or issue ids"
+        ]
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"The fix is in packages/core/src/index.ts:44.\" | true",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply exposes developer detail (`packages/core/src/index.ts:44`) — rephrase for a non-technical stakeholder: no code, file paths, status codes, or issue ids"
+        ]
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"The fix is in packages/core/src/index.ts:44.\" | null",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"The fix is in packages/core/src/index.ts:44.\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"The fix is in packages/core/src/index.ts:44.\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"The fix is in packages/core/src/index.ts:44.\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"The fix is in packages/core/src/index.ts:44.\" | []",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"The fix is in packages/core/src/index.ts:44.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"The fix is in packages/core/src/index.ts:44.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"The fix is in packages/core/src/index.ts:44.\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"It is in_progress at the moment.\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"It is in_progress at the moment.\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"It is in_progress at the moment.\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"It is in_progress at the moment.\" | false",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply leaks a raw pipeline status (\"in_progress\") — rephrase for a non-technical stakeholder: describe progress in plain language instead"
+        ]
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"It is in_progress at the moment.\" | true",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply leaks a raw pipeline status (\"in_progress\") — rephrase for a non-technical stakeholder: describe progress in plain language instead"
+        ]
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"It is in_progress at the moment.\" | null",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"It is in_progress at the moment.\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"It is in_progress at the moment.\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"It is in_progress at the moment.\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"It is in_progress at the moment.\" | []",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"It is in_progress at the moment.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"It is in_progress at the moment.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"It is in_progress at the moment.\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"It is needs_info at the moment.\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"It is needs_info at the moment.\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"It is needs_info at the moment.\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"It is needs_info at the moment.\" | false",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply leaks a raw pipeline status (\"needs_info\") — rephrase for a non-technical stakeholder: describe progress in plain language instead"
+        ]
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"It is needs_info at the moment.\" | true",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply leaks a raw pipeline status (\"needs_info\") — rephrase for a non-technical stakeholder: describe progress in plain language instead"
+        ]
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"It is needs_info at the moment.\" | null",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"It is needs_info at the moment.\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"It is needs_info at the moment.\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"It is needs_info at the moment.\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"It is needs_info at the moment.\" | []",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"It is needs_info at the moment.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"It is needs_info at the moment.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"It is needs_info at the moment.\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"I will check and get back to you.\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"I will check and get back to you.\"",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply promises a future action but there is no follow-up turn — do the work now and report the result, or state exactly what is missing"
+        ]
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"I will check and get back to you.\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"I will check and get back to you.\" | false",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"I will check and get back to you.\" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"I will check and get back to you.\" | null",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"I will check and get back to you.\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"I will check and get back to you.\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"I will check and get back to you.\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"I will check and get back to you.\" | []",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"I will check and get back to you.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"I will check and get back to you.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"I will check and get back to you.\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"I'll look into it.\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"I'll look into it.\"",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply promises a future action but there is no follow-up turn — do the work now and report the result, or state exactly what is missing"
+        ]
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"I'll look into it.\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"I'll look into it.\" | false",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"I'll look into it.\" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"I'll look into it.\" | null",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"I'll look into it.\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"I'll look into it.\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"I'll look into it.\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"I'll look into it.\" | []",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"I'll look into it.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"I'll look into it.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"I'll look into it.\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"Để mình kiểm tra lại nhé.\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"Để mình kiểm tra lại nhé.\"",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply promises a future action but there is no follow-up turn — do the work now and report the result, or state exactly what is missing"
+        ]
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"Để mình kiểm tra lại nhé.\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"Để mình kiểm tra lại nhé.\" | false",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"Để mình kiểm tra lại nhé.\" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"Để mình kiểm tra lại nhé.\" | null",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"Để mình kiểm tra lại nhé.\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"Để mình kiểm tra lại nhé.\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"Để mình kiểm tra lại nhé.\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"Để mình kiểm tra lại nhé.\" | []",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"Để mình kiểm tra lại nhé.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"Để mình kiểm tra lại nhé.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"Để mình kiểm tra lại nhé.\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"Sẽ báo lại bạn sau.\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"Sẽ báo lại bạn sau.\"",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply promises a future action but there is no follow-up turn — do the work now and report the result, or state exactly what is missing"
+        ]
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"Sẽ báo lại bạn sau.\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"Sẽ báo lại bạn sau.\" | false",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"Sẽ báo lại bạn sau.\" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"Sẽ báo lại bạn sau.\" | null",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"Sẽ báo lại bạn sau.\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"Sẽ báo lại bạn sau.\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"Sẽ báo lại bạn sau.\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"Sẽ báo lại bạn sau.\" | []",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"Sẽ báo lại bạn sau.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"Sẽ báo lại bạn sau.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"Sẽ báo lại bạn sau.\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"Chưa có gì được làm cả.\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"Chưa có gì được làm cả.\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"Chưa có gì được làm cả.\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"Chưa có gì được làm cả.\" | false",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"Chưa có gì được làm cả.\" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"Chưa có gì được làm cả.\" | null",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"Chưa có gì được làm cả.\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"Chưa có gì được làm cả.\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply claims no work has been done, but authoritative progress is shipped=3, closed without shipping=1, in progress=2, not started=4, total=10 — restate using these figures"
+        ]
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"Chưa có gì được làm cả.\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply claims no work has been done, but authoritative progress is shipped=12, closed without shipping=0, in progress=0, not started=28, total=40 — restate using these figures"
+        ]
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"Chưa có gì được làm cả.\" | []",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"Chưa có gì được làm cả.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"Chưa có gì được làm cả.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"Chưa có gì được làm cả.\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"Nothing has been done yet.\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"Nothing has been done yet.\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"Nothing has been done yet.\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"Nothing has been done yet.\" | false",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"Nothing has been done yet.\" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"Nothing has been done yet.\" | null",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"Nothing has been done yet.\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"Nothing has been done yet.\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply claims no work has been done, but authoritative progress is shipped=3, closed without shipping=1, in progress=2, not started=4, total=10 — restate using these figures"
+        ]
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"Nothing has been done yet.\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply claims no work has been done, but authoritative progress is shipped=12, closed without shipping=0, in progress=0, not started=28, total=40 — restate using these figures"
+        ]
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"Nothing has been done yet.\" | []",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"Nothing has been done yet.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"Nothing has been done yet.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"Nothing has been done yet.\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"hoàn thành 3\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"hoàn thành 3\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"hoàn thành 3\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"hoàn thành 3\" | false",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"hoàn thành 3\" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"hoàn thành 3\" | null",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply states a progress figure but the authoritative snapshot could not be computed this turn — do not state any completion count or percentage; say the figures are temporarily unavailable instead"
+        ]
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"hoàn thành 3\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "stated \"3\" near \"hoàn thành\" does not match authoritative progress (shipped=0, closed without shipping=0, in progress=0, not started=0, total=0) — restate using these figures"
+        ]
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"hoàn thành 3\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"hoàn thành 3\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "stated \"3\" near \"hoàn thành\" does not match authoritative progress (shipped=12, closed without shipping=0, in progress=0, not started=28, total=40) — restate using these figures"
+        ]
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"hoàn thành 3\" | []",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"hoàn thành 3\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"hoàn thành 3\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"hoàn thành 3\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"hoàn thành 7\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"hoàn thành 7\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"hoàn thành 7\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"hoàn thành 7\" | false",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"hoàn thành 7\" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"hoàn thành 7\" | null",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply states a progress figure but the authoritative snapshot could not be computed this turn — do not state any completion count or percentage; say the figures are temporarily unavailable instead"
+        ]
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"hoàn thành 7\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "stated \"7\" near \"hoàn thành\" does not match authoritative progress (shipped=0, closed without shipping=0, in progress=0, not started=0, total=0) — restate using these figures"
+        ]
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"hoàn thành 7\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "stated \"7\" near \"hoàn thành\" does not match authoritative progress (shipped=3, closed without shipping=1, in progress=2, not started=4, total=10) — restate using these figures"
+        ]
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"hoàn thành 7\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "stated \"7\" near \"hoàn thành\" does not match authoritative progress (shipped=12, closed without shipping=0, in progress=0, not started=28, total=40) — restate using these figures"
+        ]
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"hoàn thành 7\" | []",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"hoàn thành 7\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"hoàn thành 7\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"hoàn thành 7\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"done: 3\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"done: 3\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"done: 3\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"done: 3\" | false",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"done: 3\" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"done: 3\" | null",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply states a progress figure but the authoritative snapshot could not be computed this turn — do not state any completion count or percentage; say the figures are temporarily unavailable instead"
+        ]
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"done: 3\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "stated \"3\" near \"done\" does not match authoritative progress (shipped=0, closed without shipping=0, in progress=0, not started=0, total=0) — restate using these figures"
+        ]
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"done: 3\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"done: 3\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "stated \"3\" near \"done\" does not match authoritative progress (shipped=12, closed without shipping=0, in progress=0, not started=28, total=40) — restate using these figures"
+        ]
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"done: 3\" | []",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"done: 3\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"done: 3\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"done: 3\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"completed 12 of 40\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"completed 12 of 40\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"completed 12 of 40\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"completed 12 of 40\" | false",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"completed 12 of 40\" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"completed 12 of 40\" | null",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply states a progress figure but the authoritative snapshot could not be computed this turn — do not state any completion count or percentage; say the figures are temporarily unavailable instead"
+        ]
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"completed 12 of 40\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "stated \"12\" near \"completed\" does not match authoritative progress (shipped=0, closed without shipping=0, in progress=0, not started=0, total=0) — restate using these figures"
+        ]
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"completed 12 of 40\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "stated \"12\" near \"completed\" does not match authoritative progress (shipped=3, closed without shipping=1, in progress=2, not started=4, total=10) — restate using these figures"
+        ]
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"completed 12 of 40\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"completed 12 of 40\" | []",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"completed 12 of 40\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"completed 12 of 40\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"completed 12 of 40\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"40% hoàn thành\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"40% hoàn thành\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"40% hoàn thành\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"40% hoàn thành\" | false",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"40% hoàn thành\" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"40% hoàn thành\" | null",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply states a progress figure but the authoritative snapshot could not be computed this turn — do not state any completion count or percentage; say the figures are temporarily unavailable instead"
+        ]
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"40% hoàn thành\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "stated \"40%\" near \"hoàn thành\" does not match authoritative progress (shipped=0, closed without shipping=0, in progress=0, not started=0, total=0) — restate using these figures"
+        ]
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"40% hoàn thành\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"40% hoàn thành\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "stated \"40%\" near \"hoàn thành\" does not match authoritative progress (shipped=12, closed without shipping=0, in progress=0, not started=28, total=40) — restate using these figures"
+        ]
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"40% hoàn thành\" | []",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"40% hoàn thành\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"40% hoàn thành\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"40% hoàn thành\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"10% đang làm\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"10% đang làm\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"10% đang làm\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"10% đang làm\" | false",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"10% đang làm\" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"10% đang làm\" | null",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply states a progress figure but the authoritative snapshot could not be computed this turn — do not state any completion count or percentage; say the figures are temporarily unavailable instead"
+        ]
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"10% đang làm\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "stated \"10%\" near \"đang làm\" does not match authoritative progress (shipped=0, closed without shipping=0, in progress=0, not started=0, total=0) — restate using these figures"
+        ]
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"10% đang làm\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"10% đang làm\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "stated \"10%\" near \"đang làm\" does not match authoritative progress (shipped=12, closed without shipping=0, in progress=0, not started=28, total=40) — restate using these figures"
+        ]
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"10% đang làm\" | []",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"10% đang làm\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"10% đang làm\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"10% đang làm\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"nhanh hơn 20%\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"nhanh hơn 20%\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"nhanh hơn 20%\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"nhanh hơn 20%\" | false",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"nhanh hơn 20%\" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"nhanh hơn 20%\" | null",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"nhanh hơn 20%\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"nhanh hơn 20%\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"nhanh hơn 20%\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"nhanh hơn 20%\" | []",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"nhanh hơn 20%\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"nhanh hơn 20%\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"nhanh hơn 20%\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"total 40\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"total 40\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"total 40\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"total 40\" | false",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"total 40\" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"total 40\" | null",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply states a progress figure but the authoritative snapshot could not be computed this turn — do not state any completion count or percentage; say the figures are temporarily unavailable instead"
+        ]
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"total 40\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "stated \"40\" near \"total\" does not match authoritative progress (shipped=0, closed without shipping=0, in progress=0, not started=0, total=0) — restate using these figures"
+        ]
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"total 40\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "stated \"40\" near \"total\" does not match authoritative progress (shipped=3, closed without shipping=1, in progress=2, not started=4, total=10) — restate using these figures"
+        ]
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"total 40\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"total 40\" | []",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"total 40\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"total 40\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"total 40\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"@all please look at this\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"@all please look at this\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"@all please look at this\"",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "the comment addresses the whole room (\"@all\") — carrying it would page everyone in a room that did not write it"
+        ]
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"@all please look at this\" | false",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"@all please look at this\" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"@all please look at this\" | null",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"@all please look at this\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"@all please look at this\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"@all please look at this\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"@all please look at this\" | []",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"@all please look at this\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"@all please look at this\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"@all please look at this\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"@here quick one\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"@here quick one\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"@here quick one\"",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "the comment addresses the whole room (\"@here\") — carrying it would page everyone in a room that did not write it"
+        ]
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"@here quick one\" | false",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"@here quick one\" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"@here quick one\" | null",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"@here quick one\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"@here quick one\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"@here quick one\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"@here quick one\" | []",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"@here quick one\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"@here quick one\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"@here quick one\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"ping @channel\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"ping @channel\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"ping @channel\"",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "the comment addresses the whole room (\"@channel\") — carrying it would page everyone in a room that did not write it"
+        ]
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"ping @channel\" | false",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"ping @channel\" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"ping @channel\" | null",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"ping @channel\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"ping @channel\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"ping @channel\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"ping @channel\" | []",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"ping @channel\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"ping @channel\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"ping @channel\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"an email to someone@example.com is fine\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"an email to someone@example.com is fine\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"an email to someone@example.com is fine\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"an email to someone@example.com is fine\" | false",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"an email to someone@example.com is fine\" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"an email to someone@example.com is fine\" | null",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"an email to someone@example.com is fine\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"an email to someone@example.com is fine\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"an email to someone@example.com is fine\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"an email to someone@example.com is fine\" | []",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"an email to someone@example.com is fine\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"an email to someone@example.com is fine\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"an email to someone@example.com is fine\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"line one\\nline two\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"line one\\nline two\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"line one\\nline two\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"line one\\nline two\" | false",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"line one\\nline two\" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"line one\\nline two\" | null",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"line one\\nline two\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"line one\\nline two\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"line one\\nline two\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"line one\\nline two\" | []",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"line one\\nline two\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"line one\\nline two\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"line one\\nline two\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"1) the first option\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"1) the first option\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"1) the first option\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"1) the first option\" | false",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"1) the first option\" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"1) the first option\" | null",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"1) the first option\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"1) the first option\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"1) the first option\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"1) the first option\" | []",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"1) the first option\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"1) the first option\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"1) the first option\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"Bearer sk-live-AAAABBBBCCCCDDDDEEEEFFFF0000111122223333\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"Bearer sk-live-AAAABBBBCCCCDDDDEEEEFFFF0000111122223333\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"Bearer sk-live-AAAABBBBCCCCDDDDEEEEFFFF0000111122223333\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"Bearer sk-live-AAAABBBBCCCCDDDDEEEEFFFF0000111122223333\" | false",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"Bearer sk-live-AAAABBBBCCCCDDDDEEEEFFFF0000111122223333\" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"Bearer sk-live-AAAABBBBCCCCDDDDEEEEFFFF0000111122223333\" | null",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"Bearer sk-live-AAAABBBBCCCCDDDDEEEEFFFF0000111122223333\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"Bearer sk-live-AAAABBBBCCCCDDDDEEEEFFFF0000111122223333\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"Bearer sk-live-AAAABBBBCCCCDDDDEEEEFFFF0000111122223333\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"Bearer sk-live-AAAABBBBCCCCDDDDEEEEFFFF0000111122223333\" | []",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"Bearer sk-live-AAAABBBBCCCCDDDDEEEEFFFF0000111122223333\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"Bearer sk-live-AAAABBBBCCCCDDDDEEEEFFFF0000111122223333\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"Bearer sk-live-AAAABBBBCCCCDDDDEEEEFFFF0000111122223333\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"The token is ghp_AAAABBBBCCCCDDDDEEEEFFFF0000111122223333\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"The token is ghp_AAAABBBBCCCCDDDDEEEEFFFF0000111122223333\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"The token is ghp_AAAABBBBCCCCDDDDEEEEFFFF0000111122223333\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"The token is ghp_AAAABBBBCCCCDDDDEEEEFFFF0000111122223333\" | false",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"The token is ghp_AAAABBBBCCCCDDDDEEEEFFFF0000111122223333\" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"The token is ghp_AAAABBBBCCCCDDDDEEEEFFFF0000111122223333\" | null",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"The token is ghp_AAAABBBBCCCCDDDDEEEEFFFF0000111122223333\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"The token is ghp_AAAABBBBCCCCDDDDEEEEFFFF0000111122223333\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"The token is ghp_AAAABBBBCCCCDDDDEEEEFFFF0000111122223333\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"The token is ghp_AAAABBBBCCCCDDDDEEEEFFFF0000111122223333\" | []",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"The token is ghp_AAAABBBBCCCCDDDDEEEEFFFF0000111122223333\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"The token is ghp_AAAABBBBCCCCDDDDEEEEFFFF0000111122223333\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"The token is ghp_AAAABBBBCCCCDDDDEEEEFFFF0000111122223333\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"ISS-1 and ISS-9999 in one line\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [
+          1,
+          9999
+        ],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"ISS-1 and ISS-9999 in one line\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"ISS-1 and ISS-9999 in one line\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"ISS-1 and ISS-9999 in one line\" | false",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply cites \"ISS-9999\" which was not verified this turn — rephrase for a non-technical stakeholder: no code, file paths, status codes, or issue ids"
+        ]
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"ISS-1 and ISS-9999 in one line\" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"ISS-1 and ISS-9999 in one line\" | null",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"ISS-1 and ISS-9999 in one line\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"ISS-1 and ISS-9999 in one line\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"ISS-1 and ISS-9999 in one line\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"ISS-1 and ISS-9999 in one line\" | []",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "ISS-9999 does not exist in this project"
+        ]
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"ISS-1 and ISS-9999 in one line\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "ISS-9999 does not exist in this project"
+        ]
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"ISS-1 and ISS-9999 in one line\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "ISS-9999 does not exist in this project"
+        ]
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"ISS-1 and ISS-9999 in one line\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "ISS-9999 does not exist in this project"
+        ]
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"FD-1 under a retired prefix\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [
+          1
+        ],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"FD-1 under a retired prefix\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"FD-1 under a retired prefix\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"FD-1 under a retired prefix\" | false",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"FD-1 under a retired prefix\" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"FD-1 under a retired prefix\" | null",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"FD-1 under a retired prefix\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"FD-1 under a retired prefix\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"FD-1 under a retired prefix\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"FD-1 under a retired prefix\" | []",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"FD-1 under a retired prefix\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"FD-1 under a retired prefix\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"FD-1 under a retired prefix\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "turnCreatedIssue",
+      "input": "[]",
+      "verdict": false
+    },
+    {
+      "rule": "turnCreatedIssue",
+      "input": "[{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": true
+    },
+    {
+      "rule": "turnCreatedIssue",
+      "input": "[{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": false
+    },
+    {
+      "rule": "turnCreatedIssue",
+      "input": "[{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": false
+    },
+    {
+      "rule": "screenOperatorMessage",
+      "input": "[]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenOperatorMessage",
+      "input": "[\"\"]",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "a question carries no empty prompt or option label"
+        ]
+      }
+    },
+    {
+      "rule": "screenOperatorMessage",
+      "input": "[\"   \"]",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "a question carries no empty prompt or option label"
+        ]
+      }
+    },
+    {
+      "rule": "screenOperatorMessage",
+      "input": "[\"Pick one\"]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenOperatorMessage",
+      "input": "[\"Pick one\",\"the first\",\"the second\"]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenOperatorMessage",
+      "input": "[\"Pick one\",\"line one\\nline two\"]",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "text spans more than one line, which lets it render as a second option"
+        ]
+      }
+    },
+    {
+      "rule": "screenOperatorMessage",
+      "input": "[\"Pick one\",\"1) impersonating an option\"]",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "text opens with something that reads as an option number, which collides with the list it sits in"
+        ]
+      }
+    },
+    {
+      "rule": "screenOperatorMessage",
+      "input": "[\"@all pick one\"]",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "text addresses the whole room (\"@all\") — a question is put to the people who can answer it, not broadcast"
+        ]
+      }
+    },
+    {
+      "rule": "screenOperatorMessage",
+      "input": "[\"Pick one\",\"Bearer sk-live-AAAABBBBCCCCDDDDEEEEFFFF0000111122223333\"]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    }
+  ]
+}
