@@ -1,9 +1,12 @@
-// web-v2 feature module: session (detail) — REST surface. All calls go through
-// the shared `apiClient` (no raw fetch). Routes verified against
-// `packages/core/src/agent-sessions/routes.ts` for ISS-292.
-import { apiClient, apiClientList, apiMultipart } from "@/lib/api/client";
-import type { SessionMetadata, SessionRow } from "@/features/sessions/types";
-import type { ModelTier, SessionAttachment, TurnRow, TurnsResponse } from "./types";
+// web-v2 feature module: session (detail) — REST surface for the RUN thread.
+// All calls go through the shared `apiClient` (no raw fetch). Routes verified
+// against `packages/core/src/agent-sessions/routes.ts` for ISS-292.
+//
+// cm:guard what is here is run-shaped and stays that way: reading a run's turns, sending into one, truncating and re-dispatching it, forking it, cancelling it. The chat bootstrap that used to sit beside them — create, the interactive list, the runner pin, rename, archive and delete — left with the chat surface at ISS-1004 step 5, because each named a session a person's chat was STORED in rather than a run, and a conversation is stored in `/api/conversations` now.
+
+import { apiClient, apiMultipart } from "@/lib/api/client";
+import type { SessionRow } from "@/features/sessions/types";
+import type { SessionAttachment, TurnRow, TurnsResponse } from "./types";
 
 export interface GetTurnsOpts {
   /** Cursor — a turn id; returns turns *after* it. */
@@ -16,21 +19,8 @@ export interface SendOpts {
   sessionId: string;
   message: string;
   claudeSessionId?: string | null;
-  /**
-   * Explicit runner pick (chat runner picker). Re-pins the session + dispatches
-   * this turn to this device; omit / null = reuse the session's runner or let
-   * the server auto-pick the freshest online one.
-   */
-  deviceId?: string | null;
   /** ISS-499 — ids of already-uploaded session attachments to attach to this turn. */
   attachmentIds?: string[];
-  /**
-   * ISS-718 — the model tier this turn (and every later turn of the session)
-   * runs on. Three states: omitted keeps whatever the session last picked, a
-   * tier switches to it, and an explicit `null` clears the pick so the runner's
-   * own default applies again.
-   */
-  model?: ModelTier | null;
 }
 
 export interface ForkOpts {
@@ -44,13 +34,6 @@ export interface EditTurnOpts {
   expectedEditedAt?: string | null;
 }
 
-export interface CreateSessionOpts {
-  projectId: string;
-  title?: string | null;
-  deviceId?: string | null;
-  repoPath?: string | null;
-  metadata?: SessionMetadata;
-}
 
 export const sessionApi = {
   /** `GET /api/agent-sessions/:id` — flat session row. */
@@ -64,17 +47,14 @@ export const sessionApi = {
   },
 
   /** `POST /api/agent-sessions/send` — queue a new user message to the device. */
-  send: ({ sessionId, message, claudeSessionId, deviceId, attachmentIds, model }: SendOpts) =>
+  send: ({ sessionId, message, claudeSessionId, attachmentIds }: SendOpts) =>
     apiClient<SessionRow>("/agent-sessions/send", {
       method: "POST",
       body: JSON.stringify({
         sessionId,
         message,
         ...(claudeSessionId ? { claudeSessionId } : {}),
-        ...(deviceId ? { deviceId } : {}),
         ...(attachmentIds?.length ? { attachmentIds } : {}),
-        // cm:why `!== undefined`, not truthiness — `null` is the explicit "clear the pick" value and must reach the server, which a `??` or a falsy test would silently drop
-        ...(model !== undefined ? { model } : {}),
       }),
     }),
 
@@ -112,64 +92,7 @@ export const sessionApi = {
   /** `POST /:id/cancel` — stop the in-flight turn. */
   cancel: (id: string) => apiClient<SessionRow>(`/agent-sessions/${id}/cancel`, { method: "POST" }),
 
-  /**
-   * `POST /:id/runner` — switch the chat to a runner NOW (server-side pin),
-   * instead of riding the next `send`. `deviceId: null` = Auto (clears the pin).
-   */
-  setRunner: (id: string, deviceId: string | null) =>
-    apiClient<SessionRow>(`/agent-sessions/${id}/runner`, {
-      method: "POST",
-      body: JSON.stringify({ deviceId }),
-    }),
-
   /** `POST /:id/rerun` — clone into a fresh session. */
   rerun: (id: string) => apiClient<{ id: string }>(`/agent-sessions/${id}/rerun`, { method: "POST" }),
 
-  /** `POST /api/agent-sessions` — create an interactive session (Chat bootstrap). */
-  create: ({ projectId, title, deviceId, repoPath, metadata }: CreateSessionOpts) =>
-    apiClient<SessionRow>("/agent-sessions", {
-      method: "POST",
-      body: JSON.stringify({
-        projectId,
-        ...(title !== undefined ? { title } : {}),
-        ...(deviceId !== undefined ? { deviceId } : {}),
-        ...(repoPath !== undefined ? { repoPath } : {}),
-        ...(metadata !== undefined ? { metadata } : {}),
-      }),
-    }),
-
-  /** `PATCH /:id` with just `title` — rename a conversation (ISS-465). */
-  rename: (id: string, title: string) =>
-    apiClient<SessionRow>(`/agent-sessions/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ title }),
-    }),
-
-  /**
-   * `PATCH /:id` writing `metadata: { ...existing, archived }` — soft-archive
-   * a chat (ISS-465). Caller MUST pass the row's current `metadata` so
-   * existing keys (type: 'agent', issueId, deviceId, …) are preserved — the
-   * server replaces the whole jsonb object.
-   */
-  setArchived: (id: string, archived: boolean, metadata: SessionMetadata | null) =>
-    apiClient<SessionRow>(`/agent-sessions/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ metadata: { ...(metadata ?? {}), archived } }),
-    }),
-
-  /** `DELETE /:id` — hard-delete (owner or admin only, ISS-465). */
-  remove: (id: string) =>
-    apiClient<void>(`/agent-sessions/${id}`, { method: "DELETE" }),
-
-  /**
-   * `GET /api/agent-sessions?projectId=&metadataType=agent` — list interactive
-   * `agent` sessions for a project (latest first), for the Chat resume-or-create
-   * bootstrap. Pass `archived=true` to read the archived set (ISS-465); the
-   * default omits the param so the server excludes archived chats.
-   */
-  listByType: (projectId: string, metadataType: string, pageSize = 1, archived?: boolean) => {
-    const params = new URLSearchParams({ projectId, metadataType, pageSize: String(pageSize), page: "1" });
-    if (archived === true) params.set("archived", "true");
-    return apiClientList<SessionRow>(`/agent-sessions?${params}`);
-  },
 };

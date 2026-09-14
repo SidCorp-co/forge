@@ -1,15 +1,17 @@
-// Recency grouping shared by the ISS-465 conversation-history popover
-// (`features/session/components/conversation-list.tsx`) and the ISS-698
-// cross-project Conversations list (`features/conversations/`). Extracted so
-// both surfaces agree on the exact bucket boundaries instead of drifting.
-import type { SessionRow } from "./types";
+// Recency grouping for the conversation list.
+//
+// It moved here from `features/sessions/` with ISS-1004 step 5: it was shared
+// with the chat-history popover, that popover read `agent_sessions`, and both
+// it and the session row this took went with the port.
+
 
 export type BucketKey = "today" | "yesterday" | "week" | "older";
 
-export interface Bucket {
+// cm:guard generic over the one field it reads, so the list row may carry whatever the screen needs beside it — the project it came from, today — without this module knowing about any of it.
+export interface Bucket<Row extends { updatedAt: string }> {
   key: BucketKey;
   label: string;
-  rows: SessionRow[];
+  rows: Row[];
 }
 
 const BUCKET_LABEL: Record<BucketKey, string> = {
@@ -24,8 +26,7 @@ export function bucketFor(iso: string, now: number): BucketKey {
   if (Number.isNaN(then)) return "older";
   const ageMs = now - then;
   const dayMs = 24 * 60 * 60 * 1000;
-  // "Today" / "Yesterday" honour the local calendar day so a chat from 11pm
-  // last night reads as "Yesterday", not "1d ago today".
+  // cm:why the two nearest buckets are cut on the local CALENDAR day and not on elapsed hours, so a room last spoken in at 11pm reads as "Yesterday" rather than as today
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   if (then >= todayStart.getTime()) return "today";
@@ -36,8 +37,11 @@ export function bucketFor(iso: string, now: number): BucketKey {
 
 /** Partitions `rows` into recency buckets — does NOT reorder within a bucket,
  *  so callers relying on a pre-sorted `updatedAt DESC` input keep that order. */
-export function groupByRecency(rows: SessionRow[], now = Date.now()): Bucket[] {
-  const buckets: Record<BucketKey, Bucket> = {
+export function groupByRecency<Row extends { updatedAt: string }>(
+  rows: Row[],
+  now = Date.now(),
+): Array<Bucket<Row>> {
+  const buckets: Record<BucketKey, Bucket<Row>> = {
     today: { key: "today", label: BUCKET_LABEL.today, rows: [] },
     yesterday: { key: "yesterday", label: BUCKET_LABEL.yesterday, rows: [] },
     week: { key: "week", label: BUCKET_LABEL.week, rows: [] },

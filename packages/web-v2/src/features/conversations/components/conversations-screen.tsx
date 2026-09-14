@@ -1,51 +1,45 @@
 "use client";
 
-// web-v2 workspace surface: Conversations (ISS-668, redesigned ISS-729).
-// ChatGPT/Claude/Gemini model — exactly ONE active chat at a time, full-width,
-// with a collapsible left history sidebar. Replaces the ISS-689 multi-pane
-// split-view: the center chat is rendered by the existing `ChatScreen` (not
-// `SessionScreen`) since it already handles draft→create-on-send in one mount
-// (no restart) and already gates auto-scroll on `turnsQ.isSuccess` (no folded-
-// in race). This screen owns selection + the sidebar; ChatScreen stays the
-// single source of chat rendering shared with `/projects/[slug]/agent`.
+// web-v2 workspace surface: Conversations (ISS-668, redesigned ISS-729, ported
+// to the conversation store at ISS-1004 step 5). Exactly ONE open conversation
+// at a time, full-width, with a collapsible left history sidebar.
+//
+// What changed at the port is what it reads: the sidebar and the centre pane are
+// `/api/conversations` rows now, not `agent_sessions` rows. The owner-privacy
+// filter this screen used to need — `metadataType:"agent"`, which is what
+// triggered the server's ISS-522 `eq(userId)` scoping — is gone, because the
+// conversation routes refuse a one-to-one room to anybody who is not in it
+// rather than relying on a query parameter being passed.
+
 import { useCallback, useMemo, useRef, useState } from "react";
 import { IconButton, Select, SlideOver } from "@/design";
 import { useOrgScopedProjects, useProjects } from "@/features/projects/hooks";
-import { useSessions } from "@/features/sessions/hooks";
-import { isInteractiveSession, type SessionRow } from "@/features/sessions/types";
-import { ChatScreen } from "@/features/session/components/chat-screen";
 import { usePersistedState } from "@/lib/utils/use-persisted-state";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
+import { type ListedConversation, useConversationsAcrossProjects } from "../hooks";
+import { ConversationChat } from "./conversation-chat";
 import { ConversationSidebar } from "./conversation-sidebar";
 
 const SIDEBAR_COLLAPSED_KEY = "web-v2:conversations-sidebar-collapsed";
 
 interface Selection {
-  /** Bumped only on a user-initiated pick (row click, or project pick for
-   *  New) — remounts ChatScreen. NOT bumped when a draft's first send
-   *  resolves to a real session id, so that transition stays in one mount
-   *  (no visible restart). */
+  /** Bumped only on a user-initiated pick — remounts the chat. NOT bumped when a
+   *  draft's first send resolves to a real conversation, so that transition stays
+   *  in one mount (no visible restart). */
   key: number;
   projectId: string;
-  /** `null` = fresh draft in `projectId`; set once the draft's first send
-   *  creates a real session (via `onSessionActive`), or immediately when an
-   *  existing conversation is opened from the sidebar. */
-  sessionId: string | null;
+  /** `null` = a fresh draft in `projectId`, which opens its room on the first send. */
+  conversationId: string | null;
 }
 
-/** Zero-render WS room subscription — fans the list out across every visible
- *  (org-scoped) project so a reply anywhere shows up live (mirrors the
- *  Sessions workspace tier's RoomSub pattern). */
+/** Zero-render WS room subscription, so a reply anywhere shows up live. */
 function RoomSub({ projectId }: { projectId: string }) {
   useRoom(projectRoom(projectId));
   return null;
 }
 
-/** Center-area "start a conversation" prompt. The New-conversation flow lands
- *  here inline in the main area (no SlideOver, no restart, ISS-729 AC): pick a
- *  project, then the center mounts a draft ChatScreen that creates the session
- *  on first send. */
+/** Centre-area "start a conversation" prompt: pick a project, then a draft mounts here. */
 function NewConversationPrompt({ onPick }: { onPick: (projectId: string) => void }) {
   const { projects } = useOrgScopedProjects();
   const options = projects.map((p) => ({ value: p.id, label: p.name }));
@@ -56,7 +50,7 @@ function NewConversationPrompt({ onPick }: { onPick: (projectId: string) => void
         <div>
           <p className="fg-h3">Start a conversation</p>
           <p className="fg-body-sm mt-1 text-muted">
-            Pick a project to start chatting with its agent.
+            Pick a project to start talking to its agent.
           </p>
         </div>
         <div className="w-full text-left">
@@ -77,13 +71,10 @@ function NewConversationPrompt({ onPick }: { onPick: (projectId: string) => void
 }
 
 export function ConversationsScreen() {
-  // metadataType:"agent" is REQUIRED here — it's what triggers the server's
-  // ISS-522 owner-privacy scoping (eq userId) on the cross-project branch.
-  // Without it, other org members' interactive chats (title, id, status,
-  // cost) leak into this caller-visible-projects listing.
-  const sessionsQ = useSessions({ metadataType: "agent" });
   const projectsQ = useProjects();
   const { projects: orgProjects, projectIds: orgProjectIds } = useOrgScopedProjects();
+  const projectIdList = useMemo(() => [...orgProjectIds].sort(), [orgProjectIds]);
+  const conversations = useConversationsAcrossProjects(projectIdList);
 
   const [selection, setSelection] = useState<Selection | null>(null);
   const selectionKeyRef = useRef(0);
@@ -98,23 +89,15 @@ export function ConversationsScreen() {
     return m;
   }, [projectsQ.data]);
 
-  // Hard org scope + structural chat-only filter — pipeline/pm rows never
-  // reach this surface, not just hidden by a client-side toggle (AC1).
-  const rows = useMemo(() => {
-    const all = sessionsQ.data?.items ?? [];
-    return all.filter((r) => isInteractiveSession(r) && orgProjectIds.has(r.projectId));
-  }, [sessionsQ.data, orgProjectIds]);
-
   const now = Date.now();
 
-  const openRow = useCallback((row: SessionRow) => {
+  const openRow = useCallback((row: ListedConversation) => {
     selectionKeyRef.current += 1;
-    setSelection({ key: selectionKeyRef.current, projectId: row.projectId, sessionId: row.id });
+    setSelection({ key: selectionKeyRef.current, projectId: row.projectId, conversationId: row.id });
     setMobileHistoryOpen(false);
   }, []);
 
-  // "New conversation" never auto-picks the last project (owner decision) — it
-  // clears the active chat and returns to the inline project-picker prompt.
+  // cm:guard "New conversation" clears the selection and never auto-picks the last project: picking one for somebody sends their next message into a project they did not choose
   const startNew = useCallback(() => {
     setSelection(null);
     setMobileHistoryOpen(false);
@@ -122,8 +105,25 @@ export function ConversationsScreen() {
 
   const pickProjectForNew = useCallback((projectId: string) => {
     selectionKeyRef.current += 1;
-    setSelection({ key: selectionKeyRef.current, projectId, sessionId: null });
+    setSelection({ key: selectionKeyRef.current, projectId, conversationId: null });
   }, []);
+
+  const sidebar = (inDrawer: boolean) => (
+    <ConversationSidebar
+      rows={conversations.rows}
+      nameById={nameById}
+      now={now}
+      activeConversationId={selection?.conversationId ?? undefined}
+      collapsed={inDrawer ? false : collapsed}
+      onToggleCollapse={inDrawer ? () => setMobileHistoryOpen(false) : () => setCollapsed((c) => !c)}
+      {...(inDrawer ? { onClose: () => setMobileHistoryOpen(false) } : {})}
+      onNew={startNew}
+      onOpen={openRow}
+      loading={conversations.isLoading}
+      error={conversations.error}
+      onRetry={conversations.refetch}
+    />
+  );
 
   return (
     <div className="flex min-h-dvh flex-col md:h-full md:min-h-0 md:overflow-hidden">
@@ -133,35 +133,25 @@ export function ConversationsScreen() {
 
       <header className="flex flex-none items-center justify-between gap-3 border-b border-line px-4 py-3 md:hidden">
         <h1 className="fg-h2">Conversations</h1>
-        <IconButton icon="clock" aria-label="Conversation history" onClick={() => setMobileHistoryOpen(true)} />
+        <IconButton
+          icon="clock"
+          aria-label="Conversation history"
+          onClick={() => setMobileHistoryOpen(true)}
+        />
       </header>
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        <div className="hidden md:flex md:min-h-0">
-          <ConversationSidebar
-            rows={rows}
-            nameById={nameById}
-            now={now}
-            activeSessionId={selection?.sessionId ?? undefined}
-            collapsed={collapsed}
-            onToggleCollapse={() => setCollapsed((c) => !c)}
-            onNew={startNew}
-            onOpen={openRow}
-            loading={sessionsQ.isLoading}
-            error={sessionsQ.isError ? sessionsQ.error : null}
-            onRetry={() => sessionsQ.refetch()}
-          />
-        </div>
+        <div className="hidden md:flex md:min-h-0">{sidebar(false)}</div>
 
         <div className="min-h-0 flex-1 bg-app">
           {selection ? (
-            <ChatScreen
+            <ConversationChat
               key={selection.key}
               projectId={selection.projectId}
-              activeSessionId={selection.sessionId ?? undefined}
-              initialDraft={selection.sessionId === null}
-              hideHistory
-              onSessionActive={(id) => setSelection((s) => (s ? { ...s, sessionId: id } : s))}
+              conversationId={selection.conversationId ?? undefined}
+              onConversationActive={(id) =>
+                setSelection((s) => (s ? { ...s, conversationId: id } : s))
+              }
             />
           ) : (
             <NewConversationPrompt onPick={pickProjectForNew} />
@@ -169,8 +159,6 @@ export function ConversationsScreen() {
         </div>
       </div>
 
-      {/* Mobile: history sidebar in a drawer — its own header (New + Close)
-          replaces the SlideOver's default title bar (ISS-506 pattern). */}
       <SlideOver
         open={mobileHistoryOpen}
         onClose={() => setMobileHistoryOpen(false)}
@@ -178,20 +166,7 @@ export function ConversationsScreen() {
         fitBody
         width="min(85vw, 320px)"
       >
-        <ConversationSidebar
-          rows={rows}
-          nameById={nameById}
-          now={now}
-          activeSessionId={selection?.sessionId ?? undefined}
-          collapsed={false}
-          onToggleCollapse={() => setMobileHistoryOpen(false)}
-          onClose={() => setMobileHistoryOpen(false)}
-          onNew={startNew}
-          onOpen={openRow}
-          loading={sessionsQ.isLoading}
-          error={sessionsQ.isError ? sessionsQ.error : null}
-          onRetry={() => sessionsQ.refetch()}
-        />
+        {sidebar(true)}
       </SlideOver>
     </div>
   );

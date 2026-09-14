@@ -1,24 +1,22 @@
 "use client";
 
-// web-v2 feature module: session (detail) — React Query hooks.
+// web-v2 feature module: session (detail) — React Query hooks for the RUN
+// thread. Every verb here rewrites or reads a run: its turns, its device, its
+// cancel. The chat-only verbs — create, runner pin, rename, archive, delete and
+// the interactive list — left with the chat surface at ISS-1004 step 5, and what
+// replaced them is `features/conversations/hooks.ts`.
 //
 // Query-key contract (ISS-292): the detail row is keyed `['agent-session', id]`
 // and turns `['agent-session', id, 'turns']` — exactly the keys the WS
 // event-router invalidates on `agent-session.turn.appended/.edited/.truncated`
 // (+ `agent-session.status/updated`). Pick any other prefix and the streaming
 // caret + live turn updates silently no-op. See `lib/ws/event-router.ts`.
+
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
 import { formatApiError } from "@/lib/api/error";
-import type { SessionMetadata } from "@/features/sessions/types";
 import type { TurnRow, TurnsResponse } from "./types";
-import {
-  type CreateSessionOpts,
-  type EditTurnOpts,
-  type ForkOpts,
-  type SendOpts,
-  sessionApi,
-} from "./api";
+import { type EditTurnOpts, type ForkOpts, type SendOpts, sessionApi } from "./api";
 
 /** Session detail row. Keyed `['agent-session', id]` — WS-invalidated. */
 export function useSession(id: string | undefined) {
@@ -142,102 +140,8 @@ export function useCancelSession(id: string) {
   });
 }
 
-/**
- * Runner picker "switch now" — re-pins the session server-side immediately
- * (ISS-755). `label` is the picked device's display name, used only for the
- * success toast copy; `deviceId: null` = Auto.
- */
-export function useSetSessionRunner(id: string) {
-  const invalidate = useInvalidateSession(id);
-  const { toast } = useToast();
-  const onError = useToastError();
-  return useMutation({
-    mutationFn: ({ deviceId }: { deviceId: string | null; label: string }) =>
-      sessionApi.setRunner(id, deviceId),
-    onSuccess: (_, vars) => {
-      invalidate();
-      toast({
-        title: vars.deviceId ? `Chat moved to ${vars.label}` : "Runner set to Auto",
-        tone: "success",
-      });
-    },
-    onError,
-  });
-}
-
 export function useRerunSession(id: string) {
   const onError = useToastError();
   return useMutation({ mutationFn: () => sessionApi.rerun(id), onError });
 }
 
-/** Chat bootstrap: resume the latest interactive `agent` session, else create one. */
-export function useCreateSession() {
-  const qc = useQueryClient();
-  const onError = useToastError();
-  return useMutation({
-    mutationFn: (opts: CreateSessionOpts) => sessionApi.create(opts),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["agent-sessions"] }),
-    onError,
-  });
-}
-
-// ISS-465 — conversation management mutations. Each invalidates the
-// ['agent-sessions'] family (the chat history list query is keyed
-// ['agent-sessions','chat',projectId], so the prefix matches) AND the
-// ['agent-session', id] detail family.
-
-/** Rename a conversation via PATCH title. */
-export function useRenameSession() {
-  const qc = useQueryClient();
-  const { toast } = useToast();
-  const onError = useToastError();
-  return useMutation({
-    mutationFn: ({ id, title }: { id: string; title: string }) => sessionApi.rename(id, title),
-    onSuccess: (_, vars) => {
-      qc.invalidateQueries({ queryKey: ["agent-sessions"] });
-      qc.invalidateQueries({ queryKey: ["agent-session", vars.id] });
-      toast({ title: "Renamed", tone: "success" });
-    },
-    onError,
-  });
-}
-
-/** Soft-archive / unarchive a conversation via PATCH metadata. */
-export function useArchiveSession() {
-  const qc = useQueryClient();
-  const { toast } = useToast();
-  const onError = useToastError();
-  return useMutation({
-    mutationFn: ({
-      id,
-      archived,
-      metadata,
-    }: {
-      id: string;
-      archived: boolean;
-      metadata: SessionMetadata | null;
-    }) => sessionApi.setArchived(id, archived, metadata),
-    onSuccess: (_, vars) => {
-      qc.invalidateQueries({ queryKey: ["agent-sessions"] });
-      qc.invalidateQueries({ queryKey: ["agent-session", vars.id] });
-      toast({ title: vars.archived ? "Archived" : "Restored", tone: "success" });
-    },
-    onError,
-  });
-}
-
-/** Hard-delete a conversation (owner-or-admin gated server-side). */
-export function useDeleteSession() {
-  const qc = useQueryClient();
-  const { toast } = useToast();
-  const onError = useToastError();
-  return useMutation({
-    mutationFn: (id: string) => sessionApi.remove(id),
-    onSuccess: (_, id) => {
-      qc.invalidateQueries({ queryKey: ["agent-sessions"] });
-      qc.invalidateQueries({ queryKey: ["agent-session", id] });
-      toast({ title: "Deleted", tone: "success" });
-    },
-    onError,
-  });
-}

@@ -11,7 +11,7 @@
  * one that drains them, and it asks for its own adapter's work by name.
  */
 
-import { and, asc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
 import type { ConversationAdapter, ConversationShape } from '../db/schema-conversations.js';
 import {
@@ -321,9 +321,28 @@ export async function getWindow(
 }
 
 /**
+ * This conversation's windows, oldest first, for a reader rather than a guard.
+ */
+// cm:guard it carries the SEQ RANGE and not only the decision, because the two answers a person needs are different: a guard asks what was decided lately, and a screen asks which messages a decision was about. Without the range a silence renders at the end of the thread whatever it was taken over, which is the difference between "it said nothing to THAT" and "it has said nothing since" (ISS-1004 criterion 28).
+export async function listWindowsForConversation(
+  conversationId: string,
+  limit: number,
+  tx: Executor = defaultDb,
+): Promise<ConversationWindowRow[]> {
+  const rows = await tx
+    .select(selection)
+    .from(conversationWindows)
+    .where(eq(conversationWindows.conversationId, conversationId))
+    .orderBy(desc(conversationWindows.firstSeq))
+    .limit(limit);
+  return (rows as ConversationWindowRow[]).reverse();
+}
+
+/**
  * The decisions this conversation's windows have settled on, newest first.
  */
 // cm:guard the guards READ this and store nothing of their own: a window's decision is evidence of what was decided, already written for a person to read, and a counter beside it would be a second copy that a missed write silences a room with (ISS-1004 rule 3).
+// cm:guard the timestamp comparisons are drizzle OPERATORS and never a `sql` fragment carrying a Date: a fragment's parameter is sent untyped, and `postgres` refuses a Date with "The string argument must be of type string" — so every call carrying a `since` threw, `route-window.ts` caught it, and EVERY window closed `unreachable` over a room that was never asked. It went unseen because the unit lane mocks the executor and no integration case routed a window whose guard reached this (ISS-1004, found by the web adapter's own e2e).
 export async function recentDecisions(
   conversationId: string,
   opts: { since?: Date; limit?: number } = {},
@@ -335,11 +354,11 @@ export async function recentDecisions(
     .where(
       and(
         eq(conversationWindows.conversationId, conversationId),
-        sql`${conversationWindows.closedAt} is not null`,
-        opts.since ? sql`${conversationWindows.closedAt} >= ${opts.since}` : sql`true`,
+        isNotNull(conversationWindows.closedAt),
+        opts.since ? gte(conversationWindows.closedAt, opts.since) : sql`true`,
       ),
     )
-    .orderBy(sql`${conversationWindows.closedAt} desc`)
+    .orderBy(desc(conversationWindows.closedAt))
     .limit(opts.limit ?? 20);
   return rows.flatMap((r) =>
     r.decision && r.closedAt ? [{ decision: r.decision, closedAt: r.closedAt }] : [],

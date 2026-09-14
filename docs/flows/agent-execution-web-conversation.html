@@ -1,0 +1,180 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="flow-module" content="agent-execution">
+<meta name="flow-answers" content="What happens between pressing enter in the Forge UI and an answer appearing, which four functions the browser supplies to be a conversation adapter, who may read a one-to-one room, and what the chat surface stopped being able to do when it stopped being a runner session">
+<title>Flow &middot; the Forge UI as the second conversation adapter</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; --warn:#a06a1f; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .bad { color:var(--bad); font-weight:600; }
+  .warn { color:var(--warn); font-weight:600; }
+  .ok { color:var(--acc); font-weight:600; }
+  .figure { overflow-x:auto; }
+  svg { background:#fff; border:1px solid var(--line); border-radius:4px; display:block; max-width:100%; }
+  text { font:12px ui-sans-serif,system-ui,sans-serif; fill:var(--fg); }
+  text.m { font-size:11px; fill:var(--mut); }
+  text.t { font:600 12px ui-monospace,Menlo,monospace; }
+  .box { fill:#fff; stroke:var(--line); }
+  .chan { fill:#fdf6e8; stroke:#e6d3ac; }
+  .neut { fill:#f4f6fb; stroke:#c6cfe2; }
+  .pass { fill:#eef6f1; stroke:#bcd9c8; }
+  .arrow { stroke:#1c1a17; stroke-width:1.2; fill:none; marker-end:url(#a); }
+</style>
+<main>
+
+<h1>The Forge UI is the second adapter</h1>
+<p class="sub">ISS-1002 claimed that adding a conversation transport costs four functions and one
+registration. Rocket.Chat was the first, and a claim with one instance is an assertion. This is the
+second, and the browser is a stranger enough transport to be a real test of it: it has no server to
+post to, no backlog of its own, and its speaker is already a Forge user before anything is resolved.
+Owners: <code>packages/core/src/assistant/conversation-adapter.ts</code> (the four ports),
+<code>packages/core/src/assistant/conversation-send.ts</code> (the collect, the turn inputs and the
+recovery drain), <code>packages/core/src/assistant/conversation-routes.ts</code> (the rooms and the
+send), <code>packages/web-v2/src/features/conversations/</code> (the screen).</p>
+
+<div class="rule"><strong>A conversation surface reads the conversation store, and a run surface
+reads a session.</strong> Before this, both read <code>agent_sessions</code>, so what a person
+opened was a row describing a process on a runner box and what the store recorded was read by
+nobody. The gate is the count of conversation surfaces that read a session row: it must be
+<span class="ok">zero</span>. A screen whose subject IS a run — the run thread at
+<code>features/session/components/session-screen.tsx</code>, the sessions index, the pipeline
+panels — reads a session because a session is what it is about, and keeps every run-shaped verb it
+had: fork, rerun, regenerate, per-turn edit, cancel.</div>
+
+<h2>From pressing enter to an answer</h2>
+<div class="figure">
+<svg viewBox="0 0 960 420" role="img" aria-label="Flowchart from the browser through the send route, the collector, the claim, the neutral turn and the web transport's deliver, back to the browser and the durable row">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1c1a17"/>
+    </marker>
+  </defs>
+
+  <rect class="chan" x="20" y="30" width="170" height="54" rx="5"/>
+  <text class="t" x="34" y="52">the browser</text>
+  <text class="m" x="34" y="70">ConversationChat</text>
+
+  <rect class="box" x="240" y="30" width="210" height="54" rx="5"/>
+  <text class="t" x="254" y="52">POST /:id/messages</text>
+  <text class="m" x="254" y="70">writable + in the room + one project</text>
+
+  <rect class="neut" x="500" y="30" width="200" height="54" rx="5"/>
+  <text class="t" x="514" y="52">collectInboundMessage</text>
+  <text class="m" x="514" y="70">row + window, one commit</text>
+
+  <rect class="neut" x="750" y="30" width="190" height="54" rx="5"/>
+  <text class="t" x="764" y="52">claimDueWindows</text>
+  <text class="m" x="764" y="70">this venue, settle 0</text>
+
+  <rect class="neut" x="750" y="150" width="190" height="54" rx="5"/>
+  <text class="t" x="764" y="172">routeWindow</text>
+  <text class="m" x="764" y="190">guards, then one turn</text>
+
+  <rect class="neut" x="500" y="150" width="200" height="54" rx="5"/>
+  <text class="t" x="514" y="172">runConversationTurn</text>
+  <text class="m" x="514" y="190">screened at chat-sync</text>
+
+  <rect class="pass" x="240" y="150" width="210" height="54" rx="5"/>
+  <text class="t" x="254" y="172">deliver()</text>
+  <text class="m" x="254" y="190">publish to each person's user room</text>
+
+  <rect class="pass" x="240" y="270" width="210" height="54" rx="5"/>
+  <text class="t" x="254" y="292">recordDeliveredReply</text>
+  <text class="m" x="254" y="310">the durable row + its proof</text>
+
+  <rect class="chan" x="20" y="270" width="170" height="54" rx="5"/>
+  <text class="t" x="34" y="292">the browser, again</text>
+  <text class="m" x="34" y="310">the response, and the push</text>
+
+  <rect class="box" x="500" y="270" width="200" height="54" rx="5"/>
+  <text class="t" x="514" y="292">closeWindow</text>
+  <text class="m" x="514" y="310">the decision, whatever it was</text>
+
+  <path class="arrow" d="M190,57 L238,57"/>
+  <path class="arrow" d="M450,57 L498,57"/>
+  <path class="arrow" d="M700,57 L748,57"/>
+  <path class="arrow" d="M845,84 L845,148"/>
+  <path class="arrow" d="M748,177 L702,177"/>
+  <path class="arrow" d="M500,177 L452,177"/>
+  <path class="arrow" d="M345,204 L345,268"/>
+  <path class="arrow" d="M240,297 L192,297"/>
+  <path class="arrow" d="M450,297 L498,297"/>
+  <text class="m" x="712" y="120">the window is the unit a decision is taken over</text>
+  <text class="m" x="360" y="240">the row is what a reload reads; the push is how it arrives without one</text>
+</svg>
+</div>
+
+<h2>The four functions, and what each is for a browser</h2>
+<table>
+  <tr><th>Port</th><th>What Rocket.Chat does</th><th>What the Forge UI does</th></tr>
+  <tr>
+    <td><code>resolveVenue</code></td>
+    <td>Reads the room's type off the server and keys the venue on <code>server rid tmid</code>.</td>
+    <td>Takes the room the route already read and authorized. There is no second lookup, because a
+    second lookup could only disagree with the decision that admitted the message.</td>
+  </tr>
+  <tr>
+    <td><code>resolveSpeaker</code></td>
+    <td>Resolves a chat account against <code>assistant_speaker_links</code>, and can refuse.</td>
+    <td>Cannot refuse. The speaker is the Forge user the session cookie authenticated; a refusal
+    here would be refusing the person who just signed in.</td>
+  </tr>
+  <tr>
+    <td><code>deliver</code></td>
+    <td>Posts to the room over REST, through the single outbound door.</td>
+    <td>Publishes to each live person's own <code>user:</code> room. <span class="bad">Not the
+    project room</span> — a one-to-one conversation in a project room is every member of that
+    project reading somebody else's chat, and it renders identically in the tab that asked.</td>
+  </tr>
+  <tr>
+    <td><code>fetchHistory</code></td>
+    <td>Fetches the channel or thread backlog the store has never seen.</td>
+    <td>Empty, and that is the answer rather than a stub: the store's own rows <em>are</em> this
+    transport's history, and <code>external-chat.ts</code> already hands them to the model.</td>
+  </tr>
+</table>
+
+<h2>Who may read a one-to-one room</h2>
+<div class="rule">A conversation's scope is what it is <em>about</em> — the projects its live handles
+were added for — and every member of those projects passes the role check. That is the right rule
+for a channel and the <span class="bad">wrong one</span> for one person's chat, so a
+<code>direct</code> room is read by the <strong>people in it</strong> and by nobody else, on the
+list as well as on the read. <code>agent_sessions</code> has had this fence since ISS-522; the
+conversation store never needed one because nothing read it, and the day a screen did was the day it
+became a live hole.</div>
+
+<h2>What a silence looks like, and what an unanswered message looks like</h2>
+<table>
+  <tr><th>On screen</th><th>What it is</th><th>Where it comes from</th></tr>
+  <tr><td>Nobody has answered this yet.</td><td>A window that has not closed.</td><td><code>conversation_windows.closed_at IS NULL</code></td></tr>
+  <tr><td>A named reason, with its decision beside it</td><td>A window that closed on something other than <code>answered</code>.</td><td><code>conversation_windows.decision</code></td></tr>
+  <tr><td>The agent said nothing here — &lt;reason&gt;</td><td>A turn that ran and declined.</td><td><code>conversation_messages.silence_reason</code></td></tr>
+</table>
+<p>The three are different shapes and not different wording, because wording is what a later edit
+changes without meaning to. <code>features/conversations/types.ts:threadEntries</code> owns the
+split and <code>types.test.ts</code> fails on a collapse of any two of them.</p>
+
+<h2>What the chat surface stopped being able to do</h2>
+<div class="rule"><span class="warn">A real loss, stated rather than discovered.</span> The Forge UI
+chat used to be a Claude Code session on a runner box with the repository checked out. A conversation
+turn runs in core against the provider with a read-only project toolset: it reads issues, progress,
+knowledge and memory, and it has no working tree and no shell. The persona says so in its own words,
+so the same screen cannot answer a question about a file as though it had looked. Six affordances
+went with the runner — model pick, runner pick, fork, rerun, per-turn edit, regenerate — because each
+names a <em>run</em>, and a conversation is an append-only log whose <code>appendMessages</code>
+leaves every row already in it alone. The way back is one function:
+<code>divertBeforeTurn</code> on the turn inputs, exactly as
+<code>integrations/rocketchat/turn-inputs.ts</code> uses it for the <code>agent</code> answer mode.
+Priced at <code>docs/proposals/the-forge-ui-conversation-cannot-reach-a-runner.md</code>.</div>
+
+</main>

@@ -1,11 +1,13 @@
-// ISS-729 — collapsible left history rail for the redesigned single-chat
-// Conversations page (ChatGPT/Claude/Gemini model). Presentational: owns the
-// collapsed/expanded visual + keyboard affordances only, selection/collapse
-// state lives in `ConversationsScreen`.
+// ISS-729 — collapsible left history rail for the single-conversation
+// Conversations page. Presentational: owns the collapsed/expanded visual +
+// keyboard affordances only, selection/collapse state lives in
+// `ConversationsScreen`. Reads conversations rather than sessions since
+// ISS-1004 step 5.
+
 import { Button, EmptyState, ErrorState, IconButton, SessionRowSkeleton, Tooltip } from "@/design";
-import { groupByRecency } from "@/features/sessions/grouping";
-import type { SessionRow } from "@/features/sessions/types";
 import { formatApiError } from "@/lib/api/error";
+import { groupByRecency } from "../grouping";
+import type { ListedConversation } from "../hooks";
 import { ConversationRow } from "./conversation-row";
 
 interface ProjectInfo {
@@ -14,14 +16,14 @@ interface ProjectInfo {
 }
 
 interface ConversationSidebarProps {
-  rows: SessionRow[];
+  rows: ListedConversation[];
   nameById: Map<string, ProjectInfo>;
   now: number;
-  activeSessionId?: string;
+  activeConversationId?: string;
   collapsed: boolean;
   onToggleCollapse: () => void;
   onNew: () => void;
-  onOpen: (row: SessionRow) => void;
+  onOpen: (row: ListedConversation) => void;
   loading: boolean;
   error: unknown;
   onRetry: () => void;
@@ -36,7 +38,7 @@ export function ConversationSidebar({
   rows,
   nameById,
   now,
-  activeSessionId,
+  activeConversationId,
   collapsed,
   onToggleCollapse,
   onNew,
@@ -107,8 +109,7 @@ export function ConversationSidebar({
                         key={row.id}
                         row={row}
                         project={nameById.get(row.projectId)}
-                        now={now}
-                        open={row.id === activeSessionId}
+                        open={row.id === activeConversationId}
                         onOpen={() => onOpen(row)}
                       />
                     ))}
