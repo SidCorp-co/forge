@@ -40,10 +40,16 @@ Three reasons, and the first is the only one that is about the code.
 
 ## What it costs to leave
 
-Two live answerers on one store. Each has its own toolset construction, its own venue opening, its
-own persona assembly, and only one of them is reached. A change to the fenced toolset, the provider
-resolution or the venue rules has two sites, and a reader cannot tell from either which one runs.
-That is the same shape ISS-1005 exists to collapse, one level down.
+Two live answerers on one store. Each has its own toolset construction and its own venue opening,
+and only one of them is reached. A change to the fenced toolset, the provider resolution or the
+venue rules has two sites, and a reader cannot tell from either which one runs. That is the same
+shape ISS-1005 exists to collapse, one level down.
+
+**The persona half of this is paid.** ISS-1007 moved `webConversationPersona` into
+`assistant/door-persona.ts` and pointed both web doors at it, so the two surfaces no longer assemble
+two voices — `/api/chat` also stopped answering on the one-line fallback it had been running on.
+What remains is the toolset construction, the venue opening and the provider resolution, and the
+decision below is still owed.
 
 ## Honest costs
 
@@ -53,7 +59,7 @@ The price of deciding either way, not the price of the drift.
 |---|---|
 | Keeping it, and giving the conversation route a streaming sibling | Two surfaces stay, and the second grows: the send route answers inline today because that is what lets a caller tell a delivered answer from a lost one, and a streaming reply cannot. Every one of the three "no answer yet" states on screen has to be right before a 202-and-a-push is safe, which is the same bill `the-forge-ui-conversation-cannot-reach-a-runner.md` prices for a diverted turn |
 | Removing it | `assistant/routes.ts`, `run-turn.ts` and the `chatProvider` flag go together, and `run-turn.ts` is the only SSE turn loop in the codebase — there is no second copy to reach for if streaming is wanted later. `external-chat.ts` keeps the provider resolution the two live callers use, so the resolution itself is not lost. `routes.test.ts` goes with the route, and with it the only test that exercises the flag |
-| Leaving it as it is | The drift above: two constructions of the fenced toolset, two venue openings, two persona assemblies, and a reader who cannot tell which one runs. Every change to any of the three pays twice or silently pays once |
+| Leaving it as it is | The drift above: two constructions of the fenced toolset, two venue openings, and a reader who cannot tell which one runs. Every change to either pays twice or silently pays once. The third, the persona, is no longer on this list — ISS-1007 collapsed it |
 
 ## The condition that ends this
 

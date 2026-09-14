@@ -19,7 +19,7 @@ const SUBJECT_RE = /\b([A-Z][A-Z0-9]*-\d+)\b/gu;
 /** `action` values that change a row. A refused read is not a claim about state. */
 const WRITE_ACTIONS: ReadonlySet<string> = new Set(['create', 'update', 'mark', 'unmark']);
 
-// cm:guard English and Vietnamese together, because the door with live traffic answers in Vietnamese: `rocketChatPersona` ends with "Reply concisely in Vietnamese". An English-only matcher would report ~0 on Rocket.Chat and read as "the defect is rare" when it had only gone unread (ISS-1008).
+// cm:guard English and Vietnamese together, because the door with live traffic answers in Vietnamese. The instruction is no longer in `rocketChatPersona` — ISS-1007 moved it to each project's `agentConfig.personaStyle`, which `buildSystemPrompt` appends — so the language is now per-project and there is no persona line to read it off. An English-only matcher would report ~0 on Rocket.Chat and read as "the defect is rare" when it had only gone unread (ISS-1008).
 const LANDED_RE =
   /\b(?:has|have|was|were|is|are)\s+(?:now\s+)?(?:been\s+)?(?:set|updated?|created?|moved?|changed?|marked?|closed?|opened?|filed?)\b|\bi(?:'ve|\s+have)?\s+(?:set|updated?|created?|moved?|marked?|changed?|closed?|filed?)\b|\b(?:successfully|done)\b/iu;
 

@@ -58,8 +58,10 @@ vi.mock('../db/client.js', () => ({
 vi.mock('./tools/registry.js', () => ({ buildProjectToolset: () => ({ tools: [] }) }));
 vi.mock('./tools/principal.js', () => ({ buildChatToolContext: (a: unknown) => a }));
 
-const { sendWebConversationMessage, drainWebConversationWindows, webConversationPersona } =
-  await import('./conversation-send.js');
+const { webConversationPersona } = await import('./door-persona.js');
+const { sendWebConversationMessage, drainWebConversationWindows } = await import(
+  './conversation-send.js'
+);
 
 const room = { id: 'conv-1', externalId: 'venue-1', shape: 'direct' as const };
 

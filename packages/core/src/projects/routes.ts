@@ -108,10 +108,9 @@ export const updateProjectSchema = z
     defaultDeviceId: z.uuid().nullable().optional(),
     agentConfig: z.record(z.string(), z.unknown()).nullable().optional(),
     // cm:why ISS-609 follow-up — a scoped write for the chat/RC-bot reply-style knob, so the UI never round-trips the whole `agentConfig` jsonb to change one string; `null` and `''` both clear it
-    personaStyle: z.string().trim().max(4000).nullable().optional(),
-    // ISS-727 — scoped write for `agentConfig.rocketChatAnswerMode` (the RC
-    // bot answer-engine knob: `fast` provider-chat vs `agent` runner Claude).
-    // null clears it (reverts to the `fast` default).
+    // cm:guard the cap leaves room for what migration 0245 PREPENDED — 82 characters plus a newline — because a project already at the old 4,000 came out of that migration longer than its own settings form would accept, and the field the person edits is Bot personality under Settings → Integrations → Rocket.Chat. `Dockerfile` runs the migrator before the server serves, so the widened cap and the rows it has to accept arrive together and are never observed half-applied (ISS-1007).
+    personaStyle: z.string().trim().max(4100).nullable().optional(),
+    // cm:why ISS-727 — the two values name two different ANSWERERS rather than two speeds: `fast` is the provider-chat turn this process runs, `agent` diverts the whole turn to a Claude session on a paired box. null clears it back to `fast`.
     rocketChatAnswerMode: z.enum(['fast', 'agent']).nullable().optional(),
     previewDeploy: previewDeployPatchSchema.nullable().optional(),
     webhookSecret: z.string().min(16).max(128).nullable().optional(),

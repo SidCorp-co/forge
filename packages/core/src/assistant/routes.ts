@@ -22,6 +22,7 @@ import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { PROVIDER_HISTORY_WINDOW } from './context-budget.js';
 import { appendUserMessage, openTurn, toProviderMessages } from './conversation-turn.js';
+import { webConversationPersona } from './door-persona.js';
 import { defaultChatProviderId } from './providers/bootstrap.js';
 import { resolveForProject } from './providers/registry.js';
 import { runChatTurn } from './run-turn.js';
@@ -97,7 +98,12 @@ chatRoutes.post(
 
     appendUserMessage(turn, message, { authorUserId: userId });
 
-    const systemPrompt = buildSystemPrompt({ project, appConfig: appCfg ?? null });
+    // cm:guard this door takes the SAME persona the browser's conversation route takes, and passing none is what it used to do: `system-prompt.ts`'s fallback is one sentence with no method in it, so a turn here answered without the investigate-first and issue-quality rules every other door is held to (ISS-1007).
+    const systemPrompt = buildSystemPrompt({
+      project,
+      appConfig: appCfg ?? null,
+      persona: webConversationPersona(project.name, project.slug, null),
+    });
     const providerMessages = applyTurnContext(
       [
         { role: 'system' as const, content: systemPrompt },
