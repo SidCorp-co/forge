@@ -23,6 +23,14 @@ export interface StatusAssertion {
 }
 
 // cm:guard `deployed` is NOT here and must not be added: the tracker holds a merge stamp and a status and holds no deploy fact, so a rule claiming to check a deploy would be checking nothing and reporting a pass — which is the shape of evidence this issue exists to stop producing.
+/**
+ * Is this status word half of a hyphenated compound, and so an adjective?
+ */
+// cm:guard `-` is a word boundary to `\b`, so `closed-loop`, `closed-source` and `merged-comment` each matched a status word and bound to whatever reference sat nearby — `ISS-42 adds a closed-loop check` asserted that ISS-42 was closed and refused a true sentence. A false refusal at `comment-write` costs an agent the ability to record anything on the issue it is working, which is worse than the silence this rule replaces, so the compound is skipped rather than parsed (ISS-997).
+function inCompound(clause: string, at: number, length: number): boolean {
+  return clause[at - 1] === '-' || clause[at + length] === '-';
+}
+
 const STATUS_WORDS: ReadonlyArray<readonly [RegExp, StatusClaim]> = [
   [/\b(merged|shipped|landed)\b/gi, 'merged'],
   [/\bclosed\b/gi, 'closed'],
@@ -206,6 +214,7 @@ export function extractStatusAssertions(
     for (const [wordRe, claim] of STATUS_WORDS) {
       for (const m of clause.matchAll(wordRe)) {
         const at = m.index ?? 0;
+        if (inCompound(clause, at, (m[0] as string).length)) continue;
         if (!isPredicate(clause.slice(at + (m[0] as string).length))) continue;
         const hit = bind(hits, at);
         if (hit === null) continue;

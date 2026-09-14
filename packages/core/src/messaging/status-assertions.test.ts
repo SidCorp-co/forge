@@ -53,6 +53,11 @@ describe('what it refuses to read as an assertion', () => {
       'the word used as an adjective',
       'telling it to take the issue to landed code, naming ISS-984',
     ],
+    // cm:guard `-` is a word boundary, so every one of these matched a status word before ISS-997's probe found them. They are ADJECTIVES, and refusing a true sentence at `comment-write` costs an agent the ability to record anything on the issue it is working — worse than the silence this rule replaces.
+    ['a hyphenated compound', 'ISS-996 adds a closed-loop check.'],
+    ['a hyphenated compound before the reference', 'The merged-comment door refuses ISS-996.'],
+    ['a closed-source dependency', 'ISS-996 is about a closed-source dependency.'],
+    ['a hyphen on the other side', 'ISS-996 landed-on nothing yet.'],
   ])('abstains on %s', (_kind, text) => {
     expect(read(text)).toEqual([]);
   });
