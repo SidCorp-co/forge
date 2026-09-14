@@ -58,8 +58,10 @@ vi.mock('../db/client.js', () => ({
 vi.mock('./tools/registry.js', () => ({ buildProjectToolset: () => ({ tools: [] }) }));
 vi.mock('./tools/principal.js', () => ({ buildChatToolContext: (a: unknown) => a }));
 
-const { sendWebConversationMessage, drainWebConversationWindows, webConversationPersona } =
-  await import('./conversation-send.js');
+const { webConversationPersona } = await import('./door-persona.js');
+const { sendWebConversationMessage, drainWebConversationWindows } = await import(
+  './conversation-send.js'
+);
 
 const room = { id: 'conv-1', externalId: 'venue-1', shape: 'direct' as const };
 
@@ -196,7 +198,7 @@ describe('the recovery drain', () => {
 describe('the persona', () => {
   // cm:guard the Forge UI chat WAS a runner-hosted session with the repository checked out and is now a conversation turn with neither; a persona that did not say so would answer a question about a file as though it had looked (ISS-1004 step 5).
   it('says it has no checkout and no shell', () => {
-    const persona = webConversationPersona('Alpha', 'Alice');
+    const persona = webConversationPersona('Alpha', 'alpha', 'Alice');
     expect(persona).toMatch(/no checkout of the repository and no shell/);
   });
 });

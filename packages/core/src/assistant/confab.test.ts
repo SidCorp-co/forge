@@ -37,7 +37,7 @@ describe('the measured incident', () => {
     expect(probe.claims[0]?.sentence).toContain('ISS-2');
   });
 
-  // cm:guard the door with live traffic answers in Vietnamese (`rocketChatPersona` ends with "Reply concisely in Vietnamese"), so an English-only matcher would report ~0 there and read as "the defect is rare" rather than "nobody looked" (ISS-1008)
+  // cm:guard the door with live traffic answers in Vietnamese — carried since ISS-1007 by that project's `agentConfig.personaStyle` rather than by `rocketChatPersona` — so an English-only matcher would report ~0 there and read as "the defect is rare" rather than "nobody looked" (ISS-1008)
   it('catches the same claim written in Vietnamese', () => {
     // cm:ignore CM001 — the directive below must sit on the literal's own line: `check-source-language.mjs` reads `i18n-allow` same-line only.
     const probe = detectStateConfab('ISS-2 đã được chuyển sang open.', [REFUSED_UPDATE]); // i18n-allow: that door's own replies are written this way, so the probe is judged on one

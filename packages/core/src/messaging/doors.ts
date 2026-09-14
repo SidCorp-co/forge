@@ -39,6 +39,13 @@ export const DOORS: readonly DoorPolicy[] = [
     why: 'somebody asked and is waiting; exactly one corrective retry, because each is a full model turn inside HANDLE_TIMEOUT_MS and a model that failed the guard twice does not converge on a third',
   },
   {
+    id: 'web-chat-reply',
+    cell: 'role:chat',
+    ending: 'fallback',
+    repairs: 1,
+    why: "the browser is the one venue whose reader is known to hold a role before a word is written — `conversation-routes.ts` lets nobody send without `assertProjectRole` member, `assertConversationWritable` and `assertInTheRoom`, and every later reader is re-checked by `assertConversationReadable` at the push and at the read. So this reply is screened as a report to somebody who can open the tracker and check it, and NOT at `chat-sync`, whose `public:report` cell is written for a reader who holds no role: that cell's `no-developer-detail` refuses a file path, a fenced block and a raw status word, which are three of the things a person asks the Forge UI for. One repair, for the same reason `chat-sync` declares one — it is a full model turn inside HANDLE_TIMEOUT_MS and somebody pressed enter and is waiting on it (ISS-1005)",
+  },
+  {
     id: 'escalation-synthesis',
     cell: 'public:report',
     ending: 'fallback',

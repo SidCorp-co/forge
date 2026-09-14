@@ -1,7 +1,7 @@
 <!doctype html>
 <meta charset="utf-8">
 <meta name="flow-module" content="agent-execution">
-<meta name="flow-answers" content="What happens between pressing enter in the Forge UI and an answer appearing, which four functions the browser supplies to be a conversation adapter, who may read a one-to-one room, and what the chat surface stopped being able to do when it stopped being a runner session">
+<meta name="flow-answers" content="What happens between pressing enter in the Forge UI and an answer appearing, which four functions the browser supplies to be a conversation adapter, who may read a one-to-one room, why the browser reply is screened at a door of its own rather than at the room bot's, and what the chat surface stopped being able to do when it stopped being a runner session">
 <title>Flow &middot; the Forge UI as the second conversation adapter</title>
 <style>
   :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; --warn:#a06a1f; }
@@ -82,7 +82,7 @@ had: fork, rerun, regenerate, per-turn edit, cancel.</div>
 
   <rect class="neut" x="500" y="150" width="200" height="54" rx="5"/>
   <text class="t" x="514" y="172">runConversationTurn</text>
-  <text class="m" x="514" y="190">screened at chat-sync</text>
+  <text class="m" x="514" y="190">screened at web-chat-reply</text>
 
   <rect class="pass" x="240" y="150" width="210" height="54" rx="5"/>
   <text class="t" x="254" y="172">deliver()</text>
@@ -164,12 +164,79 @@ became a live hole.</div>
 changes without meaning to. <code>features/conversations/types.ts:threadEntries</code> owns the
 split and <code>types.test.ts</code> fails on a collapse of any two of them.</p>
 
+<h2>The door the reply goes out of</h2>
+<p class="sub">Added by ISS-1005. Every other section above landed with the port; this one is the
+half the port got wrong.</p>
+<div class="rule"><span class="bad">The browser is not a room of strangers.</span> The reply first
+went out <code>chat-sync</code>, the door Rocket.Chat's inbound turn uses, because it was the
+nearest existing row. That row's cell is <code>public:report</code>, and
+<code>audiences.ts</code> defines <code>public</code> as <em>&ldquo;somebody who holds none: the
+tracker is not theirs to read&rdquo;</em>. Every sender here has passed
+<code>assertProjectRole</code> <code>member</code>, <code>assertConversationWritable</code> and
+<code>assertInTheRoom</code>, and every later reader is re-checked by
+<code>assertConversationReadable</code> at the push and at the read &mdash; so the audience is
+fenced at the moment of reading, and the reader of a web reply always holds a role.</div>
+<p>The consequence was not theoretical. <code>public:report</code> carries
+<code>no-developer-detail</code>, whose own comment reads <em>&ldquo;Developer detail put to somebody
+who holds no role and cannot act on it&rdquo;</em>, and it refuses a file path, a fenced block and a
+raw status word. Measured at <code>483ff67e</code>: <em>&ldquo;Two issues are still open and one is
+on_hold&rdquo;</em>, <em>&ldquo;That check lives in scripts/verify.mjs:12&rdquo;</em> and any reply
+carrying a snippet were all refused. <code>webConversationPersona</code> <em>instructs</em> the model
+to lead with what it found and to answer a status question with the figures &mdash; so the surface's
+own door refused its own persona's output, burned the single repair, and served the person
+<code>unverifiedFallbackReply</code>: a line saying the figures could not be reconciled, when
+nothing of the sort had happened.</p>
+<table>
+  <tr><th></th><th>chat-sync</th><th>web-chat-reply</th></tr>
+  <tr><td>Cell</td><td><code>public:report</code></td><td><code>role:chat</code></td></tr>
+  <tr><td>Reader</td><td>Holds no role; cannot open the tracker</td><td>Holds a role, by the route's
+  own checks</td></tr>
+  <tr><td><code>no-developer-detail</code> &mdash; refuses a file path, a fence, a status
+  word</td><td class="bad">yes</td><td class="ok">no &mdash; this is the whole reason the cell
+  exists</td></tr>
+  <tr><td><code>issue-references-exist</code></td><td>yes</td><td>no, for the reason
+  <code>role:report</code> drops it</td></tr>
+  <tr><td><code>status-matches-the-row</code> &mdash; a merge claim against the row</td><td
+  class="bad">no</td><td class="ok">yes</td></tr>
+  <tr><td><code>only-verified-citations</code>, <code>no-empty-promise</code>,
+  <code>progress-figures-match</code></td><td>yes</td><td class="ok">yes &mdash; carried over
+  deliberately</td></tr>
+  <tr><td>Ending, repairs</td><td><code>fallback</code>, 1</td><td><code>fallback</code>, 1 &mdash;
+  unchanged, and for the same reason: a repair is a full model turn inside
+  <code>HANDLE_TIMEOUT_MS</code> and somebody pressed enter</td></tr>
+</table>
+<div class="rule"><span class="warn">The three carried-over rules are the part that nearly went
+wrong.</span> The first cut of this change put the reply on <code>role:report</code> &mdash; the
+comment cell &mdash; and that silently dropped <code>only-verified-citations</code>,
+<code>no-empty-promise</code> and <code>progress-figures-match</code>. None of the three is about
+what the reader may be <em>shown</em>: a citation this project does not hold is wrong wherever it is
+read, a promise no later turn will keep is a property of the turn ending, and figures are checked
+against the snapshot the model was actually given. Adding them to <code>role:report</code> instead
+was not available either: <code>comments/screen.ts:screenAgentComment</code> gathers facts with no
+progress snapshot and <code>progress-figures-match</code> fails <em>closed</em> on a null one, so
+that would have refused every agent comment on the tracker. Hence a cell of its own, which reaches
+nothing else.</div>
+<p><code>chat-sync</code> is untouched and still serves Rocket.Chat. A third intent costs a row and
+no branch: nothing under <code>messaging/</code> switches on an intent value, which is the same
+property <code>audiences.ts</code> states for a third audience and the one ISS-997 built the tables
+to prove.</p>
+
 <h2>What the chat surface stopped being able to do</h2>
-<div class="rule"><span class="warn">A real loss, stated rather than discovered.</span> The Forge UI
-chat used to be a Claude Code session on a runner box with the repository checked out. A conversation
-turn runs in core against the provider with a read-only project toolset: it reads issues, progress,
-knowledge and memory, and it has no working tree and no shell. The persona says so in its own words,
-so the same screen cannot answer a question about a file as though it had looked. Six affordances
+<div class="rule"><span class="warn">A real loss, stated rather than discovered, and settled by
+ISS-1005 as accepted.</span> The Forge UI chat used to be a Claude Code session on a runner box with
+the repository checked out. A conversation turn runs in core against the provider with a fenced
+project toolset &mdash; <span class="bad">not a read-only one</span>, which this document claimed
+until ISS-1005 measured it: <code>CHAT_TOOL_ALLOWLIST</code> permits <code>forge_issues</code>
+create and update and <code>forge_comments</code> create, fenced by <code>guardIssueWrites</code>,
+which forces a created issue to <code>draft</code> so it cannot auto-triage and spawn a run, refuses
+<code>data.relations</code> outright, and lets an update reach only
+draft/waiting/needs_info/on_hold/closed. So what went is not filing or commenting &mdash; the surface
+does both. What went is the runner's own reach: editing a file, running a command, driving a
+pipeline. It reads issues, progress, knowledge and memory, and it has no working tree and no shell.
+The persona says so in its own words <em>and names where a runner still is</em>
+(<code>/projects/&lt;slug&gt;/agents</code>, which still submits to
+<code>/api/agent-sessions/send</code>), so a person who asks for a file is told what cannot be done
+and where to go instead rather than only the first. Six affordances
 went with the runner — model pick, runner pick, fork, rerun, per-turn edit, regenerate — because each
 names a <em>run</em>, and a conversation is an append-only log whose <code>appendMessages</code>
 leaves every row already in it alone. The way back is one function:

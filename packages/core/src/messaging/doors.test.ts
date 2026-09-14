@@ -9,12 +9,13 @@ const EXPECTED: ReadonlyArray<[DoorId, string, string, number | null]> = [
   ['question-ask', 'role:ask', 'refusal', null],
   ['question-delivery', 'role:ask', 'refusal', null],
   ['chat-sync', 'public:report', 'fallback', 1],
+  ['web-chat-reply', 'role:chat', 'fallback', 1],
   ['escalation-synthesis', 'public:report', 'fallback', 1],
   ['agent-chat-completion', 'public:report', 'fallback', 0],
 ];
 
 describe('the door table', () => {
-  it('is exactly these six doors — dropping one fails here', () => {
+  it('is exactly these seven doors — dropping one fails here', () => {
     expect(DOORS.map((d) => d.id)).toEqual(EXPECTED.map(([id]) => id));
   });
 
@@ -46,6 +47,28 @@ describe('the door table', () => {
     expect(new Set(reported.map((d) => ('repairs' in d ? d.repairs : -1)))).toEqual(
       new Set([0, 1]),
     );
+  });
+
+  // cm:guard the Forge UI reply is on a cell of its OWN and must not drift back onto `role:report`: ISS-1005's review caught that move dropping `only-verified-citations`, `no-empty-promise` and `progress-figures-match`, three rules that are about the turn rather than the reader, and the last of those cannot be added to `role:report` because `screenAgentComment` gathers no progress and the rule fails closed. This reds if somebody folds the two back together (ISS-1005).
+  it('reads the browser reply at a cell no other door reads', () => {
+    const chat = DOORS.filter((d) => d.cell === 'role:chat');
+    expect(chat.map((d) => d.id)).toEqual(['web-chat-reply']);
+    const spec = cellFor('role', 'chat');
+    expect(spec?.rules.map((r) => r.id)).toEqual([
+      'non-empty',
+      'status-matches-the-row',
+      'only-verified-citations',
+      'no-empty-promise',
+      'progress-figures-match',
+      'no-redacted-secret',
+    ]);
+    // cm:guard the ONE rule the move was for, asserted as absent by name rather than left to the list above to imply: `no-developer-detail` is why this cell exists, and a reader adding it back would be undoing ISS-1005 without meeting anything that says so.
+    expect(spec?.rules.map((r) => r.id)).not.toContain('no-developer-detail');
+  });
+
+  // cm:guard every door's reason is its OWN, across the whole table: a row copied from the nearest existing one is the failure the door table exists to prevent, and it reads identically to a row that was thought about (ISS-1005).
+  it('gives every door a reason no other door states', () => {
+    expect(new Set(DOORS.map((d) => d.why)).size).toBe(DOORS.length);
   });
 
   // cm:guard the two `role:ask` doors end the same way for DIFFERENT reasons, and the reasons are what the door table carries: one has the agent still on the line, the other posts into a room with nobody left to ask. One `why` shared between them would be the first step back to a policy on the cell.

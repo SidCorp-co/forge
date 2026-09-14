@@ -171,10 +171,13 @@ describe('the serialization a quoted figure came from', () => {
   });
 
   // cm:guard the uncapped shape MUST be derived, never carried: the report quotes a figure for it, and a variant list that cannot produce that figure leaves the quote unfalsifiable (ISS-983 F1)
+  // cm:edge naming -> packages/core/src/assistant/tool-catalog-cost.ts — the label below is that module's own variant key, matched WHOLE. Reword it there and this lookup returns undefined, which is the shape this line failed in when `forge_guide` made "the chat nine" wrong (ISS-1007); the label carries no count for the same reason.
   it('derives the uncapped shape, and it is larger than the capped chat one', () => {
     const catalog = measureLiveCatalog();
     const variants = new Map(catalogVariants(catalog));
-    const uncapped = variants.get('uncapped, descriptions whole — the chat nine before the cap');
+    const uncapped = variants.get(
+      'uncapped, descriptions whole — the chat allowlist before the cap',
+    );
     expect(uncapped).toBeGreaterThan(catalog.chars);
   });
 

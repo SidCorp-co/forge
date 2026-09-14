@@ -114,6 +114,38 @@
 
 ### Added
 
+- **An issue can now say what it still owes and who owes it, as fields rather than as a sentence
+  somebody has to find.** An issue accumulated everything and surfaced nothing: an issue closed
+  having landed one of the five things it named read exactly like one that landed all five, because
+  the only place that difference existed was the third line of the first of seventeen comments.
+  Everything needed was already written, accurately and in the open — it was written as prose, so no
+  screen could read it. Issues now carry typed attributes alongside their text: what is outstanding,
+  who owes it or which issue carries it forward, how much of the named work was delivered, what this
+  blocks, what it supersedes, whether a person has to decide, and what becomes irreversible if a
+  guess turns out wrong. Each one records the comment it was asserted in, so a reader lands on the
+  record that produced a claim instead of scrolling the thread that contains it. The attributes ride
+  the read an agent already makes rather than a surface of their own, and nothing about existing
+  comments changes: prose stays exactly as long as it needs to be, because brevity was never the
+  problem.
+
+  The set of attributes is open and the set of shapes is closed — a new one costs a row in a
+  registry rather than a schema change, but every key declares its type, whether it may repeat, and
+  who may write it, and a value lands in the column of its declared type. Four things are refused by
+  name rather than absorbed: an attribute nobody registered, a value of the wrong type, an empty
+  one, and — the one this was built for — an obligation written with neither an owner nor an issue
+  carrying it. An obligation nobody owns is not recorded, it is lost, which is exactly how four of
+  five promised steps left an issue without anyone noticing.
+
+- **The assistant can now look up how Forge expects a request to be worked.** There is a new guide,
+  *Answering as the assistant*, alongside the ones about dependencies, memory and deploy safety: it
+  says to investigate with the tools before answering, to do the work rather than hand it back, to
+  lead a reply with what was found, and what an issue has to contain before it is worth filing.
+  Anyone can read it at `/api/guides/answering-as-the-assistant.md`, and the assistant itself can
+  now fetch it mid-answer — guides were previously readable by every other kind of agent Forge runs
+  and not by the one talking to you. It can only read them: a chat can list guides and open one,
+  and the two actions that would let it rewrite your organisation's own integration guides are
+  refused at the door.
+
 - **Your conversations in Forge are conversations now, not sessions.** Opening a chat in the Forge
   app used to open a row describing a process on a runner box: it had a status, a device, a cost and
   a lifecycle, and what you had actually said lived inside it. The same app had a durable record of
@@ -2529,6 +2561,29 @@
 
 ### Fixed
 
+- **The assistant in the Forge web app can answer you properly again: with the figures, with the
+  file, with the snippet.** Its replies were being checked against the rules written for somebody
+  outside the project who cannot open the tracker — a reader who is owed plain language and should
+  not be handed a file path or a raw status word. But the only person who can open a conversation in
+  the web app is somebody who holds a role on that project, and the rules had never been told that.
+  So a reply naming a status, a file, or showing a few lines of a command was turned back, the
+  assistant was asked to rewrite it once, and when the rewrite naturally said the same thing, you
+  were served an apology saying it could not reconcile the project's figures — which was not what had
+  happened, and left you with nothing. Those replies now go through. In exchange the assistant is
+  held to something it was not held to before: if it tells you a piece of work is merged, that is
+  checked against what the tracker actually holds, and a claim the record does not support is stopped
+  before you read it. Replies in chat rooms outside the product are unchanged.
+
+- **The assistant now tells you where to go when you ask it for something it cannot do.** It reads
+  your project — the issues, the progress, the knowledge, the memory — and it can file a draft issue
+  and leave a comment. It cannot edit a file, run a command, or drive a pipeline: that needs a
+  session on a paired machine. It used to say only that it had no checkout, leaving you to work out
+  for yourself that the project's Agents screen still starts exactly such a session. It now says so.
+
+- **"Build Project Brain" shows you the session it just started, without a refresh.** The trigger
+  asked the app to refresh a list that no longer existed under that name, so nothing happened and
+  the new session appeared only when something else caused a reload.
+
 - **An agent reading a busy room stopped answering it, silently, and said "could not be reached".**
   The rule that paces an agent in a room it has had nothing to add to reads the decisions that room
   has already settled, since the last time a person spoke. The date it asked that question with was
@@ -4662,6 +4717,20 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+
+- **Every place the assistant answers you now works to the same method, and your project chooses the
+  language it answers in.** Until now that method lived inside the team-chat integration and nowhere
+  else: the assistant in the Forge app answered on a single sentence, and a correction to any rule
+  had to be made in two places or it was not made. The method is now one document — the guide added
+  above — and every surface reads it. Each channel keeps only what is true of it: the chat bot keeps
+  its name, who "I" refers to in a room, how it reads a discussion back, that its reply is the only
+  message you will get, and plain text with no headings; the Forge app keeps what it cannot do for
+  you and where to start a session that can. **Answering in Vietnamese was hard-coded** for every
+  project with a chat channel, whatever language that team works in; it is now the project's own
+  **Bot personality** setting under Settings → Integrations → Rocket.Chat, and every project that
+  had a working channel keeps the instruction it was getting, ahead of anything it had already
+  written there. A project that connects a channel from now on is answered in the language the
+  person wrote in, and can set a fixed one if it wants.
 
 - **The chat assistant now works the tracker through the `forge` CLI, the same way a person at a
   terminal does.** Filing through chat used to go through a tool of its own, and that tool knew

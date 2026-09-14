@@ -1,0 +1,180 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="flow-module" content="agent-execution">
+<meta name="flow-answers" content="How every door the assistant answers through gets the same method, why the method is fetched rather than copied into each channel's voice, which five things stay channel-specific and why each is false elsewhere, and what a project's own reply style is for">
+<title>Flow &middot; one method, every door</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; --warn:#a06a1f; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .bad { color:var(--bad); font-weight:600; }
+  .warn { color:var(--warn); font-weight:600; }
+  .ok { color:var(--acc); font-weight:600; }
+  .figure { overflow-x:auto; }
+  svg { background:#fff; border:1px solid var(--line); border-radius:4px; display:block; max-width:100%; }
+  text { font:12px ui-sans-serif,system-ui,sans-serif; fill:var(--fg); }
+  text.m { font-size:11px; fill:var(--mut); }
+  text.t { font:600 12px ui-monospace,Menlo,monospace; }
+  .box { fill:#fff; stroke:var(--line); }
+  .chan { fill:#fdf6e8; stroke:#e6d3ac; }
+  .neut { fill:#f4f6fb; stroke:#c6cfe2; }
+  .pass { fill:#eef6f1; stroke:#bcd9c8; }
+  .stop { fill:#fdf0f3; stroke:#e3c2cb; }
+  .arrow { stroke:var(--fg); stroke-width:1.2; fill:none; marker-end:url(#a); }
+  .dash { stroke:var(--mut); stroke-width:1.1; fill:none; stroke-dasharray:4 3; marker-end:url(#a); }
+</style>
+<main>
+
+<h1>One method, every door</h1>
+<p class="sub">An assistant answers people in more than one place — a team chat channel, the Forge web
+app, and a streaming surface with no client of its own. How it should work a request is the same
+everywhere. This is where that method lives, how it reaches a turn, and what each place is allowed to
+add. Owners: <code>packages/core/src/guides/assistant-method-guide.ts</code> (the method itself),
+<code>packages/core/src/assistant/door-persona.ts</code> (what every door opens with, and the Forge
+web app's own lines), <code>packages/core/src/integrations/rocketchat/persona.ts</code> (the chat
+channel's own lines), <code>packages/core/src/assistant/tools/registry.ts</code> (whether the method
+can be fetched at all).</p>
+
+<div class="rule"><strong>The method is stored once and fetched, never copied into each channel's
+voice.</strong> Before this, it existed in the chat adapter and nowhere else: the web app got one
+sentence, and a correction to any rule had to be made in every copy or it was not made. It is now a
+guide with a name, and every door's opening tells the model to read that name before answering. A
+sentence the guide carries appears in <span class="ok">exactly one</span> place, which is what makes
+a correction a one-line change instead of a search.</div>
+
+<h2>From a message to a turn that knows the method</h2>
+<div class="figure">
+<svg viewBox="0 0 960 470" role="img" aria-label="Flowchart: three doors each compose an opening plus their own channel lines, all pointing at one stored method the model fetches during the turn">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1c1a17"/>
+    </marker>
+  </defs>
+
+  <rect class="chan" x="20" y="16" width="270" height="58" rx="4"/>
+  <text class="t" x="34" y="38">a team chat channel</text>
+  <text class="m" x="34" y="57">one reply, no follow-up turn</text>
+
+  <rect class="chan" x="345" y="16" width="270" height="58" rx="4"/>
+  <text class="t" x="359" y="38">the Forge web app</text>
+  <text class="m" x="359" y="57">a conversation the person can continue</text>
+
+  <rect class="chan" x="670" y="16" width="270" height="58" rx="4"/>
+  <text class="t" x="684" y="38">the streaming surface</text>
+  <text class="m" x="684" y="57">same voice as the web app</text>
+
+  <path class="arrow" d="M155,74 L155,112"/>
+  <path class="arrow" d="M480,74 L480,112"/>
+  <path class="arrow" d="M805,74 L805,112"/>
+
+  <rect class="neut" x="20" y="112" width="920" height="72" rx="4"/>
+  <text class="t" x="34" y="135">every door opens the same way</text>
+  <text class="m" x="34" y="154">who the assistant is, which project it speaks for, and the NAME of the method to read before answering</text>
+  <text class="m" x="34" y="172">plus, where the door knows the product's web address, how to link an issue it cites</text>
+
+  <path class="arrow" d="M155,184 L155,222"/>
+  <path class="arrow" d="M480,184 L480,222"/>
+  <path class="arrow" d="M805,184 L805,222"/>
+
+  <rect class="box" x="20" y="222" width="270" height="96" rx="4"/>
+  <text class="t" x="34" y="245">what only a room needs</text>
+  <text class="m" x="34" y="264">its name and how it refers to itself</text>
+  <text class="m" x="34" y="281">who "I" means when somebody says it</text>
+  <text class="m" x="34" y="298">reading back, one-shot reply, plain text</text>
+
+  <rect class="box" x="345" y="222" width="270" height="96" rx="4"/>
+  <text class="t" x="359" y="245">what only the app needs</text>
+  <text class="m" x="359" y="264">who it is answering</text>
+  <text class="m" x="359" y="281">no checkout, no shell — say so</text>
+  <text class="m" x="359" y="298">where a person starts a real session</text>
+
+  <rect class="box" x="670" y="222" width="270" height="96" rx="4"/>
+  <text class="t" x="684" y="245">nothing of its own</text>
+  <text class="m" x="684" y="264">it takes the web app's lines whole,</text>
+  <text class="m" x="684" y="281">because a second voice over one store</text>
+  <text class="m" x="684" y="298">is drift nobody can resolve later</text>
+
+  <path class="arrow" d="M155,318 L155,352"/>
+  <path class="arrow" d="M480,318 L480,352"/>
+  <path class="arrow" d="M805,318 L805,352"/>
+
+  <rect class="pass" x="20" y="352" width="920" height="46" rx="4"/>
+  <text class="t" x="34" y="374">the turn runs, and the model fetches the method by name</text>
+  <text class="m" x="34" y="391">one stored document, the same bytes for every door and for anyone reading it from outside</text>
+
+  <rect class="neut" x="345" y="418" width="270" height="40" rx="4"/>
+  <text class="t" x="359" y="441">the project's own reply style</text>
+  <path class="dash" d="M480,398 L480,418"/>
+  <text class="m" x="632" y="443">a setting, not a rule — e.g. which language to answer in</text>
+</svg>
+</div>
+
+<h2>What stays with a channel, and why each is false elsewhere</h2>
+<table>
+  <tr><th>Stays</th><th>Where</th><th>Why it cannot be shared</th></tr>
+  <tr><td>Its own name, and how it refers to itself</td><td>chat channel</td>
+      <td>Nowhere else has a bot name; in the app the assistant has no handle to use.</td></tr>
+  <tr><td>Whose "I" is whose</td><td>chat channel</td>
+      <td>A room has many speakers and one message names one of them. A one-to-one conversation does not need telling.</td></tr>
+  <tr><td>Read the older discussion back</td><td>chat channel</td>
+      <td>It names a way of reading a room that only that channel has. Telling another door to use it points at something it was never given.</td></tr>
+  <tr><td>Your reply is the only message there will be</td><td>chat channel</td>
+      <td class="bad">The sharpest one. True in a room; <strong>false</strong> in the app, where a person can reply — so shared, it would forbid a clarifying question the app exists to allow.</td></tr>
+  <tr><td>Plain text, no headings</td><td>chat channel</td>
+      <td>A chat client renders none of it. The app does.</td></tr>
+  <tr><td>No checkout and no shell; where a real session starts</td><td>web app</td>
+      <td>It answers a loss that belongs to that surface, and names a screen only it has.</td></tr>
+  <tr><td>Which language to answer in</td><td class="ok">the project's settings</td>
+      <td>It is a fact about a customer, not about a channel. It used to be hard-coded in the chat adapter, so a project in any other language was answered in one it never chose.</td></tr>
+</table>
+
+<div class="rule"><strong>A guide nobody can fetch is worse than the prose it replaced.</strong> The
+method only became a pointer once the fetch was proved to work from a running door — the bot would
+otherwise have lost the method and gained an instruction it could not follow. That ordering is not a
+nicety: the two halves shipped as separate releases, and the first one changed no persona at all.</div>
+
+<div class="rule"><strong>The assistant may read guides and may not write them.</strong> The same
+mechanism that serves the method also serves each organisation's own documentation for the systems it
+connects, and those are editable. A chat session is allowed the two reading actions and refused the
+two writing ones <em>before</em> the request reaches the permission check inside — because the person
+typing in chat may well hold the permission, and "they were allowed to" is not the same question as
+"a chat window should be able to".</div>
+
+<h2>What a person sees when it goes wrong</h2>
+<table>
+  <tr><th>Symptom</th><th>What it means</th><th>What to do</th></tr>
+  <tr><td>The assistant answers thinly, or asks for something it could have looked up</td>
+      <td>It did not fetch the method this turn.</td>
+      <td>The method is a document — read it yourself at the public guides URL and say which rule it
+          skipped. That is a report about one document, not about a channel.</td></tr>
+  <tr><td>The assistant says it cannot find a guide</td>
+      <td class="bad">The pointer and the stored document disagree — a rename that reached one and not the other.</td>
+      <td>This is a defect, not a configuration: the name is written down in one place precisely so the two cannot drift.</td></tr>
+  <tr><td>Replies come back in the wrong language</td>
+      <td>The project's reply style is empty or says something else.</td>
+      <td>Set it in the project's integration settings. It is a per-project setting now; it used to be fixed for everyone.</td></tr>
+  <tr><td>A room's reply promises to come back later</td>
+      <td class="warn">The one-shot rule was not followed; there is no later turn in a room.</td>
+      <td>Report the reply. The rule is in that channel's own lines, not in the shared method.</td></tr>
+</table>
+
+<h2>Where the rules are carried</h2>
+<p class="sub">Pointers, not the rules themselves.
+<code>packages/core/src/guides/assistant-method-guide.ts</code> holds the method and the one spelling
+of its name. <code>packages/core/src/assistant/door-persona.ts</code> composes what every door opens
+with and the web app's own lines; <code>packages/core/src/integrations/rocketchat/persona.ts</code>
+holds the chat channel's five. <code>packages/core/src/assistant/tools/registry.ts</code> decides
+whether the method can be fetched and which actions a chat window may use.
+<code>packages/core/src/assistant/persona-accounting.test.ts</code> is the ledger that keeps every
+sentence in exactly one of those places.</p>
+
+</main>

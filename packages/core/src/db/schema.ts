@@ -5,6 +5,7 @@ import {
   boolean,
   check,
   customType,
+  doublePrecision,
   foreignKey,
   index,
   integer,
@@ -672,10 +673,7 @@ export const jobs = pgTable(
     status: text('status', { enum: jobStatuses }).notNull().default('queued'),
     queuedAt: timestamp('queued_at', { withTimezone: true }).notNull().defaultNow(),
     dispatchedAt: timestamp('dispatched_at', { withTimezone: true }),
-    // ISS-449 (ISS-442 C3 / I3) — runner ACK: stamped when the runner
-    // explicitly claims the job (POST /jobs/:id/ack) or, as fallback, when its
-    // first job_event arrives. The loop monitor's dispatch→ack hop reaps
-    // dispatched rows that never get one.
+    // cm:why stamped on the runner's explicit claim (POST /jobs/:id/ack), or failing that on its first job_event — the fallback is what makes the loop monitor's dispatch→ack hop able to reap a dispatched row that never got one (ISS-449).
     ackedAt: timestamp('acked_at', { withTimezone: true }),
     finishedAt: timestamp('finished_at', { withTimezone: true }),
     exitCode: integer('exit_code'),
@@ -3309,4 +3307,73 @@ export const reconcileRuns = pgTable(
 export const reconcileRunsRelations = relations(reconcileRuns, ({ one }) => ({
   project: one(projects, { fields: [reconcileRuns.projectId], references: [projects.id] }),
   skill: one(skills, { fields: [reconcileRuns.skillId], references: [skills.id] }),
+}));
+
+export const attributeValueTypes = [
+  'text',
+  'number',
+  'bool',
+  'timestamp',
+  'ref_issue',
+  'ref_user',
+  'ref_comment',
+] as const;
+export type AttributeValueType = (typeof attributeValueTypes)[number];
+
+export const attributeWriters = ['agent', 'human'] as const;
+export type AttributeWriter = (typeof attributeWriters)[number];
+
+export const attributeCardinalities = ['one', 'many'] as const;
+
+// cm:why The registry half of the EAV pair: an open set of keys with a closed set of shapes. A key costs a row here rather than a migration, and without this row there is no shape to refuse a bad write against — an unregistered EAV is prose with commas (ISS-1010).
+export const issueAttributeDefs = pgTable('issue_attribute_defs', {
+  key: text('key').primaryKey(),
+  label: text('label').notNull(),
+  valueType: text('value_type').notNull(),
+  cardinality: text('cardinality').notNull().default('one'),
+  writtenBy: text('written_by').notNull(),
+  // cm:why Which read surfaces consume the key, so a surface can ask the registry what it needs instead of hard-coding a list that drifts.
+  surfaces: jsonb('surfaces').notNull().default([]),
+  required: boolean('required').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// cm:guard Exactly one value_* column is non-null, and it is the one the key's def names. A single text column would take any of them, which is the failure this table exists to avoid — enforced at the write in attributes/write.ts, not here.
+// cm:edge contract -> packages/core/src/issues/attributes/write.ts — the value column chosen from `valueType` is the whole typing; the pair must move together.
+export const issueAttributes = pgTable(
+  'issue_attributes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    issueId: uuid('issue_id')
+      .notNull()
+      .references(() => issues.id, { onDelete: 'cascade' }),
+    key: text('key')
+      .notNull()
+      .references(() => issueAttributeDefs.key, { onDelete: 'cascade' }),
+    valueText: text('value_text'),
+    valueNum: doublePrecision('value_num'),
+    valueBool: boolean('value_bool'),
+    valueTs: timestamp('value_ts', { withTimezone: true }),
+    valueRef: uuid('value_ref'),
+    // cm:why Provenance is the whole point of the machine rail: a person drilling in lands on the record that produced the line, never on the thread.
+    sourceCommentId: uuid('source_comment_id').references(() => comments.id, {
+      onDelete: 'set null',
+    }),
+    assertedByUserId: uuid('asserted_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    assertedAt: timestamp('asserted_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    issueKeyIdx: index('issue_attributes_issue_key_idx').on(t.issueId, t.key),
+    refIdx: index('issue_attributes_ref_idx').on(t.valueRef),
+  }),
+);
+
+export const issueAttributesRelations = relations(issueAttributes, ({ one }) => ({
+  issue: one(issues, { fields: [issueAttributes.issueId], references: [issues.id] }),
+  def: one(issueAttributeDefs, {
+    fields: [issueAttributes.key],
+    references: [issueAttributeDefs.key],
+  }),
 }));

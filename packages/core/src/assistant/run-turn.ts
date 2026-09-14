@@ -29,7 +29,7 @@ export interface RunTurnArgs {
   resolved: { provider: ChatProvider; model: string };
   /** The full message array (system + history + new user turn). */
   providerMessages: ChatMessage[];
-  /** Optional read-only toolset (ISS-604). Omit for a plain completion. */
+  /** Optional toolset (ISS-604). Omit for a plain completion. */
   tools?: ChatToolset | undefined;
   /** Project slug for `chat_logs.project_slug`. */
   projectSlug: string;

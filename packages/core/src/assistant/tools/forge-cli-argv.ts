@@ -3,7 +3,7 @@
  * free of any import that reaches a database so the rules test on their own.
  */
 
-// cm:guard the reference is what carries `forge-plugin-visibility.d.ts` into every program that compiles this file, for the same reason `plugin-shape.ts` carries its own: the plugin ships plain `.mjs`, and `@forge/contracts` builds core under a tsconfig whose `include` is its own `src/**`, so without this line the import below falls to TS7016 there (ISS-1006, ISS-1009).
+// cm:guard the reference is what carries `forge-plugin-visibility.d.ts` into every program that compiles this file, because the plugin ships plain `.mjs`, and `@forge/contracts` builds core under a tsconfig whose `include` is its own `src/**`, so without this line the import below falls to TS7016 there (ISS-1006, ISS-1009).
 /// <reference path="./forge-plugin-visibility.d.ts" />
 
 import { withheldForJob } from 'forge-plugin/plugin/src/resolve/visibility.mjs';

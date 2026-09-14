@@ -38,6 +38,7 @@ flowchart LR
 | Job preparation and event stream | `core/src/jobs/`, `schema.ts:jobEvents`, `schema.ts:jobEventKinds` |
 | Agent sessions and their inbox | `core/src/agent-sessions/`, `schema.ts:agentSessions`, `schema.ts:sessionInbox` |
 | Interactive chat (not a pipeline job) | `core/src/assistant/`, `core/src/chat-logs/` |
+| The method every assistant door follows, and what each door adds | `core/src/guides/assistant-method-guide.ts` (the one copy), `core/src/assistant/door-persona.ts` (the shared opening + the web doors), `core/src/integrations/rocketchat/persona.ts` (the room's own five) |
 | The durable conversation behind a chat, and who is in it | `core/src/conversations/`, `schema-conversations.ts` |
 | A conversation over a channel, adapter by adapter | `core/src/conversations/ports.ts` (the four ports), `core/src/integrations/rocketchat/conversation-port.ts` (the first adapter) |
 | Transport | `core/src/ws/` |
