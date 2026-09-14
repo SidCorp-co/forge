@@ -87,11 +87,13 @@ export async function collectWorkEvidence(
   }
 
   const sessionContext = issueRows[0]?.sessionContext as Record<string, unknown> | null | undefined;
-  const named =
-    sessionContext && typeof sessionContext.branch === 'string' && sessionContext.branch.length > 0
-      ? sessionContext.branch
-      : null;
+  // cm:guard BOTH spellings, because the branch is recorded in one of them and read from the other: `sessionContext.branch` is what a pipeline-driven run writes, and `sessionContext.worklog.branch` is what `forge claim --pushed` writes for a run driven by hand — read from git at that moment, so it is the stronger of the two. Read only the first and the gate answers "no branch, commit or code handoff is recorded" about an issue whose branch it is holding, which is the silence this repo owns rather than the caller's mistake. Invisible until ISS-1003, because a person-owned PAT skipped this gate entirely and a hand-driven run is exactly what holds a worklog and no jobs.
+  const worklog = sessionContext?.worklog as Record<string, unknown> | null | undefined;
+  const named = [sessionContext?.branch, worklog?.branch].find(
+    (v): v is string => typeof v === 'string' && v.length > 0,
+  );
   // cm:guard the project's OWN base or production branch is not evidence of work on THIS issue — it names where work lands, not that any happened, and it is the one string an agent can write truthfully while having done nothing. Measured on forge-dev 2026-09-02: 2 issues carried `branch: 'main'` (base AND production) with zero `code`/`fix`/`drive` jobs, satisfying the gate ISS-786 built to stop exactly that claim. 17 of the 112 issues holding a branch fleet-wide named their base or production branch.
+  // cm:guard the base/production exclusion applies to whichever spelling won, unchanged: the point of ISS-786's rule is that naming where work LANDS is not evidence that work happened, and that holds identically for a branch read out of the worklog.
   const branch =
     named && named !== issueRows[0]?.baseBranch && named !== issueRows[0]?.productionBranch
       ? named
