@@ -47,12 +47,14 @@ async function bindRocketChat(
     bindingActive: boolean;
     connectionActive: boolean;
     environment?: 'staging' | 'prod';
+    /** The CONNECTION's provider, which nothing in the schema ties to the binding's. */
+    connectionProvider?: string;
   },
 ): Promise<void> {
   const connectionId = randomUUID();
   await harness.db.execute(sql`
     INSERT INTO integration_connections (id, owner_type, owner_id, provider, config, active)
-    VALUES (${connectionId}, 'user', ${args.ownerId}, 'rocketchat', '{}'::jsonb, ${args.connectionActive})
+    VALUES (${connectionId}, 'user', ${args.ownerId}, ${args.connectionProvider ?? 'rocketchat'}, '{}'::jsonb, ${args.connectionActive})
   `);
   await harness.db.execute(sql`
     INSERT INTO integration_bindings (id, connection_id, project_id, provider, environment, config, active)
@@ -154,6 +156,16 @@ describe('migration 0246 moves the reply language onto the projects that were ge
 
     await make('noBinding', {});
 
+    // cm:guard the binding's `provider` is denormalized from its connection and NOTHING in the schema makes the two agree — `integration_bindings` has no such constraint — so a rocketchat-labelled binding on a connection of another provider is a representable row, and one `buildRoutes` never reaches because it is built per rocketchat connection (ISS-1007, codex F1).
+    await bindRocketChat(harness, {
+      projectId: await make('foreignConnection', {}),
+      ownerId: user.id,
+      rids: ['GENERAL'],
+      bindingActive: true,
+      connectionActive: true,
+      connectionProvider: 'coolify',
+    });
+
     await bindRocketChat(harness, {
       projectId: await make('atTheCap', { personaStyle: 'x'.repeat(4000) }),
       ownerId: user.id,
@@ -196,6 +208,10 @@ describe('migration 0246 moves the reply language onto the projects that were ge
 
   it('leaves a project with no Rocket.Chat binding alone', async () => {
     expect(await styleOf(harness, id.noBinding as string)).toBeUndefined();
+  });
+
+  it('leaves a rocketchat-labelled binding whose connection is another provider alone', async () => {
+    expect(await styleOf(harness, id.foreignConnection as string)).toBeUndefined();
   });
 
   it('backfills a project reached by one routed binding and one that routes nothing', async () => {

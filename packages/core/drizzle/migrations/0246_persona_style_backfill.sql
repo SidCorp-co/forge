@@ -4,7 +4,10 @@
 -- WHO: exactly the projects a Rocket.Chat turn can reach. `buildRoutes` in
 -- integrations/rocketchat/routes.ts keeps a binding only when it is active and its config.rids names
 -- at least one room, and it is built per connection, so a project no active connection routes to has
--- never received one of these replies and is left alone.
+-- never received one of these replies and is left alone. BOTH provider columns are checked: the
+-- binding's is denormalized from its connection by convention and by nothing the database enforces,
+-- and `buildRoutes` reaches a binding only through a rocketchat connection, so trusting the copy
+-- alone would change a project a Rocket.Chat turn cannot reach.
 --
 -- HOW: prepended, never replacing. A project that already had a personaStyle was getting BOTH that
 -- text and the persona's language line; dropping either half would be a change nobody asked for.
@@ -38,6 +41,7 @@ WHERE position(
     JOIN integration_connections c ON c.id = b.connection_id
     WHERE b.project_id = p.id
       AND b.provider = 'rocketchat'
+      AND c.provider = 'rocketchat'
       AND b.active
       AND c.active
       AND jsonb_typeof(b.config -> 'rids') = 'array'

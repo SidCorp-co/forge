@@ -230,7 +230,7 @@ const LEDGER: readonly Claim[] = [
   {
     id: 'bot-name',
     owner: 'rocketchatOnly',
-    clauses: ['Your name in this channel is', 'Refer to yourself as', 'never as'],
+    clauses: ['Your name in this channel is', 'Refer to yourself as', 'or "the system"'],
     origin: 'kept',
   },
   {
@@ -380,9 +380,11 @@ describe('the persona claim ledger', () => {
     for (const claim of LEDGER) {
       for (const [owner, text] of Object.entries(FRAGMENTS) as Array<[Owner, string]>) {
         if (owner === claim.owner) continue;
-        expect(flat(text), `${claim.id} leaked into ${owner}`).not.toContain(
-          flat(claim.clauses[0]),
-        );
+        for (const clause of claim.clauses) {
+          expect(flat(text), `${claim.id} leaked "${clause}" into ${owner}`).not.toContain(
+            flat(clause),
+          );
+        }
       }
     }
   });
@@ -435,8 +437,18 @@ describe('what each door says, read off the real text', () => {
     expect(persona).toContain('call rocketchat_history before concluding');
   });
 
-  it('omits the issue-link line when no web origin is available', () => {
+  it('omits the issue-link line when the door knows no project slug', () => {
     const lines = assistantOpening({ projectName: 'Alpha', venue: 'somewhere' });
     expect(lines.join('\n')).not.toContain('include its web link');
+  });
+
+  // cm:guard the SLUG alone gates the line and an absent origin yields a root-relative path, asserted here because the regression is invisible in the other direction: a condition reading `webBaseUrl && projectSlug` leaves both web doors, which pass no origin, silently never told to link an issue at all, and every other case in this file passes an origin (ISS-1007, codex F3).
+  it('still tells a door with no origin to link an issue, root-relative', () => {
+    const lines = assistantOpening({
+      projectName: 'Alpha',
+      venue: 'somewhere',
+      projectSlug: 'alpha',
+    });
+    expect(lines.join('\n')).toContain('/projects/alpha/issues/<documentId>');
   });
 });
