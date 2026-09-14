@@ -84,6 +84,14 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			}
 			return;
 		}
+		// cm:edge contract -> packages/core/src/assistant/conversation-adapter.ts — the `deliver` half of the Forge UI's conversation transport publishes this into each person's own user room; the name and the payload are settled there, and a rename on either side leaves the open thread correct only after a reload (ISS-1004 step 5).
+		case "conversation.message": {
+			if (data?.conversationId) {
+				qc.invalidateQueries({ queryKey: ["conversations", data.conversationId] });
+			}
+			qc.invalidateQueries({ queryKey: ["conversations", "list"] });
+			return;
+		}
 		case "agent-session.created":
 		case "agent-session.updated":
 		case "agent-session.status":
@@ -332,9 +340,10 @@ export function replayOnReconnect(qc: QueryClient): void {
 	qc.invalidateQueries({ queryKey: ["projects"] });
 	// ISS-291 — refresh the sessions index after a dropped connection.
 	qc.invalidateQueries({ queryKey: ["agent-sessions"] });
-	// ISS-292 — refresh any open conversation detail (`['agent-session', id, …]`)
-	// so a session viewed across a reconnect re-pulls its turns + status.
+	// cm:why a run thread open across a reconnect re-pulls its turns and its status here, because every live update it has is an invalidation it may have missed (ISS-292)
 	qc.invalidateQueries({ queryKey: ["agent-session"] });
+	// cm:guard an open conversation is replayed here or not at all: its reply arrives as ONE `conversation.message` frame, so a dropped frame leaves the answer invisible until something else refetches (ISS-1004)
+	qc.invalidateQueries({ queryKey: ["conversations"] });
 	// ISS-307 — refresh the cross-project Attention inbox + rail count after a
 	// dropped connection (its buckets ride issue/job/notification events above).
 	qc.invalidateQueries({ queryKey: ["attention"] });

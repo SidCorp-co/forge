@@ -23,6 +23,7 @@ import { agentRoutes } from './agents/routes.js';
 import { memoryModelRoutes } from './app-config/memory-model-routes.js';
 import { appConfigRoutes } from './app-config/routes.js';
 import { conversationRoutes } from './assistant/conversation-routes.js';
+import { registerWebConversationAdapter } from './assistant/conversation-send.js';
 import { speakerLinkMeRoutes, speakerLinkProjectRoutes } from './assistant/identity/routes.js';
 import { bootstrapChatProviders } from './assistant/providers/bootstrap.js';
 import { chatRoutes } from './assistant/routes.js';
@@ -469,6 +470,8 @@ if (isMain) {
   if (isEnabled('chatProvider')) {
     bootstrapChatProviders();
   }
+  // cm:guard the Forge UI is a conversation ADAPTER and registers like one — one call, which is the whole of what ISS-1002 claimed a second adapter costs the store, and this line is the first payment of it. The call is `assistant/`'s own so that this file reaches no module it did not already (ISS-1004 step 5).
+  registerWebConversationAdapter();
   bootstrapRunnerAdapters();
   await registerStaleDetector();
   await registerIntegrationsHealthSweep();

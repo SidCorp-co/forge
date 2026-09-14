@@ -15,9 +15,9 @@ import {
   type Command,
   type Crumb,
 } from "@/design";
-import { ChatScreen } from "@/features/session/components/chat-screen";
-import { ChatDock } from "@/features/session/components/chat-dock";
-import { useChatDock } from "@/features/session/use-chat-dock";
+import { ConversationChat } from "@/features/conversations/components/conversation-chat";
+import { ConversationDock } from "@/features/conversations/components/conversation-dock";
+import { useConversationDock } from "@/features/conversations/use-conversation-dock";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { useAuth } from "@/providers/auth-provider";
 import { useToast } from "@/providers/toast-provider";
@@ -106,9 +106,9 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   // project/Workspace (ISS-685). False from the TopBar menu button.
   const [mobileNavProjectFirst, setMobileNavProjectFirst] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  // Global Agent Chat dock (ISS-500) — open state + docked width, persisted
-  // per tab (see useChatDock).
-  const { chatOpen, setChatOpen, chatWidth, setChatWidth } = useChatDock();
+  // cm:why the dock's open state and width are per TAB and not per account: opening a conversation in one tab must not pop the panel open in every other one, which is what `useConversationDock`'s `syncTabs: false` buys (ISS-500)
+  // cm:guard the SAME conversation surface is mounted TWICE below and the two are kept exclusive by width alone — the overlay inside the content column is `md:hidden`, `ConversationDock` is `hidden md:flex` — so a breakpoint changed on one and not the other mounts both and a person types into whichever React rendered second
+  const { chatOpen, setChatOpen, chatWidth, setChatWidth } = useConversationDock();
   const mainRef = useRef<HTMLElement>(null);
   // Hover-open coordination for the expanded-rail project switcher: the trigger
   // (NavRail) and the panel (ProjectFlyout) are siblings, so the open + close
@@ -444,11 +444,6 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
           <NotificationsBell open={notificationsOpen} onClose={closeNotifications} />
         </div>
 
-        {/* Global Agent Chat — opened from the header "Ask agent" action, scoped
-            to the active (or last-visited) project so it works from any screen.
-            Below md it's a SlideOver overlay; on desktop it's the docked split
-            panel rendered as a sibling of this content column (see ChatDock
-            below), so the content reflows beside it rather than being covered. */}
         {railProject && (
           <div className="md:hidden">
             <SlideOver
@@ -459,11 +454,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
               fitBody
               hideHeader
             >
-              <ChatScreen
-                projectId={railProject.id}
-                onClose={() => setChatOpen(false)}
-                initialDraft
-              />
+              <ConversationChat projectId={railProject.id} onClose={() => setChatOpen(false)} />
             </SlideOver>
           </div>
         )}
@@ -487,12 +478,8 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         </main>
       </div>
 
-      {/* Desktop split-view dock — a resizable right column beside the content,
-          Chrome-side-panel style (the content column above shrinks via flex).
-          Self-hides below md (ChatDock is `hidden md:flex`); the mobile overlay
-          SlideOver inside the content column covers small screens instead. */}
       {railProject && chatOpen && (
-        <ChatDock
+        <ConversationDock
           projectId={railProject.id}
           width={chatWidth}
           onWidthChange={setChatWidth}

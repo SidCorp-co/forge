@@ -35,6 +35,8 @@ const PRESENTATION_AND_MAPPING: Record<string, string> = {
   'orgs/agent-accounts.ts': 'an org admin reads and sets an agent’s label',
   'orgs/service.ts': 'the org member list returns it beside the address',
   'issues/actor-resolution.ts': 'the label an activity row is rendered by',
+  'assistant/conversation-routes.ts':
+    'the name a person’s own message is attributed by in a conversation transcript, which is a label read by whoever opens the room and by the model answering in it — it addresses nobody and resolves nothing',
 };
 
 /**

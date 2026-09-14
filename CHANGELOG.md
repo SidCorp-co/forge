@@ -114,6 +114,27 @@
 
 ### Added
 
+- **Your conversations in Forge are conversations now, not sessions.** Opening a chat in the Forge
+  app used to open a row describing a process on a runner box: it had a status, a device, a cost and
+  a lifecycle, and what you had actually said lived inside it. The same app had a durable record of
+  every conversation the agent has anywhere — in a chat channel, in the app — and no screen read it.
+  The Conversations page, the docked panel and the mobile chat now read that record. One consequence
+  you will see immediately: **when the agent says nothing, the conversation says why.** A message it
+  read and had nothing to add to, a room it is deliberately pacing itself in, a room where nobody has
+  spoken for a day, a reply it could not send — each now appears in the thread with its own reason,
+  and a message nothing has got to yet says exactly that instead of looking the same as all of them.
+
+- **A one-to-one conversation is now read by the people in it.** A conversation belongs to the
+  projects it is about, and until it was on screen, that was the only question asked before showing
+  it to somebody — so every member of a project could have read every one-to-one chat in it. A
+  one-to-one room is now shown to the people who are in it, in the list as well as on the page, and
+  refused to everybody else by name.
+
+- **Chats with the agent are named by what you asked.** A new conversation takes its name from the
+  first thing you say in it, cut to fit the list, so a page of them reads as a page of subjects
+  rather than a page of "New conversation". Renaming one still wins, and nothing renames a
+  conversation twice.
+
 - **An agent reads the rooms it is in, instead of waiting to be called by name.** Until now a
   Rocket.Chat bot answered in a channel only when a message carried its name. A question asked
   without naming anyone was never seen — not ignored, not queued: never read at all. The bot now
@@ -1925,6 +1946,18 @@
 
 ### Removed
 
+- **The chat surface no longer runs on a runner, and six things went with that.** A conversation in
+  the Forge app used to be a full agent session on a runner machine, with the project's code checked
+  out beside it. It is now a conversation the agent answers from what it can read about the project —
+  its issues, what has shipped and what has not, what it has been told and what it remembers. The
+  agent says so itself when you ask it about a file, rather than guessing at one. What went with the
+  runner: choosing which model answers, choosing which machine answers, branching a conversation at a
+  message, re-running it, editing something you already said, and asking for a different answer to
+  the same question. All six describe a run rather than a conversation, and all six are still there
+  on a run: open a session from the sessions list and they are unchanged. If the chat you want is the
+  one that can read the code, that is written up for whoever picks it up, with what it would take.
+
+
 - **The `forge-*` comment components are gone; a body is markdown, or plain HTML.** Bodies could be
   written in a vocabulary of typed elements — `<forge-review>`, `<forge-plan>`, `<forge-blocked>`
   and a dozen more — a project could require one of them at a given stage, and a Composer menu
@@ -2462,6 +2495,16 @@
   set is now 59.
 
 ### Fixed
+
+- **An agent reading a busy room stopped answering it, silently, and said "could not be reached".**
+  The rule that paces an agent in a room it has had nothing to add to reads the decisions that room
+  has already settled, since the last time a person spoke. The date it asked that question with was
+  sent to the database in a form the driver refuses, so the question never got an answer — and
+  because every failure while deciding is recorded as *"the agent could not be reached"*, every
+  answer in every room came out as that instead. Nothing in the app said otherwise and no test could
+  see it: the only lane that exercised this rule handed it a pretend database that accepts anything.
+  Found by the first thing that ran the whole path against a real one.
+
 
 - **An issue whose branch the tracker is holding is no longer told it has no branch.** The check
   that refuses to move an issue on with nothing recorded against it reads the branch from one

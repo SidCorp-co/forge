@@ -1,0 +1,100 @@
+/**
+ * The Forge UI as a conversation adapter: four functions, and nothing else.
+ *
+ * ISS-1002 claimed a second adapter is `resolveVenue`, `resolveSpeaker`,
+ * `deliver` and `fetchHistory`. This file is that claim paid: the browser is a
+ * venue like any other room, a signed-in reader is a speaker who needs no
+ * directory lookup, and the one outbound door is the socket their tab is
+ * already holding.
+ *
+ * It lives beside `conversation-routes.ts` rather than under `integrations/`
+ * for the reason that file gives: `transport-free.test.ts` refuses an adapter
+ * tree that reads the store, and the Forge UI's own adapter surface is the
+ * exception that never had to be carved because it was never put there.
+ */
+
+import { randomUUID } from 'node:crypto';
+import { listParticipants } from '../conversations/participants.js';
+import type {
+  ConversationAdapterPorts,
+  ConversationHistoryMessage,
+  ConversationVenue,
+  DeliveryReceipt,
+  ScreenedMessage,
+} from '../conversations/ports.js';
+import { findConversation } from '../conversations/store.js';
+import type { ConversationShape } from '../db/schema-conversations.js';
+import { roomManager } from '../ws/room-manager.js';
+import { userRoom } from '../ws/rooms.js';
+import type { SpeakerResolution } from './identity/speaker-link.js';
+
+/** What the Forge UI hands the ports: the room it already read, and who is typing in it. */
+export interface WebConversationFrame {
+  conversation: { id: string; externalId: string; shape: ConversationShape };
+  /** The project whose handle answers here — the room's binding, already authorized by the route. */
+  projectId: string;
+  /** The signed-in reader. */
+  userId: string;
+}
+
+/**
+ * The event a browser learns a reply by.
+ */
+// cm:edge contract -> packages/web-v2/src/lib/ws/event-router.ts — the other half is the case that appends this payload to the open thread; a rename here without one there leaves the screen correct only after a reload.
+export const WEB_CONVERSATION_EVENT = 'conversation.message';
+
+/**
+ * The Forge UI's four ports.
+ */
+// cm:guard `web` is already a legal `conversations.adapter` value and has been since ISS-1001, so registering this adapter is one `registerConversationTransport` call and no migration — which is the property `ports.test.ts` asserts and this file is the first real instance of (ISS-1004 step 5).
+export const webConversationPorts: ConversationAdapterPorts<WebConversationFrame> = {
+  adapter: 'web',
+
+  // cm:guard the venue is built from the room the route already read and its shape is NOT re-decided here: the route authorized the caller against that exact row, and a second read that disagreed would answer under a binding nobody checked.
+  async resolveVenue(frame: WebConversationFrame): Promise<ConversationVenue | null> {
+    return {
+      adapter: 'web',
+      externalId: frame.conversation.externalId,
+      shape: frame.conversation.shape,
+      projectId: frame.projectId,
+    };
+  },
+
+  // cm:guard no directory lookup, because there is nothing to look up: every other adapter resolves a transport's own account to a Forge user and can fail, and this one is handed the Forge user by the session cookie that authenticated the request. A speaker port that could refuse here would be refusing the person who just signed in.
+  async resolveSpeaker(frame: WebConversationFrame): Promise<SpeakerResolution> {
+    return { linked: true, userId: frame.userId };
+  },
+
+  // cm:guard the push goes to each PERSON's own user room and never to the project room: a `direct` web conversation is one person's chat, `user:` is the one room prefix `ws/server.ts:canSubscribe` grants to that user alone, and a project-room fan-out would hand every member of the project the text of a room they are not in.
+  // cm:guard zero open sockets is NOT an undelivered reply and must never be reported as one: the durable row `recordDeliveredReply` writes immediately after this is what the person reads when they next open the room, and the push is only how they see it without reloading. A transport whose delivery can fail is one whose window closes `undetermined`; this one's cannot, and that is a property of the browser being the venue rather than a shortfall being hidden.
+  async deliver(venue: ConversationVenue, message: ScreenedMessage): Promise<DeliveryReceipt> {
+    const conversation = await findConversation('web', venue.externalId);
+    if (!conversation) {
+      throw new Error(
+        `web conversations: no conversation is open at web venue "${venue.externalId}", so there is no room to deliver into — the conversation was deleted while its turn was running`,
+      );
+    }
+    const messageId = randomUUID();
+    const people = await listParticipants(conversation.id);
+    let sockets = 0;
+    for (const person of people) {
+      if (person.kind !== 'person' || !person.userId) continue;
+      sockets += roomManager.publish(userRoom(person.userId), {
+        event: WEB_CONVERSATION_EVENT,
+        data: {
+          conversationId: conversation.id,
+          messageId,
+          role: 'assistant',
+          content: message.text,
+          problems: message.problems,
+        },
+      });
+    }
+    return { messageId, sockets } as DeliveryReceipt & { sockets: number };
+  },
+
+  // cm:guard EMPTY, and deliberately: every other adapter's history is a backlog the transport holds and the store has never seen, and this transport holds none — the conversation's own rows ARE the browser's history, and `external-chat.ts` already reads them for the turn. Returning anything here would be reading the store twice and showing the model its own transcript a second time.
+  async fetchHistory(): Promise<ConversationHistoryMessage[]> {
+    return [];
+  },
+};

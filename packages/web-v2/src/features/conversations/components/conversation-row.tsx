@@ -1,42 +1,37 @@
-// ISS-698 — compact conversation-list row shared by desktop (list column) and
-// mobile (stacked cards). Replaces the 4-column `<Table>` whose overflow-hidden
-// wrapper clipped Project/Status/Updated at the default 360px list width —
-// this template fits both 360px and 375px by design, with the project glyph
-// carrying the "which project" signal a bare title couldn't.
-import { ProjectMark, StatusChip } from "@/design";
+// One row of the conversation list — the template that fits both a 360px list
+// column and a 375px phone, with the project glyph carrying the "which project"
+// signal a bare title cannot (ISS-698).
+//
+// It reads a conversation now rather than a session (ISS-1004 step 5). What went
+// with the session row: the status chip and the awaiting-reply weight, both of
+// which described a RUN's lifecycle. A conversation has no status — it has what
+// was last said in it and when.
+
+import { ProjectMark } from "@/design";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
-import { conversationTitle } from "@/features/session/components/conversation-list";
-import {
-  deriveSessionDisplayStatus,
-  isAwaitingReply,
-  statusToChip,
-  type SessionRow,
-} from "@/features/sessions/types";
 import { formatRelativeTime } from "@/lib/utils/format";
+import type { ListedConversation } from "../hooks";
+import { conversationTitle } from "../types";
 
 interface ProjectInfo {
   name: string;
   slug: string;
 }
 
-interface ConversationRowProps {
-  row: SessionRow;
+export function ConversationRow({
+  row,
+  project,
+  open,
+  onOpen,
+}: {
+  row: ListedConversation;
   project: ProjectInfo | undefined;
-  now: number;
-  /** Already open as a desktop pane (ISS-689) — this IS the row's single
-   *  "open" signal (border + bg-hover), replacing the old MonoTag "Open"
-   *  badge so each row carries exactly one status signal (the StatusChip). */
+  /** Already the open conversation — the row's single "open" signal. */
   open?: boolean;
   onOpen: () => void;
-}
-
-export function ConversationRow({ row, project, now, open, onOpen }: ConversationRowProps) {
-  const waiting = isAwaitingReply(row);
-  const display = deriveSessionDisplayStatus(row, now);
-  const chipStatus = waiting ? "waiting" : statusToChip(display);
+}) {
   const glyph = projectGlyph(project?.slug ?? row.projectId);
   const initials = projectInitials(project?.name ?? "?");
-  const secondaryLine = row.lastMessagePreview?.trim() || project?.name || "No preview yet";
 
   return (
     <button
@@ -48,20 +43,15 @@ export function ConversationRow({ row, project, now, open, onOpen }: Conversatio
       }`}
     >
       <ProjectMark tint={glyph.tint} ink={glyph.ink} initials={initials} size={22} />
-
       <div className="min-w-0 flex-1">
-        <span className={`fg-body-sm block truncate ${waiting ? "font-semibold text-fg" : "text-fg"}`}>
-          {conversationTitle(row)}
+        <span className="fg-body-sm block truncate text-fg">{conversationTitle(row)}</span>
+        <span className="fg-caption block truncate text-subtle">
+          {project?.name ?? "Unknown project"}
         </span>
-        <span className="fg-caption block truncate text-subtle">{secondaryLine}</span>
       </div>
-
-      <div className="flex flex-none flex-col items-end gap-0.5">
-        <span className="fg-caption whitespace-nowrap font-mono text-subtle">
-          {formatRelativeTime(row.updatedAt)}
-        </span>
-        <StatusChip status={chipStatus} domain="session" size="sm" />
-      </div>
+      <span className="fg-caption flex-none whitespace-nowrap font-mono text-subtle">
+        {formatRelativeTime(row.updatedAt)}
+      </span>
     </button>
   );
 }
