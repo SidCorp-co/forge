@@ -62,11 +62,12 @@ const HELD = {
 /**
  * A status asserted of a named issue, checked against that issue's own row.
  */
+// cm:guard the `shape` names the RECORD-FIRST remedy ahead of the reword, because the common case is an agent that genuinely did the thing and is reporting it a moment before it stamps the mark. Telling that agent only to reword would have it write a weaker sentence about work that really did merge, instead of putting the tracker right — and a contract that makes the record worse to satisfy itself is the failure this issue names.
 // cm:guard the grammar behind this ABSTAINS by default and that is the point, not a shortfall: it is high precision and low recall by choice, because a false refusal is a tax on every agent in the fleet while a missed claim is the state the tracker was already in. Widening it to catch more claims is how this rule becomes the thing it was built to prevent.
 export const STATUS_MATCHES_THE_ROW: MessageRule = {
   id: 'status-matches-the-row',
   shape:
-    'state the status the tracker holds, or say what you did without claiming the tracker’s word for it',
+    'record it on the tracker first and then say so, or say what you did without claiming the tracker’s word for it',
   example: 'The branch is pushed and the PR is open; nothing is merged yet.',
   needs: ['prefixes', 'issue-rows'],
   check: (text, f) => {

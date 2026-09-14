@@ -13,6 +13,7 @@ import {
   encodeCommentCursor,
 } from '../../comments/cursor.js';
 import { pgConstraintName, pgErrorCode } from '../../comments/error-mapping.js';
+import { messageRefused } from '../../comments/screen.js';
 import {
   type CommentThreadRow,
   deleteComment,
@@ -25,7 +26,6 @@ import {
 import type { CommentAttachmentLite } from '../../comments/tree.js';
 import { env } from '../../config/env.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../../lib/authz.js';
-import { MessageRefusedError } from '../../messaging/contract.js';
 import { hooks } from '../../pipeline/hooks.js';
 import { markUntrusted } from '../../prompt/sanitize.js';
 import {
@@ -150,8 +150,9 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
     try {
       return await run(principal, input);
     } catch (err) {
-      if (err instanceof BodyInvalidError || err instanceof MessageRefusedError) {
-        throw new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
+      const refusal = err instanceof BodyInvalidError ? err : messageRefused(err);
+      if (refusal) {
+        throw new Error(`BAD_REQUEST: ${refusal.code}: ${refusal.message}`);
       }
       throw err;
     }

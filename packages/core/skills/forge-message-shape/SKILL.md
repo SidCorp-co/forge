@@ -66,6 +66,13 @@ for when you want to know why something was refused.
 | `no-room-broadcast` | as above, with a different reason: carrying a comment into a room pages everyone in a room that did not write it |
 | `no-redacted-secret` | as above |
 
+**If you have just merged or closed something, stamp the tracker before you say so.** That is the
+refusal's first suggestion and not a formality: the rule reads the row, so a comment reporting a
+merge a moment before the mark is written is refused for a claim that is about to be true. Recording
+it first makes the claim true and the comment passes unchanged. The alternative the refusal offers —
+saying what you did without claiming the tracker's word for it — is for when you genuinely cannot
+stamp it.
+
 `issue-references-exist` is deliberately **not** in this cell. Measured on this
 project: 6 of 391 comments in an 18-issue sample cite a `forge-plugin` key,
 which CLAUDE.md's own carve-out *requires* an agent to do. A reference this

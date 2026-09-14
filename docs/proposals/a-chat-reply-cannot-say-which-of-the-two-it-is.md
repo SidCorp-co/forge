@@ -68,3 +68,16 @@ rule refused it — but it is the wrong rule, and no rewrite of the message will
 one.
 
 The condition that ends this: a product decision on question 1 above.
+
+## Honest costs
+
+The price of the fix proposed above — an intent declared by whoever composes a chat turn — not the
+price of the shortfall it closes.
+
+| Cost | What it takes |
+|---|---|
+| Every composer of a chat turn gains a field it must fill | The chat-sync reply, the escalation synthesis and the runner session's final message each have to say which of the two they are. A composer that gets it wrong is refused by rules meant for the other kind, and the refusal will read as a false positive to whoever hits it. |
+| The wrong default is silent, and there is no safe one | Defaulting to `report` keeps today's behaviour and keeps today's bug. Defaulting to `ask` drops `no-empty-promise` from every chat reply — the rule that stops an agent committing to work nothing will hold it to. Either default is a decision that hides itself. |
+| A second ask surface to keep coherent with question rounds | A question round has a park, a deadline, a max-rounds ending and an answer that resumes the work. A chat ask has none of them. Building one means two ways of asking a person for something, which ISS-997 explicitly declined to merge — so this either duplicates that machinery or leaves chat asks untracked. |
+| An unanswered chat ask becomes work stopped with nothing watching it | Nothing sweeps a chat thread the way `owedRounds` sweeps question rounds. Until something does, an ask that nobody answers is indistinguishable from a reply that needed none. |
+| The reserved cell cannot simply be deleted to avoid all this | Deleting it is itself the product decision (question 1), and it forecloses a room agent that can ask. The cost of keeping it reserved is one cell in the table that no door reaches, which every reader of `cells.ts` has to be told about. |

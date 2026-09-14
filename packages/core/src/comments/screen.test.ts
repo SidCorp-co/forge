@@ -111,7 +111,7 @@ describe('what the refusal hands back', () => {
     tracker([{ issSeq: 42, status: 'in_progress', mergedAt: null }]);
     const message = await refusalOf('ISS-42 is merged.');
     expect(message).toContain('rule: status-matches-the-row');
-    expect(message).toContain('shape: state the status the tracker holds');
+    expect(message).toContain('shape: record it on the tracker first and then say so');
     expect(message).toContain('for example: The branch is pushed and the PR is open');
   });
 

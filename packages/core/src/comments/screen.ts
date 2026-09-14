@@ -48,3 +48,11 @@ export function rethrowMessageRefused(err: unknown): never {
   if (mapped) throw mapped;
   throw err;
 }
+
+/**
+ * The screen's refusal, as the `{ code, message }` a caller is told by name.
+ */
+// cm:guard this predicate exists so a caller does NOT have to import the messaging module to recognise a refused claim. `forge-comments.ts` reaches seven modules with that import and six is the fan-out limit, and widening `.arch.json` to make it fit would be paying the check instead of the design — the comments domain owns "what a refused comment looks like to my callers", which is what this is (ISS-997).
+export function messageRefused(err: unknown): { code: string; message: string } | null {
+  return err instanceof MessageRefusedError ? { code: err.code, message: err.message } : null;
+}
