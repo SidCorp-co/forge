@@ -1,5 +1,5 @@
 /**
- * The four situations, and the rules each is read against.
+ * The five situations, and the rules each is read against.
  *
  * A cell holds its rules and NOTHING else. How many times a message may be
  * repaired, and what happens when it cannot be, belong to the door — see
@@ -65,6 +65,21 @@ const SHIPPED: readonly CellSpec[] = [
     ],
     true,
   ),
+
+  /**
+   * The assistant's reply to somebody holding a role, in a Forge UI room.
+   */
+  // cm:guard this is `public:report` MINUS two rules and PLUS two, and each of the four is the difference between the two readers rather than a preference. Dropped: `no-developer-detail`, because its own comment reads "developer detail put to somebody who holds no role and cannot act on it" and this reader holds one — it refused a file path, a fenced block and a raw status word, which are three of the things a person opens the Forge UI to ask for, while the persona instructs the model to produce exactly those (ISS-1005). Dropped: `issue-references-exist`, for the reason `role:report` drops it. Added: `status-matches-the-row`, because a reader who CAN act on a merge claim is the reader a false one costs something; and `non-empty`, which `public:report` got from its own list.
+  // cm:guard KEPT from `public:report`, and the reason each survived the move is that none of the three is about what the reader may be shown: `only-verified-citations` catches an id this project does not hold, which is an error wherever it is read; `no-empty-promise` catches a promise no later turn will keep, and a chat turn ends — that is the turn's lifecycle and not the reader's role; `progress-figures-match` checks figures against the snapshot THIS turn was shown, and `external-chat.ts` computes one unconditionally every turn. Dropping any of them was the regression ISS-1005's own review caught before it shipped.
+  // cm:guard NOT folded into `role:report` by adding these rules there, and the reason is measured rather than tidy: `comments/screen.ts:screenAgentComment` gathers facts with no `progress`, and `progress-figures-match` fails CLOSED on a null snapshot — so adding it to that cell refuses every agent comment on the tracker. A cell of its own costs one row and reaches nothing else.
+  cell(ROLE_HOLDER, 'chat', [
+    NON_EMPTY,
+    STATUS_MATCHES_THE_ROW,
+    ONLY_VERIFIED_CITATIONS,
+    NO_EMPTY_PROMISE,
+    PROGRESS_FIGURES_MATCH,
+    NO_REDACTED_SECRET,
+  ]),
 
   /** A reply to somebody with no role, who cannot open the tracker to check it. */
   cell(NO_ROLE, 'report', [

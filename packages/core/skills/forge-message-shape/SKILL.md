@@ -1,6 +1,6 @@
 ---
 name: forge-message-shape
-description: "The shape every agent-written message to a person must have before Forge will accept it: the two intents, the two audiences, the four cells they make, the rules each cell holds, and the six doors those cells are read at. Read this when a write was refused with a rule id, before writing a comment or a question round, or before adding a rule or a door. Triggers on: /forge-message-shape, my comment was refused, MESSAGE_REFUSED, QUESTION_MESSAGE_REFUSED, what shape does a comment need, message screen, audience and intent."
+description: "The shape every agent-written message to a person must have before Forge will accept it: the three intents, the two audiences, the five cells they make, the rules each cell holds, and the seven doors those cells are read at. Read this when a write was refused with a rule id, before writing a comment or a question round, or before adding a rule or a door. Triggers on: /forge-message-shape, my comment was refused, MESSAGE_REFUSED, QUESTION_MESSAGE_REFUSED, what shape does a comment need, message screen, audience and intent."
 user_invocable: true
 ---
 
@@ -33,12 +33,13 @@ who reads them and what they claim, not by the transport that carries them.
 - `public` (no role) — somebody with no role. They cannot check a claim, cannot
   open an issue you name, and cannot act on a detail about our internals.
 
-Two by two makes **four cells**, and a cell is the only thing that holds rules:
+Two audiences and three intents make **five cells** — the pairs are sparse, not a filled grid — and a cell is the only thing that holds rules:
 
 | cell | what it is |
 |---|---|
 | `role:ask` | a question put to somebody who can answer it |
 | `role:report` | a comment on an issue, read by the person who decides |
+| `role:chat` | the assistant's reply to somebody holding a role, in a Forge UI room |
 | `public:ask` | **reserved** — see the bottom of this page |
 | `public:report` | a reply to somebody who cannot open the tracker to check it |
 
@@ -79,6 +80,29 @@ which CLAUDE.md's own carve-out *requires* an agent to do. A reference this
 project does not hold is most likely another project's, so it is not judged. A
 status **asserted of** an issue this project does hold still is.
 
+### `role:chat`
+
+| rule | what it asks |
+|---|---|
+| `non-empty` | there is text |
+| `status-matches-the-row` | as in `role:report` |
+| `only-verified-citations` | every issue key named is a real issue of this project |
+| `no-empty-promise` | no commitment to do something later — a chat turn ends, and nothing will come back to keep it |
+| `progress-figures-match` | figures quoted match the progress snapshot this turn was shown |
+| `no-redacted-secret` | as above |
+
+This is `public:report` with two rules dropped and two added, and each of the
+four is the difference between the two readers. `no-developer-detail` is gone
+because this reader holds a role and can act on what it refuses — a file path, a
+fenced block, a raw status word are three of the things a person opens the Forge
+UI to ask for. `issue-references-exist` is gone for the reason `role:report`
+drops it. `status-matches-the-row` and `non-empty` are added.
+
+The three that carried over did so because none of them is about what the reader
+may be shown: a citation this project does not hold is wrong wherever it is read,
+a promise no later turn will keep is a property of the turn ending, and figures
+are checked against the snapshot the model was actually given.
+
 ### `public:report`
 
 | rule | what it wants |
@@ -116,7 +140,7 @@ differ — at one, the agent is still on the line; at another, the message posts
 minutes later with nobody left to ask. A repair count on the cell would have to
 be right for both and can only be right for one.
 
-So the count lives on the **door**. There are six.
+So the count lives on the **door**. There are seven.
 
 | door | cell | ending | repairs |
 |---|---|---|---|
@@ -124,6 +148,7 @@ So the count lives on the **door**. There are six.
 | `question-ask` | `role:ask` | refusal | — |
 | `question-delivery` | `role:ask` | refusal | — |
 | `chat-sync` | `public:report` | fallback | 1 |
+| `web-chat-reply` | `role:chat` | fallback | 1 |
 | `escalation-synthesis` | `public:report` | fallback | 1 |
 | `agent-chat-completion` | `public:report` | fallback | 0 |
 
@@ -134,6 +159,18 @@ what broke *is* the answer.
 **fallback** — somebody asked and is waiting, so something must be said. The door
 takes up to its repair count of corrective retries; if those are spent, one fixed
 fallback message is posted. Never more than two repairs anywhere.
+
+`public:report` is what the door/cell split is for: three doors on one cell, one
+ending, two different repair counts. No single number on the cell could have been
+right for all three.
+
+The Forge UI reply is at `role:chat` and **not** at `chat-sync`, and the
+difference is who is reading. Nobody opens a conversation in the Forge web app
+without holding a role on that project, and every later reader is re-checked
+before the room is shown to them. So that reader can open the tracker and check —
+which makes `no-developer-detail`, a rule written for somebody who cannot, the
+wrong rule for them: it refuses a file path, a fenced block and a raw status word,
+which are three of the things a person opens the Forge UI to ask for.
 
 `agent-chat-completion` declares **0** deliberately: the runner session whose
 final message it carries has already ended, so there is no turn to ask again, and

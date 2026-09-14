@@ -14,7 +14,15 @@ import type { MessageFacts } from './facts.js';
 export type Audience = string;
 
 /** What it asks of them. `ask` — the reader owes an answer. `report` — nothing. */
-export type Intent = 'ask' | 'report';
+/**
+ * What the message asks of its reader. `ask` wants an answer back; `report`
+ * and `chat` do not. `chat` is a report the reader is WAITING on, in a room
+ * they opened — and it is separate from `report` because the turn behind it
+ * ends: figures have a snapshot to be checked against, and a promise of a
+ * later action has nothing that will keep it.
+ */
+// cm:guard a third intent is a ROW rather than surgery, the same way `audiences.ts` says a third audience is: nothing under this directory switches on an intent value, so `chat` costs a cell row and a door row and no branch anywhere. The pairs are SPARSE and always were — `public:ask` ships reserved with no door — so the set is five cells over two audiences and three intents rather than a filled grid (ISS-1005).
+export type Intent = 'ask' | 'report' | 'chat';
 
 export type CellId = `${string}:${Intent}`;
 
@@ -102,6 +110,7 @@ export type DoorId =
   | 'question-ask'
   | 'question-delivery'
   | 'chat-sync'
+  | 'web-chat-reply'
   | 'escalation-synthesis'
   | 'agent-chat-completion';
 

@@ -106,8 +106,7 @@ chatRoutes.post(
       { pageContext },
     );
 
-    // cm:guard the toolset is read-only and fenced to this project and this caller — a chat turn is
-    // not an authorization to write, and widening it here widens it for every room.
+    // cm:guard the toolset is NOT read-only, and this annotation claimed it was until ISS-1005 measured it: `CHAT_TOOL_ALLOWLIST` permits `forge_issues` create and update and `forge_comments` create. The fence is `guardIssueWrites`, not absence — a created issue is forced to `draft` so it cannot auto-triage and spawn a run, `data.relations` is refused outright, and an update may only reach draft/waiting/needs_info/on_hold/closed. That fence is per-key and open by default, which is how `data.relations` reached chat unclassified in ISS-868 and let a room retract a live `blocks` edge, so a key added to the allowlist is unfenced until somebody classifies it. It IS fenced to this project and this caller, and widening it here widens it for every room.
     const tools = buildProjectToolset(
       buildChatToolContext({ userId, projectId, projectSlug: project.slug }),
     );
