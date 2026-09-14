@@ -24,6 +24,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { baseRev } from './lib/baseline-ratchet.mjs';
+import { selectionFor } from './lib/changed-selection.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -98,15 +99,16 @@ for (const pkg of PACKAGES) {
   const all = listFiles(pkg, []);
   const always = alwaysLane(pkg);
   const selected = listFiles(pkg, ['--changed', base]);
-  const union = [...new Set([...selected, ...always])].sort();
-
-  if (selected.length === 0) {
-    console.log(`  ${pkg.name}: no test reached by this change — skipped`);
+  const { skip, full, files, union } = selectionFor({
+    all,
+    selected,
+    always,
+    fullRunShare: FULL_RUN_SHARE,
+  });
+  if (skip) {
+    console.log(`  ${pkg.name}: no test reached by this change and none reads the tree — skipped`);
     continue;
   }
-
-  const full = union.length > all.length * FULL_RUN_SHARE;
-  const files = full ? [] : union;
   console.log(
     full
       ? `  ${pkg.name}: ${union.length}/${all.length} files selected — over ${FULL_RUN_SHARE * 100}%, running the whole suite instead`

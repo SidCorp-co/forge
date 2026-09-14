@@ -201,7 +201,7 @@ export async function runExternalChatTurn(
   if (confab.suspected) {
     logger.warn(
       { conversationId: turn?.conversationId ?? null, claims: confab.claims },
-      'chat: the reply claims a write this turn\'s own tool result refused',
+      "chat: the reply claims a write this turn's own tool result refused",
     );
   }
 

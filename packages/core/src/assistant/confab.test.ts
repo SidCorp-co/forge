@@ -49,7 +49,11 @@ describe('the measured incident', () => {
 describe('a result wins over prose', () => {
   it('says nothing when the same ref was written successfully in the same turn', () => {
     const landed = call({
-      arguments: JSON.stringify({ action: 'update', documentId: 'ISS-2', data: { priority: 'high' } }),
+      arguments: JSON.stringify({
+        action: 'update',
+        documentId: 'ISS-2',
+        data: { priority: 'high' },
+      }),
     });
     expect(detectStateConfab('ISS-2 has been updated.', [REFUSED_UPDATE, landed]).suspected).toBe(
       false,
@@ -66,10 +70,9 @@ describe('a result wins over prose', () => {
 
 describe('the claim is read per sentence', () => {
   it('does not let a success phrase answer for a ref in another sentence', () => {
-    const probe = detectStateConfab(
-      'I have updated the label. ISS-2 is the one you asked about.',
-      [REFUSED_UPDATE],
-    );
+    const probe = detectStateConfab('I have updated the label. ISS-2 is the one you asked about.', [
+      REFUSED_UPDATE,
+    ]);
     expect(probe.suspected).toBe(false);
   });
 

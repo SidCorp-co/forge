@@ -149,6 +149,17 @@
   halfway through leaves the work findable by whatever picks it up next; two servers cannot both
   answer the same thing; and a reply that was handed over and never confirmed is reported as exactly
   that rather than sent again.
+- **The gate stops paying for a compile it already did, and stops claiming the repo is broken when it
+  simply has not been built.** Two separate faults, both measured on 2026-09-14. `pnpm typecheck` and
+  `pnpm build` are different compilations — one reads the tests, the other emits — and both wrote the
+  same incremental cache file, so each destroyed the other's: a typecheck a second after a build cost
+  40s where a warm one costs under 5. They have their own caches now. Separately, `archmap` resolves
+  TypeScript module edges but did not declare that it needs the workspace built, so in a fresh
+  checkout every edge through `@forge/observability` came back unresolvable — 205 against a ceiling of
+  200 where a built tree reports 171 — and the conformance audit announced that the repository does
+  not meet the profile it claims. It does; the workspace was unbuilt. Both now say so and name the
+  command that fixes it, which is what the rest of the gate already did.
+
 - **An issue you ask the assistant to file is now held to the same shape as one you file by hand.**
   Ask in chat for an issue and you would get one — but nothing read the body you got. The terminal
   refuses a filing that names no category, or leaves out what happened, or why it happens, or what
