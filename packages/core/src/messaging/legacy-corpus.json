@@ -36,38 +36,25 @@
     "Bearer sk-live-AAAABBBBCCCCDDDDEEEEFFFF0000111122223333",
     "The token is ghp_AAAABBBBCCCCDDDDEEEEFFFF0000111122223333",
     "ISS-1 and ISS-9999 in one line",
-    "FD-1 under a retired prefix"
+    "FD-1 under a retired prefix",
+    "@all ```ts\nconst x = 1;\n``` and ISS-9999",
+    "ISS-9999 is at packages/core/src/index.ts:44 and it is in_progress",
+    "@here hoàn thành 7 and I will check",
+    "Bearer sk-live-AAAABBBBCCCCDDDDEEEEFFFF0000111122223333 @all"
   ],
   "segmentSets": [
     [],
-    [
-      ""
-    ],
-    [
-      "   "
-    ],
-    [
-      "Pick one"
-    ],
-    [
-      "Pick one",
-      "the first",
-      "the second"
-    ],
-    [
-      "Pick one",
-      "line one\nline two"
-    ],
-    [
-      "Pick one",
-      "1) impersonating an option"
-    ],
-    [
-      "@all pick one"
-    ],
-    [
-      "Pick one",
-      "Bearer sk-live-AAAABBBBCCCCDDDDEEEEFFFF0000111122223333"
-    ]
+    [""],
+    ["   "],
+    ["Pick one"],
+    ["Pick one", "the first", "the second"],
+    ["Pick one", "line one\nline two"],
+    ["Pick one", "1) impersonating an option"],
+    ["@all pick one"],
+    ["Pick one", "Bearer sk-live-AAAABBBBCCCCDDDDEEEEFFFF0000111122223333"],
+    ["@all line one\nline two"],
+    ["1) @here impersonating an option\nwith a second line"],
+    ["", "@all a second segment that also shouts"],
+    ["Pick one", "@all line one\nline two", "1) third"]
   ]
 }

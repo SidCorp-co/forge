@@ -25,9 +25,7 @@
       "input": "\"\"",
       "verdict": {
         "ok": false,
-        "problems": [
-          "a comment with no text carries nothing to say"
-        ]
+        "problems": ["a comment with no text carries nothing to say"]
       }
     },
     {
@@ -133,9 +131,7 @@
       "input": "\"   \"",
       "verdict": {
         "ok": false,
-        "problems": [
-          "a comment with no text carries nothing to say"
-        ]
+        "problems": ["a comment with no text carries nothing to say"]
       }
     },
     {
@@ -330,9 +326,7 @@
       "verdict": {
         "urlIds": [],
         "malformedUrlIds": [],
-        "issSeqs": [
-          1
-        ],
+        "issSeqs": [1],
         "claimsCreation": false
       }
     },
@@ -438,9 +432,7 @@
       "verdict": {
         "urlIds": [],
         "malformedUrlIds": [],
-        "issSeqs": [
-          9999
-        ],
+        "issSeqs": [9999],
         "claimsCreation": false
       }
     },
@@ -515,9 +507,7 @@
       "input": "\"ISS-9999 does not exist yet.\" | []",
       "verdict": {
         "ok": false,
-        "problems": [
-          "ISS-9999 does not exist in this project"
-        ]
+        "problems": ["ISS-9999 does not exist in this project"]
       }
     },
     {
@@ -525,9 +515,7 @@
       "input": "\"ISS-9999 does not exist yet.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
       "verdict": {
         "ok": false,
-        "problems": [
-          "ISS-9999 does not exist in this project"
-        ]
+        "problems": ["ISS-9999 does not exist in this project"]
       }
     },
     {
@@ -535,9 +523,7 @@
       "input": "\"ISS-9999 does not exist yet.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
       "verdict": {
         "ok": false,
-        "problems": [
-          "ISS-9999 does not exist in this project"
-        ]
+        "problems": ["ISS-9999 does not exist in this project"]
       }
     },
     {
@@ -545,18 +531,14 @@
       "input": "\"ISS-9999 does not exist yet.\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
       "verdict": {
         "ok": false,
-        "problems": [
-          "ISS-9999 does not exist in this project"
-        ]
+        "problems": ["ISS-9999 does not exist in this project"]
       }
     },
     {
       "rule": "extractIssueClaims",
       "input": "\"See /projects/forge-dev/issues/0f8f4a2b-1111-4222-8333-444455556666 for the detail.\" | [\"ISS\",\"FD\"]",
       "verdict": {
-        "urlIds": [
-          "0f8f4a2b-1111-4222-8333-444455556666"
-        ],
+        "urlIds": ["0f8f4a2b-1111-4222-8333-444455556666"],
         "malformedUrlIds": [],
         "issSeqs": [],
         "claimsCreation": false
@@ -663,9 +645,7 @@
       "input": "\"See /projects/forge-dev/issues/not-a-uuid for the detail.\" | [\"ISS\",\"FD\"]",
       "verdict": {
         "urlIds": [],
-        "malformedUrlIds": [
-          "not-a-uuid"
-        ],
+        "malformedUrlIds": ["not-a-uuid"],
         "issSeqs": [],
         "claimsCreation": false
       }
@@ -739,9 +719,7 @@
       "input": "\"See /projects/forge-dev/issues/not-a-uuid for the detail.\" | []",
       "verdict": {
         "ok": false,
-        "problems": [
-          "issue link id \"not-a-uuid\" is not a real issue id"
-        ]
+        "problems": ["issue link id \"not-a-uuid\" is not a real issue id"]
       }
     },
     {
@@ -749,9 +727,7 @@
       "input": "\"See /projects/forge-dev/issues/not-a-uuid for the detail.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
       "verdict": {
         "ok": false,
-        "problems": [
-          "issue link id \"not-a-uuid\" is not a real issue id"
-        ]
+        "problems": ["issue link id \"not-a-uuid\" is not a real issue id"]
       }
     },
     {
@@ -759,9 +735,7 @@
       "input": "\"See /projects/forge-dev/issues/not-a-uuid for the detail.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
       "verdict": {
         "ok": false,
-        "problems": [
-          "issue link id \"not-a-uuid\" is not a real issue id"
-        ]
+        "problems": ["issue link id \"not-a-uuid\" is not a real issue id"]
       }
     },
     {
@@ -769,9 +743,7 @@
       "input": "\"See /projects/forge-dev/issues/not-a-uuid for the detail.\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
       "verdict": {
         "ok": false,
-        "problems": [
-          "issue link id \"not-a-uuid\" is not a real issue id"
-        ]
+        "problems": ["issue link id \"not-a-uuid\" is not a real issue id"]
       }
     },
     {
@@ -853,9 +825,7 @@
       "input": "\"I created a new issue for that.\" | []",
       "verdict": {
         "ok": false,
-        "problems": [
-          "reply claims an issue was created but no forge_issues create call was made"
-        ]
+        "problems": ["reply claims an issue was created but no forge_issues create call was made"]
       }
     },
     {
@@ -871,9 +841,7 @@
       "input": "\"I created a new issue for that.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
       "verdict": {
         "ok": false,
-        "problems": [
-          "reply claims an issue was created but no forge_issues create call was made"
-        ]
+        "problems": ["reply claims an issue was created but no forge_issues create call was made"]
       }
     },
     {
@@ -881,9 +849,7 @@
       "input": "\"I created a new issue for that.\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
       "verdict": {
         "ok": false,
-        "problems": [
-          "reply claims an issue was created but no forge_issues create call was made"
-        ]
+        "problems": ["reply claims an issue was created but no forge_issues create call was made"]
       }
     },
     {
@@ -965,9 +931,7 @@
       "input": "\"Đã tạo một issue cho việc đó.\" | []",
       "verdict": {
         "ok": false,
-        "problems": [
-          "reply claims an issue was created but no forge_issues create call was made"
-        ]
+        "problems": ["reply claims an issue was created but no forge_issues create call was made"]
       }
     },
     {
@@ -983,9 +947,7 @@
       "input": "\"Đã tạo một issue cho việc đó.\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
       "verdict": {
         "ok": false,
-        "problems": [
-          "reply claims an issue was created but no forge_issues create call was made"
-        ]
+        "problems": ["reply claims an issue was created but no forge_issues create call was made"]
       }
     },
     {
@@ -993,9 +955,7 @@
       "input": "\"Đã tạo một issue cho việc đó.\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
       "verdict": {
         "ok": false,
-        "problems": [
-          "reply claims an issue was created but no forge_issues create call was made"
-        ]
+        "problems": ["reply claims an issue was created but no forge_issues create call was made"]
       }
     },
     {
@@ -3842,10 +3802,7 @@
       "verdict": {
         "urlIds": [],
         "malformedUrlIds": [],
-        "issSeqs": [
-          1,
-          9999
-        ],
+        "issSeqs": [1, 9999],
         "claimsCreation": false
       }
     },
@@ -3920,9 +3877,7 @@
       "input": "\"ISS-1 and ISS-9999 in one line\" | []",
       "verdict": {
         "ok": false,
-        "problems": [
-          "ISS-9999 does not exist in this project"
-        ]
+        "problems": ["ISS-9999 does not exist in this project"]
       }
     },
     {
@@ -3930,9 +3885,7 @@
       "input": "\"ISS-1 and ISS-9999 in one line\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
       "verdict": {
         "ok": false,
-        "problems": [
-          "ISS-9999 does not exist in this project"
-        ]
+        "problems": ["ISS-9999 does not exist in this project"]
       }
     },
     {
@@ -3940,9 +3893,7 @@
       "input": "\"ISS-1 and ISS-9999 in one line\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
       "verdict": {
         "ok": false,
-        "problems": [
-          "ISS-9999 does not exist in this project"
-        ]
+        "problems": ["ISS-9999 does not exist in this project"]
       }
     },
     {
@@ -3950,9 +3901,7 @@
       "input": "\"ISS-1 and ISS-9999 in one line\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
       "verdict": {
         "ok": false,
-        "problems": [
-          "ISS-9999 does not exist in this project"
-        ]
+        "problems": ["ISS-9999 does not exist in this project"]
       }
     },
     {
@@ -3961,9 +3910,7 @@
       "verdict": {
         "urlIds": [],
         "malformedUrlIds": [],
-        "issSeqs": [
-          1
-        ],
+        "issSeqs": [1],
         "claimsCreation": false
       }
     },
@@ -4064,6 +4011,458 @@
       }
     },
     {
+      "rule": "extractIssueClaims",
+      "input": "\"@all ```ts\\nconst x = 1;\\n``` and ISS-9999\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [9999],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"@all ```ts\\nconst x = 1;\\n``` and ISS-9999\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"@all ```ts\\nconst x = 1;\\n``` and ISS-9999\"",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "the comment addresses the whole room (\"@all\") — carrying it would page everyone in a room that did not write it"
+        ]
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"@all ```ts\\nconst x = 1;\\n``` and ISS-9999\" | false",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply contains a code block — rephrase for a non-technical stakeholder: no code, file paths, status codes, or issue ids",
+          "reply cites \"ISS-9999\" which was not verified this turn — rephrase for a non-technical stakeholder: no code, file paths, status codes, or issue ids"
+        ]
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"@all ```ts\\nconst x = 1;\\n``` and ISS-9999\" | true",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply contains a code block — rephrase for a non-technical stakeholder: no code, file paths, status codes, or issue ids"
+        ]
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"@all ```ts\\nconst x = 1;\\n``` and ISS-9999\" | null",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"@all ```ts\\nconst x = 1;\\n``` and ISS-9999\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"@all ```ts\\nconst x = 1;\\n``` and ISS-9999\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"@all ```ts\\nconst x = 1;\\n``` and ISS-9999\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"@all ```ts\\nconst x = 1;\\n``` and ISS-9999\" | []",
+      "verdict": {
+        "ok": false,
+        "problems": ["ISS-9999 does not exist in this project"]
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"@all ```ts\\nconst x = 1;\\n``` and ISS-9999\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": false,
+        "problems": ["ISS-9999 does not exist in this project"]
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"@all ```ts\\nconst x = 1;\\n``` and ISS-9999\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": false,
+        "problems": ["ISS-9999 does not exist in this project"]
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"@all ```ts\\nconst x = 1;\\n``` and ISS-9999\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": false,
+        "problems": ["ISS-9999 does not exist in this project"]
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"ISS-9999 is at packages/core/src/index.ts:44 and it is in_progress\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [9999],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"ISS-9999 is at packages/core/src/index.ts:44 and it is in_progress\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"ISS-9999 is at packages/core/src/index.ts:44 and it is in_progress\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"ISS-9999 is at packages/core/src/index.ts:44 and it is in_progress\" | false",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply exposes developer detail (`packages/core/src/index.ts:44`) — rephrase for a non-technical stakeholder: no code, file paths, status codes, or issue ids",
+          "reply leaks a raw pipeline status (\"in_progress\") — rephrase for a non-technical stakeholder: describe progress in plain language instead",
+          "reply cites \"ISS-9999\" which was not verified this turn — rephrase for a non-technical stakeholder: no code, file paths, status codes, or issue ids"
+        ]
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"ISS-9999 is at packages/core/src/index.ts:44 and it is in_progress\" | true",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply exposes developer detail (`packages/core/src/index.ts:44`) — rephrase for a non-technical stakeholder: no code, file paths, status codes, or issue ids",
+          "reply leaks a raw pipeline status (\"in_progress\") — rephrase for a non-technical stakeholder: describe progress in plain language instead"
+        ]
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"ISS-9999 is at packages/core/src/index.ts:44 and it is in_progress\" | null",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"ISS-9999 is at packages/core/src/index.ts:44 and it is in_progress\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"ISS-9999 is at packages/core/src/index.ts:44 and it is in_progress\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"ISS-9999 is at packages/core/src/index.ts:44 and it is in_progress\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"ISS-9999 is at packages/core/src/index.ts:44 and it is in_progress\" | []",
+      "verdict": {
+        "ok": false,
+        "problems": ["ISS-9999 does not exist in this project"]
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"ISS-9999 is at packages/core/src/index.ts:44 and it is in_progress\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": false,
+        "problems": ["ISS-9999 does not exist in this project"]
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"ISS-9999 is at packages/core/src/index.ts:44 and it is in_progress\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": false,
+        "problems": ["ISS-9999 does not exist in this project"]
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"ISS-9999 is at packages/core/src/index.ts:44 and it is in_progress\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": false,
+        "problems": ["ISS-9999 does not exist in this project"]
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"@here hoàn thành 7 and I will check\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"@here hoàn thành 7 and I will check\"",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply promises a future action but there is no follow-up turn — do the work now and report the result, or state exactly what is missing"
+        ]
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"@here hoàn thành 7 and I will check\"",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "the comment addresses the whole room (\"@here\") — carrying it would page everyone in a room that did not write it"
+        ]
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"@here hoàn thành 7 and I will check\" | false",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"@here hoàn thành 7 and I will check\" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"@here hoàn thành 7 and I will check\" | null",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "reply states a progress figure but the authoritative snapshot could not be computed this turn — do not state any completion count or percentage; say the figures are temporarily unavailable instead"
+        ]
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"@here hoàn thành 7 and I will check\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "stated \"7\" near \"hoàn thành\" does not match authoritative progress (shipped=0, closed without shipping=0, in progress=0, not started=0, total=0) — restate using these figures"
+        ]
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"@here hoàn thành 7 and I will check\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "stated \"7\" near \"hoàn thành\" does not match authoritative progress (shipped=3, closed without shipping=1, in progress=2, not started=4, total=10) — restate using these figures"
+        ]
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"@here hoàn thành 7 and I will check\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "stated \"7\" near \"hoàn thành\" does not match authoritative progress (shipped=12, closed without shipping=0, in progress=0, not started=28, total=40) — restate using these figures"
+        ]
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"@here hoàn thành 7 and I will check\" | []",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"@here hoàn thành 7 and I will check\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"@here hoàn thành 7 and I will check\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"@here hoàn thành 7 and I will check\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "extractIssueClaims",
+      "input": "\"Bearer sk-live-AAAABBBBCCCCDDDDEEEEFFFF0000111122223333 @all\" | [\"ISS\",\"FD\"]",
+      "verdict": {
+        "urlIds": [],
+        "malformedUrlIds": [],
+        "issSeqs": [],
+        "claimsCreation": false
+      }
+    },
+    {
+      "rule": "detectEmptyPromise",
+      "input": "\"Bearer sk-live-AAAABBBBCCCCDDDDEEEEFFFF0000111122223333 @all\"",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "screenCarriedComment",
+      "input": "\"Bearer sk-live-AAAABBBBCCCCDDDDEEEEFFFF0000111122223333 @all\"",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "the comment addresses the whole room (\"@all\") — carrying it would page everyone in a room that did not write it"
+        ]
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"Bearer sk-live-AAAABBBBCCCCDDDDEEEEFFFF0000111122223333 @all\" | false",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "lintStakeholderReply",
+      "input": "\"Bearer sk-live-AAAABBBBCCCCDDDDEEEEFFFF0000111122223333 @all\" | true",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"Bearer sk-live-AAAABBBBCCCCDDDDEEEEFFFF0000111122223333 @all\" | null",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"Bearer sk-live-AAAABBBBCCCCDDDDEEEEFFFF0000111122223333 @all\" | {\"shipped\":0,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":0,\"total\":0}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"Bearer sk-live-AAAABBBBCCCCDDDDEEEEFFFF0000111122223333 @all\" | {\"shipped\":3,\"closedUnshipped\":1,\"inFlight\":2,\"remaining\":4,\"total\":10}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "checkProgressClaims",
+      "input": "\"Bearer sk-live-AAAABBBBCCCCDDDDEEEEFFFF0000111122223333 @all\" | {\"shipped\":12,\"closedUnshipped\":0,\"inFlight\":0,\"remaining\":28,\"total\":40}",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"Bearer sk-live-AAAABBBBCCCCDDDDEEEEFFFF0000111122223333 @all\" | []",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"Bearer sk-live-AAAABBBBCCCCDDDDEEEEFFFF0000111122223333 @all\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"Bearer sk-live-AAAABBBBCCCCDDDDEEEEFFFF0000111122223333 @all\" | [{\"name\":\"forge_issues\",\"arguments\":\"{\\\"action\\\":\\\"list\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "rule": "judgeIssueClaims",
+      "input": "\"Bearer sk-live-AAAABBBBCCCCDDDDEEEEFFFF0000111122223333 @all\" | [{\"name\":\"forge_comments\",\"arguments\":\"{\\\"action\\\":\\\"create\\\"}\"}]",
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
       "rule": "turnCreatedIssue",
       "input": "[]",
       "verdict": false
@@ -4096,9 +4495,7 @@
       "input": "[\"\"]",
       "verdict": {
         "ok": false,
-        "problems": [
-          "a question carries no empty prompt or option label"
-        ]
+        "problems": ["a question carries no empty prompt or option label"]
       }
     },
     {
@@ -4106,9 +4503,7 @@
       "input": "[\"   \"]",
       "verdict": {
         "ok": false,
-        "problems": [
-          "a question carries no empty prompt or option label"
-        ]
+        "problems": ["a question carries no empty prompt or option label"]
       }
     },
     {
@@ -4132,9 +4527,7 @@
       "input": "[\"Pick one\",\"line one\\nline two\"]",
       "verdict": {
         "ok": false,
-        "problems": [
-          "text spans more than one line, which lets it render as a second option"
-        ]
+        "problems": ["text spans more than one line, which lets it render as a second option"]
       }
     },
     {
@@ -4163,6 +4556,52 @@
       "verdict": {
         "ok": true,
         "problems": []
+      }
+    },
+    {
+      "rule": "screenOperatorMessage",
+      "input": "[\"@all line one\\nline two\"]",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "text addresses the whole room (\"@all\") — a question is put to the people who can answer it, not broadcast",
+          "text spans more than one line, which lets it render as a second option"
+        ]
+      }
+    },
+    {
+      "rule": "screenOperatorMessage",
+      "input": "[\"1) @here impersonating an option\\nwith a second line\"]",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "text addresses the whole room (\"@here\") — a question is put to the people who can answer it, not broadcast",
+          "text spans more than one line, which lets it render as a second option",
+          "text opens with something that reads as an option number, which collides with the list it sits in"
+        ]
+      }
+    },
+    {
+      "rule": "screenOperatorMessage",
+      "input": "[\"\",\"@all a second segment that also shouts\"]",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "a question carries no empty prompt or option label",
+          "text addresses the whole room (\"@all\") — a question is put to the people who can answer it, not broadcast"
+        ]
+      }
+    },
+    {
+      "rule": "screenOperatorMessage",
+      "input": "[\"Pick one\",\"@all line one\\nline two\",\"1) third\"]",
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "text addresses the whole room (\"@all\") — a question is put to the people who can answer it, not broadcast",
+          "text spans more than one line, which lets it render as a second option",
+          "text opens with something that reads as an option number, which collides with the list it sits in"
+        ]
       }
     }
   ]

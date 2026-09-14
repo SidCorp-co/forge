@@ -101,6 +101,9 @@
     "core-memory": [
       "packages/core/src/memory/**"
     ],
+    "core-messaging": [
+      "packages/core/src/messaging/**"
+    ],
     "core-metrics": [
       "packages/core/src/metrics/**"
     ],

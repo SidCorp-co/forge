@@ -44,10 +44,15 @@ const key = (...parts: unknown[]): string => parts.map((p) => JSON.stringify(p))
 
 export function characterizeLegacyRules(): LegacyVerdicts {
   const rows: LegacyVerdicts['rows'] = [];
-  const add = (rule: string, input: string, verdict: unknown) => rows.push({ rule, input, verdict });
+  const add = (rule: string, input: string, verdict: unknown) =>
+    rows.push({ rule, input, verdict });
 
   for (const text of LEGACY_TEXTS) {
-    add('extractIssueClaims', key(text, LEGACY_PREFIXES), extractIssueClaims(text, LEGACY_PREFIXES));
+    add(
+      'extractIssueClaims',
+      key(text, LEGACY_PREFIXES),
+      extractIssueClaims(text, LEGACY_PREFIXES),
+    );
     add('detectEmptyPromise', key(text), detectEmptyPromise(text));
     add('screenCarriedComment', key(text), screenCarriedComment(text));
     for (const skipIssueIdRule of [false, true]) {

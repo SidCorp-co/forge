@@ -1,7 +1,7 @@
 /**
  * The input set the compatibility baseline is measured over.
  *
- * Declared BEFORE the rule bodies moved out of the Rocket.Chat tree, and read by
+ * Declared BEFORE the rule bodies moved out of the adapter tree, and read by
  * the characterization harness that ran the old bodies over it. Nothing here is
  * an expectation — those are generated, in `legacy-verdicts.fixture.json`, and a
  * fixture written by reading the old code would have recorded a belief about it
@@ -32,12 +32,13 @@ export const LEGACY_PROGRESS: readonly (null | {
 ];
 
 /** The tool-call sets the creation-claim rules read. */
-export const LEGACY_TOOL_CALLS: readonly (readonly { name: string; arguments: string })[][] = [
-  [],
-  [{ name: 'forge_issues', arguments: '{"action":"create"}' }],
-  [{ name: 'forge_issues', arguments: '{"action":"list"}' }],
-  [{ name: 'forge_comments', arguments: '{"action":"create"}' }],
-];
+export const LEGACY_TOOL_CALLS: ReadonlyArray<ReadonlyArray<{ name: string; arguments: string }>> =
+  [
+    [],
+    [{ name: 'forge_issues', arguments: '{"action":"create"}' }],
+    [{ name: 'forge_issues', arguments: '{"action":"list"}' }],
+    [{ name: 'forge_comments', arguments: '{"action":"create"}' }],
+  ];
 
 /** What the project is taken to hold, for the existence rules. */
 export const LEGACY_KNOWN = {
