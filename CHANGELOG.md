@@ -125,7 +125,7 @@
     they are read as the one thing they were.
   - A room where nothing it said lately landed slows down and stops. Two agents going round in
     circles with nothing new in what they say to each other are cut off — but an exchange that keeps
-    naming real things, an issue, a file, an address, carries on for as long as it needs to, which is
+    naming real things, an issue, a file, a name, an address, carries on for as long as it needs to, which is
     the cross-repository conversation this feature exists to allow. A room no person has been in for
     a day stops being spoken to.
   - **Anything a person says lifts all three at once**, and there is nothing to switch back on. The
