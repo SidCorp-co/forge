@@ -7,9 +7,8 @@
 
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { handleFromAgentEmail } from '../auth/agent-account.js';
 import { db as defaultDb } from '../db/client.js';
-import { projectMembers, users } from '../db/schema.js';
+import { organizationMembers, projectMembers, users } from '../db/schema.js';
 import {
   type ConversationParticipantKind,
   conversationParticipants,
@@ -100,25 +99,33 @@ export interface AddHandleArgs {
   tx?: Executor;
 }
 
+// cm:guard the handle is READ from `organization_members.handle` and never split back out of the address (ISS-1003). The join is `leftJoin` and the null is refused by name rather than fallen back on, because an agent whose membership carries no handle is a row 0242 could not have produced — reaching for `email.split('.')` there would put the second spelling back, and the suffix in the address is exactly what makes the two disagree.
 async function loadHandle(
   tx: Executor,
   handleUserId: string,
-): Promise<{ id: string; email: string }> {
-  const [handle] = await tx
-    .select({ id: users.id, kind: users.kind, email: users.email })
+): Promise<{ id: string; handle: string }> {
+  const [row] = await tx
+    .select({ id: users.id, kind: users.kind, handle: organizationMembers.handle })
     .from(users)
+    .leftJoin(organizationMembers, eq(organizationMembers.userId, users.id))
     .where(eq(users.id, handleUserId))
     .limit(1);
-  if (!handle) {
+  if (!row) {
     throw badRequest(`no user ${handleUserId}, so it is no handle`, 'HANDLE_NOT_FOUND');
   }
-  if (handle.kind !== 'agent') {
+  if (row.kind !== 'agent') {
     throw badRequest(
       `user ${handleUserId} is a person, not an agent; a handle is an agent account and a person joins as a person`,
       'HANDLE_NOT_AN_AGENT',
     );
   }
-  return { id: handle.id, email: handle.email };
+  if (!row.handle) {
+    throw badRequest(
+      `agent ${handleUserId} carries no handle on its org membership, so there is no address to put in a room`,
+      'HANDLE_HAS_NO_NAME',
+    );
+  }
+  return { id: row.id, handle: row.handle };
 }
 
 /**
@@ -139,7 +146,7 @@ export async function attachOpeningHandle(
       kind: 'handle',
       userId: handle.id,
       addedBy: null,
-      label: handleFromAgentEmail(handle.email),
+      label: handle.handle,
     })
     .onConflictDoNothing();
 }
@@ -159,7 +166,7 @@ export async function addHandle(args: AddHandleArgs): Promise<void> {
     const access = await effectiveProjectRole(args.actorUserId, projectId);
     if (!access?.role) {
       throw forbidden(
-        `@${handleFromAgentEmail(handle.email)} works on project ${projectId} and you hold no role on it; a handle is added to a room by somebody who holds a role on its project`,
+        `@${handle.handle} works on project ${projectId} and you hold no role on it; a handle is added to a room by somebody who holds a role on its project`,
         'HANDLE_PROJECT_FORBIDDEN',
       );
     }
@@ -172,7 +179,7 @@ export async function addHandle(args: AddHandleArgs): Promise<void> {
       kind: 'handle',
       userId: args.handleUserId,
       addedBy: args.actorUserId,
-      label: handleFromAgentEmail(handle.email),
+      label: handle.handle,
     })
     .onConflictDoNothing();
 }

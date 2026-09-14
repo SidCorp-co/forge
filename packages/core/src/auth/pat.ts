@@ -34,6 +34,22 @@ const ARGON2_OPTIONS = {
 
 export type Pat = InferSelectModel<typeof personalAccessTokens>;
 
+/**
+ * What makes a row in this table a credential that would still be accepted.
+ *
+ * Unrevoked AND unexpired, which is not the same question: a token whose
+ * `expires_at` has passed is never revoked, so a reader testing only
+ * `revoked_at IS NULL` counts it as live and tells an operator an account can
+ * act when {@link verifyPat} would turn it away.
+ */
+// cm:guard ONE spelling of "live", and `verifyPat` is built from it rather than carrying its own copy. Every surface that reports whether a principal can act — `orgs/agent-accounts.ts:listAgentAccounts`, the reachability of a conversation handle — asks this function, because a second spelling is how a screen and the door start disagreeing about the same token (ISS-1003 criteria 2, 7, 20).
+export function patIsLive() {
+  return and(
+    isNull(personalAccessTokens.revokedAt),
+    or(isNull(personalAccessTokens.expiresAt), gt(personalAccessTokens.expiresAt, sql`now()`)),
+  );
+}
+
 export interface MintPatInput {
   userId: string;
   name: string;
@@ -130,13 +146,7 @@ export async function verifyPat(plaintext: unknown): Promise<VerifiedPat | null>
     .select({ pat: personalAccessTokens, ownerKind: users.kind })
     .from(personalAccessTokens)
     .innerJoin(users, eq(users.id, personalAccessTokens.userId))
-    .where(
-      and(
-        eq(personalAccessTokens.tokenPrefix, prefix),
-        isNull(personalAccessTokens.revokedAt),
-        or(isNull(personalAccessTokens.expiresAt), gt(personalAccessTokens.expiresAt, sql`now()`)),
-      ),
-    );
+    .where(and(eq(personalAccessTokens.tokenPrefix, prefix), patIsLive()));
 
   if (rows.length === 0) {
     // cm:guard verify a dummy hash when the bucket is empty so an absent prefix costs the same as a wrong secret — skipping it makes prefix existence measurable by timing.

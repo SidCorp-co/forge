@@ -8,10 +8,10 @@
  * learn that agents exist.
  */
 
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, count, desc, eq, isNull } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { isAgentHandle, synthesizeAgentEmail } from '../auth/agent-account.js';
-import { mintPat } from '../auth/pat.js';
+import { mintPat, patIsLive } from '../auth/pat.js';
 import { db } from '../db/client.js';
 import {
   organizationMembers,
@@ -34,12 +34,16 @@ export interface CreateAgentAccountInput {
 export interface AgentAccount {
   userId: string;
   handle: string;
+  /** The label a person reads, or null where nobody has typed one. */
+  displayName: string | null;
   email: string;
   projectId: string;
   projectRole: ProjectMemberRole;
   createdAt: Date;
-  /** Live (non-revoked) token count — an agent with none cannot act. */
+  /** Credentials this account holds that {@link patIsLive} would still accept. */
   activeTokens: number;
+  /** Whether this account can act at all, which is the only thing a reader wants. */
+  canAct: boolean;
 }
 
 const badRequest = (message: string, code: string) =>
@@ -84,15 +88,18 @@ export async function createAgentAccount(
         passwordHash: null,
         // cm:guard stamped verified at creation, because `assertEmailVerified` gates the whole PAT-authenticated REST surface and an agent has no mailbox to verify through. It is safe only because `signUserToken` refuses `kind:'agent'` outright — the verified stamp buys REST access, never a session.
         emailVerifiedAt: new Date(),
+        displayName: input.handle,
       })
       .returning({ id: users.id, createdAt: users.createdAt });
     if (!row) throw new Error('createAgentAccount: user insert returned no row');
 
     // cm:guard `member`, never `admin`. Org admin is what MANAGES agents (mint, revoke); an agent holding it could create further agents and grant them anything, which is the credential-mints-credential hole `/api/pat`'s absence from `PAT_ALLOWED_PREFIXES` closes on the other side.
+    // cm:guard the handle goes in with the membership, in one statement, because `(org_id, handle)` is the index that refuses a second `@forge-dev` in this org — a membership inserted first and named afterwards is a window in which that index has nothing to refuse (ISS-1003 criterion 12).
     await tx.insert(organizationMembers).values({
       orgId: input.orgId,
       userId: row.id,
       role: 'member',
+      handle: input.handle,
     });
     await tx.insert(projectMembers).values({
       userId: row.id,
@@ -113,50 +120,149 @@ export async function createAgentAccount(
     agent: {
       userId: created.id,
       handle: input.handle,
+      displayName: input.handle,
       email,
       projectId: input.projectId,
       projectRole,
       createdAt: created.createdAt,
       activeTokens: 1,
+      canAct: true,
     },
     plaintext: minted.plaintext,
   };
 }
 
+/**
+ * Every agent account in this org, and whether each can act.
+ *
+ * One query. The per-agent token count used to be a second query inside the
+ * loop, so listing an org of forty agents cost forty-one round trips.
+ */
+// cm:guard `canAct` is the live-credential predicate and NOT `revoked_at IS NULL`: an agent holding one unrevoked but EXPIRED token counted as able to act here while `verifyPat` turned that same token away, so the console said yes about an account the door said no about. `patIsLive` is the single spelling both sides now read (ISS-1003 criteria 2, 7).
 export async function listAgentAccounts(orgId: string): Promise<AgentAccount[]> {
+  const live = db
+    .select({ userId: personalAccessTokens.userId, n: count().as('n') })
+    .from(personalAccessTokens)
+    .where(patIsLive())
+    .groupBy(personalAccessTokens.userId)
+    .as('live');
+
   const rows = await db
     .select({
       userId: users.id,
       email: users.email,
+      handle: organizationMembers.handle,
+      displayName: users.displayName,
       createdAt: users.createdAt,
       projectId: projectMembers.projectId,
       projectRole: projectMembers.role,
+      activeTokens: live.n,
     })
     .from(organizationMembers)
     .innerJoin(users, eq(users.id, organizationMembers.userId))
     .leftJoin(projectMembers, eq(projectMembers.userId, users.id))
+    .leftJoin(live, eq(live.userId, users.id))
     .where(and(eq(organizationMembers.orgId, orgId), eq(users.kind, 'agent')))
     .orderBy(desc(users.createdAt));
 
-  const out: AgentAccount[] = [];
-  for (const row of rows) {
-    const live = await db
-      .select({ id: personalAccessTokens.id })
-      .from(personalAccessTokens)
-      .where(
-        and(eq(personalAccessTokens.userId, row.userId), isNull(personalAccessTokens.revokedAt)),
-      );
-    out.push({
+  return rows.map((row) => {
+    const activeTokens = row.activeTokens ?? 0;
+    return {
       userId: row.userId,
-      handle: row.email.split('.')[0] ?? row.email,
+      handle: row.handle ?? '',
+      displayName: row.displayName,
       email: row.email,
       projectId: row.projectId ?? '',
       projectRole: row.projectRole ?? 'member',
       createdAt: row.createdAt,
-      activeTokens: live.length,
-    });
+      activeTokens,
+      canAct: activeTokens > 0,
+    };
+  });
+}
+
+/**
+ * The agent of this org behind `agentUserId`, or null where there is none.
+ *
+ * Every credential route asks through here, so "is this id an agent of the org
+ * the caller is admin of" is one question with one answer rather than three.
+ */
+async function loadOrgAgent(
+  orgId: string,
+  agentUserId: string,
+): Promise<{ id: string; handle: string | null } | null> {
+  const [row] = await db
+    .select({ id: users.id, handle: organizationMembers.handle })
+    .from(organizationMembers)
+    .innerJoin(users, eq(users.id, organizationMembers.userId))
+    .where(
+      and(
+        eq(organizationMembers.orgId, orgId),
+        eq(organizationMembers.userId, agentUserId),
+        eq(users.kind, 'agent'),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * Give a credential to an agent that already exists.
+ *
+ * The population this exists for is the handles `conversations/handles.ts`
+ * mints: an agent with a name in a room and no token, which
+ * {@link createAgentAccount} cannot reach because it only ever mints beside a
+ * creation.
+ */
+// cm:guard the token is bound to the project the agent is a member of, never unbound, because `createAgentAccount` binds the one it mints and an agent credentialed through this route would otherwise reach every project its owner does. An agent with no project membership is refused here rather than given an unbound token: a credential whose fence resolves to nothing is the account-scoped token `boundProjectId` exists to prevent (ISS-497).
+export async function mintAgentCredential(
+  orgId: string,
+  agentUserId: string,
+): Promise<{ plaintext: string; boundProjectId: string } | null> {
+  const agent = await loadOrgAgent(orgId, agentUserId);
+  if (!agent) return null;
+
+  const [membership] = await db
+    .select({ projectId: projectMembers.projectId })
+    .from(projectMembers)
+    .where(eq(projectMembers.userId, agentUserId))
+    .limit(1);
+  if (!membership) {
+    throw badRequest(
+      `agent ${agentUserId} is a member of no project, so a credential minted for it would be fenced to nothing; give it a project membership first`,
+      'AGENT_HAS_NO_PROJECT',
+    );
   }
-  return out;
+
+  const minted = await mintPat({
+    userId: agent.id,
+    name: `agent:${agent.handle ?? agent.id}`,
+    scopes: ['read', 'write'],
+    boundProjectId: membership.projectId,
+  });
+  return { plaintext: minted.plaintext, boundProjectId: membership.projectId };
+}
+
+/**
+ * Take every live credential away from an agent, leaving the account standing.
+ *
+ * Distinct from {@link revokeAgentAccount}, which also drops the memberships:
+ * this is "it may not act right now", that is "it is retired".
+ */
+// cm:guard revoking a credential may not fail on anything conversational, and this writes to ONE table for that reason — removing authority is a security action and issue rule 4 says it always succeeds. A room that loses its only able handle stays readable and reports the handle unreachable; that is `conversations/scope.ts`'s job and never a reason to refuse here (ISS-1003 criteria 5, 18).
+export async function revokeAgentCredentials(
+  orgId: string,
+  agentUserId: string,
+): Promise<number | null> {
+  if (!(await loadOrgAgent(orgId, agentUserId))) return null;
+  const revoked = await db
+    .update(personalAccessTokens)
+    .set({ revokedAt: new Date() })
+    .where(
+      and(eq(personalAccessTokens.userId, agentUserId), isNull(personalAccessTokens.revokedAt)),
+    )
+    .returning({ id: personalAccessTokens.id });
+  return revoked.length;
 }
 
 /**
@@ -194,4 +300,25 @@ export async function revokeAgentAccount(orgId: string, agentUserId: string): Pr
       );
   });
   return true;
+}
+
+/**
+ * Set the label an org admin reads this agent by.
+ *
+ * `null` clears it back to having none, which is a state the renderers already
+ * have a branch for.
+ */
+// cm:guard this writes `users.display_name` and NEVER `organization_members.handle`: the two are a label and an address, and the whole point of splitting them is that the label may be re-typed freely while the address is a key somebody's mention resolves against. A setter that moved both would hand `@old-name` to whoever takes the name next — the thing `assistant_speaker_links` already refuses one table over (ISS-1003 criterion 8).
+export async function setAgentDisplayName(
+  orgId: string,
+  agentUserId: string,
+  displayName: string | null,
+): Promise<string | null | undefined> {
+  if (!(await loadOrgAgent(orgId, agentUserId))) return undefined;
+  const [row] = await db
+    .update(users)
+    .set({ displayName })
+    .where(eq(users.id, agentUserId))
+    .returning({ displayName: users.displayName });
+  return row?.displayName ?? null;
 }
