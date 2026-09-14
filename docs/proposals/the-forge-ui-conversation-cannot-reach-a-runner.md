@@ -1,7 +1,10 @@
 # The Forge UI conversation cannot reach a runner, and a chat that could is what it replaced
 
-**Status: OPEN. Named by ISS-1004 step 5 (2026-09-14), which landed the port and states this loss
-rather than leaving it to be discovered.**
+**Status: OPEN, and SETTLED as accepted. Named by ISS-1004 step 5 (2026-09-14), which landed the
+port and states this loss rather than leaving it to be discovered. ISS-1005 was required to settle
+it as one of two things — accepted and named, or a way to reach a runner designed — and took the
+first, on the record, for the reason in "What ISS-1005 settled" below. This document stays open
+because the fix is still the fix; what closed is the question of whether ISS-1005 would build it.**
 
 ## What changed
 
@@ -11,9 +14,18 @@ runner pick, invokable skills, attachments, and per-turn fork, rerun, edit and r
 
 It is now a conversation. `POST /api/conversations/:id/messages` collects the message into
 `conversation_messages`, opens or extends its collector window, and runs one neutral turn — the same
-in-core provider turn Rocket.Chat's `fast` answer mode takes — under a read-only project toolset.
-What the agent can reach is the project: its issues, its progress, its knowledge, its memory. What
-it cannot reach is the repository.
+in-core provider turn Rocket.Chat's `fast` answer mode takes — under a fenced project toolset.
+
+That toolset is **not read-only**, and this document said it was until ISS-1005 measured it.
+`CHAT_TOOL_ALLOWLIST` permits `forge_issues` create and update and `forge_comments` create, fenced
+by `guardIssueWrites`: a created issue is forced to `draft` so it cannot auto-triage and spawn a run,
+`data.relations` is refused outright, and an update may only reach
+`draft`/`waiting`/`needs_info`/`on_hold`/`closed`. So what the chat surface lost is not the ability
+to file or to comment — it already does both. What it lost is the runner's own reach: editing a
+file, running a command, driving a pipeline.
+
+What the agent can reach is the project: its issues, its progress, its knowledge, its memory, and
+those two writes. What it cannot reach is the repository.
 
 That was the right trade for the condition ISS-1004 was open on — a conversation surface that reads
 a session row is two live paths, and the durable conversation had reached nobody — and it is a real
@@ -49,6 +61,28 @@ of the loss it closes.
 | The answer arrives later than the request | The send route answers inline today, which is why a person sees the reply in the response and not through a socket. A diverted turn cannot, so the route becomes 202-and-a-push, and every one of the three "no answer yet" states on screen has to be right before that is safe |
 | Attachments need an upload endpoint of their own | `conversation_messages.images` stores references, not bytes; a browser upload needs somewhere to put the bytes and a URL the image resolver can re-fetch them from |
 | The product question under all of it | Whether the Forge UI's agent is a project assistant or a hand on the repository. Both are defensible and they are different products; the port took the first because it is the one the conversation store describes, and reversing it is this document |
+
+## What ISS-1005 settled
+
+ISS-1005 moved the browser's reply onto a door of its own and was required, by its own Rules, to
+settle what the surface no longer reaches rather than leave it implied. It **accepted the loss and
+named it**, and it did not design a bridge. Two reasons, both recorded on the issue:
+
+1. The only bridge cheap enough to have landed inside ISS-1005 would have run through the toolset —
+   and that issue forbids widening `CHAT_TOOL_ALLOWLIST` past its fence outright, because the fence
+   is per-key and open by default and that is how `data.relations` reached chat unclassified in
+   ISS-868 and let a room retract a live `blocks` edge. The honest bridge is the `divertBeforeTurn`
+   seam above, whose costs this document already prices, and none of those costs is ISS-1005's.
+2. The reach that went is still one click away and was never removed. `/projects/<slug>/agents` is
+   live, still reads `agent_sessions`, and still submits its turns to `/api/agent-sessions/send` —
+   a session on a paired box, with the checkout and the shell.
+
+What ISS-1005 added, and what makes "accepted" different from "unmentioned": the persona now tells
+the person. `webConversationPersona` states that the assistant can file a draft issue and comment,
+cannot edit a file or run a command or drive a pipeline, and names the Agents screen as where a
+person starts a session that can. A refusal that names no way out was the actual defect in the
+accepted trade, and it is the half this issue closed. `runner-surface-named.test.ts` asserts the
+sentence stays true by checking the SEND path of the screen it names, not the sentence itself.
 
 ## The condition that ends this
 

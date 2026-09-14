@@ -58,14 +58,15 @@ const WEB_DRAIN_BATCH = 5;
 /**
  * What the Forge UI contributes to a turn: who the assistant is, and what it may read.
  */
-// cm:guard the toolset is READ-ONLY and fenced to this project and this caller, which is the same fence `assistant/routes.ts` puts on `/api/chat`: a conversation turn is not an authorization to write, and widening it here widens it for every room this adapter serves.
+// cm:guard the toolset is NOT read-only, and this annotation said it was until ISS-1005 measured it: `CHAT_TOOL_ALLOWLIST` permits `forge_issues` create and update and `forge_comments` create. What fences it is `guardIssueWrites` — a created issue is forced to `draft` so it cannot auto-triage and spawn a run, `data.relations` is refused outright, and an update may only reach draft/waiting/needs_info/on_hold/closed. That fence is per-key and OPEN by default, which is how `data.relations` reached chat unclassified in ISS-868 and let a room retract a live `blocks` edge, so a key added to the allowlist is unfenced until somebody classifies it. It is the same set `/api/chat` builds, and widening it here widens it for every room this adapter serves.
+// cm:guard the door is `web-chat-reply` and NOT `chat-sync`: this reply's reader holds a role on the project by the route's own checks, and `chat-sync`'s `public:report` cell is written for a reader who holds none — its `no-developer-detail` rule refuses a file path, a fenced block and a raw status word, which are three of the things a person opens the Forge UI to ask for. The reason lives on the door's row in `messaging/doors.ts` (ISS-1005).
 export function webConversationTurn(args: {
   project: { id: string; slug: string; name: string };
   handleName: string;
   askedBy: string | null;
 }): WindowTurnInputs {
   return {
-    door: 'chat-sync',
+    door: 'web-chat-reply',
     handleName: args.handleName,
     log: { adapter: 'web', projectId: args.project.id },
     prepare: async ({ principalUserId }) => ({
@@ -84,12 +85,14 @@ export function webConversationTurn(args: {
 /**
  * The assistant's voice in a Forge conversation.
  */
-// cm:guard it says what this surface CAN do rather than leaving the reader to find out: the Forge UI chat used to be a Claude Code session on a runner with the repository checked out, and a conversation turn reads the project through read-only tools and no working tree. A persona that did not say so would let the same screen answer a question about a file as though it had looked (ISS-1004 step 5).
+// cm:guard it says what this surface CAN do rather than leaving the reader to find out: the Forge UI chat used to be a Claude Code session on a runner with the repository checked out, and a conversation turn reads the project through tools and no working tree. A persona that did not say so would let the same screen answer a question about a file as though it had looked (ISS-1004 step 5).
+// cm:guard it also names WHERE the runner went, and that sentence is this surface's answer to what it lost: ISS-1005 moved the browser off a paired box on purpose and accepted the loss rather than bridging it, because the only bridge would have meant widening `CHAT_TOOL_ALLOWLIST` past the fence that issue forbids widening. A refusal that names no way out leaves the person to discover for themselves that `/projects/<slug>/agents` is still there and still runs a session on a box, which is the whole of the reach that went (ISS-1005).
 export function webConversationPersona(projectName: string, askedBy: string | null): string {
   return [
     `You are the working assistant for project "${projectName}", answering a person in the Forge web app.`,
     ...(askedBy ? [`- You are answering ${askedBy}.`] : []),
     '- You read this project through your tools — its issues, its progress, its knowledge and its memory. You have no checkout of the repository and no shell, so say so plainly when you are asked about a file rather than guessing at its contents.',
+    '- You can file a draft issue and comment on one. You CANNOT edit a file, run a command or drive a pipeline: that needs a session on a paired box, which a person starts from this project\'s Agents screen at /projects/<slug>/agents. Say so, and name that screen, rather than declining without a way forward.',
     '- Lead with what you FOUND. A question about status is answered with the figures, not with a description of how you would find them.',
     '- Answer in the language the person wrote in.',
   ].join('\n');

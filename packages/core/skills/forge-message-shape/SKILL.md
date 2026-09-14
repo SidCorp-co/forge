@@ -38,7 +38,7 @@ Two by two makes **four cells**, and a cell is the only thing that holds rules:
 | cell | what it is |
 |---|---|
 | `role:ask` | a question put to somebody who can answer it |
-| `role:report` | a comment on an issue, read by the person who decides |
+| `role:report` | a report to somebody holding a role — a comment on an issue, or the assistant's reply in a Forge UI room |
 | `public:ask` | **reserved** — see the bottom of this page |
 | `public:report` | a reply to somebody who cannot open the tracker to check it |
 
@@ -116,7 +116,7 @@ differ — at one, the agent is still on the line; at another, the message posts
 minutes later with nobody left to ask. A repair count on the cell would have to
 be right for both and can only be right for one.
 
-So the count lives on the **door**. There are six.
+So the count lives on the **door**. There are seven.
 
 | door | cell | ending | repairs |
 |---|---|---|---|
@@ -124,6 +124,7 @@ So the count lives on the **door**. There are six.
 | `question-ask` | `role:ask` | refusal | — |
 | `question-delivery` | `role:ask` | refusal | — |
 | `chat-sync` | `public:report` | fallback | 1 |
+| `web-chat-reply` | `role:report` | fallback | 1 |
 | `escalation-synthesis` | `public:report` | fallback | 1 |
 | `agent-chat-completion` | `public:report` | fallback | 0 |
 
@@ -134,6 +135,21 @@ what broke *is* the answer.
 **fallback** — somebody asked and is waiting, so something must be said. The door
 takes up to its repair count of corrective retries; if those are spent, one fixed
 fallback message is posted. Never more than two repairs anywhere.
+
+`web-chat-reply` and `comment-write` are the reason the split cuts both ways.
+They read the same cell and end differently: a comment write refuses and tells
+its author, because the author is on the line and can fix it; a Forge UI reply
+falls back, because somebody pressed enter and is owed something. `public:report`
+shows the other half of the same shape — three doors, one ending, two different
+repair counts. No single policy on either cell could have been right.
+
+The Forge UI reply is at `role:report` and **not** at `chat-sync`, and the
+difference is who is reading. Nobody opens a conversation in the Forge web app
+without holding a role on that project, and every later reader is re-checked
+before the room is shown to them. So that reader can open the tracker and check —
+which makes `no-developer-detail`, a rule written for somebody who cannot, the
+wrong rule for them: it refuses a file path, a fenced block and a raw status word,
+which are three of the things a person opens the Forge UI to ask for.
 
 `agent-chat-completion` declares **0** deliberately: the runner session whose
 final message it carries has already ended, so there is no turn to ask again, and

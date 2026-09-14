@@ -9,12 +9,13 @@ const EXPECTED: ReadonlyArray<[DoorId, string, string, number | null]> = [
   ['question-ask', 'role:ask', 'refusal', null],
   ['question-delivery', 'role:ask', 'refusal', null],
   ['chat-sync', 'public:report', 'fallback', 1],
+  ['web-chat-reply', 'role:report', 'fallback', 1],
   ['escalation-synthesis', 'public:report', 'fallback', 1],
   ['agent-chat-completion', 'public:report', 'fallback', 0],
 ];
 
 describe('the door table', () => {
-  it('is exactly these six doors — dropping one fails here', () => {
+  it('is exactly these seven doors — dropping one fails here', () => {
     expect(DOORS.map((d) => d.id)).toEqual(EXPECTED.map(([id]) => id));
   });
 
@@ -46,6 +47,18 @@ describe('the door table', () => {
     expect(new Set(reported.map((d) => ('repairs' in d ? d.repairs : -1)))).toEqual(
       new Set([0, 1]),
     );
+  });
+
+  // cm:guard `role:report` is the SECOND cell read at more than one door, and it carries the split the other way round from `public:report`: there the endings match and the repair counts differ, here the endings themselves differ — a comment write refuses and tells its author, a browser reply falls back because somebody pressed enter and is waiting. One policy on the cell could not have been both (ISS-1005).
+  it('gives the two role:report doors two different endings', () => {
+    const reported = DOORS.filter((d) => d.cell === 'role:report');
+    expect(reported.map((d) => d.id)).toEqual(['comment-write', 'web-chat-reply']);
+    expect(new Set(reported.map((d) => d.ending))).toEqual(new Set(['refusal', 'fallback']));
+  });
+
+  // cm:guard every door's reason is its OWN, across the whole table: a row copied from the nearest existing one is the failure the door table exists to prevent, and it reads identically to a row that was thought about (ISS-1005).
+  it('gives every door a reason no other door states', () => {
+    expect(new Set(DOORS.map((d) => d.why)).size).toBe(DOORS.length);
   });
 
   // cm:guard the two `role:ask` doors end the same way for DIFFERENT reasons, and the reasons are what the door table carries: one has the agent still on the line, the other posts into a room with nobody left to ask. One `why` shared between them would be the first step back to a policy on the cell.

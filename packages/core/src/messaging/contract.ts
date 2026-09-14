@@ -102,6 +102,7 @@ export type DoorId =
   | 'question-ask'
   | 'question-delivery'
   | 'chat-sync'
+  | 'web-chat-reply'
   | 'escalation-synthesis'
   | 'agent-chat-completion';
 

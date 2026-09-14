@@ -43,6 +43,10 @@ const SHIPPED: readonly CellSpec[] = [
     NO_REDACTED_SECRET,
   ]),
 
+  /**
+   * A report to somebody holding a role on the project — read at two doors.
+   */
+  // cm:guard it covers a comment on an issue AND an assistant's reply in a Forge UI room, and the description says both because it used to say only the first: ISS-1005 moved the browser onto this cell and a reader checking whether a rule belonged would have measured it against comments alone. All four rules below are true of both messages, which is why this is one cell read at two doors rather than two cells carrying a copy of the same list — the duplication the cell/door split exists to prevent. What differs between the two is the ENDING, and that lives on the door.
   /** A comment on an issue, read by the person who decides. */
   // cm:guard `issue-references-exist` is deliberately NOT here, and the reason is measured rather than assumed: in an 18-issue sample of this project's own comments, 6 of 391 cite a `forge-plugin` key — which CLAUDE.md's own carve-out REQUIRES an agent to do when it finds a defect in that repo. An existence rule here would refuse the mandated behaviour once every 66 comments. A reference this project does not hold is very likely another project's, so it is not judged; a status ASSERTED of an issue this project does hold still is.
   cell(ROLE_HOLDER, 'report', [

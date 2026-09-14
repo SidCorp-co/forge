@@ -2529,6 +2529,29 @@
 
 ### Fixed
 
+- **The assistant in the Forge web app can answer you properly again: with the figures, with the
+  file, with the snippet.** Its replies were being checked against the rules written for somebody
+  outside the project who cannot open the tracker — a reader who is owed plain language and should
+  not be handed a file path or a raw status word. But the only person who can open a conversation in
+  the web app is somebody who holds a role on that project, and the rules had never been told that.
+  So a reply naming a status, a file, or showing a few lines of a command was turned back, the
+  assistant was asked to rewrite it once, and when the rewrite naturally said the same thing, you
+  were served an apology saying it could not reconcile the project's figures — which was not what had
+  happened, and left you with nothing. Those replies now go through. In exchange the assistant is
+  held to something it was not held to before: if it tells you a piece of work is merged, that is
+  checked against what the tracker actually holds, and a claim the record does not support is stopped
+  before you read it. Replies in chat rooms outside the product are unchanged.
+
+- **The assistant now tells you where to go when you ask it for something it cannot do.** It reads
+  your project — the issues, the progress, the knowledge, the memory — and it can file a draft issue
+  and leave a comment. It cannot edit a file, run a command, or drive a pipeline: that needs a
+  session on a paired machine. It used to say only that it had no checkout, leaving you to work out
+  for yourself that the project's Agents screen still starts exactly such a session. It now says so.
+
+- **"Build Project Brain" shows you the session it just started, without a refresh.** The trigger
+  asked the app to refresh a list that no longer existed under that name, so nothing happened and
+  the new session appeared only when something else caused a reload.
+
 - **An agent reading a busy room stopped answering it, silently, and said "could not be reached".**
   The rule that paces an agent in a room it has had nothing to add to reads the decisions that room
   has already settled, since the last time a person spoke. The date it asked that question with was
