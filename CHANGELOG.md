@@ -114,6 +114,28 @@
 
 ### Added
 
+- **An issue can now say what it still owes and who owes it, as fields rather than as a sentence
+  somebody has to find.** An issue accumulated everything and surfaced nothing: an issue closed
+  having landed one of the five things it named read exactly like one that landed all five, because
+  the only place that difference existed was the third line of the first of seventeen comments.
+  Everything needed was already written, accurately and in the open — it was written as prose, so no
+  screen could read it. Issues now carry typed attributes alongside their text: what is outstanding,
+  who owes it or which issue carries it forward, how much of the named work was delivered, what this
+  blocks, what it supersedes, whether a person has to decide, and what becomes irreversible if a
+  guess turns out wrong. Each one records the comment it was asserted in, so a reader lands on the
+  record that produced a claim instead of scrolling the thread that contains it. The attributes ride
+  the read an agent already makes rather than a surface of their own, and nothing about existing
+  comments changes: prose stays exactly as long as it needs to be, because brevity was never the
+  problem.
+
+  The set of attributes is open and the set of shapes is closed — a new one costs a row in a
+  registry rather than a schema change, but every key declares its type, whether it may repeat, and
+  who may write it, and a value lands in the column of its declared type. Four things are refused by
+  name rather than absorbed: an attribute nobody registered, a value of the wrong type, an empty
+  one, and — the one this was built for — an obligation written with neither an owner nor an issue
+  carrying it. An obligation nobody owns is not recorded, it is lost, which is exactly how four of
+  five promised steps left an issue without anyone noticing.
+
 - **The assistant can now look up how Forge expects a request to be worked.** There is a new guide,
   *Answering as the assistant*, alongside the ones about dependencies, memory and deploy safety: it
   says to investigate with the tools before answering, to do the work rather than hand it back, to

@@ -1702,6 +1702,13 @@
       "when": 1794528000000,
       "tag": "0244_conversation_windows",
       "breakpoints": true
+    },
+    {
+      "idx": 245,
+      "version": "7",
+      "when": 1794614400000,
+      "tag": "0245_issue_attributes",
+      "breakpoints": true
     }
   ]
 }

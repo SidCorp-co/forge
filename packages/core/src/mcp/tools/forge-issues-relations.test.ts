@@ -13,6 +13,11 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { makeFakeJobPrincipal } from '../fake-principal.fixture.js';
 
 // cm:why the prefix reader is a collaborator with a query shape of its own, stubbed so this file stays a check of what the module under test does with the reference rather than of how the prefix is read (ISS-992)
+// cm:why Mocked independently of the shared `db.select` queue: the attribute read on `get` is its own query, and what it returns is unit-tested in `issues/attributes/attributes.test.ts`.
+vi.mock('../../issues/attributes/read.js', () => ({
+  loadIssueAttributes: vi.fn(async () => []),
+}));
+
 vi.mock('../../issues/issue-prefix-read.js', () => ({
   activeIssuePrefix: async () => null,
   heldIssuePrefixes: async () => [],
