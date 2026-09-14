@@ -4,8 +4,8 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
-import { conversationsApi } from "./api";
-import type { ConversationDetail, ConversationRow } from "./types";
+import { conversationsApi, type OpenConversationArgs } from "./api";
+import type { ConversationDetail, ConversationMembership, ConversationRow } from "./types";
 
 /** A room in a list that spans projects — the project is the query it came from, not a column. */
 export interface ListedConversation extends ConversationRow {
@@ -59,10 +59,77 @@ export function useConversation(id: string | undefined) {
 export function useOpenConversation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (args: { projectId: string; title?: string | null }) =>
-      conversationsApi.open(args.projectId, args.title),
+    mutationFn: (args: OpenConversationArgs) => conversationsApi.open(args),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["conversations"] }),
   });
+}
+
+/**
+ * Who this caller could still put in this room.
+ */
+// cm:guard it is NOT fetched with the room, because it is a directory read the size of an org and the room's own read is on the path a person waits behind to see a message. It is asked for when a dialogue opens, which is the only moment anybody needs it.
+export function useConversationCandidates(id: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: ["conversations", id, "candidates"],
+    queryFn: () => conversationsApi.candidates(id as string),
+    enabled: !!id && enabled,
+  });
+}
+
+/** The same question for a room that does not exist yet. */
+export function useProjectCandidates(projectId: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: ["conversations", "candidates", projectId],
+    queryFn: () => conversationsApi.candidatesForProject(projectId as string),
+    enabled: !!projectId && enabled,
+  });
+}
+
+/**
+ * Put what a membership change answered with straight into the room's cache.
+ */
+// cm:guard the answer is WRITTEN and not invalidated, for the reason `useSendMessage` gives for the same move: the call already carries the room's whole membership, its shape and its derived scope, so a refetch would throw all three away and render the room as it was for as long as the second request took — which is the moment a person is looking hardest at what they just changed.
+function useMembershipWrite<Args>(
+  run: (args: Args) => Promise<ConversationMembership>,
+  conversationId: string | undefined,
+) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: run,
+    onSuccess: async (membership) => {
+      if (!conversationId) return;
+      await qc.cancelQueries({ queryKey: ["conversations", conversationId] });
+      qc.setQueryData<ConversationDetail>(["conversations", conversationId], (prev) =>
+        prev ? { ...prev, ...membership } : prev,
+      );
+      qc.invalidateQueries({ queryKey: ["conversations", conversationId, "candidates"] });
+      qc.invalidateQueries({ queryKey: ["conversations", "list"] });
+    },
+  });
+}
+
+export function useAddPerson(conversationId: string | undefined) {
+  return useMembershipWrite(
+    (args: { userId: string }) =>
+      conversationsApi.addPerson(conversationId as string, args.userId),
+    conversationId,
+  );
+}
+
+export function useAddHandle(conversationId: string | undefined) {
+  return useMembershipWrite(
+    (args: { userId: string; projectId: string }) =>
+      conversationsApi.addHandle(conversationId as string, args.userId, args.projectId),
+    conversationId,
+  );
+}
+
+export function useRemoveParticipant(conversationId: string | undefined) {
+  return useMembershipWrite(
+    (args: { participantId: string }) =>
+      conversationsApi.removeParticipant(conversationId as string, args.participantId),
+    conversationId,
+  );
 }
 
 /**

@@ -24,8 +24,11 @@ import { Composer, ReadOnlyComposerNote } from "@/features/session/components/co
 import { useStickToBottom } from "@/features/session/components/use-stick-to-bottom";
 import { formatApiError } from "@/lib/api/error";
 import { useConversation, useOpenConversation, useSendMessage } from "../hooks";
+import { composerRefusal } from "../membership";
 import { conversationTitle } from "../types";
+import { ConversationMembers } from "./conversation-members";
 import { ConversationThread } from "./conversation-thread";
+import { ScopeNotice } from "./scope-notice";
 
 export function ConversationChat({
   projectId,
@@ -42,6 +45,7 @@ export function ConversationChat({
   onConversationActive?: (id: string) => void;
 }) {
   const [activeId, setActiveId] = useState<string | undefined>(conversationId);
+  const [membersOpen, setMembersOpen] = useState(false);
   const resolvedId = conversationId ?? activeId;
 
   const projectsQ = useProjects();
@@ -54,6 +58,9 @@ export function ConversationChat({
   const messages = useMemo(() => roomQ.data?.messages ?? [], [roomQ.data]);
   const windows = useMemo(() => roomQ.data?.windows ?? [], [roomQ.data]);
   const busy = send.isPending || open.isPending;
+
+  // cm:guard the composer is CLOSED before a person types rather than after they press enter, because the server refuses a turn in a room about more than one project by name — and a person who has written a paragraph into a box that was never going to send it has lost the paragraph and learned nothing. The reason and the way out below are the same ones that refusal carries (ISS-1011 criterion 33).
+  const refusal = roomQ.data ? composerRefusal(roomQ.data) : null;
 
   const { scrollRef, bottomRef, onScroll } = useStickToBottom({
     conversationKey: resolvedId,
@@ -106,9 +113,19 @@ export function ConversationChat({
               Ask the agent about this project — it reads the project, not the repository.
             </p>
           </div>
+          {roomQ.data && (
+            <IconButton
+              icon="users"
+              size="sm"
+              aria-label="Who is in this room"
+              onClick={() => setMembersOpen(true)}
+            />
+          )}
           {onClose && <IconButton icon="x" size="sm" aria-label="Close conversation" onClick={onClose} />}
         </div>
       </header>
+
+      {roomQ.data && <ScopeNotice room={roomQ.data} />}
 
       <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-8 xl:max-w-4xl">
@@ -139,10 +156,25 @@ export function ConversationChat({
         </div>
       </div>
 
-      {canWrite ? (
+      {refusal ? (
+        <div className="flex-none border-t border-line bg-surface px-4 py-3" data-testid="composer-refused">
+          <p className="fg-body-sm text-fg">{refusal.reason}</p>
+          <p className="fg-caption mt-0.5 text-muted">{refusal.wayOut}</p>
+        </div>
+      ) : canWrite ? (
         <Composer onSend={handleSend} busy={busy} sticky={false} />
       ) : (
         <ReadOnlyComposerNote sticky={false} />
+      )}
+
+      {roomQ.data && resolvedId && (
+        <ConversationMembers
+          conversationId={resolvedId}
+          room={roomQ.data}
+          canChange={canWrite}
+          open={membersOpen}
+          onClose={() => setMembersOpen(false)}
+        />
       )}
     </div>
   );

@@ -61,13 +61,51 @@ export interface ConversationParticipant {
   id: string;
   kind: "person" | "handle";
   userId: string | null;
+  /** The project a handle brings to the room; null for a person. */
+  projectId: string | null;
   label: string | null;
+  /** What to print: the address for an agent, the account's own name for a person. */
+  displayName: string | null;
   reachable: boolean | null;
 }
 
-export interface ConversationDetail extends ConversationRow {
-  scope: string[];
+/** A project in a room's derived scope, named so a screen can say which it is. */
+export interface ConversationProject {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+/**
+ * A room's membership, as every membership call answers with it.
+ */
+// cm:guard the SHAPE is part of it and not an afterthought: a direct room is read by the people in it and a group room by everyone holding a role on its projects, so a roster rendered without knowing which cannot tell a person what adding somebody there will do (ISS-1011).
+export interface ConversationMembership {
+  shape: ConversationShape;
   participants: ConversationParticipant[];
+  /** The project ids, derived from the live agents — never chosen. */
+  scope: string[];
+  scopeProjects: ConversationProject[];
+}
+
+export interface PersonCandidate {
+  userId: string;
+  displayName: string | null;
+  email: string;
+}
+
+export interface HandleCandidate {
+  userId: string;
+  handle: string;
+  project: ConversationProject;
+}
+
+export interface ConversationCandidates {
+  people: PersonCandidate[];
+  handles: HandleCandidate[];
+}
+
+export interface ConversationDetail extends ConversationRow, ConversationMembership {
   messages: ConversationMessage[];
   windows: ConversationWindow[];
 }

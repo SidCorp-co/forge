@@ -15,7 +15,7 @@ import {
   conversationParticipants,
   conversations,
 } from '../db/schema-conversations.js';
-import { effectiveProjectRole } from '../lib/authz.js';
+import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
 import type { Executor, TxOnly } from './db-executor.js';
 
 const forbidden = (message: string, code: string) =>
@@ -32,6 +32,11 @@ export interface ParticipantRow {
   projectId: string | null;
   externalKey: string | null;
   label: string | null;
+  /**
+   * The name a screen prints for this participant, read LIVE from `users`.
+   */
+  // cm:guard resolved on every read rather than copied into `label` at the door, because a person's display name is theirs to change and a copy taken when they joined would show a room the name they had that day. `label` stays what the transport or the handle called them, which is a different question and the one the transcript's author rows are written against (ISS-1011 criterion 2).
+  displayName: string | null;
   /**
    * Whether this handle can still act — it holds a live credential and the
    * authority its room's project needs.
@@ -61,8 +66,11 @@ export async function listParticipants(
       label: conversationParticipants.label,
       liveTokens: live.n,
       memberRole: projectMembers.role,
+      userDisplayName: users.displayName,
+      userEmail: users.email,
     })
     .from(conversationParticipants)
+    .leftJoin(users, eq(users.id, conversationParticipants.userId))
     .leftJoin(live, eq(live.userId, conversationParticipants.userId))
     .leftJoin(
       projectMembers,
@@ -85,6 +93,11 @@ export async function listParticipants(
     projectId: row.projectId,
     externalKey: row.externalKey,
     label: row.label,
+    // cm:guard a HANDLE prints the name in the room — the address people type — and a PERSON prints the account's own display name, falling back to the address they sign in with and then to whatever their transport called them. A person with none of the three is a speaker Forge knows nothing about, which is a fact the roster states rather than a gap it fills with an id.
+    displayName:
+      row.kind === 'handle'
+        ? row.label
+        : (row.userDisplayName ?? row.userEmail ?? row.label ?? null),
     // cm:guard BOTH halves, because either alone leaves a handle that cannot act reading as if it could: a credential with no membership reaches nothing, and a membership with no credential has nothing to reach with. `revokeAgentAccount` removes both and `revokeAgentCredentials` removes only the first, so a reader testing one of them would call an agent reachable after one of the two revokes.
     reachable: row.kind === 'handle' ? (row.liveTokens ?? 0) > 0 && row.memberRole !== null : null,
   }));
@@ -212,6 +225,7 @@ export async function attachOpeningHandle(
  * scope widens, so it is the moment the authorization is checked.
  */
 // cm:guard checked at the DOOR and per PROJECT: a handle carries its projects with it, so admitting one a caller holds no role on hands them a room whose answers are computed with an access they do not have. The refusal names the project rather than saying no, because "which of its projects" is the whole of what the caller has to fix (ISS-1001 criteria 8, 9).
+// cm:guard the bar is MEMBER and not merely any role, which it was until ISS-1011 gave this function a caller: `assertConversationWritable` already demands `member` to rename or delete a room, and widening what a room can see is the larger act of the two — a `viewer` who could not retitle a room could otherwise pull a second project's data into it. The refusal names the role held as well as the project, because "you have viewer and need member" is a different fix from "you are on the wrong project".
 // cm:guard `actorUserId` is REQUIRED and not nullable, because the check is `effectiveProjectRole(actor, …)` and an absent actor holds no role anywhere: made optional, every caller that forgets to pass one is refused on a room it owns, and the obvious fix — skipping the loop when it is absent — turns the door into a formality. The opening path has `attachOpeningHandle` instead, which says out loud that it checks nothing.
 export async function addHandle(args: AddHandleArgs): Promise<void> {
   const tx = args.tx ?? defaultDb;
@@ -227,9 +241,9 @@ export async function addHandle(args: AddHandleArgs): Promise<void> {
   }
 
   const access = await effectiveProjectRole(args.actorUserId, args.projectId);
-  if (!access?.role) {
+  if (!projectRoleAtLeast(access?.role ?? null, 'member')) {
     throw forbidden(
-      `@${handle.handle} would make this room about project ${args.projectId} and you hold no role on it; a handle is added to a room by somebody who holds a role on its project`,
+      `@${handle.handle} would make this room about project ${args.projectId} and you hold ${access?.role ?? 'no role'} on it; a handle is added to a room by somebody who holds at least a member role on its project`,
       'HANDLE_PROJECT_FORBIDDEN',
     );
   }
@@ -292,6 +306,7 @@ export interface RemoveParticipantArgs {
 }
 
 /** Stamp a participant as gone. */
+// cm:guard the LAST PERSON of a one-to-one room may not leave either, and it is the same defect wearing the other kind: `conversation-access.ts:assertInTheRoom` fences a `direct` room to its live people, so a room with none is refused to everybody including whoever emptied it. Both halves of the pair are here because both are read-then-write across the same lock (ISS-1011 criterion 27).
 // cm:guard the LAST handle may not leave: a room with none derives an empty scope, and `scope.ts` then refuses every reader — so the removal does not fail loudly, it makes the room silently unreachable for everybody including the person who removed it. Atomic creation holds the invariant only until the first removal; this is the other half (ISS-1001 criterion 42).
 // cm:guard the count and the update are ONE transaction behind a `FOR UPDATE` on the conversation, because the check is a read-then-write across two handles: two callers removing a different handle each count two, each pass `live <= 1`, and both commit — leaving exactly the unreadable room this guard exists to prevent, with neither caller told.
 export async function removeParticipant(args: RemoveParticipantArgs): Promise<void> {
@@ -301,8 +316,8 @@ export async function removeParticipant(args: RemoveParticipantArgs): Promise<vo
 }
 
 async function removeWithin(tx: Executor, args: RemoveParticipantArgs): Promise<void> {
-  await tx
-    .select({ id: conversations.id })
+  const [room] = await tx
+    .select({ id: conversations.id, shape: conversations.shape })
     .from(conversations)
     .where(eq(conversations.id, args.conversationId))
     .for('update')
@@ -326,23 +341,32 @@ async function removeWithin(tx: Executor, args: RemoveParticipantArgs): Promise<
     });
   }
 
-  if (row.kind === 'handle') {
-    const [{ live } = { live: 0 }] = await tx
+  const liveOfKind = async (kind: ConversationParticipantKind): Promise<number> => {
+    const [counted] = await tx
       .select({ live: sql<number>`count(*)::int` })
       .from(conversationParticipants)
       .where(
         and(
           eq(conversationParticipants.conversationId, args.conversationId),
-          eq(conversationParticipants.kind, 'handle'),
+          eq(conversationParticipants.kind, kind),
           isNull(conversationParticipants.removedAt),
         ),
       );
-    if (live <= 1) {
-      throw badRequest(
-        `conversation ${args.conversationId} has one handle left and a room with none is about no project, so nobody could read it again; add another handle first, or delete the conversation`,
-        'CONVERSATION_LAST_HANDLE',
-      );
-    }
+    return counted?.live ?? 0;
+  };
+
+  if (row.kind === 'handle' && (await liveOfKind('handle')) <= 1) {
+    throw badRequest(
+      `conversation ${args.conversationId} has one handle left and a room with none is about no project, so nobody could read it again; add another handle first, or delete the conversation`,
+      'CONVERSATION_LAST_HANDLE',
+    );
+  }
+
+  if (row.kind === 'person' && room?.shape === 'direct' && (await liveOfKind('person')) <= 1) {
+    throw badRequest(
+      `conversation ${args.conversationId} is a one-to-one room and this is the last person in it; such a room is read by the people in it, so taking the last one out would leave it readable by nobody — add another person first, or delete the conversation`,
+      'CONVERSATION_LAST_PERSON',
+    );
   }
 
   await tx

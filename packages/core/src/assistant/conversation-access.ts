@@ -1,0 +1,74 @@
+// Who may look at a room, who may change it, and who may change who is in it.
+//
+// Three different questions with three different answers, lifted out of
+// `conversation-routes.ts` when the membership surface arrived so that both
+// routers ask the same ones rather than each keeping a copy (ISS-1011).
+
+import { HTTPException } from 'hono/http-exception';
+import { listParticipants } from '../conversations/participants.js';
+import { assertConversationReadable, assertConversationWritable } from '../conversations/scope.js';
+import { type ConversationRow, getConversation } from '../conversations/store.js';
+
+const notFound = (message: string) =>
+  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
+
+/**
+ * A one-to-one room is read by the people IN it, whatever roles its scope would grant.
+ */
+// cm:guard the scope check alone is the wrong rule for a `direct` room and became a live hole the moment a screen read this router: `derivedScope` answers what the room is ABOUT, so every member of the project passed it and one person's private chat was readable by all of them. `agent_sessions` has had this fence since ISS-522 (`eq(agentSessions.userId, userId)` on the interactive list) and the conversation store never needed one because nothing read it (ISS-1004 step 5).
+// cm:guard it refuses a `direct` room whose people were never recorded — a Rocket.Chat DM, where the collector opens the venue and adds no person — rather than falling back to the scope check. Nobody reading such a room in the Forge UI is the safe half of the trade and the visible one; the other half would be handing Bob the transcript of Alice's DM with the bot.
+export async function assertInTheRoom(row: ConversationRow, userId: string): Promise<void> {
+  if (row.shape !== 'direct') return;
+  const people = await listParticipants(row.id);
+  if (people.some((p) => p.kind === 'person' && p.userId === userId)) return;
+  throw new HTTPException(403, {
+    message: `conversation ${row.id} is a one-to-one room and you are not one of its people, so there is nothing here for you to read`,
+    cause: { code: 'NOT_IN_THE_ROOM' },
+  });
+}
+
+/**
+ * Who may change WHO IS IN a room: somebody already in it, whatever its shape.
+ */
+// cm:guard this is NOT `assertInTheRoom` with the shape test dropped, and the difference is the whole point: reading a group room is a scope question, and CHANGING one is not. Reusing the read rule here would let anybody holding roles on a group room's projects add an agent to it, take a colleague out of it, and widen what it can see — none of which they are in the room to have a view about (ISS-1011 criterion 37).
+// cm:guard a room that records NO people is therefore not changeable from Forge at all, and that is the truthful answer rather than a gap: a Rocket.Chat room's membership is its channel's, and the refusal says so instead of letting the Forge UI write a membership the channel will never show.
+export async function assertMembershipActor(row: ConversationRow, userId: string): Promise<void> {
+  const people = await listParticipants(row.id);
+  if (people.some((p) => p.kind === 'person' && p.userId === userId)) return;
+  throw new HTTPException(403, {
+    message: people.some((p) => p.kind === 'person')
+      ? `conversation ${row.id} is changed by the people in it and you are not one of them`
+      : `conversation ${row.id} records none of its people — it is a ${row.adapter} room, and who is in it is decided where it lives rather than here`,
+    cause: { code: 'NOT_IN_THE_ROOM' },
+  });
+}
+
+/** The room, if this caller may look at it. */
+export async function readableConversation(id: string, userId: string): Promise<ConversationRow> {
+  const row = await getConversation(id);
+  if (!row) throw notFound('conversation not found');
+  await assertConversationReadable(row.id, userId);
+  await assertInTheRoom(row, userId);
+  return row;
+}
+
+/** Renaming and deleting are writes, and a write takes more than a look. */
+export async function writableConversation(id: string, userId: string): Promise<ConversationRow> {
+  const row = await getConversation(id);
+  if (!row) throw notFound('conversation not found');
+  await assertConversationWritable(row.id, userId);
+  await assertInTheRoom(row, userId);
+  return row;
+}
+
+/**
+ * The room, if this caller may change who is in it.
+ */
+// cm:guard the writable door AND the membership actor check, in that order, because they refuse different people and both refusals are owed: the first is "you hold no member role on a project this room is about", the second is "you are not in this room". A caller failing both is told about the role first, which is the one they can do something about.
+export async function membershipConversation(id: string, userId: string): Promise<ConversationRow> {
+  const row = await getConversation(id);
+  if (!row) throw notFound('conversation not found');
+  await assertConversationWritable(row.id, userId);
+  await assertMembershipActor(row, userId);
+  return row;
+}

@@ -12,7 +12,7 @@
 // rather than relying on a query parameter being passed.
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import { IconButton, Select, SlideOver } from "@/design";
+import { IconButton, SlideOver } from "@/design";
 import { useOrgScopedProjects, useProjects } from "@/features/projects/hooks";
 import { usePersistedState } from "@/lib/utils/use-persisted-state";
 import { projectRoom } from "@/lib/ws/rooms";
@@ -20,6 +20,7 @@ import { useRoom } from "@/lib/ws/use-room";
 import { type ListedConversation, useConversationsAcrossProjects } from "../hooks";
 import { ConversationChat } from "./conversation-chat";
 import { ConversationSidebar } from "./conversation-sidebar";
+import { StartConversation } from "./start-conversation";
 
 const SIDEBAR_COLLAPSED_KEY = "web-v2:conversations-sidebar-collapsed";
 
@@ -37,37 +38,6 @@ interface Selection {
 function RoomSub({ projectId }: { projectId: string }) {
   useRoom(projectRoom(projectId));
   return null;
-}
-
-/** Centre-area "start a conversation" prompt: pick a project, then a draft mounts here. */
-function NewConversationPrompt({ onPick }: { onPick: (projectId: string) => void }) {
-  const { projects } = useOrgScopedProjects();
-  const options = projects.map((p) => ({ value: p.id, label: p.name }));
-
-  return (
-    <div className="grid h-full min-h-0 place-items-center px-4">
-      <div className="flex w-full max-w-sm flex-col items-center gap-4 text-center">
-        <div>
-          <p className="fg-h3">Start a conversation</p>
-          <p className="fg-body-sm mt-1 text-muted">
-            Pick a project to start talking to its agent.
-          </p>
-        </div>
-        <div className="w-full text-left">
-          <label htmlFor="conversations-new-project" className="fg-body-sm mb-1.5 block text-muted">
-            Project
-          </label>
-          <Select
-            id="conversations-new-project"
-            options={options}
-            value=""
-            onChange={onPick}
-            placeholder="Select a project…"
-          />
-        </div>
-      </div>
-    </div>
-  );
 }
 
 export function ConversationsScreen() {
@@ -103,9 +73,10 @@ export function ConversationsScreen() {
     setMobileHistoryOpen(false);
   }, []);
 
-  const pickProjectForNew = useCallback((projectId: string) => {
+  // cm:guard the room is opened by the START step and arrives here already holding its members, so the selection carries a real conversation id rather than a draft: a room started with a colleague and a second agent has to exist before either can be put in it, and a draft that opens on the first send has nowhere to put them (ISS-1011 criterion 39).
+  const openStarted = useCallback((conversationId: string, projectId: string) => {
     selectionKeyRef.current += 1;
-    setSelection({ key: selectionKeyRef.current, projectId, conversationId: null });
+    setSelection({ key: selectionKeyRef.current, projectId, conversationId });
   }, []);
 
   const sidebar = (inDrawer: boolean) => (
@@ -154,7 +125,7 @@ export function ConversationsScreen() {
               }
             />
           ) : (
-            <NewConversationPrompt onPick={pickProjectForNew} />
+            <StartConversation onStarted={openStarted} />
           )}
         </div>
       </div>
