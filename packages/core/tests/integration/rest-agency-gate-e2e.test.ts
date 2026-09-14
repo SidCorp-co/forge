@@ -27,6 +27,7 @@ import {
 let harness: TestDatabase;
 let app: Hono<{ Variables: RequestIdVars }>;
 let mintPat: typeof import('../../src/auth/pat.js').mintPat;
+let signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
@@ -43,14 +44,16 @@ beforeAll(async () => {
   process.env.CORS_ORIGINS ??= 'http://localhost:3000';
   process.env.NODE_ENV ??= 'test';
 
-  const [extras, mergeMod, errMod, reqIdMod, pat] = await Promise.all([
+  const [extras, mergeMod, errMod, reqIdMod, pat, jwt] = await Promise.all([
     import('../../src/issues/extras-routes.js'),
     import('../../src/issues/merge-routes.js'),
     import('../../src/middleware/error.js'),
     import('../../src/middleware/request-id.js'),
     import('../../src/auth/pat.js'),
+    import('../../src/auth/jwt.js'),
   ]);
   mintPat = pat.mintPat;
+  signUserToken = jwt.signUserToken;
 
   app = new Hono<{ Variables: RequestIdVars }>();
   app.use('*', reqIdMod.requestId());
@@ -121,8 +124,20 @@ describe('PATCH /api/issues/batch honours agency, not just device-ness', () => {
     expect(row?.status).toBe('approved');
   });
 
-  // cm:guard the human half is not decoration — it is what proves the gate is reading agency rather than simply refusing everyone. Identical request, identical missing evidence; only the token's name prefix differs, and a person hand-advancing their own issue must keep working (that carve-out is the whole reason the gate is scoped at all).
-  it('lets a person through the same request', async () => {
+  // cm:guard the passing half is not decoration — it is what proves the gate reads who is speaking rather than simply refusing everyone. Identical request, identical missing evidence, and only the credential differs. Since ISS-1003 the credential that passes is a SESSION and not a token a person owns: most agents run on a person's token, so keying the carve-out on ownership handed it to exactly the population the gate exists for.
+  it('lets a person in a session through the same request', async () => {
+    const { user, issueId } = await seedEvidenceLessIssue();
+    const res = await advance(await signUserToken(user.id), issueId);
+
+    expect(JSON.stringify(await res.json())).not.toContain('no_work_evidence');
+    const [row] = await harness.db.execute<{ status: string }>(
+      sql`SELECT status FROM issues WHERE id = ${issueId}::uuid`,
+    );
+    expect(row?.status).toBe('developed');
+  });
+
+  // cm:guard this case asserted the OPPOSITE until ISS-1003 and the flip IS the fix: a token a person owns establishes nobody, so it meets the gate rather than skipping it. The cost is real and is the point — a person driving the CLI on their own token is now asked for the same recorded evidence an agent is, and their way through is to record it or to advance from a session. Read `agency ?? 'human'` anywhere and this goes green again, with every agent on a borrowed token walking through beside them.
+  it('refuses a token a person owns, which establishes nobody', async () => {
     const { user, project, issueId } = await seedEvidenceLessIssue();
     const { plaintext } = await mintPat({
       userId: user.id,
@@ -131,11 +146,11 @@ describe('PATCH /api/issues/batch honours agency, not just device-ness', () => {
     });
     const res = await advance(plaintext, issueId);
 
-    expect(JSON.stringify(await res.json())).not.toContain('no_work_evidence');
+    expect(JSON.stringify(await res.json())).toContain('no_work_evidence');
     const [row] = await harness.db.execute<{ status: string }>(
       sql`SELECT status FROM issues WHERE id = ${issueId}::uuid`,
     );
-    expect(row?.status).toBe('developed');
+    expect(row?.status).toBe('approved');
   });
 });
 
@@ -163,30 +178,37 @@ describe('POST/DELETE /api/issues/:id/merge — the CLI route for a merge claim'
     expect(await mergedAtOf(issueId)).toBeNull();
   });
 
-  it('lets a person make the same claim, and take it back', async () => {
+  it('lets a person in a session make the same claim, and take it back', async () => {
+    const { user, issueId } = await seedEvidenceLessIssue();
+    const session = await signUserToken(user.id);
+
+    expect((await merge(session, issueId, 'POST', { target: 'main' })).status).toBe(200);
+    expect(await mergedAtOf(issueId)).not.toBeNull();
+
+    expect((await merge(session, issueId, 'DELETE')).status).toBe(200);
+    expect(await mergedAtOf(issueId)).toBeNull();
+  });
+
+  // cm:guard the same flip as the advance pair above, on the route the CLI actually uses to claim a merge: a token a person owns no longer carries the human carve-out, because it cannot say a person is holding it.
+  it('refuses the claim on a token a person owns', async () => {
     const { user, project, issueId } = await seedEvidenceLessIssue();
     const { plaintext } = await mintPat({
       userId: user.id,
       name: 'my laptop',
       boundProjectId: project.id,
     });
+    const res = await merge(plaintext, issueId, 'POST', { target: 'main' });
 
-    expect((await merge(plaintext, issueId, 'POST', { target: 'main' })).status).toBe(200);
-    expect(await mergedAtOf(issueId)).not.toBeNull();
-
-    expect((await merge(plaintext, issueId, 'DELETE')).status).toBe(200);
+    expect(res.status).toBe(422);
+    expect(JSON.stringify(await res.json())).toContain('NO_WORK_EVIDENCE');
     expect(await mergedAtOf(issueId)).toBeNull();
   });
 
   // cm:guard `target` is the audit label the claim is recorded under, so a POST without one records "merged" with no statement of where — refuse it here rather than defaulting, because a default is indistinguishable in the audit trail from a caller who meant it.
   it('refuses a claim that does not say where it merged', async () => {
-    const { user, project, issueId } = await seedEvidenceLessIssue();
-    const { plaintext } = await mintPat({
-      userId: user.id,
-      name: 'my laptop',
-      boundProjectId: project.id,
-    });
-    expect((await merge(plaintext, issueId, 'POST')).status).toBe(400);
+    const { user, issueId } = await seedEvidenceLessIssue();
+    // cm:guard a SESSION, so the 400 this asserts is about the missing `target` and not about the evidence gate a token would now meet first — two refusals on one request, and the wrong one would pass this case for the wrong reason.
+    expect((await merge(await signUserToken(user.id), issueId, 'POST')).status).toBe(400);
     expect(await mergedAtOf(issueId)).toBeNull();
   });
 });

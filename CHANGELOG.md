@@ -4540,6 +4540,22 @@
 
 ### Changed
 
+- **A personal access token no longer counts as "a person is typing this", so driving Forge from the
+  command line on your own token now meets the same recorded-work check an agent meets.** The check
+  that refuses to move an issue to `developed` with nothing recorded against it was written for
+  agents, and it was scoped so that a person hand-advancing their own issue would not be stopped by
+  it. But over REST the only thing it had to go on was who owned the credential, and in practice a
+  token a person owns is what nearly every agent runs on — so the carve-out written for the person
+  was being taken by exactly the population the check exists for, on the two routes that matter most
+  (`PATCH /api/issues/batch` and the merge claim). Ownership of a credential is now treated as
+  saying nothing about who is holding it: a browser session is the only thing that establishes a
+  person, and everything else is asked for its evidence. **The cost is real and is named here rather
+  than discovered:** if you advance or claim a merge from a shell using a PAT and you have recorded
+  no work on the issue, you now get `no_work_evidence` where you previously got a `200`. The two
+  ways through are the two that were always intended — record the work (which the `forge` CLI does
+  as a matter of course) or advance it from the web UI. Nothing about what a token may *reach*
+  changed; only what it may claim about who is behind it.
+
 - **A reply in a chat room now goes out the same door on every channel, and a turn that answers
   nothing says which kind of nothing it was.** Answering somebody in a Rocket.Chat room used to be a
   path built inside the Rocket.Chat integration itself: it opened the room's transcript, asked the
