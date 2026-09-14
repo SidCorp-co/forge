@@ -262,6 +262,7 @@ async function livePersonIds(conversationId: string, tx: Executor): Promise<stri
   return rows.flatMap((r) => (r.userId ? [r.userId] : []));
 }
 
+// cm:guard one call per person per candidate project, and deliberately NOT a batched query of its own: the bar is whatever `effectiveProjectRole` says it is — the project role, the org-derived one above it, and the fence above both — and a second copy of that here would be a second answer to "may this person read this project" that nothing keeps in step. The cost is bounded by the people in ONE room times the projects the room is not yet about, and it is only paid on the candidate list; if a room large enough to feel it ever exists, batch it by teaching `authz` to answer for many projects at once rather than by re-deriving the rule here.
 // cm:guard `viewer` and not `member`, because the bar this is predicting is the READ rule in `scope.ts:assertConversationRole` — asking the stricter question here would name people who keep the room, and a confirmation that overstates the damage is as false as one that hides it (ISS-1011).
 async function peopleWithoutRoleOn(userIds: readonly string[], projectId: string) {
   const out: string[] = [];
