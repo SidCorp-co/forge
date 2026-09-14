@@ -10,16 +10,19 @@ Three kinds of figure appear below and they are not equally strong:
 | **Cited** — the 79-row census | the same command given a `FORGE_CENSUS_DATABASE_URL` that reaches forge-beta. No host this was written from has one, so the census here is quoted at its date |
 | **Derived by hand** — the 61-char drift, the 37% share, the commit and the dates | this document. The command prints neither a comparison against an earlier run nor its own provenance |
 
-**The catalog this report measured** is the one at commit `58afbd5`, re-derived on 2026-09-12 rather
-than carried over: it had moved 61 chars since the first draft, which is why the script re-derives
-and this table does not cite. It moves again whenever a factory joins `CHAT_TOOL_ALLOWLIST` or a
-`forge_*` description is edited — ISS-984 is trimming those descriptions in parallel, so a figure
-below that disagrees with a fresh run means the trim landed after this.
+**The catalog this report measured** is the one in the ISS-1007 working tree based on `29fee010`,
+re-derived on 2026-09-14 rather than carried over. `29fee010` itself is the base and holds nine
+tools; the figures below are of the tree that adds `forge_guide` to it. It moves whenever a factory joins `CHAT_TOOL_ALLOWLIST` or a `forge_*` description
+is edited, and both happened since the previous reading at `58afbd5`: ISS-1007 added `forge_guide`,
+taking the catalog from nine tools to ten, and the descriptions around it moved as well — 20,136 → 22,082
+chars, of which `forge_guide` itself is 1,584. A figure below that disagrees with a fresh run means
+the catalog moved again after this, which is what the script re-deriving rather than this table
+citing is for.
 
 ```mermaid
 flowchart LR
   subgraph PREFIX["what a Messages request renders, in this order"]
-    T["tools[]<br/>9 tools · 20,136 chars<br/>cache_control on the LAST one<br/>stable across rounds AND turns"]
+    T["tools[]<br/>10 tools · 22,082 chars<br/>cache_control on the LAST one<br/>stable across rounds AND turns"]
     S["system<br/>persona + agentConfig + progressFacts<br/>cache_control on the block<br/>progressFacts recomputed EVERY turn"]
     M["messages[]<br/>history · unmarked"]
   end
@@ -45,14 +48,14 @@ request has been logged since 2026-09-03**, so that path has never run here. The
 `toRequestBody` sets are, on this fleet's evidence, unexercised.
 
 **Verdict: the ~790-tokens-per-request figure a command layer was argued from does not exist.** The
-catalog costs its full size every turn today — 5,034 tokens, not 790.
+catalog costs its full size every turn today — 5,521 tokens, not 790.
 
 That is not an argument for the command layer either, for two reasons the measurement turned up:
 
-1. **The saving was argued against the wrong door.** The figure was the same nine tools with the
-   description cap not applied, which measures 26,366 today; the chat door is served 20,136, of which only 7,157
-   is description, 12,318 is schema and 661 is wire framing. A command layer or a trim that replaces
-   prose cannot reach the 64% that is schema and framing.
+1. **The saving was argued against the wrong door.** The figure was the same allowlist with the
+   description cap not applied, which measures 28,649 today; the chat door is served 22,082, of which only 8,194
+   is description, 13,171 is schema and 717 is wire framing. A command layer or a trim that replaces
+   prose cannot reach the 63% that is schema and framing.
 2. **The question the estimate rests on is still open.** Whether the Anthropic path caches costs one
    live chat turn to find out, and no amount of catalog-trimming substitutes for the answer.
 
@@ -62,45 +65,48 @@ Build nothing on a cache-hit rate until a row in `chat_logs` reports one.
 
 | | |
 |---|---|
-| tools | 9, the factories `assistant/tools/registry.ts:CHAT_TOOL_ALLOWLIST` names |
-| serialized | 20,136 chars (**measured**) — `toRequestBody`'s own `tools` array, `input_schema` and the `cache_control` marker included |
-| tokens | 5,034 (**estimated**, chars/4) |
+| tools | 10, the factories `assistant/tools/registry.ts:CHAT_TOOL_ALLOWLIST` names |
+| serialized | 22,082 chars (**measured**) — `toRequestBody`'s own `tools` array, `input_schema` and the `cache_control` marker included |
+| tokens | 5,521 (**estimated**, chars/4) |
 | minimum cacheable prefix | 1,024 tokens on `claude-sonnet-5` — the catalog clears it |
 
-`forge_issues` alone is 7,489 chars, 37% of the catalog — and 6,394 of those are its schema.
+`forge_issues` alone is 7,850 chars, 36% of the catalog — and 6,755 of those are its schema. The
+newest entry, `forge_guide`, is the second cheapest at 1,584.
 
 ### The costed figure is a different door
 
 The figure ISS-983 and ISS-986 both carry — 28,343 chars — is the **uncapped** serialization of the
-same nine tools, measured at `b4850a2e`; that shape is 26,366 as of this run. The chat door is not served that.
+allowlist as it stood at `b4850a2e`, when it held nine tools; that shape is 28,649 as of this run, over
+ten. The chat door is not served that.
 
 It is **not** the `/mcp` door, and an earlier draft of this report called it one. `/mcp` is
 `mcp/server.ts`'s `ListToolsRequestSchema` handler, which serves a different and far longer tool
 list and spells the key `inputSchema`; the shape priced here is the provider wire, which spells it
 `input_schema`. Nothing in this report measures `/mcp`, and `catalogVariants()` carries a guard
 saying so. `tools/mcp-adapter.ts:buildToolset` puts
-every description through `truncate(..., DESCRIPTION_CAP)` at 1,024 characters, and **5 of the 9
+every description through `truncate(..., DESCRIPTION_CAP)` at 1,024 characters, and **6 of the 10
 tools come back cut**:
 
 | Tool | Served to chat | Description | Schema |
 |---|---|---|---|
-| `forge_issues` | 7,489 | 1,037 **cut** | 6,394 |
+| `forge_issues` | 7,850 | 1,037 **cut** | 6,755 |
 | `forge_comments` | 2,876 | 1,037 **cut** | 1,779 |
 | `forge_knowledge` | 2,077 | 633 | 1,379 |
-| `forge_memory_search` | 1,603 | 1,037 **cut** | 497 |
-| `forge_projects_get` | 1,232 | 1,037 **cut** | 133 |
 | `forge_project_pipeline_runs` | 1,941 | 1,037 **cut** | 831 |
+| `forge_memory_search` | 1,603 | 1,037 **cut** | 497 |
+| `forge_guide` | 1,584 | 1,037 **cut** | 492 |
+| `forge_projects_get` | 1,232 | 1,037 **cut** | 133 |
 | `forge_metrics_project_step_durations` | 1,143 | 619 | 440 |
 | `forge_metrics_project_timeseries` | 1,076 | 458 | 505 |
 | `forge_pipeline_runs_get` | 689 | 262 | 360 |
-| **total** | **20,136** | **7,157** | **12,318** + 661 framing |
+| **total** | **22,082** | **8,194** | **13,171** + 717 framing |
 
-**61% of what the chat door pays for is schema, which no description trim reaches** — 12,318 of
-20,136 chars, with a further 661 of wire framing (tool names, JSON punctuation, the array and the
+**60% of what the chat door pays for is schema, which no description trim reaches** — 13,171 of
+22,082 chars, with a further 717 of wire framing (tool names, JSON punctuation, the array and the
 `cache_control` marker) that neither lever reaches either. The three buckets sum to the whole and
 the script prints that sum, because a remainder reported as schema overstates what a schema trim
 could ever reach. And the
-five tools already at the cap give back nothing at all when their prose is shortened — the cap, not
+six tools already at the cap give back nothing at all when their prose is shortened — the cap, not
 the prose, is what sets their size. A trim is worth what it moves on the four tools under the cap
 and on the uncapped shape; on the chat door's headline it is worth close to nothing.
 
@@ -118,15 +124,16 @@ from — a report that could not reproduce that figure would leave the quote unf
 
 | Serialization | Chars |
 |---|---|
-| wire, project-bound — what is priced above | 20,136 |
-| **uncapped, descriptions whole — the chat nine before the cap** | **26,366** |
-| wire, unbound — `projectId` left in every schema | 21,769 |
-| OpenAI-shaped toolset, project-bound | 20,360 |
-| wire, project-bound, pretty-printed at two spaces | 35,044 |
+| wire, project-bound — what is priced above | 22,082 |
+| **uncapped, descriptions whole — the chat allowlist before the cap** | **28,649** |
+| wire, unbound — `projectId` left in every schema | 23,940 |
+| OpenAI-shaped toolset, project-bound | 22,335 |
+| wire, project-bound, pretty-printed at two spaces | 37,554 |
 
-**The uncapped shape measures 26,366 here, not the 28,343 ISS-983 and ISS-986 both carried.** The
-difference is ISS-984, which trimmed `forge_issues`' description and landed before this measurement;
-28,343 was that shape's size at `b4850a2e` and is no longer anything's size. This is the figure this
+**The uncapped shape measures 28,649 here, not the 28,343 ISS-983 and ISS-986 both carried.** Two
+changes separate the readings and they pull opposite ways: ISS-984 trimmed `forge_issues`'
+description, and ISS-1007 added a tenth tool. 28,343 was that shape's size at `b4850a2e`, over nine
+tools, and is no longer anything's size. This is the figure this
 report re-derives rather than cites, which is what ISS-984's own rule asks of whichever of the two
 lands second.
 
@@ -160,10 +167,10 @@ identical cached catalog and differing only in history:
 
 | History | promptTokens | cachedPromptTokens | Ratio reported | Prefix saving |
 |---|---|---|---|---|
-| 2,000 | 7,034 | 5,034 | **71.6%** | 4,531 tokens · $0.009061 |
-| 20,000 | 25,034 | 5,034 | **20.1%** | 4,531 tokens · $0.009061 |
+| 2,000 | 7,521 | 5,521 | **73.4%** | 4,969 tokens · $0.009938 |
+| 20,000 | 25,521 | 5,521 | **21.6%** | 4,969 tokens · $0.009938 |
 
-Same catalog, same saving, ratios a factor of 3.6 apart. A report quoting that ratio has measured
+Same catalog, same saving, ratios a factor of 3.4 apart. A report quoting that ratio has measured
 the history. `tool-catalog-cost.test.ts` asserts the divergence and the invariance together.
 
 ## Render order, and which breakpoint the volatility reaches

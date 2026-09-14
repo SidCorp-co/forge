@@ -114,6 +114,16 @@
 
 ### Added
 
+- **The assistant can now look up how Forge expects a request to be worked.** There is a new guide,
+  *Answering as the assistant*, alongside the ones about dependencies, memory and deploy safety: it
+  says to investigate with the tools before answering, to do the work rather than hand it back, to
+  lead a reply with what was found, and what an issue has to contain before it is worth filing.
+  Anyone can read it at `/api/guides/answering-as-the-assistant.md`, and the assistant itself can
+  now fetch it mid-answer — guides were previously readable by every other kind of agent Forge runs
+  and not by the one talking to you. It can only read them: a chat can list guides and open one,
+  and the two actions that would let it rewrite your organisation's own integration guides are
+  refused at the door.
+
 - **Your conversations in Forge are conversations now, not sessions.** Opening a chat in the Forge
   app used to open a row describing a process on a runner box: it had a status, a device, a cost and
   a lifecycle, and what you had actually said lived inside it. The same app had a durable record of

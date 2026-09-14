@@ -22,6 +22,7 @@ import {
   ALWAYS_INJECT_ENFORCEMENT_NOTE,
   ALWAYS_INJECT_GUARANTEE_NOTE,
 } from '../projects/project-facts.js';
+import { ASSISTANT_METHOD_GUIDE } from './assistant-method-guide.js';
 import { CONFORMANCE_GUIDE } from './conformance-guide.js';
 import type { ForgeGuide } from './types.js';
 
@@ -671,6 +672,7 @@ the old convention has no second half to maintain. A project with no module labe
 section, which is why this migration is what turns the feature on.`,
   },
   CONFORMANCE_GUIDE,
+  ASSISTANT_METHOD_GUIDE,
 ] as const;
 
 const GUIDE_BY_SLUG = new Map<string, ForgeGuide>(FORGE_GUIDES.map((g) => [g.slug, g]));

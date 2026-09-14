@@ -14,6 +14,7 @@ import { db } from '../../db/client.js';
 import { activeIssuePrefix, heldIssuePrefixes } from '../../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../../lib/issue-ref.js';
 import { forgeCommentsTool } from '../../mcp/tools/forge-comments.js';
+import { forgeGuideTool } from '../../mcp/tools/forge-guide.js';
 import { forgeIssuesTool } from '../../mcp/tools/forge-issues.js';
 import { forgeKnowledgeTool } from '../../mcp/tools/forge-knowledge.js';
 import { forgeMemorySearchTool } from '../../mcp/tools/forge-memory.js';
@@ -95,6 +96,8 @@ export const CHAT_TOOL_ALLOWLIST: ChatToolSpec[] = [
     describe: '`documentId` also accepts the short `ISS-<n>` id shown as `issueId`.',
   },
   { factory: forgeCommentsTool, allowedActions: ['list', 'create'] },
+  // cm:guard CLASSIFIED read-only, and the classification is these two action names rather than the tool's own good manners: `forge_guide` also serves `upsert` and `delete`, whose only fence inside the handler is `assertOrgAdmin` — and a chat principal is a signed-in project member who may BE an org admin, so that check would let a room rewrite its org's integration guide. `buildToolset` rejects an action outside this array before the guard and before the handler runs, which is the fence ISS-1005's guard says a new key is unfenced without (ISS-1007).
+  { factory: forgeGuideTool, allowedActions: ['list', 'get'] },
   { factory: forgeKnowledgeTool, allowedActions: ['list', 'get', 'search'] },
   { factory: forgeMemorySearchTool },
   { factory: forgeProjectsGetTool },

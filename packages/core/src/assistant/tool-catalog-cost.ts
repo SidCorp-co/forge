@@ -84,7 +84,7 @@ export function measureLiveCatalog(): CatalogMeasurement {
   };
 }
 
-/** The chat door's own nine tools with `DESCRIPTION_CAP` not applied — the shape the 28,343 figure was taken in, which is NOT what `/mcp` serves. */
+/** The chat door's own allowlist with `DESCRIPTION_CAP` not applied — the shape the 28,343 figure was taken in, which is NOT what `/mcp` serves. The count is not written down here: it moved from nine to ten when `forge_guide` joined the allowlist (ISS-1007), and a number in this sentence would have gone stale in silence. */
 // cm:guard this variant must be built from `CHAT_TOOL_ALLOWLIST`'s factories directly and NOT from `buildProjectToolset`, whose `buildToolset` has already truncated at `DESCRIPTION_CAP` — measuring the capped output and calling it the uncapped one is the substitution this whole module exists to refuse (ISS-983)
 // cm:guard this is NOT the `/mcp` door and must never be labelled one: `mcp/server.ts`'s ListToolsRequestSchema handler serves a different and much larger tool list and spells the key `inputSchema`, where the provider wire this measures spells it `input_schema` (ISS-983)
 export function uncappedCatalogChars(ctx: Parameters<typeof buildProjectToolset>[0]): number {
@@ -100,7 +100,7 @@ export function uncappedCatalogChars(ctx: Parameters<typeof buildProjectToolset>
 }
 
 /**
- * The same nine tools under every serialization anyone might have counted: the wire form this
+ * The same allowlist under every serialization anyone might have counted: the wire form this
  * module prices, the uncapped form the proposal's 28,343 figure came from, the OpenAI-shaped
  * toolset it is built from, the unbound form that keeps the `projectId` a bound context strips,
  * and the pretty-printed form. A catalog size quoted somewhere else can be matched against the
@@ -121,7 +121,10 @@ export function catalogVariants(catalog: CatalogMeasurement): [string, number][]
   }).tools;
   return [
     ['wire, project-bound — what this module prices', catalog.chars],
-    ['uncapped, descriptions whole — the chat nine before the cap', uncappedCatalogChars(boundCtx)],
+    [
+      'uncapped, descriptions whole — the chat allowlist before the cap',
+      uncappedCatalogChars(boundCtx),
+    ],
     [
       'wire, unbound — projectId left in every schema',
       JSON.stringify(serializeCatalogForWire(unbound)).length,
@@ -360,7 +363,7 @@ function printCatalog(catalog: CatalogMeasurement, tokens: TokenFigure, why: str
   );
 }
 
-/** Every serialization of the same nine tools, so a figure quoted elsewhere can be matched against the shape that produced it. */
+/** Every serialization of the same allowlist, so a figure quoted elsewhere can be matched against the shape that produced it. */
 function printVariants(catalog: CatalogMeasurement): void {
   console.log(`\n## The same catalog, serialized ${catalogVariants(catalog).length} ways`);
   for (const [label, chars] of catalogVariants(catalog)) {

@@ -37,6 +37,9 @@ const SOURCES = {
 // cm:guard the fact openers must keep matching `export const` as well as `render:`, because the tier-1 MANDATORY text — the only text injected into every job rather than fetched on demand — reaches the registry through `render: () => PIPELINE_RULES_TEXT` and lives in a top-level const; matching `render:` alone extracted 12 bodies and read green while the two `→ approved` claims in that constant went unseen.
 const SURFACES = [
   { file: 'packages/core/src/guides/registry.ts', openers: ['body:'] },
+  // cm:guard every guide MODULE is listed, not only the aggregator: `registry.ts` imports its tiers, and a body defined in one of them is injected text this gate cannot see through the import. `conformance-guide.ts` sat unread that way from the day it was split out until ISS-1007 added it here.
+  { file: 'packages/core/src/guides/conformance-guide.ts', openers: ['body:'] },
+  { file: 'packages/core/src/guides/assistant-method-guide.ts', openers: ['body:'] },
   {
     file: 'packages/core/src/prompt/facts/registry.ts',
     openers: ['render: \\([^)]*\\) =>', '(?:export )?const \\w+ ='],

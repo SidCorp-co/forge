@@ -7,6 +7,12 @@
  * widened past its current fence, and the reason is measured rather than
  * cautious: `guards.ts` records that `data.relations` reached chat unclassified
  * in ISS-868 and let a room retract a live `blocks` edge.
+ *
+ * ISS-1007 added `forge_guide`, and added it CLASSIFIED: `list` and `get` only.
+ * The tool also serves `upsert` and `delete`, whose only fence inside the
+ * handler is an org-admin check that a signed-in chat principal may well pass,
+ * so leaving `allowedActions` off would have been the unfenced key that guard
+ * describes rather than a harmless read.
  */
 
 import { describe, expect, it, vi } from 'vitest';
@@ -21,6 +27,7 @@ import { CHAT_TOOL_ALLOWLIST } from './registry.js';
 const FROZEN: ReadonlyArray<readonly [string, readonly string[] | null]> = [
   ['forge_issues', ['list', 'get', 'listTasks', 'create', 'update']],
   ['forge_comments', ['list', 'create']],
+  ['forge_guide', ['list', 'get']],
   ['forge_knowledge', ['list', 'get', 'search']],
   ['forge_memory.search', null],
   ['forge_projects.get', null],
@@ -44,6 +51,13 @@ describe('the chat tool allowlist', () => {
       expect(spec, name).toBeDefined();
       expect(spec?.allowedActions ?? null, name).toEqual(actions);
     }
+  });
+
+  // cm:guard the two arms are named as ABSENT rather than the two present ones asserted, because `toEqual` on the pair would pass a day when `upsert` joined them: this is the assertion that has to fail if somebody widens the entry, and the tool's own schema is what it is read against (ISS-1007).
+  it('lets no writing arm of forge_guide reach a room', () => {
+    const guide = CHAT_TOOL_ALLOWLIST.find((s) => nameOf(s) === 'forge_guide');
+    expect(guide?.allowedActions).not.toContain('upsert');
+    expect(guide?.allowedActions).not.toContain('delete');
   });
 
   // cm:guard the WRITE actions are named again on their own, because this is the sentence the annotations above `buildProjectToolset` used to get wrong: the toolset is not read-only, and a reader who believes it is will not look for the guard that makes it safe (ISS-1005).
