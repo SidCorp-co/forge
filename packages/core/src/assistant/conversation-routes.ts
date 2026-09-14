@@ -23,7 +23,6 @@ import {
   assertPersonReachesScope,
   projectsNamed,
   settleShape,
-  shapeForHandleCount,
 } from '../conversations/membership.js';
 import { addHandle, addPerson, listParticipants } from '../conversations/participants.js';
 import { derivedScope } from '../conversations/scope.js';
@@ -32,7 +31,7 @@ import {
   deleteConversation,
   getConversation,
   listConversationsInProject,
-  openConversation,
+  openConversationIn,
   readMessages,
   renameConversation,
 } from '../conversations/store.js';
@@ -42,7 +41,11 @@ import { users } from '../db/schema.js';
 import { assertProjectRole, effectiveProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { readableConversation, writableConversation } from './conversation-access.js';
+import {
+  mayChangeMembership,
+  readableConversation,
+  writableConversation,
+} from './conversation-access.js';
 import { conversationMemberRoutes } from './conversation-member-routes.js';
 import { withDisplayNames } from './conversation-people.js';
 import { sendWebConversationMessage } from './conversation-send.js';
@@ -182,37 +185,39 @@ conversationRoutes.post(
     const handles = input.handles ?? [];
     const people = input.people ?? [];
 
-    // cm:guard the people are checked against the scope the room will HAVE and not the one it is opened under, and they are checked BEFORE anything is written: a colleague who reaches the opening project but not the second agent's would otherwise be added to a room they cannot open, and told about it only after the room existed (ISS-1011 criteria 7, 39).
-    const projected = [...new Set([input.projectId, ...handles.map((h) => h.projectId)])];
-    for (const person of people) await assertPersonReachesScope(person, projected);
-
-    const conversation = await openConversation({
-      adapter: 'web',
-      externalId: randomUUID(),
-      // cm:guard the shape is settled from the handle count this room OPENS with, which is the opening project's own plus whatever was asked for — never patched afterwards, because a row that is `direct` for one statement is a row the one-to-one read fence answers for.
-      shape: shapeForHandleCount(1 + handles.length),
-      projectId: input.projectId,
-      title: input.title ?? null,
-    });
-    await addPerson({ conversationId: conversation.id, userId, actorUserId: userId });
-    for (const handle of handles) {
-      await db.transaction(async (tx) => {
+    // cm:guard the WHOLE opening is one transaction — the room, its own handle, the opener, every agent named, every colleague named and the shape that follows from them. A room opened in a transaction of its own leaves a committed room behind every refusal the membership doors make afterwards: a room nobody asked for holding half the people they named, with the request they made reported as a failure (ISS-1011, review F1).
+    const conversation = await db.transaction(async (handle) => {
+      const tx = handle as unknown as typeof db;
+      const room = await openConversationIn(tx, {
+        adapter: 'web',
+        externalId: randomUUID(),
+        // cm:guard opened `direct` and PROMOTED from the live rows at the end, rather than computed from how many agents were asked for: a request naming the project's own handle, or naming one twice, is a request for fewer live handles than entries, and a shape read off the entry count would make such a room readable by everyone with a role on its project while holding one agent. Nothing can observe the intermediate value, because it never commits (ISS-1011, review F3).
+        shape: 'direct',
+        projectId: input.projectId,
+        title: input.title ?? null,
+      });
+      await addPerson({ conversationId: room.id, userId, actorUserId: userId, tx });
+      for (const named of handles) {
         await addHandle({
-          conversationId: conversation.id,
-          handleUserId: handle.userId ?? (await resolveProjectHandle(tx, handle.projectId)).userId,
-          projectId: handle.projectId,
+          conversationId: room.id,
+          handleUserId: named.userId ?? (await resolveProjectHandle(tx, named.projectId)).userId,
+          projectId: named.projectId,
           actorUserId: userId,
           tx,
         });
-        await settleShape(tx, conversation.id);
-      });
-    }
-    for (const person of people) {
-      await addPerson({ conversationId: conversation.id, userId: person, actorUserId: userId });
-    }
+      }
+      await settleShape(tx, room.id);
+      // cm:guard the people are checked against the scope the room ENDED UP with, read back from the rows rather than projected from the request: the projection cannot know that a named agent was already the room's own, and a colleague refused on a project the room does not actually hold is a refusal about nothing.
+      const scope = await derivedScope(room.id, tx);
+      for (const person of people) {
+        await assertPersonReachesScope(person, scope, tx);
+        await addPerson({ conversationId: room.id, userId: person, actorUserId: userId, tx });
+      }
+      const settled = await getConversation(room.id, tx);
+      return settled ?? room;
+    });
 
-    const [row] = await Promise.all([getConversation(conversation.id)]);
-    return c.json(row ?? conversation, 201);
+    return c.json(conversation, 201);
   },
 );
 
@@ -237,6 +242,8 @@ conversationRoutes.get(
       ...conversation,
       scope,
       scopeProjects,
+      // cm:guard the CAPABILITY travels with the room rather than being derived on the client from a project role: a group room is readable by anybody holding a role on its projects, and a screen deciding on that alone offers Add agent to somebody every press of which is refused (ISS-1011, review F6).
+      canChangeMembership: await mayChangeMembership(conversation, userId),
       participants: await withDisplayNames(participants),
       messages,
       windows,

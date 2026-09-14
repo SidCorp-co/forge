@@ -130,6 +130,12 @@
   addition, because that is not true, and a false reassurance in front of something irreversible is
   worse than no warning at all.
 
+  It says a fourth thing where it applies, and this one is about other people: a room can only be
+  read by somebody holding a role on every project it is about, so bringing a second project in can
+  put a colleague who is already in the room outside it. Where that would happen the confirmation
+  names them — "Grace is in this room today and holds no role on Beta" — rather than warning that
+  somebody somewhere might lose access, which is a sentence nobody can act on.
+
   A room's projects are still read from the agents in it and are still not something anybody picks:
   every screen showing them says where they came from, and there is no picker anywhere. A room that
   ends up about two projects says so in a standing notice that you can collapse but not dismiss, and
@@ -142,8 +148,11 @@
 
 - **You can start a conversation with more than two people in it.** Pick a project, choose the
   colleagues and the agents it opens with, and the room exists holding all of them before anybody
-  says anything. Rooms that open themselves when a message arrives keep working exactly as they did;
-  this is a second way in, not a replacement.
+  says anything. Before the room is opened you are shown what it will be — which projects it will be
+  about, whether it can be spoken in at all, and who will be able to read it. That is a shorter list
+  than the one shown when an agent joins a room that is already talking, because nothing has been
+  said in a room that does not exist yet. Rooms that open themselves when a message arrives keep
+  working exactly as they did; this is a second way in, not a replacement.
 
 - **The Issues list opens on the work that is waiting for you, and every tab says how much it
   holds.** Opening a project's issues showed all of them, newest first — measured on this project,

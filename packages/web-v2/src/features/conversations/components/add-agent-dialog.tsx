@@ -44,6 +44,7 @@ export function AddAgentDialog({
   const confirm = () => {
     if (!picked) return;
     add.mutate(
+      // cm:guard the agent id goes only where there IS one: core offers a project whose agent has never been minted with a null id, and mints it on add under the name shown here. Passing the null through made the body fail the route's strict schema (ISS-1011, review F2).
       { userId: picked.userId, projectId: picked.project.id },
       { onSuccess: close },
     );
@@ -142,7 +143,7 @@ function CandidateList({
   return (
     <ul className="flex flex-col gap-1">
       {handles.map((handle) => (
-        <li key={`${handle.userId}:${handle.project.id}`}>
+        <li key={`${handle.userId ?? "unminted"}:${handle.project.id}`}>
           <button
             type="button"
             onClick={() => onPick(handle)}

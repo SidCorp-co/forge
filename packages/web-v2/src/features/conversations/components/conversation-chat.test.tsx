@@ -135,3 +135,62 @@ describe("ConversationChat · the first message of a draft", () => {
     await waitFor(() => expect(screen.getByText("two issues left")).toBeInTheDocument());
   });
 });
+
+// cm:guard ISS-1011 review F6 — whether this caller may change the membership is the SERVER's answer, and the mock here holds a caller who is a `member` on the project and still may not: that is a real combination, because changing membership also takes being a live person in the room, which no project role implies. A screen inferring the capability from the project role offers the control and the server refuses it, which reads as a broken button rather than as a rule.
+describe("ConversationChat · who may change who is in the room", () => {
+  const roomWith = (extra: Record<string, unknown>) => ({
+    id: "c1",
+    adapter: "web",
+    externalId: "v1",
+    shape: "direct",
+    title: null,
+    updatedAt: "2026-09-14T00:00:00.000Z",
+    scope: ["p1"],
+    scopeProjects: [{ id: "p1", name: "Alpha", slug: "alpha" }],
+    participants: [
+      {
+        id: "pp1",
+        kind: "person",
+        userId: "u1",
+        projectId: null,
+        label: null,
+        displayName: "Ada",
+        reachable: null,
+      },
+    ],
+    messages: [],
+    windows: [],
+    ...extra,
+  });
+
+  const openRoster = async () => {
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <ConversationChat projectId="p1" conversationId="c1" />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Who is in this room" }));
+  };
+
+  it("offers no way in or out to a caller the server says may not change it", async () => {
+    detail.mockResolvedValue(roomWith({ canChangeMembership: false }));
+    await openRoster();
+    expect(await screen.findByText("Ada")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /add agent/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /add person/i })).not.toBeInTheDocument();
+  });
+
+  it("offers them to a caller the server says may", async () => {
+    detail.mockResolvedValue(roomWith({ canChangeMembership: true }));
+    await openRoster();
+    expect(await screen.findByRole("button", { name: /add agent/i })).toBeInTheDocument();
+  });
+
+  // cm:guard an ANSWER that carried no such field is read as "may not", not as "may": a tab open across the deploy of the half that added it would otherwise show controls whose every use the server refuses.
+  it("offers nothing where the room's answer does not carry the capability at all", async () => {
+    detail.mockResolvedValue(roomWith({}));
+    await openRoster();
+    expect(await screen.findByText("Ada")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /add agent/i })).not.toBeInTheDocument();
+  });
+});

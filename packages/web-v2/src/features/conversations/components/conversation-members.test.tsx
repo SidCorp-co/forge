@@ -46,6 +46,7 @@ const room: ConversationMembership = {
   shape: "direct",
   scope: [alpha.id],
   scopeProjects: [alpha],
+  canChangeMembership: true,
   participants: [
     {
       id: "a1",
@@ -248,5 +249,45 @@ describe("the agent outline, measured", () => {
     const accent = tokenValue("accent");
     expect(ratio(accent, tokenValue("bg-surface"))).toBeGreaterThanOrEqual(3);
     expect(ratio(accent, tokenValue("bg-app"))).toBeGreaterThanOrEqual(3);
+  });
+});
+
+// cm:guard the unminted candidate is the case core deliberately answers with a null id: a project nobody has talked to yet has no agent account, and the add mints one. A dialogue that sent the null through would hit the route's strict schema and the advertised path would be dead (ISS-1011, review F2).
+describe("adding an agent for a project that has never been talked to", () => {
+  it("offers it, and asks for it without an agent id", async () => {
+    candidates.mockResolvedValue({
+      people: [],
+      handles: [
+        { userId: null, handle: "gamma", project: { id: "p9", name: "Gamma", slug: "gamma" }, losesReaders: [] },
+      ],
+    });
+    addHandle.mockResolvedValue({ ...room, participants: room.participants });
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: /add agent/i }));
+    const pick = await screen.findByRole("button", { name: /@gamma/ });
+    fireEvent.click(pick);
+    fireEvent.click(await screen.findByRole("button", { name: /Add @gamma/ }));
+    await waitFor(() => expect(addHandle).toHaveBeenCalled());
+    expect(addHandle).toHaveBeenCalledWith("c1", null, "p9");
+  });
+
+  it("names who would lose the room, on the confirmation and before the add", async () => {
+    candidates.mockResolvedValue({
+      people: [],
+      handles: [
+        {
+          userId: "ua2",
+          handle: "beta",
+          project: { id: "p2", name: "Beta", slug: "beta" },
+          losesReaders: ["Ada"],
+        },
+      ],
+    });
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: /add agent/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /@beta/ }));
+    const confirmation = await screen.findByTestId("add-agent-confirmation");
+    expect(confirmation.textContent).toMatch(/Ada is in this room today/);
+    expect(addHandle).not.toHaveBeenCalled();
   });
 });

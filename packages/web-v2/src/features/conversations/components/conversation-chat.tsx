@@ -171,7 +171,7 @@ export function ConversationChat({
         <ConversationMembers
           conversationId={resolvedId}
           room={roomQ.data}
-          canChange={canWrite}
+          canChange={roomQ.data.canChangeMembership === true}
           open={membersOpen}
           onClose={() => setMembersOpen(false)}
         />

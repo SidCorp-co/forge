@@ -31,11 +31,14 @@ import {
 } from '../conversations/participants.js';
 import { derivedScope } from '../conversations/scope.js';
 import { getConversation } from '../conversations/store.js';
-import { db } from '../db/client.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { membershipConversation, readableConversation } from './conversation-access.js';
-import { namePeople, withDisplayNames } from './conversation-people.js';
+import {
+  mayChangeMembership,
+  readableConversation,
+  withMembershipLock,
+} from './conversation-access.js';
+import { nameLostReaders, namePeople, withDisplayNames } from './conversation-people.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 const projectQuerySchema = z.object({ projectId: z.uuid() }).strict();
@@ -54,8 +57,12 @@ conversationMemberRoutes.use('*', requireAuth(), assertEmailVerified());
  * A room's membership, as one answer.
  */
 // cm:guard the SHAPE travels with it, because the room's readers are a different set for each and a screen that shows a roster without saying which rule reads it cannot tell a person what adding somebody will do. It is read back from the row rather than computed here, so a promotion that did not happen cannot be announced as one.
-export async function membershipOf(conversationId: string): Promise<{
+export async function membershipOf(
+  conversationId: string,
+  userId: string,
+): Promise<{
   shape: string;
+  canChangeMembership: boolean;
   participants: Awaited<ReturnType<typeof withDisplayNames>>;
   scope: string[];
   scopeProjects: Awaited<ReturnType<typeof projectsNamed>>;
@@ -67,6 +74,7 @@ export async function membershipOf(conversationId: string): Promise<{
   ]);
   return {
     shape: row?.shape ?? 'direct',
+    canChangeMembership: row ? await mayChangeMembership(row, userId) : false,
     participants: await withDisplayNames(participants),
     scope,
     scopeProjects: await projectsNamed(scope),
@@ -92,7 +100,7 @@ conversationMemberRoutes.get(
       addablePeople(null, scope),
       addableHandles(null, userId, scope),
     ]);
-    return c.json({ people: await namePeople(people), handles });
+    return c.json({ people: await namePeople(people), handles: await nameLostReaders(handles) });
   },
 );
 
@@ -114,7 +122,7 @@ conversationMemberRoutes.get(
       addablePeople(id, scope),
       addableHandles(id, userId, scope),
     ]);
-    return c.json({ people: await namePeople(people), handles });
+    return c.json({ people: await namePeople(people), handles: await nameLostReaders(handles) });
   },
 );
 
@@ -134,11 +142,11 @@ conversationMemberRoutes.post(
     const { id } = c.req.valid('param');
     const { userId: joining } = c.req.valid('json');
     const actor = c.get('userId');
-    await membershipConversation(id, actor);
-    const scope = await derivedScope(id);
-    await assertPersonReachesScope(joining, scope);
-    await addPerson({ conversationId: id, userId: joining, actorUserId: actor });
-    return c.json(await membershipOf(id), 201);
+    await withMembershipLock(id, actor, async (tx, _room, scope) => {
+      await assertPersonReachesScope(joining, scope, tx);
+      await addPerson({ conversationId: id, userId: joining, actorUserId: actor, tx });
+    });
+    return c.json(await membershipOf(id, actor), 201);
   },
 );
 
@@ -158,20 +166,13 @@ conversationMemberRoutes.post(
     const { id } = c.req.valid('param');
     const { userId, projectId } = c.req.valid('json');
     const actor = c.get('userId');
-    await membershipConversation(id, actor);
-    await db.transaction(async (tx) => {
+    await withMembershipLock(id, actor, async (tx) => {
       // cm:guard the mint happens INSIDE the transaction the add is in, under the advisory lock `resolveProjectHandle` already takes: two people adding the same never-talked-to project to two rooms at once would otherwise mint that project two handles whose union is still one project, which nothing downstream would ever report.
       const handleUserId = userId ?? (await resolveProjectHandle(tx, projectId)).userId;
-      await addHandle({
-        conversationId: id,
-        handleUserId,
-        projectId,
-        actorUserId: actor,
-        tx,
-      });
+      await addHandle({ conversationId: id, handleUserId, projectId, actorUserId: actor, tx });
       await settleShape(tx, id);
     });
-    return c.json(await membershipOf(id), 201);
+    return c.json(await membershipOf(id, actor), 201);
   },
 );
 
@@ -187,8 +188,10 @@ conversationMemberRoutes.delete(
   async (c) => {
     const { id, participantId } = c.req.valid('param');
     const actor = c.get('userId');
-    await membershipConversation(id, actor);
-    await removeParticipant({ conversationId: id, participantId });
-    return c.json(await membershipOf(id));
+    await withMembershipLock(id, actor, async (tx) => {
+      // cm:guard joins the lock rather than taking its own: `removeParticipant` fences its last-one-out count on the same conversation row, so a second `FOR UPDATE` from inside this transaction would be the same lock re-taken, while a second TRANSACTION would be the race it exists to stop.
+      await removeParticipant({ conversationId: id, participantId, tx: tx as never });
+    });
+    return c.json(await membershipOf(id, actor));
   },
 );

@@ -118,7 +118,7 @@ export function useAddPerson(conversationId: string | undefined) {
 
 export function useAddHandle(conversationId: string | undefined) {
   return useMembershipWrite(
-    (args: { userId: string; projectId: string }) =>
+    (args: { userId: string | null; projectId: string }) =>
       conversationsApi.addHandle(conversationId as string, args.userId, args.projectId),
     conversationId,
   );

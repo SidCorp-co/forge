@@ -44,6 +44,35 @@ export async function withDisplayNames<T extends Nameable>(
   }));
 }
 
+/**
+ * The same, for the people an agent would put OUT of the room.
+ */
+// cm:guard named here rather than left as ids, for the reason the whole module exists: the screen has to print "Grace and Amir will lose this room", and a list of uuids is a warning nobody can act on. An id that matches no account prints nothing rather than itself — a stranger's uuid on a confirmation is worse than one fewer name (ISS-1011).
+export async function nameLostReaders<T extends { losesReaderIds: string[] }>(
+  candidates: readonly T[],
+  db: typeof defaultDb = defaultDb,
+): Promise<Array<Omit<T, 'losesReaderIds'> & { losesReaders: string[] }>> {
+  const ids = [...new Set(candidates.flatMap((c) => c.losesReaderIds))];
+  const named = new Map<string, string>();
+  if (ids.length > 0) {
+    const found = await db
+      .select({ id: users.id, displayName: users.displayName, email: users.email })
+      .from(users)
+      .where(inArray(users.id, ids));
+    for (const row of found) {
+      const label = row.displayName ?? row.email;
+      if (label) named.set(row.id, label);
+    }
+  }
+  return candidates.map(({ losesReaderIds, ...rest }) => ({
+    ...rest,
+    losesReaders: losesReaderIds.flatMap((id) => {
+      const label = named.get(id);
+      return label ? [label] : [];
+    }),
+  }));
+}
+
 /** The same, for the people a room could still take in. */
 export async function namePeople<T extends { userId: string; email: string }>(
   candidates: readonly T[],

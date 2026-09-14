@@ -130,7 +130,18 @@ export async function openConversation(
     return seen;
   }
 
-  return dbi.transaction(async (tx) => {
+  return dbi.transaction((tx) => openConversationIn(tx as unknown as Executor, venue));
+}
+
+/**
+ * The same open, for a caller that already holds the transaction.
+ */
+// cm:guard the caller's transaction and not one of this module's, for a caller that has more to commit with it: a room opened deliberately with the people and agents it starts with is one act, and opening it in a transaction of its own leaves a committed room behind every refusal the membership doors make afterwards — a room nobody asked for, holding half the members they named (ISS-1011).
+export async function openConversationIn(
+  tx: Executor,
+  venue: ConversationVenue,
+): Promise<ConversationRow> {
+  {
     const handle = await resolveProjectHandle(tx, venue.projectId);
     const [inserted] = await tx
       .insert(conversations)
@@ -157,7 +168,7 @@ export async function openConversation(
     // cm:guard the OPENING is not a person's act and takes no actor: a room opens because a message arrived, and there is nobody yet whose roles could be checked. `addHandle`'s door check guards a handle somebody ADDS to a live room, which is the only case with an actor to check — routing the open through it refuses every first message instead, which is what this call used to do.
     await attachOpeningHandle(tx, inserted.id, handle.userId, venue.projectId);
     return inserted;
-  });
+  }
 }
 
 export interface AppendMessageArgs {

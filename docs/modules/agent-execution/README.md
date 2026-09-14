@@ -68,6 +68,8 @@ flowchart LR
   agents are in the room. Adding an agent and adding a person are different acts with different
   blast radius and may not share one control, and the agent one is confirmed because it cannot be
   taken back: the agent is shown what was already said, and removing it later unreads none of it.
+  Widening the projects can also narrow the readers — a room is readable only by somebody holding a
+  role on every project in it — so the confirmation names whoever in the room would lose it.
 - **Chat and pipeline jobs share the runner, not the entry.** Chat is a conversation with no issue
   status to advance; a job is one step of a run. Both exec through the same shared path, so a change
   there touches chat and schedules too.

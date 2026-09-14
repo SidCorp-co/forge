@@ -15,17 +15,42 @@ import { Button, Checkbox, ErrorState, Icon, Select, Spinner } from "@/design";
 import { useOrgScopedProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { useOpenConversation, useProjectCandidates } from "../hooks";
+import { roomOpeningClaims } from "../membership";
+import type { ConversationProject, HandleCandidate } from "../types";
+
+/** One agent chosen for a room that does not exist yet. */
+type PickedHandle = { userId: string | null; projectId: string };
+
+const sameHandle = (a: PickedHandle, b: PickedHandle) =>
+  a.projectId === b.projectId && a.userId === b.userId;
 
 export function StartConversation({ onStarted }: { onStarted: (id: string, projectId: string) => void }) {
   const { projects } = useOrgScopedProjects();
   const [projectId, setProjectId] = useState("");
   const [people, setPeople] = useState<string[]>([]);
-  const [handles, setHandles] = useState<Array<{ userId: string; projectId: string }>>([]);
+  const [handles, setHandles] = useState<PickedHandle[]>([]);
+  const [confirming, setConfirming] = useState(false);
   const candidates = useProjectCandidates(projectId || undefined, !!projectId);
   const open = useOpenConversation();
 
   const toggle = <T,>(list: T[], value: T, same: (a: T, b: T) => boolean): T[] =>
     list.some((x) => same(x, value)) ? list.filter((x) => !same(x, value)) : [...list, value];
+
+  // cm:guard the base project is counted as ONE agent whether or not it was picked from the list, because the room always opens with its own handle: a projection that counted only the ticked boxes would call a two-project room one-to-one and promise a privacy the room will not have (ISS-1011).
+  const base = projects.find((p) => p.id === projectId);
+  const chosen: ConversationProject[] = handles.flatMap((h) => {
+    const found = (candidates.data?.handles ?? []).find((c: HandleCandidate) =>
+      sameHandle({ userId: c.userId, projectId: c.project.id }, h),
+    );
+    return found ? [found.project] : [];
+  });
+  // cm:guard an agent for the room's OWN project is discounted on both counts, and core no longer offers one — this is the client half of the same rule, for a tab holding a candidate list from before that fix. Counting it would add a handle the room will not have, and the sentence built on that count promises a shared room where a one-to-one room is what opens (ISS-1011).
+  const brought = chosen.filter((p) => p.id !== projectId);
+  const scopeProjects: ConversationProject[] = [
+    ...(base ? [{ id: base.id, name: base.name, slug: base.slug }] : []),
+    ...brought,
+  ];
+  const claims = roomOpeningClaims({ projects: scopeProjects, agentCount: 1 + brought.length });
 
   const start = () => {
     if (!projectId) return;
@@ -57,6 +82,7 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
               setProjectId(v);
               setPeople([]);
               setHandles([]);
+              setConfirming(false);
             }}
             placeholder="Select a project…"
           />
@@ -67,10 +93,25 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
           )}
         </div>
 
-        {projectId && <Extras query={candidates} people={people} handles={handles}
-          onTogglePerson={(id) => setPeople((l) => toggle(l, id, (a, b) => a === b))}
-          onToggleHandle={(h) => setHandles((l) => toggle(l, h, (a, b) => a.userId === b.userId))}
-        />}
+        {projectId && !confirming && (
+          <Extras
+            query={candidates}
+            people={people}
+            handles={handles}
+            onTogglePerson={(id) => setPeople((l) => toggle(l, id, (a, b) => a === b))}
+            onToggleHandle={(h) => setHandles((l) => toggle(l, h, sameHandle))}
+          />
+        )}
+
+        {confirming && (
+          <ul className="flex flex-col gap-2" data-testid="start-confirmation">
+            {claims.map((claim) => (
+              <li key={claim.key} data-claim={claim.key} className="fg-body-sm text-fg">
+                {claim.text}
+              </li>
+            ))}
+          </ul>
+        )}
 
         {open.isError && (
           <p className="fg-body-sm text-[color:var(--red-600)]" data-testid="start-error">
@@ -78,10 +119,21 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
           </p>
         )}
 
-        {projectId && (
-          <Button variant="primary" loading={open.isPending} onClick={start}>
+        {projectId && !confirming && (
+          <Button variant="primary" onClick={() => setConfirming(true)}>
             Start the room
           </Button>
+        )}
+
+        {confirming && (
+          <div className="flex items-center justify-end gap-2.5">
+            <Button variant="ghost" onClick={() => setConfirming(false)} disabled={open.isPending}>
+              Back
+            </Button>
+            <Button variant="primary" loading={open.isPending} onClick={start}>
+              Open the room
+            </Button>
+          </div>
         )}
       </div>
     </div>
@@ -97,9 +149,9 @@ function Extras({
 }: {
   query: ReturnType<typeof useProjectCandidates>;
   people: string[];
-  handles: Array<{ userId: string; projectId: string }>;
+  handles: PickedHandle[];
   onTogglePerson: (userId: string) => void;
-  onToggleHandle: (h: { userId: string; projectId: string }) => void;
+  onToggleHandle: (h: PickedHandle) => void;
 }) {
   if (query.isLoading) {
     return (
@@ -137,8 +189,8 @@ function Extras({
           <div className="mt-1 flex flex-col gap-1">
             {data.handles.map((h) => (
               <Checkbox
-                key={h.userId}
-                checked={handles.some((x) => x.userId === h.userId)}
+                key={`${h.userId ?? "unminted"}:${h.project.id}`}
+                checked={handles.some((x) => sameHandle(x, { userId: h.userId, projectId: h.project.id }))}
                 onChange={() => onToggleHandle({ userId: h.userId, projectId: h.project.id })}
                 label={
                   <span className="flex items-center gap-1.5">

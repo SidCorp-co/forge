@@ -34,6 +34,11 @@ export interface PersonCandidate {
 
 export interface HandleCandidate {
   /**
+   * The people already in this room who would lose it if this agent joined, by id.
+   */
+  // cm:guard a room is readable only by somebody holding a role on EVERY project in it, so bringing a new project in can put an existing member outside the room — quietly, and with nothing on the screen that said it would happen. Computed per candidate rather than described in general, because "somebody might lose access" is a warning nobody can act on and "Grace will lose this room" is. Ids, not labels: what to CALL them is attached in `assistant/conversation-people.ts`, which is the module allowed to read the label column (ISS-1011).
+  losesReaderIds: string[];
+  /**
    * The agent account, or null where this project has never needed one.
    */
   // cm:guard NULLABLE, because a project's handle is minted the first time a room needs it and not when the project is created: a candidate list built from `users` alone offers nothing for a project nobody has ever talked to, which is exactly the project somebody is now trying to bring into a room. The add resolves it, and `resolveProjectHandle` mints it there under the same lock it always has.
@@ -177,6 +182,7 @@ export async function addableHandles(
   const orgIds = await orgsOfProjects(scope, tx);
   if (orgIds.length === 0) return [];
 
+  const livePeople = conversationId ? await livePersonIds(conversationId, tx) : [];
   const candidateProjects = await tx
     .select({ id: projects.id, name: projects.name, slug: projects.slug })
     .from(projects)
@@ -207,20 +213,63 @@ export async function addableHandles(
     // cm:guard the SAME bar `addHandle` holds, read through the same helper: a candidate list built to a looser rule than the door is a list of agents the caller will be refused on.
     if (!projectRoleAtLeast(access?.role ?? null, 'member')) continue;
 
+    // cm:guard asked only for a project the room is NOT already about, because a project already in the scope costs nobody their access: everyone still in the room has already passed the check for it.
+    const losesReaderIds = scope.includes(project.id)
+      ? []
+      : await peopleWithoutRoleOn(livePeople, project.id);
+
+    // cm:guard a room that does not exist yet OPENS with the handle of every project in its scope, so those projects are not offered — the branch below already refused them where the handle had still to be minted, and offering the minted ones made the two halves of one rule disagree. The cost of the disagreement was a false sentence: picking the room's own agent counted a second handle, and the confirmation promised a shared room readable by every role-holder where the room will be one-to-one (ISS-1011, review F1 of the recheck).
+    if (conversationId === null && scope.includes(project.id)) continue;
+
     const mine = agents.filter((a) => a.projectId === project.id && a.handle);
     if (mine.length === 0) {
       // cm:guard a project with no agent yet is OFFERED under the name it will be given, rather than left out: leaving it out makes "which projects can this room be about" an answer about which projects happen to have been talked to before, which is not a rule anybody would state out loud.
       if (!scope.includes(project.id)) {
-        out.push({ userId: null, handle: handleNameForProject(project.slug, project.id), project });
+        out.push({
+          userId: null,
+          handle: handleNameForProject(project.slug, project.id),
+          project,
+          losesReaderIds,
+        });
       }
       continue;
     }
     for (const agent of mine) {
       if (already.has(agent.userId)) continue;
-      out.push({ userId: agent.userId, handle: agent.handle as string, project });
+      out.push({
+        userId: agent.userId,
+        handle: agent.handle as string,
+        project,
+        losesReaderIds,
+      });
     }
   }
   return out.sort((a, b) => a.handle.localeCompare(b.handle));
+}
+
+/** The live people of a room, by user id. */
+async function livePersonIds(conversationId: string, tx: Executor): Promise<string[]> {
+  const rows = await tx
+    .select({ userId: conversationParticipants.userId })
+    .from(conversationParticipants)
+    .where(
+      and(
+        eq(conversationParticipants.conversationId, conversationId),
+        eq(conversationParticipants.kind, 'person'),
+        isNull(conversationParticipants.removedAt),
+      ),
+    );
+  return rows.flatMap((r) => (r.userId ? [r.userId] : []));
+}
+
+// cm:guard `viewer` and not `member`, because the bar this is predicting is the READ rule in `scope.ts:assertConversationRole` — asking the stricter question here would name people who keep the room, and a confirmation that overstates the damage is as false as one that hides it (ISS-1011).
+async function peopleWithoutRoleOn(userIds: readonly string[], projectId: string) {
+  const out: string[] = [];
+  for (const userId of userIds) {
+    const access = await effectiveProjectRole(userId, projectId);
+    if (!projectRoleAtLeast(access?.role ?? null, 'viewer')) out.push(userId);
+  }
+  return out;
 }
 
 async function orgsOfProjects(ids: readonly string[], tx: Executor): Promise<string[]> {

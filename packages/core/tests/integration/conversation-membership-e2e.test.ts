@@ -369,6 +369,23 @@ describe('who a room could still take in', () => {
     expect(body.handles.map((h) => h.userId)).not.toContain(await agentOf(projectA));
   });
 
+  // cm:guard the room this list is for does not exist yet, and it will OPEN holding its own project's agent — so offering that agent would be offering a member the room already has. The cost is not a duplicate row, which `settleShape` absorbs: it is that the confirmation shown before the room opens counts handles, and a second one there promises a shared room where a one-to-one room is what gets created (ISS-1011).
+  it('does not offer the agent of the project the room will open with', async () => {
+    const minted = await agentOf(projectA);
+    const res = await app.request(
+      `/api/conversations/candidates?${new URLSearchParams({ projectId: projectA })}`,
+      { headers: { authorization: ownerAuth } },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      handles: Array<{ userId: string | null; project: { id: string } }>;
+    };
+    expect(body.handles.map((h) => h.userId)).not.toContain(minted);
+    expect(body.handles.map((h) => h.project.id)).not.toContain(projectA);
+    // cm:guard the OTHER project is still offered, so this is a rule about the room's own project and not a list that went empty.
+    expect(body.handles.map((h) => h.project.id)).toContain(projectB);
+  });
+
   it('answers for a project before any room exists', async () => {
     const res = await app.request(
       `/api/conversations/candidates?${new URLSearchParams({ projectId: projectA })}`,
@@ -377,5 +394,59 @@ describe('who a room could still take in', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { people: Array<{ userId: string }>; handles: unknown[] };
     expect(body.people.map((p) => p.userId)).toContain(colleague);
+  });
+});
+
+/**
+ * Adding an agent can put somebody who is already in the room outside it: the
+ * read rule takes a role on EVERY project a room is about, so a second project
+ * silently costs anybody who holds none on it. Nothing said so before the add.
+ */
+describe('an agent that would cost the room a reader', () => {
+  it('names the person who would lose it, on the candidate that would do it', async () => {
+    const room = await openRoom();
+    expect((await addPerson(room.id, colleague)).status).toBe(201);
+
+    const res = await app.request(`/api/conversations/${room.id}/candidates`, {
+      headers: { authorization: ownerAuth },
+    });
+    const body = (await res.json()) as {
+      handles: Array<{ project: { id: string }; losesReaders: string[] }>;
+    };
+    // cm:guard the colleague holds `member` on A and NOTHING on B, so bringing B in is exactly the act that costs them the room — and the owner, an admin on both, is not named.
+    const beta = body.handles.find((h) => h.project.id === projectB);
+    expect(beta?.losesReaders).toEqual(['Grace']);
+  });
+
+  it('says nobody loses a room over a project it is already about', async () => {
+    const room = await openRoom({ handles: [{ projectId: projectB }] });
+    const res = await app.request(`/api/conversations/${room.id}/candidates`, {
+      headers: { authorization: ownerAuth },
+    });
+    const body = (await res.json()) as {
+      handles: Array<{ project: { id: string }; losesReaders: string[] }>;
+    };
+    for (const handle of body.handles.filter((h) => h.project.id === projectB)) {
+      expect(handle.losesReaders).toEqual([]);
+    }
+  });
+
+  it('is a prediction the read rule then keeps: the named person really loses the room', async () => {
+    const room = await openRoom();
+    expect((await addPerson(room.id, colleague)).status).toBe(201);
+    const colleagueAuth = `Bearer ${await (await import('../../src/auth/jwt.js')).signUserToken(colleague)}`;
+
+    const before = await app.request(`/api/conversations/${room.id}`, {
+      headers: { authorization: colleagueAuth },
+    });
+    expect(before.status).toBe(200);
+
+    expect((await addHandle(room.id, undefined, projectB)).status).toBe(201);
+
+    const after = await app.request(`/api/conversations/${room.id}`, {
+      headers: { authorization: colleagueAuth },
+    });
+    expect(after.status).toBe(403);
+    expect((await codeOf(after)).code).toBe('CONVERSATION_OUT_OF_SCOPE');
   });
 });

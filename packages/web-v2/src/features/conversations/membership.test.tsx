@@ -18,6 +18,7 @@ import {
   composerRefusal,
   personAdditionClaims,
   removalClaim,
+  roomOpeningClaims,
   scopeDerivation,
 } from "./membership";
 import { ScopeNotice } from "./components/scope-notice";
@@ -59,6 +60,7 @@ const oneToOne: ConversationMembership = {
   participants: [agent("a1", alpha.id, "alpha"), person],
   scope: [alpha.id],
   scopeProjects: [alpha],
+  canChangeMembership: true,
 };
 
 const shared: ConversationMembership = {
@@ -66,10 +68,21 @@ const shared: ConversationMembership = {
   participants: [agent("a1", alpha.id, "alpha"), agent("a2", beta.id, "beta"), person],
   scope: [alpha.id, beta.id],
   scopeProjects: [alpha, beta],
+  canChangeMembership: true,
 };
 
-const candidate: HandleCandidate = { userId: "u-a2", handle: "beta", project: beta };
-const sameProject: HandleCandidate = { userId: "u-a3", handle: "alpha-two", project: alpha };
+const candidate: HandleCandidate = {
+  userId: "u-a2",
+  handle: "beta",
+  project: beta,
+  losesReaders: [],
+};
+const sameProject: HandleCandidate = {
+  userId: "u-a3",
+  handle: "alpha-two",
+  project: alpha,
+  losesReaders: [],
+};
 
 const textOf = (claims: Array<{ text: string }>) => claims.map((c) => c.text).join(" ");
 
@@ -196,5 +209,76 @@ describe("a room about more than one project", () => {
 
   it("is not refused where the room is about one", () => {
     expect(composerRefusal(oneToOne)).toBeNull();
+  });
+});
+
+describe("an agent that would put somebody in the room outside it", () => {
+  const costly: HandleCandidate = {
+    userId: "u-a2",
+    handle: "beta",
+    project: beta,
+    losesReaders: ["Grace"],
+  };
+
+  it("names who loses the room, rather than warning that somebody might", () => {
+    const claim = agentAdditionClaims({ candidate: costly, room: oneToOne }).find(
+      (c) => c.key === "readers-lose",
+    );
+    expect(claim?.text).toMatch(/Grace is in this room today/);
+    expect(claim?.text).toContain(beta.name);
+  });
+
+  it("says the reason — a role on every project in the room — and that nothing read is taken back", () => {
+    const claim = agentAdditionClaims({ candidate: costly, room: oneToOne }).find(
+      (c) => c.key === "readers-lose",
+    );
+    expect(claim?.text).toMatch(/every project in it/i);
+    expect(claim?.text).toMatch(/already read is taken back/i);
+  });
+
+  it("joins two names and agrees with the plural", () => {
+    const claim = agentAdditionClaims({
+      candidate: { ...costly, losesReaders: ["Grace", "Amir"] },
+      room: oneToOne,
+    }).find((c) => c.key === "readers-lose");
+    expect(claim?.text).toMatch(/Grace and Amir are in this room today and hold no role/);
+  });
+
+  it("says nothing at all where nobody loses the room", () => {
+    const keys = agentAdditionClaims({ candidate, room: oneToOne }).map((c) => c.key);
+    expect(keys).not.toContain("readers-lose");
+  });
+});
+
+describe("the confirmation shown before a room is opened", () => {
+  it("says what the room will be about, and that the scope is read and not chosen", () => {
+    const claim = roomOpeningClaims({ projects: [alpha], agentCount: 1 }).find(
+      (c) => c.key === "room-scope",
+    );
+    expect(claim?.text).toContain(alpha.name);
+    expect(claim?.text).toMatch(/nobody chooses it/i);
+  });
+
+  // cm:guard the pre-join claim is the one sentence this builder must NOT carry: nothing has been said in a room that does not exist, so reusing `agentAdditionClaims` here would put a false claim in front of every person who opens one (ISS-1011, review F4).
+  it("does not claim the agents will be shown what was already said", () => {
+    const keys = roomOpeningClaims({ projects: [alpha, beta], agentCount: 2 }).map((c) => c.key);
+    expect(keys).not.toContain("reads-what-was-said");
+    expect(keys).not.toContain("removal-unreads-nothing");
+  });
+
+  it("warns that a two-project room takes no messages, before it is opened", () => {
+    const claims = roomOpeningClaims({ projects: [alpha, beta], agentCount: 2 });
+    expect(claims.map((c) => c.key)).toContain("second-project");
+    expect(textOf(claims)).toMatch(/answered under exactly one project/i);
+  });
+
+  it("calls a one-agent room private and a two-agent room readable by role-holders", () => {
+    const one = roomOpeningClaims({ projects: [alpha], agentCount: 1 });
+    expect(one.map((c) => c.key)).toContain("room-private");
+    expect(textOf(one)).toMatch(/read only by the people in it/i);
+
+    const two = roomOpeningClaims({ projects: [alpha, beta], agentCount: 2 });
+    expect(two.map((c) => c.key)).toContain("room-shared");
+    expect(textOf(two)).toMatch(/not only the people listed here/i);
   });
 });

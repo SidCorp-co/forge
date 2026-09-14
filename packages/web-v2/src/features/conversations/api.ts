@@ -19,7 +19,8 @@ export interface OpenConversationArgs {
   projectId: string;
   title?: string | null;
   people?: string[];
-  handles?: Array<{ userId: string; projectId: string }>;
+  // cm:guard the agent id is optional for the same reason it is on `addHandle`: a room may be opened about a project whose agent has never been minted, and the server mints it inside the same transaction that opens the room (ISS-1011).
+  handles?: Array<{ userId?: string | null; projectId: string }>;
 }
 
 export interface SendResult extends Pick<ConversationDetail, "messages" | "windows"> {
@@ -48,7 +49,14 @@ export const conversationsApi = {
         projectId: args.projectId,
         ...(args.title !== undefined ? { title: args.title } : {}),
         ...(args.people?.length ? { people: args.people } : {}),
-        ...(args.handles?.length ? { handles: args.handles } : {}),
+        ...(args.handles?.length
+          ? {
+              handles: args.handles.map((h) => ({
+                projectId: h.projectId,
+                ...(h.userId ? { userId: h.userId } : {}),
+              })),
+            }
+          : {}),
       }),
     }),
 
@@ -71,10 +79,11 @@ export const conversationsApi = {
     }),
 
   /** `POST /api/conversations/:id/handles` — add an agent, for one of its projects. */
-  addHandle: (id: string, userId: string, projectId: string) =>
+  // cm:guard the agent id is OMITTED and not sent as null when the project has no handle yet: the route's schema is `.strict()` with `userId` optional, so a literal null is a refused body rather than the mint-on-add path (ISS-1011).
+  addHandle: (id: string, userId: string | null, projectId: string) =>
     apiClient<ConversationMembership>(`/conversations/${id}/handles`, {
       method: "POST",
-      body: JSON.stringify({ userId, projectId }),
+      body: JSON.stringify({ projectId, ...(userId ? { userId } : {}) }),
     }),
 
   /** `DELETE /api/conversations/:id/participants/:participantId` — take one member out. */

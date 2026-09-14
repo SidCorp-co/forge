@@ -54,8 +54,9 @@ export async function derivedScope(
 export async function assertConversationReadable(
   conversationId: string,
   userId: string | null | undefined,
+  tx: Executor = defaultDb,
 ): Promise<string[]> {
-  return assertConversationRole(conversationId, userId, 'viewer');
+  return assertConversationRole(conversationId, userId, 'viewer', tx);
 }
 
 /**
@@ -65,14 +66,17 @@ export async function assertConversationReadable(
 export async function assertConversationWritable(
   conversationId: string,
   userId: string | null | undefined,
+  tx: Executor = defaultDb,
 ): Promise<string[]> {
-  return assertConversationRole(conversationId, userId, 'member');
+  return assertConversationRole(conversationId, userId, 'member', tx);
 }
 
+// cm:guard the scope is read on the CALLER's executor where one is given, so a caller holding the conversation row's lock reads the scope its own write is about to change rather than one another transaction is mid-way through moving. The authority below is deliberately NOT on that executor: `effectiveProjectRole` answers what a role IS right now, and reading it inside somebody's snapshot is how a revoked role keeps working for the length of a transaction (ISS-1011, review F5).
 async function assertConversationRole(
   conversationId: string,
   userId: string | null | undefined,
   min: ProjectMemberRole,
+  tx: Executor = defaultDb,
 ): Promise<string[]> {
   // cm:guard a caller naming NO user forgot to, and is refused as that rather than as "you hold no role": reading null as an anonymous reader made one missing argument silence every room
   if (!userId) {
@@ -81,7 +85,7 @@ async function assertConversationRole(
       'CONVERSATION_NO_AUTHORITY',
     );
   }
-  const scope = await derivedScope(conversationId);
+  const scope = await derivedScope(conversationId, tx);
   if (scope.length === 0) {
     throw forbidden(
       `conversation ${conversationId} has no handle in it, so it is about no project and nobody holds a role that reaches it`,

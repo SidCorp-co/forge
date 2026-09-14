@@ -86,6 +86,9 @@ export interface ConversationMembership {
   /** The project ids, derived from the live agents — never chosen. */
   scope: string[];
   scopeProjects: ConversationProject[];
+  /** Whether THIS caller may change who is in the room. */
+  // cm:guard served, never inferred: the screen cannot compute it, because it turns on being a live person in the room AND holding a role on every project of a scope the screen does not decide. A client that guessed from the project role would offer the controls to somebody the server then refuses, which reads as a broken button rather than as a rule (ISS-1011).
+  canChangeMembership: boolean;
 }
 
 export interface PersonCandidate {
@@ -95,9 +98,13 @@ export interface PersonCandidate {
 }
 
 export interface HandleCandidate {
-  userId: string;
+  /** The agent account, or null where this project has never needed one. */
+  // cm:guard NULLABLE because core offers a project that has never been talked to under the name its agent will be given, and mints it on add. Typing this `string` made the add send `userId: undefined` and the advertised mint-on-add path unreachable from the screen (ISS-1011).
+  userId: string | null;
   handle: string;
   project: ConversationProject;
+  /** Who in the room today would lose it if this agent joined — already named. */
+  losesReaders: string[];
 }
 
 export interface ConversationCandidates {

@@ -35,13 +35,24 @@ export type ClaimKey =
   | "scope-after"
   | "second-project"
   | "readers-widen"
+  | "readers-lose"
   | "person-can-read"
-  | "person-already-could";
+  | "person-already-could"
+  | "room-scope"
+  | "room-private"
+  | "room-shared";
 
 // cm:guard tolerant of an ABSENT list and not merely an empty one, which is the same rule `composerRefusal` states below: these fields arrive from the room's own answer, and a tab open across the deploy of the half that added them holds a payload without them. Every sentence built from an absent list says "no project", which is true of what the client knows.
 const list = (projects: readonly ConversationProject[] | undefined): string => {
   const names = (projects ?? []).map((p) => p.name);
   if (names.length === 0) return "no project";
+  if (names.length === 1) return names[0] as string;
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+};
+
+/** The same joining, for names rather than projects. */
+const list2 = (names: readonly string[]): string => {
+  if (names.length === 0) return "Nobody";
   if (names.length === 1) return names[0] as string;
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 };
@@ -111,6 +122,17 @@ export function agentAdditionClaims(args: {
     });
   }
 
+  // cm:guard placed BEFORE the widening claim and stated with names, because it is the one consequence of this act that nobody can undo by reading: widening the scope puts the room outside anybody who holds no role on the project being brought in, and they are not told. A general "some people may lose access" is a warning nobody can act on (ISS-1011).
+  // cm:guard read through a default for the reason every other field here is: this arrives from `/api/conversations/:id/candidates`, and a tab open across the deploy of the half that added it holds candidates without it. An absent list means "this client was told of nobody", which is silence — the wrong answer would be to invent a warning or to throw and take the whole confirmation down with it.
+  const losing = candidate.losesReaders ?? [];
+  if (losing.length > 0) {
+    const one = losing.length === 1;
+    claims.push({
+      key: "readers-lose",
+      text: `${list2(losing)} ${one ? "is" : "are"} in this room today and ${one ? "holds" : "hold"} no role on ${candidate.project.name}. A room is read only by somebody who holds one on every project in it, so they will no longer be able to open this one. Nothing they have already read is taken back.`,
+    });
+  }
+
   if (becomesShared) {
     claims.push({
       key: "readers-widen",
@@ -118,6 +140,41 @@ export function agentAdditionClaims(args: {
     });
   }
 
+  return claims;
+}
+
+/**
+ * What the room being opened will be, said before it is opened.
+ */
+// cm:guard a SEPARATE builder from `agentAdditionClaims`, and not a call into it, because the load-bearing claim there is false here: nothing has been said in a room that does not exist, so "will be shown what has already been said" would be a sentence about nothing. The claims that survive are the ones about what the room WILL be — its scope, whether it can be spoken in, and who will be able to read it (ISS-1011 criterion 15, review F4).
+export function roomOpeningClaims(args: {
+  projects: readonly ConversationProject[];
+  agentCount: number;
+}): MembershipClaim[] {
+  const { projects, agentCount } = args;
+  const claims: MembershipClaim[] = [
+    {
+      key: "room-scope",
+      text: `This room will be about ${list(projects)}. That is read from the agents in it, and nobody chooses it.`,
+    },
+  ];
+  if (projects.length > 1) {
+    claims.push({
+      key: "second-project",
+      text: `A room about more than one project takes no messages from Forge — a message is answered under exactly one project. Take an agent out afterwards, and the room can be spoken in.`,
+    });
+  }
+  claims.push(
+    agentCount > 1
+      ? {
+          key: "room-shared",
+          text: `With more than one agent this is a shared room: anybody holding a role on ${list(projects)} will be able to read it, not only the people listed here.`,
+        }
+      : {
+          key: "room-private",
+          text: "With one agent this is a one-to-one room, read only by the people in it.",
+        },
+  );
   return claims;
 }
 
