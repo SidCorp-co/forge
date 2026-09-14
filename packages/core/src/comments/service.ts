@@ -12,6 +12,7 @@ import { and, asc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import type { BodyFormat } from '../body/formats.js';
 import { prepareBody } from '../body/prepare.js';
 import { db, type Tx } from '../db/client.js';
+import { screenAgentComment } from './screen.js';
 import { comments, issues } from '../db/schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { type CommentCursor, encodeCommentCursor } from './cursor.js';
@@ -205,13 +206,16 @@ export type WrittenComment = { row: CommentThreadRow; warnings: string[] };
  * this lane actually reaches").
  */
 // cm:guard reads through the CALLER's handle, never the pool: `insertComment` runs this before its own insert, so a caller inside a transaction that left this on `db` would hold one pooled connection and block waiting for a second. The pool is ten wide and every inbound room reply is one such transaction, so ten concurrent replies deadlock until they time out (ISS-981).
-async function loadStageContext(issueId: string, tx: Tx = db): Promise<{ stage: string } | null> {
+async function loadStageContext(
+  issueId: string,
+  tx: Tx = db,
+): Promise<{ stage: string; projectId: string } | null> {
   const [row] = await tx
-    .select({ stage: issues.status })
+    .select({ stage: issues.status, projectId: issues.projectId })
     .from(issues)
     .where(eq(issues.id, issueId))
     .limit(1);
-  return row ? { stage: row.stage } : null;
+  return row ? { stage: row.stage, projectId: row.projectId } : null;
 }
 
 // cm:guard the `tx` handle exists for ONE reason: a caller that must commit this comment together with another row passes its transaction, and `rocketchat/comment-inbound.ts` is that caller — a room reply whose comment committed without its idempotency row is written a second time on the next redelivery, which is two resume intents at `answer-resume.ts` and the agent run twice (ISS-981). It defaults to the pool, so every other door is unchanged.
@@ -219,6 +223,10 @@ async function loadStageContext(issueId: string, tx: Tx = db): Promise<{ stage: 
 export async function insertComment(input: NewComment, tx: Tx = db): Promise<WrittenComment> {
   const prepared = prepareBody({ raw: input.body, format: input.format });
   const context = await loadStageContext(input.issueId, tx);
+  // cm:guard the message screen reads what the words CLAIM, which is a different question from the markup `prepareBody` above answers, and it runs on the RAW body an agent sent rather than on the prepared one — the gate refuses, it never hands back edited text, so there is no prepared form of a refused comment to screen (ISS-997).
+  if (input.authorAgency === 'agent' && context) {
+    await screenAgentComment(context.projectId, input.body, tx);
+  }
 
   const { format: _ignored, ...rest } = input;
   const [row] = await tx
@@ -253,6 +261,11 @@ export async function updateCommentBody(
     .where(eq(comments.id, commentId))
     .limit(1);
   if (!existing) return null;
+  // cm:guard an edit meets the same cell its creation did, read off the stored `authorAgency` rather than off whoever is editing: a comment an agent wrote is an agent's claim however it is later corrected, and reading the editor instead would let one edit walk a claim past the gate that refused it.
+  if (existing.authorAgency === 'agent') {
+    const context = await loadStageContext(existing.issueId);
+    if (context) await screenAgentComment(context.projectId, input.body, db);
+  }
 
   const [row] = await db
     .update(comments)

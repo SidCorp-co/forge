@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { BodyInvalidError } from '../../body/errors.js';
+import { MessageRefusedError } from '../../messaging/contract.js';
 import { BODY_FORMATS } from '../../body/formats.js';
 import { bodyText } from '../../body/prepare.js';
 import {
@@ -144,11 +145,12 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
     const { principal } = ctx;
 
     // cm:guard a refused body must reach the agent as BAD_REQUEST with the ELEMENT, ATTRIBUTE and legal set still in the message. That named message is the whole reason this gate produces compliance where a guide produced 14-28%: an agent told only "invalid body" has nothing to change on its next call.
+    // cm:guard the same frame carries a refused CLAIM, which is a different refusal from a refused body: `BODY_INVALID` names markup the server will not store, `MESSAGE_REFUSED` names a rule about what the words assert, and an agent that cannot tell them apart rewrites the wrong half (ISS-997).
     // cm:guard BOTH refusals, and the stage one especially: this is the ONLY door that presents a device token, so `bodyPolicy` (ISS-969) fires here and effectively nowhere else. Left unmapped it reaches the agent as a bare error with no `BAD_REQUEST:` frame, which is the shape a client reads as a server fault and retries verbatim.
     try {
       return await run(principal, input);
     } catch (err) {
-      if (err instanceof BodyInvalidError) {
+      if (err instanceof BodyInvalidError || err instanceof MessageRefusedError) {
         throw new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
       }
       throw err;

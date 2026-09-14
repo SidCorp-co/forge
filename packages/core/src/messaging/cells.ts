@@ -44,9 +44,9 @@ const SHIPPED: readonly CellSpec[] = [
   ]),
 
   /** A comment on an issue, read by the person who decides. */
+  // cm:guard `issue-references-exist` is deliberately NOT here, and the reason is measured rather than assumed: in an 18-issue sample of this project's own comments, 6 of 391 cite a `forge-plugin` key — which CLAUDE.md's own carve-out REQUIRES an agent to do when it finds a defect in that repo. An existence rule here would refuse the mandated behaviour once every 66 comments. A reference this project does not hold is very likely another project's, so it is not judged; a status ASSERTED of an issue this project does hold still is.
   cell(ROLE_HOLDER, 'report', [
     COMMENT_HAS_TEXT,
-    ISSUE_REFERENCES_EXIST,
     STATUS_MATCHES_THE_ROW,
     NO_ROOM_BROADCAST_CARRIED,
     NO_REDACTED_SECRET,

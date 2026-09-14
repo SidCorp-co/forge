@@ -7,7 +7,7 @@
  */
 
 import { and, eq, inArray, or } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { activeIssuePrefix, heldIssuePrefixes } from '../issues/issue-prefix-read.js';
 import { computeProjectProgress } from '../issues/progress.js';
@@ -27,7 +27,15 @@ export interface GatherInput {
    * only for a caller that has none to pass.
    */
   readonly progress?: ProgressFacts | null | 'compute';
+  /**
+   * The handle to read through. A caller inside a transaction MUST pass its own.
+   */
+  // cm:guard reading the pool from inside a caller's transaction is a deadlock, not a style point: the pool is ten wide, `insertComment` runs this before its own insert, and a caller holding one connection while waiting for a second means ten concurrent writers wait on each other until they time out (the same hazard `loadStageContext` carries, ISS-981).
+  readonly executor?: Tx;
 }
+
+// cm:why a reference-shaped token in ANY prefix, checked before the prefix query rather than after: both rules that read the tracker need a reference, so a body carrying none needs no lookup at all — and finding out otherwise would cost the two queries this skips. It is deliberately wider than the project's own prefixes, so it can only skip work the rules would have found nothing in.
+const ANY_REFERENCE_RE = /\b[A-Za-z][A-Za-z0-9]{1,5}-\d{1,6}\b/;
 
 function needsOf(audience: Audience, intent: Intent): Set<FactKind> {
   const cell = cellFor(audience, intent);
@@ -56,6 +64,7 @@ function cited(segments: readonly string[], prefixes: readonly string[]): Cited 
 async function issueRowsFor(
   projectId: string,
   c: Cited,
+  tx: Tx,
 ): Promise<{ rows: Map<number, IssueRow>; ids: Set<string>; failed: boolean }> {
   const empty = { rows: new Map<number, IssueRow>(), ids: new Set<string>(), failed: false };
   if (c.ids.length === 0 && c.seqs.length === 0) return empty;
@@ -64,7 +73,7 @@ async function issueRowsFor(
       ...(c.ids.length > 0 ? [inArray(issues.id, c.ids)] : []),
       ...(c.seqs.length > 0 ? [inArray(issues.issSeq, c.seqs)] : []),
     ];
-    const found = await db
+    const found = await tx
       .select({
         id: issues.id,
         issSeq: issues.issSeq,
@@ -86,18 +95,25 @@ async function issueRowsFor(
 /** Everything the cell's rules need, and nothing they do not. */
 export async function gatherFacts(input: GatherInput): Promise<MessageFacts> {
   const needs = needsOf(input.audience, input.intent);
+  const tx = input.executor ?? db;
   const base: MessageFacts = {
     ...NO_FACTS,
     toolCalls: input.toolCalls ?? [],
   };
   if (needs.size === 0) return base;
+  if (needs.size === 1 && needs.has('issue-rows')) return base;
+  const mentionsOne = input.segments.some((s) => ANY_REFERENCE_RE.test(s ?? ''));
+  if (!needs.has('progress') && !mentionsOne) return base;
 
   const [prefix, prefixes] = needs.has('prefixes')
-    ? await Promise.all([activeIssuePrefix(input.projectId), heldIssuePrefixes(input.projectId)])
+    ? await Promise.all([
+        activeIssuePrefix(input.projectId, tx),
+        heldIssuePrefixes(input.projectId, tx),
+      ])
     : [null, [] as readonly string[]];
 
   const issueFacts = needs.has('issue-rows')
-    ? await issueRowsFor(input.projectId, cited(input.segments, prefixes))
+    ? await issueRowsFor(input.projectId, cited(input.segments, prefixes), tx)
     : { rows: new Map<number, IssueRow>(), ids: new Set<string>(), failed: false };
 
   const progress = needs.has('progress')
