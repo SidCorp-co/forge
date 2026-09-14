@@ -87,14 +87,11 @@ function appWith(credential: Credential) {
 
 async function post(credential: Credential) {
   insertValues.mockClear();
-  const res = await appWith(credential).request(
-    '/1f0a4c8e-3b7d-4a2e-9c51-6d8e2f4a7b30/comments',
-    {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ body: 'hello' }),
-    },
-  );
+  const res = await appWith(credential).request('/1f0a4c8e-3b7d-4a2e-9c51-6d8e2f4a7b30/comments', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ body: 'hello' }),
+  });
   return { res, values: insertValues.mock.calls[0]?.[0] as Record<string, unknown> | undefined };
 }
 

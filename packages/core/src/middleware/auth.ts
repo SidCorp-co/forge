@@ -62,7 +62,9 @@ type RestActorVars = {
  * identity, and most agents are running on one.
  */
 // cm:guard the ONLY caller that may read this instead of {@link restActor} is one STORING a claim about who wrote something — `comments.author_agency` and nothing else so far. A gate reads `restActor`, which resolves the null to `agent` and fails closed; a gate reading this and coalescing it itself is a second resolution with its own direction, which is how the two start disagreeing. The whole reason the field is separate is that `human` here was wrong for the majority of agents, and a wrong claim is worse than no claim.
-export function restEstablishedAgency(c: Context<{ Variables: RestActorVars }>): ActorAgency | null {
+export function restEstablishedAgency(
+  c: Context<{ Variables: RestActorVars }>,
+): ActorAgency | null {
   return c.get('principal') === 'user' ? 'human' : (c.get('agency') ?? null);
 }
 

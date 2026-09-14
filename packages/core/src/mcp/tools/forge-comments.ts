@@ -31,8 +31,8 @@ import { markUntrusted } from '../../prompt/sanitize.js';
 import {
   assertPrincipalIsWriter,
   type ContextScopedMcpToolFactory,
-  principalEstablishedAgency,
   principalAuthorDeviceId,
+  principalEstablishedAgency,
   principalHookActor,
   zodToMcpSchema,
 } from './lib.js';

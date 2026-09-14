@@ -106,15 +106,14 @@ const sessionOnly = (verb: string) =>
  */
 // cm:guard the admission is `c.get('agentUserId')` — set ONLY where the token's owner is an agent account — and never `agency`, and never the token's name. A person's token borrowed by an agent establishes no identity and is refused by this same line, which is the whole of issue rule 6: borrowed authority may act, but it may not claim to be the one speaking. Widening this to `agency === 'agent'` would admit every borrowed token back, since that is where the wrong answer lived.
 // cm:guard the `blockerKind` test stays, and it is not decoration: a question parked on a HUMAN is parked on a human, and an agent answering it is the machine deciding a thing that was escalated precisely because a machine should not. Only the peer-blocked kind is a question an agent was ever the right answerer for.
-const peerBlockedOnly = (blockerKind: string) =>
+const peerBlockedOnly = () =>
   new HTTPException(403, {
     message:
-      `this question is blocked on ${blockerKind === 'master_or_peer' ? 'another agent' : blockerKind} ` +
-      'and this request carries a personal access token owned by a person, which establishes ' +
-      'nobody: a borrowed credential may act but may not say who is speaking. A question blocked ' +
-      'on another agent is answered by that agent holding its OWN Agent Access Token — an org ' +
-      'admin mints one under the organization the agent belongs to. Anything else is answered by ' +
-      'a person in a session.',
+      'this question is blocked on another agent, and this request carries a personal access ' +
+      'token owned by a person, which establishes nobody: a borrowed credential may act but may ' +
+      'not say who is speaking. Answer it with the agent’s OWN Agent Access Token — an org admin ' +
+      'mints one for an existing agent at POST /api/orgs/:orgId/agents/:agentUserId/tokens. Or ' +
+      'sign in and answer it as a person.',
     cause: { code: 'QUESTION_NEEDS_AGENT_CREDENTIAL' },
   });
 
@@ -192,10 +191,11 @@ questionRoutes.get('/:id', async (c) => {
 questionRoutes.post('/:id/answer', async (c) => {
   if (c.get('principal') === 'pat') {
     const agentUserId = c.get('agentUserId');
-    if (!agentUserId) throw sessionOnly('answered');
-    const seen = await readQuestionFor(questionId(c), agentUserId);
+    // cm:guard the question is read BEFORE the credential is judged, because which refusal is owed depends on what the question is blocked on: a question parked on a PERSON is answered by a person whatever credential asks, while one parked on another agent has exactly one answerer and the refusal has to name it. Judge the credential first and a person holding a token is sent to sign in for a question no person was ever the right answerer for.
+    const seen = await readQuestionFor(questionId(c), agentUserId ?? c.get('userId'));
     if (!seen) throw notFound();
-    if (seen.blockerKind !== 'master_or_peer') throw peerBlockedOnly(seen.blockerKind);
+    if (seen.blockerKind !== 'master_or_peer') throw sessionOnly('answered');
+    if (!agentUserId) throw peerBlockedOnly();
   }
   const body = await c.req
     .json<{ optionId?: string; text?: string; round?: number }>()

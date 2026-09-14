@@ -118,7 +118,7 @@ describe('resolveEffectiveProjectId precedence', () => {
 
 describe('cross-project conflict → NOT_FOUND', () => {
   it('bound PAT + explicit arg for a different project is fenced as NOT_FOUND', async () => {
-    // allow = [BOUND]; target OTHER not in allow → NOT_FOUND before any role lookup.
+    // cm:guard the refusal must arrive BEFORE any role lookup, and that ordering is the assertion: a fence consulted after the role is read tells a caller holding no membership that the project is forbidden, and one holding a membership that it exists — which is the cross-project existence leak NOT_FOUND is chosen to close.
     await expect(
       assertPrincipalIsMember(patPrincipal({ boundProjectId: BOUND }), OTHER),
     ).rejects.toThrow(/NOT_FOUND/);
@@ -139,9 +139,9 @@ describe('principalActor — who a write is recorded as', () => {
 
   // cm:guard the person's token records the PERSON and carries `agency: null` with it — ownership and establishment are the two separate answers ISS-1003 split. Collapse them and either the write is attributed to a machine (`type:'device'`) or the null is dropped and `actorAgency` reads `human`, which is the exemption the evidence gates exist to refuse.
   it('records the person whose token it is, claiming nothing about who is speaking', () => {
-    expect(principalActor(patPrincipal({ userId: 'user-9', tokenId: 'tok-1', scopes: [] }))).toEqual(
-      { type: 'user', id: 'user-9', agency: null },
-    );
+    expect(
+      principalActor(patPrincipal({ userId: 'user-9', tokenId: 'tok-1', scopes: [] })),
+    ).toEqual({ type: 'user', id: 'user-9', agency: null });
   });
 
   it('leaves a person-owned token subject to the agent gates rather than exempt from them', () => {

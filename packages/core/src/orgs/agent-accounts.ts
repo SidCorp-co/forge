@@ -8,10 +8,12 @@
  * learn that agents exist.
  */
 
+import { randomBytes } from 'node:crypto';
 import { and, count, desc, eq, isNull } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { isAgentHandle, synthesizeAgentEmail } from '../auth/agent-account.js';
-import { mintPat, patIsLive } from '../auth/pat.js';
+import { mintPat } from '../auth/pat.js';
+import { patIsLive } from '../auth/pat-live.js';
 import { db } from '../db/client.js';
 import {
   organizationMembers,
@@ -21,6 +23,7 @@ import {
   projects,
   users,
 } from '../db/schema.js';
+import { isUniqueViolation, uniqueViolationConstraint } from '../lib/db-errors.js';
 
 export interface CreateAgentAccountInput {
   orgId: string;
@@ -234,13 +237,44 @@ export async function mintAgentCredential(
     );
   }
 
-  const minted = await mintPat({
-    userId: agent.id,
-    name: `agent:${agent.handle ?? agent.id}`,
-    scopes: ['read', 'write'],
-    boundProjectId: membership.projectId,
-  });
-  return { plaintext: minted.plaintext, boundProjectId: membership.projectId };
+  const minted = await mintDistinctlyNamed(
+    agent.id,
+    `agent:${agent.handle ?? agent.id}`,
+    membership.projectId,
+  );
+  return { plaintext: minted, boundProjectId: membership.projectId };
+}
+
+/**
+ * Mint under a name `pat_user_name_uniq` will accept, escalating rather than looping.
+ *
+ * `personal_access_tokens` is unique on `(user_id, name)` and a REVOKED row keeps
+ * its name, so the obvious `agent:<handle>` collides the second time an admin
+ * credentials the same agent — which is the ordinary case, since taking the
+ * credential away and giving a new one is what this pair of routes is for.
+ */
+// cm:guard three attempts and then a REFUSAL, never a loop and never a silent skip: the caller never types this name, so a collision is ours to resolve, but a retry with no bound turns a constraint nobody can satisfy into a request that never returns. The escalation is deterministic first (the timestamp, which reads well in a token list) and random only as the last step, so the common second mint gets a name a person can still recognise.
+async function mintDistinctlyNamed(
+  userId: string,
+  base: string,
+  boundProjectId: string,
+): Promise<string> {
+  const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
+  const names = [base, `${base} ${stamp}`, `${base} ${randomBytes(4).toString('hex')}`];
+  for (const name of names) {
+    try {
+      const minted = await mintPat({ userId, name, scopes: ['read', 'write'], boundProjectId });
+      return minted.plaintext;
+    } catch (err) {
+      if (!isUniqueViolation(err) || uniqueViolationConstraint(err) !== 'pat_user_name_uniq') {
+        throw err;
+      }
+    }
+  }
+  throw badRequest(
+    `every name this route would give a credential for agent ${userId} is already taken (${names.join(', ')}); revoke or rename one of its existing tokens first`,
+    'AGENT_CREDENTIAL_NAME_TAKEN',
+  );
 }
 
 /**

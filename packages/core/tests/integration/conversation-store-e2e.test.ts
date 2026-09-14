@@ -121,6 +121,9 @@ describe('two writers opening the same unseen venue', () => {
     const [handle] = await participants.listParticipants(sibling.id);
     const handleUserId = handle?.userId;
     expect(handleUserId).toBeTruthy();
+    // cm:guard the planted row carries the handle's project, because since ISS-1003 a live handle without one violates `conversation_participants_handle_has_project` — a competing writer that could not exist is no competitor, and the loser's branch would never be reached.
+    const handleProjectId = handle?.projectId;
+    expect(handleProjectId).toBeTruthy();
 
     const planted = randomUUID();
     let release: () => void = () => {};
@@ -133,8 +136,8 @@ describe('two writers opening the same unseen venue', () => {
         [planted, key],
       );
       await tx.unsafe(
-        `INSERT INTO conversation_participants (conversation_id, kind, user_id) VALUES ($1, 'handle', $2)`,
-        [planted, handleUserId as string],
+        `INSERT INTO conversation_participants (conversation_id, kind, user_id, project_id) VALUES ($1, 'handle', $2, $3)`,
+        [planted, handleUserId as string, handleProjectId as string],
       );
       await held;
     });

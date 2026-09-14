@@ -5,10 +5,11 @@
 // somebody holding a role on every project its handles derive — so nothing here
 // asks a per-message question that `scope.ts` cannot answer from the join.
 
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, count, eq, isNull, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import { patIsLive } from '../auth/pat-live.js';
 import { db as defaultDb } from '../db/client.js';
-import { organizationMembers, projectMembers, users } from '../db/schema.js';
+import { organizationMembers, personalAccessTokens, projectMembers, users } from '../db/schema.js';
 import {
   type ConversationParticipantKind,
   conversationParticipants,
@@ -27,29 +28,66 @@ export interface ParticipantRow {
   id: string;
   kind: ConversationParticipantKind;
   userId: string | null;
+  /** The project a handle was added for; null for a person. */
+  projectId: string | null;
   externalKey: string | null;
   label: string | null;
+  /**
+   * Whether this handle can still act — it holds a live credential and the
+   * authority its room's project needs.
+   */
+  // cm:guard a handle that cannot act is REPORTED and never hidden, and the room stays readable around it. Revoking an agent is a security action that always succeeds; what it must not do is make the room silently go quiet, which is what an empty scope did before the project moved onto this row (ISS-1003 criteria 18, 20). `null` for a person, who is not a thing that acts.
+  reachable: boolean | null;
 }
 
 export async function listParticipants(
   conversationId: string,
   tx: Executor = defaultDb,
 ): Promise<ParticipantRow[]> {
-  return tx
+  const live = tx
+    .select({ userId: personalAccessTokens.userId, n: count().as('n') })
+    .from(personalAccessTokens)
+    .where(patIsLive())
+    .groupBy(personalAccessTokens.userId)
+    .as('live');
+
+  const rows = await tx
     .select({
       id: conversationParticipants.id,
       kind: conversationParticipants.kind,
       userId: conversationParticipants.userId,
+      projectId: conversationParticipants.projectId,
       externalKey: conversationParticipants.externalKey,
       label: conversationParticipants.label,
+      liveTokens: live.n,
+      memberRole: projectMembers.role,
     })
     .from(conversationParticipants)
+    .leftJoin(live, eq(live.userId, conversationParticipants.userId))
+    .leftJoin(
+      projectMembers,
+      and(
+        eq(projectMembers.userId, conversationParticipants.userId),
+        eq(projectMembers.projectId, conversationParticipants.projectId),
+      ),
+    )
     .where(
       and(
         eq(conversationParticipants.conversationId, conversationId),
         isNull(conversationParticipants.removedAt),
       ),
     );
+
+  return rows.map((row) => ({
+    id: row.id,
+    kind: row.kind,
+    userId: row.userId,
+    projectId: row.projectId,
+    externalKey: row.externalKey,
+    label: row.label,
+    // cm:guard BOTH halves, because either alone leaves a handle that cannot act reading as if it could: a credential with no membership reaches nothing, and a membership with no credential has nothing to reach with. `revokeAgentAccount` removes both and `revokeAgentCredentials` removes only the first, so a reader testing one of them would call an agent reachable after one of the two revokes.
+    reachable: row.kind === 'handle' ? (row.liveTokens ?? 0) > 0 && row.memberRole !== null : null,
+  }));
 }
 
 /** The projects a handle's scope comes from. */
@@ -67,8 +105,7 @@ export async function projectsOfHandle(
 /**
  * The live handle in this room that carries `projectId`, or null where none does.
  */
-// cm:guard who an assistant message in this room is BY: a room may hold several handles, and the one
-// that speaks is the one carrying the project the turn arrived under (ISS-1001 criterion 14)
+// cm:guard who an assistant message in this room is BY: a room may hold several handles, and the one that speaks is the one carrying the project the turn arrived under (ISS-1001 criterion 14)
 export async function handleForProject(
   conversationId: string,
   projectId: string,
@@ -94,6 +131,12 @@ export async function handleForProject(
 export interface AddHandleArgs {
   conversationId: string;
   handleUserId: string;
+  /**
+   * Which of the handle's projects this room is about. Recorded on the row and
+   * checked against both the handle's membership and the caller's role.
+   */
+  // cm:guard NAMED by the caller and never inferred from the handle's memberships, even though an agent holds exactly one today. The value is what the room's scope is read from for the rest of its life, so inferring it binds the room to whatever the agent's memberships happen to be at the moment of the add — and a second membership granted a month later would then silently widen every room the inference had touched (ISS-1003 criterion 21). One project, named, is also the only shape the stored column can hold.
+  projectId: string;
   /** Who is doing the adding; their roles are what the door checks. */
   actorUserId: string;
   tx?: Executor;
@@ -133,10 +176,12 @@ async function loadHandle(
  * to check: the room is being opened by a message arriving, not by a person.
  */
 // cm:guard the ONLY caller is `store.ts:openConversation`, in the same transaction that inserts the conversation, and that is what keeps this unchecked path safe: the handle it attaches is the one the venue's own project resolves to, never one a caller named. A route, a tool or an adapter reaching for this instead of `addHandle` is a handle admitted with nobody's role behind it — which is the door standing open (ISS-1001 criteria 8, 9, 13).
+// cm:guard `projectId` is the VENUE's project, passed in rather than derived from the handle's memberships, and that is the same rule `addHandle` follows for a different reason: the room is about the project the message arrived under, and reading it off the agent instead would make a second membership granted later change what an already-open room is about (ISS-1003 criterion 21).
 export async function attachOpeningHandle(
   tx: Executor,
   conversationId: string,
   handleUserId: string,
+  projectId: string,
 ): Promise<void> {
   const handle = await loadHandle(tx, handleUserId);
   await tx
@@ -145,6 +190,7 @@ export async function attachOpeningHandle(
       conversationId,
       kind: 'handle',
       userId: handle.id,
+      projectId,
       addedBy: null,
       label: handle.handle,
     })
@@ -161,15 +207,21 @@ export async function addHandle(args: AddHandleArgs): Promise<void> {
   const tx = args.tx ?? defaultDb;
   const handle = await loadHandle(tx, args.handleUserId);
 
+  // cm:guard the named project must be one the HANDLE holds, checked before the caller's role is: a project the agent is no member of is a room whose scope names work that agent cannot do, and admitting it would put a handle in a room it can never answer in. Refused by name rather than corrected to the agent's actual project, because which project the room is about is the caller's decision and not this function's to guess.
   const handleProjects = await projectsOfHandle(args.handleUserId, tx);
-  for (const projectId of handleProjects) {
-    const access = await effectiveProjectRole(args.actorUserId, projectId);
-    if (!access?.role) {
-      throw forbidden(
-        `@${handle.handle} works on project ${projectId} and you hold no role on it; a handle is added to a room by somebody who holds a role on its project`,
-        'HANDLE_PROJECT_FORBIDDEN',
-      );
-    }
+  if (!handleProjects.includes(args.projectId)) {
+    throw badRequest(
+      `@${handle.handle} is a member of ${handleProjects.length === 0 ? 'no project' : handleProjects.join(', ')} and not of ${args.projectId}, so it cannot be the handle for a room about that project`,
+      'HANDLE_NOT_ON_PROJECT',
+    );
+  }
+
+  const access = await effectiveProjectRole(args.actorUserId, args.projectId);
+  if (!access?.role) {
+    throw forbidden(
+      `@${handle.handle} would make this room about project ${args.projectId} and you hold no role on it; a handle is added to a room by somebody who holds a role on its project`,
+      'HANDLE_PROJECT_FORBIDDEN',
+    );
   }
 
   await tx
@@ -178,6 +230,7 @@ export async function addHandle(args: AddHandleArgs): Promise<void> {
       conversationId: args.conversationId,
       kind: 'handle',
       userId: args.handleUserId,
+      projectId: args.projectId,
       addedBy: args.actorUserId,
       label: handle.handle,
     })

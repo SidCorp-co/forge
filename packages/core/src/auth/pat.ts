@@ -13,7 +13,7 @@
  */
 
 import argon2 from 'argon2';
-import { and, eq, gt, type InferSelectModel, isNull, or, sql } from 'drizzle-orm';
+import { and, eq, type InferSelectModel, isNull, sql } from 'drizzle-orm';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { personalAccessTokens, type UserKind, users } from '../db/schema.js';
@@ -24,6 +24,7 @@ import {
   patEnvForNodeEnv,
   patPrefixOf,
 } from './pat-format.js';
+import { patIsLive } from './pat-live.js';
 
 const ARGON2_OPTIONS = {
   type: argon2.argon2id,
@@ -34,21 +35,7 @@ const ARGON2_OPTIONS = {
 
 export type Pat = InferSelectModel<typeof personalAccessTokens>;
 
-/**
- * What makes a row in this table a credential that would still be accepted.
- *
- * Unrevoked AND unexpired, which is not the same question: a token whose
- * `expires_at` has passed is never revoked, so a reader testing only
- * `revoked_at IS NULL` counts it as live and tells an operator an account can
- * act when {@link verifyPat} would turn it away.
- */
-// cm:guard ONE spelling of "live", and `verifyPat` is built from it rather than carrying its own copy. Every surface that reports whether a principal can act — `orgs/agent-accounts.ts:listAgentAccounts`, the reachability of a conversation handle — asks this function, because a second spelling is how a screen and the door start disagreeing about the same token (ISS-1003 criteria 2, 7, 20).
-export function patIsLive() {
-  return and(
-    isNull(personalAccessTokens.revokedAt),
-    or(isNull(personalAccessTokens.expiresAt), gt(personalAccessTokens.expiresAt, sql`now()`)),
-  );
-}
+export { patIsLive } from './pat-live.js';
 
 export interface MintPatInput {
   userId: string;
