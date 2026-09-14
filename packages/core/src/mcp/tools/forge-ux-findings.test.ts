@@ -9,8 +9,7 @@ vi.mock('../../config/env.js', () => ({
   },
 }));
 
-// effectiveProjectRole: select().from().leftJoin().leftJoin().where().limit()
-// count / ruleId / list: select().from().where()[.orderBy()].limit()
+// cm:guard two chains share one `db.select` mock and they differ in shape: `effectiveProjectRole` is select().from().leftJoin().leftJoin().where().limit(), while count / ruleId / list are select().from().where()[.orderBy()].limit(). A mock that satisfies one and not the other resolves to undefined rather than failing.
 const selectLimit = vi.fn();
 const selectOrderBy = vi.fn(() => ({ limit: selectLimit }));
 const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
@@ -70,7 +69,8 @@ function makePatCtx(projectSlug = PROJECT_SLUG) {
   return {
     principal: {
       kind: 'pat' as const,
-      agency: 'human' as const,
+      agency: null,
+      agentUserId: null,
       userId: OWNER_ID,
       tokenId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
       scopes: ['read', 'write'],

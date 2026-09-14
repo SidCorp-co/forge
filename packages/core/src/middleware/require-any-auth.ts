@@ -25,7 +25,11 @@ import { readBearerToken } from './bearer.js';
 import { beginPatRequest, withPatScope } from './pat-rest-surface.js';
 
 // cm:guard `agency` belongs on THIS shape too, not just `AuthVars` — until 2026-09-01 this middleware took a principal that already carried agency and kept only `userId`, so every write behind it (attachment upload, comment post) recorded a job token's work as its owner acting by hand. A second auth entrypoint that drops a field is how one gets fixed and the other stays wrong.
-export type AnyAuthVars = { userId: string; agency?: ActorAgency };
+export type AnyAuthVars = {
+  userId: string;
+  agency?: ActorAgency | null;
+  principal?: 'user' | 'device' | 'pat';
+};
 
 const unauth = (message: string) =>
   new HTTPException(401, { message, cause: { code: 'UNAUTHENTICATED' } });
@@ -40,6 +44,8 @@ export function requireAnyAuth(): MiddlewareHandler<{ Variables: AnyAuthVars }> 
     if (isPatLike(token)) {
       const { principal, scope } = await beginPatRequest(c, token);
       c.set('userId', principal.userId);
+      c.set('principal', 'pat');
+      // cm:guard `principal` is set BESIDE `agency`, because `restActor` reads the tag first: a null agency means the credential established nothing, and without the tag this door's session branch and its token branch would be indistinguishable to it — a signed-in person would read as unestablished and meet the agent gates (ISS-1003).
       c.set('agency', principal.agency);
       return withPatScope(scope, () => next());
     }
@@ -51,6 +57,7 @@ export function requireAnyAuth(): MiddlewareHandler<{ Variables: AnyAuthVars }> 
       throw unauth('invalid token');
     }
     c.set('userId', claims.sub);
+    c.set('principal', 'user');
     await next();
   };
 }

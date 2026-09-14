@@ -86,13 +86,36 @@ const REFUSAL_STATUS: Record<QuestionRefusalCode, ContentfulStatusCode> = {
   QUESTION_MESSAGE_REFUSED: 400,
 };
 
-// cm:guard answering and voiding stay a SESSION's, and the test is the credential rather than `agency`: `middleware/auth.ts` carries the measurement that an agent holding a person's token reads `human`, so an agency test would refuse some agents and wave the rest through. Putting `/api/questions` on the PAT menu (`auth/pat-permissions.ts`) made these two reachable by every token holding no explicit grant, since an absent grant array reads as the whole menu — this is what keeps that widening to asking, listing and reading back.
+// cm:guard answering and voiding stay a SESSION's, and the test is the CREDENTIAL rather than `agency`: an agency test would have refused some agents and waved the rest through, because until ISS-1003 an agent holding a person's token read `human`. Putting `/api/questions` on the PAT menu (`auth/pat-permissions.ts`) made these two reachable by every token holding no explicit grant, since an absent grant array reads as the whole menu — this is what keeps that widening to asking, listing and reading back. The one hole in it is `master_or_peer`, below, and that hole is opened by an ESTABLISHED identity rather than by a relaxed test.
 const sessionOnly = (verb: string) =>
   new HTTPException(403, {
     message:
       `a question is ${verb} by a person in a session, and this request carries a personal ` +
       'access token. Sign in to answer it, or reply in the room the question was delivered to.',
     cause: { code: 'QUESTION_NEEDS_SESSION' },
+  });
+
+/**
+ * A question whose blocker is another agent, answered by a credential that
+ * names an agent — and by nothing else (ISS-1003).
+ *
+ * `blockerKind: 'master_or_peer'` says in the row itself that the thing this
+ * run is waiting on is another agent. Before this, no credential could answer
+ * it: every token was refused here and no agent held a session, so a peer-
+ * blocked park could only ever be cleared by a person standing in for the peer.
+ */
+// cm:guard the admission is `c.get('agentUserId')` — set ONLY where the token's owner is an agent account — and never `agency`, and never the token's name. A person's token borrowed by an agent establishes no identity and is refused by this same line, which is the whole of issue rule 6: borrowed authority may act, but it may not claim to be the one speaking. Widening this to `agency === 'agent'` would admit every borrowed token back, since that is where the wrong answer lived.
+// cm:guard the `blockerKind` test stays, and it is not decoration: a question parked on a HUMAN is parked on a human, and an agent answering it is the machine deciding a thing that was escalated precisely because a machine should not. Only the peer-blocked kind is a question an agent was ever the right answerer for.
+const peerBlockedOnly = (blockerKind: string) =>
+  new HTTPException(403, {
+    message:
+      `this question is blocked on ${blockerKind === 'master_or_peer' ? 'another agent' : blockerKind} ` +
+      'and this request carries a personal access token owned by a person, which establishes ' +
+      'nobody: a borrowed credential may act but may not say who is speaking. A question blocked ' +
+      'on another agent is answered by that agent holding its OWN Agent Access Token — an org ' +
+      'admin mints one under the organization the agent belongs to. Anything else is answered by ' +
+      'a person in a session.',
+    cause: { code: 'QUESTION_NEEDS_AGENT_CREDENTIAL' },
   });
 
 const refused = (e: QuestionRefused) =>
@@ -167,7 +190,13 @@ questionRoutes.get('/:id', async (c) => {
 // cm:guard `round` is REQUIRED and is never defaulted to the question's current round: the answer binds to the round the person was shown, and defaulting it applies a choice made about round 1 to a round 3 they never read (ISS-980 criterion 39).
 // cm:guard exactly ONE of `optionId` and `text` is read, and a body carrying both is refused here rather than resolved by precedence: a caller that sent both does not know which round it is answering, and picking one for them answers a question they did not read (ISS-996).
 questionRoutes.post('/:id/answer', async (c) => {
-  if (c.get('principal') === 'pat') throw sessionOnly('answered');
+  if (c.get('principal') === 'pat') {
+    const agentUserId = c.get('agentUserId');
+    if (!agentUserId) throw sessionOnly('answered');
+    const seen = await readQuestionFor(questionId(c), agentUserId);
+    if (!seen) throw notFound();
+    if (seen.blockerKind !== 'master_or_peer') throw peerBlockedOnly(seen.blockerKind);
+  }
   const body = await c.req
     .json<{ optionId?: string; text?: string; round?: number }>()
     .catch(() => ({}) as { optionId?: string; text?: string; round?: number });

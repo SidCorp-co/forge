@@ -86,7 +86,8 @@ function makePatCtx(projectIds: string[] | null) {
   return {
     principal: {
       kind: 'pat' as const,
-      agency: 'human' as const,
+      agency: null,
+      agentUserId: null,
       userId: OWNER_ID,
       tokenId: '66666666-6666-4666-8666-666666666666',
       scopes: ['read', 'write'],

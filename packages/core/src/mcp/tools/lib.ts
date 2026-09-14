@@ -145,12 +145,12 @@ export function principalUserId(principal: McpPrincipal): string {
  * and covers an agent, and `publishIssueStatusChange` names a user id that
  * exists.
  */
-// cm:guard branch on `agency` and on nothing else. Since ISS-931 every `/mcp` principal is a PAT, so a `kind`-shaped test would now read EVERY caller as a human and hand all of them the ISS-812 exemption — the guard added because agents were fabricating evidence. `agency` is the only field that separates a person's token from a `job:`/`session:` one.
+// cm:guard branch on `agency === 'agent'` — the POSITIVE test — and on nothing else. Since ISS-931 every `/mcp` principal is a PAT, so a `kind`-shaped test would read every caller as a human and hand all of them the ISS-812 exemption. The positive form matters since ISS-1003 made the field three-valued: `!== 'human'` would now sweep a person's own token into the device branch and attribute their write to a machine, while `=== 'human'` would never be true at all. Ownership follows the token's owner either way; what the `null` carries into the user branch is that nothing was established, which `actorAgency` reads.
 // cm:why the agent branch's `id` is the TOKEN id, which matches no `devices` row. That is not new and is not a thing this function can fix: it is the exact value `mcp/handler.ts` used to fabricate (`stubDeviceForPat(userId, tokenId)` set `id: tokenId`), kept identical when ISS-931 deleted the stub so no attribution moved with it. Whether an agent MCP write should be `{type:'user', agency:'agent'}` instead is a live question about `actor-resolution.ts:isAgent` and `outbox-worker.ts`, not a rename.
 export function principalActor(principal: McpPrincipal): TransitionActor {
-  return principal.agency === 'human'
-    ? { type: 'user', id: principal.userId }
-    : { type: 'device', id: principal.tokenId, ownerId: principal.userId };
+  return principal.agency === 'agent'
+    ? { type: 'device', id: principal.tokenId, ownerId: principal.userId }
+    : { type: 'user', id: principal.userId, agency: principal.agency };
 }
 
 /**
@@ -168,6 +168,15 @@ export function principalAuthorDeviceId(principal: McpPrincipal): string | null 
  * token's `job:`/`session:` name prefix already decided this.
  */
 export function principalAgency(principal: McpPrincipal): ActorAgency {
+  return actorAgency(principalActor(principal));
+}
+
+/**
+ * What this credential ESTABLISHED about who is speaking, or `null` for a
+ * person's own token, which establishes nothing (ISS-1003).
+ */
+// cm:guard for storing a claim about authorship and nothing else — the gate's question is {@link principalAgency}, which resolves the null to `agent`. Two readers coalescing this null in two directions is the disagreement the split exists to prevent.
+export function principalEstablishedAgency(principal: McpPrincipal): ActorAgency | null {
   return principal.agency;
 }
 

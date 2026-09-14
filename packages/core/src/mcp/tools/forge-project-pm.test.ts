@@ -207,7 +207,8 @@ describe('forge_project_pm — action-level auth (cross-tenant)', () => {
     const tool = forgeProjectPmTool({
       principal: {
         kind: 'pat' as const,
-        agency: 'human' as const,
+        agency: null,
+        agentUserId: null,
         userId: OWNER_ID,
         tokenId: '77777777-7777-4777-8777-777777777777',
         scopes: ['read', 'write'],

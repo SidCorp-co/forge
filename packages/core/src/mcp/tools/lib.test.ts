@@ -1,9 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// ISS-497 — project-scoped MCP tokens: effective-allowlist fold +
-// effective-project resolver. These cover the resolution precedence
-// (arg > slug > boundProjectId > BAD_REQUEST), the NOT_FOUND cross-project
-// conflict rule, and backward-compat for user-level (NULL binding) tokens.
+// cm:guard the precedence these cases pin is arg > slug > boundProjectId > BAD_REQUEST, and it is an ORDER rather than a set: a resolver that consults the same three sources in another order passes every individual lookup and resolves the wrong project for a token that carries two of them. The NOT_FOUND cross-project conflict rule and the user-level (NULL binding) token are the two ends of it (ISS-497).
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -31,11 +28,14 @@ vi.mock('../../lib/authz.js', () => ({
   },
 }));
 
+import { actorAgency } from '../../issues/actor-agency.js';
 import type { McpPrincipal } from '../../middleware/require-pat.js';
 import {
   assertPrincipalIsMember,
   type McpContext,
   principalActor,
+  principalAgency,
+  principalEstablishedAgency,
   resolveEffectiveProjectId,
 } from './lib.js';
 import { patEffectiveProjectIds } from './project-scope.js';
@@ -47,7 +47,8 @@ const SLUG_ID = '33333333-3333-4333-8333-333333333333';
 function patPrincipal(over: Partial<McpPrincipal> = {}): McpPrincipal {
   return {
     kind: 'pat',
-    agency: 'human' as const,
+    agency: null,
+    agentUserId: null,
     userId: 'user-1',
     tokenId: 'tok-1',
     scopes: ['read', 'write'],
@@ -136,14 +137,20 @@ describe('cross-project conflict → NOT_FOUND', () => {
 describe('principalActor — who a write is recorded as', () => {
   const pat = patPrincipal({ userId: 'user-9', tokenId: 'tok-1', scopes: [] });
 
-  it('records the person whose token it is', () => {
-    expect(principalActor({ ...pat, agency: 'human' })).toEqual({
-      type: 'user',
-      id: 'user-9',
-    });
+  // cm:guard the person's token records the PERSON and carries `agency: null` with it — ownership and establishment are the two separate answers ISS-1003 split. Collapse them and either the write is attributed to a machine (`type:'device'`) or the null is dropped and `actorAgency` reads `human`, which is the exemption the evidence gates exist to refuse.
+  it('records the person whose token it is, claiming nothing about who is speaking', () => {
+    expect(principalActor(patPrincipal({ userId: 'user-9', tokenId: 'tok-1', scopes: [] }))).toEqual(
+      { type: 'user', id: 'user-9', agency: null },
+    );
   });
 
-  // cm:guard the ONLY field this may branch on is `agency`. Since ISS-931 every `/mcp` principal is `kind:'pat'`, so a `kind`-shaped test would read a job token as a human and hand it the ISS-812 exemption — plant `kind` in the implementation and this case is what goes red.
+  it('leaves a person-owned token subject to the agent gates rather than exempt from them', () => {
+    expect(actorAgency(principalActor(pat))).toBe('agent');
+    expect(principalAgency(pat)).toBe('agent');
+    expect(principalEstablishedAgency(pat)).toBeNull();
+  });
+
+  // cm:guard the ONLY field this may branch on is `agency`, and the test must be `=== 'agent'`. Since ISS-931 every `/mcp` principal is `kind:'pat'`, so a `kind`-shaped test would read a job token as a human and hand it the ISS-812 exemption — plant `kind` in the implementation and this case is what goes red. Since ISS-1003 a `!== 'human'` spelling would also be wrong in the other direction, sweeping a person's own token into the device actor; the case above is what catches that one.
   it('records an agent-held token under the device actor shape, though it carries a pat principal', () => {
     expect(principalActor({ ...pat, agency: 'agent' })).toEqual({
       type: 'device',

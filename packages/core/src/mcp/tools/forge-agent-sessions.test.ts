@@ -113,9 +113,7 @@ describe('forge_agent_sessions.list', () => {
     await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/NOT_FOUND/);
   });
 
-  // ISS-428 — the list query must use a body-free column projection (never a
-  // bare db.select()) so the multi-MB `messages` transcript can't overflow the
-  // MCP token cap. Assert the projection map of the final (sessions) select.
+  // cm:guard the list query must use a body-free column PROJECTION and never a bare `db.select()`, because the multi-MB `messages` transcript would overflow the MCP token cap; this asserts the projection map of the final sessions select, so a `select()` added later goes red here rather than in a client (ISS-428).
   it('projects a body-free column set (no messages/diff jsonb; exposes messageCount)', async () => {
     const tool = forgeAgentSessionsListTool(makeFakeContext(fakePrincipal));
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
@@ -202,7 +200,8 @@ describe('forge_agent_sessions.get', () => {
       return forgeAgentSessionsGetTool({
         principal: {
           kind: 'pat',
-          agency: 'human' as const,
+          agency: null,
+          agentUserId: null,
           userId: OWNER_ID,
           tokenId: '88888888-8888-4888-8888-888888888888',
           scopes: ['read', 'write'],

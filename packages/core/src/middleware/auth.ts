@@ -6,7 +6,7 @@ import { verifyUserToken } from '../auth/jwt.js';
 import { isPatLike } from '../auth/pat-format.js';
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
+import { type ActorAgency, actorAgency } from '../issues/actor-agency.js';
 import { readBearerToken } from './bearer.js';
 import { beginPatRequest, withPatScope } from './pat-rest-surface.js';
 
@@ -16,7 +16,16 @@ export type AuthVars = {
   deviceId?: string;
   principal?: 'user' | 'device' | 'pat';
   // cm:guard REST must carry this or the whole agency axis stops at the door: `requireAuth` reduces a rich principal to `principal:'pat'`, a string tag, and every route downstream then hardcodes a `user` actor. That is how an agent holding a PAT reached `PATCH /api/issues/batch` — which DOES transition, via transitionIssueStatus — and skipped the ISS-786/812 gates while `/mcp` enforced them, because MCP synthesizes a device for a PAT and REST has none to synthesize.
-  agency?: ActorAgency;
+  agency?: ActorAgency | null;
+  /**
+   * The agent account whose own credential this request carries, or unset.
+   *
+   * The established identity, as distinct from {@link AuthVars.agency}'s trust
+   * axis: this says WHICH agent, and it is set only where the token's owner is
+   * an agent account (ISS-1003).
+   */
+  // cm:guard never fall back to `userId` when this is unset. A person's token carries their id and names no agent, and reading it as one is precisely the borrowed authority the field exists to tell apart — the same fiction `deviceId` already refuses on the box axis.
+  agentUserId?: string;
   patTokenId?: string;
 };
 
@@ -24,23 +33,45 @@ export type AuthVars = {
  * The actor for a REST write, carrying the trust axis the routes must not
  * decide for themselves.
  */
-// cm:guard build the actor HERE, never as a `{ type: 'user' as const }` literal in a route — three route files each had their own copy and all three were wrong in the same way, which is what a second copy of an auth decision always costs. `id` stays the owning user (a job's write really is its creator's); `agency` is what the lifecycle gates read.
-export function restActor(c: Context<{ Variables: { userId: string; agency?: ActorAgency } }>): {
+// cm:guard build the actor HERE, never as a `{ type: 'user' as const }` literal in a route — three route files each had their own copy and all three were wrong in the same way, which is what a second copy of an auth decision always costs. `id` stays the owning user (a job's write really is its creator's); `agency` is what the lifecycle gates read, through `actorAgency` and never by hand.
+// cm:guard a SESSION is the only thing that establishes a person, and that is the whole reason this reads `principal` before it reads `agency`. Everything else carries what its credential established: `agent` for an agent's own token, `null` — unestablished — for a person's, and `agent` for a device. This function used to answer `agency ?? 'human'`, which turned the unestablished case into a claim that a person was typing; `restAuthored` sat four lines below computing the same question correctly, and two functions in one file disagreeing about who is speaking is what ISS-1003 deleted (measured 2026-09-13 on ISS-978).
+export function restActor(c: Context<{ Variables: RestActorVars }>): {
   type: 'user';
   id: string;
   agency: ActorAgency;
 } {
-  return { type: 'user', id: c.get('userId'), agency: c.get('agency') ?? 'human' };
+  return {
+    type: 'user',
+    id: c.get('userId'),
+    agency: actorAgency({ type: 'user', agency: restEstablishedAgency(c) }),
+  };
+}
+
+type RestActorVars = {
+  userId: string;
+  agency?: ActorAgency | null;
+  principal?: 'user' | 'device' | 'pat';
+};
+
+/**
+ * What this request's CREDENTIAL established about who is speaking, or `null`
+ * where it established nothing (ISS-1003).
+ *
+ * A session establishes a person. An agent's own token establishes that agent.
+ * A person's token establishes neither: it may act, but it may not claim an
+ * identity, and most agents are running on one.
+ */
+// cm:guard the ONLY caller that may read this instead of {@link restActor} is one STORING a claim about who wrote something — `comments.author_agency` and nothing else so far. A gate reads `restActor`, which resolves the null to `agent` and fails closed; a gate reading this and coalescing it itself is a second resolution with its own direction, which is how the two start disagreeing. The whole reason the field is separate is that `human` here was wrong for the majority of agents, and a wrong claim is worse than no claim.
+export function restEstablishedAgency(c: Context<{ Variables: RestActorVars }>): ActorAgency | null {
+  return c.get('principal') === 'user' ? 'human' : (c.get('agency') ?? null);
 }
 
 /**
  * Whether a person is at the keyboard on THIS request, as the hook bus asks it.
  */
-// cm:guard a session JWT is the whole test and `agency` cannot stand in for it: a PAT resolves to its owner and `agency` comes from that owner's `users.kind`, so an agent on a human's token reads `human` (measured 2026-09-13 on ISS-978). Every REST door that emits `commentCreated` reads this one function, because two doors computing it apart is how one gets fixed and the other keeps resuming parked runs.
-export function restAuthored(
-  c: Context<{ Variables: { userId: string; principal?: 'user' | 'device' | 'pat' } }>,
-): 'human' | 'agent' {
-  return c.get('principal') === 'user' ? 'human' : 'agent';
+// cm:guard one derivation, not two: this is `restActor(c).agency` and nothing else, so the answer the hook bus gets and the answer the lifecycle gates get cannot drift apart. It reads `agent` for an unestablished caller because `restActor` fails closed there, which is the same verdict the old standalone spelling reached by testing the session — and now it reaches it for the stated reason rather than by coincidence (ISS-1003).
+export function restAuthored(c: Context<{ Variables: RestActorVars }>): 'human' | 'agent' {
+  return restActor(c).agency;
 }
 
 /**
@@ -60,6 +91,7 @@ export function requireAuth(): MiddlewareHandler<{ Variables: AuthVars }> {
       c.set('userId', principal.userId);
       c.set('principal', 'pat');
       c.set('agency', principal.agency);
+      if (principal.agentUserId) c.set('agentUserId', principal.agentUserId);
       c.set('patTokenId', principal.tokenId);
       return withPatScope(scope, () => next());
     }
@@ -128,7 +160,7 @@ export function requireUserOrDevice(): MiddlewareHandler<{ Variables: AuthVars }
 
 export function assertEmailVerified(): MiddlewareHandler<{ Variables: AuthVars }> {
   return async (c, next) => {
-    // Device principals have no email; the device token itself is the gate.
+    // cm:guard a device principal is exempt and cannot be otherwise: `userId` is deliberately left unset for one (see the guard on `requireUserOrDevice`), so the lookup below would find no row and refuse every paired box as unverified. The device token is the gate that stands in for the mailbox.
     if (c.get('principal') === 'device') {
       await next();
       return;

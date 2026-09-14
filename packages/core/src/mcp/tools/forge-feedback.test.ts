@@ -117,7 +117,8 @@ describe('forge_feedback submit', () => {
     const tool = forgeFeedbackTool({
       principal: {
         kind: 'pat',
-        agency: 'human',
+        agency: null,
+        agentUserId: null,
         userId: OWNER_ID,
         tokenId: 'tok-1',
         scopes: ['read', 'write'],
@@ -129,8 +130,7 @@ describe('forge_feedback submit', () => {
       boundProjectId: PROJECT_ID,
     });
 
-    // resolveEffectiveProjectId from boundProjectId (no slug, no explicit arg)
-    // assertPrincipalIsMember (PAT path, effectiveProjectRole)
+    // cm:guard the queue order below IS the assertion: `resolveEffectiveProjectId` reads `boundProjectId` with no slug and no explicit arg, then `assertPrincipalIsMember` takes the PAT path through `effectiveProjectRole`. Reorder the implementation and these `Once` mocks feed the wrong call.
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
     // No count check (no jobId)
     insertReturning.mockResolvedValueOnce([

@@ -113,7 +113,8 @@ beforeEach(() => {
 const humanPat = (projectIds: string[] | null) =>
   ({
     kind: 'pat',
-    agency: 'human',
+    agency: null,
+    agentUserId: null,
     userId: OWNER_ID,
     tokenId: '55555555-5555-4555-8555-555555555555',
     scopes: ['read', 'write'],
@@ -200,7 +201,7 @@ describe('forge_comments tool', () => {
     });
     selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
-    // 50 fat comments (~9KB bodies each) → ~450KB raw, far exceeds 38K cap
+    // cm:why fifty ~9KB bodies, which is ~450KB raw against a 38K cap: the truncation path is only reachable well over the cap, and a smaller fixture would pass whether or not the cap is enforced.
     const fatRows = Array.from({ length: 50 }, (_, i) => ({
       ...baseCommentRow,
       id: `5555555${i}-5555-4555-8555-555555555555`.slice(0, 36),

@@ -19,6 +19,7 @@ import {
   requireAuth,
   restActor,
   restAuthored,
+  restEstablishedAgency,
 } from '../middleware/auth.js';
 import { requireAnyAuth } from '../middleware/require-any-auth.js';
 import { hooks } from '../pipeline/hooks.js';
@@ -127,8 +128,8 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
           issueId,
           authorId: userId,
           authorDeviceId: null,
-          // cm:guard the agency the DOOR authenticated, never a literal. `restActor` is the one place a REST actor is built and its own guard says why: three route files each hardcoded `user` and all three were wrong the same way. A `'human'` here would exempt every agent writing over REST from the mandate AND drop it out of the number that decides the mandate, in one line.
-          authorAgency: restActor(c).agency,
+          // cm:guard what the credential ESTABLISHED, and `restEstablishedAgency` rather than `restActor` for the one reason this pair exists: this value is a stored CLAIM about who wrote the comment, not a gate's verdict. A person's own token establishes neither a person nor an agent, so it stores NULL and claims nothing; `restActor(c).agency` would resolve that to `agent` and put a claim in the column the credential never made. `'human'` — what this line said until ISS-1003 — was the wrong claim in the common case, since most agents write over a person's token (ISS-1003 criteria 19, 24).
+          authorAgency: restEstablishedAgency(c),
           body,
           format,
           parentId: parentId ?? null,
@@ -170,7 +171,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
         const handles = parseMentions(inserted.body);
         if (handles.length > 0) {
           const resolved = await resolveMentions(handles, issue.projectId);
-          // Skip self-mention. Unknown handles already dropped by resolver.
+          // cm:why a self-mention is dropped HERE rather than in the resolver: the resolver answers which handles exist, and whether an author may notify themselves is a policy of this door. An unknown handle is already gone by the time this runs.
           const targets = resolved.filter((r) => r.userId !== userId);
           if (targets.length > 0) {
             await db
