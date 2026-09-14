@@ -44,13 +44,13 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
     );
     return found ? [found.project] : [];
   });
-  // cm:guard an agent for the room's OWN project is discounted on both counts, and core no longer offers one — this is the client half of the same rule, for a tab holding a candidate list from before that fix. Counting it would add a handle the room will not have, and the sentence built on that count promises a shared room where a one-to-one room is what opens (ISS-1011).
+  // cm:guard the two counts are taken on DIFFERENT keys, and the difference is the whole point: a second agent of a project the room is already about brings no new project but is a second handle, so it widens who can read the room without widening what the room can see. Counting projects for the scope claim and handles for the shape claim is what lets both sentences be true of the same room (ISS-1011).
   const brought = chosen.filter((p) => p.id !== projectId);
   const scopeProjects: ConversationProject[] = [
     ...(base ? [{ id: base.id, name: base.name, slug: base.slug }] : []),
     ...brought,
   ];
-  const claims = roomOpeningClaims({ projects: scopeProjects, agentCount: 1 + brought.length });
+  const claims = roomOpeningClaims({ projects: scopeProjects, agentCount: 1 + chosen.length });
 
   const start = () => {
     if (!projectId) return;

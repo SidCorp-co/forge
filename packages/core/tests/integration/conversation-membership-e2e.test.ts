@@ -381,9 +381,33 @@ describe('who a room could still take in', () => {
       handles: Array<{ userId: string | null; project: { id: string } }>;
     };
     expect(body.handles.map((h) => h.userId)).not.toContain(minted);
-    expect(body.handles.map((h) => h.project.id)).not.toContain(projectA);
-    // cm:guard the OTHER project is still offered, so this is a rule about the room's own project and not a list that went empty.
+    // cm:guard the OTHER project is still offered, so this is a rule about one member and not a list that went empty.
     expect(body.handles.map((h) => h.project.id)).toContain(projectB);
+  });
+
+  // cm:guard excluded by IDENTITY and not by project: a project can hold more than one agent, and the second of them is a member the room will not already have. Excluding the whole project would drop it from the list silently, leaving a room somebody can still compose by adding it a moment after opening — which is the shape of a capability lost without a refusal (ISS-1011).
+  it('still offers a SECOND agent of that project, which the room will not already hold', async () => {
+    const opening = await agentOf(projectA);
+    // cm:guard minted AFTER the opening handle and said so in the row, because which agent a room opens with is decided by `created_at` — a second agent seeded with an earlier one would be the handle itself, and the test would pass while asserting nothing.
+    const other = randomUUID();
+    await harness.db.execute(
+      sql`INSERT INTO users (id, email, kind, password_hash, email_verified_at, created_at)
+          VALUES (${other}, ${`alpha-two-${other}@agents.forge.local`}, 'agent', NULL, now(), now() + interval '1 hour')`,
+    );
+    await harness.db.execute(
+      sql`INSERT INTO organization_members (org_id, user_id, role, handle)
+          VALUES (${orgId}, ${other}, 'member', ${`alpha-two-${other.slice(0, 8)}`})`,
+    );
+    await member(projectA, other, 'member');
+
+    const res = await app.request(
+      `/api/conversations/candidates?${new URLSearchParams({ projectId: projectA })}`,
+      { headers: { authorization: ownerAuth } },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { handles: Array<{ userId: string | null }> };
+    expect(body.handles.map((h) => h.userId)).toContain(other);
+    expect(body.handles.map((h) => h.userId)).not.toContain(opening);
   });
 
   it('answers for a project before any room exists', async () => {

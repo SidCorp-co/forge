@@ -31,6 +31,25 @@ export function handleNameForProject(slug: string, projectId: string): string {
 }
 
 /**
+ * The handle this project ALREADY has, or null — the look without the mint.
+ */
+// cm:guard the one copy of "which of a project's agents is its handle", so the candidate list can leave out the agent a new room will open with and `resolveProjectHandle` can reuse the same one. Two copies of this ordering would drift into two different answers to that question, and the visible cost of the drift is a confirmation that counts a handle the room will not have (ISS-1011).
+export async function existingProjectHandle(
+  tx: Executor,
+  projectId: string,
+): Promise<{ userId: string; handle: string | null } | undefined> {
+  const [row] = await tx
+    .select({ userId: users.id, handle: organizationMembers.handle })
+    .from(users)
+    .innerJoin(projectMembers, eq(projectMembers.userId, users.id))
+    .leftJoin(organizationMembers, eq(organizationMembers.userId, users.id))
+    .where(and(eq(projectMembers.projectId, projectId), eq(users.kind, 'agent')))
+    .orderBy(asc(users.createdAt), asc(users.id))
+    .limit(1);
+  return row;
+}
+
+/**
  * The project's handle, reused where it has one and minted where it does not.
  *
  * Must run inside a transaction: the advisory lock it takes is transaction
@@ -48,14 +67,7 @@ export async function resolveProjectHandle(
     sql`select pg_advisory_xact_lock(hashtext(${LOCK_NAMESPACE}), hashtext(${projectId}))`,
   );
 
-  const [existing] = await tx
-    .select({ userId: users.id, handle: organizationMembers.handle })
-    .from(users)
-    .innerJoin(projectMembers, eq(projectMembers.userId, users.id))
-    .leftJoin(organizationMembers, eq(organizationMembers.userId, users.id))
-    .where(and(eq(projectMembers.projectId, projectId), eq(users.kind, 'agent')))
-    .orderBy(asc(users.createdAt), asc(users.id))
-    .limit(1);
+  const existing = await existingProjectHandle(tx, projectId);
   if (existing?.handle) {
     return { userId: existing.userId, handle: existing.handle, minted: false };
   }

@@ -103,14 +103,14 @@ describe("starting a room", () => {
     expect(shown.textContent).toMatch(/not only the people listed here/i);
   });
 
-  // cm:guard core stops offering the opening project's own agent, and this is the client holding the same line for a candidate list minted before that fix: a stale offer must not be counted as a second handle, because the sentence built on that count would promise a shared room where a one-to-one room opens.
-  it("does not count an agent for the room's own project as a second one", async () => {
+  // cm:guard core excludes the handle the room opens with BY IDENTITY, so anything still offered for that project is a different agent — a second handle in the room, and therefore a shared room, while the scope stays the one project. The two claims are counted on different keys for exactly this case.
+  it("counts a second agent of the room's own project as a second handle, not a second project", async () => {
     candidatesForProject.mockResolvedValue({
       people: [],
       handles: [
         {
-          userId: "ua1",
-          handle: "alpha",
+          userId: "ua1-second",
+          handle: "alpha-two",
           project: { id: "p1", name: "Alpha", slug: "alpha" },
           losesReaders: [],
         },
@@ -118,11 +118,13 @@ describe("starting a room", () => {
     });
     mount();
     pickAlpha();
-    fireEvent.click(await screen.findByRole("checkbox", { name: /alpha/ }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: /alpha-two/ }));
     fireEvent.click(screen.getByRole("button", { name: "Start the room" }));
     const shown = await screen.findByTestId("start-confirmation");
-    expect(shown.textContent).toMatch(/read only by the people in it/i);
-    expect(shown.textContent).not.toMatch(/not only the people listed here/i);
+    expect(shown.textContent).toMatch(/not only the people listed here/i);
+    expect(shown.textContent).toContain("Alpha");
+    expect(shown.textContent).not.toContain("Beta");
+    expect(shown.textContent).not.toMatch(/answered under exactly one project/i);
   });
 
   it("goes back to the choosing without opening anything", async () => {

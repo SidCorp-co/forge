@@ -12,7 +12,7 @@ import { organizationMembers, projectMembers, projects, users } from '../db/sche
 import { conversationParticipants, conversations } from '../db/schema-conversations.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
 import type { Executor } from './db-executor.js';
-import { handleNameForProject } from './handles.js';
+import { existingProjectHandle, handleNameForProject } from './handles.js';
 
 const badRequest = (message: string, code: string) =>
   new HTTPException(400, { message, cause: { code } });
@@ -144,6 +144,14 @@ export async function addablePeople(
 ): Promise<PersonCandidate[]> {
   if (scope.length === 0) return [];
   const already = await liveUserIds(conversationId, tx);
+  // cm:guard a room that does not exist yet opens holding the handle of every project in its scope, so that handle is already a member and is excluded BY IDENTITY — not by excluding its project, which would also hide a project's other agents and quietly drop a room anybody can still compose by adding them a moment later. Excluded here rather than deduplicated later because the cost is not the duplicate row, which `settleShape` absorbs: it is the sentence shown before the room opens, which counts handles and would promise a shared room where a one-to-one room is what gets created (ISS-1011).
+  // cm:edge contract -> packages/core/src/conversations/handles.ts — `existingProjectHandle` is the same pick `resolveProjectHandle` makes, and the create path attaches whatever it returns; a change to that ordering has to reach this exclusion or the list offers the member the room is about to hold.
+  if (conversationId === null) {
+    for (const projectId of scope) {
+      const opening = await existingProjectHandle(tx, projectId);
+      if (opening) already.add(opening.userId);
+    }
+  }
   const orgIds = await orgsOfProjects(scope, tx);
   if (orgIds.length === 0) return [];
 
@@ -179,6 +187,14 @@ export async function addableHandles(
   tx: Executor = defaultDb,
 ): Promise<HandleCandidate[]> {
   const already = await liveUserIds(conversationId, tx);
+  // cm:guard a room that does not exist yet opens holding the handle of every project in its scope, so that handle is already a member and is excluded BY IDENTITY — not by excluding its project, which would also hide a project's other agents and quietly drop a room anybody can still compose by adding them a moment later. Excluded here rather than deduplicated later because the cost is not the duplicate row, which `settleShape` absorbs: it is the sentence shown before the room opens, which counts handles and would promise a shared room where a one-to-one room is what gets created (ISS-1011).
+  // cm:edge contract -> packages/core/src/conversations/handles.ts — `existingProjectHandle` is the same pick `resolveProjectHandle` makes, and the create path attaches whatever it returns; a change to that ordering has to reach this exclusion or the list offers the member the room is about to hold.
+  if (conversationId === null) {
+    for (const projectId of scope) {
+      const opening = await existingProjectHandle(tx, projectId);
+      if (opening) already.add(opening.userId);
+    }
+  }
   const orgIds = await orgsOfProjects(scope, tx);
   if (orgIds.length === 0) return [];
 
@@ -218,12 +234,9 @@ export async function addableHandles(
       ? []
       : await peopleWithoutRoleOn(livePeople, project.id);
 
-    // cm:guard a room that does not exist yet OPENS with the handle of every project in its scope, so those projects are not offered — the branch below already refused them where the handle had still to be minted, and offering the minted ones made the two halves of one rule disagree. The cost of the disagreement was a false sentence: picking the room's own agent counted a second handle, and the confirmation promised a shared room readable by every role-holder where the room will be one-to-one (ISS-1011, review F1 of the recheck).
-    if (conversationId === null && scope.includes(project.id)) continue;
-
     const mine = agents.filter((a) => a.projectId === project.id && a.handle);
     if (mine.length === 0) {
-      // cm:guard a project with no agent yet is OFFERED under the name it will be given, rather than left out: leaving it out makes "which projects can this room be about" an answer about which projects happen to have been talked to before, which is not a rule anybody would state out loud.
+      // cm:guard a project with no agent yet is OFFERED under the name it will be given, rather than left out: leaving it out makes "which projects can this room be about" an answer about which projects happen to have been talked to before, which is not a rule anybody would state out loud. A project already in the scope is the exception, and for the plain reason that it is already there — there is nothing for a caller to bring.
       if (!scope.includes(project.id)) {
         out.push({
           userId: null,
