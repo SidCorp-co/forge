@@ -89,15 +89,25 @@ describe('the handle is a column, and the database is what keeps it unique', () 
     expect((await accounts.listAgentAccounts(orgA))[0]?.handle).toBe('forge-dev');
   });
 
-  // cm:guard the refusal must come from POSTGRES and not from a caller, which is why this asserts the constraint name: a service-level check would pass this case and still let any other writer — a migration, a fixture, psql — put two `@forge-dev`s in one org. Drop `organization_members_org_handle_uniq` and this is what goes red.
-  it('refuses a second agent of the same name in one org, by constraint', async () => {
-    await accounts.createAgentAccount({ orgId: orgA, projectId: projectA, handle: 'forge-dev' });
-    const refusal = await accounts
-      .createAgentAccount({ orgId: orgA, projectId: projectA, handle: 'forge-dev' })
+  // cm:guard the refusal must come from POSTGRES and not from a caller, so this writes the duplicate row with RAW SQL, around every service in this repo: a service-level check would pass a test that went through `createAgentAccount` and still let any other writer — a migration, a fixture, psql — put two `@forge-dev`s in one org. Drop `organization_members_org_handle_uniq` and this is what goes red.
+  it('refuses a second agent of the same name in one org, by constraint, whoever writes it', async () => {
+    const { agent } = await accounts.createAgentAccount({
+      orgId: orgA,
+      projectId: projectA,
+      handle: 'forge-dev',
+    });
+    const other = await createTestUser(harness.db);
+    const refusal = await harness.db
+      .execute(
+        sql`INSERT INTO organization_members (org_id, user_id, role, handle)
+            VALUES (${orgA}, ${other.id}, 'member', 'forge-dev')`,
+      )
       .then(() => null)
-      .catch((e: unknown) => e as { message?: string; constraint_name?: string });
+      .catch((e: unknown) => e);
+
     expect(refusal).not.toBeNull();
     expect(JSON.stringify(refusal)).toContain('organization_members_org_handle_uniq');
+    expect((await accounts.listAgentAccounts(orgA))[0]?.userId).toBe(agent.userId);
     expect(await accounts.listAgentAccounts(orgA)).toHaveLength(1);
   });
 
@@ -127,6 +137,25 @@ describe('the handle is a column, and the database is what keeps it unique', () 
       WHERE pm.project_id = ${project.id} AND u.kind = 'agent'
     `);
     expect(Number(agentsOn[0]?.n)).toBe(0);
+  });
+
+  // cm:guard the constraint refuses, and the CALLER is told which field to change. Walked live on forge-beta at 74c3e4ec and it answered a bare 500 `INTERNAL_ERROR`: the index did its job and the person on the other end learned nothing, on the one route whose whole input is the handle. Before the column two agents of one name both succeeded, so the 500 is new with this change and is this change's to answer for.
+  it('names the handle and the org when it refuses, rather than answering 500', async () => {
+    await accounts.createAgentAccount({ orgId: orgA, projectId: projectA, handle: 'forge-dev' });
+    const res = await app.request(`/api/orgs/${orgA}/agents`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${await (await import('../../src/auth/jwt.js')).signUserToken(ownerId)}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ handle: 'forge-dev', projectId: projectA }),
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { code?: string; message?: string };
+    expect(body.code).toBe('AGENT_HANDLE_TAKEN');
+    expect(body.message).toContain('forge-dev');
+    expect(body.message).toContain(orgA);
+    expect(await accounts.listAgentAccounts(orgA)).toHaveLength(1);
   });
 
   // cm:guard the other direction, and it is why the unique index is on `(org_id, handle)` rather than on `handle`: two organizations each holding a `@forge-dev` is the case the synthesized address's random suffix exists to make possible under `users.email`'s system-wide unique index.
