@@ -31,7 +31,22 @@ describe("the runner surface the web assistant names", () => {
 	// cm:guard the chain is walked hop by hop because each hop is a place the surface could be re-pointed at the conversation store while every other hop still reads correctly. Asserting only the last hop — that `sessionApi.send` posts to `/agent-sessions/send` — passes on the day the screen stops calling it, which is the hole ISS-1005's review named (review F4).
 	const CHAIN: ReadonlyArray<readonly [string, string, string]> = [
 		[
-			"the route renders the session screen",
+			"the route the persona names renders the Agents screen",
+			"src/app/(workspace)/projects/[slug]/agents/page.tsx",
+			"@/features/agents/components/agents-screen",
+		],
+		[
+			"the Agents screen lists sessions",
+			"src/features/agents/components/agents-screen.tsx",
+			"@/features/sessions/components/sessions-screen",
+		],
+		[
+			"a row on that list opens the session route under it",
+			"src/features/sessions/components/sessions-screen.tsx",
+			"/agents/${row.id}",
+		],
+		[
+			"that route renders the session screen",
 			"src/app/(workspace)/projects/[slug]/agents/[sessionId]/page.tsx",
 			"@/features/session/components/session-screen",
 		],

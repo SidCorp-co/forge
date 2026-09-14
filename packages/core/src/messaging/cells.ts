@@ -1,5 +1,5 @@
 /**
- * The four situations, and the rules each is read against.
+ * The five situations, and the rules each is read against.
  *
  * A cell holds its rules and NOTHING else. How many times a message may be
  * repaired, and what happens when it cannot be, belong to the door — see

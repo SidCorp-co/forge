@@ -130,6 +130,24 @@ describe('the Forge UI reply door, against a real database', () => {
     expect(verdict.ok).toBe(true);
   });
 
+  // cm:guard `only-verified-citations` is the third rule carried over from `public:report`, and it is proved HERE rather than in the unit file for the same reason the merge claim is: it declares `needs: ['prefixes','issue-rows']`, so with no gathered facts it would abstain and a green would mean only that nothing was looked up. What it actually checks is EXISTENCE in this project — `gather.ts` fills `knownIssueSeqs` from the issues table — so the fixture is a key this project does not hold (ISS-1005, review F1).
+  it('refuses a reply citing an issue key this project does not hold', async () => {
+    const { owner, project, prefix } = await seed();
+    const seq = await issue(project.id, owner.id, { status: 'open', merged: false });
+    const verdict = await screen(project.id, project, `${prefix}-${seq + 4242} covers that.`);
+    expect(verdict.ok).toBe(false);
+    expect(verdict.ok ? [] : verdict.refusals.map((r) => r.rule)).toContain(
+      'only-verified-citations',
+    );
+  });
+
+  it('lets a reply through citing a key this project does hold', async () => {
+    const { owner, project, prefix } = await seed();
+    const seq = await issue(project.id, owner.id, { status: 'open', merged: false });
+    const verdict = await screen(project.id, project, `${prefix}-${seq} covers that.`);
+    expect(verdict.ok).toBe(true);
+  });
+
   // cm:guard the control that makes the pass above mean something: the SAME true sentence at the door the browser used to go out of is refused. Without it the passing case reads as "nothing was screened" rather than "the right cell screened it" — and the rule that refuses there, `only-verified-citations`, is one written for a reader who cannot open the tracker to check a reference. The Forge UI's reader can (ISS-1005).
   it('is refused at chat-sync even though the row agrees, which is why the door moved', async () => {
     const { owner, project, prefix } = await seed();

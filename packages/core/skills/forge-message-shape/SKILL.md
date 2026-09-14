@@ -1,6 +1,6 @@
 ---
 name: forge-message-shape
-description: "The shape every agent-written message to a person must have before Forge will accept it: the two intents, the two audiences, the four cells they make, the rules each cell holds, and the six doors those cells are read at. Read this when a write was refused with a rule id, before writing a comment or a question round, or before adding a rule or a door. Triggers on: /forge-message-shape, my comment was refused, MESSAGE_REFUSED, QUESTION_MESSAGE_REFUSED, what shape does a comment need, message screen, audience and intent."
+description: "The shape every agent-written message to a person must have before Forge will accept it: the three intents, the two audiences, the five cells they make, the rules each cell holds, and the seven doors those cells are read at. Read this when a write was refused with a rule id, before writing a comment or a question round, or before adding a rule or a door. Triggers on: /forge-message-shape, my comment was refused, MESSAGE_REFUSED, QUESTION_MESSAGE_REFUSED, what shape does a comment need, message screen, audience and intent."
 user_invocable: true
 ---
 
@@ -33,7 +33,7 @@ who reads them and what they claim, not by the transport that carries them.
 - `public` (no role) — somebody with no role. They cannot check a claim, cannot
   open an issue you name, and cannot act on a detail about our internals.
 
-Two by two makes **four cells**, and a cell is the only thing that holds rules:
+Two audiences and three intents make **five cells** — the pairs are sparse, not a filled grid — and a cell is the only thing that holds rules:
 
 | cell | what it is |
 |---|---|

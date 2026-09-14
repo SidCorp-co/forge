@@ -25,7 +25,7 @@ vi.mock('./tools/principal.js', () => ({ buildChatToolContext: (a: unknown) => a
 import { doorCell, doorPolicy } from '../messaging/doors.js';
 import { NO_FACTS } from '../messaging/facts.js';
 import { screenMessage } from '../messaging/screen.js';
-import { webConversationTurn } from './conversation-send.js';
+import { webConversationPersona, webConversationTurn } from './conversation-send.js';
 
 /** The door the code picks, not a door this file picked. */
 const webDoor = (): string =>
@@ -106,5 +106,14 @@ describe('the Forge UI reply door', () => {
       expect(v.ok, text).toBe(false);
       expect(v.ok ? [] : v.refusals.map((r) => r.rule)).toContain('no-developer-detail');
     }
+  });
+});
+
+describe('the persona the Forge UI turn carries', () => {
+  // cm:guard the route is asserted EXPANDED and the placeholder asserted absent, because the model repeats what it is handed: a persona carrying a literal `<slug>` hands the person a link that goes nowhere, at the exact moment the sentence exists to help them (ISS-1005, review F4).
+  it('names the runner surface as a route a person can actually follow', () => {
+    const persona = webConversationPersona('Forge', 'forge-dev', 'Alice');
+    expect(persona).toContain('/projects/forge-dev/agents');
+    expect(persona).not.toContain('<slug>');
   });
 });
