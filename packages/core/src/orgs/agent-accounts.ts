@@ -57,6 +57,29 @@ const badRequest = (message: string, code: string) =>
  * once, the same contract `POST /api/pat` has.
  */
 // cm:guard one transaction, and the token is minted INSIDE it. An agent row that exists without its memberships is a principal with no authority and no way to be given any through this route (the handle is taken), while memberships without a row are an FK error; both are states an operator has to clean up by hand. `mintPat` writes to `personal_access_tokens` on the ambient `db`, so it is called after the tx commits and its failure leaves a tokenless agent the revoke route can remove — the one partial state that is recoverable through the API.
+/**
+ * Turn `(org_id, handle)`'s refusal into one a caller can act on.
+ */
+async function mapHandleCollision<T>(
+  input: { orgId: string; handle: string },
+  run: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await run();
+  } catch (err) {
+    if (
+      isUniqueViolation(err) &&
+      uniqueViolationConstraint(err) === 'organization_members_org_handle_uniq'
+    ) {
+      throw new HTTPException(409, {
+        message: `@${input.handle} is already an agent of organization ${input.orgId}; a handle is the address typed after @ and one org holds one of each, so give this agent a different handle or rename the one that has it`,
+        cause: { code: 'AGENT_HANDLE_TAKEN' },
+      });
+    }
+    throw err;
+  }
+}
+
 export async function createAgentAccount(
   input: CreateAgentAccountInput,
 ): Promise<{ agent: AgentAccount; plaintext: string }> {
@@ -82,35 +105,38 @@ export async function createAgentAccount(
   const projectRole: ProjectMemberRole = input.projectRole ?? 'member';
   const email = synthesizeAgentEmail(input.handle);
 
-  const created = await db.transaction(async (tx) => {
-    const [row] = await tx
-      .insert(users)
-      .values({
-        email,
-        kind: 'agent',
-        passwordHash: null,
-        // cm:guard stamped verified at creation, because `assertEmailVerified` gates the whole PAT-authenticated REST surface and an agent has no mailbox to verify through. It is safe only because `signUserToken` refuses `kind:'agent'` outright — the verified stamp buys REST access, never a session.
-        emailVerifiedAt: new Date(),
-        displayName: input.handle,
-      })
-      .returning({ id: users.id, createdAt: users.createdAt });
-    if (!row) throw new Error('createAgentAccount: user insert returned no row');
+  // cm:guard the `(org_id, handle)` index is the authority on uniqueness (criterion 12) and this turns its refusal into an ANSWER rather than a 500. Before the handle had a column two agents of one name both succeeded, so the constraint is new here and its bare `INTERNAL_ERROR` would be new too — a caller told nothing about the one field they must change. Caught around the transaction and not inside it, because the insert that violates it aborts the transaction whole: nothing partial is left to clean up, which is why this can name the handle and stop.
+  const created = await mapHandleCollision(input, () =>
+    db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(users)
+        .values({
+          email,
+          kind: 'agent',
+          passwordHash: null,
+          // cm:guard stamped verified at creation, because `assertEmailVerified` gates the whole PAT-authenticated REST surface and an agent has no mailbox to verify through. It is safe only because `signUserToken` refuses `kind:'agent'` outright — the verified stamp buys REST access, never a session.
+          emailVerifiedAt: new Date(),
+          displayName: input.handle,
+        })
+        .returning({ id: users.id, createdAt: users.createdAt });
+      if (!row) throw new Error('createAgentAccount: user insert returned no row');
 
-    // cm:guard `member`, never `admin`. Org admin is what MANAGES agents (mint, revoke); an agent holding it could create further agents and grant them anything, which is the credential-mints-credential hole `/api/pat`'s absence from `PAT_ALLOWED_PREFIXES` closes on the other side.
-    // cm:guard the handle goes in with the membership, in one statement, because `(org_id, handle)` is the index that refuses a second `@forge-dev` in this org — a membership inserted first and named afterwards is a window in which that index has nothing to refuse (ISS-1003 criterion 12).
-    await tx.insert(organizationMembers).values({
-      orgId: input.orgId,
-      userId: row.id,
-      role: 'member',
-      handle: input.handle,
-    });
-    await tx.insert(projectMembers).values({
-      userId: row.id,
-      projectId: input.projectId,
-      role: projectRole,
-    });
-    return row;
-  });
+      // cm:guard `member`, never `admin`. Org admin is what MANAGES agents (mint, revoke); an agent holding it could create further agents and grant them anything, which is the credential-mints-credential hole `/api/pat`'s absence from `PAT_ALLOWED_PREFIXES` closes on the other side.
+      // cm:guard the handle goes in with the membership, in one statement, because `(org_id, handle)` is the index that refuses a second `@forge-dev` in this org — a membership inserted first and named afterwards is a window in which that index has nothing to refuse (ISS-1003 criterion 12).
+      await tx.insert(organizationMembers).values({
+        orgId: input.orgId,
+        userId: row.id,
+        role: 'member',
+        handle: input.handle,
+      });
+      await tx.insert(projectMembers).values({
+        userId: row.id,
+        projectId: input.projectId,
+        role: projectRole,
+      });
+      return row;
+    }),
+  );
 
   const minted = await mintPat({
     userId: created.id,
