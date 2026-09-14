@@ -156,6 +156,12 @@ describe('the handle is a column, and the database is what keeps it unique', () 
     expect(body.message).toContain('forge-dev');
     expect(body.message).toContain(orgA);
     expect(await accounts.listAgentAccounts(orgA)).toHaveLength(1);
+
+    // cm:guard counted in `users`, NOT through `listAgentAccounts`: that list joins `organization_members`, so an agent whose user row committed and whose membership did not is invisible to it and this case would pass green over exactly the partial state the refusal exists to rule out. The transaction is what makes that impossible, and this is the assertion that watches the transaction rather than the list.
+    const [{ n } = { n: 0 }] = await harness.db.execute<{ n: number }>(
+      sql`SELECT count(*)::int AS n FROM users WHERE kind = 'agent'`,
+    );
+    expect(Number(n)).toBe(1);
   });
 
   // cm:guard the other direction, and it is why the unique index is on `(org_id, handle)` rather than on `handle`: two organizations each holding a `@forge-dev` is the case the synthesized address's random suffix exists to make possible under `users.email`'s system-wide unique index.
