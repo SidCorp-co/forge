@@ -2427,6 +2427,17 @@
 
 ### Fixed
 
+- **An issue whose branch the tracker is holding is no longer told it has no branch.** The check
+  that refuses to move an issue on with nothing recorded against it reads the branch from one
+  place, and a run driven by hand rather than by the pipeline records it in another — so the
+  refusal said *"no branch, commit or code handoff is recorded"* about an issue carrying all
+  three, and the way out it offered was the field it was already reading. It now reads both
+  spellings. The rule itself is unchanged: naming the branch work *lands* on is still not evidence
+  that any happened, and that exclusion applies to whichever spelling the branch was found in.
+  This was invisible until now for a reason worth saying — a token a person owns used to skip this
+  check entirely, and a hand-driven run is exactly the kind that has a branch and no pipeline
+  record, so the two halves could never meet.
+
 - **Taking an agent's authority away no longer closes the rooms it was in.** A conversation worked
   out what it was about by asking which projects its agents belonged to — the same record that
   revoking an agent removes. Revoking therefore left every room where that agent was the only

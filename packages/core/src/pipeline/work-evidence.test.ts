@@ -107,6 +107,30 @@ describe('collectWorkEvidence', () => {
     });
   });
 
+  // cm:guard the spelling `forge claim --pushed` actually writes. A run driven by hand holds no `code`/`fix`/`drive` job and no step handoff, so its worklog branch is the ONLY evidence it has; read from `sessionContext.branch` alone the gate answers "no branch, commit or code handoff is recorded" about an issue whose branch it is holding. Measured on ISS-1003 2026-09-14, where `forge record merged` refused its own landed change. Delete the worklog spelling and this goes red.
+  it('reads the branch a hand-driven run records, at sessionContext.worklog.branch', async () => {
+    setup([], [], [{ sessionContext: { worklog: { branch: 'ISS-1003', head: 'abc1234' } } }]);
+    const evidence = await collectWorkEvidence('iss-1');
+    expect(evidence.branch).toBe('ISS-1003');
+    expect(hasCodeEvidence(evidence)).toBe(true);
+  });
+
+  // cm:guard the base/production exclusion applies to the worklog spelling too, or the widening above hands the gate back exactly the claim ISS-786 built it to refuse.
+  it('refuses the base branch in the worklog just as it does at the top level', async () => {
+    setup(
+      [],
+      [],
+      [
+        {
+          sessionContext: { worklog: { branch: 'main' } },
+          baseBranch: 'main',
+          productionBranch: 'release',
+        },
+      ],
+    );
+    expect((await collectWorkEvidence('iss-1')).branch).toBeNull();
+  });
+
   it('ignores a blank sessionContext.branch string', async () => {
     setup([], [], [{ sessionContext: { branch: '' } }]);
     const evidence = await collectWorkEvidence('iss-1');
