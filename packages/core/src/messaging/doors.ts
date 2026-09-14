@@ -4,8 +4,9 @@
  * This is a separate table from `cells.ts` because one cell is screened at
  * doors whose lifecycles differ: `role:ask` is read at `question-ask`, where the
  * agent is still on the line, and at `question-delivery`, which posts into a
- * room minutes later with nobody left to ask again. A repair count on the cell
- * would have to be right for both and can only be right for one (ISS-997).
+ * room minutes later with nobody left to ask again; `public:report` is read at
+ * three doors that can repair 1, 1 and 0 times. A repair count on the cell would
+ * have to be right for all of them and can only be right for one (ISS-997).
  */
 
 import type { DoorId, DoorPolicy } from './contract.js';
@@ -23,12 +24,6 @@ export const DOORS: readonly DoorPolicy[] = [
     cell: 'role:ask',
     ending: 'refusal',
     why: 'the same, and the reason the round is screened here rather than only at delivery: refused to its author, a bad round never becomes owed and unpostable',
-  },
-  {
-    id: 'escalate',
-    cell: 'role:ask',
-    ending: 'refusal',
-    why: 'the escalated question is screened while the turn that wrote it is still running',
   },
   {
     id: 'question-delivery',

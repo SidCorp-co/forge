@@ -7,7 +7,6 @@ import { withRepairs } from './repairs.js';
 const EXPECTED: ReadonlyArray<[DoorId, string, string, number | null]> = [
   ['comment-write', 'role:report', 'refusal', null],
   ['question-ask', 'role:ask', 'refusal', null],
-  ['escalate', 'role:ask', 'refusal', null],
   ['question-delivery', 'role:ask', 'refusal', null],
   ['chat-sync', 'public:report', 'fallback', 1],
   ['escalation-synthesis', 'public:report', 'fallback', 1],
@@ -15,7 +14,7 @@ const EXPECTED: ReadonlyArray<[DoorId, string, string, number | null]> = [
 ];
 
 describe('the door table', () => {
-  it('is exactly these seven doors — dropping one fails here', () => {
+  it('is exactly these six doors — dropping one fails here', () => {
     expect(DOORS.map((d) => d.id)).toEqual(EXPECTED.map(([id]) => id));
   });
 
@@ -40,16 +39,19 @@ describe('the door table', () => {
   it('declares no more than two repairs anywhere', () => {
     for (const d of DOORS) if (d.ending === 'fallback') expect(d.repairs).toBeLessThanOrEqual(2);
   });
-
-  // cm:guard this is the property the cell/door split exists for — if every door on a cell ended the same way the split would be decoration, and a later refactor would fold it back.
-  it('ends the four role:ask and role:report doors one way and the public:report doors another', () => {
-    const asked = DOORS.filter((d) => d.cell === 'role:ask');
-    expect(asked).toHaveLength(3);
-    expect(
-      new Set(asked.map((d) => ('repairs' in d ? `${d.ending}:${d.repairs}` : d.ending))).size,
-    ).toBe(1);
+  // cm:guard this is the property the cell/door split exists for. If every door on a cell carried the same policy the split would be decoration and a later refactor would fold it back — `public:report` is read at three doors that repair 1, 1 and 0 times, and no single number on the cell could have been right for all three.
+  it('gives the three public:report doors two different repair counts', () => {
     const reported = DOORS.filter((d) => d.cell === 'public:report');
-    expect(new Set(reported.map((d) => ('repairs' in d ? d.repairs : -1))).size).toBe(2);
+    expect(reported).toHaveLength(3);
+    expect(new Set(reported.map((d) => ('repairs' in d ? d.repairs : -1)))).toEqual(new Set([0, 1]));
+  });
+
+  // cm:guard the two `role:ask` doors end the same way for DIFFERENT reasons, and the reasons are what the door table carries: one has the agent still on the line, the other posts into a room with nobody left to ask. One `why` shared between them would be the first step back to a policy on the cell.
+  it('gives the two role:ask doors the same ending and different reasons for it', () => {
+    const asked = DOORS.filter((d) => d.cell === 'role:ask');
+    expect(asked).toHaveLength(2);
+    expect(new Set(asked.map((d) => d.ending))).toEqual(new Set(['refusal']));
+    expect(new Set(asked.map((d) => d.why)).size).toBe(2);
   });
 
   it('refuses a door nobody declared, by name', () => {

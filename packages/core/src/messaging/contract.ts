@@ -100,7 +100,6 @@ export type DoorPolicy =
 export type DoorId =
   | 'comment-write'
   | 'question-ask'
-  | 'escalate'
   | 'question-delivery'
   | 'chat-sync'
   | 'escalation-synthesis'

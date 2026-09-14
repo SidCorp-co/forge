@@ -45,12 +45,8 @@ function optionSuffix(option: QuestionOption, recommended: boolean): string {
   return ` — ${facts.join(' · ')}`;
 }
 
-/** Every agent-authored string in a round, for the screen to read before anything is posted. */
-export function agentAuthoredSegments(step: QuestionStep): string[] {
-  return isChoiceStep(step)
-    ? [step.prompt, ...step.options.map((o) => o.label)]
-    : [step.prompt, step.needed];
-}
+// cm:edge contract -> packages/core/src/questions/screen.ts — re-exported, not restated. The ask door and the delivery door screen the SAME strings of the same round; two lists drifting apart is how a round passes at the ask and is refused at delivery, owed to a person and never posted.
+export { agentAuthoredSegments } from '../../questions/screen.js';
 
 export function renderRound(args: {
   issueKey: string | null;
