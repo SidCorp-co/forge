@@ -28,7 +28,7 @@ describe('formatConversationLines', () => {
         msg({ id: 'd', username: 'sys', isSystem: true, text: 'joined' }),
         msg({ id: 'e', username: 'chi', text: '@forge-bot please file an issue' }),
       ],
-      { botUserId: 'bot', excludeMessageId: 'e' },
+      { botUserId: 'bot', excludeMessageIds: ['e'] },
     );
     expect(out).toBe('[an]: deploy is failing');
   });

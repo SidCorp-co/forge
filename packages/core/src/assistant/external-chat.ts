@@ -72,7 +72,8 @@ export interface ExternalChatTurnArgs {
    */
   // cm:guard a SCREENED adapter passes `question-only` and records the answer itself: the model's first answer can fail the reply guard and be replaced by a corrective retry or a fixed fallback, and a transcript holding the rejected text is a record of a conversation nobody had (ISS-1001).
   // cm:guard `nothing` is for the RETRY of such a turn — its message is a code-authored instruction, and persisting it files words the speaker never said under their name — while a SILENCE is written under `question-only` all the same, because nothing replaces it and the reason is the row's whole point.
-  record?: 'question-and-answer' | 'question-only' | 'nothing';
+  // cm:guard `silence-only` is for a turn whose question is ALREADY a row — the collector wrote it when the message arrived — and whose answer is the screened caller's to record after delivery. What it still owes the transcript is the SILENCE: without it a window the model declined to answer leaves no row, and a person cannot tell it from a turn that never ran (ISS-1004).
+  record?: 'question-and-answer' | 'question-only' | 'silence-only' | 'nothing';
   db?: typeof defaultDb;
 }
 
@@ -137,8 +138,10 @@ export async function runExternalChatTurn(
         })
       : null;
 
+  const record = args.record ?? 'question-and-answer';
   const images = args.images ?? [];
-  if (turn) {
+  // cm:guard `silence-only` appends NOTHING here, and that is not the same as `nothing`: the retry's instruction is appended-but-unpersisted so the model sees it, while a collected question is already IN `turn.history`, so appending it again would show the model the same message twice.
+  if (turn && record !== 'silence-only') {
     appendUserMessage(turn, args.message, {
       images,
       authorUserId: args.userId ?? null,
@@ -174,8 +177,7 @@ export async function runExternalChatTurn(
     model: resolved.model,
     messages: providerMessages,
     tools: args.tools,
-    // cm:why an adapter turn is an agentic worker, not creative chat: a low temperature keeps small
-    // models on the call-the-tool path instead of narrating what they are "about to" do.
+    // cm:why an adapter turn is an agentic worker, not creative chat: a low temperature keeps small models on the call-the-tool path instead of narrating what they are "about to" do.
     temperature: 0.2,
     requireInitialToolUse: args.tools !== undefined,
     contextBudgetTokens: env.CHAT_CONTEXT_BUDGET_TOKENS,
@@ -193,7 +195,6 @@ export async function runExternalChatTurn(
     );
   }
 
-  const record = args.record ?? 'question-and-answer';
   let assistantMessageId: string | null = null;
   if (turn && record !== 'nothing') {
     if (result.terminal === 'done' && result.finalText.length > 0) {

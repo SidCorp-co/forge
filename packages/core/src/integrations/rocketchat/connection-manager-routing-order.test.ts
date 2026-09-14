@@ -1,17 +1,16 @@
 /**
- * ISS-987/ISS-1002 — whose authority a Rocket.Chat turn runs under, read through
- * the connection manager.
+ * The order the routing steps hold in, and what that order protects.
  *
- * The RULE is the neutral inbound half's and its cases are in
- * `conversations/inbound-turn.test.ts`; what this file holds is this adapter's
- * wiring to it — that the binding's principal is what a many-speaker room runs
- * as, that a refused speaker reaches the room through the one door, and the one
- * fault this adapter still answers on its own socket. Split from
+ * Each step is here because the next is only safe after it: a routeless room
+ * costs no round trip, a room whose shape will not resolve is refused rather
+ * than assumed, a registered thread never reaches the collector, and the
+ * duplicate tracker is touched last. ISS-1004 removed the addressing step from
+ * the middle of that list and made the room's arrival order the log's order,
+ * which is the pair of properties this file measures. Split from
  * `connection-manager-shapes.test.ts` to keep both inside the size budget.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { claimedWindowFor } from './claimed-window.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -140,7 +139,6 @@ const conversationsById = new Map<
   string,
   { id: string; shape: 'direct' | 'group'; externalId: string }
 >();
-let lastOpened: { id: string; shape: 'direct' | 'group'; externalId: string } | null = null;
 
 vi.mock('../../conversations/windows.js', () => ({
   windowDeliveryKey: (id: string) => `window:${id}`,
@@ -169,7 +167,6 @@ vi.mock('../../conversations/store.js', () => ({
       externalId: string;
     };
     conversationsById.set(row.id, row);
-    lastOpened = row;
     return row;
   },
   getConversation: async (id: string) => conversationsById.get(id) ?? null,
@@ -206,38 +203,15 @@ const { clearConversationTransports, registerConversationTransport } = await imp
 );
 
 const { rocketChatManager } = await import('./connection-manager.js');
-// cm:why the route half left the manager for `window-drain.ts` when the manager reached the size budget; the harness still drives collect-then-route as one call because that is the pair production runs.
-const { routeOne } = await import('./window-drain.js');
 
 interface Loose {
-  collect(
-    ac: unknown,
-    route: unknown,
-    m: unknown,
-    connectionId: string,
-    shape: 'direct' | 'group',
-  ): Promise<void>;
+  route(connectionId: string, m: unknown): Promise<void>;
+  onMessage(connectionId: string, m: unknown): void;
+  conns: Map<string, unknown>;
 }
 const loose = rocketChatManager as unknown as Loose;
-const collectOne = loose.collect.bind(rocketChatManager);
-
-async function handle(
-  ac: unknown,
-  route: unknown,
-  m: unknown,
-  connectionId: string,
-  shape: 'direct' | 'group',
-): Promise<void> {
-  collected.length = 0;
-  lastOpened = null;
-  const r = route as { rid: string; projectId: string };
-  (ac as { routes: Map<string, unknown> }).routes.set(r.rid, route);
-  await collectOne(ac, route, m, connectionId, shape);
-  const opened = lastOpened as { id: string; shape: 'direct' | 'group'; externalId: string } | null;
-  if (!opened) return;
-  const window = claimedWindowFor(opened, r.projectId, Math.max(0, collected.length - 1));
-  await routeOne(() => ac as never, connectionId, window as never, undefined);
-}
+const routeMessage = loose.route.bind(rocketChatManager);
+const deliverToManager = loose.onMessage.bind(rocketChatManager);
 
 function makeAc() {
   return {
@@ -271,7 +245,6 @@ const MESSAGE = {
   username: 'alice',
   isSystem: false,
   isEdited: false,
-  mentions: ['bot-1'],
   images: [],
 };
 
@@ -293,162 +266,138 @@ beforeEach(() => {
   deliver.mockResolvedValue({ messageId: 'rc-server-id-9' });
   recordDeliveredReply.mockClear();
 });
-// cm:why a DM has exactly one human and runs as them, while a channel has many speakers and no single authority and deliberately keeps the organization's creator (ISS-987 criteria 21-24, consuming ISS-977)
-describe('connection-manager turn authority', () => {
-  const answered = {
-    conversationId: 'conv:chat.example.co room-1',
-    reply: 'an answer',
-    terminal: 'done',
-    error: null,
-    iterations: 1,
-    toolCalls: [],
-  };
 
+// cm:why the steps are ordered so a routeless room costs no round trip (ISS-987 criteria 10-12). ISS-1004 removed the addressing step between the shape and the tracker, so the tracker now sees every message in a bound room and its only job is the duplicate re-emit it was added for.
+describe('connection-manager routing order', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     selectLimit.mockResolvedValue([{ agentConfig: null, repoPath: null }]);
     screenRoomReply.mockResolvedValue({ ok: true });
-    runExternalChatTurn.mockResolvedValue(answered);
+    resolveRoomShape.mockResolvedValue('group');
+    loggerError.mockReset();
   });
 
-  const principalUsed = () =>
-    (buildChatToolContext.mock.calls[0]?.[0] as { userId?: string } | undefined)?.userId;
+  function connect(
+    routes: Map<string, unknown>,
+    seenMessage: (id: string) => boolean = () => false,
+  ) {
+    const ac = { ...makeAc(), routes, seenMessage: vi.fn(seenMessage) };
+    loose.conns.set('conn-1', ac);
+    return ac;
+  }
 
-  it('runs a direct room turn as the Forge user the speaker resolves to', async () => {
+  it('drops a message for a room it has no binding for without resolving a shape', async () => {
+    const ac = connect(new Map());
+
+    await routeMessage('conn-1', MESSAGE);
+
+    expect(resolveRoomShape).not.toHaveBeenCalled();
+    expect(ac.seenMessage).not.toHaveBeenCalled();
+  });
+
+  // cm:guard the deliverable of ISS-1004 at this level: the message that used to be dropped for naming nobody is now the one that reaches the tracker and the collector. A change that put an addressing test back would make this the only assertion that went red.
+  it('takes in a group message that names nobody', async () => {
+    const ac = connect(new Map([['room-1', ROUTE]]));
+
+    await routeMessage('conn-1', { ...MESSAGE, text: 'anyone know why CI is red?' });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(ac.seenMessage).toHaveBeenCalledWith('msg-1');
+    expect(openConversation).toHaveBeenCalledTimes(1);
+  });
+
+  it('reaches the tracker for a message it will handle', async () => {
+    const ac = connect(new Map([['room-1', ROUTE]]));
+
+    await routeMessage('conn-1', MESSAGE);
+
+    expect(ac.seenMessage).toHaveBeenCalledWith('msg-1');
+  });
+
+  it('collects a re-emitted message id once, not twice', async () => {
+    resolveRoomShape.mockResolvedValue('direct');
     resolveSpeaker.mockResolvedValue({ linked: true, userId: 'speaker-user-9' });
-
-    await handle(makeAc(), ROUTE, MESSAGE, 'conn-1', 'direct');
-
-    expect(principalUsed()).toBe('speaker-user-9');
-  });
-
-  // cm:guard authority and ATTRIBUTION are different questions and this asserts both on one message: the turn runs as the binding's principal, and the speaker is resolved all the same so the row says who actually spoke. ISS-1004 needs that second half — a second agent's message filed under the binding's human is invisible to the loop breaker — and it must never become the authority (ISS-987, ISS-1003).
-  it('runs a group room turn as the organization creator, whoever spoke', async () => {
-    resolveSpeaker.mockResolvedValue({ linked: true, userId: 'somebody-else' });
-
-    await handle(makeAc(), ROUTE, MESSAGE, 'conn-1', 'group');
-
-    expect(principalUsed()).toBe('user-1');
-    expect(resolveSpeaker).toHaveBeenCalled();
-  });
-
-  it('runs no turn in a direct room whose speaker resolves to no Forge user', async () => {
-    resolveSpeaker.mockResolvedValue({
-      linked: false,
-      refusal: { code: 'SPEAKER_UNLINKED', message: 'unlinked' },
+    const seen = new Set<string>();
+    const ac = connect(new Map([['room-1', ROUTE]]), (id: string) => {
+      if (seen.has(id)) return true;
+      seen.add(id);
+      return false;
     });
 
-    await handle(makeAc(), ROUTE, MESSAGE, 'conn-1', 'direct');
+    const unaddressed = { ...MESSAGE, rid: 'room-1' };
+    await routeMessage('conn-1', unaddressed);
+    await routeMessage('conn-1', unaddressed);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(ac.seenMessage).toHaveBeenCalledTimes(2);
+    expect(openConversation).toHaveBeenCalledTimes(1);
+  });
+
+  // cm:guard the mark is a claim the message is durable SOMEWHERE, so a collect that rolled back must withdraw it: RC re-emits the same id after enrichment, and a mark left by a failed attempt makes that re-emit a false duplicate — the question is then in no log and no window, and nobody is owed an answer for it (review pass 2 F3).
+  it('gives a failed collect its message id back, so the re-emit is taken in', async () => {
+    const { createSeenTracker } = await import('./inbound-gate.js');
+    const ac = {
+      ...makeAc(),
+      routes: new Map([['room-1', ROUTE]]),
+      seenMessage: createSeenTracker(),
+    };
+    loose.conns.set('conn-1', ac);
+    openConversation.mockRejectedValueOnce(new Error('the database went away'));
+
+    await routeMessage('conn-1', MESSAGE);
+    expect(openConversation).toHaveBeenCalledTimes(1);
+
+    await routeMessage('conn-1', MESSAGE);
+    expect(openConversation).toHaveBeenCalledTimes(2);
+  });
+
+  // cm:guard the order the room typed in is the order the log holds, and the shape and thread lookups are what threaten it: two messages a moment apart can finish those round trips either way round, and the window would then show the model "deploy to staging" before "do not deploy" (review pass 2 F4).
+  it('keeps two messages in a room in the order they arrived, whatever the lookups do', async () => {
+    const ac = {
+      ...makeAc(),
+      routes: new Map([['room-1', ROUTE]]),
+      seenMessage: () => false,
+      routeTails: new Map(),
+    };
+    loose.conns.set('conn-1', ac);
+    collected.length = 0;
+    let slow = true;
+    resolveRoomShape.mockImplementation(async () => {
+      if (slow) {
+        slow = false;
+        await new Promise((resolve) => setTimeout(resolve, 30));
+      }
+      return 'group';
+    });
+
+    deliverToManager('conn-1', { ...MESSAGE, id: 'first', text: 'do not deploy' });
+    deliverToManager('conn-1', { ...MESSAGE, id: 'second', text: 'deploy to staging' });
+    await new Promise((resolve) => setTimeout(resolve, 120));
+
+    expect(collected.map((c) => c.content)).toEqual(['do not deploy', 'deploy to staging']);
+  });
+
+  it('refuses a message whose room shape does not resolve, and runs no turn', async () => {
+    resolveRoomShape.mockResolvedValue(null);
+    const ac = connect(new Map([['room-1', ROUTE]]));
+
+    await routeMessage('conn-1', MESSAGE);
 
     expect(runExternalChatTurn).not.toHaveBeenCalled();
-    expect(buildChatToolContext).not.toHaveBeenCalled();
-  });
-
-  // cm:guard the room is shown the refusal the PORT wrote, with the step that links the speaker in it: this text is ISS-977's contract and a second copy here would drift from the endpoints it names the day they move. It goes out the ONE door rather than over this adapter's socket (ISS-1002).
-  it('replies to an unlinked direct speaker with the port own refusal, verbatim', async () => {
-    resolveSpeaker.mockResolvedValue({
-      linked: false,
-      refusal: { code: 'SPEAKER_UNLINKED', message: 'UNLINKED:user-1:link-yourself-here' },
-    });
-
-    const ac = makeAc();
-    await handle(ac, ROUTE, MESSAGE, 'conn-1', 'direct');
-
-    expect(deliver.mock.calls[0]?.[1]).toMatchObject({
-      text: 'UNLINKED:user-1:link-yourself-here',
-    });
+    expect(ac.seenMessage).not.toHaveBeenCalled();
     expect(ac.client.sendMessage).not.toHaveBeenCalled();
   });
 
-  // cm:guard the message is collected BEFORE the authority question is settled, and the refusal is the window's: refusing on the socket first meant a transport that accepted the text and then dropped the connection got a second refusal from the window, which criterion 36 forbids (ISS-1004, review pass 1 F3 and the plan's own read).
-  it('collects the message, then refuses it once from the window', async () => {
-    resolveSpeaker.mockResolvedValue({
-      linked: false,
-      refusal: { code: 'SPEAKER_UNLINKED', message: 'unlinked' },
-    });
-    collected.length = 0;
-    deliver.mockClear();
+  // cm:why the room has to be IN the refusal, not merely absent from the reply: an unresolvable room is a fault somebody has to find, and a log line that does not say which room leaves them the whole fleet to search
+  it('names the room it could not resolve', async () => {
+    resolveRoomShape.mockResolvedValue(null);
+    connect(new Map([['room-1', ROUTE]]));
 
-    await handle(makeAc(), ROUTE, MESSAGE, 'conn-1', 'direct');
+    await routeMessage('conn-1', MESSAGE);
 
-    expect(collected.map((c) => c.content)).toContain(MESSAGE.text);
-    expect(deliver).toHaveBeenCalledTimes(1);
-  });
-
-  it('keeps the speaker the transport named, so the window can ask about them', async () => {
-    resolveSpeaker.mockResolvedValue({
-      linked: false,
-      refusal: { code: 'SPEAKER_UNLINKED', message: 'unlinked' },
-    });
-    collected.length = 0;
-
-    await handle(makeAc(), ROUTE, MESSAGE, 'conn-1', 'direct');
-
-    expect(collected[0]?.authorKey).toBe(MESSAGE.userId);
-  });
-
-  it('carries a non-unlinked refusal own message rather than rewording it', async () => {
-    resolveSpeaker.mockResolvedValue({
-      linked: false,
-      refusal: { code: 'SPEAKER_SOURCE_UNKNOWN', message: 'that channel is not one Forge knows' },
-    });
-
-    await handle(makeAc(), ROUTE, MESSAGE, 'conn-1', 'direct');
-
-    expect(deliver.mock.calls[0]?.[1]).toMatchObject({
-      text: 'that channel is not one Forge knows',
-    });
-  });
-
-  it('screens a direct room reply with the same output guard a group reply gets', async () => {
-    resolveSpeaker.mockResolvedValue({ linked: true, userId: 'speaker-user-9' });
-
-    await handle(makeAc(), ROUTE, MESSAGE, 'conn-1', 'direct');
-
-    expect(screenRoomReply).toHaveBeenCalled();
-  });
-
-  // cm:guard the ONE case this adapter still posts itself, and the reason it must: a venue that could not be placed has no venue to deliver THROUGH, so this socket is the only way to the person. Confined to a one-to-one room, because a group room runs under the binding's principal and is owed no answer about an identity it never consults.
-  it('tells a direct speaker the server address cannot be read as an identity', async () => {
-    const ac = { ...makeAc(), serverUrl: 'https://broken.example.co' };
-    resolveSpeaker.mockResolvedValue({
-      linked: false,
-      refusal: {
-        code: 'SPEAKER_DIRECTORY_UNREACHABLE',
-        message: "This Rocket.Chat server's address (https://broken.example.co) cannot be read",
-      },
-    });
-
-    await handle(ac, ROUTE, MESSAGE, 'conn-1', 'direct');
-
-    expect(runExternalChatTurn).not.toHaveBeenCalled();
-    const [, text] = ac.client.sendMessage.mock.calls[0] as [string, string];
-    expect(text).toContain('broken.example.co');
-  });
-
-  it('leaves a group room silent when its venue cannot be placed', async () => {
-    const ac = { ...makeAc(), serverUrl: 'https://broken.example.co' };
-
-    await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
-
-    expect(runExternalChatTurn).not.toHaveBeenCalled();
-    expect(ac.client.sendMessage).not.toHaveBeenCalled();
-    expect(deliver).not.toHaveBeenCalled();
-  });
-
-  it('stores the shape and the resolved speaker on an escalation it raises', async () => {
-    resolveSpeaker.mockResolvedValue({ linked: true, userId: 'speaker-user-9' });
-    runExternalChatTurn.mockResolvedValue({
-      ...answered,
-      reply: '',
-      toolCalls: [{ name: 'escalate', arguments: '{"question":"why"}' }],
-    });
-    startEscalation.mockResolvedValue({ started: true, sessionId: 'esc-1' });
-
-    await handle(makeAc(), ROUTE, MESSAGE, 'conn-1', 'direct');
-
-    expect(startEscalation).toHaveBeenCalledWith(
-      expect.objectContaining({ shape: 'direct', principalUserId: 'speaker-user-9' }),
-    );
+    const [ctx, message] = loggerError.mock.calls[0] as [Record<string, unknown>, string];
+    expect(ctx.rid).toBe('room-1');
+    expect(ctx.msgId).toBe('msg-1');
+    expect(message).toContain('room type unresolved');
   });
 });

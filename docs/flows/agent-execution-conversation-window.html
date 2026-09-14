@@ -1,0 +1,160 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="flow-module" content="agent-execution">
+<meta name="flow-answers" content="Why an agent now reads a room instead of waiting to be named in it, what bounds what that costs now the mention gate is gone, and how a person tells apart the five different reasons nothing was said">
+<title>Flow &middot; the collector window and the three guards</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; --warn:#a06a1f; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .bad { color:var(--bad); font-weight:600; }
+  .warn { color:var(--warn); font-weight:600; }
+  .ok { color:var(--acc); font-weight:600; }
+  .figure { overflow-x:auto; }
+  svg { background:#fff; border:1px solid var(--line); border-radius:4px; display:block; max-width:100%; }
+  text { font:12px ui-sans-serif,system-ui,sans-serif; fill:var(--fg); }
+  text.m { font-size:11px; fill:var(--mut); }
+  text.t { font:600 12px ui-monospace,Menlo,monospace; }
+  .box { fill:#fff; stroke:var(--line); }
+  .chan { fill:#fdf6e8; stroke:#e6d3ac; }
+  .neut { fill:#f4f6fb; stroke:#c6cfe2; }
+  .pass { fill:#eef6f1; stroke:#bcd9c8; }
+  .stop { fill:#fdf0f3; stroke:#e3c2cb; }
+  .arrow { stroke:var(--fg); stroke-width:1.2; fill:none; marker-end:url(#a); }
+</style>
+<main>
+
+<h1>The collector window, and why the room stayed quiet</h1>
+<p class="sub">An agent reads its rooms continuously and answers when it has something to say. Two
+things had to be true before that was safe: a message has to be taken in without being answered, and
+something other than a person's name has to bound what a room costs. This is both, and the record a
+person reads when they ask why nothing was said. Owners:
+<code>packages/core/src/conversations/windows.ts</code> (the window row, the claim and the lease),
+<code>packages/core/src/conversations/collect-inbound.ts</code> (taking a message in),
+<code>packages/core/src/conversations/proactivity.ts</code> (the three guards),
+<code>packages/core/src/conversations/route-window.ts</code> (the decision and where it is written),
+<code>packages/core/src/integrations/rocketchat/window-drain.ts</code> (the tick that settles one).</p>
+
+<div class="rule"><strong>Nothing decides whether a turn runs by looking for the bot's name.</strong>
+A message in a bound room is collected, every time. What bounds the bill is the window — messages
+that arrive together are one decision and one cost — and the three guards, which read the room's own
+history rather than a counter somebody has to remember to reset. The gate counts the modules that
+gate a turn on an @-mention: it must read <span class="ok">zero</span>.</div>
+
+<h2>From a message to a decision somebody can read</h2>
+<div class="figure">
+<svg viewBox="0 0 980 560" role="img" aria-label="Flowchart from an inbound message through the collector window, the claim, the three proactivity guards and the turn, to the eight decisions a window can close under">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1c1a17"/>
+    </marker>
+  </defs>
+
+  <rect class="chan" x="20" y="16" width="260" height="54" rx="4"/>
+  <text class="t" x="34" y="38">somebody says something</text>
+  <text class="m" x="34" y="56">nobody is named, and it is read anyway</text>
+
+  <path class="arrow" d="M150,70 L150,104"/>
+  <rect class="neut" x="20" y="104" width="260" height="90" rx="4"/>
+  <text class="t" x="34" y="127">taken in, under one commit</text>
+  <text class="m" x="34" y="146">the message joins the room's log and</text>
+  <text class="m" x="34" y="164">the window that owes it an answer &mdash;</text>
+  <text class="m" x="34" y="182">both, or neither</text>
+
+  <path class="arrow" d="M280,140 L360,140"/>
+  <text class="m" x="290" y="133">another arrives</text>
+  <rect class="neut" x="360" y="104" width="270" height="72" rx="4"/>
+  <text class="t" x="374" y="127">the same window, extended</text>
+  <text class="m" x="374" y="146">two sentences typed together are</text>
+  <text class="m" x="374" y="164">one decision and one bill</text>
+
+  <path class="arrow" d="M150,194 L150,232"/>
+  <text class="m" x="160" y="218">quiet for a few seconds</text>
+  <rect class="neut" x="20" y="232" width="260" height="90" rx="4"/>
+  <text class="t" x="34" y="255">claimed before it is answered</text>
+  <text class="m" x="34" y="274">exactly one core takes it; the claim expires,</text>
+  <text class="m" x="34" y="292">so a core that stops leaves nobody waiting,</text>
+  <text class="m" x="34" y="310">and a lapsed holder is refused when it writes</text>
+
+  <path class="arrow" d="M150,322 L150,360"/>
+  <rect class="pass" x="20" y="360" width="260" height="90" rx="4"/>
+  <text class="t" x="34" y="383">is this worth saying?</text>
+  <text class="m" x="34" y="402">nothing has landed lately &middot; agents are</text>
+  <text class="m" x="34" y="420">talking in circles &middot; no person has been</text>
+  <text class="m" x="34" y="438">here for a day</text>
+
+  <path class="arrow" d="M280,405 L360,405"/>
+  <text class="m" x="292" y="398">paced</text>
+  <rect class="stop" x="360" y="366" width="270" height="72" rx="4"/>
+  <text class="t" x="374" y="389">quiet, and it says which</text>
+  <text class="m" x="374" y="408">a person reads the reason; the next</text>
+  <text class="m" x="374" y="426">thing anybody says lifts all three</text>
+
+  <path class="arrow" d="M150,450 L150,488"/>
+  <text class="m" x="160" y="474">yes</text>
+  <rect class="neut" x="20" y="488" width="260" height="54" rx="4"/>
+  <text class="t" x="34" y="510">the turn, and one delivery</text>
+  <text class="m" x="34" y="528">answered &middot; nothing to add &middot; not yet known</text>
+
+  <path class="arrow" d="M280,515 L360,515"/>
+  <rect class="pass" x="360" y="488" width="270" height="54" rx="4"/>
+  <text class="t" x="374" y="510">written down, whatever happened</text>
+  <text class="m" x="374" y="528">every window closes naming its reason</text>
+
+  <rect class="chan" x="680" y="232" width="280" height="218" rx="4"/>
+  <text class="t" x="694" y="255">the eight things a window can say</text>
+  <text class="m" x="694" y="278">answered</text>
+  <text class="m" x="694" y="296">nothing to add</text>
+  <text class="m" x="694" y="314">paced &mdash; nothing has landed lately</text>
+  <text class="m" x="694" y="332">paced &mdash; agents talking in circles</text>
+  <text class="m" x="694" y="350">paced &mdash; nobody has been here for a day</text>
+  <text class="m" x="694" y="368">nobody here it could answer as</text>
+  <text class="m" x="694" y="386">could not be reached at all</text>
+  <text class="m" x="694" y="404">sent, and nobody knows how it landed</text>
+  <text class="m" x="694" y="430">the last one is not a failure</text>
+
+  <path class="arrow" d="M630,515 L680,515 L680,455"/>
+</svg>
+</div>
+
+<h2>The five silences, told apart</h2>
+<table>
+  <tr><th>What a person sees</th><th>What it means</th><th>What to do about it</th></tr>
+  <tr><td>nothing to add</td><td>It read the room and judged that nothing there needed it.</td><td>Nothing. Say something it can answer.</td></tr>
+  <tr><td>paced</td><td>A guard is holding it back: nothing has landed lately, agents were going round in circles, or no person has spoken here for a day.</td><td>Say anything at all. Every guard lifts on a person speaking, with nothing to reset by hand.</td></tr>
+  <tr><td>nobody here it could answer as</td><td>In a one-to-one room it answers as the person it is talking to, and this account is linked to nobody.</td><td>Link the account. The room is told this in so many words.</td></tr>
+  <tr><td>could not be reached at all</td><td>It never got as far as sending anything &mdash; the room is no longer bound, or the conversation is gone.</td><td>Check the room's binding.</td></tr>
+  <tr><td>sent, and nobody knows how it landed</td><td>The answer was handed over and the outcome never came back. It may well be there.</td><td><strong>Nothing.</strong> It is not a failure, and nothing may retry on it &mdash; that is how one answer becomes two.</td></tr>
+</table>
+
+<div class="rule"><strong>No guard keeps a count, and that is the whole of why a room comes back.</strong>
+Every one of the three is worked out from what the room already holds, at the moment it is asked. A
+stored counter would make &ldquo;a person spoke, so it can talk again&rdquo; a write somebody has to
+remember to make &mdash; and one missed write leaves a room silent with no reason anybody can find.
+There is nothing to reset, so there is nothing to forget.</div>
+
+<h2>What replaced the bot's name, and what it cost</h2>
+<table>
+  <tr><th>Before</th><th>Now</th></tr>
+  <tr><td>A message in a channel was read only if it named the bot. A question asked without naming anyone was never seen.</td><td>Every message in a bound room is read. What it does about them is the guards' judgement.</td></tr>
+  <tr><td>Each message was answered on its own, so two sentences typed seconds apart cost two answers.</td><td>Messages that arrive together are one window, one decision and one bill.</td></tr>
+  <tr><td>A restart mid-answer left nothing behind saying an answer was owed.</td><td>The window is a row. A restart finds it, and the answer is taken by whoever picks it up.</td></tr>
+  <tr><td>A silence was a silence. Nothing recorded that a decision had been taken, or which one.</td><td>Every window closes naming its reason, and the five silences are told apart.</td></tr>
+</table>
+
+<div class="rule"><strong>The exchange this deliberately does not cut.</strong> Two agents settling a
+change across two repositories trade a lot of messages, and a limit counted in messages would stop
+them in the middle of doing the thing this feature exists to let them do. What is cut instead is
+messages that bring nothing new &mdash; no issue, no file, no address, no revision &mdash; arriving
+one on top of another. An exchange that keeps naming things carries on for as long as it needs to.</div>
+
+</main>

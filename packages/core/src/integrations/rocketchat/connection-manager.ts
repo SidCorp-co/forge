@@ -1,13 +1,20 @@
 /**
  * ISS-604 — Rocket.Chat bot-user connection manager: one long-lived DDP socket
  * per active connection, single-owner via a pg advisory lock so a scaled-out
- * core never double-answers, routing @-mentions to a reply in the same room.
+ * core never double-answers.
+ *
+ * Since ISS-1004 a message is COLLECTED rather than answered: the socket's job
+ * ends when the message is in its conversation's log and in its window, and the
+ * answer is taken later by `drainWindows`, over everything that arrived
+ * together. Nothing here decides whether a message is worth a turn — that is the
+ * proactivity guards' judgement, and it is why this file no longer reads an
+ * @-mention.
  */
 
 import { and, eq, sql } from 'drizzle-orm';
 import pg from 'pg';
 import { env } from '../../config/env.js';
-import { runInboundTurn } from '../../conversations/inbound-turn.js';
+import { collectInboundMessage } from '../../conversations/collect-inbound.js';
 import { registerConversationTransport } from '../../conversations/ports.js';
 import { db } from '../../db/client.js';
 import { integrationConnections } from '../../db/schema.js';
@@ -19,7 +26,7 @@ import { consumeIssueThreadReply } from './comment-inbound.js';
 import { startCommentMirrorLoop } from './comment-mirror.js';
 import { type RocketChatFrame, rocketChatConversationPorts } from './conversation-port.js';
 import { RocketChatDdpClient, type RocketChatIncomingMessage } from './ddp-client.js';
-import { createSeenTracker, decideHandling, decideSkip } from './inbound-gate.js';
+import { createSeenTracker, decideSkip, type SeenTracker } from './inbound-gate.js';
 import { FIXED_REPLY_CONSTANT, sendFixedReply } from './outbound.js';
 import { startQuestionDrainLoop } from './question-delivery.js';
 import { consumeQuestionThreadReply } from './question-inbound.js';
@@ -27,8 +34,8 @@ import { fetchOwnUsername } from './rest-client.js';
 import { type RoomShape, resolveRoomShape } from './room-shape.js';
 import { buildRoutes, type Route } from './routes.js';
 import { subjectForThread } from './thread-registry.js';
-import { rocketChatTurn } from './turn-inputs.js';
 import type { RocketChatConfig, RocketChatSecrets } from './types.js';
+import { drainConversationWindows, startWindowDrainLoop } from './window-drain.js';
 
 // cm:guard the first CORS origin IS the web app's origin (operators must allow it for the UI to work at all); exported so the escalation bridge's Bao turn builds the same issue-link base as the sync path
 export const webBaseUrl = env.CORS_ORIGINS.split(',')[0]?.trim().replace(/\/+$/, '') || undefined;
@@ -44,7 +51,7 @@ const LISTEN_RETRY_MS = 5000;
 const DDP_REFRESH_INTERVAL_MS = 10 * 60_000;
 const capitalize = (s: string): string => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
-interface ActiveConnection {
+export interface ActiveConnection {
   client?: RocketChatDdpClient;
   lockClient: pg.Client;
   botUserId: string;
@@ -57,7 +64,12 @@ interface ActiveConnection {
   reconnectTimer?: NodeJS.Timeout | undefined;
   refreshTimer?: NodeJS.Timeout | undefined;
   // cm:guard MUST stay per-connection: the same bot user is subscribed on every org connection via `__my_messages__`, so a manager-global tracker let a routeless connection mark an id seen first and the routing connection dropped it as a false duplicate (root cause, 2026-07-15)
-  seenMessage: (id: string) => boolean;
+  seenMessage: SeenTracker;
+  /**
+   * The tail of the work already queued for each room.
+   */
+  // cm:guard routing is serialized PER ROOM and never fanned out: the shape and thread lookups are round trips, so two messages typed a moment apart can finish them in either order, and the one that finishes first takes the lower seq. The window then shows the model "deploy to staging" before "do not deploy", which is the pair reversed (ISS-1004, review pass 2 F4).
+  routeTails: Map<string, Promise<void>>;
   closing: boolean;
 }
 
@@ -67,6 +79,7 @@ class RocketChatConnectionManager {
   private listenClient?: pg.Client | undefined;
   private listenRetryTimer?: NodeJS.Timeout | undefined;
   private stopQuestionDrain?: (() => void) | undefined;
+  private stopWindowDrain?: (() => void) | undefined;
   private stopCommentMirror?: (() => void) | undefined;
 
   async start(): Promise<void> {
@@ -76,6 +89,10 @@ class RocketChatConnectionManager {
     this.startReloadListener();
     registerConversationTransport(rocketChatConversationPorts);
     this.stopQuestionDrain = startQuestionDrainLoop(() => this.started);
+    this.stopWindowDrain = startWindowDrainLoop(
+      () => this.started,
+      () => drainConversationWindows(this.conns, webBaseUrl),
+    );
     this.stopCommentMirror = startCommentMirrorLoop(() => this.started, hooks);
     const rows = await db
       .select()
@@ -158,6 +175,7 @@ class RocketChatConnectionManager {
       routes,
       reconnectAttempt: 0,
       seenMessage: createSeenTracker(),
+      routeTails: new Map(),
       closing: false,
     };
     this.conns.set(connectionId, active);
@@ -238,12 +256,19 @@ class RocketChatConnectionManager {
   }
 
   private onMessage(connectionId: string, m: RocketChatIncomingMessage): void {
-    void this.route(connectionId, m).catch((err) =>
-      logger.error({ err, connectionId, rid: m.rid }, 'rocketchat: routing failed'),
-    );
+    const ac = this.conns.get(connectionId);
+    if (!ac) return;
+    const prior = ac.routeTails.get(m.rid) ?? Promise.resolve();
+    const next = prior
+      .then(() => this.route(connectionId, m))
+      .catch((err) => logger.error({ err, connectionId, rid: m.rid }, 'rocketchat: routing failed'))
+      .finally(() => {
+        if (ac.routeTails.get(m.rid) === next) ac.routeTails.delete(m.rid);
+      });
+    ac.routeTails.set(m.rid, next);
   }
 
-  // cm:guard the four steps are ordered and each one is why the next is safe: the shape-free skips first because they need no round trip; the ROUTE before anything async, so a routeless connection neither resolves a shape nor touches its tracker; the SHAPE before addressing, because addressing is what the shape decides; and the tracker LAST, so an unmentioned group message never occupies an entry it would evict a real mention with (ISS-987 rebuilt this order — the pre-ISS-987 gate tested the mention synchronously and could sit first).
+  // cm:guard the order is still the one ISS-987 built and each step is why the next is safe: the shape-free skips first because they need no round trip; the ROUTE before anything async, so a routeless connection neither resolves a shape nor touches its tracker; then the shape, which the venue needs; then the thread lookup, which decides WHICH handler; and the tracker last. What ISS-1004 removed is the addressing step between the shape and the tracker — every message in a bound room is now collected, so the tracker's entries are no longer rationed against unmentioned chatter and its only job is the duplicate re-emit it was added for.
   private async route(connectionId: string, m: RocketChatIncomingMessage): Promise<void> {
     const ac = this.conns.get(connectionId);
     if (!ac) return;
@@ -256,19 +281,18 @@ class RocketChatConnectionManager {
     }
     const restAuth = { serverUrl: ac.serverUrl, authToken: ac.authToken, userId: ac.botUserId };
     const shape = await resolveRoomShape(restAuth, m.rid);
-    // cm:guard refuse by NAME rather than assume a shape: `group` would make a direct room need a mention it never gets, and `direct` would answer unmentioned channel chatter and run it as whoever spoke. An unresolvable room is a fault to see in the log, not a default to serve (ISS-987).
+    // cm:guard refuse by NAME rather than assume a shape: `group` would make a direct room need the wrong authority in a one-to-one room and `direct` would run a channel's chatter as whoever spoke. An unresolvable room is a fault to see in the log, not a default to serve (ISS-987).
     if (!shape) {
       const ctx = { connectionId, rid: m.rid, msgId: m.id, projectId: route.projectId };
       logger.error(ctx, 'rocketchat: room type unresolved; refusing the message, not assuming one');
       return;
     }
-    // cm:guard the thread lookup runs BEFORE `decideHandling` because it is an input to it, and AFTER the route for the same reason the shape is: a connection with no binding for this room must touch nothing (ISS-978 criterion 22).
+    // cm:guard the thread lookup runs AFTER the route for the same reason the shape does: a connection with no binding for this room must touch nothing. It decides WHICH handler takes the message, and a registered thread never reaches the collector (ISS-978 criterion 22).
     const owned = m.tmid
       ? await subjectForThread({ connectionId, rid: m.rid, tmid: m.tmid })
       : null;
-    if (!decideHandling(m, ac.botUserId, shape, Boolean(owned)).handle) return;
     if (ac.seenMessage(m.id)) return;
-    // cm:guard a registered thread is CONSUMED here and never falls through to `this.handle` — refusals included. A refusal that fell through would reach the person who was asked to pick option 2 as a chat reply about something else, and would additionally run a provider turn nobody asked for (ISS-978 criteria 20, 21).
+    // cm:guard a registered thread is CONSUMED here and never falls through to the collector — refusals included. A refusal that fell through would reach the person who was asked to pick option 2 as a chat reply about something else, and would additionally run a provider turn nobody asked for (ISS-978 criteria 20, 21).
     // cm:guard the SUBJECT decides which handler, and the two are not interchangeable: a question thread answers an option under `answerAs`'s authority gate, an issue thread writes a comment — routing a prose reply to the first would grant a permission nobody chose, and a chosen option to the second would resume the run twice (ISS-981 criteria 18, 29).
     if (owned) {
       if (owned.kind === 'question') {
@@ -288,18 +312,24 @@ class RocketChatConnectionManager {
     const logCtx = { connectionId, rid: m.rid, msgId: m.id, projectId: route.projectId };
     logger.info(
       { ...logCtx, user: m.username, shape, threaded: Boolean(m.tmid) },
-      'rocketchat: handling message',
+      'rocketchat: collecting message',
     );
-    void this.handle(ac, route, m, connectionId, shape).catch((err) => {
-      logger.error({ err, connectionId, rid: m.rid }, 'rocketchat: message handling failed');
+    // cm:guard the collect is AWAITED inside the room's queue, which is what makes the seq order the arrival order; and a collect that failed takes its mark back off the tracker, so RC's enrichment re-emit of the same id is a second chance rather than a false duplicate (ISS-1004, review pass 2 F3, F4).
+    await this.collect(ac, route, m, connectionId, shape).catch((err) => {
+      ac.seenMessage.forget(m.id);
+      logger.error({ err, connectionId, rid: m.rid }, 'rocketchat: message collection failed');
       Sentry.captureException(err, {
-        tags: { area: 'rocketchat', phase: 'dispatch' },
+        tags: { area: 'rocketchat', phase: 'collect' },
         extra: { connectionId, rid: m.rid, projectId: route.projectId },
       });
     });
   }
 
-  private async handle(
+  /**
+   * Take one message in. Nothing is answered here.
+   */
+  // cm:guard the turn is the WINDOW's and this only collects: answering per message is what made two messages typed seconds apart two decisions and two bills, and a turn taken on the socket leaves nothing behind when the process stops mid-way (ISS-1004 rule 1).
+  private async collect(
     ac: ActiveConnection,
     route: Route,
     m: RocketChatIncomingMessage,
@@ -307,32 +337,21 @@ class RocketChatConnectionManager {
     shape: RoomShape,
   ): Promise<void> {
     const logCtx = { connectionId, rid: m.rid, msgId: m.id, projectId: route.projectId };
-    // cm:guard the turn itself is the NEUTRAL runner's and this adapter only supplies its ports and its inputs: a turn path here again is the copy of it ISS-1002 removed, and `transport-free.test.ts` fails on the import that would bring it back.
     const frame: RocketChatFrame = {
       m,
       auth: { serverUrl: ac.serverUrl, authToken: ac.authToken, userId: ac.botUserId },
       projectId: route.projectId,
       shape,
     };
-    const outcome = await runInboundTurn({
+    const outcome = await collectInboundMessage({
       ports: rocketChatConversationPorts,
       frame,
       message: m.text,
       speakerKey: m.userId,
+      speakerLabel: m.username ?? null,
+      externalMessageId: m.id,
+      images: m.images,
       manySpeakersPrincipalUserId: route.principalUserId,
-      turn: rocketChatTurn({
-        bot: {
-          botName: ac.botName,
-          serverUrl: ac.serverUrl,
-          authToken: ac.authToken,
-          botUserId: ac.botUserId,
-        },
-        route,
-        m,
-        connectionId,
-        shape,
-        webBaseUrl,
-      }),
     });
 
     if (outcome.kind === 'venue-unresolved') {
@@ -340,17 +359,10 @@ class RocketChatConnectionManager {
       await this.sayWhyUnplaceable(ac, m, shape, frame);
       return;
     }
-    // cm:guard the refusal itself is DELIVERED by the neutral inbound half, through the same door the answer would have used; nothing is sent from here. A second outbound path for authority refusals is the copy ISS-1002 removed.
-    if (outcome.kind === 'speaker-refused') {
-      logger.warn(
-        { ...logCtx, code: outcome.code, delivered: outcome.delivered },
-        'rocketchat: direct speaker unresolved; refusing the turn',
-      );
-      return;
-    }
-    if (outcome.kind !== 'delivered') {
-      logger.info({ ...logCtx, outcome }, 'rocketchat: the turn posted nothing here');
-    }
+    logger.debug(
+      { ...logCtx, windowId: outcome.windowId, seq: outcome.seq },
+      'rocketchat: collected',
+    );
   }
 
   /**
@@ -383,8 +395,7 @@ class RocketChatConnectionManager {
     try {
       ac.client?.close();
     } catch {}
-    // cm:why a teardown swallows both failures rather than reporting them: the socket and the lock
-    // are being given up, so a close that fails has already lost the thing the failure is about.
+    // cm:why a teardown swallows both failures rather than reporting them: the socket and the lock are being given up, so a close that fails has already lost the thing the failure is about.
     try {
       await ac.lockClient.query('select pg_advisory_unlock(hashtext($1), hashtext($2))', [
         LOCK_NAMESPACE,
@@ -452,6 +463,8 @@ class RocketChatConnectionManager {
     this.started = false;
     this.stopQuestionDrain?.();
     this.stopQuestionDrain = undefined;
+    this.stopWindowDrain?.();
+    this.stopWindowDrain = undefined;
     this.stopCommentMirror?.();
     this.stopCommentMirror = undefined;
     if (this.listenRetryTimer) clearTimeout(this.listenRetryTimer);

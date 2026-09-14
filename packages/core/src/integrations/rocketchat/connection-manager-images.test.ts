@@ -1,13 +1,12 @@
 /**
- * ISS-987/ISS-1002 — whose authority a Rocket.Chat turn runs under, read through
- * the connection manager.
+ * The image path through `handle()`: the bytes the model is shown, the
+ * credential they are fetched with, and what happens when the fetch fails.
+ * Split from `connection-manager.test.ts` to keep both files inside the size
+ * budget, following the room-shape split before it.
  *
- * The RULE is the neutral inbound half's and its cases are in
- * `conversations/inbound-turn.test.ts`; what this file holds is this adapter's
- * wiring to it — that the binding's principal is what a many-speaker room runs
- * as, that a refused speaker reaches the room through the one door, and the one
- * fault this adapter still answers on its own socket. Split from
- * `connection-manager-shapes.test.ts` to keep both inside the size budget.
+ * Heavy dependencies (registry/embeddings graph, RC REST/DDP) are stubbed so
+ * this stays a fast, hermetic unit suite; `handle()` is private, invoked via a
+ * loose cast (TS `private` is compile-time only).
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -108,32 +107,6 @@ vi.mock('../../assistant/tools/principal.js', () => ({
   buildChatToolContext: (...args: unknown[]) => buildChatToolContext(...args),
 }));
 
-const loggerError = vi.fn();
-vi.mock('../../logger.js', () => ({
-  logger: {
-    info: vi.fn(),
-    debug: vi.fn(),
-    warn: vi.fn(),
-    error: (...args: unknown[]) => loggerError(...args),
-  },
-}));
-
-const resolveRoomShape = vi.fn();
-vi.mock('./room-shape.js', () => ({
-  resolveRoomShape: (...args: unknown[]) => resolveRoomShape(...args),
-  roomShapeFromType: (t: string) => (t === 'd' ? 'direct' : 'group'),
-}));
-
-const openConversation = vi.fn(
-  async (venue: { adapter: string; externalId: string; shape: string }) => ({
-    id: `conv:${venue.externalId}`,
-    adapter: venue.adapter,
-    externalId: venue.externalId,
-    shape: venue.shape,
-    title: null,
-  }),
-);
-
 // cm:why ISS-1004 split the old `handle()` in two: a message is COLLECTED into its conversation and its window, and the turn is taken later over everything the window holds. These fakes stand in for the rows that path reads, and `handle` below drives both halves so every assertion in this file still measures one message in and one reply out.
 const collected: Array<Record<string, unknown>> = [];
 const conversationsById = new Map<
@@ -163,11 +136,13 @@ vi.mock('../../conversations/proactivity.js', () => ({
 
 vi.mock('../../conversations/store.js', () => ({
   openConversation: async (...args: unknown[]) => {
-    const row = (await openConversation(...(args as [never]))) as {
-      id: string;
-      shape: 'direct' | 'group';
-      externalId: string;
-    };
+    const row = (await (async (venue: { adapter: string; externalId: string; shape: string }) => ({
+      id: `conv:${venue.externalId}`,
+      adapter: venue.adapter,
+      externalId: venue.externalId,
+      shape: venue.shape,
+      title: null,
+    }))(...(args as [never]))) as { id: string; shape: 'direct' | 'group'; externalId: string };
     conversationsById.set(row.id, row);
     lastOpened = row;
     return row;
@@ -195,15 +170,23 @@ vi.mock('../../conversations/store.js', () => ({
     return rows;
   },
 }));
-const recordDeliveredReply = vi.fn(async (..._a: unknown[]) => undefined);
-vi.mock('../../conversations/transcript.js', () => ({
-  recordDeliveredReply: (...a: unknown[]) => recordDeliveredReply(...(a as [never])),
-}));
+
 // cm:why `conversations/ports.js` is NOT stubbed: it is the registry the runner reads to find a venue's transport, so a stub would leave the adapter registering into one map and the turn reading another, and every delivery would refuse for a reason no room ever sees (ISS-1002).
 const deliver = vi.fn(async (..._a: unknown[]) => ({ messageId: 'rc-server-id-9' }));
 const { clearConversationTransports, registerConversationTransport } = await import(
   '../../conversations/ports.js'
 );
+
+const recordDeliveredReply = vi.fn(async (..._a: unknown[]) => undefined);
+vi.mock('../../conversations/transcript.js', () => ({
+  recordDeliveredReply: (...a: unknown[]) => recordDeliveredReply(...(a as [never])),
+}));
+
+const resolveRoomShape = vi.fn();
+vi.mock('./room-shape.js', () => ({
+  resolveRoomShape: (...args: unknown[]) => resolveRoomShape(...args),
+  roomShapeFromType: (t: string) => (t === 'd' ? 'direct' : 'group'),
+}));
 
 const { rocketChatManager } = await import('./connection-manager.js');
 // cm:why the route half left the manager for `window-drain.ts` when the manager reached the size budget; the harness still drives collect-then-route as one call because that is the pair production runs.
@@ -271,11 +254,9 @@ const MESSAGE = {
   username: 'alice',
   isSystem: false,
   isEdited: false,
-  mentions: ['bot-1'],
   images: [],
 };
 
-// cm:why a turn's conversation is a ROW resolved per message, not a pointer on this instance: the Map it lived in emptied on every restart, so a room talking for weeks restarted empty (ISS-1001 criterion 1).
 // cm:guard the fake transport is the FOUR ports and the registry is the real one: `handle` is a caller of the neutral turn now, and a suite that stubbed the registry would prove the adapter against a delivery path production does not have (ISS-1002).
 beforeEach(() => {
   // cm:why every message now resolves its speaker, whatever the room's shape — ISS-1004 attributes a collected message to whoever actually spoke, while authority still follows the shape. In a group room an unlinked speaker is a fact and not a refusal, so this default is the ordinary case.
@@ -293,162 +274,79 @@ beforeEach(() => {
   deliver.mockResolvedValue({ messageId: 'rc-server-id-9' });
   recordDeliveredReply.mockClear();
 });
-// cm:why a DM has exactly one human and runs as them, while a channel has many speakers and no single authority and deliberately keeps the organization's creator (ISS-987 criteria 21-24, consuming ISS-977)
-describe('connection-manager turn authority', () => {
-  const answered = {
-    conversationId: 'conv:chat.example.co room-1',
-    reply: 'an answer',
-    terminal: 'done',
-    error: null,
-    iterations: 1,
-    toolCalls: [],
+
+describe('connection-manager image handling', () => {
+  const IMAGE = {
+    name: 'shot.png',
+    mime: 'image/png',
+    ref: 'https://chat.example.co/file-upload/a/shot.png',
   };
+
+  interface TurnArgs {
+    images: Array<{ name: string; mime: string; ref: string; dataBase64: string }>;
+    resolveImage: (i: { ref: string }) => Promise<string | null>;
+  }
+  const turnArgs = () => runExternalChatTurn.mock.calls[0]?.[0] as TurnArgs;
 
   beforeEach(() => {
     vi.clearAllMocks();
     selectLimit.mockResolvedValue([{ agentConfig: null, repoPath: null }]);
     screenRoomReply.mockResolvedValue({ ok: true });
-    runExternalChatTurn.mockResolvedValue(answered);
+    runExternalChatTurn.mockResolvedValue({
+      conversationId: 'conv:chat.example.co room-1',
+      reply: 'that toggle reads the wrong tier',
+      terminal: 'done',
+      error: null,
+      iterations: 1,
+      toolCalls: [],
+      progress: null,
+    });
   });
 
-  const principalUsed = () =>
-    (buildChatToolContext.mock.calls[0]?.[0] as { userId?: string } | undefined)?.userId;
+  it('shows the model the bytes of the image posted in the room', async () => {
+    fetchAttachmentBytes.mockResolvedValue(Buffer.from('PNG'));
+    await handle(makeAc(), ROUTE, { ...MESSAGE, images: [IMAGE] }, 'conn-1', 'group');
 
-  it('runs a direct room turn as the Forge user the speaker resolves to', async () => {
-    resolveSpeaker.mockResolvedValue({ linked: true, userId: 'speaker-user-9' });
-
-    await handle(makeAc(), ROUTE, MESSAGE, 'conn-1', 'direct');
-
-    expect(principalUsed()).toBe('speaker-user-9');
+    expect(turnArgs().images).toEqual([{ ...IMAGE, dataBase64: 'UE5H' }]);
+    expect(Buffer.from(turnArgs().images[0]?.dataBase64 ?? '', 'base64').toString()).toBe('PNG');
   });
 
-  // cm:guard authority and ATTRIBUTION are different questions and this asserts both on one message: the turn runs as the binding's principal, and the speaker is resolved all the same so the row says who actually spoke. ISS-1004 needs that second half — a second agent's message filed under the binding's human is invisible to the loop breaker — and it must never become the authority (ISS-987, ISS-1003).
-  it('runs a group room turn as the organization creator, whoever spoke', async () => {
-    resolveSpeaker.mockResolvedValue({ linked: true, userId: 'somebody-else' });
+  it('fetches the image with the bot credential, not anonymously', async () => {
+    fetchAttachmentBytes.mockResolvedValue(Buffer.from('PNG'));
+    await handle(makeAc(), ROUTE, { ...MESSAGE, images: [IMAGE] }, 'conn-1', 'group');
 
+    const [auth, ref, cap] = fetchAttachmentBytes.mock.calls[0] as [
+      { authToken: string; userId: string; serverUrl: string },
+      string,
+      number,
+    ];
+    expect(auth.authToken).toBe('bot-token');
+    expect(auth.serverUrl).toBe('https://chat.example.co');
+    expect(ref).toBe(IMAGE.ref);
+    expect(cap).toBeGreaterThan(0);
+  });
+
+  it('still answers the question when the image cannot be fetched', async () => {
+    fetchAttachmentBytes.mockResolvedValue(null);
+    const ac = makeAc();
+    await handle(ac, ROUTE, { ...MESSAGE, images: [IMAGE] }, 'conn-1', 'group');
+
+    expect(turnArgs().images).toEqual([]);
+    expect(deliver.mock.calls[0]?.[0]).toMatchObject({ externalId: 'chat.example.co room-1' });
+    expect(deliver.mock.calls[0]?.[1]).toMatchObject({ text: 'that toggle reads the wrong tier' });
+  });
+
+  it('offers a resolver that re-reads an image from an earlier turn', async () => {
+    fetchAttachmentBytes.mockResolvedValue(Buffer.from('OLD'));
     await handle(makeAc(), ROUTE, MESSAGE, 'conn-1', 'group');
 
-    expect(principalUsed()).toBe('user-1');
-    expect(resolveSpeaker).toHaveBeenCalled();
+    expect(await turnArgs().resolveImage(IMAGE)).toBe('T0xE');
   });
 
-  it('runs no turn in a direct room whose speaker resolves to no Forge user', async () => {
-    resolveSpeaker.mockResolvedValue({
-      linked: false,
-      refusal: { code: 'SPEAKER_UNLINKED', message: 'unlinked' },
-    });
+  it('downloads nothing for a plain message with no images', async () => {
+    await handle(makeAc(), ROUTE, MESSAGE, 'conn-1', 'group');
 
-    await handle(makeAc(), ROUTE, MESSAGE, 'conn-1', 'direct');
-
-    expect(runExternalChatTurn).not.toHaveBeenCalled();
-    expect(buildChatToolContext).not.toHaveBeenCalled();
-  });
-
-  // cm:guard the room is shown the refusal the PORT wrote, with the step that links the speaker in it: this text is ISS-977's contract and a second copy here would drift from the endpoints it names the day they move. It goes out the ONE door rather than over this adapter's socket (ISS-1002).
-  it('replies to an unlinked direct speaker with the port own refusal, verbatim', async () => {
-    resolveSpeaker.mockResolvedValue({
-      linked: false,
-      refusal: { code: 'SPEAKER_UNLINKED', message: 'UNLINKED:user-1:link-yourself-here' },
-    });
-
-    const ac = makeAc();
-    await handle(ac, ROUTE, MESSAGE, 'conn-1', 'direct');
-
-    expect(deliver.mock.calls[0]?.[1]).toMatchObject({
-      text: 'UNLINKED:user-1:link-yourself-here',
-    });
-    expect(ac.client.sendMessage).not.toHaveBeenCalled();
-  });
-
-  // cm:guard the message is collected BEFORE the authority question is settled, and the refusal is the window's: refusing on the socket first meant a transport that accepted the text and then dropped the connection got a second refusal from the window, which criterion 36 forbids (ISS-1004, review pass 1 F3 and the plan's own read).
-  it('collects the message, then refuses it once from the window', async () => {
-    resolveSpeaker.mockResolvedValue({
-      linked: false,
-      refusal: { code: 'SPEAKER_UNLINKED', message: 'unlinked' },
-    });
-    collected.length = 0;
-    deliver.mockClear();
-
-    await handle(makeAc(), ROUTE, MESSAGE, 'conn-1', 'direct');
-
-    expect(collected.map((c) => c.content)).toContain(MESSAGE.text);
-    expect(deliver).toHaveBeenCalledTimes(1);
-  });
-
-  it('keeps the speaker the transport named, so the window can ask about them', async () => {
-    resolveSpeaker.mockResolvedValue({
-      linked: false,
-      refusal: { code: 'SPEAKER_UNLINKED', message: 'unlinked' },
-    });
-    collected.length = 0;
-
-    await handle(makeAc(), ROUTE, MESSAGE, 'conn-1', 'direct');
-
-    expect(collected[0]?.authorKey).toBe(MESSAGE.userId);
-  });
-
-  it('carries a non-unlinked refusal own message rather than rewording it', async () => {
-    resolveSpeaker.mockResolvedValue({
-      linked: false,
-      refusal: { code: 'SPEAKER_SOURCE_UNKNOWN', message: 'that channel is not one Forge knows' },
-    });
-
-    await handle(makeAc(), ROUTE, MESSAGE, 'conn-1', 'direct');
-
-    expect(deliver.mock.calls[0]?.[1]).toMatchObject({
-      text: 'that channel is not one Forge knows',
-    });
-  });
-
-  it('screens a direct room reply with the same output guard a group reply gets', async () => {
-    resolveSpeaker.mockResolvedValue({ linked: true, userId: 'speaker-user-9' });
-
-    await handle(makeAc(), ROUTE, MESSAGE, 'conn-1', 'direct');
-
-    expect(screenRoomReply).toHaveBeenCalled();
-  });
-
-  // cm:guard the ONE case this adapter still posts itself, and the reason it must: a venue that could not be placed has no venue to deliver THROUGH, so this socket is the only way to the person. Confined to a one-to-one room, because a group room runs under the binding's principal and is owed no answer about an identity it never consults.
-  it('tells a direct speaker the server address cannot be read as an identity', async () => {
-    const ac = { ...makeAc(), serverUrl: 'https://broken.example.co' };
-    resolveSpeaker.mockResolvedValue({
-      linked: false,
-      refusal: {
-        code: 'SPEAKER_DIRECTORY_UNREACHABLE',
-        message: "This Rocket.Chat server's address (https://broken.example.co) cannot be read",
-      },
-    });
-
-    await handle(ac, ROUTE, MESSAGE, 'conn-1', 'direct');
-
-    expect(runExternalChatTurn).not.toHaveBeenCalled();
-    const [, text] = ac.client.sendMessage.mock.calls[0] as [string, string];
-    expect(text).toContain('broken.example.co');
-  });
-
-  it('leaves a group room silent when its venue cannot be placed', async () => {
-    const ac = { ...makeAc(), serverUrl: 'https://broken.example.co' };
-
-    await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
-
-    expect(runExternalChatTurn).not.toHaveBeenCalled();
-    expect(ac.client.sendMessage).not.toHaveBeenCalled();
-    expect(deliver).not.toHaveBeenCalled();
-  });
-
-  it('stores the shape and the resolved speaker on an escalation it raises', async () => {
-    resolveSpeaker.mockResolvedValue({ linked: true, userId: 'speaker-user-9' });
-    runExternalChatTurn.mockResolvedValue({
-      ...answered,
-      reply: '',
-      toolCalls: [{ name: 'escalate', arguments: '{"question":"why"}' }],
-    });
-    startEscalation.mockResolvedValue({ started: true, sessionId: 'esc-1' });
-
-    await handle(makeAc(), ROUTE, MESSAGE, 'conn-1', 'direct');
-
-    expect(startEscalation).toHaveBeenCalledWith(
-      expect.objectContaining({ shape: 'direct', principalUserId: 'speaker-user-9' }),
-    );
+    expect(fetchAttachmentBytes.mock.calls).toEqual([]);
+    expect(turnArgs().images).toEqual([]);
   });
 });

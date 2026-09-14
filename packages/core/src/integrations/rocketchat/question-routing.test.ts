@@ -21,7 +21,10 @@ const selectLimit = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
 vi.mock('../../db/client.js', () => ({
-  db: { select: vi.fn(() => ({ from: selectFrom })) },
+  db: {
+    select: vi.fn(() => ({ from: selectFrom })),
+    transaction: async (fn: (tx: unknown) => unknown) => fn({}),
+  },
 }));
 
 const runExternalChatTurn = vi.fn();
@@ -103,14 +106,60 @@ vi.mock('../../logger.js', () => ({
 }));
 
 const resolveRoomShape = vi.fn();
-vi.mock('../../conversations/store.js', () => ({
-  openConversation: async (venue: { adapter: string; externalId: string }) => ({
-    id: `conv:${venue.externalId}`,
-    adapter: venue.adapter,
-    externalId: venue.externalId,
-    shape: 'direct',
-    title: null,
+
+// cm:why ISS-1004 stopped `route()` answering a message and made it COLLECT one: what this file measures is which handler a message reaches, so the assertions that used to read a turn's arguments now read the row the collector wrote. `conversationsById` is what a later route would read it back through, and is here because the store mock owes it whether this file uses it or not.
+const collected: Array<Record<string, unknown>> = [];
+const conversationsById = new Map<string, { id: string; shape: string; externalId: string }>();
+
+vi.mock('../../conversations/windows.js', () => ({
+  windowDeliveryKey: (id: string) => `window:${id}`,
+  openOrExtendWindow: async (a: { conversationId: string }) => ({
+    id: `win:${a.conversationId}`,
+    conversationId: a.conversationId,
   }),
+  claimDueWindows: async () => [],
+  closeWindow: async () => null,
+  releaseWindow: async () => undefined,
+  reserveDelivery: async () => undefined,
+  recentDecisions: async () => [],
+}));
+
+vi.mock('../../conversations/proactivity.js', () => ({
+  decideProactivity: async () => ({ speak: true }),
+}));
+
+vi.mock('../../conversations/store.js', () => ({
+  openConversation: async (...args: unknown[]) => {
+    const row = (await (async (venue: { adapter: string; externalId: string; shape: string }) => ({
+      id: `conv:${venue.externalId}`,
+      adapter: venue.adapter,
+      externalId: venue.externalId,
+      shape: venue.shape,
+      title: null,
+    }))(...(args as [never]))) as { id: string; shape: string; externalId: string };
+    conversationsById.set(row.id, row);
+    return row;
+  },
+  getConversation: async (id: string) => conversationsById.get(id) ?? null,
+  readMessages: async () => collected,
+  deliveredUnderKey: async () => false,
+  appendMessagesIn: async (_tx: unknown, args: { messages: Array<Record<string, unknown>> }) => {
+    const rows = args.messages.map((msg, i) => ({
+      id: `cm-${collected.length + i}`,
+      seq: collected.length + i,
+      role: msg.role,
+      authorUserId: msg.authorUserId ?? null,
+      authorLabel: msg.authorLabel ?? null,
+      externalId: msg.externalId ?? null,
+      content: msg.content,
+      images: msg.images ?? [],
+      deliveryProof: null,
+      silenceReason: null,
+      createdAt: new Date(),
+    }));
+    collected.push(...rows);
+    return rows;
+  },
 }));
 
 // cm:why `conversations/ports.js` is NOT stubbed: it is the registry the neutral turn reads to find a venue's transport, so a stub makes every fall-through turn refuse before it runs and the assertion below would pass for the wrong reason (ISS-1002).
@@ -197,6 +246,11 @@ const flush = async (): Promise<void> => {
 };
 
 beforeEach(() => {
+  // cm:why every message now resolves its speaker, whatever the room's shape — ISS-1004 attributes a collected message to whoever actually spoke, while authority still follows the shape. In a group room an unlinked speaker is a fact and not a refusal, so this default is the ordinary case.
+  resolveSpeaker.mockResolvedValue({
+    linked: false,
+    refusal: { code: 'SPEAKER_UNLINKED', message: 'UNLINKED' },
+  });
   clearConversationTransports();
   registerConversationTransport({ adapter: 'rocketchat', deliver, fetchHistory: async () => [] });
 });
@@ -303,11 +357,11 @@ describe('a reply inside a question thread', () => {
     await routeMessage('conn-1', { ...MESSAGE, tmid: 'someone-elses-thread' });
     await flush();
     expect(consumeQuestionThreadReply).not.toHaveBeenCalled();
-    // cm:guard the fall-through carries the person's own words and their identity, which is what makes it a conversation turn rather than a routing event — a turn built from anything else answers somebody who did not speak.
-    expect(runExternalChatTurn.mock.calls[0]?.[0]).toMatchObject({
-      message: MESSAGE.text,
-      userKey: MESSAGE.userId,
-      projectId: ROUTE.projectId,
+    // cm:guard the fall-through carries the person's own words and their identity, which is what makes it a conversation turn rather than a routing event — a turn built from anything else answers somebody who did not speak. Since ISS-1004 the fall-through is a COLLECT rather than a turn, so the words are asserted where they now land: the row the window will route.
+    expect(collected[0]).toMatchObject({
+      content: MESSAGE.text,
+      authorLabel: MESSAGE.username,
+      externalId: MESSAGE.id,
     });
   });
 
@@ -324,10 +378,7 @@ describe('a reply inside a question thread', () => {
     await routeMessage('conn-1', MESSAGE);
     await flush();
     expect(subjectForThread).not.toHaveBeenCalled();
-    expect(runExternalChatTurn.mock.calls[0]?.[0]).toMatchObject({
-      message: MESSAGE.text,
-      adapter: 'rocketchat',
-    });
+    expect(collected[0]).toMatchObject({ content: MESSAGE.text, role: 'user' });
   });
 
   it('asks nothing when the connection has no route for the room', async () => {

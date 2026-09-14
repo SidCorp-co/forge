@@ -5,10 +5,11 @@
 // knows the pair `(adapter, externalId)` that names it and the handle that
 // gives it its scope.
 
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull, lte, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db as defaultDb } from '../db/client.js';
 import { projectMembers } from '../db/schema.js';
+import type { ConversationWindowDecision } from '../db/schema-conversations.js';
 import {
   type ConversationAdapter,
   type ConversationMessageRole,
@@ -17,7 +18,7 @@ import {
   conversationParticipants,
   conversations,
 } from '../db/schema-conversations.js';
-import type { Executor } from './db-executor.js';
+import type { Executor, TxOnly } from './db-executor.js';
 import { resolveProjectHandle } from './handles.js';
 import { attachOpeningHandle } from './participants.js';
 import type { ConversationVenue } from './ports.js';
@@ -44,9 +45,13 @@ export interface ConversationImage {
 export interface StoredConversationMessage {
   id: string;
   seq: number;
+  /** The transport's own id for this message, where it had one. */
+  externalId: string | null;
   role: ConversationMessageRole;
   authorUserId: string | null;
   authorLabel: string | null;
+  /** The transport's own id for whoever spoke, where it named one. */
+  authorKey: string | null;
   content: string;
   images: ConversationImage[];
   deliveryProof: unknown;
@@ -161,6 +166,8 @@ export interface AppendMessageArgs {
   content: string;
   authorUserId?: string | null;
   authorLabel?: string | null;
+  authorKey?: string | null;
+  externalId?: string | null;
   images?: readonly ConversationImage[] | undefined;
   deliveryProof?: unknown;
   silenceReason?: string | null;
@@ -194,7 +201,19 @@ export async function appendMessages(
 ): Promise<StoredConversationMessage[]> {
   const dbi = args.db ?? defaultDb;
   if (args.messages.length === 0) return [];
-  return dbi.transaction(async (tx) => {
+  return dbi.transaction((tx) => appendMessagesIn(tx, args));
+}
+
+/**
+ * The same append, for a caller that already holds the transaction.
+ */
+// cm:guard the collector needs the message and the window it belongs to committed TOGETHER: a message durable with no window is owed an answer nothing knows to give, and the only way to have both under one commit is for the append to take somebody else's transaction (ISS-1004, review F3).
+export async function appendMessagesIn(
+  tx: TxOnly,
+  args: Omit<AppendMessagesArgs, 'db'>,
+): Promise<StoredConversationMessage[]> {
+  if (args.messages.length === 0) return [];
+  {
     const [live] = await tx
       .select({ id: conversations.id })
       .from(conversations)
@@ -224,7 +243,9 @@ export async function appendMessages(
           role: m.role,
           authorUserId: m.authorUserId ?? null,
           authorLabel: m.authorLabel ?? null,
+          authorKey: m.authorKey ?? null,
           content: m.content,
+          externalId: m.externalId ?? null,
           images: (m.images && m.images.length > 0 ? [...m.images] : null) as never,
           deliveryProof: (m.deliveryProof ?? null) as never,
           silenceReason: m.silenceReason ?? null,
@@ -241,7 +262,31 @@ export async function appendMessages(
       .where(eq(conversations.id, args.conversationId));
 
     return rows.map(toStored);
-  });
+  }
+}
+
+/**
+ * The messages a closed seq range holds, oldest first.
+ */
+// cm:guard the range is applied in SQL and BEFORE the limit, never by filtering the newest rows afterwards: a window claimed while its successor collects can have its whole contents pushed out of the newest `cap` rows, and the filter would then find nothing and close a person's question `unreachable` for good (ISS-1004, review pass 1 F4).
+export async function readMessagesInRange(
+  conversationId: string,
+  range: { firstSeq: number; lastSeq: number; limit: number },
+  tx: Executor = defaultDb,
+): Promise<StoredConversationMessage[]> {
+  const rows = await tx
+    .select()
+    .from(conversationMessages)
+    .where(
+      and(
+        eq(conversationMessages.conversationId, conversationId),
+        gte(conversationMessages.seq, range.firstSeq),
+        lte(conversationMessages.seq, range.lastSeq),
+      ),
+    )
+    .orderBy(desc(conversationMessages.seq))
+    .limit(range.limit);
+  return rows.reverse().map(toStored);
 }
 
 /** The last `limit` turns, oldest first. */
@@ -257,6 +302,44 @@ export async function readMessages(
     .orderBy(desc(conversationMessages.seq))
     .limit(limit);
   return rows.reverse().map(toStored);
+}
+
+/**
+ * Has this conversation already been shown the reply for this delivery key?
+ */
+// cm:guard the key is the AT-MOST-ONCE proof and it is checked against what was DELIVERED, never against what was attempted: a window re-claimed after its holder died is owed an answer only if the room never got one, and the row carrying the key is the only evidence either way (ISS-1004 rule 2).
+export async function deliveredUnderKey(
+  conversationId: string,
+  deliveryKey: string,
+  tx: Executor = defaultDb,
+): Promise<boolean> {
+  return (await deliveredDecisionUnderKey(conversationId, deliveryKey, tx)) !== null;
+}
+
+/**
+ * What was already delivered under this key, in the words of the decision that sent it.
+ */
+// cm:guard it answers the DECISION and not merely "something went", because the two are different records: a core that delivered an authority refusal and died before closing its window left the next claimant able to see a delivery and nothing to say what it was, so the window closed `answered` over a room that had been refused. `answered` is the default only because an ordinary reply writes no decision on its proof (ISS-1004 rule 4).
+export async function deliveredDecisionUnderKey(
+  conversationId: string,
+  deliveryKey: string,
+  tx: Executor = defaultDb,
+): Promise<ConversationWindowDecision | null> {
+  const [row] = await tx
+    .select({ proof: conversationMessages.deliveryProof })
+    .from(conversationMessages)
+    .where(
+      and(
+        eq(conversationMessages.conversationId, conversationId),
+        sql`${conversationMessages.deliveryProof}->>'deliveryKey' = ${deliveryKey}`,
+      ),
+    )
+    .limit(1);
+  if (!row) return null;
+  const proof = row.proof as { decision?: unknown } | null;
+  return typeof proof?.decision === 'string'
+    ? (proof.decision as ConversationWindowDecision)
+    : 'answered';
 }
 
 export async function countMessages(
@@ -361,7 +444,9 @@ function toStored(row: typeof conversationMessages.$inferSelect): StoredConversa
     role: row.role,
     authorUserId: row.authorUserId,
     authorLabel: row.authorLabel,
+    authorKey: row.authorKey,
     content: row.content,
+    externalId: row.externalId,
     images: asImages(row.images),
     deliveryProof: row.deliveryProof ?? null,
     silenceReason: row.silenceReason,

@@ -114,6 +114,42 @@
 
 ### Added
 
+- **An agent reads the rooms it is in, instead of waiting to be called by name.** Until now a
+  Rocket.Chat bot answered in a channel only when a message carried its name. A question asked
+  without naming anyone was never seen — not ignored, not queued: never read at all. The bot now
+  takes in everything said in a room it is bound to, and answers when it has something to say. What
+  keeps that from being either expensive or annoying is not the name any more:
+
+  - Messages that arrive together are one answer. Two sentences typed seconds apart used to be two
+    separate questions with two separate costs and two replies landing on top of each other; now
+    they are read as the one thing they were.
+  - A room where nothing it said lately landed slows down and stops. Two agents going round in
+    circles with nothing new in what they say to each other are cut off — but an exchange that keeps
+    naming real things, an issue, a file, an address, carries on for as long as it needs to, which is
+    the cross-repository conversation this feature exists to allow. A room no person has been in for
+    a day stops being spoken to.
+  - **Anything a person says lifts all three at once**, and there is nothing to switch back on. The
+    room's own history is what these are worked out from, every time they are asked, so there is no
+    setting anywhere that can be left in the wrong position.
+
+- **You can now find out why nothing was said.** Every decision to answer or to stay quiet is
+  written down with its reason, and the five reasons are told apart rather than collapsed into
+  silence: it had nothing to add · it is being paced, and which of the three · there is nobody here
+  it could answer as · it could not be reached at all · it was sent and nobody knows yet how it
+  landed. The last of those is explicitly not a failure, and nothing retries on it — which is what
+  stops one answer turning into two after a restart.
+
+- **A screenshot posted with no caption is now a question like any other.** An image with nothing
+  typed beside it counted as an empty message and was dropped before anything saw it, so the one
+  way people most often ask "what is this?" reached nobody. It is now taken in with its image, and
+  the model is shown the picture.
+
+- **An answer survives a restart, and is never given twice.** The unit of work between a message and
+  an answer is now a durable record rather than something living in a process. A server that stops
+  halfway through leaves the work findable by whatever picks it up next; two servers cannot both
+  answer the same thing; and a reply that was handed over and never confirmed is reported as exactly
+  that rather than sent again.
+
 - **An agent now has a name you can read, an address you can type, and a credential that says it is
   the one speaking.** Settings → Agents lists every agent account in your organization, says
   plainly whether each one can act, and lets an org admin give a credential to an agent that

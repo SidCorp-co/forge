@@ -16,6 +16,22 @@ import { screenReplyAtDoor } from '../messaging/reply-screen.js';
 import { codeAuthored, type ScreenedMessage, screened } from './ports.js';
 
 // cm:guard fallbacks speak AS the handle by name — never as an anonymous "the system" or "the model" voice
+/**
+ * What a turn says when it has nothing to add.
+ */
+// cm:guard a SENTINEL and not an empty string, because the two mean different things: an empty reply is a turn that failed to produce one, and this is a turn that produced the judgement "nothing here needs me". A room the bot was never summoned to is owed the second and must never be posted the first's apology (ISS-1004).
+export const NOTHING_TO_ADD = '(nothing to add)';
+
+/** Did the model decline this turn? Punctuation and case are the model's, the judgement is not. */
+export function declinedTurn(text: string): boolean {
+  return (
+    text
+      .trim()
+      .toLowerCase()
+      .replace(/[.!]+$/, '') === NOTHING_TO_ADD
+  );
+}
+
 export const errorFallbackReply = (name: string): string =>
   // cm:ignore CM001 — the i18n pragma `check-source-language` reads to allow this user-facing Vietnamese reply; deleting it to satisfy codemap reds the language gate instead
   `Xin lỗi, ${name} đang quá tải hoặc gặp sự cố — bạn thử lại sau ít phút nhé.`; // i18n-allow: user-facing channel reply

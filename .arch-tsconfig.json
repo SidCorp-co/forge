@@ -9,6 +9,7 @@
     "paths": {
       "@/*": ["packages/web-v2/src/*"],
       "@forge/contracts": ["packages/contracts/src/index.ts"],
+      "@forge/observability": ["packages/observability/src/index.ts"],
       "@forge/contracts/*": ["packages/contracts/src/*"]
     }
   },

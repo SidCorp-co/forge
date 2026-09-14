@@ -23,9 +23,14 @@ import {
   conversationTransport,
   type ScreenedMessage,
 } from './ports.js';
-import { assertAnswerableDoor, errorFallbackReply, screenedTurnReply } from './screened-reply.js';
+import {
+  assertAnswerableDoor,
+  declinedTurn,
+  errorFallbackReply,
+  screenedTurnReply,
+} from './screened-reply.js';
 import { openConversation } from './store.js';
-import { recordDeliveredReply } from './transcript.js';
+import { recordDeliveredReply, recordSilence } from './transcript.js';
 
 // cm:why cancels the provider fetch/SSE read so a stalled upstream terminates as an error instead of hanging
 const TURN_TIMEOUT_MS = 90_000;
@@ -75,7 +80,9 @@ export interface TurnHookContext {
 }
 
 // cm:guard `send: false` is the explicit "this turn posts nothing" case, and it is not a failure: an adapter that handed the turn to a slower path answers through that path, and posting here as well double-replies (ISS-727).
-export type TurnReply = { send: false; reason: string } | { send: true; message: ScreenedMessage };
+export type TurnReply =
+  | { send: false; reason: string; declined?: boolean }
+  | { send: true; message: ScreenedMessage };
 
 export interface ConversationTurnRequest {
   venue: ConversationVenue;
@@ -86,6 +93,27 @@ export interface ConversationTurnRequest {
   message: string;
   /** The door the reply goes out of; its row carries the pair and the repair budget. */
   door: DoorId;
+  /**
+   * The question is already a row, so this turn writes only its silence.
+   */
+  // cm:guard set by the WINDOW path and by nothing else: the collector persisted the message the moment it arrived, and a turn that appended it again would show the model the same text twice and file a second copy under the speaker's name (ISS-1004).
+  questionAlreadyRecorded?: boolean;
+  /**
+   * This turn is allowed to say nothing.
+   */
+  // cm:guard a turn nobody summoned MUST be able to decline, and that is the whole difference between an agent reading its rooms and an agent answering everything it hears: without it the fallbacks below post "sorry, I had trouble" into a room that asked it nothing (ISS-1004).
+  mayDecline?: boolean;
+  /**
+   * The stable key this turn's delivery answers, so a retry of it delivers nothing.
+   */
+  // cm:guard derived from the WINDOW by the caller and never minted here: a key this function invented would be fresh on every attempt, which is the at-most-once property read backwards (ISS-1004 rule 2).
+  deliveryKey?: string;
+  /**
+   * Called once, immediately before the text is handed to the transport.
+   */
+  // cm:guard the hook exists so a caller can make the ATTEMPT durable, and it is called before the send rather than after it because that is the only order a crash cannot beat: a reply accepted by the server and lost by a dying core is indistinguishable from one never sent, unless the intent to send was written first (ISS-1004 rule 2, review F2).
+  // cm:guard a FALSE from it means the caller no longer holds the right to speak here and the text is NOT sent: this is how a holder whose lease expired mid-turn is stopped, and treating the refusal as an error would post the fallback into the room the second holder is already answering (ISS-1004, review pass 1 F1).
+  onBeforeDeliver?: () => Promise<boolean>;
   /** The answering handle's own name — the code-authored fallbacks speak as it. */
   handleName: string;
   /**
@@ -114,7 +142,9 @@ export interface ConversationTurnRequest {
 // cm:guard `diverted` is NOT a failure and no caller may treat it as one: it is the fourth state — not yet known — and the answer arrives by the path the adapter handed it to (ISS-1002 invariant 4).
 export type TurnOutcome =
   | { kind: 'delivered'; messageId: string | null }
+  | { kind: 'superseded'; reason: string }
   | { kind: 'diverted'; reason: string }
+  | { kind: 'declined'; reason: string }
   | { kind: 'undeliverable'; reason: string };
 
 interface TurnContext {
@@ -144,7 +174,7 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
     projectId: req.venue.projectId,
     adapter: req.venue.adapter,
     conversationId: ctx.conversationId,
-    record: 'question-only' as const,
+    record: req.questionAlreadyRecorded ? ('silence-only' as const) : ('question-only' as const),
     userId: req.principalUserId,
     userKey: req.speakerKey,
     persona: inputs.persona ?? null,
@@ -161,6 +191,21 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
 
   const late = await req.divertAfterTurn?.(result, hook);
   if (late) return late;
+
+  // cm:guard the two declines are kept apart because only ONE of them owes a row here: a turn that errored or came back empty is already filed by `external-chat.ts` under its own reason, and a turn that answered the sentinel produced text nothing else will record (ISS-1004 rule 4).
+  if (req.mayDecline) {
+    if (result.terminal !== 'done' || result.reply.trim().length === 0) {
+      return { send: false, reason: result.error ?? 'empty-reply', declined: true };
+    }
+    if (declinedTurn(result.reply)) {
+      await recordSilence({
+        conversationId: ctx.conversationId,
+        projectId: req.venue.projectId,
+        reason: 'nothing-to-say',
+      });
+      return { send: false, reason: 'nothing-to-say', declined: true };
+    }
+  }
 
   return {
     send: true,
@@ -225,10 +270,17 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
     await req.dispose?.();
   }
 
-  if (!reply.send) return { kind: 'diverted', reason: reply.reason };
+  if (!reply.send) {
+    return reply.declined
+      ? { kind: 'declined', reason: reply.reason }
+      : { kind: 'diverted', reason: reply.reason };
+  }
 
   let receipt: Awaited<ReturnType<typeof transport.deliver>>;
   try {
+    if (req.onBeforeDeliver && !(await req.onBeforeDeliver())) {
+      return { kind: 'superseded', reason: 'the right to answer here moved to another holder' };
+    }
     receipt = await transport.deliver(req.venue, reply.message);
   } catch (err) {
     // cm:guard nothing is recorded when the door refuses: the venue never saw this text, and a transcript row for it would say the opposite. The commonest refusal is a room rebound while the turn ran, which `deliver` names rather than swallows.
@@ -244,6 +296,7 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
     projectId: req.venue.projectId,
     text: reply.message.text,
     receipt,
+    deliveryKey: req.deliveryKey,
   });
   return { kind: 'delivered', messageId: receipt.messageId };
 }
