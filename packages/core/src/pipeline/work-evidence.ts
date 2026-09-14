@@ -134,10 +134,12 @@ export async function hasChildIssues(
   return row != null;
 }
 
+// cm:guard the message names BOTH branch spellings because `collectWorkEvidence` reads both, and a refusal that names one of the two fields that count sends a run to change the field it already filled. A run driven by hand records its branch at `sessionContext.worklog.branch` and reads this string as saying that spelling does not count.
 export const NO_WORK_EVIDENCE_DETAIL =
   'no branch, commit or code handoff is recorded for this issue — record the branch in ' +
-  'sessionContext.branch or write the implementation step handoff with commitSha/filesModified ' +
-  'before advancing';
+  'sessionContext.branch or sessionContext.worklog.branch, or write the implementation step ' +
+  'handoff with commitSha/filesModified, before advancing. A branch equal to the project base or ' +
+  'production branch is not evidence: it names where work lands, not that any happened';
 
 // cm:guard fails OPEN on any internal error — a broken evidence check must never freeze a legitimate advance
 export async function findMissingWorkEvidence(

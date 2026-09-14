@@ -206,6 +206,8 @@ describe('findMissingWorkEvidence', () => {
     setup([], [], [], [{ sessionContext: null }]);
     const detail = await findMissingWorkEvidence('iss-1');
     expect(detail).toContain('no branch, commit or code handoff');
+    // cm:guard the remedy must name every field the reader accepts. It named `sessionContext.branch` alone while `collectWorkEvidence` also read the worklog, which sends a hand-driven run to change the field it had already filled — the refusal disagreeing with the check behind it.
+    expect(detail).toContain('sessionContext.worklog.branch');
   });
 
   it('returns null when evidence exists', async () => {
