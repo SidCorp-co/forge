@@ -61,15 +61,29 @@ function walk(dir: string, out: string[] = []): string[] {
 }
 
 /** Comment lines are blanked, so a `cm:guard` explaining the rule is not a breach of it. */
-function mentionsColumn(source: string): boolean {
-  const code = source
+function stripComments(source: string): string {
+  return source
     .split('\n')
     .map((line) => {
       const t = line.trim();
       return t.startsWith('//') || t.startsWith('*') || t.startsWith('/*') ? '' : line;
     })
     .join('\n');
+}
+
+function mentionsColumn(source: string): boolean {
+  const code = stripComments(source);
   return SPELLINGS.some((re) => re.test(code));
+}
+
+/**
+ * Whether this file imports the `users` table at all, under any local name.
+ */
+// cm:guard the alias gap the spellings alone cannot close: `import { users as u }` and then `u.displayName` is a read no regex over the column's own name can see, and it is the escape a reader finds the moment the direct spellings start refusing them. This asks the other question instead — does this module hold the table AND say `displayName` anywhere — and it is exact today: the five files that import `users` and name the label are the five the allowlist holds. A false positive here is a module that imports the table and has a `displayName` of its own, which is a rename away from clear and is the cheaper error of the two (ISS-1003 criterion 15).
+function importsUsersAndNamesTheLabel(source: string): boolean {
+  const code = stripComments(source);
+  const imports = /import\s*\{[^}]*\busers\b[^}]*\}\s*from\s*['"][^'"]*schema[^'"]*['"]/.test(code);
+  return imports && /\bdisplayName\b/.test(code);
 }
 
 describe('displayName is rendered, never read to decide anything (ISS-1003)', () => {
@@ -86,6 +100,16 @@ describe('displayName is rendered, never read to decide anything (ISS-1003)', ()
       .filter((rel) => rel !== SELF)
       .filter((rel) => !(rel in PRESENTATION_AND_MAPPING))
       .filter((rel) => mentionsColumn(readFileSync(join(SRC, rel), 'utf8')));
+    expect(offenders).toEqual([]);
+  });
+
+  // cm:guard the same rule asked the other way round, because the spellings are a blocklist and a blocklist is escaped by typing something else. A module that imports the `users` table under ANY local name and mentions `displayName` is reading the label whatever it calls the table, and that is the aliasing gap a regex over `users.displayName` cannot see. Found by review, F3 recheck.
+  it('is imported beside the table by nobody outside those modules, under any alias', () => {
+    const offenders = files
+      .map((f) => relative(SRC, f))
+      .filter((rel) => rel !== SELF)
+      .filter((rel) => !(rel in PRESENTATION_AND_MAPPING))
+      .filter((rel) => importsUsersAndNamesTheLabel(readFileSync(join(SRC, rel), 'utf8')));
     expect(offenders).toEqual([]);
   });
 
