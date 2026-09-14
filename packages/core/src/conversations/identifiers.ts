@@ -20,10 +20,12 @@ const PATTERNS: readonly RegExp[] = [
   /\b[\w@./-]*\/[\w@.-]+\b/g,
   /\b[\w-]+\.[a-z]{1,6}\b/gi,
   /\b[0-9a-f]{7,40}\b/g,
-  /\b[a-zA-Z][\w]*(?:[_.][\w]+)+\b/g,
-  /\b[a-zA-Z]+[A-Z][a-zA-Z0-9]*\b/g,
+  /\b[a-zA-Z][a-zA-Z0-9]*(?:[_.][a-zA-Z0-9]+)+\b/g,
+  /\b[a-zA-Z][a-z0-9]*(?:[A-Z][a-z0-9]*)+\b/g,
   /`([^`]+)`/g,
 ];
+
+// cm:guard every alternative here is DISJOINT from the one beside it — the run before a separator excludes the separator, and the camel run's tail excludes its own start — because these patterns are run over text anybody in a room can type. Overlapping classes give a hostile string exponentially many ways to be split, which CodeQL raised as high on this file's first version. Measured 2026-09-14 it was not yet REACHABLE — a `\b` after a word character never forces the failure that backtracking needs, so the pattern always succeeded in under a tenth of a millisecond — and it is fixed by construction anyway, because the next editor who adds an anchor or a suffix should not have to notice that they made it reachable (ISS-1004).
 
 // cm:guard a BARE number is deliberately NOT an identifier, and the temptation to add one is the hole: two agents trading "retry 1", "retry 2", "retry 3" would each be introducing something new and the loop breaker would never fire, which is the cost bound that replaced the mention gate failing open. A number attached to something — `ISS-1004`, `v1.2.3`, `0244_conversation_windows.sql` — is already caught by the pattern that owns that shape (ISS-1004, review F4).
 

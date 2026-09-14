@@ -51,3 +51,34 @@ describe('introducesSomethingNew', () => {
     expect(introducesSomethingNew('and also ISS-1005', seen)).toBe(true);
   });
 });
+
+// cm:guard the budget below is a FLOOR and not the proof, and saying so is the point: CodeQL called the first version of these patterns exponentially backtrackable, and it was right about the ambiguity and wrong about the danger — measured 2026-09-14 at 20, 24, 28 and 32 repetitions of `0_`, the old pattern ran in under a tenth of a millisecond, because it can always SUCCEED and a `\b` after a word character never forces the failure that backtracking needs. The ambiguity was removed anyway, by making every class disjoint from the one beside it, and this case exists so an edit that makes it reachable is caught rather than argued about.
+describe('a hostile string', () => {
+  const BUDGET_MS = 200;
+
+  function millis(text: string): number {
+    const started = performance.now();
+    identifiersIn(text);
+    return performance.now() - started;
+  }
+
+  it('stays inside its budget on a long run of separated digits', () => {
+    expect(millis(`a${'0_'.repeat(40)}!`)).toBeLessThan(BUDGET_MS);
+  });
+
+  it('stays inside its budget on a long run of mixed case', () => {
+    expect(millis(`${'aA'.repeat(60)}!`)).toBeLessThan(BUDGET_MS);
+  });
+
+  it('reads a dotted and a camel name out of the same sentence, whatever their case', () => {
+    const found = identifiersIn('TurnRunner reads windows.ts and turnRunner does too');
+    expect([...found]).toEqual(expect.arrayContaining(['turnrunner', 'windows.ts']));
+    expect(found.has('turnrunner')).toBe(true);
+  });
+
+  it('still reads the identifiers out of an ordinary sentence', () => {
+    expect([
+      ...identifiersIn('ISS-1004 touches packages/core/src/conversations/windows.ts'),
+    ]).toEqual(expect.arrayContaining(['iss-1004', 'packages/core/src/conversations/windows.ts']));
+  });
+});
