@@ -58,8 +58,8 @@
       "maxFunctionLines": 152
     },
     "packages/core/src/integrations/rocketchat/connection-manager.ts": {
-      "fileLines": 815,
-      "maxFunctionLines": 165
+      "fileLines": 479,
+      "maxFunctionLines": 0
     },
     "packages/core/src/integrations/routes.test.ts": {
       "fileLines": 1383,

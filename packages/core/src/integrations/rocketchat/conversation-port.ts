@@ -15,12 +15,13 @@ import {
 import type {
   ConversationAdapterPorts,
   ConversationHistoryMessage,
+  ConversationVenue,
   DeliveryReceipt,
   ScreenedMessage,
 } from '../../conversations/ports.js';
-import type { ConversationVenue } from '../../conversations/store.js';
 import { db } from '../../db/client.js';
 import { integrationBindings, integrationConnections } from '../../db/schema.js';
+import { logger } from '../../logger.js';
 import { decryptConnectionSecrets } from '../store.js';
 import type { RocketChatIncomingMessage } from './ddp-client.js';
 import { FIXED_REPLY_CONSTANT, type ReplySendProof, sendFixedReply } from './outbound.js';
@@ -64,6 +65,7 @@ export function parseRocketChatVenueId(externalId: string): RocketChatVenueParts
 // cm:guard the ROOM decides the credential, not the server: one installation can be served by two Forge connections under two bot accounts, and the first-match answer posts as a bot the room may not hold and reads history under the wrong bot id — which silently relabels that bot's own messages as a person's. A connection with no binding naming this room is not this room's connection.
 // cm:guard the binding must also name THIS venue's project, with no single-connection shortcut: a conversation outlives the binding that opened it, so a room rebound from project A to project B still has A's durable venue pointing at it — right credential, somebody else's content.
 // cm:why having only one candidate connection on the server says nothing about which project owns the room today, which is why the old shortcut past the bindings is gone (ISS-1001 invariant 2).
+// cm:guard the choice among several candidates is ORDERED by connection id and never left to the row order the database happens to return: two connections can legitimately bind one room under one project, and an unordered pick makes the bot a conversation speaks as change between two consecutive replies for no reason a reader could find (ISS-1002).
 async function authForVenue(
   namespace: string,
   rid: string,
@@ -105,7 +107,16 @@ async function authForVenue(
       .map((b) => b.connectionId),
   );
 
-  for (const row of onServer.filter((r) => watching.has(r.id))) {
+  const candidates = onServer
+    .filter((r) => watching.has(r.id))
+    .sort((a, b) => a.id.localeCompare(b.id));
+  if (candidates.length > 1) {
+    logger.warn(
+      { namespace, rid, projectId, connectionIds: candidates.map((c) => c.id) },
+      'rocketchat: more than one active connection binds this room under this project; answering on the first by id',
+    );
+  }
+  for (const row of candidates) {
     const config = (row.config ?? {}) as RocketChatConfig;
     const secrets = decryptConnectionSecrets<RocketChatSecrets>(row);
     if (!secrets.authToken || !secrets.userId) continue;

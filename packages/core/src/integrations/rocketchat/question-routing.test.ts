@@ -51,8 +51,8 @@ vi.mock('./escalation.js', () => ({
 }));
 
 const screenRoomReply = vi.fn();
-vi.mock('./reply-screen.js', () => ({
-  screenRoomReply: (...args: unknown[]) => screenRoomReply(...args),
+vi.mock('../../messaging/reply-screen.js', () => ({
+  screenReplyAtDoor: (...args: unknown[]) => screenRoomReply(...args),
 }));
 
 const startAgentChat = vi.fn();
@@ -113,8 +113,14 @@ vi.mock('../../conversations/store.js', () => ({
   }),
 }));
 
-vi.mock('../../conversations/ports.js', () => ({
-  registerConversationTransport: vi.fn(),
+// cm:why `conversations/ports.js` is NOT stubbed: it is the registry the neutral turn reads to find a venue's transport, so a stub makes every fall-through turn refuse before it runs and the assertion below would pass for the wrong reason (ISS-1002).
+const deliver = vi.fn(async (..._a: unknown[]) => ({ messageId: 'rc-server-id-9' }));
+const { clearConversationTransports, registerConversationTransport } = await import(
+  '../../conversations/ports.js'
+);
+
+vi.mock('../../conversations/transcript.js', () => ({
+  recordDeliveredReply: async () => undefined,
 }));
 
 vi.mock('./room-shape.js', () => ({
@@ -189,6 +195,11 @@ vi.mock('./comment-inbound.js', () => ({
 const flush = async (): Promise<void> => {
   for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
 };
+
+beforeEach(() => {
+  clearConversationTransports();
+  registerConversationTransport({ adapter: 'rocketchat', deliver, fetchHistory: async () => [] });
+});
 
 describe('a reply inside a question thread', () => {
   beforeEach(() => {

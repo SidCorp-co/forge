@@ -4499,6 +4499,23 @@
 
 ### Changed
 
+- **A reply in a chat room now goes out the same door on every channel, and a turn that answers
+  nothing says which kind of nothing it was.** Answering somebody in a Rocket.Chat room used to be a
+  path built inside the Rocket.Chat integration itself: it opened the room's transcript, asked the
+  project for an answer, checked that answer against the rules for someone outside the project, and
+  posted it — all in one place that knew that one chat product. That meant a second channel, such as
+  answering from inside Forge's own screen, would have needed its own copy of the same path, and a
+  rule tightened in one copy would quietly stop holding in the other. The turn is now one piece of
+  work that knows no channel at all; a channel supplies four answers — which venue this is, who
+  spoke, how to post, how to read back — and nothing else. Nothing a reader sees changes on the
+  channel that already worked, with one exception worth knowing: the reply is now posted through the
+  same interface every delayed reply already used, so where two bot accounts on one server are both
+  set up to watch the same room for the same project, the reply can come from the other one of them.
+  It is picked in a fixed order rather than at random, and the server log says when there was a
+  choice to make. A turn that hands the question to a slower worker, a turn that cannot reach the
+  room any more, and a turn that was refused because we could not tell who was speaking are now
+  three distinguishable outcomes rather than one silence.
+
 - **The comment and description boxes are a real editor now, with a formatting toolbar.** Bold,
   italic, inline code, link, heading, quote, bulleted and numbered lists, a code block and a
   mermaid diagram — each one a button, and Ctrl/Cmd+B, +I and +K for the three you reach for most.

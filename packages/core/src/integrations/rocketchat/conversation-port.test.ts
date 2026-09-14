@@ -33,6 +33,16 @@ vi.mock('./rest-client.js', async (importOriginal) => {
   };
 });
 
+const loggerWarn = vi.fn();
+vi.mock('../../logger.js', () => ({
+  logger: {
+    info: vi.fn(),
+    debug: vi.fn(),
+    warn: (...a: unknown[]) => loggerWarn(...a),
+    error: vi.fn(),
+  },
+}));
+
 const resolveForgeSpeaker = vi.fn();
 vi.mock('../../assistant/identity/speaker-link.js', () => ({
   resolveSpeaker: (...a: unknown[]) => resolveForgeSpeaker(...a),
@@ -45,8 +55,7 @@ vi.mock('../../db/client.js', () => ({
   db: {
     select: () => ({
       from: (table: unknown) => ({
-        // cm:why the mock answers by TABLE and not by call order: the two queries are issued in a
-        // fixed order today and a counter would silently re-point if that ever changed.
+        // cm:why the mock answers by TABLE and not by call order: the two queries are issued in a fixed order today and a counter would silently re-point if that ever changed.
         where: async () =>
           String((table as { [k: symbol]: unknown })[Symbol.for('drizzle:Name')]) ===
           'integration_bindings'
@@ -233,8 +242,7 @@ describe('deliver', () => {
     expect(sendFixedReply).not.toHaveBeenCalled();
   });
 
-  // cm:guard one installation can be served by TWO Forge connections under two bot accounts: posting
-  // as whichever matched the server first posts as a bot the room may not even hold.
+  // cm:guard one installation can be served by TWO Forge connections under two bot accounts: posting as whichever matched the server first posts as a bot the room may not even hold.
   it('posts as the bot whose binding names the room, not the first bot on the server', async () => {
     connections = [
       {
@@ -278,6 +286,62 @@ describe('deliver', () => {
       /no active connection on chat\.example\.co holds a binding for room ROOM1/,
     );
     expect(sendFixedReply).not.toHaveBeenCalled();
+  });
+
+  // cm:guard the ONE door resolves its own credential from the venue, so a room whose original connection has lost the binding is answered by whichever connection still holds it rather than going silent: the guard the venue carries is the PROJECT's ownership of the room, not which socket the message arrived on (ISS-1002 gave up that affinity deliberately).
+  it('answers through the second connection when the first no longer binds the room', async () => {
+    connections = [
+      {
+        id: 'conn-1',
+        config: { serverUrl: AUTH.serverUrl },
+        secrets: { authToken: 'gone', userId: 'bot-a' },
+      },
+      {
+        id: 'conn-2',
+        config: { serverUrl: AUTH.serverUrl },
+        secrets: { authToken: 'still-here', userId: 'bot-b' },
+      },
+    ];
+    bindings = [{ connectionId: 'conn-2', projectId: PROJECT_ID, config: { rids: ['ROOM1'] } }];
+
+    await rocketChatConversationPorts.deliver(venue, codeAuthored('answer'));
+
+    expect(sendFixedReply.mock.calls[0]?.[0]).toMatchObject({
+      auth: { authToken: 'still-here', userId: 'bot-b' },
+    });
+  });
+
+  // cm:guard the pick among several is ORDERED and said out loud: an unordered one makes the bot a room is answered by change between two consecutive replies for no reason a reader could find, and the row order a database returns is not a decision anybody made.
+  it('answers through the same connection every time when two of them bind the room', async () => {
+    const both = [
+      {
+        id: 'conn-b',
+        config: { serverUrl: AUTH.serverUrl },
+        secrets: { authToken: 'b', userId: 'bot-b' },
+      },
+      {
+        id: 'conn-a',
+        config: { serverUrl: AUTH.serverUrl },
+        secrets: { authToken: 'a', userId: 'bot-a' },
+      },
+    ];
+    bindings = [
+      { connectionId: 'conn-a', projectId: PROJECT_ID, config: { rids: ['ROOM1'] } },
+      { connectionId: 'conn-b', projectId: PROJECT_ID, config: { rids: ['ROOM1'] } },
+    ];
+
+    connections = both;
+    await rocketChatConversationPorts.deliver(venue, codeAuthored('answer'));
+    connections = [...both].reverse();
+    await rocketChatConversationPorts.deliver(venue, codeAuthored('answer'));
+
+    expect(
+      sendFixedReply.mock.calls.map((c) => (c[0] as { auth: { userId: string } }).auth.userId),
+    ).toEqual(['bot-a', 'bot-a']);
+    expect(loggerWarn).toHaveBeenCalledWith(
+      expect.objectContaining({ connectionIds: ['conn-a', 'conn-b'] }),
+      expect.stringContaining('more than one active connection binds this room'),
+    );
   });
 
   it('refuses a venue key that is not a Rocket.Chat one', async () => {

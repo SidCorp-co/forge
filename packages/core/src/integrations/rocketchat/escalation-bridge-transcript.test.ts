@@ -50,8 +50,8 @@ vi.mock('../store.js', () => ({
 }));
 
 const screenRoomReply = vi.fn();
-vi.mock('./reply-screen.js', () => ({
-  screenRoomReply: (...a: unknown[]) => screenRoomReply(...a),
+vi.mock('../../messaging/reply-screen.js', () => ({
+  screenReplyAtDoor: (...a: unknown[]) => screenRoomReply(...a),
 }));
 
 const FIXED_REPLY_CONSTANT = Symbol('fixed-reply-constant');

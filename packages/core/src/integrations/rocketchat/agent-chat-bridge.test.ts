@@ -34,8 +34,8 @@ vi.mock('./room-delivery.js', async (importOriginal) => ({
 }));
 
 const screenRoomReply = vi.fn();
-vi.mock('./reply-screen.js', () => ({
-  screenRoomReply: (...args: unknown[]) => screenRoomReply(...args),
+vi.mock('../../messaging/reply-screen.js', () => ({
+  screenReplyAtDoor: (...args: unknown[]) => screenRoomReply(...args),
 }));
 
 const FIXED_REPLY_CONSTANT = Symbol('fixed-reply-constant');
@@ -148,12 +148,12 @@ describe('deliverAgentChatReplyOnce', () => {
 
     await deliverAgentChatReplyOnce(makeSession());
 
-    expect(screenRoomReply).toHaveBeenCalledWith(
-      'proj-1',
-      'Here is the final answer.',
-      [],
-      'legacy-session',
-    );
+    expect(screenRoomReply).toHaveBeenCalledWith('agent-chat-completion', {
+      projectId: 'proj-1',
+      segments: ['Here is the final answer.'],
+      toolCalls: [],
+      progress: 'legacy-session',
+    });
     expect(sendFixedReply).toHaveBeenCalledWith(
       { kind: 'rest', auth: AUTH, rid: 'room-1', tmid: undefined },
       'Here is the final answer.',
@@ -180,12 +180,12 @@ describe('deliverAgentChatReplyOnce', () => {
       }),
     );
 
-    expect(screenRoomReply).toHaveBeenCalledWith(
-      'proj-1',
-      'Created ISS-42 for you.',
-      [{ name: 'forge_issues', arguments: JSON.stringify({ action: 'create' }) }],
-      'legacy-session',
-    );
+    expect(screenRoomReply).toHaveBeenCalledWith('agent-chat-completion', {
+      projectId: 'proj-1',
+      segments: ['Created ISS-42 for you.'],
+      toolCalls: [{ name: 'forge_issues', arguments: JSON.stringify({ action: 'create' }) }],
+      progress: 'legacy-session',
+    });
   });
 
   it('falls back when the output guard rejects the reply', async () => {

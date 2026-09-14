@@ -58,8 +58,8 @@ vi.mock('./escalation.js', () => ({
 }));
 
 const screenRoomReply = vi.fn();
-vi.mock('./reply-screen.js', () => ({
-  screenRoomReply: (...args: unknown[]) => screenRoomReply(...args),
+vi.mock('../../messaging/reply-screen.js', () => ({
+  screenReplyAtDoor: (...args: unknown[]) => screenRoomReply(...args),
 }));
 
 const startAgentChat = vi.fn();
@@ -122,19 +122,18 @@ const openConversation = vi.fn(async (venue: { adapter: string; externalId: stri
   shape: 'direct',
   title: null,
 }));
-const recordDelivery = vi.fn(async (..._a: unknown[]) => undefined);
-const appendMessage = vi.fn(async (..._a: unknown[]) => ({ id: 'row-new' }));
 vi.mock('../../conversations/store.js', () => ({
   openConversation: (...args: unknown[]) => openConversation(...(args as [never])),
-  recordDelivery: (...args: unknown[]) => recordDelivery(...(args as [never])),
-  appendMessage: (...args: unknown[]) => appendMessage(...(args as [never])),
 }));
-vi.mock('../../conversations/participants.js', () => ({
-  handleForProject: async () => 'handle-user-1',
+const recordDeliveredReply = vi.fn(async (..._a: unknown[]) => undefined);
+vi.mock('../../conversations/transcript.js', () => ({
+  recordDeliveredReply: (...a: unknown[]) => recordDeliveredReply(...(a as [never])),
 }));
-vi.mock('../../conversations/ports.js', () => ({
-  registerConversationTransport: vi.fn(),
-}));
+// cm:why `conversations/ports.js` is NOT stubbed: it is the registry the runner reads to find a venue's transport, so a stub would leave the adapter registering into one map and the turn reading another, and every delivery would refuse for a reason no room ever sees (ISS-1002).
+const deliver = vi.fn(async (..._a: unknown[]) => ({ messageId: 'rc-server-id-9' }));
+const { clearConversationTransports, registerConversationTransport } = await import(
+  '../../conversations/ports.js'
+);
 
 const { rocketChatManager } = await import('./connection-manager.js');
 
@@ -188,8 +187,20 @@ const MESSAGE = {
   images: [],
 };
 
-// cm:why a turn's conversation is a ROW resolved per message, not a pointer on this instance: the Map it
-// lived in emptied on every restart, so a room talking for weeks restarted empty (ISS-1001 criterion 1).
+// cm:why a turn's conversation is a ROW resolved per message, not a pointer on this instance: the Map it lived in emptied on every restart, so a room talking for weeks restarted empty (ISS-1001 criterion 1).
+// cm:guard the fake transport is the FOUR ports and the registry is the real one: `handle` is a caller of the neutral turn now, and a suite that stubbed the registry would prove the adapter against a delivery path production does not have (ISS-1002).
+beforeEach(() => {
+  clearConversationTransports();
+  registerConversationTransport({
+    adapter: 'rocketchat',
+    deliver,
+    fetchHistory: async () => [],
+  });
+  deliver.mockClear();
+  deliver.mockResolvedValue({ messageId: 'rc-server-id-9' });
+  recordDeliveredReply.mockClear();
+});
+
 describe('connection-manager conversation identity', () => {
   const answered = {
     conversationId: 'conv:chat.example.co room-1',
@@ -249,8 +260,7 @@ describe('connection-manager conversation identity', () => {
     expect(conversationSentOn(1)).toBe('conv:chat.example.co room-continue-thread thread-a');
   });
 
-  // cm:guard the conversation is looked up on EVERY message rather than remembered: a manager that cached
-  // it would pass every other test here and still lose the room the moment the process died.
+  // cm:guard the conversation is looked up on EVERY message rather than remembered: a manager that cached it would pass every other test here and still lose the room the moment the process died.
   it('resolves the venue from the store on every message rather than remembering it', async () => {
     const ac = makeAc();
     const room = { ...ROUTE, rid: 'room-restart' };
@@ -263,8 +273,7 @@ describe('connection-manager conversation identity', () => {
     expect(openConversation).toHaveBeenCalledTimes(2);
   });
 
-  // cm:guard this REPLACES "clears only the failing conversation session": the manager used to drop the
-  // room's pointer when a turn threw, and a failed turn is now recorded as a silence instead.
+  // cm:guard this REPLACES "clears only the failing conversation session": the manager used to drop the room's pointer when a turn threw, and a failed turn is now recorded as a silence instead.
   it('keeps the room in its conversation after a turn throws', async () => {
     const ac = makeAc();
     const room = { ...ROUTE, rid: 'room-failing' };
@@ -280,116 +289,6 @@ describe('connection-manager conversation identity', () => {
     await handle(ac, room, { ...m, id: 'msg-3' }, 'conn-1', 'group');
 
     expect(conversationSentOn(2)).toBe('conv:chat.example.co room-failing');
-  });
-});
-
-// cm:why a DM has exactly one human and runs as them, while a channel has many speakers and no single authority and deliberately keeps the organization's creator (ISS-987 criteria 21-24, consuming ISS-977)
-describe('connection-manager turn authority', () => {
-  const answered = {
-    conversationId: 'conv:chat.example.co room-1',
-    reply: 'an answer',
-    terminal: 'done',
-    error: null,
-    iterations: 1,
-    toolCalls: [],
-  };
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    selectLimit.mockResolvedValue([{ agentConfig: null, repoPath: null }]);
-    screenRoomReply.mockResolvedValue({ ok: true });
-    runExternalChatTurn.mockResolvedValue(answered);
-  });
-
-  const principalUsed = () =>
-    (buildChatToolContext.mock.calls[0]?.[0] as { userId?: string } | undefined)?.userId;
-
-  it('runs a direct room turn as the Forge user the speaker resolves to', async () => {
-    resolveSpeaker.mockResolvedValue({ linked: true, userId: 'speaker-user-9' });
-
-    await handle(makeAc(), ROUTE, MESSAGE, 'conn-1', 'direct');
-
-    expect(principalUsed()).toBe('speaker-user-9');
-  });
-
-  it('runs a group room turn as the organization creator and resolves no speaker at all', async () => {
-    await handle(makeAc(), ROUTE, MESSAGE, 'conn-1', 'group');
-
-    expect(principalUsed()).toBe('user-1');
-    expect(resolveSpeaker).not.toHaveBeenCalled();
-  });
-
-  it('runs no turn in a direct room whose speaker resolves to no Forge user', async () => {
-    resolveSpeaker.mockResolvedValue({
-      linked: false,
-      refusal: { code: 'SPEAKER_UNLINKED', message: 'unlinked' },
-    });
-
-    await handle(makeAc(), ROUTE, MESSAGE, 'conn-1', 'direct');
-
-    expect(runExternalChatTurn).not.toHaveBeenCalled();
-    expect(buildChatToolContext).not.toHaveBeenCalled();
-  });
-
-  it('replies to an unlinked direct speaker with the refusal and the step that links them', async () => {
-    resolveSpeaker.mockResolvedValue({
-      linked: false,
-      refusal: { code: 'SPEAKER_UNLINKED', message: 'unlinked' },
-    });
-
-    const ac = makeAc();
-    await handle(ac, ROUTE, MESSAGE, 'conn-1', 'direct');
-
-    const [rid, text] = ac.client.sendMessage.mock.calls[0] as [string, string];
-    expect(rid).toBe('room-1');
-    expect(text).toContain('link-yourself-here');
-  });
-
-  it('carries a non-unlinked refusal own message rather than rewording it', async () => {
-    resolveSpeaker.mockResolvedValue({
-      linked: false,
-      refusal: { code: 'SPEAKER_SOURCE_UNKNOWN', message: 'that channel is not one Forge knows' },
-    });
-
-    const ac = makeAc();
-    await handle(ac, ROUTE, MESSAGE, 'conn-1', 'direct');
-
-    const [, text] = ac.client.sendMessage.mock.calls[0] as [string, string];
-    expect(text).toBe('that channel is not one Forge knows');
-  });
-
-  it('screens a direct room reply with the same output guard a group reply gets', async () => {
-    resolveSpeaker.mockResolvedValue({ linked: true, userId: 'speaker-user-9' });
-
-    await handle(makeAc(), ROUTE, MESSAGE, 'conn-1', 'direct');
-
-    expect(screenRoomReply).toHaveBeenCalled();
-  });
-
-  it('tells a direct speaker the server address cannot be read as an identity', async () => {
-    const ac = { ...makeAc(), serverUrl: 'https://broken.example.co' };
-
-    await handle(ac, ROUTE, MESSAGE, 'conn-1', 'direct');
-
-    expect(runExternalChatTurn).not.toHaveBeenCalled();
-    const [, text] = ac.client.sendMessage.mock.calls[0] as [string, string];
-    expect(text).toContain('broken.example.co');
-  });
-
-  it('stores the shape and the resolved speaker on an escalation it raises', async () => {
-    resolveSpeaker.mockResolvedValue({ linked: true, userId: 'speaker-user-9' });
-    runExternalChatTurn.mockResolvedValue({
-      ...answered,
-      reply: '',
-      toolCalls: [{ name: 'escalate', arguments: '{"question":"why"}' }],
-    });
-    startEscalation.mockResolvedValue({ started: true, sessionId: 'esc-1' });
-
-    await handle(makeAc(), ROUTE, MESSAGE, 'conn-1', 'direct');
-
-    expect(startEscalation).toHaveBeenCalledWith(
-      expect.objectContaining({ shape: 'direct', principalUserId: 'speaker-user-9' }),
-    );
   });
 });
 

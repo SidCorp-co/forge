@@ -4,8 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 const dir = fileURLToPath(new URL('.', import.meta.url));
 
-// cm:guard there is no exception list and there must not become one: the Forge UI's own adapter
-// surface lives in `assistant/conversation-routes.ts` precisely so nothing here needs carving out.
+// cm:guard there is no exception list and there must not become one: the Forge UI's own adapter surface lives in `assistant/conversation-routes.ts` precisely so nothing here needs carving out.
 const TRANSPORT_WORDS = [
   'rocketchat',
   'RocketChat',
@@ -20,6 +19,36 @@ const TRANSPORT_WORDS = [
 
 function storeFiles(): string[] {
   return readdirSync(dir).filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'));
+}
+
+/** What an adapter may import from here: the contract it implements, and the turn it is a caller of. */
+const ADAPTER_FACING = ['ports.js', 'inbound-turn.js', 'turn-runner.js', 'transcript.js'];
+
+/**
+ * Who may reach the store from outside this directory, whole-tree and frozen.
+ */
+// cm:guard the integrations scan below catches a DIRECT import; this catches the way around it, which is a module outside integrations re-exporting or wrapping the store for an adapter to import instead — that intermediary has to appear here as a new name and be argued for. What neither catches is a wrapper somebody writes inside an already-listed file, and that is the honest limit of this gate rather than a gap to paper over (ISS-1002 review, F2).
+const STORE_READERS_OUTSIDE = [
+  'assistant/conversation-routes.ts',
+  'assistant/conversation-turn.ts',
+  'assistant/routes.ts',
+  'assistant/vision.ts',
+];
+
+function sourceFilesUnder(root: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    const full = `${root}${entry.name}`;
+    if (entry.isDirectory()) out.push(...sourceFilesUnder(`${full}/`));
+    else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.test.ts')) out.push(full);
+  }
+  return out;
+}
+
+function storeImportsIn(text: string): string[] {
+  return [...text.matchAll(/from '(?:\.\.\/)+conversations\/([A-Za-z0-9_.-]+)'/g)].map(
+    (m) => m[1] as string,
+  );
 }
 
 describe('the conversation store knows no transport', () => {
@@ -39,20 +68,30 @@ describe('the conversation store knows no transport', () => {
     expect(offences).toEqual([]);
   });
 
-  // cm:guard the OTHER direction, and the one criterion 35 is about: three named files in the
-  // Rocket.Chat tree reach the store — its ports, its inbound runtime, its escalation runtime.
-  // cm:why a FOURTH is the thing to stop: each of these is this transport's own runtime reaching its
-  // own room, and the day the list grows for any other reason is the day it stops meaning anything.
-  it('is reached from the Rocket.Chat tree by its three runtime files and nothing else', () => {
-    const rc = fileURLToPath(new URL('../integrations/rocketchat/', import.meta.url));
-    const reaching = readdirSync(rc)
-      .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'))
-      .filter((f) => /from '(\.\.\/)+conversations\//.test(readFileSync(`${rc}${f}`, 'utf8')));
-    expect(reaching.sort()).toEqual([
-      'connection-manager.ts',
-      'conversation-port.ts',
-      'escalation-bridge.ts',
-    ]);
+  // cm:guard the OTHER direction, and the one ISS-1001's criterion 35 was about: NO adapter tree reaches the store. This was three named Rocket.Chat files until the turn runner took the turn path out of that tree (ISS-1002); it is zero now and an exception list here is what would undo it.
+  // cm:guard the modules named below are the adapter CONTRACT and the neutral turn, which an adapter is meant to import — widening this set is how the store's own functions come back one re-export at a time, so a new name here needs the same argument the runner needed.
+  it('is reached from no adapter tree, anywhere under integrations', () => {
+    const root = fileURLToPath(new URL('../integrations/', import.meta.url));
+    const offences: string[] = [];
+    for (const file of sourceFilesUnder(root)) {
+      for (const imported of storeImportsIn(readFileSync(file, 'utf8'))) {
+        if (ADAPTER_FACING.includes(imported)) continue;
+        offences.push(`${file.slice(root.length)} imports conversations/${imported}`);
+      }
+    }
+    expect(offences.sort()).toEqual([]);
+  });
+
+  it('is reached from outside this directory only by the names frozen here', () => {
+    const src = fileURLToPath(new URL('../', import.meta.url));
+    const reaching = sourceFilesUnder(src)
+      .filter((f) => !f.startsWith(dir))
+      .filter((f) =>
+        /from '[^']*conversations\/(store|participants)\.js'/.test(readFileSync(f, 'utf8')),
+      )
+      .map((f) => f.slice(src.length))
+      .sort();
+    expect(reaching).toEqual(STORE_READERS_OUTSIDE);
   });
 
   it('imports nothing from the integrations tree', () => {

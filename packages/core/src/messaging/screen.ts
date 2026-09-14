@@ -13,7 +13,7 @@ import type {
   MessageRule,
   MessageVerdict,
 } from './contract.js';
-import { doorPolicy } from './doors.js';
+import { doorCell } from './doors.js';
 import { type MessageFacts, NO_FACTS } from './facts.js';
 
 export interface ScreenInput {
@@ -87,8 +87,7 @@ export function screenAtDoor(
   segments: readonly string[],
   facts?: MessageFacts,
 ): MessageVerdict {
-  const policy = doorPolicy(door);
-  const [audience, intent] = policy.cell.split(':') as [Audience, Intent];
+  const { audience, intent } = doorCell(door);
   return screenMessage(
     facts ? { audience, intent, segments, facts } : { audience, intent, segments },
   );
