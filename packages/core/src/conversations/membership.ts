@@ -23,9 +23,12 @@ export interface NamedProject {
   slug: string;
 }
 
+/**
+ * Somebody who could be put in a room, by the address that identifies them.
+ */
+// cm:guard NO display name on this row, and it is not an omission: `db/display-name-readers.test.ts` names this directory one by one as a place `users.display_name` may not be read, because the label is re-assignable and the address is not. What a person is CALLED is attached by the presentation module that answers the request, which is where a label belongs (ISS-1003, ISS-1011).
 export interface PersonCandidate {
   userId: string;
-  displayName: string | null;
   email: string;
 }
 
@@ -142,7 +145,6 @@ export async function addablePeople(
   const pool = await tx
     .selectDistinct({
       userId: users.id,
-      displayName: users.displayName,
       email: users.email,
     })
     .from(organizationMembers)
@@ -158,7 +160,7 @@ export async function addablePeople(
     }
     if (reaches) out.push(person);
   }
-  return out.sort((a, b) => (a.displayName ?? a.email).localeCompare(b.displayName ?? b.email));
+  return out.sort((a, b) => a.email.localeCompare(b.email));
 }
 
 /**

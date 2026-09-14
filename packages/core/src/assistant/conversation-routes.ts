@@ -44,6 +44,7 @@ import { fromPage, listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { readableConversation, writableConversation } from './conversation-access.js';
 import { conversationMemberRoutes } from './conversation-member-routes.js';
+import { withDisplayNames } from './conversation-people.js';
 import { sendWebConversationMessage } from './conversation-send.js';
 
 const READ_WINDOW = 200;
@@ -232,7 +233,14 @@ conversationRoutes.get(
     ]);
     // cm:guard the projects are NAMED here rather than left as ids for the client to resolve: the scope is derived, so a screen printing it has no list of its own to look them up in, and a banner reading "this room is about 2 projects" with two uuids under it says nothing a person can act on (ISS-1011 criteria 5, 30).
     const scopeProjects = await projectsNamed(scope);
-    return c.json({ ...conversation, scope, scopeProjects, participants, messages, windows });
+    return c.json({
+      ...conversation,
+      scope,
+      scopeProjects,
+      participants: await withDisplayNames(participants),
+      messages,
+      windows,
+    });
   },
 );
 

@@ -33,11 +33,6 @@ export interface ParticipantRow {
   externalKey: string | null;
   label: string | null;
   /**
-   * The name a screen prints for this participant, read LIVE from `users`.
-   */
-  // cm:guard resolved on every read rather than copied into `label` at the door, because a person's display name is theirs to change and a copy taken when they joined would show a room the name they had that day. `label` stays what the transport or the handle called them, which is a different question and the one the transcript's author rows are written against (ISS-1011 criterion 2).
-  displayName: string | null;
-  /**
    * Whether this handle can still act — it holds a live credential and the
    * authority its room's project needs.
    */
@@ -66,11 +61,8 @@ export async function listParticipants(
       label: conversationParticipants.label,
       liveTokens: live.n,
       memberRole: projectMembers.role,
-      userDisplayName: users.displayName,
-      userEmail: users.email,
     })
     .from(conversationParticipants)
-    .leftJoin(users, eq(users.id, conversationParticipants.userId))
     .leftJoin(live, eq(live.userId, conversationParticipants.userId))
     .leftJoin(
       projectMembers,
@@ -93,11 +85,6 @@ export async function listParticipants(
     projectId: row.projectId,
     externalKey: row.externalKey,
     label: row.label,
-    // cm:guard a HANDLE prints the name in the room — the address people type — and a PERSON prints the account's own display name, falling back to the address they sign in with and then to whatever their transport called them. A person with none of the three is a speaker Forge knows nothing about, which is a fact the roster states rather than a gap it fills with an id.
-    displayName:
-      row.kind === 'handle'
-        ? row.label
-        : (row.userDisplayName ?? row.userEmail ?? row.label ?? null),
     // cm:guard BOTH halves, because either alone leaves a handle that cannot act reading as if it could: a credential with no membership reaches nothing, and a membership with no credential has nothing to reach with. `revokeAgentAccount` removes both and `revokeAgentCredentials` removes only the first, so a reader testing one of them would call an agent reachable after one of the two revokes.
     reachable: row.kind === 'handle' ? (row.liveTokens ?? 0) > 0 && row.memberRole !== null : null,
   }));

@@ -35,6 +35,7 @@ import { db } from '../db/client.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { membershipConversation, readableConversation } from './conversation-access.js';
+import { namePeople, withDisplayNames } from './conversation-people.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 const projectQuerySchema = z.object({ projectId: z.uuid() }).strict();
@@ -55,7 +56,7 @@ conversationMemberRoutes.use('*', requireAuth(), assertEmailVerified());
 // cm:guard the SHAPE travels with it, because the room's readers are a different set for each and a screen that shows a roster without saying which rule reads it cannot tell a person what adding somebody will do. It is read back from the row rather than computed here, so a promotion that did not happen cannot be announced as one.
 export async function membershipOf(conversationId: string): Promise<{
   shape: string;
-  participants: Awaited<ReturnType<typeof listParticipants>>;
+  participants: Awaited<ReturnType<typeof withDisplayNames>>;
   scope: string[];
   scopeProjects: Awaited<ReturnType<typeof projectsNamed>>;
 }> {
@@ -66,7 +67,7 @@ export async function membershipOf(conversationId: string): Promise<{
   ]);
   return {
     shape: row?.shape ?? 'direct',
-    participants,
+    participants: await withDisplayNames(participants),
     scope,
     scopeProjects: await projectsNamed(scope),
   };
@@ -91,7 +92,7 @@ conversationMemberRoutes.get(
       addablePeople(null, scope),
       addableHandles(null, userId, scope),
     ]);
-    return c.json({ people, handles });
+    return c.json({ people: await namePeople(people), handles });
   },
 );
 
@@ -113,7 +114,7 @@ conversationMemberRoutes.get(
       addablePeople(id, scope),
       addableHandles(id, userId, scope),
     ]);
-    return c.json({ people, handles });
+    return c.json({ people: await namePeople(people), handles });
   },
 );
 
