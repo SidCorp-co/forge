@@ -12,6 +12,7 @@ import { organizationMembers, projectMembers, projects, users } from '../db/sche
 import { conversationParticipants, conversations } from '../db/schema-conversations.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
 import type { Executor } from './db-executor.js';
+import { handleNameForProject } from './handles.js';
 
 const badRequest = (message: string, code: string) =>
   new HTTPException(400, { message, cause: { code } });
@@ -29,7 +30,12 @@ export interface PersonCandidate {
 }
 
 export interface HandleCandidate {
-  userId: string;
+  /**
+   * The agent account, or null where this project has never needed one.
+   */
+  // cm:guard NULLABLE, because a project's handle is minted the first time a room needs it and not when the project is created: a candidate list built from `users` alone offers nothing for a project nobody has ever talked to, which is exactly the project somebody is now trying to bring into a room. The add resolves it, and `resolveProjectHandle` mints it there under the same lock it always has.
+  userId: string | null;
+  /** The address it answers to — the name it already has, or the one it will be given. */
   handle: string;
   project: NamedProject;
 }
@@ -169,38 +175,48 @@ export async function addableHandles(
   const orgIds = await orgsOfProjects(scope, tx);
   if (orgIds.length === 0) return [];
 
-  const rows = await tx
+  const candidateProjects = await tx
+    .select({ id: projects.id, name: projects.name, slug: projects.slug })
+    .from(projects)
+    .where(inArray(projects.orgId, orgIds));
+
+  const agents = await tx
     .selectDistinct({
       userId: users.id,
       handle: organizationMembers.handle,
-      projectId: projects.id,
-      projectName: projects.name,
-      projectSlug: projects.slug,
+      projectId: projectMembers.projectId,
     })
     .from(projectMembers)
     .innerJoin(users, eq(users.id, projectMembers.userId))
-    .innerJoin(projects, eq(projects.id, projectMembers.projectId))
     .innerJoin(organizationMembers, eq(organizationMembers.userId, users.id))
-    .where(and(inArray(projects.orgId, orgIds), eq(users.kind, 'agent')));
+    .where(
+      and(
+        inArray(
+          projectMembers.projectId,
+          candidateProjects.map((p) => p.id),
+        ),
+        eq(users.kind, 'agent'),
+      ),
+    );
 
-  const mayBring = new Map<string, boolean>();
   const out: HandleCandidate[] = [];
-  for (const row of rows) {
-    if (!row.handle || already.has(row.userId)) continue;
-    let held = mayBring.get(row.projectId);
-    if (held === undefined) {
-      const access = await effectiveProjectRole(actorUserId, row.projectId);
-      // cm:guard the SAME bar `addHandle` holds, read through the same helper: a candidate list
-      // built to a looser rule than the door is a list of agents the caller will be refused on.
-      held = projectRoleAtLeast(access?.role ?? null, 'member');
-      mayBring.set(row.projectId, held);
+  for (const project of candidateProjects) {
+    const access = await effectiveProjectRole(actorUserId, project.id);
+    // cm:guard the SAME bar `addHandle` holds, read through the same helper: a candidate list built to a looser rule than the door is a list of agents the caller will be refused on.
+    if (!projectRoleAtLeast(access?.role ?? null, 'member')) continue;
+
+    const mine = agents.filter((a) => a.projectId === project.id && a.handle);
+    if (mine.length === 0) {
+      // cm:guard a project with no agent yet is OFFERED under the name it will be given, rather than left out: leaving it out makes "which projects can this room be about" an answer about which projects happen to have been talked to before, which is not a rule anybody would state out loud.
+      if (!scope.includes(project.id)) {
+        out.push({ userId: null, handle: handleNameForProject(project.slug, project.id), project });
+      }
+      continue;
     }
-    if (!held) continue;
-    out.push({
-      userId: row.userId,
-      handle: row.handle,
-      project: { id: row.projectId, name: row.projectName, slug: row.projectSlug },
-    });
+    for (const agent of mine) {
+      if (already.has(agent.userId)) continue;
+      out.push({ userId: agent.userId, handle: agent.handle as string, project });
+    }
   }
   return out.sort((a, b) => a.handle.localeCompare(b.handle));
 }

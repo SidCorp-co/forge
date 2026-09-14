@@ -15,6 +15,7 @@ import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { resolveProjectHandle } from '../conversations/handles.js';
 import {
   addableHandles,
   addablePeople,
@@ -39,7 +40,8 @@ const idParamSchema = z.object({ id: z.uuid() });
 const projectQuerySchema = z.object({ projectId: z.uuid() }).strict();
 const removeParamSchema = z.object({ id: z.uuid(), participantId: z.uuid() });
 const addPersonSchema = z.object({ userId: z.uuid() }).strict();
-const addHandleSchema = z.object({ userId: z.uuid(), projectId: z.uuid() }).strict();
+// cm:guard the PROJECT is required and the agent is optional, which is the order the room's own rule runs in: a room is made about a project, and the agent that carries it is that project's handle. A project that has never been talked to has no handle yet, and refusing the add on that would make "which projects can this room be about" an answer about history rather than about access (ISS-1011).
+const addHandleSchema = z.object({ projectId: z.uuid(), userId: z.uuid().optional() }).strict();
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -153,10 +155,12 @@ conversationMemberRoutes.post(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const { userId: handleUserId, projectId } = c.req.valid('json');
+    const { userId, projectId } = c.req.valid('json');
     const actor = c.get('userId');
     await membershipConversation(id, actor);
     await db.transaction(async (tx) => {
+      // cm:guard the mint happens INSIDE the transaction the add is in, under the advisory lock `resolveProjectHandle` already takes: two people adding the same never-talked-to project to two rooms at once would otherwise mint that project two handles whose union is still one project, which nothing downstream would ever report.
+      const handleUserId = userId ?? (await resolveProjectHandle(tx, projectId)).userId;
       await addHandle({
         conversationId: id,
         handleUserId,

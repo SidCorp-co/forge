@@ -62,6 +62,12 @@ flowchart LR
   runner is reached only through its own revocable device token.
 - **A runner is a capability handle, not a machine.** A claim targets capabilities; concrete
   behaviour lives on the device.
+- **A room's membership is changeable, and its projects are not.** Who is in a room — people and
+  agents — is changed by somebody already in it who could write in it. What the room is ABOUT is
+  never chosen: it is the set of projects its live agents carry, so the only lever on it is which
+  agents are in the room. Adding an agent and adding a person are different acts with different
+  blast radius and may not share one control, and the agent one is confirmed because it cannot be
+  taken back: the agent is shown what was already said, and removing it later unreads none of it.
 - **Chat and pipeline jobs share the runner, not the entry.** Chat is a conversation with no issue
   status to advance; a job is one step of a run. Both exec through the same shared path, so a change
   there touches chat and schedules too.

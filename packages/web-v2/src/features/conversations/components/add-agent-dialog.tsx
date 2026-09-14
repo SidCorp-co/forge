@@ -26,7 +26,7 @@ export function AddAgentDialog({
   onClose,
 }: {
   conversationId: string;
-  room: Pick<ConversationMembership, "shape" | "scopeProjects" | "participants">;
+  room: Partial<Pick<ConversationMembership, "shape" | "scopeProjects" | "participants">>;
   open: boolean;
   onClose: () => void;
 }) {
@@ -59,9 +59,9 @@ export function AddAgentDialog({
         )}
 
         {add.isError && (
-          <Banner tone="danger" data-testid="add-agent-error">
-            {formatApiError(add.error)}
-          </Banner>
+          <div data-testid="add-agent-error" role="status">
+            <Banner tone="danger">{formatApiError(add.error)}</Banner>
+          </div>
         )}
 
         {picked && (
@@ -84,7 +84,7 @@ function Confirmation({
   room,
 }: {
   candidate: HandleCandidate;
-  room: Pick<ConversationMembership, "shape" | "scopeProjects" | "participants">;
+  room: Partial<Pick<ConversationMembership, "shape" | "scopeProjects" | "participants">>;
 }) {
   const claims = agentAdditionClaims({ candidate, room });
   return (

@@ -167,7 +167,7 @@ export function ConversationChat({
         <ReadOnlyComposerNote sticky={false} />
       )}
 
-      {roomQ.data && resolvedId && (
+      {roomQ.data?.participants && resolvedId && (
         <ConversationMembers
           conversationId={resolvedId}
           room={roomQ.data}

@@ -18,6 +18,7 @@ import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { resolveProjectHandle } from '../conversations/handles.js';
 import {
   assertPersonReachesScope,
   projectsNamed,
@@ -71,7 +72,7 @@ const createSchema = z
     people: z.array(z.uuid()).max(50).optional(),
     /** Agents to open the room with, beside the opening project's own. */
     handles: z
-      .array(z.object({ userId: z.uuid(), projectId: z.uuid() }).strict())
+      .array(z.object({ projectId: z.uuid(), userId: z.uuid().optional() }).strict())
       .max(20)
       .optional(),
   })
@@ -197,7 +198,7 @@ conversationRoutes.post(
       await db.transaction(async (tx) => {
         await addHandle({
           conversationId: conversation.id,
-          handleUserId: handle.userId,
+          handleUserId: handle.userId ?? (await resolveProjectHandle(tx, handle.projectId)).userId,
           projectId: handle.projectId,
           actorUserId: userId,
           tx,

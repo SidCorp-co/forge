@@ -114,6 +114,37 @@
 
 ### Added
 
+- **You can now change who is in a conversation: add a colleague, add an agent, or take either one
+  out.** Until now a room was whoever it was born with — on staging, all 74 of them were one person
+  and one project's agent, every one opened by a message arriving rather than by anybody choosing.
+  Open a room and there is now a list of everyone in it, with the project each agent brings, and two
+  separate ways to add somebody: one for a colleague, one for an agent. They are separate on purpose.
+  Adding a colleague changes who can read the room. Adding an agent changes what the room can see,
+  which is a much bigger thing, and it is confirmed before it happens.
+
+  That confirmation says three things, and all three are true of what actually happens. The agent is
+  shown what has already been said in the room, not only what is said after it joins — it reads the
+  recent part of the room rather than the whole of it. Taking it out later stops it reading from that
+  moment and unreads nothing. Anything it said stays in the room, where everybody present has already
+  seen it. What the confirmation will never say is that you can take the agent out again to undo the
+  addition, because that is not true, and a false reassurance in front of something irreversible is
+  worse than no warning at all.
+
+  A room's projects are still read from the agents in it and are still not something anybody picks:
+  every screen showing them says where they came from, and there is no picker anywhere. A room that
+  ends up about two projects says so in a standing notice that you can collapse but not dismiss, and
+  its message box closes with the reason — a message is answered under exactly one project — and the
+  way out, which is to take one of its agents out again.
+
+  Two members a room will not let go of, each refusing with the reason and what to do instead: its
+  last agent, because a room about no project is readable by nobody, and the last person of a
+  one-to-one room, for the same reason from the other side.
+
+- **You can start a conversation with more than two people in it.** Pick a project, choose the
+  colleagues and the agents it opens with, and the room exists holding all of them before anybody
+  says anything. Rooms that open themselves when a message arrives keep working exactly as they did;
+  this is a second way in, not a replacement.
+
 - **An issue can now say what it still owes and who owes it, as fields rather than as a sentence
   somebody has to find.** An issue accumulated everything and surfaced nothing: an issue closed
   having landed one of the five things it named read exactly like one that landed all five, because

@@ -24,7 +24,7 @@ export function AddPersonDialog({
   onClose,
 }: {
   conversationId: string;
-  room: Pick<ConversationMembership, "shape" | "scopeProjects">;
+  room: Partial<Pick<ConversationMembership, "shape" | "scopeProjects">>;
   open: boolean;
   onClose: () => void;
 }) {
@@ -54,9 +54,9 @@ export function AddPersonDialog({
         )}
 
         {add.isError && (
-          <Banner tone="danger" data-testid="add-person-error">
-            {formatApiError(add.error)}
-          </Banner>
+          <div data-testid="add-person-error" role="status">
+            <Banner tone="danger">{formatApiError(add.error)}</Banner>
+          </div>
         )}
 
         {picked && (
@@ -79,7 +79,7 @@ function Confirmation({
   room,
 }: {
   person: PersonCandidate;
-  room: Pick<ConversationMembership, "shape" | "scopeProjects">;
+  room: Partial<Pick<ConversationMembership, "shape" | "scopeProjects">>;
 }) {
   const claims = personAdditionClaims({ name: nameOf(person), room });
   return (

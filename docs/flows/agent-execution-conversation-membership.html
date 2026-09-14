@@ -1,0 +1,179 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="flow-module" content="agent-execution">
+<meta name="flow-answers" content="Who may change who is in a room, why adding an agent and adding a colleague are different acts, what a room can see once an agent joins and what removing it later does not take back, where a room's projects come from and why nobody chooses them, why a room about two projects takes no messages, and which two members a room may never lose">
+<title>Flow &middot; changing who is in a room</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; --warn:#a06a1f; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .bad { color:var(--bad); font-weight:600; }
+  .warn { color:var(--warn); font-weight:600; }
+  .ok { color:var(--acc); font-weight:600; }
+  .figure { overflow-x:auto; }
+  svg { background:#fff; border:1px solid var(--line); border-radius:4px; display:block; max-width:100%; }
+  text { font:12px ui-sans-serif,system-ui,sans-serif; fill:var(--fg); }
+  text.m { font-size:11px; fill:var(--mut); }
+  text.t { font:600 12px ui-sans-serif,system-ui,sans-serif; }
+  .box { fill:#fff; stroke:var(--line); }
+  .person { fill:#f4f6fb; stroke:#c6cfe2; }
+  .agent { fill:#fdf1ea; stroke:#e9bda4; }
+  .stop { fill:#fbeef1; stroke:#e2bcc7; }
+  .arrow { stroke:#1c1a17; stroke-width:1.2; fill:none; marker-end:url(#a); }
+  .foot { color:var(--mut); font-size:13px; margin-top:2.5rem; border-top:1px solid var(--line); padding-top:1rem; }
+</style>
+<main>
+
+<h1>Changing who is in a room</h1>
+<p class="sub">A room used to be whatever opened it. Measured on staging on 2026-09-14, all 74 rooms
+were one person and one project's agent, every one of them opened by a message arriving rather than
+by anybody choosing. A person could talk, and could do nothing at all about who was listening. This
+is what they can do now, and what each act costs — because two of these acts cannot be taken back,
+and the screen has to say so before it does them rather than after.</p>
+
+<div class="rule"><strong>A room's projects are read from the agents in it. Nobody chooses them.</strong>
+No screen offers a picker, because there is nothing to pick: the room is about whatever its agents
+are about, and the only way to change that is to change which agents are in it. Every screen that
+prints the set says where it was read from, so a person who wants a different answer knows which
+lever to reach for.</div>
+
+<h2>The two acts, and what each one changes</h2>
+<div class="figure">
+<svg viewBox="0 0 960 300" role="img" aria-label="Two paths from one room: adding a person widens who reads it, adding an agent widens what it can see and cannot be taken back">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1c1a17"/>
+    </marker>
+  </defs>
+
+  <rect class="box" x="20" y="110" width="180" height="70" rx="5"/>
+  <text class="t" x="34" y="136">a room</text>
+  <text class="m" x="34" y="154">the people in it,</text>
+  <text class="m" x="34" y="169">and the agents it is about</text>
+
+  <rect class="person" x="330" y="20" width="250" height="80" rx="5"/>
+  <text class="t" x="344" y="46">add a colleague</text>
+  <text class="m" x="344" y="64">changes WHO READS the room</text>
+  <text class="m" x="344" y="80">reversible: take them out and</text>
+  <text class="m" x="344" y="94">they stop reading from then on</text>
+
+  <rect class="agent" x="330" y="180" width="250" height="100" rx="5"/>
+  <text class="t" x="344" y="206">add an agent</text>
+  <text class="m" x="344" y="224">changes WHAT THE ROOM CAN SEE</text>
+  <text class="m" x="344" y="240">it is shown what was already said</text>
+  <text class="m" x="344" y="256">taking it out later unreads none</text>
+  <text class="m" x="344" y="272">of it, and unsays none of its replies</text>
+
+  <rect class="box" x="700" y="20" width="240" height="80" rx="5"/>
+  <text class="t" x="714" y="46">the room's projects</text>
+  <text class="m" x="714" y="64">unchanged — a colleague</text>
+  <text class="m" x="714" y="80">carries no project with them</text>
+
+  <rect class="stop" x="700" y="180" width="240" height="100" rx="5"/>
+  <text class="t" x="714" y="206">the room's projects</text>
+  <text class="m" x="714" y="224">gain the agent's own</text>
+  <text class="m" x="714" y="240">about two? then no message</text>
+  <text class="m" x="714" y="256">can be sent from Forge until</text>
+  <text class="m" x="714" y="272">one of them is taken out</text>
+
+  <path class="arrow" d="M200,130 L330,70"/>
+  <path class="arrow" d="M200,160 L330,215"/>
+  <path class="arrow" d="M580,60 L700,60"/>
+  <path class="arrow" d="M580,230 L700,230"/>
+</svg>
+</div>
+
+<div class="rule"><strong>They may not share one control.</strong> One list holding both makes a
+change to what the room can see look like an invitation. They are two buttons, two dialogues and two
+different sentences, and in the list of members afterwards an agent and a person are told apart at a
+glance rather than on inspection — different outline, different fill, different mark. The bar for
+"at a glance" is the <span class="ok">3:1</span> non-text contrast ratio, which is a number rather
+than an opinion.</div>
+
+<h2>What the confirmation has to say, and what it may never say</h2>
+<p>Adding an agent to a room that is already talking is not undone by removing it later. The
+confirmation says three things that are all true of what actually happens, and is forbidden one
+thing that is not:</p>
+<table>
+  <tr><th>It says</th><th>Because</th></tr>
+  <tr>
+    <td>the agent is shown what has already been said here, not only what is said after it joins</td>
+    <td>a turn reads its room back with no regard for when anybody joined it. There is no join-time
+        cut anywhere: the newest part of the room goes to the model whoever is in it.</td>
+  </tr>
+  <tr>
+    <td>it reads the recent part of the room, not the whole of it</td>
+    <td>what reaches the model is bounded by a window over the stored room, so a long room is not
+        disclosed end to end. Saying "everything" would be the opposite error to saying "nothing".</td>
+  </tr>
+  <tr>
+    <td>removing it later stops it reading from that moment, and unreads nothing</td>
+    <td>the reading already happened, and the replies it made are in the room where everybody
+        present has already seen them.</td>
+  </tr>
+  <tr>
+    <td class="bad">never: "you can take it out again to undo this"</td>
+    <td>that sentence is false, and a false reassurance in front of an irreversible act is worse
+        than no confirmation at all.</td>
+  </tr>
+</table>
+
+<h2>Who may change a membership</h2>
+<div class="rule"><strong>Somebody already in the room, who could write in it.</strong> Two different
+questions, and both are asked. Being able to <em>read</em> a room is not permission to change who
+else can: a room shared across a project is readable by everyone holding a role on that project, and
+if reading were the bar any of them could quietly widen what it can see. So the person doing it must
+hold at least a working role on every project the room is about <em>and</em> be one of its own
+people.</div>
+<p>A room whose people were never recorded — a channel room, where the conversation lives somewhere
+else and Forge only mirrors it — therefore has no membership anybody can change from here. That is
+the honest answer rather than a gap: who is in that room is decided where that room lives, and
+writing a membership here that the channel will never show would be a list that lies.</p>
+
+<h2>The two members a room may never lose</h2>
+<table>
+  <tr><th>Refused</th><th>Because</th><th>What to do instead</th></tr>
+  <tr>
+    <td>the last agent</td>
+    <td>a room with none is about no project, and a room about no project is readable by nobody —
+        including whoever just emptied it.</td>
+    <td>put another agent in first, or delete the room.</td>
+  </tr>
+  <tr>
+    <td>the last person of a one-to-one room</td>
+    <td>such a room is read by the people in it, so taking the last one out has exactly the same
+        effect from the other side.</td>
+    <td>add another person first, or delete the room.</td>
+  </tr>
+</table>
+<p>Both refusals name the reason and the way out, because a refusal that says only "no" leaves the
+person holding a room they cannot fix.</p>
+
+<h2>What did not change</h2>
+<p>A room opened by an arriving message still opens, is still answered in, and still appears in the
+list exactly as before. This is a second way in and not a replacement: the channels open rooms the
+way they always have, and what is new is that a person can now open one deliberately and say who is
+in it before anybody says anything.</p>
+
+<p class="foot">Where this lives:
+<code>packages/core/src/conversations/participants.ts</code> (the doors),
+<code>packages/core/src/conversations/membership.ts</code> (who may be added, and the room's shape),
+<code>packages/core/src/conversations/scope.ts</code> (the derivation, and the read rules),
+<code>packages/core/src/assistant/conversation-access.ts</code> (the three different checks),
+<code>packages/core/src/assistant/conversation-member-routes.ts</code> (the surface),
+<code>packages/web-v2/src/features/conversations/membership.ts</code> (the sentences),
+<code>packages/web-v2/src/features/conversations/components/</code> (the screens).
+The claims in the confirmation are judged in
+<code>packages/core/tests/integration/conversation-prejoin-history-e2e.test.ts</code>.
+ISS-1011, on ISS-1001's design and ISS-1003's scope column.</p>
+
+</main>

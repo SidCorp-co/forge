@@ -25,7 +25,7 @@ export function ConversationMembers({
   onClose,
 }: {
   conversationId: string;
-  room: ConversationMembership;
+  room: Partial<ConversationMembership>;
   /** False for a reader who may look at the room but not change who is in it. */
   canChange: boolean;
   open: boolean;
@@ -48,9 +48,9 @@ export function ConversationMembers({
           </p>
 
           {remove.isError && (
-            <Banner tone="danger" data-testid="members-remove-error">
-              {formatApiError(remove.error)}
-            </Banner>
+            <div data-testid="members-remove-error" role="status">
+              <Banner tone="danger">{formatApiError(remove.error)}</Banner>
+            </div>
           )}
 
           <Section
@@ -154,14 +154,14 @@ function MemberRow({
   onRemove,
 }: {
   member: ConversationParticipant;
-  room: ConversationMembership;
+  room: Partial<ConversationMembership>;
   canChange: boolean;
   busy: boolean;
   onRemove: () => void;
 }) {
   // cm:guard an agent that cannot act is REPORTED below and never hidden, which is the rule the participant row already carries: a revoked agent still sits in the room and the room stays readable around it, and a roster that dropped it would make a silent room look like an empty one (ISS-1003).
   const isAgent = member.kind === "handle";
-  const project = room.scopeProjects.find((p) => p.id === member.projectId);
+  const project = (room.scopeProjects ?? []).find((p) => p.id === member.projectId);
   return (
     <div
       data-testid={isAgent ? "member-row-agent" : "member-row-person"}
@@ -172,9 +172,13 @@ function MemberRow({
       }`}
     >
       {isAgent ? (
-        <Icon name="agent" size={15} className="flex-none text-[color:var(--accent-text)]" />
+        <span data-testid="member-mark-agent" className="flex-none">
+          <Icon name="agent" size={15} className="text-[color:var(--accent-text)]" />
+        </span>
       ) : (
-        <Avatar initials={initialsOf(member.displayName ?? "?")} size={20} />
+        <span data-testid="member-mark-person" className="flex-none">
+          <Avatar initials={initialsOf(member.displayName ?? "?")} size={20} />
+        </span>
       )}
       <div className="min-w-0 flex-1">
         <span className={`fg-body-sm block truncate ${isAgent ? "font-mono" : ""}`}>

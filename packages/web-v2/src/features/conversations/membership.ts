@@ -38,8 +38,9 @@ export type ClaimKey =
   | "person-can-read"
   | "person-already-could";
 
-const list = (projects: readonly ConversationProject[]): string => {
-  const names = projects.map((p) => p.name);
+// cm:guard tolerant of an ABSENT list and not merely an empty one, which is the same rule `composerRefusal` states below: these fields arrive from the room's own answer, and a tab open across the deploy of the half that added them holds a payload without them. Every sentence built from an absent list says "no project", which is true of what the client knows.
+const list = (projects: readonly ConversationProject[] | undefined): string => {
+  const names = (projects ?? []).map((p) => p.name);
   if (names.length === 0) return "no project";
   if (names.length === 1) return names[0] as string;
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
@@ -53,18 +54,20 @@ export function initialsOf(name: string): string {
 }
 
 /** Where a room's projects come from, said as the derivation it is. */
-export function scopeDerivation(room: Pick<ConversationMembership, "scopeProjects">): string {
+export function scopeDerivation(
+  room: Partial<Pick<ConversationMembership, "scopeProjects">>,
+): string {
   return `Read from the agents in this room — ${list(room.scopeProjects)}. Nobody chooses it.`;
 }
 
 /** The live agents in a room. */
-export function agentsOf(room: Pick<ConversationMembership, "participants">) {
-  return room.participants.filter((p) => p.kind === "handle");
+export function agentsOf(room: Partial<Pick<ConversationMembership, "participants">>) {
+  return (room.participants ?? []).filter((p) => p.kind === "handle");
 }
 
 /** The live people in a room. */
-export function peopleOf(room: Pick<ConversationMembership, "participants">) {
-  return room.participants.filter((p) => p.kind === "person");
+export function peopleOf(room: Partial<Pick<ConversationMembership, "participants">>) {
+  return (room.participants ?? []).filter((p) => p.kind === "person");
 }
 
 /**
@@ -73,12 +76,13 @@ export function peopleOf(room: Pick<ConversationMembership, "participants">) {
 // cm:guard the first three are UNCONDITIONAL and are the ones the issue calls the confirmation that must be true: what the agent will read, what removing it does not take back, and what it leaves behind. The last three are conditional because they describe changes that may not happen — a project already in scope widens nothing, and a room already shared cannot be widened again.
 export function agentAdditionClaims(args: {
   candidate: HandleCandidate;
-  room: Pick<ConversationMembership, "shape" | "scopeProjects" | "participants">;
+  room: Partial<Pick<ConversationMembership, "shape" | "scopeProjects" | "participants">>;
 }): MembershipClaim[] {
   const { candidate, room } = args;
   const at = `@${candidate.handle}`;
-  const isNewProject = !room.scopeProjects.some((p) => p.id === candidate.project.id);
-  const after = isNewProject ? [...room.scopeProjects, candidate.project] : room.scopeProjects;
+  const scoped = room.scopeProjects ?? [];
+  const isNewProject = !scoped.some((p) => p.id === candidate.project.id);
+  const after = isNewProject ? [...scoped, candidate.project] : scoped;
   const becomesShared = room.shape === "direct" && agentsOf(room).length >= 1;
 
   const claims: MembershipClaim[] = [
@@ -123,7 +127,7 @@ export function agentAdditionClaims(args: {
 // cm:guard a GROUP room is told the truth rather than the reassuring version: everyone holding a role on its projects can already open it, so adding somebody lists them and changes nobody's access. Saying "they will now be able to read this" there would be a claim the code does not make.
 export function personAdditionClaims(args: {
   name: string;
-  room: Pick<ConversationMembership, "shape" | "scopeProjects">;
+  room: Partial<Pick<ConversationMembership, "shape" | "scopeProjects">>;
 }): MembershipClaim[] {
   const { name, room } = args;
   if (room.shape === "direct") {
@@ -145,7 +149,7 @@ export function personAdditionClaims(args: {
 /** What taking this member out does. */
 export function removalClaim(
   participant: ConversationParticipant,
-  room: Pick<ConversationMembership, "scopeProjects" | "participants">,
+  room: Partial<Pick<ConversationMembership, "scopeProjects" | "participants">>,
 ): string {
   if (participant.kind !== "handle") {
     return `${participant.displayName ?? "This person"} will no longer be listed in this room.`;
@@ -153,7 +157,7 @@ export function removalClaim(
   const rest = agentsOf(room)
     .filter((p) => p.id !== participant.id)
     .map((p) => p.projectId);
-  const after = room.scopeProjects.filter((p) => rest.includes(p.id));
+  const after = (room.scopeProjects ?? []).filter((p) => rest.includes(p.id));
   return `This room will then be about ${list(after)}. What @${participant.label ?? "this agent"} has already read and already said stays as it is.`;
 }
 
@@ -162,9 +166,10 @@ export function removalClaim(
  */
 // cm:guard it answers NULL for a room that can be spoken in, so the composer has one thing to test rather than a boolean beside a string that can disagree with it. The reason is the same refusal the server makes by name, said before the person types rather than after they press enter (ISS-1011 criterion 33).
 export function composerRefusal(
-  room: Pick<ConversationMembership, "scopeProjects">,
+  room: Partial<Pick<ConversationMembership, "scopeProjects">>,
 ): { reason: string; wayOut: string } | null {
-  if (room.scopeProjects.length <= 1) return null;
+  // cm:guard a room whose answer carried NO scope claims nothing, rather than claiming the room is about one project: the field arrives from `/api/conversations/:id`, and a tab left open across a deploy of the half that added it holds a payload without it. Saying nothing leaves the room behaving as it did before this change; inventing a scope would close a composer over a guess.
+  if (!room.scopeProjects || room.scopeProjects.length <= 1) return null;
   return {
     reason: `This room is about ${list(room.scopeProjects)}, and a message is answered under exactly one project.`,
     wayOut: "Take one of its agents out, and the room can be spoken in again.",

@@ -15,13 +15,15 @@ import type { ConversationMembership } from "../types";
 export function ScopeNotice({
   room,
 }: {
-  room: Pick<ConversationMembership, "scopeProjects">;
+  room: Partial<Pick<ConversationMembership, "scopeProjects">>;
 }) {
   const [open, setOpen] = useState(true);
   const refusal = composerRefusal(room);
-  if (room.scopeProjects.length === 0) return null;
+  // cm:guard an answer carrying no scope renders NOTHING, for the reason `composerRefusal` gives: a tab open across the deploy of the half that added the field holds a payload without it, and a notice built from an absent list would name projects nobody put in the room.
+  const scopeProjects = room.scopeProjects ?? [];
+  if (scopeProjects.length === 0) return null;
 
-  const spans = room.scopeProjects.length > 1;
+  const spans = scopeProjects.length > 1;
   // cm:guard a one-project room shows the derivation as a quiet line and a multi-project room shows the standing condition, and neither of them is dismissible: what a room is about is a fact about the room, and a notice a person can make vanish is a fact the next reader will not have (ISS-1011 criteria 30, 32).
   return (
     <div
@@ -44,15 +46,13 @@ export function ScopeNotice({
         />
         <span className="fg-caption truncate text-muted">
           {spans
-            ? `About ${room.scopeProjects.length} projects: ${room.scopeProjects
-                .map((p) => p.name)
-                .join(", ")}`
-            : `About ${room.scopeProjects[0]?.name}`}
+            ? `About ${scopeProjects.length} projects: ${scopeProjects.map((p) => p.name).join(", ")}`
+            : `About ${scopeProjects[0]?.name}`}
         </span>
       </button>
       {open && (
         <div className="forge-fade mt-1.5 pl-[21px]">
-          <p className="fg-caption text-subtle">{scopeDerivation(room)}</p>
+          <p className="fg-caption text-subtle">{scopeDerivation({ scopeProjects })}</p>
           {refusal && (
             <p className="fg-caption mt-1 text-muted" data-testid="scope-notice-refusal">
               {refusal.reason} {refusal.wayOut}

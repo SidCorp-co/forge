@@ -123,7 +123,7 @@ describe("ConversationChat · the first message of a draft", () => {
     });
 
     await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
-    expect(open).toHaveBeenCalledWith("p1", undefined);
+    expect(open).toHaveBeenCalledWith({ projectId: "p1" });
     expect(send.mock.calls[0]?.[0]).toBe("c1");
   });
 
