@@ -161,6 +161,17 @@
   attempt asks you the question instead of padding around it. Nothing about what you can file
   changed, and an issue filed this way still arrives as a draft for a person to open.
 
+- **A chat reply that claims a write the server refused is now detected and recorded.** Measured on
+  2026-09-04: the assistant asked to move an issue to `open`, the write was refused because a chat
+  turn may not set a dispatching status, and the reply said the issue "has been set to open" over a
+  row still at `draft`. The refusal reached the model as an ordinary tool message and nothing
+  compared it to what was said next. A turn's reply is now read against the turn's own results, and
+  one that claims a write its results refused is written to the log naming the call it contradicts.
+  Nothing is blocked or rewritten: the reply goes out unchanged, because a detector that silences an
+  answer on its first day cannot be told from one that silences correct answers. The chat log
+  already stores every reply beside its tool calls, so the warnings can be measured against turns
+  already recorded before deciding whether a refusal is earned.
+
 - **An agent now has a name you can read, an address you can type, and a credential that says it is
   the one speaking.** Settings → Agents lists every agent account in your organization, says
   plainly whether each one can act, and lets an org admin give a credential to an agent that

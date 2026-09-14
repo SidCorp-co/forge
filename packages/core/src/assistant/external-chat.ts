@@ -20,6 +20,7 @@ import {
   type ProjectProgress,
 } from '../issues/progress.js';
 import { logger } from '../logger.js';
+import { detectStateConfab } from './confab.js';
 import { PROVIDER_HISTORY_WINDOW } from './context-budget.js';
 import {
   appendAssistantMessage,
@@ -192,6 +193,15 @@ export async function runExternalChatTurn(
     logger.warn(
       { conversationId: turn?.conversationId ?? null, elided: result.elided },
       'chat: request exceeds the context budget even after elision',
+    );
+  }
+
+  // cm:guard LOG-ONLY and after the reply is built, never before: the probe's false-positive rate is unmeasured, and a detector that silences an answer on its first day cannot be told from one that silences correct answers. `chat_logs` writes `reply` beside `tool_calls` a few lines below, so what this warn opens is the window that decides whether a refusal is earned (ISS-1008).
+  const confab = detectStateConfab(result.finalText, result.toolCalls);
+  if (confab.suspected) {
+    logger.warn(
+      { conversationId: turn?.conversationId ?? null, claims: confab.claims },
+      'chat: the reply claims a write this turn\'s own tool result refused',
     );
   }
 
