@@ -170,6 +170,39 @@
   halfway through leaves the work findable by whatever picks it up next; two servers cannot both
   answer the same thing; and a reply that was handed over and never confirmed is reported as exactly
   that rather than sent again.
+- **The gate stops paying for a compile it already did, and stops claiming the repo is broken when it
+  simply has not been built.** Two separate faults, both measured on 2026-09-14. `pnpm typecheck` and
+  `pnpm build` are different compilations — one reads the tests, the other emits — and both wrote the
+  same incremental cache file, so each destroyed the other's: a typecheck a second after a build cost
+  40s where a warm one costs under 5. They have their own caches now. Separately, `archmap` resolves
+  TypeScript module edges but did not declare that it needs the workspace built, so in a fresh
+  checkout every edge through `@forge/observability` came back unresolvable — 205 against a ceiling of
+  200 where a built tree reports 171 — and the conformance audit announced that the repository does
+  not meet the profile it claims. It does; the workspace was unbuilt. Both now say so and name the
+  command that fixes it, which is what the rest of the gate already did.
+
+- **An issue you ask the assistant to file is now held to the same shape as one you file by hand.**
+  Ask in chat for an issue and you would get one — but nothing read the body you got. The terminal
+  refuses a filing that names no category, or leaves out what happened, or why it happens, or what
+  is true once it is fixed, or what is out of scope; the assistant refused none of that. It asked
+  only that the description reach two hundred characters, which a model clears by writing more
+  words rather than by finding out more: asked to file "login broken", it produced a bug report
+  with an invented scope section and a line admitting the reproduction steps had not been provided.
+  A chat filing is now read against the sections its category owes, and a body missing one comes
+  back naming the section, what was looked for and the one thing that clears it — so the next
+  attempt asks you the question instead of padding around it. Nothing about what you can file
+  changed, and an issue filed this way still arrives as a draft for a person to open.
+
+- **A chat reply that claims a write the server refused is now detected and recorded.** Measured on
+  2026-09-04: the assistant asked to move an issue to `open`, the write was refused because a chat
+  turn may not set a dispatching status, and the reply said the issue "has been set to open" over a
+  row still at `draft`. The refusal reached the model as an ordinary tool message and nothing
+  compared it to what was said next. A turn's reply is now read against the turn's own results, and
+  one that claims a write its results refused is written to the log naming the call it contradicts.
+  Nothing is blocked or rewritten: the reply goes out unchanged, because a detector that silences an
+  answer on its first day cannot be told from one that silences correct answers. The chat log
+  already stores every reply beside its tool calls, so the warnings can be measured against turns
+  already recorded before deciding whether a refusal is earned.
 
 - **An agent now has a name you can read, an address you can type, and a credential that says it is
   the one speaking.** Settings → Agents lists every agent account in your organization, says

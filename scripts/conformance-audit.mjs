@@ -213,7 +213,7 @@ function unresolvableEdges() {
   const declared = manifest?.checkers?.archmap?.maxUnresolvableEdges;
   if (typeof declared !== 'number') return { declared: null };
   // cm:guard preflight before the spawn. archmap without its dependencies prints `scope matched no files`, and that sentence is about the SCOPE — it reads as a repo whose graph resolves to nothing, which is precisely the catastrophe this rule was written to detect. The two are indistinguishable downstream, so the absence has to be caught before archmap gets to speak.
-  const missing = absentPrerequisites(ROOT, ['deps']);
+  const missing = absentPrerequisites(ROOT, ['deps', 'observability-build']);
   if (missing.length > 0) return { declared, blocked: remedyLines(missing)[0] };
   const r = spawnSync(at('.forge/archmap/archmap'), ['check', '--stats'], {
     cwd: ROOT,
