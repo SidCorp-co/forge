@@ -110,6 +110,24 @@ describe('two writers opening the same unseen venue', () => {
     expect(live.filter((p) => p.kind === 'handle')).toHaveLength(1);
   });
 
+  /**
+   * Wait until some connection is blocked on a lock, and not merely slow.
+   */
+  // cm:guard it reads `pg_stat_activity` rather than sleeping, because a duration is a guess that a busy runner falsifies in both directions: too short and the conflict path is never entered, too long and the test pays for it on every run.
+  // cm:guard it matches the STATEMENT and not the venue key, because drizzle sends the key as a bind parameter and `pg_stat_activity.query` holds the text with `$1` in its place — a LIKE on the key never matches and the wait becomes a hang.
+  async function blockedOnConversationInsert(within = 10_000): Promise<boolean> {
+    const until = Date.now() + within;
+    while (Date.now() < until) {
+      const rows = await harness.db.execute(
+        sql`SELECT count(*)::int AS n FROM pg_stat_activity
+            WHERE wait_event_type = 'Lock' AND query ILIKE '%insert into "conversations"%'`,
+      );
+      if ((rows[0] as unknown as { n: number }).n > 0) return true;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    return false;
+  }
+
   // cm:guard the loser's branch is forced rather than hoped for: a third connection holds the row uncommitted, so the writer under test MUST take the `DO NOTHING` path and re-read.
   it('takes the conflict path and re-reads rather than trusting an empty return', async () => {
     const key = `chat.example.co ${randomUUID()}`;
@@ -130,6 +148,10 @@ describe('two writers opening the same unseen venue', () => {
     const held = new Promise<void>((resolve) => {
       release = resolve;
     });
+    let planting: () => void = () => {};
+    const plantedRow = new Promise<void>((resolve) => {
+      planting = resolve;
+    });
     const blocking = blocker.begin(async (tx) => {
       await tx.unsafe(
         `INSERT INTO conversations (id, adapter, external_id, shape) VALUES ($1, 'rocketchat', $2, 'group')`,
@@ -139,15 +161,20 @@ describe('two writers opening the same unseen venue', () => {
         `INSERT INTO conversation_participants (conversation_id, kind, user_id, project_id) VALUES ($1, 'handle', $2, $3)`,
         [planted, handleUserId as string, handleProjectId as string],
       );
+      planting();
       await held;
     });
 
+    // cm:guard the opener does not start until the planted row is actually IN the blocker's transaction, and this was a 250ms sleep: on a loaded runner the opener won it, committed its own row first, and the planted INSERT — which is raw and has no `ON CONFLICT` — died on `conversations_venue_unique` as an unhandled rejection. The test then reported the loser's branch as broken when what had failed was its own scaffolding (measured on CI 2026-09-14).
+    await plantedRow;
     const a = independent();
     const opening = store.openConversation(venue(key), { db: a as never });
-    // cm:why the pause lets the opener reach its insert and block on the unique index before release.
-    await new Promise((r) => setTimeout(r, 250));
+    // cm:guard the release waits for the opener to be BLOCKED ON THE LOCK rather than for a duration, which is what makes "the loser's branch is forced" a fact: released early the opener's pre-read finds the committed row and the conflict path is never taken, so the assertion passes over the case it exists for.
+    const forced = await blockedOnConversationInsert();
     release();
     await blocking;
+    // cm:guard asserted rather than assumed: released before the opener reached its insert, the pre-read finds the committed row and the conflict path is never entered, so the assertion below would pass over the case this test exists for.
+    expect(forced).toBe(true);
 
     const opened = await opening;
     expect(opened.id).toBe(planted);
