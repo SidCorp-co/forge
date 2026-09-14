@@ -131,9 +131,10 @@ export async function gatherFacts(input: GatherInput): Promise<MessageFacts> {
     ? await issueRowsFor(input.projectId, cited(input.segments, prefixes), tx)
     : { rows: new Map<number, IssueRow>(), ids: new Set<string>(), failed: false };
 
+  // cm:guard `tx` reaches the progress read too, and not only the two above it. A caller that supplied an executor is inside a transaction holding one of ten pooled connections, and a read here on the pool would have it wait for a second — the deadlock `loadStageContext` names (ISS-981). No cell needing progress is screened inside a transaction TODAY, which is exactly why this was missed; the executor's contract is what must hold, not the current call graph.
   const progress = needs.has('progress')
     ? input.progress === 'compute'
-      ? await computeProjectProgress(input.projectId)
+      ? await computeProjectProgress(input.projectId, tx)
       : (input.progress ?? null)
     : null;
 

@@ -58,6 +58,8 @@ describe('what it refuses to read as an assertion', () => {
     ['a hyphenated compound before the reference', 'The merged-comment door refuses ISS-996.'],
     ['a closed-source dependency', 'ISS-996 is about a closed-source dependency.'],
     ['a hyphen on the other side', 'ISS-996 landed-on nothing yet.'],
+    ['a shipped-artifact compound', 'ISS-996 names the shipped-artifact path.'],
+    ['a landed-cost compound', 'ISS-996 reports the landed-cost figure.'],
   ])('abstains on %s', (_kind, text) => {
     expect(read(text)).toEqual([]);
   });

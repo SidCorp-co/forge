@@ -61,9 +61,13 @@ function emptyByStatus(): Record<IssueStatus, number> {
  * group to a progress bucket. Returns `null` on a DB error (logged); callers
  * MUST treat `null` as fail-closed, not as "zero progress".
  */
+/** The pool, or a caller's open transaction — this is one read and it must join the caller's. */
+// cm:guard typed as the `execute` this function actually calls, NOT as `typeof db`: the wide type excluded a transaction (a `PgTransaction` has no `$client`), so a caller inside one silently fell back to the pool and waited for a second connection while holding its first — the ten-wide deadlock `loadStageContext` names (ISS-981, found reviewing ISS-997).
+export type ProgressReader = Pick<typeof defaultDb, 'execute'>;
+
 export async function computeProjectProgress(
   projectId: string,
-  dbi: typeof defaultDb = defaultDb,
+  dbi: ProgressReader = defaultDb,
 ): Promise<ProjectProgress | null> {
   try {
     const leftMergeState = sql`exists (
