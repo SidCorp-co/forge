@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
+// cm:ignore CM013 — every frozen comment in this file is an `i18n-allow` pragma naming what its Vietnamese fixture exercises. The fixtures have to be Vietnamese, because the rules under test match Vietnamese phrasing, and deleting a pragma to pay the drain reds the language gate instead.
+
 // cm:why Parity check for the guard composition extracted from `connection-manager.ts`'s old `checkReply`/`verifyReplyClaims` — the ISS-675 async escalation bridge shares this exact module so neither reply path can silently diverge from the other's ISS-672 kernel guards.
 
 const selectWhere = vi.fn();
@@ -18,11 +20,19 @@ vi.mock('../../pipeline/runs.js', () => ({
   setCurrentStepForOpenIssueRun: vi.fn(),
 }));
 
-const { screenStakeholderReply } = await import('./reply-screen.js');
+const { screenRoomReply } = await import('./reply-screen.js');
+const { problemsOf } = await import('../../messaging/contract.js');
+
+const screenStakeholderReply = async (
+  ...args: Parameters<typeof screenRoomReply>
+): Promise<{ ok: boolean; problems: string[] }> => {
+  const verdict = await screenRoomReply(...args);
+  return { ok: verdict.ok, problems: problemsOf(verdict) };
+};
 
 const UUID = '87153ba0-1d92-427d-bc28-f508a163f6a4';
 
-describe('screenStakeholderReply', () => {
+describe('screenRoomReply, the public:report door', () => {
   it('passes a clean, plain-language reply with no claims to verify', async () => {
     selectWhere.mockResolvedValue([]);
     const verdict = await screenStakeholderReply(

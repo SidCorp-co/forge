@@ -33,9 +33,9 @@ vi.mock('./room-delivery.js', async (importOriginal) => ({
   extractFinalAssistantText: (...args: unknown[]) => extractFinalAssistantText(...args),
 }));
 
-const screenStakeholderReply = vi.fn();
+const screenRoomReply = vi.fn();
 vi.mock('./reply-screen.js', () => ({
-  screenStakeholderReply: (...args: unknown[]) => screenStakeholderReply(...args),
+  screenRoomReply: (...args: unknown[]) => screenRoomReply(...args),
 }));
 
 const FIXED_REPLY_CONSTANT = Symbol('fixed-reply-constant');
@@ -84,17 +84,27 @@ beforeEach(() => {
   roomStillBoundToCalls.mockReset();
 });
 
+const REFUSAL = {
+  rule: 'no-developer-detail',
+  why: 'leaks a code fence',
+  quote: null,
+  shape: 'plain language',
+  example: 'The fix is in.',
+} as const;
+
+function resetAgentChatMocks(): void {
+  claimRoomReplyDelivery.mockReset();
+  resolveRoomPostAuth.mockReset();
+  screenRoomReply.mockReset();
+  sendFixedReply.mockReset();
+  extractFinalAssistantText.mockReset();
+  AGENT_CHAT_FALLBACK_REPLY.mockClear();
+  redispatchAgentChatSessionOnFailover.mockReset();
+  redispatchAgentChatSessionOnFailover.mockResolvedValue({ ok: false, status: 'exhausted' });
+}
+
 describe('deliverAgentChatReplyOnce', () => {
-  beforeEach(() => {
-    claimRoomReplyDelivery.mockReset();
-    resolveRoomPostAuth.mockReset();
-    screenStakeholderReply.mockReset();
-    sendFixedReply.mockReset();
-    extractFinalAssistantText.mockReset();
-    AGENT_CHAT_FALLBACK_REPLY.mockClear();
-    redispatchAgentChatSessionOnFailover.mockReset();
-    redispatchAgentChatSessionOnFailover.mockResolvedValue({ ok: false, status: 'exhausted' });
-  });
+  beforeEach(resetAgentChatMocks);
 
   it('is a no-op for a session with no agentChat metadata', async () => {
     await deliverAgentChatReplyOnce(makeSession({ metadata: {} }));
@@ -134,11 +144,11 @@ describe('deliverAgentChatReplyOnce', () => {
     claimRoomReplyDelivery.mockResolvedValue(true);
     resolveRoomPostAuth.mockResolvedValue(AUTH);
     extractFinalAssistantText.mockReturnValue('Here is the final answer.');
-    screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
+    screenRoomReply.mockResolvedValue({ ok: true });
 
     await deliverAgentChatReplyOnce(makeSession());
 
-    expect(screenStakeholderReply).toHaveBeenCalledWith(
+    expect(screenRoomReply).toHaveBeenCalledWith(
       'proj-1',
       'Here is the final answer.',
       [],
@@ -155,7 +165,7 @@ describe('deliverAgentChatReplyOnce', () => {
     claimRoomReplyDelivery.mockResolvedValue(true);
     resolveRoomPostAuth.mockResolvedValue(AUTH);
     extractFinalAssistantText.mockReturnValue('Created ISS-42 for you.');
-    screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
+    screenRoomReply.mockResolvedValue({ ok: true });
 
     await deliverAgentChatReplyOnce(
       makeSession({
@@ -170,7 +180,7 @@ describe('deliverAgentChatReplyOnce', () => {
       }),
     );
 
-    expect(screenStakeholderReply).toHaveBeenCalledWith(
+    expect(screenRoomReply).toHaveBeenCalledWith(
       'proj-1',
       'Created ISS-42 for you.',
       [{ name: 'forge_issues', arguments: JSON.stringify({ action: 'create' }) }],
@@ -182,7 +192,10 @@ describe('deliverAgentChatReplyOnce', () => {
     claimRoomReplyDelivery.mockResolvedValue(true);
     resolveRoomPostAuth.mockResolvedValue(AUTH);
     extractFinalAssistantText.mockReturnValue('```leaky```');
-    screenStakeholderReply.mockResolvedValue({ ok: false, problems: ['leaks a code fence'] });
+    screenRoomReply.mockResolvedValue({
+      ok: false,
+      refusals: [{ ...REFUSAL, why: 'leaks a code fence' }],
+    });
 
     await deliverAgentChatReplyOnce(makeSession());
 
@@ -199,13 +212,115 @@ describe('deliverAgentChatReplyOnce', () => {
     await deliverAgentChatReplyOnce(makeSession({ status: 'failed', messages: [] }));
 
     expect(redispatchAgentChatSessionOnFailover).toHaveBeenCalledTimes(1);
-    expect(screenStakeholderReply).not.toHaveBeenCalled();
+    expect(screenRoomReply).not.toHaveBeenCalled();
     expect(sendFixedReply).toHaveBeenCalledWith(
       { kind: 'rest', auth: AUTH, rid: 'room-1', tmid: undefined },
       'FALLBACK(Babo)',
       FIXED_REPLY_CONSTANT,
     );
   });
+});
+
+/**
+ * The binding is read twice, and each read answers a question the other cannot. These live in a
+ * describe of their own because `deliverAgentChatReplyOnce` above is at its frozen function budget.
+ */
+describe('deliverAgentChatReplyOnce: the room is read again before the post', () => {
+  beforeEach(() => {
+    claimRoomReplyDelivery.mockReset();
+    claimRoomReplyDelivery.mockResolvedValue(true);
+    resolveRoomPostAuth.mockReset();
+    resolveRoomPostAuth.mockResolvedValue(AUTH);
+    screenRoomReply.mockReset();
+    screenRoomReply.mockResolvedValue({ ok: true });
+    sendFixedReply.mockReset();
+    extractFinalAssistantText.mockReset();
+    extractFinalAssistantText.mockReturnValue('answer');
+    AGENT_CHAT_FALLBACK_REPLY.mockClear();
+    redispatchAgentChatSessionOnFailover.mockReset();
+    redispatchAgentChatSessionOnFailover.mockResolvedValue({ ok: false, status: 'exhausted' });
+  });
+
+  /** What the room was shown this run — the empty list is a room that saw nothing. */
+  const postedTexts = () => sendFixedReply.mock.calls.map((c) => c[1] as string);
+
+  // cm:guard the first read is before the claim, the second immediately before the post, and between them sit a failover redispatch and a screening turn — either of them minutes long, so without the second read the answer they produce is posted into a room that moved (ISS-1001).
+  it('shows the room nothing when it is rebound during a failover redispatch', async () => {
+    roomBoundSequence = [true, false];
+
+    await deliverAgentChatReplyOnce(makeSession({ status: 'failed', failureReason: null }));
+
+    expect(redispatchAgentChatSessionOnFailover.mock.calls).toHaveLength(1);
+    expect(roomStillBoundToCalls.mock.calls).toHaveLength(2);
+    expect(postedTexts()).toEqual([]);
+  });
+
+  it('shows the room nothing when it is rebound during the screening turn', async () => {
+    roomBoundSequence = [true, false];
+
+    await deliverAgentChatReplyOnce(makeSession());
+
+    expect(screenRoomReply.mock.calls).toHaveLength(1);
+    expect(roomStillBoundToCalls.mock.calls).toHaveLength(2);
+    expect(postedTexts()).toEqual([]);
+  });
+
+  // cm:guard the rebind is terminal for THIS delivery and the claim above is already spent, which is right: the project that would retry it is no longer the room's.
+  it('leaves the claim spent rather than re-queueing the answer', async () => {
+    roomBoundSequence = [true, false];
+
+    await deliverAgentChatReplyOnce(makeSession());
+
+    expect(claimRoomReplyDelivery.mock.calls).toHaveLength(1);
+  });
+
+  // cm:guard the first read still refuses before any work is spent: a rebound room costs no failover redispatch and no screening turn.
+  it('spends no failover and no screening turn when the FIRST read refuses', async () => {
+    roomBoundSequence = [false];
+
+    await deliverAgentChatReplyOnce(makeSession({ status: 'failed', failureReason: null }));
+
+    expect(roomStillBoundToCalls.mock.calls).toHaveLength(1);
+    expect(redispatchAgentChatSessionOnFailover.mock.calls).toHaveLength(0);
+    expect(screenRoomReply.mock.calls).toHaveLength(0);
+    expect(postedTexts()).toEqual([]);
+  });
+
+  it('shows the room the answer once when it is bound at both reads', async () => {
+    roomBoundSequence = [true, true];
+
+    await deliverAgentChatReplyOnce(makeSession());
+
+    expect(roomStillBoundToCalls.mock.calls).toHaveLength(2);
+    expect(postedTexts()).toEqual(['answer']);
+  });
+});
+
+describe('deliverAgentChatReplyOnce: the repair budget this door declares', () => {
+  // cm:guard zero repairs is DECLARED at the `agent-chat-completion` door, not absent by omission: the runner session whose final message this carries has already ended, so there is nothing to ask again. If a repair ever appears here it means the door's row changed, and this reds first.
+  it('asks the session for no rewrite, because that session has already ended', async () => {
+    claimRoomReplyDelivery.mockResolvedValue(true);
+    resolveRoomPostAuth.mockResolvedValue(AUTH);
+    extractFinalAssistantText.mockReturnValue('```leaky```');
+    screenRoomReply.mockResolvedValue({
+      ok: false,
+      refusals: [{ ...REFUSAL, why: 'leaks a code fence' }],
+    });
+
+    await deliverAgentChatReplyOnce(makeSession());
+
+    expect(screenRoomReply).toHaveBeenCalledTimes(1);
+    expect(sendFixedReply.mock.calls).toHaveLength(1);
+    expect(sendFixedReply.mock.calls[0]?.[1]).toBe('FALLBACK(Babo)');
+  });
+});
+
+/**
+ * Which failures earn a redispatch, and which go straight to the fallback. Their own describe
+ * because the one above is at its frozen function budget.
+ */
+describe('deliverAgentChatReplyOnce: which failures earn a redispatch', () => {
+  beforeEach(resetAgentChatMocks);
 
   it('re-dispatches a failed/transient session to a healthy runner instead of posting the fallback', async () => {
     claimRoomReplyDelivery.mockResolvedValue(true);
@@ -290,7 +405,10 @@ describe('deliverAgentChatReplyOnce', () => {
     claimRoomReplyDelivery.mockResolvedValue(true);
     resolveRoomPostAuth.mockResolvedValue(AUTH);
     extractFinalAssistantText.mockReturnValue('```leaky```');
-    screenStakeholderReply.mockResolvedValue({ ok: false, problems: ['leaks a code fence'] });
+    screenRoomReply.mockResolvedValue({
+      ok: false,
+      refusals: [{ ...REFUSAL, why: 'leaks a code fence' }],
+    });
 
     await deliverAgentChatReplyOnce(makeSession({ status: 'completed' }));
 
@@ -306,7 +424,7 @@ describe('deliverAgentChatReplyOnce', () => {
     claimRoomReplyDelivery.mockResolvedValue(true);
     resolveRoomPostAuth.mockResolvedValue(AUTH);
     extractFinalAssistantText.mockReturnValue('answer');
-    screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
+    screenRoomReply.mockResolvedValue({ ok: true });
 
     await deliverAgentChatReplyOnce(
       makeSession({
@@ -333,84 +451,9 @@ describe('deliverAgentChatReplyOnce', () => {
     claimRoomReplyDelivery.mockResolvedValue(true);
     resolveRoomPostAuth.mockResolvedValue(AUTH);
     extractFinalAssistantText.mockReturnValue('answer');
-    screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
+    screenRoomReply.mockResolvedValue({ ok: true });
     sendFixedReply.mockRejectedValue(new Error('network error'));
 
     await expect(deliverAgentChatReplyOnce(makeSession())).resolves.toBeUndefined();
-  });
-});
-
-/**
- * The binding is read twice, and each read answers a question the other cannot. These live in a
- * describe of their own because `deliverAgentChatReplyOnce` above is at its frozen function budget.
- */
-describe('deliverAgentChatReplyOnce: the room is read again before the post', () => {
-  beforeEach(() => {
-    claimRoomReplyDelivery.mockReset();
-    claimRoomReplyDelivery.mockResolvedValue(true);
-    resolveRoomPostAuth.mockReset();
-    resolveRoomPostAuth.mockResolvedValue(AUTH);
-    screenStakeholderReply.mockReset();
-    screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
-    sendFixedReply.mockReset();
-    extractFinalAssistantText.mockReset();
-    extractFinalAssistantText.mockReturnValue('answer');
-    AGENT_CHAT_FALLBACK_REPLY.mockClear();
-    redispatchAgentChatSessionOnFailover.mockReset();
-    redispatchAgentChatSessionOnFailover.mockResolvedValue({ ok: false, status: 'exhausted' });
-  });
-
-  /** What the room was shown this run — the empty list is a room that saw nothing. */
-  const postedTexts = () => sendFixedReply.mock.calls.map((c) => c[1] as string);
-
-  // cm:guard the first read is before the claim, the second immediately before the post, and between them sit a failover redispatch and a screening turn — either of them minutes long, so without the second read the answer they produce is posted into a room that moved (ISS-1001).
-  it('shows the room nothing when it is rebound during a failover redispatch', async () => {
-    roomBoundSequence = [true, false];
-
-    await deliverAgentChatReplyOnce(makeSession({ status: 'failed', failureReason: null }));
-
-    expect(redispatchAgentChatSessionOnFailover.mock.calls).toHaveLength(1);
-    expect(roomStillBoundToCalls.mock.calls).toHaveLength(2);
-    expect(postedTexts()).toEqual([]);
-  });
-
-  it('shows the room nothing when it is rebound during the screening turn', async () => {
-    roomBoundSequence = [true, false];
-
-    await deliverAgentChatReplyOnce(makeSession());
-
-    expect(screenStakeholderReply.mock.calls).toHaveLength(1);
-    expect(roomStillBoundToCalls.mock.calls).toHaveLength(2);
-    expect(postedTexts()).toEqual([]);
-  });
-
-  // cm:guard the rebind is terminal for THIS delivery and the claim above is already spent, which is right: the project that would retry it is no longer the room's.
-  it('leaves the claim spent rather than re-queueing the answer', async () => {
-    roomBoundSequence = [true, false];
-
-    await deliverAgentChatReplyOnce(makeSession());
-
-    expect(claimRoomReplyDelivery.mock.calls).toHaveLength(1);
-  });
-
-  // cm:guard the first read still refuses before any work is spent: a rebound room costs no failover redispatch and no screening turn.
-  it('spends no failover and no screening turn when the FIRST read refuses', async () => {
-    roomBoundSequence = [false];
-
-    await deliverAgentChatReplyOnce(makeSession({ status: 'failed', failureReason: null }));
-
-    expect(roomStillBoundToCalls.mock.calls).toHaveLength(1);
-    expect(redispatchAgentChatSessionOnFailover.mock.calls).toHaveLength(0);
-    expect(screenStakeholderReply.mock.calls).toHaveLength(0);
-    expect(postedTexts()).toEqual([]);
-  });
-
-  it('shows the room the answer once when it is bound at both reads', async () => {
-    roomBoundSequence = [true, true];
-
-    await deliverAgentChatReplyOnce(makeSession());
-
-    expect(roomStillBoundToCalls.mock.calls).toHaveLength(2);
-    expect(postedTexts()).toEqual(['answer']);
   });
 });

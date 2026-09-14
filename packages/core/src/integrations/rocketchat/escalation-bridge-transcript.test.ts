@@ -49,9 +49,9 @@ vi.mock('../store.js', () => ({
   decryptConnectionSecrets: (...a: unknown[]) => decryptConnectionSecrets(...a),
 }));
 
-const screenStakeholderReply = vi.fn();
+const screenRoomReply = vi.fn();
 vi.mock('./reply-screen.js', () => ({
-  screenStakeholderReply: (...a: unknown[]) => screenStakeholderReply(...a),
+  screenRoomReply: (...a: unknown[]) => screenRoomReply(...a),
 }));
 
 const FIXED_REPLY_CONSTANT = Symbol('fixed-reply-constant');
@@ -131,7 +131,7 @@ describe(`the room transcript after an escalated answer`, () => {
       reply: 'the synthesized answer',
       toolCalls: [],
     });
-    screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
+    screenRoomReply.mockResolvedValue({ ok: true });
   });
 
   const escalated = () =>

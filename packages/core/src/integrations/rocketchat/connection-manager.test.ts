@@ -61,9 +61,9 @@ vi.mock('./escalation.js', () => ({
   startEscalation: (...args: unknown[]) => startEscalation(...args),
 }));
 
-const screenStakeholderReply = vi.fn();
+const screenRoomReply = vi.fn();
 vi.mock('./reply-screen.js', () => ({
-  screenStakeholderReply: (...args: unknown[]) => screenStakeholderReply(...args),
+  screenRoomReply: (...args: unknown[]) => screenRoomReply(...args),
 }));
 
 const startAgentChat = vi.fn();
@@ -178,8 +178,8 @@ describe('connection-manager escalation wiring', () => {
     runExternalChatTurn.mockReset();
     startEscalation.mockReset();
     startAgentChat.mockReset();
-    screenStakeholderReply.mockReset();
-    screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
+    screenRoomReply.mockReset();
+    screenRoomReply.mockResolvedValue({ ok: true });
   });
 
   it('posts the ACK and invokes startEscalation when the model calls escalate(); skips the normal reply', async () => {
@@ -207,7 +207,7 @@ describe('connection-manager escalation wiring', () => {
     );
     expect(ac.client.sendMessage).toHaveBeenCalledWith('room-1', 'ACK:Babo', undefined);
     // cm:why the escalate branch returns before the output-guard verify step, so this reply never reaches the screener
-    expect(screenStakeholderReply).not.toHaveBeenCalled();
+    expect(screenRoomReply).not.toHaveBeenCalled();
   });
 
   it('replies with the dedup message and does not double-dispatch on a second in-flight escalation', async () => {
@@ -275,7 +275,7 @@ describe('connection-manager escalation wiring', () => {
     await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
 
     expect(startEscalation).not.toHaveBeenCalled();
-    expect(screenStakeholderReply).toHaveBeenCalled();
+    expect(screenRoomReply).toHaveBeenCalled();
     expect(ac.client.sendMessage).toHaveBeenCalledWith(
       'room-1',
       'Đơn hàng của bạn đã xử lý xong.', // i18n-allow: a plain-language bot reply exercised by the guard
@@ -289,8 +289,8 @@ describe('connection-manager ISS-727 answer-mode routing', () => {
     selectLimit.mockReset();
     runExternalChatTurn.mockReset();
     startAgentChat.mockReset();
-    screenStakeholderReply.mockReset();
-    screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
+    screenRoomReply.mockReset();
+    screenRoomReply.mockResolvedValue({ ok: true });
   });
 
   it("mode='agent' routes to startAgentChat, skips the fast turn, and sends NO synchronous ack", async () => {
@@ -410,7 +410,7 @@ describe('connection-manager image handling', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     selectLimit.mockResolvedValue([{ agentConfig: null, repoPath: null }]);
-    screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
+    screenRoomReply.mockResolvedValue({ ok: true });
     runExternalChatTurn.mockResolvedValue({
       conversationId: 'conv:chat.example.co room-1',
       reply: 'that toggle reads the wrong tier',

@@ -45,10 +45,13 @@ describe('the message contract knows no transport', () => {
     expect(offences).toEqual([]);
   });
 
-  // cm:guard the option-line pattern is the one thing a transport still owns and the rule still needs, and it arrives on `MessageFacts` as data. A rule that imported it would put a Rocket.Chat rendering concern inside the contract and the two tests above would go red — this one says so before they do.
-  it('takes the option-line pattern as data rather than importing one', () => {
-    const rules = readFileSync(`${dir}text-rules.ts`, 'utf8');
-    expect(rules).toContain('f.optionLinePattern');
-    expect(rules).not.toContain('OPTION_LINE_RE');
+  // cm:guard the option-line grammar moved INTO the contract rather than being passed into it, and the adapter re-exports it. One constant is what keeps the rule that refuses a colliding label and the renderer that would have rendered it from drifting; two would let a label start rendering as an option the rule had already let through.
+  it('owns the option-line grammar rather than borrowing one from an adapter', () => {
+    expect(readFileSync(`${dir}option-line.ts`, 'utf8')).toContain('OPTION_LINE_RE');
+    const renderer = readFileSync(
+      new URL('../integrations/rocketchat/question-render.ts', import.meta.url),
+      'utf8',
+    );
+    expect(renderer).toContain("export { OPTION_LINE_RE } from '../../messaging/option-line.js'");
   });
 });

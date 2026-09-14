@@ -20,12 +20,14 @@ import {
   projects,
 } from '../../db/schema.js';
 import { logger } from '../../logger.js';
+import { type MessageVerdict, problemsOf } from '../../messaging/contract.js';
+import { withRepairs } from '../../messaging/repairs.js';
 import { webBaseUrl } from './connection-manager.js';
 import { rocketChatVenueId } from './conversation-port.js';
 import { ESCALATION_FALLBACK_REPLY } from './escalation.js';
 import { FIXED_REPLY_CONSTANT, type ReplySendProof, sendFixedReply } from './outbound.js';
 import { rocketChatPersona } from './persona.js';
-import { screenStakeholderReply } from './reply-screen.js';
+import { screenRoomReply } from './reply-screen.js';
 import {
   claimRoomReplyDelivery,
   extractFinalAssistantText,
@@ -124,6 +126,17 @@ async function resolveEscalationRoute(projectId: string): Promise<EscalationRout
   return { slug: proj.slug, name: proj.name, principalUserId: org.createdBy };
 }
 
+const EMPTY_SYNTHESIS = {
+  rule: 'non-empty',
+  why: 'empty synthesis reply',
+  quote: null,
+  shape: 'the synthesis carries text',
+  example: 'The team has the answer and will reply here shortly.',
+} as const;
+
+const correctiveSynthesis = (problems: string[]): string =>
+  `[SYSTEM CHECK — not from the user] Your previous answer cannot be sent as-is: ${problems.join('; ')}. Rewrite it now, keep only verified facts, and reply in the user's language.`;
+
 // cm:guard a FRESH turn, never a continuation of the room's in-memory sessionByRid: this bridge fires from terminal writers that do not hold that map and may run on another core instance
 async function synthesizeViaBao(
   session: SessionRow,
@@ -158,27 +171,44 @@ async function synthesizeViaBao(
       )
     : undefined;
 
-  const result = await runExternalChatTurn({
-    projectId: session.projectId,
-    adapter: 'rocketchat',
-    message: buildSynthesisMessage(meta.question, payload, meta.askedByUsername),
-    tools,
-    turnKind: tools ? 'agentic' : 'relay',
-    persona,
-    userKey: meta.askedByUsername || null,
+  const synthesise = (correction: string | null) =>
+    runExternalChatTurn({
+      projectId: session.projectId,
+      adapter: 'rocketchat',
+      message: correction ?? buildSynthesisMessage(meta.question, payload, meta.askedByUsername),
+      tools,
+      turnKind: tools ? 'agentic' : 'relay',
+      persona,
+      userKey: meta.askedByUsername || null,
+    });
+
+  let result = await synthesise(null);
+
+  // cm:guard this door repairs, and until ISS-997 it did not — it read the verdict and fell straight to the fallback, costing the room the whole answer on a first miss. It CAN repair, unlike `agent-chat-completion`: the synthesis is this function's own model turn, so there is something to ask again. The budget is the `escalation-synthesis` row, not a number here.
+  const outcome = await withRepairs('escalation-synthesis', [result.reply], {
+    screen: async (segments): Promise<MessageVerdict> => {
+      const text = (segments[0] ?? '').trim();
+      if (!text) return { ok: false, refusals: [EMPTY_SYNTHESIS] };
+      return screenRoomReply(session.projectId, text, result.toolCalls, result.progress);
+    },
+    rewrite: async (verdict) => {
+      logger.warn(
+        { sessionId: session.id, rid: meta.rid, problems: problemsOf(verdict) },
+        'rocketchat.escalation: synthesis failed the screen; one corrective retry',
+      );
+      result = await synthesise(correctiveSynthesis(problemsOf(verdict)));
+      return [result.reply];
+    },
   });
 
-  const verdict = result.reply.trim()
-    ? await screenStakeholderReply(
-        session.projectId,
-        result.reply,
-        result.toolCalls,
-        result.progress,
-      )
-    : { ok: false, problems: ['empty synthesis reply'] };
-  return verdict.ok
-    ? { text: result.reply, proof: { ok: true, problems: verdict.problems } }
-    : { text: ESCALATION_FALLBACK_REPLY(meta.botName), proof: FIXED_REPLY_CONSTANT };
+  if (outcome.kind === 'exhausted') {
+    logger.error(
+      { sessionId: session.id, rid: meta.rid, problems: problemsOf(outcome.verdict) },
+      'rocketchat.escalation: synthesis still failing after its repair; honest fallback',
+    );
+    return { text: ESCALATION_FALLBACK_REPLY(meta.botName), proof: FIXED_REPLY_CONSTANT };
+  }
+  return { text: result.reply.trim(), proof: { ok: true, problems: [] } };
 }
 
 export async function deliverEscalationReplyOnce(session: SessionRow): Promise<void> {

@@ -35,8 +35,6 @@ export interface MessageFacts {
    * rather than refusing everything on an infra blip.
    */
   readonly issueLookupFailed: boolean;
-  // cm:guard the option-line pattern arrives as DATA and is never imported: the rule that reads it would otherwise have to reach into the adapter that renders the option list, and a contract that names an adapter is not a contract. Same reason the prefixes are passed rather than queried here.
-  readonly optionLinePattern: RegExp | null;
 }
 
 export const NO_FACTS: MessageFacts = {
@@ -48,7 +46,6 @@ export const NO_FACTS: MessageFacts = {
   toolCalls: [],
   progress: null,
   issueLookupFailed: false,
-  optionLinePattern: null,
 };
 
 export function facts(over: Partial<MessageFacts>): MessageFacts {

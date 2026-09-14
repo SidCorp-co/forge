@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { OPTION_LINE_RE } from '../integrations/rocketchat/question-render.js';
 import { ISSUE_REFERENCES_EXIST } from './claim-rules.js';
 import { type MessageRule, problemsOf } from './contract.js';
 import { type MessageFacts, facts as mkFacts, type ProgressFacts } from './facts.js';
@@ -24,7 +23,6 @@ const base = (over: Partial<MessageFacts> = {}): MessageFacts =>
     prefixes: LEGACY_PREFIXES,
     knownIssueIds: LEGACY_KNOWN.ids,
     knownIssueSeqs: LEGACY_KNOWN.seqs,
-    optionLinePattern: OPTION_LINE_RE,
     ...over,
   });
 

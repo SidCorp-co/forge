@@ -10,6 +10,7 @@ import { scrubLogText } from '@forge/observability';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import type { MessageRule, RuleBreak } from './contract.js';
 import { issueTokenRe } from './issue-tokens.js';
+import { OPTION_LINE_RE } from './option-line.js';
 
 const one = (why: string, quote: string | null = null): RuleBreak[] => [{ why, quote }];
 const none: RuleBreak[] = [];
@@ -90,8 +91,8 @@ export const NO_OPTION_LINE: MessageRule = {
   shape: 'no part opens with something that reads as an option number',
   example: 'the staging environment',
   needs: [],
-  check: (text, f) =>
-    f.optionLinePattern?.test(text)
+  check: (text) =>
+    OPTION_LINE_RE.test(text)
       ? one(
           'text opens with something that reads as an option number, which collides with the list it sits in',
         )

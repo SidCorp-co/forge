@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { screenCarriedComment } from './comment-carry.js';
 import { threadRootText } from './comment-render.js';
 import type { RocketChatIncomingMessage } from './ddp-client.js';
 import { decideHandling } from './inbound-gate.js';
-import { screenCarriedComment } from './reply-guard.js';
 
 const msg = (over: Partial<RocketChatIncomingMessage> = {}): RocketChatIncomingMessage =>
   ({

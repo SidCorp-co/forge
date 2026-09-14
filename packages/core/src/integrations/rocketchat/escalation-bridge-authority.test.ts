@@ -36,9 +36,9 @@ vi.mock('../store.js', () => ({
   decryptConnectionSecrets: (...args: unknown[]) => decryptConnectionSecrets(...args),
 }));
 
-const screenStakeholderReply = vi.fn();
+const screenRoomReply = vi.fn();
 vi.mock('./reply-screen.js', () => ({
-  screenStakeholderReply: (...args: unknown[]) => screenStakeholderReply(...args),
+  screenRoomReply: (...args: unknown[]) => screenRoomReply(...args),
 }));
 
 const FIXED_REPLY_CONSTANT = Symbol('fixed-reply-constant');
@@ -111,7 +111,7 @@ describe('deliverEscalationReplyOnce turn authority', () => {
     selectLimit.mockReset();
     findConnectionById.mockReset();
     decryptConnectionSecrets.mockReset();
-    screenStakeholderReply.mockReset();
+    screenRoomReply.mockReset();
     sendFixedReply.mockReset();
     rocketChatPersona.mockClear();
     runExternalChatTurn.mockReset();
@@ -129,7 +129,7 @@ describe('deliverEscalationReplyOnce turn authority', () => {
       reply: 'Logged it as a draft issue.',
       toolCalls: [{ name: 'forge_issues', arguments: '{"action":"create"}' }],
     });
-    screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
+    screenRoomReply.mockResolvedValue({ ok: true });
 
     await deliverEscalationReplyOnce(
       makeSession({
@@ -226,7 +226,7 @@ describe('deliverEscalationReplyOnce turn authority', () => {
       reply: 'Logged it.',
       toolCalls: [{ name: 'forge_issues', arguments: '{"action":"create"}' }],
     });
-    screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
+    screenRoomReply.mockResolvedValue({ ok: true });
 
     await deliverEscalationReplyOnce(
       makeSession({

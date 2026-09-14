@@ -60,9 +60,9 @@ vi.mock('./escalation.js', () => ({
   startEscalation: (...args: unknown[]) => startEscalation(...args),
 }));
 
-const screenStakeholderReply = vi.fn();
+const screenRoomReply = vi.fn();
 vi.mock('./reply-screen.js', () => ({
-  screenStakeholderReply: (...args: unknown[]) => screenStakeholderReply(...args),
+  screenRoomReply: (...args: unknown[]) => screenRoomReply(...args),
 }));
 
 const startAgentChat = vi.fn();
@@ -189,6 +189,14 @@ const MESSAGE = {
   images: [],
 };
 
+const REFUSAL = {
+  rule: 'no-developer-detail',
+  why: 'leaks a code fence',
+  quote: null,
+  shape: 'plain language',
+  example: 'The fix is in.',
+} as const;
+
 describe('what the transcript keeps of a delivered reply', () => {
   const answered = {
     conversationId: 'conv:chat.example.co room-1',
@@ -202,7 +210,7 @@ describe('what the transcript keeps of a delivered reply', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     selectLimit.mockResolvedValue([{ agentConfig: null, repoPath: null }]);
-    screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
+    screenRoomReply.mockResolvedValue({ ok: true });
     resolveRoomShape.mockResolvedValue('group');
   });
 
@@ -222,7 +230,10 @@ describe('what the transcript keeps of a delivered reply', () => {
   it('writes the reply the room saw as its own row when the turn wrote none', async () => {
     const ac = makeAc();
     ac.client.sendMessage.mockResolvedValue('rc-server-id-9');
-    screenStakeholderReply.mockResolvedValue({ ok: false, problems: ['unverified'] });
+    screenRoomReply.mockResolvedValue({
+      ok: false,
+      refusals: [{ ...REFUSAL, why: 'unverified' }],
+    });
     runExternalChatTurn.mockResolvedValue({ ...answered, assistantMessageId: null });
 
     await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
@@ -244,9 +255,12 @@ describe('what the transcript keeps of a delivered reply', () => {
   it('records the question, and the answer only once the room has been shown one', async () => {
     const ac = makeAc();
     ac.client.sendMessage.mockResolvedValue('rc-server-id-9');
-    screenStakeholderReply
-      .mockResolvedValueOnce({ ok: false, problems: ['unverified'] })
-      .mockResolvedValueOnce({ ok: true, problems: [] });
+    screenRoomReply
+      .mockResolvedValueOnce({
+        ok: false,
+        refusals: [{ ...REFUSAL, why: 'unverified' }],
+      })
+      .mockResolvedValueOnce({ ok: true });
     runExternalChatTurn
       .mockResolvedValueOnce({ ...answered, reply: 'rejected text', assistantMessageId: null })
       .mockResolvedValueOnce({ ...answered, reply: 'the retry answer', assistantMessageId: null });

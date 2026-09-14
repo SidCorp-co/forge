@@ -8,9 +8,11 @@
 
 import { type ExternalChatTurnResult, runExternalChatTurn } from '../../assistant/external-chat.js';
 import { logger } from '../../logger.js';
+import { type MessageVerdict, problemsOf } from '../../messaging/contract.js';
+import { withRepairs } from '../../messaging/repairs.js';
 import type { FastTurnInputs } from './images.js';
 import { FIXED_REPLY_CONSTANT, type ReplySendProof } from './outbound.js';
-import { screenStakeholderReply } from './reply-screen.js';
+import { screenRoomReply } from './reply-screen.js';
 
 // cm:guard fallbacks speak AS the bot by name — never as an anonymous "the system" or "the model" voice
 export const errorFallbackReply = (name: string): string =>
@@ -56,47 +58,68 @@ export interface ScreenWithRetryArgs {
   setPhase: (phase: string) => void;
 }
 
-// cm:guard exactly ONE corrective retry, then an honest fallback — never a second: each retry is a full model turn inside HANDLE_TIMEOUT_MS, and a model that failed the guard twice does not converge on a third
+// cm:guard the budget is DECLARED at the `chat-sync` door and spent by `withRepairs`, not counted here: one corrective retry, because each is a full model turn inside HANDLE_TIMEOUT_MS and a model that failed the guard twice does not converge on a third. Changing it means changing the door's row, where the reason sits next to the number.
 export async function screenWithRetry(args: ScreenWithRetryArgs): Promise<TurnOutcome> {
   const { projectId, rid, botName, fast, persona, conversationContext, signal, setPhase } = args;
-  const screen = (r: ExternalChatTurnResult) =>
-    screenStakeholderReply(projectId, r.reply, r.toolCalls, r.progress);
   let result = args.first;
+  let attempt = 0;
 
   setPhase('verify');
-  let verdict = result.reply.trim() ? await screen(result) : { ok: true, problems: [] as string[] };
-  if (!verdict.ok) {
-    logger.warn(
-      { rid, projectId, problems: verdict.problems },
-      'rocketchat: reply failed output guards; corrective retry',
-    );
-    setPhase('retry');
-    result = await runExternalChatTurn({
-      projectId,
-      adapter: 'rocketchat',
-      conversationId: result.conversationId ?? undefined,
-      // cm:guard the retry WRITES nothing to the room: its own message is this file's corrective instruction, and a persisted one is words the speaker never said, replayed to the model every turn after. It still READS the room, which is why it names the conversation (ISS-1001).
-      record: 'nothing',
-      message: correctiveMessage(verdict.problems),
-      tools: fast.tools,
-      userId: args.principalUserId,
-      userKey: args.speakerKey,
-      persona,
-      conversationContext,
-      resolveImage: fast.resolveImage,
-      signal,
-    });
-    verdict = result.reply.trim()
-      ? await screen(result)
-      : { ok: false, problems: ['empty retry reply'] };
-    if (!verdict.ok) {
-      logger.error(
-        { rid, projectId, problems: verdict.problems },
-        'rocketchat: retry still failing output guards; sending honest fallback',
+  const outcome = await withRepairs('chat-sync', [result.reply], {
+    // cm:why an empty FIRST reply is not a screen failure — it is handled below as its own outcome, with a fallback that names why it was empty. An empty REPAIR is: the model was told what to fix and answered with nothing.
+    screen: async (segments): Promise<MessageVerdict> => {
+      const text = (segments[0] ?? '').trim();
+      if (text)
+        return screenRoomReply(projectId, segments[0] ?? '', result.toolCalls, result.progress);
+      return attempt === 0
+        ? { ok: true }
+        : {
+            ok: false,
+            refusals: [
+              {
+                rule: 'non-empty',
+                why: 'empty retry reply',
+                quote: null,
+                shape: 'the rewrite carries text',
+                example: 'The deploy is done; one check is still red.',
+              },
+            ],
+          };
+    },
+    rewrite: async (verdict) => {
+      attempt += 1;
+      logger.warn(
+        { rid, projectId, problems: problemsOf(verdict) },
+        'rocketchat: reply failed output guards; corrective retry',
       );
-    }
+      setPhase('retry');
+      result = await runExternalChatTurn({
+        projectId,
+        adapter: 'rocketchat',
+        conversationId: result.conversationId ?? undefined,
+        // cm:guard the retry WRITES nothing to the room: its own message is this file's corrective instruction, and a persisted one is words the speaker never said, replayed to the model every turn after. It still READS the room, which is why it names the conversation (ISS-1001).
+        record: 'nothing',
+        message: correctiveMessage(problemsOf(verdict)),
+        tools: fast.tools,
+        userId: args.principalUserId,
+        userKey: args.speakerKey,
+        persona,
+        conversationContext,
+        resolveImage: fast.resolveImage,
+        signal,
+      });
+      return [result.reply];
+    },
+  });
+
+  if (outcome.kind === 'exhausted') {
+    logger.error(
+      { rid, projectId, problems: problemsOf(outcome.verdict) },
+      'rocketchat: reply still failing output guards; sending honest fallback',
+    );
+    return fixed(unverifiedFallbackReply(botName));
   }
-  if (!verdict.ok) return fixed(unverifiedFallbackReply(botName));
+
   const trimmedReply = result.reply.trim();
   if (!trimmedReply) {
     return fixed(
@@ -107,7 +130,7 @@ export async function screenWithRetry(args: ScreenWithRetryArgs): Promise<TurnOu
   return {
     send: true,
     text: trimmedReply,
-    proof: { ok: true, problems: verdict.problems },
+    proof: { ok: true, problems: [] },
     messageId: result.assistantMessageId,
   };
 }

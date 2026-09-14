@@ -1,140 +1,40 @@
 /**
- * ISS-672/ISS-675 — the shared output-guard composition for any reply headed
- * to a RocketChat room, sync or async. Extracted from
- * `connection-manager.ts`'s `checkReply`/`verifyReplyClaims` (which drove only
- * the synchronous mention-reply path) so the ISS-675 async escalation bridge
- * cannot bypass the same kernel-hard guards — clarify flagged this divergence
- * as a real gap, not a hypothetical one.
+ * The Rocket.Chat side of the message contract: a reply headed for a room is a
+ * report read by somebody holding no role on the project, and that is the pair
+ * it is screened under.
  *
- * Composes the pure guards in `reply-guard.ts` with one DB-aware step (does a
- * cited issue id/ISS-seq actually exist in this project?). Fails OPEN on a DB
- * error — an infra blip must never brick a reply outright.
+ * ISS-672/675 extracted this from `connection-manager.ts` so the async bridges
+ * could not bypass the guards the synchronous path had. ISS-997 moved the rules
+ * themselves out of this tree entirely, leaving this file as what it always
+ * was — the place the transport names its audience and its intent.
  */
 
-import { and, eq, inArray, or } from 'drizzle-orm';
-import { db } from '../../db/client.js';
-import { issues } from '../../db/schema.js';
-import { activeIssuePrefix, heldIssuePrefixes } from '../../issues/issue-prefix-read.js';
-import { computeProjectProgress } from '../../issues/progress.js';
-import { logger } from '../../logger.js';
-import {
-  checkProgressClaims,
-  detectEmptyPromise,
-  extractIssueClaims,
-  judgeIssueClaims,
-  lintStakeholderReply,
-  type ProgressFacts,
-} from './reply-guard.js';
-
-export interface ReplyScreenVerdict {
-  ok: boolean;
-  problems: string[];
-}
-
-interface ClaimVerdict extends ReplyScreenVerdict {
-  verifiedSeqs: Set<number>;
-  verifiedUrlIds: Set<string>;
-  dbError: boolean;
-}
+import { NO_ROLE } from '../../messaging/audiences.js';
+import type { Intent, MessageVerdict } from '../../messaging/contract.js';
+import type { ProgressFacts } from '../../messaging/facts.js';
+import { gatherFacts } from '../../messaging/gather.js';
+import { screenMessage } from '../../messaging/screen.js';
 
 /**
- * Check a reply's issue references against the DB (project-scoped) and the
- * turn's actual tool calls. Fails OPEN on DB errors — the guard must never
- * brick replies on an infra blip. Also surfaces the verified id/seq sets and a
- * `dbError` flag so `lintStakeholderReply`'s bare-ISS-id rule can carve out
- * citations already checked here (and skip entirely on a DB blip, matching
- * this guard's own fail-open behavior).
+ * Screen a reply to somebody with no role on the project.
  */
-async function verifyReplyClaims(
-  projectId: string,
-  reply: string,
-  toolCalls: Array<{ name: string; arguments: string }>,
-  prefixes: readonly string[],
-  prefix: string | null,
-): Promise<ClaimVerdict> {
-  const claims = extractIssueClaims(reply, prefixes);
-  let ids = new Set<string>();
-  let seqs = new Set<number>();
-  if (claims.urlIds.length > 0 || claims.issSeqs.length > 0) {
-    try {
-      const conds = [
-        ...(claims.urlIds.length > 0 ? [inArray(issues.id, claims.urlIds)] : []),
-        ...(claims.issSeqs.length > 0 ? [inArray(issues.issSeq, claims.issSeqs)] : []),
-      ];
-      const rows = await db
-        .select({ id: issues.id, issSeq: issues.issSeq })
-        .from(issues)
-        .where(and(eq(issues.projectId, projectId), or(...conds)));
-      ids = new Set(rows.map((r) => r.id));
-      seqs = new Set(rows.map((r) => r.issSeq));
-    } catch (err) {
-      logger.warn({ err, projectId }, 'rocketchat: claim verification query failed; skipping');
-      return {
-        ok: true,
-        problems: [],
-        verifiedSeqs: new Set(),
-        verifiedUrlIds: new Set(),
-        dbError: true,
-      };
-    }
-  }
-  const verdict = judgeIssueClaims(claims, { ids, seqs }, toolCalls, prefix);
-  return { ...verdict, verifiedSeqs: seqs, verifiedUrlIds: ids, dbError: false };
-}
-
-/**
- * Compose the issue-claim guard with the product-only lint and the
- * empty-promise guard into one verdict. Used by the synchronous
- * mention-reply path (`connection-manager.ts`) and both async completion
- * bridges (`escalation-bridge.ts`, `agent-chat-bridge.ts`) so none can drift
- * from the others' guarantees. `toolCalls` is `[]` for the escalation bridge
- * (its reply comes from a separate Bao synthesis turn with no tool calls of
- * its own) — the claimed-creation-but-no-create-call check is then skipped,
- * but the pure product-lint + empty-promise + issue-id-existence checks
- * still apply. The agent-chat bridge instead threads in the runner
- * session's own tool calls (`agent-chat-bridge.ts`'s `extractToolCalls`),
- * so that check applies there too.
- *
- * `progress` (ISS-671) is the deterministic snapshot to screen any stated
- * completion figure against, and is REQUIRED (ISS-818): forgetting it is a
- * compile error, not a silent re-query. Pass the SAME snapshot the reply's
- * turn was shown (via `ExternalChatTurnResult.progress` or the agent-chat
- * session's stored `progressFacts`) — screening against a fresh re-query
- * would bounce a reply that was accurate for what the model actually saw.
- * The three accepted values are exhaustive and mean different things:
- * a snapshot screens against it; `null` means the snapshot computation
- * failed for this turn and screens fail-closed via `checkProgressClaims`;
- * `'legacy-session'` is the ONLY case that self-computes — an in-flight
- * session created before `progressFacts` was stored, a self-clearing window.
- */
-// cm:guard `progress` is required on purpose (ISS-818) — never widen it back to optional; a caller that omits it must fail to compile rather than silently screen against a snapshot the model never saw
-export async function screenStakeholderReply(
+// cm:guard `progress` is required on purpose (ISS-818) — never widen it back to optional; a caller that omits it must fail to compile rather than silently screen against a snapshot the model never saw. Pass the SAME snapshot the reply's turn was shown: screening against a fresh re-query bounces a reply that was accurate for what the model actually saw. `'legacy-session'` is the one case that self-computes, for a session created before the snapshot was stored.
+// cm:guard `intent` defaults to `report` and every caller today takes the default, because nothing in this transport lets an agent say it is ASKING the reader for something. That is the `public:ask` cell ISS-997 ships reserved, and the day a caller can declare one this is where it says so — not a place to infer it from the text.
+export async function screenRoomReply(
   projectId: string,
   reply: string,
   toolCalls: Array<{ name: string; arguments: string }>,
   progress: ProgressFacts | null | 'legacy-session',
-): Promise<ReplyScreenVerdict> {
-  const [prefix, prefixes] = await Promise.all([
-    activeIssuePrefix(projectId),
-    heldIssuePrefixes(projectId),
-  ]);
-  const claim = await verifyReplyClaims(projectId, reply, toolCalls, prefixes, prefix);
-  const lint = lintStakeholderReply(reply, {
-    verifiedSeqs: claim.verifiedSeqs,
-    skipIssueIdRule: claim.dbError,
-    prefix,
-    prefixes,
+  intent: Intent = 'report',
+): Promise<MessageVerdict> {
+  const segments = [reply];
+  const facts = await gatherFacts({
+    projectId,
+    audience: NO_ROLE,
+    intent,
+    segments,
+    toolCalls,
+    progress: progress === 'legacy-session' ? 'compute' : progress,
   });
-  const promise = detectEmptyPromise(reply);
-  const facts = progress === 'legacy-session' ? await computeProjectProgress(projectId) : progress;
-  const progressVerdict = checkProgressClaims(reply, facts);
-  return {
-    ok: claim.ok && lint.ok && promise.ok && progressVerdict.ok,
-    problems: [
-      ...claim.problems,
-      ...lint.problems,
-      ...promise.problems,
-      ...progressVerdict.problems,
-    ],
-  };
+  return screenMessage({ audience: NO_ROLE, intent, segments, facts });
 }

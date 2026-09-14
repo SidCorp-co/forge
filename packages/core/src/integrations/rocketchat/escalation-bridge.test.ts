@@ -38,9 +38,9 @@ vi.mock('../store.js', () => ({
   decryptConnectionSecrets: (...args: unknown[]) => decryptConnectionSecrets(...args),
 }));
 
-const screenStakeholderReply = vi.fn();
+const screenRoomReply = vi.fn();
 vi.mock('./reply-screen.js', () => ({
-  screenStakeholderReply: (...args: unknown[]) => screenStakeholderReply(...args),
+  screenRoomReply: (...args: unknown[]) => screenRoomReply(...args),
 }));
 
 const FIXED_REPLY_CONSTANT = Symbol('fixed-reply-constant');
@@ -109,6 +109,14 @@ function mockRouteResolution(proj = { slug: 'proj', name: 'Project', orgId: 'org
   selectLimit.mockResolvedValueOnce([proj]).mockResolvedValueOnce([{ createdBy: 'owner-1' }]);
 }
 
+const REFUSAL = {
+  rule: 'no-developer-detail',
+  why: 'leaks a code fence',
+  quote: null,
+  shape: 'plain language',
+  example: 'The fix is in.',
+} as const;
+
 describe('parseEscalationPayload', () => {
   it('parses a valid fenced JSON payload (answer only)', () => {
     const text = 'thinking...\n```json\n{"answer": "It works like this."}\n```';
@@ -146,19 +154,21 @@ describe('parseEscalationPayload', () => {
   });
 });
 
+function resetEscalationMocks(): void {
+  updateReturning.mockReset();
+  selectLimit.mockReset();
+  findConnectionById.mockReset();
+  decryptConnectionSecrets.mockReset();
+  screenRoomReply.mockReset();
+  sendFixedReply.mockReset();
+  rocketChatPersona.mockClear();
+  runExternalChatTurn.mockReset();
+  buildProjectToolset.mockClear();
+  buildChatToolContext.mockClear();
+}
+
 describe('deliverEscalationReplyOnce', () => {
-  beforeEach(() => {
-    updateReturning.mockReset();
-    selectLimit.mockReset();
-    findConnectionById.mockReset();
-    decryptConnectionSecrets.mockReset();
-    screenStakeholderReply.mockReset();
-    sendFixedReply.mockReset();
-    rocketChatPersona.mockClear();
-    runExternalChatTurn.mockReset();
-    buildProjectToolset.mockClear();
-    buildChatToolContext.mockClear();
-  });
+  beforeEach(resetEscalationMocks);
 
   it('is a no-op for a session with no escalation metadata', async () => {
     await deliverEscalationReplyOnce(makeSession({ metadata: {} }));
@@ -197,7 +207,7 @@ describe('deliverEscalationReplyOnce', () => {
       reply: 'Bao says: here is the synthesized answer.',
       toolCalls: [],
     });
-    screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
+    screenRoomReply.mockResolvedValue({ ok: true });
 
     await deliverEscalationReplyOnce(
       makeSession({
@@ -237,7 +247,7 @@ describe('deliverEscalationReplyOnce', () => {
       reply: 'Logged it as a draft issue.',
       toolCalls: [{ name: 'forge_issues', arguments: '{"action":"create"}' }],
     });
-    screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
+    screenRoomReply.mockResolvedValue({ ok: true });
 
     await deliverEscalationReplyOnce(
       makeSession({
@@ -270,7 +280,7 @@ describe('deliverEscalationReplyOnce', () => {
       reply: 'Just an answer.',
       toolCalls: [],
     });
-    screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
+    screenRoomReply.mockResolvedValue({ ok: true });
 
     await deliverEscalationReplyOnce(
       makeSession({
@@ -283,6 +293,58 @@ describe('deliverEscalationReplyOnce', () => {
       expect.objectContaining({ tools: undefined, turnKind: 'relay' }),
     );
   });
+});
+
+describe('the repair budget the escalation-synthesis door declares', () => {
+  // cm:guard until ISS-997 this door read the verdict and fell straight to the fallback, costing the room the whole answer on a first miss. It repairs because it CAN — the synthesis is its own model turn — and the budget is the `escalation-synthesis` row, so a change to it is a change to that table.
+  it('repairs a synthesis that failed the screen, and shows the room the repair', async () => {
+    updateReturning.mockResolvedValue([{ id: 'session-1' }]);
+    findConnectionById.mockResolvedValue({ config: { serverUrl: 'https://chat.example.co' } });
+    decryptConnectionSecrets.mockReturnValue({ authToken: 'tok', userId: 'bot-1' });
+    mockRouteResolution();
+    runExternalChatTurn
+      .mockResolvedValueOnce({ sessionId: 'bao', reply: 'first, refused', toolCalls: [] })
+      .mockResolvedValueOnce({ sessionId: 'bao', reply: 'the repaired answer', toolCalls: [] });
+    screenRoomReply
+      .mockResolvedValueOnce({ ok: false, refusals: [REFUSAL] })
+      .mockResolvedValueOnce({ ok: true });
+
+    await deliverEscalationReplyOnce(
+      makeSession({ messages: [{ type: 'assistant', content: '{"answer": "raw"}' }] }),
+    );
+
+    expect(runExternalChatTurn).toHaveBeenCalledTimes(2);
+    expect(runExternalChatTurn.mock.calls[1]?.[0]).toMatchObject({
+      message: expect.stringContaining('leaks a code fence'),
+    });
+    expect(sendFixedReply.mock.calls).toHaveLength(1);
+    expect(sendFixedReply.mock.calls[0]?.[1]).toBe('the repaired answer');
+  });
+
+  it('spends exactly one repair and then posts one fixed fallback', async () => {
+    updateReturning.mockResolvedValue([{ id: 'session-1' }]);
+    findConnectionById.mockResolvedValue({ config: { serverUrl: 'https://chat.example.co' } });
+    decryptConnectionSecrets.mockReturnValue({ authToken: 'tok', userId: 'bot-1' });
+    mockRouteResolution();
+    runExternalChatTurn.mockResolvedValue({
+      sessionId: 'bao',
+      reply: 'still wrong',
+      toolCalls: [],
+    });
+    screenRoomReply.mockResolvedValue({ ok: false, refusals: [REFUSAL] });
+
+    await deliverEscalationReplyOnce(
+      makeSession({ messages: [{ type: 'assistant', content: '{"answer": "raw"}' }] }),
+    );
+
+    expect(runExternalChatTurn).toHaveBeenCalledTimes(2);
+    expect(sendFixedReply.mock.calls).toHaveLength(1);
+    expect(sendFixedReply.mock.calls[0]?.[1]).not.toBe('still wrong');
+  });
+});
+
+describe('deliverEscalationReplyOnce: the room is never left silent', () => {
+  beforeEach(resetEscalationMocks);
 
   it('falls back to the honest fallback reply when the guard rejects the synthesized answer', async () => {
     updateReturning.mockResolvedValue([{ id: 'session-1' }]);
@@ -294,7 +356,10 @@ describe('deliverEscalationReplyOnce', () => {
       reply: '```leaky```',
       toolCalls: [],
     });
-    screenStakeholderReply.mockResolvedValue({ ok: false, problems: ['leaks a code fence'] });
+    screenRoomReply.mockResolvedValue({
+      ok: false,
+      refusals: [{ ...REFUSAL, why: 'leaks a code fence' }],
+    });
 
     await deliverEscalationReplyOnce(
       makeSession({ messages: [{ type: 'assistant', content: '```json\n{"answer": "x"}\n```' }] }),
@@ -313,7 +378,7 @@ describe('deliverEscalationReplyOnce', () => {
     await deliverEscalationReplyOnce(makeSession({ status: 'failed', messages: [] }));
 
     expect(runExternalChatTurn).not.toHaveBeenCalled();
-    expect(screenStakeholderReply).not.toHaveBeenCalled();
+    expect(screenRoomReply).not.toHaveBeenCalled();
     expect(sendFixedReply).toHaveBeenCalled();
   });
 

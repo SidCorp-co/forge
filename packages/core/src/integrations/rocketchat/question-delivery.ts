@@ -14,12 +14,13 @@ import { rocketchatQuestionDeliveries } from '../../db/schema-rocketchat.js';
 import { activeIssuePrefix } from '../../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../../lib/issue-ref.js';
 import { logger } from '../../logger.js';
+import { problemsOf } from '../../messaging/contract.js';
+import { screenAtDoor } from '../../messaging/screen.js';
 import { resolveNotifications } from '../../notifications/auto-resolve.js';
 import { emitNotification } from '../../notifications/emit.js';
 import { listActiveBindingsForProjectProvider } from '../store.js';
 import { sendFixedReply } from './outbound.js';
 import { agentAuthoredSegments, renderRound } from './question-render.js';
-import { screenOperatorMessage } from './reply-guard.js';
 import { resolveRoomPostAuth } from './room-delivery.js';
 import { registerThread, threadForQuestion } from './thread-registry.js';
 import type { RocketChatBindingConfig } from './types.js';
@@ -227,14 +228,14 @@ export async function deliverOwedRound(
     return 'undeliverable';
   }
 
-  const verdict = screenOperatorMessage(agentAuthoredSegments(step));
+  const verdict = screenAtDoor('question-delivery', agentAuthoredSegments(step));
   if (!verdict.ok) {
     // cm:guard the refusal is NOT posted as a fallback message into the room: the only text this round has is the text that failed the screen, and posting a stand-in would tell somebody a decision is waiting while hiding what it is. The round stays owed and the log names the problems (ISS-978 criterion 28).
     logger.error(
-      { questionId: owed.questionId, round: owed.round, problems: verdict.problems },
+      { questionId: owed.questionId, round: owed.round, problems: problemsOf(verdict) },
       'rocketchat.question-delivery: the round was refused by the operator screen; not posted',
     );
-    await noteFailure(owed, `screen refused the round: ${verdict.problems.join('; ')}`, now);
+    await noteFailure(owed, `screen refused the round: ${problemsOf(verdict).join('; ')}`, now);
     return 'failed';
   }
 
@@ -268,7 +269,7 @@ export async function deliverOwedRound(
     const receipt = await sendFixedReply(
       { kind: 'rest', auth, rid: room.rid, ...(existingThread ? { tmid: existingThread } : {}) },
       text,
-      { ok: true, problems: verdict.problems },
+      { ok: true, problems: problemsOf(verdict) },
     );
     const tmid = existingThread ?? receipt.messageId;
     if (!tmid) {
