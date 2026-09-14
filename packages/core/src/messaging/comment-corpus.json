@@ -1,0 +1,623 @@
+{
+  "takenFrom": "forge-dev",
+  "takenAt": "2026-09-14",
+  "rule": "every line of every comment on ISS-807, 812, 923, 931, 950, 951, 958, 962, 977, 978, 984, 987, 992, 993, 996, 997, 1000 and 1001 that is 25-300 characters long and carries both an issue reference and one of merged/shipped/landed/closed",
+  "reviewed": "each row read against the grammar line by line; four disagreements were resolved by narrowing the grammar (the predicate test, the forward window, whether/now-that, the question mark), none by editing a label",
+  "rows": [
+    {
+      "commentId": "c99c3223-1472-4fea-bc9c-dda0cb4f7ab1",
+      "onIssue": "ISS-1000",
+      "postedAt": "2026-09-13T16:20:25",
+      "body": "## Hold lifted: ISS-992 merged at 5fce89c6 — dispatched",
+      "asserts": [
+        {
+          "seq": 992,
+          "claim": "merged"
+        }
+      ]
+    },
+    {
+      "commentId": "c99c3223-1472-4fea-bc9c-dda0cb4f7ab1",
+      "onIssue": "ISS-1000",
+      "postedAt": "2026-09-13T16:20:25",
+      "body": "## Hold lifted — dispatched. ISS-992 landed and `projects/routes.ts` is free.",
+      "asserts": [
+        {
+          "seq": 992,
+          "claim": "merged"
+        }
+      ]
+    },
+    {
+      "commentId": "c99c3223-1472-4fea-bc9c-dda0cb4f7ab1",
+      "onIssue": "ISS-1000",
+      "postedAt": "2026-09-13T16:20:25",
+      "body": "**The release condition was measurable and it is met.** ISS-992 merged as `5fce89c6` (PR #363) at",
+      "asserts": [
+        {
+          "seq": 992,
+          "claim": "merged"
+        }
+      ]
+    },
+    {
+      "commentId": "0b7ba445-2820-4c5d-a8f0-7dd2dc1213d3",
+      "onIssue": "ISS-1000",
+      "postedAt": "2026-09-13T17:36:06",
+      "body": "ISS-996 landed three commits in that window carrying its own `0236_question_answer_shape`, with the",
+      "asserts": [
+        {
+          "seq": 996,
+          "claim": "merged"
+        }
+      ]
+    },
+    {
+      "commentId": "70ef4d4e-3c42-4c99-bef9-0ad28ccf043b",
+      "onIssue": "ISS-1001",
+      "postedAt": "2026-09-13T16:38:04",
+      "body": "- **ISS-987** — `needs_info`, the DM/group/thread distinction, merged and parked on a human sending",
+      "asserts": []
+    },
+    {
+      "commentId": "70ef4d4e-3c42-4c99-bef9-0ad28ccf043b",
+      "onIssue": "ISS-1001",
+      "postedAt": "2026-09-13T16:38:04",
+      "body": "1. **ISS-996 reaches a terminal status.** The extraction is then made against landed code and the",
+      "asserts": []
+    },
+    {
+      "commentId": "051c6f66-ebd5-48ba-96af-8ced1a9e82ab",
+      "onIssue": "ISS-1001",
+      "postedAt": "2026-09-13T17:11:42",
+      "body": "## Still held: ISS-996 closed, but the same run took ISS-997 four minutes later",
+      "asserts": [
+        {
+          "seq": 996,
+          "claim": "closed"
+        }
+      ]
+    },
+    {
+      "commentId": "051c6f66-ebd5-48ba-96af-8ced1a9e82ab",
+      "onIssue": "ISS-1001",
+      "postedAt": "2026-09-13T17:11:42",
+      "body": "**Condition 1 has been met on paper.** ISS-996 is `closed`, merged at 17:06Z. That was the condition",
+      "asserts": [
+        {
+          "seq": 996,
+          "claim": "merged"
+        }
+      ]
+    },
+    {
+      "commentId": "051c6f66-ebd5-48ba-96af-8ced1a9e82ab",
+      "onIssue": "ISS-1001",
+      "postedAt": "2026-09-13T17:11:42",
+      "body": "worked serially over one subsystem by one off-box run — ISS-996 closed, ISS-997 in flight — while",
+      "asserts": [
+        {
+          "seq": 996,
+          "claim": "closed"
+        }
+      ]
+    },
+    {
+      "commentId": "66ea9233-e640-4570-95a5-74739b9814f3",
+      "onIssue": "ISS-1001",
+      "postedAt": "2026-09-13T17:24:52",
+      "body": "their code merged — ISS-987 at `48968fda` and live on forge-beta, ISS-978 at `ca28999e` with CI green",
+      "asserts": []
+    },
+    {
+      "commentId": "66ea9233-e640-4570-95a5-74739b9814f3",
+      "onIssue": "ISS-1001",
+      "postedAt": "2026-09-13T17:24:52",
+      "body": "**ISS-996 is closed and stays closed.** Its work shipped at `490f018ab`. This issue pulls that code",
+      "asserts": [
+        {
+          "seq": 996,
+          "claim": "closed"
+        }
+      ]
+    },
+    {
+      "commentId": "66ea9233-e640-4570-95a5-74739b9814f3",
+      "onIssue": "ISS-1001",
+      "postedAt": "2026-09-13T17:24:52",
+      "body": "rather than rebuilding it — the extraction absorbs what ISS-996 landed, it does not redo it.",
+      "asserts": []
+    },
+    {
+      "commentId": "d20ba3c5-205a-4fb9-abdb-10552315bb31",
+      "onIssue": "ISS-1001",
+      "postedAt": "2026-09-13T17:28:39",
+      "body": "after that session closed ISS-996, and read it as a run in flight.",
+      "asserts": []
+    },
+    {
+      "commentId": "d20ba3c5-205a-4fb9-abdb-10552315bb31",
+      "onIssue": "ISS-1001",
+      "postedAt": "2026-09-13T17:28:39",
+      "body": "| subsystem state | settled — the last three commits touching `integrations/rocketchat/` and `questions/` are all ISS-996's, merged, and nothing is in flight there |",
+      "asserts": [
+        {
+          "seq": 996,
+          "claim": "merged"
+        }
+      ]
+    },
+    {
+      "commentId": "b9c70eb3-2787-41cb-872f-c22651aa30ff",
+      "onIssue": "ISS-1001",
+      "postedAt": "2026-09-13T19:48:35",
+      "body": "`open`, `high`, `l`, no plan and no criteria yet: genuinely unstarted. Its only remaining gate is the `blocks` edge onto this issue, so **this landing is exactly what makes it claimable** — its other blocker, ISS-996, is closed and merged.",
+      "asserts": [
+        {
+          "seq": 996,
+          "claim": "merged"
+        },
+        {
+          "seq": 996,
+          "claim": "closed"
+        }
+      ]
+    },
+    {
+      "commentId": "78ed822e-882f-49ab-9144-df77b204e8e7",
+      "onIssue": "ISS-1001",
+      "postedAt": "2026-09-13T23:26:43",
+      "body": "**None of those three are ISS-997's.** A worktree cut from `4366e63e` carries everything I landed, and",
+      "asserts": []
+    },
+    {
+      "commentId": "b5087205-f45d-4d27-8991-9167e48d9762",
+      "onIssue": "ISS-1001",
+      "postedAt": "2026-09-14T00:13:41",
+      "body": "## ISS-1001 landed, deployed and walked — with one criterion recorded as failing and a decision owed",
+      "asserts": [
+        {
+          "seq": 1001,
+          "claim": "merged"
+        }
+      ]
+    },
+    {
+      "commentId": "b0d5ef86-df30-4ed2-a140-5d5c07ec21e8",
+      "onIssue": "ISS-807",
+      "postedAt": "2026-08-10T12:24:26",
+      "body": "mark_merged target=base — Merged ISS-807 to main at e4cf9007 (merge --no-ff over ISS-807-skill-update-gate-alert@3362fb3c). Post-merge gate green: core 357/357 test files (4007 tests), web-v2 297/297, both builds clean, core lint 366 errors (baseline, no regression vs main's 368).",
+      "asserts": [
+        {
+          "seq": 807,
+          "claim": "merged"
+        }
+      ]
+    },
+    {
+      "commentId": "add966a1-66a7-4690-b330-744853cb041c",
+      "onIssue": "ISS-807",
+      "postedAt": "2026-08-10T12:58:34",
+      "body": "Diff range: `3362fb3c..github/ISS-807-skill-update-gate-alert` (2 files, +37/-2) — the re-review of the fix commit only; `3362fb3c` was already reviewed and is merged to `main` at `e4cf9007`.",
+      "asserts": []
+    },
+    {
+      "commentId": "53357f46-0093-4369-b376-cb02b0746bf6",
+      "onIssue": "ISS-812",
+      "postedAt": "2026-08-12T05:27:38",
+      "body": "- ISS-757 assertion matches shipped classifier: `isSpendLimitError` → `kind:'transient-cc'` and `deriveActionFromKind('transient-cc')` → `'failover'`; `scheduleAutoRetryWithVerify` returns `reason:'all_devices_exhausted'` (retry.ts:300).",
+      "asserts": []
+    },
+    {
+      "commentId": "53357f46-0093-4369-b376-cb02b0746bf6",
+      "onIssue": "ISS-812",
+      "postedAt": "2026-08-12T05:27:38",
+      "body": "- Code handoff's deliberate path deviation (`docs/architecture/` over the plan's `docs/proposals/`; test filename) is well-justified (ISS-786 same-day precedent; docs/proposals README defines it as *not-yet-implemented*, but this is shipped). Not scope-creep — same deliverable, correct path.",
+      "asserts": []
+    },
+    {
+      "commentId": "fa26ab2b-52ff-4246-b05f-c49f8eea8555",
+      "onIssue": "ISS-812",
+      "postedAt": "2026-08-26T06:57:57",
+      "body": "| decompose children | **4/4 closed and merged** — ISS-823 (08-11T17:50), ISS-824 (08-11T21:28), ISS-825 (08-11T21:55), ISS-826 (08-12T05:07) |",
+      "asserts": []
+    },
+    {
+      "commentId": "fa26ab2b-52ff-4246-b05f-c49f8eea8555",
+      "onIssue": "ISS-812",
+      "postedAt": "2026-08-26T06:57:57",
+      "body": "- ISS-789 — `running` covering \"executing\", \"parked\" and \"dead\" is exactly what let an already-merged epic hold a slot for 14 days.",
+      "asserts": []
+    },
+    {
+      "commentId": "0cc6c2b1-9519-49d1-aa7a-b409bff423a6",
+      "onIssue": "ISS-931",
+      "postedAt": "2026-09-07T07:38:03",
+      "body": "ISS-931 merged                                        2026-09-07 02:02",
+      "asserts": [
+        {
+          "seq": 931,
+          "claim": "merged"
+        }
+      ]
+    },
+    {
+      "commentId": "e1883aac-8f67-4f40-9ed9-2cb1f49bd76e",
+      "onIssue": "ISS-931",
+      "postedAt": "2026-09-08T02:11:13",
+      "body": "your verification landed as `9c6abb23 Merge ISS-931 verification: four measured-false claims on agent-surface.md` with `36da960f docs(agent-surface): the second clock has started, and a box credential now authenticates /mcp`, and the branch was deleted after the merge.",
+      "asserts": []
+    },
+    {
+      "commentId": "c3dfe79b-1dde-427c-a923-e2b74a052624",
+      "onIssue": "ISS-931",
+      "postedAt": "2026-09-08T02:26:20",
+      "body": "naming the credential class and the remedy — and **ISS-932 wave 4 merged from `master-chain` (PR #323,",
+      "asserts": [
+        {
+          "seq": 932,
+          "claim": "merged"
+        }
+      ]
+    },
+    {
+      "commentId": "1240cfd4-b5a8-4055-ad18-ef0e0f293ca3",
+      "onIssue": "ISS-931",
+      "postedAt": "2026-09-08T12:02:59",
+      "body": "placement only, and shipped work stops reading as claimable\"*, ISS-940) was meant to stop exactly",
+      "asserts": []
+    },
+    {
+      "commentId": "1240cfd4-b5a8-4055-ad18-ef0e0f293ca3",
+      "onIssue": "ISS-931",
+      "postedAt": "2026-09-08T12:02:59",
+      "body": "right now, **zero** are workable: this one is merged and marked; ISS-934 has open PR #335 with four",
+      "asserts": []
+    },
+    {
+      "commentId": "1240cfd4-b5a8-4055-ad18-ef0e0f293ca3",
+      "onIssue": "ISS-931",
+      "postedAt": "2026-09-08T12:02:59",
+      "body": "commits on `origin/ISS-934`; ISS-587/589/649 are epics whose every child is closed and merged",
+      "asserts": []
+    },
+    {
+      "commentId": "7c32993b-d636-4ea3-a835-980888dbd8c1",
+      "onIssue": "ISS-931",
+      "postedAt": "2026-09-08T15:11:18",
+      "body": "merged at 19:02Z the same day — holding a 43-char pre-ISS-932 device token. `mcp/config.rs` never",
+      "asserts": []
+    },
+    {
+      "commentId": "491ce862-45f0-4b52-afd7-1bd1925a497e",
+      "onIssue": "ISS-950",
+      "postedAt": "2026-09-07T10:28:52",
+      "body": "| ISS-947 | `needs_info`, merged 2026-09-07T10:04:03Z via #295 | satisfied — it landed the registry slug and the 1:1 knowledge-node binding you generate from |",
+      "asserts": [
+        {
+          "seq": 947,
+          "claim": "merged"
+        }
+      ]
+    },
+    {
+      "commentId": "d0cde9cc-69ba-4bea-8147-454b50f49406",
+      "onIssue": "ISS-950",
+      "postedAt": "2026-09-07T21:11:44",
+      "body": "**Your blockers are satisfied.** ISS-947 and ISS-948 are `closed` and merged (2026-09-07); the",
+      "asserts": [
+        {
+          "seq": 948,
+          "claim": "merged"
+        }
+      ]
+    },
+    {
+      "commentId": "d0cde9cc-69ba-4bea-8147-454b50f49406",
+      "onIssue": "ISS-950",
+      "postedAt": "2026-09-07T21:11:44",
+      "body": "counts, open and closed, recent activity) is dispatched in the same minute on branch `ISS-949`, in",
+      "asserts": []
+    },
+    {
+      "commentId": "f77e45e6-cc1e-43fd-9173-c612ae49b727",
+      "onIssue": "ISS-950",
+      "postedAt": "2026-09-07T21:50:32",
+      "body": "## Master note (forge-vm, 21:52Z) — ISS-949 merged at 21:49:23Z as `5a01b0d6` (PR #318); rebase and read, do not rebuild",
+      "asserts": [
+        {
+          "seq": 949,
+          "claim": "merged"
+        }
+      ]
+    },
+    {
+      "commentId": "33b90cc0-312d-48a6-82f0-8e4320855e53",
+      "onIssue": "ISS-950",
+      "postedAt": "2026-09-08T02:15:37",
+      "body": "3. **Verdict, then close.** Its sibling ISS-949 closed on a full PASS earlier tonight; ISS-951's",
+      "asserts": [
+        {
+          "seq": 949,
+          "claim": "closed"
+        }
+      ]
+    },
+    {
+      "commentId": "33b90cc0-312d-48a6-82f0-8e4320855e53",
+      "onIssue": "ISS-950",
+      "postedAt": "2026-09-08T02:15:37",
+      "body": "drift work merged too, so the epic ISS-589 now has three of its four children landed.",
+      "asserts": []
+    },
+    {
+      "commentId": "154b0158-4b60-46e8-830e-9eda0dc0b4e5",
+      "onIssue": "ISS-950",
+      "postedAt": "2026-09-08T02:47:40",
+      "body": "**ISS-950 is done: merged, deployed, and every criterion judged.** The generator shipped in PR #322",
+      "asserts": []
+    },
+    {
+      "commentId": "5641a3e5-659d-48ab-a1ca-068c361444cd",
+      "onIssue": "ISS-951",
+      "postedAt": "2026-09-07T10:27:05",
+      "body": "**ISS-948 (Tier 3a) is running as I write this** on branch/worktree `module-tier3`, dispatched 10:04Z — the knowledge-refresh loop that keeps the nodes your co-occurrence read depends on fed. Check its landed code, not its issue text.",
+      "asserts": []
+    },
+    {
+      "commentId": "f064f52a-fb32-4bee-b5e8-279bd6084c12",
+      "onIssue": "ISS-951",
+      "postedAt": "2026-09-07T21:23:58",
+      "body": "| ISS-949 | `ISS-949` | the rollup — counts open/closed/recent per module, its API and the module-rollup screen |",
+      "asserts": []
+    },
+    {
+      "commentId": "cf6d1341-f1de-455a-9292-6ebaf4bfdd6a",
+      "onIssue": "ISS-951",
+      "postedAt": "2026-09-07T21:50:08",
+      "body": "**ISS-949 merged at 21:49:23Z as `5a01b0d6` (PR #318).** My dispatch note said the second one to need",
+      "asserts": [
+        {
+          "seq": 949,
+          "claim": "merged"
+        }
+      ]
+    },
+    {
+      "commentId": "3d80a053-f384-43a7-a2ae-6539043c36e0",
+      "onIssue": "ISS-951",
+      "postedAt": "2026-09-07T21:58:50",
+      "body": "- **`main` has moved twice since your cut**: `5a01b0d6` (ISS-949's rollup, merged 21:49Z) and",
+      "asserts": [
+        {
+          "seq": 949,
+          "claim": "merged"
+        }
+      ]
+    },
+    {
+      "commentId": "1731f9f5-30ce-49d4-b6cd-bd000aa6088d",
+      "onIssue": "ISS-951",
+      "postedAt": "2026-09-08T02:11:10",
+      "body": "PR #320 **merged at 22:15:42Z as `f1f4fec8`** (branch commits `56c7018c feat(labels): a coupling the issue stream shows and the taxonomy never declared reads as drift` and `b0da19d5 Merge origin/main into ISS-951`), so the four conflicts I measured for you were resolved and landed.",
+      "asserts": []
+    },
+    {
+      "commentId": "120c2f1a-1798-4da2-8f83-853a8ad13149",
+      "onIssue": "ISS-958",
+      "postedAt": "2026-09-07T11:48:13",
+      "body": "- `origin/ISS-956` is an **ancestor of `origin/main`** — its half has landed.",
+      "asserts": []
+    },
+    {
+      "commentId": "120c2f1a-1798-4da2-8f83-853a8ad13149",
+      "onIssue": "ISS-958",
+      "postedAt": "2026-09-07T11:48:13",
+      "body": "name would have put your commits on an already-merged branch. So you get a fresh `ISS-958` cut from",
+      "asserts": []
+    },
+    {
+      "commentId": "de9bb050-ea87-47b0-955c-40e86ce25507",
+      "onIssue": "ISS-958",
+      "postedAt": "2026-09-07T17:13:59",
+      "body": "## Master dispatch note (forge-vm, 17:32Z) — agent/branch `ISS-958`. **Your work is merged and there is no open PR. This is a close-out, not a build.**",
+      "asserts": []
+    },
+    {
+      "commentId": "de9bb050-ea87-47b0-955c-40e86ce25507",
+      "onIssue": "ISS-958",
+      "postedAt": "2026-09-07T17:13:59",
+      "body": "- **PR #301 merged at 16:39:06Z**: `5e0ec9f4 fix(comments): a typed record of any block count lands in one write (ISS-958) (#301)`, and it is on `origin/main` (now `2a4e95ac`).",
+      "asserts": []
+    },
+    {
+      "commentId": "de9bb050-ea87-47b0-955c-40e86ce25507",
+      "onIssue": "ISS-958",
+      "postedAt": "2026-09-07T17:13:59",
+      "body": "- **No open PR names this issue.** #296 (`ISS-956`) also merged, at 10:37:39Z. So nothing of yours is awaiting review.",
+      "asserts": []
+    },
+    {
+      "commentId": "e752b218-3a9c-469c-823b-8f1113a401f2",
+      "onIssue": "ISS-962",
+      "postedAt": "2026-09-08T03:17:25",
+      "body": "Whether ISS-962 closes now that forge-dev's half is shipped and the render-and-glossary half is tracked on forge-plugin — or stays open against a protocol decision (a per-project prose-language setting, or a write that carries its source) that only forge-plugin can consume.",
+      "asserts": []
+    },
+    {
+      "commentId": "412a69d0-c743-40a1-8368-a9c13a7f5486",
+      "onIssue": "ISS-978",
+      "postedAt": "2026-09-13T04:59:55",
+      "body": "2026-09-11, one day before this landed. Both are corrected on ISS-993 with correction records.",
+      "asserts": []
+    },
+    {
+      "commentId": "cae44523-f4e4-471f-ade7-38a1cbe114f2",
+      "onIssue": "ISS-984",
+      "postedAt": "2026-09-12T06:11:03",
+      "body": "started 05:38, dispatched by a brief naming ISS-984 and telling it to take the issue to landed code.",
+      "asserts": []
+    },
+    {
+      "commentId": "c6faa386-f197-45f9-8c4b-413ce7b5b537",
+      "onIssue": "ISS-987",
+      "postedAt": "2026-09-12T09:41:11",
+      "body": "head> origin/main` answers **NO**, because ISS-977 was squash-merged and landed under different",
+      "asserts": [
+        {
+          "seq": 977,
+          "claim": "merged"
+        }
+      ]
+    },
+    {
+      "commentId": "4f0bf1f2-3aee-41a4-97e7-cec5b37693bc",
+      "onIssue": "ISS-987",
+      "postedAt": "2026-09-12T10:57:39",
+      "body": "**Merged** as `48968fda` (PR #351, a real merge commit; `ISS-987-room-shapes`, three",
+      "asserts": []
+    },
+    {
+      "commentId": "e72a641f-79d4-46fe-a346-2dbe0277e691",
+      "onIssue": "ISS-992",
+      "postedAt": "2026-09-13T17:41:02",
+      "body": "The main deliverable is landed — `5fce89c6` is an ancestor of `origin/main`. What is still open is the follow-up, PR #365 `ISS-992-tombstone` (`ccaac9f5`, `1cb8f8fb`, merge `f1b24fbd`).",
+      "asserts": []
+    },
+    {
+      "commentId": "63330b6b-45fc-42e1-8743-09c28d94a86c",
+      "onIssue": "ISS-992",
+      "postedAt": "2026-09-13T20:12:11",
+      "body": "ISS-1000 merged at `1ae6831d` (PR #371). Its migration took index **239** at",
+      "asserts": [
+        {
+          "seq": 1000,
+          "claim": "merged"
+        }
+      ]
+    },
+    {
+      "commentId": "e20dea4b-9008-4edb-8022-b58554094886",
+      "onIssue": "ISS-992",
+      "postedAt": "2026-09-13T20:34:09",
+      "body": "## ISS-992 shipped in three landings; the search_path pattern is reported, not fixed",
+      "asserts": [
+        {
+          "seq": 992,
+          "claim": "merged"
+        }
+      ]
+    },
+    {
+      "commentId": "e20dea4b-9008-4edb-8022-b58554094886",
+      "onIssue": "ISS-992",
+      "postedAt": "2026-09-13T20:34:09",
+      "body": "## ISS-992 shipped, in three landings — and the third exists because the review did not stop at the first",
+      "asserts": [
+        {
+          "seq": 992,
+          "claim": "merged"
+        }
+      ]
+    },
+    {
+      "commentId": "f303eab5-21d0-4428-901f-d85c64de3d18",
+      "onIssue": "ISS-993",
+      "postedAt": "2026-09-13T04:59:37",
+      "body": "> 2026-09-11. ISS-978 landed on 2026-09-12 (`ca28999e`) and is live on forge-beta, so anything here",
+      "asserts": []
+    },
+    {
+      "commentId": "f303eab5-21d0-4428-901f-d85c64de3d18",
+      "onIssue": "ISS-993",
+      "postedAt": "2026-09-13T04:59:37",
+      "body": "**The answering half is solved, and this issue is not about it.** ISS-978 shipped and is deployed:",
+      "asserts": [
+        {
+          "seq": 978,
+          "claim": "merged"
+        }
+      ]
+    },
+    {
+      "commentId": "f303eab5-21d0-4428-901f-d85c64de3d18",
+      "onIssue": "ISS-993",
+      "postedAt": "2026-09-13T04:59:37",
+      "body": "- **The chat delivery and its answer path — ISS-978, already merged and deployed.** This issue",
+      "asserts": [
+        {
+          "seq": 978,
+          "claim": "merged"
+        }
+      ]
+    },
+    {
+      "commentId": "c1e8ee6b-576b-4d22-b081-a6cc114cec72",
+      "onIssue": "ISS-993",
+      "postedAt": "2026-09-13T14:47:25",
+      "body": "- **forge-plugin ISS-1160** — the merged mark's audit sentence is parsed as part of the last path it",
+      "asserts": []
+    },
+    {
+      "commentId": "c1e8ee6b-576b-4d22-b081-a6cc114cec72",
+      "onIssue": "ISS-993",
+      "postedAt": "2026-09-13T14:47:25",
+      "body": "again as ISS-1347 before reading the near-duplicate list that filing printed; ISS-1347 is closed",
+      "asserts": [
+        {
+          "seq": 1347,
+          "claim": "closed"
+        }
+      ]
+    },
+    {
+      "commentId": "e1a3261b-70f2-4ed5-803c-8957d1a2d36e",
+      "onIssue": "ISS-996",
+      "postedAt": "2026-09-13T17:05:43",
+      "body": "Four commits on `main`, rebased onto the ISS-993 work that landed alongside:",
+      "asserts": []
+    },
+    {
+      "commentId": "127535f4-4301-4626-bcd2-fbbc7c082087",
+      "onIssue": "ISS-997",
+      "postedAt": "2026-09-13T17:10:22",
+      "body": "why: Its blocker ISS-996 shipped and closed (merged at 490f018ab): one ask-a-person lane now exists, so the message contract this issue defines has a single surface to gate. Opened by the owner for the pool to pick up; no run was on it.",
+      "asserts": [
+        {
+          "seq": 996,
+          "claim": "merged"
+        },
+        {
+          "seq": 996,
+          "claim": "closed"
+        }
+      ]
+    },
+    {
+      "commentId": "4a1029c9-087f-49e1-81d6-6054f05150df",
+      "onIssue": "ISS-997",
+      "postedAt": "2026-09-13T23:47:57",
+      "body": "where: conversations/ports.ts:ScreenedMessage/screened/codeAuthored (the transport-neutral outbound door ISS-1001 landed)",
+      "asserts": [
+        {
+          "seq": 1001,
+          "claim": "merged"
+        }
+      ]
+    },
+    {
+      "commentId": "8c61d717-ed13-4401-979c-0a3154ba6754",
+      "onIssue": "ISS-997",
+      "postedAt": "2026-09-14T00:29:59",
+      "body": "forge-beta serves `d37c5d09`. This branch is cut from `d37c5d09`, so every line ISS-1001 landed is",
+      "asserts": []
+    },
+    {
+      "commentId": "8c61d717-ed13-4401-979c-0a3154ba6754",
+      "onIssue": "ISS-997",
+      "postedAt": "2026-09-14T00:29:59",
+      "body": "**This is not the `forge record merged` fault.** forge-plugin ISS-1386 describes a re-mark",
+      "asserts": []
+    }
+  ]
+}

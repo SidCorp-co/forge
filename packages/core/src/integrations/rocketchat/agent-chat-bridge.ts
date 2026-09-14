@@ -7,11 +7,13 @@
 
 import type { agentSessions as agentSessionsTable } from '../../db/schema.js';
 import { logger } from '../../logger.js';
+import { problemsOf } from '../../messaging/contract.js';
+import type { ProgressFacts } from '../../messaging/facts.js';
+import { withRepairs } from '../../messaging/repairs.js';
 import { resolveFailureCause } from '../../pipeline/failure-causes.js';
 import { AGENT_CHAT_FALLBACK_REPLY, redispatchAgentChatSessionOnFailover } from './agent-chat.js';
 import { FIXED_REPLY_CONSTANT, type ReplySendProof, sendFixedReply } from './outbound.js';
-import type { ProgressFacts } from './reply-guard.js';
-import { screenStakeholderReply } from './reply-screen.js';
+import { screenRoomReply } from './reply-screen.js';
 import {
   claimRoomReplyDelivery,
   extractFinalAssistantText,
@@ -112,16 +114,29 @@ export async function deliverAgentChatReplyOnce(session: SessionRow): Promise<vo
   if (!finalText) {
     reply = AGENT_CHAT_FALLBACK_REPLY(meta.botName);
   } else {
-    const verdict = await screenStakeholderReply(
-      session.projectId,
-      finalText,
-      extractToolCalls(session.messages),
-      readProgressFacts(session.metadata),
-    );
-    if (verdict.ok) {
+    // cm:guard this door declares ZERO repairs and that is not an oversight: `finalText` is the last message of a runner session that has already ended, so there is no turn to ask again and a budget here would be one this door could never spend. It still goes through `withRepairs` so the count lives in the door table beside its reason rather than as an absent loop nobody can see (ISS-997).
+    const outcome = await withRepairs('agent-chat-completion', [finalText], {
+      screen: () =>
+        screenRoomReply(
+          session.projectId,
+          finalText,
+          extractToolCalls(session.messages),
+          readProgressFacts(session.metadata),
+        ),
+      rewrite: () => {
+        throw new Error(
+          'agent-chat-completion declares no repair; nothing can ask that session again',
+        );
+      },
+    });
+    if (outcome.kind === 'passed') {
       reply = finalText;
-      proof = { ok: true, problems: verdict.problems };
+      proof = { ok: true, problems: [] };
     } else {
+      logger.warn(
+        { sessionId: session.id, rid: meta.rid, problems: problemsOf(outcome.verdict) },
+        'rocketchat.agent-chat: the session reply failed the screen; honest fallback',
+      );
       reply = AGENT_CHAT_FALLBACK_REPLY(meta.botName);
     }
   }

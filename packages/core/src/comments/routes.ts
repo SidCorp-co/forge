@@ -33,6 +33,7 @@ import {
 import { CommentCursorInvalidError, decodeCommentCursor } from './cursor.js';
 import { pgConstraintName, pgErrorCode } from './error-mapping.js';
 import { parseMentions, resolveMentions } from './mentions.js';
+import { messageRefusalHttp } from './screen.js';
 import {
   commentThreadColumns,
   insertComment,
@@ -133,7 +134,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
           parentId: parentId ?? null,
         });
       } catch (err) {
-        const refusal = bodyRefusalHttp(err);
+        const refusal = bodyRefusalHttp(err) ?? messageRefusalHttp(err);
         if (refusal) throw refusal;
         const pgCode = pgErrorCode(err);
         // cm:why `23514` is the depth trigger (parent chain deeper than 3) and `23503` an FK violation, and both arrive as opaque pg codes that no type states — mapping them here is what turns a 500 into a message the caller can act on
@@ -143,11 +144,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
             cause: { code: 'DEPTH_EXCEEDED' },
           });
         }
-        // 23503: an FK violated. The comments INSERT touches three FKs
-        // (parent_id, issue_id, author_id) — only remap the parent_id case
-        // to 404 PARENT_NOT_FOUND (the TOCTOU window between our SELECT and
-        // INSERT). issue_id / author_id violations from concurrent deletes
-        // bubble up unchanged so callers see the real failure.
+        // cm:guard ONE of the three FKs this INSERT touches is remapped and the other two must keep bubbling. `parent_id` is remapped because we SELECTed the parent and something deleted it in the window before the INSERT — the caller's request was well-formed and lost a race, so 404 is the truth. An `issue_id` or `author_id` violation is not that: remapping those would tell a caller its parent is missing when the issue it is commenting on was deleted underneath it, and the constraint name is checked rather than the code alone for exactly that reason.
         if (pgCode === '23503' && parentId) {
           const constraint = pgConstraintName(err);
           if (constraint === 'comments_parent_id_fk') {
@@ -167,9 +164,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
         parentId: inserted.parentId,
       });
 
-      // Parse + persist mentions outside the insert transaction. A failure
-      // here must not roll back the comment — log and continue. The hook
-      // fan-out (notification rows + WS) is fire-and-forget the same way.
+      // cm:guard mentions are parsed and persisted OUTSIDE the insert transaction, and a failure here is logged rather than thrown: the comment is already the caller's, and rolling it back because a notification row could not be written would lose the text to save the ping. The hook fan-out below is fire-and-forget for the same reason.
       const insertedId = inserted.id;
       try {
         const handles = parseMentions(inserted.body);
@@ -378,6 +373,8 @@ commentRoutes.patch(
     try {
       written = await updateCommentBody(id, { body, format });
     } catch (err) {
+      const refusal = messageRefusalHttp(err);
+      if (refusal) throw refusal;
       rethrowBodyInvalid(err);
     }
     if (!written) throw notFound('comment not found');

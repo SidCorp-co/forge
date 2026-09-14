@@ -57,9 +57,9 @@ vi.mock('./escalation.js', () => ({
   startEscalation: (...args: unknown[]) => startEscalation(...args),
 }));
 
-const screenStakeholderReply = vi.fn();
+const screenRoomReply = vi.fn();
 vi.mock('./reply-screen.js', () => ({
-  screenStakeholderReply: (...args: unknown[]) => screenStakeholderReply(...args),
+  screenRoomReply: (...args: unknown[]) => screenRoomReply(...args),
 }));
 
 const startAgentChat = vi.fn();
@@ -203,7 +203,7 @@ describe('connection-manager conversation identity', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     selectLimit.mockResolvedValue([{ agentConfig: null, repoPath: null }]);
-    screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
+    screenRoomReply.mockResolvedValue({ ok: true });
     resolveRoomShape.mockResolvedValue('group');
   });
 
@@ -297,7 +297,7 @@ describe('connection-manager turn authority', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     selectLimit.mockResolvedValue([{ agentConfig: null, repoPath: null }]);
-    screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
+    screenRoomReply.mockResolvedValue({ ok: true });
     runExternalChatTurn.mockResolvedValue(answered);
   });
 
@@ -363,7 +363,7 @@ describe('connection-manager turn authority', () => {
 
     await handle(makeAc(), ROUTE, MESSAGE, 'conn-1', 'direct');
 
-    expect(screenStakeholderReply).toHaveBeenCalled();
+    expect(screenRoomReply).toHaveBeenCalled();
   });
 
   it('tells a direct speaker the server address cannot be read as an identity', async () => {
@@ -398,7 +398,7 @@ describe('connection-manager routing order', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     selectLimit.mockResolvedValue([{ agentConfig: null, repoPath: null }]);
-    screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
+    screenRoomReply.mockResolvedValue({ ok: true });
     resolveRoomShape.mockResolvedValue('group');
     loggerError.mockReset();
   });

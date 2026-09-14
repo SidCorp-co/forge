@@ -83,6 +83,7 @@ const REFUSAL_STATUS: Record<QuestionRefusalCode, ContentfulStatusCode> = {
   QUESTION_OPTION_IDS_DUPLICATE: 400,
   QUESTION_SHAPE_INVALID: 400,
   QUESTION_ANSWER_WRONG_SHAPE: 400,
+  QUESTION_MESSAGE_REFUSED: 400,
 };
 
 // cm:guard answering and voiding stay a SESSION's, and the test is the credential rather than `agency`: `middleware/auth.ts` carries the measurement that an agent holding a person's token reads `human`, so an agency test would refuse some agents and wave the rest through. Putting `/api/questions` on the PAT menu (`auth/pat-permissions.ts`) made these two reachable by every token holding no explicit grant, since an absent grant array reads as the whole menu — this is what keeps that widening to asking, listing and reading back.

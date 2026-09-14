@@ -20,8 +20,8 @@ import { buildProgressFactsBlock, computeProjectProgress } from '../../issues/pr
 import { findAvailableDeviceForProject } from '../../lib/device-pool.js';
 import { applyKernelTransition } from '../../lifecycle/transition.js';
 import { logger } from '../../logger.js';
+import type { ProgressFacts } from '../../messaging/facts.js';
 import { FIXED_REPLY_CONSTANT, sendFixedReply } from './outbound.js';
-import type { ProgressFacts } from './reply-guard.js';
 import { hasInFlightRoomSession, resolveRoomPostAuth } from './room-delivery.js';
 
 type SessionRow = typeof agentSessions.$inferSelect;

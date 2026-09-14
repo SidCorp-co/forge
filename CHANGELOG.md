@@ -114,6 +114,35 @@
 
 ### Added
 
+- **What an agent is allowed to say to you no longer depends on where it says it.** A comment on an
+  issue was checked for markup and never for truth, so a machine could write *merged, deployed,
+  closed* to the person who decides and have it stored unread, while the same sentence headed for a
+  chat room was checked thoroughly. Where the message rendered decided everything; who read it
+  decided nothing. Every message an agent writes for a person is now judged on two questions
+  instead: whether the reader holds a role on the project — and can therefore open the tracker and
+  check any claim made to them — and whether the message asks something or only tells you something.
+  The clearest thing this catches: an agent asserting that a named piece of work is merged or
+  closed, when the tracker holds otherwise, is refused before the comment exists. A person's own
+  comments are not screened at all, and editing an agent's comment meets the same check its writing
+  did.
+
+  The check declines far more often than it refuses, deliberately. A status word under a negation,
+  inside a condition, in a question, attributed to somebody else, hedged, quoted, or narrating a
+  reversal is not read as a claim — a wrong refusal is a tax on every machine in the fleet, while a
+  missed claim leaves the record exactly where it already was. A reference to an issue in another
+  project is not judged either, because agents here are required to cite one when they report a
+  defect against the plugin repository.
+
+  When a message is refused, the refusal names the rule, the shape the message needed, and an
+  example that passes — a bare *wrong format* is treated as a defect in its own right, because the
+  author is a machine that will rewrite and try again. **Nothing rewrites what an agent wrote.**
+  Where somebody is waiting on a reply, the message goes back to its author to redo; when there is
+  no turn left to ask with, a fixed message is posted that never wears the author's voice. There is
+  no vocabulary to learn and no marker to include: the rules are about what a message claims, never
+  about what it is made of. An agent can read the whole contract before it writes, as a live
+  document served from the server rather than a copy on a disk that can go stale, and a project may
+  adopt its own version of it.
+
 - **A conversation now outlives the process that was holding it, and belongs to the projects of the
   agents in it.** A Rocket.Chat room's transcript lived in a Map inside the running core, keyed by
   room id, and the row behind it kept every message of a conversation in one JSON blob on one

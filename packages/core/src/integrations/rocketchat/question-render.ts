@@ -1,13 +1,13 @@
 // What a parked question looks like in a room, and what a reply to it may say.
 //
-// Every string a run's agent wrote passes `screenOperatorMessage` before any of
-// this reaches a room; the bodies below that carry no agent text are fixed
-// constants and say so at their call site.
+// Every string a run's agent wrote passes the question doors of the message
+// contract before any of this reaches a room; the bodies below that carry no
+// agent text are fixed constants and say so at their call site.
 
 import { isChoiceStep, type QuestionOption, type QuestionStep } from '../../db/schema-questions.js';
 
-// cm:guard the ONE shape an option line takes, and `screenOperatorMessage` refuses agent text matching it — a label that renders as its own option line offers a choice nobody wrote (ISS-978 criterion 28).
-export const OPTION_LINE_RE = /^\s*\d+(-\d+)?\s*[.)]/;
+// cm:edge contract -> packages/core/src/messaging/option-line.ts — the renderer and the rule that refuses a label colliding with it read ONE constant. Declaring a second here is how a label starts rendering as an option the rule already let through.
+export { OPTION_LINE_RE } from '../../messaging/option-line.js';
 
 // cm:guard a bare number is legal ONLY while the question has one round: from round two on, two rounds may each offer an option `1` with different fingerprints, and resolving a bare number against the latest step hands somebody an action they never saw (ISS-978 criterion 16).
 export function optionToken(round: number, index: number, rounds: number): string {
@@ -45,12 +45,8 @@ function optionSuffix(option: QuestionOption, recommended: boolean): string {
   return ` — ${facts.join(' · ')}`;
 }
 
-/** Every agent-authored string in a round, for the screen to read before anything is posted. */
-export function agentAuthoredSegments(step: QuestionStep): string[] {
-  return isChoiceStep(step)
-    ? [step.prompt, ...step.options.map((o) => o.label)]
-    : [step.prompt, step.needed];
-}
+// cm:edge contract -> packages/core/src/questions/screen.ts — re-exported, not restated. The ask door and the delivery door screen the SAME strings of the same round; two lists drifting apart is how a round passes at the ask and is refused at delivery, owed to a person and never posted.
+export { agentAuthoredSegments } from '../../questions/screen.js';
 
 export function renderRound(args: {
   issueKey: string | null;

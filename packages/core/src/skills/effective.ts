@@ -280,7 +280,8 @@ export async function resolveRegisteredEffectiveSkills(
  * Forge MCP server reads them as prompts. A project that ADOPTS one (creates a
  * same-name project skill) owns its copy and serves that instead.
  */
-export const MANAGED_META_SKILLS: readonly string[] = ['forge-skills'];
+// cm:guard `forge-message-shape` is served HERE and nowhere else on purpose: it is the contract every agent-written message is judged against, and a copy synced to a device's disk would be the version an agent reads while core refuses it by a newer one. The always-latest prompt channel is the only delivery a screen's own rules may use (ISS-997).
+export const MANAGED_META_SKILLS: readonly string[] = ['forge-skills', 'forge-message-shape'];
 
 export interface ManagedMetaPrompt {
   name: string;
@@ -317,7 +318,7 @@ export async function resolveManagedMetaPrompts(
     .from(skills)
     .where(and(inArray(skills.name, names), scopeCond));
 
-  // Project copy wins over the global template, by name.
+  // cm:guard the project's own copy wins over the global template, by name, and this is the ONLY place that decides it — `forge-message-shape` is served through here, so a project that adopted the document and tightened its own message rules must not be handed the built-in text describing rules it does not run (ISS-997).
   const byName = new Map<string, (typeof rows)[number]>();
   for (const r of rows) {
     const cur = byName.get(r.name);

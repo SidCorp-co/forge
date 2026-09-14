@@ -1,0 +1,114 @@
+import { describe, expect, it } from 'vitest';
+import { cellFor } from './cells.js';
+import type { DoorId, Intent } from './contract.js';
+import { DOORS, doorPolicy } from './doors.js';
+import { withRepairs } from './repairs.js';
+
+const EXPECTED: ReadonlyArray<[DoorId, string, string, number | null]> = [
+  ['comment-write', 'role:report', 'refusal', null],
+  ['question-ask', 'role:ask', 'refusal', null],
+  ['question-delivery', 'role:ask', 'refusal', null],
+  ['chat-sync', 'public:report', 'fallback', 1],
+  ['escalation-synthesis', 'public:report', 'fallback', 1],
+  ['agent-chat-completion', 'public:report', 'fallback', 0],
+];
+
+describe('the door table', () => {
+  it('is exactly these six doors — dropping one fails here', () => {
+    expect(DOORS.map((d) => d.id)).toEqual(EXPECTED.map(([id]) => id));
+  });
+
+  it.each(EXPECTED)('%s screens %s and ends in %s', (id, cell, ending, repairs) => {
+    const d = doorPolicy(id);
+    expect(d.cell).toBe(cell);
+    expect(d.ending).toBe(ending);
+    expect(d.ending === 'fallback' ? d.repairs : null).toBe(repairs);
+  });
+
+  it('names a cell that exists, at every door', () => {
+    for (const d of DOORS) {
+      const [audience, intent] = d.cell.split(':') as [string, Intent];
+      expect(cellFor(audience, intent), d.id).toBeDefined();
+    }
+  });
+
+  it('says why it ends where it does, at every door', () => {
+    for (const d of DOORS) expect(d.why.length).toBeGreaterThan(40);
+  });
+
+  it('declares no more than two repairs anywhere', () => {
+    for (const d of DOORS) if (d.ending === 'fallback') expect(d.repairs).toBeLessThanOrEqual(2);
+  });
+  // cm:guard this is the property the cell/door split exists for. If every door on a cell carried the same policy the split would be decoration and a later refactor would fold it back — `public:report` is read at three doors that repair 1, 1 and 0 times, and no single number on the cell could have been right for all three.
+  it('gives the three public:report doors two different repair counts', () => {
+    const reported = DOORS.filter((d) => d.cell === 'public:report');
+    expect(reported).toHaveLength(3);
+    expect(new Set(reported.map((d) => ('repairs' in d ? d.repairs : -1)))).toEqual(
+      new Set([0, 1]),
+    );
+  });
+
+  // cm:guard the two `role:ask` doors end the same way for DIFFERENT reasons, and the reasons are what the door table carries: one has the agent still on the line, the other posts into a room with nobody left to ask. One `why` shared between them would be the first step back to a policy on the cell.
+  it('gives the two role:ask doors the same ending and different reasons for it', () => {
+    const asked = DOORS.filter((d) => d.cell === 'role:ask');
+    expect(asked).toHaveLength(2);
+    expect(new Set(asked.map((d) => d.ending))).toEqual(new Set(['refusal']));
+    expect(new Set(asked.map((d) => d.why)).size).toBe(2);
+  });
+
+  it('refuses a door nobody declared, by name', () => {
+    expect(() => doorPolicy('not-a-door' as DoorId)).toThrow(/no door named "not-a-door"/);
+  });
+});
+
+describe('the repair budget, counted in one place', () => {
+  const failing = { ok: false as const, refusals: [] };
+  const passing = { ok: true as const };
+
+  it('spends a fallback door’s one repair and then stops', async () => {
+    let asked = 0;
+    const out = await withRepairs('chat-sync', ['bad'], {
+      screen: () => failing,
+      rewrite: async () => {
+        asked += 1;
+        return ['still bad'];
+      },
+    });
+    expect(asked).toBe(1);
+    expect(out.kind).toBe('exhausted');
+    expect(out.attempts).toBe(2);
+  });
+
+  it('takes a repair that passes', async () => {
+    const out = await withRepairs('chat-sync', ['bad'], {
+      screen: (s) => (s[0] === 'good' ? passing : failing),
+      rewrite: async () => ['good'],
+    });
+    expect(out).toMatchObject({ kind: 'passed', segments: ['good'], attempts: 2 });
+  });
+
+  it('asks for no repair at a door that declares none', async () => {
+    let asked = 0;
+    const out = await withRepairs('agent-chat-completion', ['bad'], {
+      screen: () => failing,
+      rewrite: async () => {
+        asked += 1;
+        return ['never'];
+      },
+    });
+    expect(asked).toBe(0);
+    expect(out).toMatchObject({ kind: 'exhausted', attempts: 1 });
+  });
+
+  it('asks for no repair at a refusal door either', async () => {
+    let asked = 0;
+    await withRepairs('comment-write', ['bad'], {
+      screen: () => failing,
+      rewrite: async () => {
+        asked += 1;
+        return ['never'];
+      },
+    });
+    expect(asked).toBe(0);
+  });
+});

@@ -50,9 +50,9 @@ vi.mock('./escalation.js', () => ({
   startEscalation: (...args: unknown[]) => startEscalation(...args),
 }));
 
-const screenStakeholderReply = vi.fn();
+const screenRoomReply = vi.fn();
 vi.mock('./reply-screen.js', () => ({
-  screenStakeholderReply: (...args: unknown[]) => screenStakeholderReply(...args),
+  screenRoomReply: (...args: unknown[]) => screenRoomReply(...args),
 }));
 
 const startAgentChat = vi.fn();
@@ -194,7 +194,7 @@ describe('a reply inside a question thread', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     selectLimit.mockResolvedValue([{ agentConfig: null, repoPath: null }]);
-    screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
+    screenRoomReply.mockResolvedValue({ ok: true });
     resolveRoomShape.mockResolvedValue('group');
     subjectForThread.mockResolvedValue(null);
     consumeQuestionThreadReply.mockReturnValue(undefined);

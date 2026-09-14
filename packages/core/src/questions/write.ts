@@ -19,6 +19,7 @@ import {
 import type { IssueDependencyExecutor } from '../issues/dependency-executor.js';
 import { hooks } from '../pipeline/hooks.js';
 import { wakeMastersForAnswer } from '../ws/master-wake.js';
+import { screenRound } from './screen.js';
 
 // cm:guard the shape is DECLARED by the asker, never derived from which field arrived. A caller that sends an option list and a needed-text line has asked two questions in one round, and deriving would silently pick one of them for the person to answer (ISS-996).
 /** The pool, or a caller's open transaction — a park writes its question inside the transition's. */
@@ -66,6 +67,7 @@ export const questionRefusalCodes = [
   'QUESTION_OPTION_IDS_DUPLICATE',
   'QUESTION_SHAPE_INVALID',
   'QUESTION_ANSWER_WRONG_SHAPE',
+  'QUESTION_MESSAGE_REFUSED',
 ] as const;
 export type QuestionRefusalCode = (typeof questionRefusalCodes)[number];
 
@@ -122,7 +124,16 @@ export function checkAnswer(answer: AskAnswer): void {
   }
 }
 
+// cm:guard EVERY round this file mints is built here and screened here — the first one and every follow-up — because the cell does not care which round it is: round three is put to the same person, in the same room, by the same agent. Screening only the first would let a follow-up carry the option list inline that the first was refused for.
 function step(round: number, prompt: string, answer: AskAnswer): QuestionStep {
+  const built = buildStep(round, prompt, answer);
+  screenRound(built, (message, code) => {
+    throw new QuestionRefused(message, code);
+  });
+  return built;
+}
+
+function buildStep(round: number, prompt: string, answer: AskAnswer): QuestionStep {
   const askedAt = new Date().toISOString();
   return answer.shape === 'choice'
     ? {

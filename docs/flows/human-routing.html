@@ -1,7 +1,7 @@
 <!doctype html>
 <meta charset="utf-8">
 <meta name="flow-module" content="human-routing">
-<meta name="flow-answers" content="Every point a person is in one piece of work and why rejecting a close is not one of the states nothing automatic will touch, which stopped work actually needs a person and why a deliberate pause does not, how an answer reaches a worker that is still alive, how a question gets to a chat room and a reply there answers it, and why routing is by state rather than by expertise">
+<meta name="flow-answers" content="Every point a person is in one piece of work and why rejecting a close is not one of the states nothing automatic will touch, which stopped work actually needs a person and why a deliberate pause does not, how an answer reaches a worker that is still alive, how a question gets to a chat room and a reply there answers it, what a machine is allowed to say to a person and why a refusal must carry an example, and why routing is by state rather than by expertise">
 <title>Flow · human-routing</title>
 <style>
   :root { --fg:#1c1a17; --mut:#6b645c; --faint:#9a9288; --line:#ddd7cf; --bg:#fbfaf8; --panel:#fff;
@@ -237,6 +237,41 @@ project it is asked about? The list owed both and asked only the first until ISS
 </section>
 
 <section class="pane">
+<h2>What an agent may say to a person, and what happens when it may not</h2>
+<p>Every message a machine writes for a person to read is checked before it is accepted, and the
+check does not care where the message renders. A comment on an issue and a line in a chat room are
+judged by the same two questions: <b>who reads this</b>, and <b>what does it ask of them</b>.</p>
+<p>The reader either holds a role on the project or holds none. Somebody with a role can open the
+tracker and check any claim made to them; somebody without one cannot, and cannot act on a detail
+about our internals either. The message either asks &mdash; the reader owes an answer &mdash; or it
+reports, and the reader owes nothing. Two by two is four situations, and each has its own rules.</p>
+<p>A comment on an issue is the case that used to be missed. It was checked for markup and never for
+truth, so a machine writing <i>merged, closed</i> to the person who decides passed unread while the
+same sentence headed for a chat room was checked thoroughly. Where it rendered decided everything;
+who read it decided nothing. Now a claim that a named piece of work is merged or closed is checked
+against what the tracker actually holds, and refused when the two disagree.</p>
+<p><b>The check declines far more often than it refuses.</b> A status word under a negation, inside a
+condition, in a question, attributed to somebody else, hedged by a <i>might</i>, quoted, or narrating
+a reversal is not read as a claim at all. That is deliberate and it is not a shortfall: a wrong
+refusal is a tax on every machine in the fleet, while a missed claim leaves the tracker exactly where
+it already was.</p>
+<p><b>A refusal names the rule it broke, and carries the shape the message should have had and an
+example that passes.</b> A bare <i>wrong format</i> is itself a defect here &mdash; the author is a
+machine that will rewrite and try again, and a refusal that does not say what to write buys a second
+round of the same mistake.</p>
+<p><b>Nothing rewrites what a machine wrote.</b> Where somebody asked and is waiting, the message is
+sent back to its author to redo &mdash; once, or not at all, depending on whether there is still a
+turn to ask with. When those are spent, a fixed message is posted that never wears the author's
+voice. Everywhere else the refusal is simply the end of it: nothing is posted, and the author is told
+why.</p>
+<p class="foot">The rules are never about what tags a message is made of, only about what it claims.
+Forge had a vocabulary of comment prefixes once; it reached 7 comments of 13,564 across the fleet and
+was removed. A check that reintroduced one would rebuild what had just been deleted, so this one
+cannot: an agent reads the whole contract as a prompt from the server, and writes the sentence it
+means.</p>
+</section>
+
+<section class="pane">
 <h2>When it goes wrong</h2>
 <table>
   <tr><th>What you see</th><th>what is happening</th><th>what to do</th></tr>
@@ -273,10 +308,11 @@ project it is asked about? The list owed both and asked only the first until ISS
   </tr>
   <tr>
     <td>A reply in the room was turned down and the person does not know why.</td>
-    <td>This should be impossible: every refusal is answered in the same conversation, naming which
-    of the four rules it broke.</td>
-    <td>Treat a silent refusal as a defect. A reply that gets no response at all means the
-    conversation was not recognised as a question's, and the message was handled as ordinary chat.</td>
+    <td>This should be impossible: every refusal is answered in the same conversation, naming the
+    rule it broke, the shape the reply needed, and an example that would have passed.</td>
+    <td>Treat a silent refusal as a defect, and treat a refusal that says only that the format was
+    wrong as one too. A reply that gets no response at all means the conversation was not recognised
+    as a question's, and the message was handled as ordinary chat.</td>
   </tr>
 </table>
 </section>
@@ -291,7 +327,10 @@ delivering an answer to a worker that is still alive:
 <code>packages/core/src/agent-sessions/steer-session.ts</code> · carrying a question to a chat room
 and taking the reply back:
 <code>packages/core/src/integrations/rocketchat/question-delivery.ts</code> and
-<code>question-inbound.ts</code> beside it · which work a project offers to be picked up, rejected
+<code>question-inbound.ts</code> beside it · what a machine may say to a person and where each
+message is judged: <code>packages/core/src/messaging/</code> &mdash; the four situations in
+<code>cells.ts</code>, the six places they are read in <code>doors.ts</code>, and the contract an
+agent reads before it writes at <code>packages/core/skills/forge-message-shape/SKILL.md</code> · which work a project offers to be picked up, rejected
 work included: <code>packages/core/src/devices/admissible.ts</code> and the project's own
 <code>poolBacklog</code> setting.
 <a href="index.html">← all flows</a></p>

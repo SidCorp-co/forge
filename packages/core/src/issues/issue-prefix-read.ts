@@ -1,6 +1,6 @@
 // cm:guard the DB half of the issue-reference layer, kept OUT of `issue-ref.ts` so that module
-// stays pure string work — `integrations/rocketchat/reply-guard.ts` documents itself as importing
-// no db or env and unit-testing standalone, and it needs the formatter.
+// stays pure string work — the message contract's rules document themselves as importing no db or
+// env and unit-testing standalone, and they need the formatter.
 
 import { eq } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';

@@ -62,9 +62,9 @@ describe('outbound chokepoint — no bypass (ISS-671 AC#1)', () => {
   });
 });
 
-const screenStakeholderReply = vi.fn();
+const screenRoomReply = vi.fn();
 vi.mock('./reply-screen.js', () => ({
-  screenStakeholderReply: (...args: unknown[]) => screenStakeholderReply(...args),
+  screenRoomReply: (...args: unknown[]) => screenRoomReply(...args),
 }));
 
 const postRoomMessage = vi.fn();
@@ -96,7 +96,7 @@ function restTransport() {
 
 describe('sendFixedReply', () => {
   beforeEach(() => {
-    screenStakeholderReply.mockReset();
+    screenRoomReply.mockReset();
     postRoomMessage.mockReset();
   });
 
@@ -107,7 +107,7 @@ describe('sendFixedReply', () => {
       'Sorry, overloaded right now.',
       FIXED_REPLY_CONSTANT as never,
     );
-    expect(screenStakeholderReply).not.toHaveBeenCalled();
+    expect(screenRoomReply).not.toHaveBeenCalled();
     expect(transport.client.sendMessage).toHaveBeenCalledWith(
       'room-1',
       'Sorry, overloaded right now.',

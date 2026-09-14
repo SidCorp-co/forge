@@ -11,6 +11,8 @@ import { resolveSpeaker, unlinkedMessage } from '../../assistant/identity/speake
 import { db } from '../../db/client.js';
 import { agentQuestions, isChoiceStep } from '../../db/schema-questions.js';
 import { logger } from '../../logger.js';
+import { problemsOf } from '../../messaging/contract.js';
+import { screenAtDoor } from '../../messaging/screen.js';
 import { answerAs } from '../../questions/read.js';
 import { QuestionRefused } from '../../questions/write.js';
 import type { RocketChatDdpClient, RocketChatIncomingMessage } from './ddp-client.js';
@@ -26,7 +28,6 @@ import {
   STALE_ROUND_REPLY,
   UNKNOWN_OPTION_REPLY,
 } from './question-render.js';
-import { screenOperatorMessage } from './reply-guard.js';
 
 async function say(transport: ReplyTransport, text: string): Promise<void> {
   try {
@@ -88,11 +89,11 @@ export async function handleQuestionThreadReply(args: {
         return;
       }
       // cm:guard the options are re-posted rather than inferred from, and never defaulted to the recommended one — a reply nobody can read is a person who has not chosen yet, and choosing for them is the failure a locked option exists to prevent (ISS-978 criterion 18).
-      const verdict = screenOperatorMessage(agentAuthoredSegments(current));
+      const verdict = screenAtDoor('question-delivery', agentAuthoredSegments(current));
       await (verdict.ok
         ? sendFixedReply(transport, renderOptionsAgain(current, rounds), {
             ok: true,
-            problems: verdict.problems,
+            problems: problemsOf(verdict),
           }).catch((err) =>
             logger.error(
               { err, rid: transport.rid },
