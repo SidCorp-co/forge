@@ -163,9 +163,10 @@ export async function applyMergeMarker(args: {
   const label =
     args.op === 'mark' ? `mark_merged target=${args.target ?? '<unset>'}${commitLabel}` : 'unmark';
   // cm:guard the no-op arm must say the timestamp is SOMEBODY ELSE'S. Without it the trail is a note that reads as this call's justification sitting beside a value this call did not write, and a reader correcting a wrong stamp has no way to see that `unmark` then `mark` is the only route — which itself re-blocks every dependent (`clearIssueMergedAt`).
+  // cm:guard and it says so on a LINE OF ITS OWN, because the caller's note is NOT this module's to splice into. A note is a clause list somebody else composed and reads back by clause, and a clause runs to the next `;` or newline — so an advisory joined on with a dash lands inside the caller's LAST clause instead of beside it. Measured 2026-09-14 on ISS-1004: the note's `landing wrote …/proactivity.test.ts` read back as `…/proactivity.test.ts — NOT stamped by this call: merged_at was already …`, and the run was told its change had grown to a path nobody had written. Append after the note, never into it.
   const unchanged =
     args.op === 'mark' && !stampResult.stamped
-      ? ` — NOT stamped by this call: merged_at was already ${stampResult.mergedAt?.toISOString() ?? 'set'} and the first stamp wins; \`unmark\` then \`mark\` is the only correction, and it re-blocks dependents`
+      ? `\nNOT stamped by this call: merged_at was already ${stampResult.mergedAt?.toISOString() ?? 'set'} and the first stamp wins; \`unmark\` then \`mark\` is the only correction, and it re-blocks dependents`
       : '';
   const auditComment = await writeAuditComment(
     before.id,

@@ -111,6 +111,25 @@ describe('ISS-940 re-marking an already-merged issue (real Postgres)', () => {
     expect(rows[1]?.body).toMatch(/unmark/);
   });
 
+  // cm:guard the failure this is planted to catch: the advisory used to be joined onto the note with ` — `, and a note is a clause list its composer reads back by clause, each running to the next `;` or newline. So the advisory landed INSIDE the note's last clause: on ISS-1004 the mark's `landing wrote …/proactivity.test.ts` read back as that path with the whole advisory glued to it, and the run was told its change had grown to a path nobody had written. The assertion is that the note the caller gave is a line of its own, whole, whatever this module appends after it.
+  it("leaves the caller's note whole on its own line when it does not stamp", async () => {
+    const issue = await insertIssue();
+    const note =
+      'merged to main at abc1234; landing moved nothing; landing wrote packages/core/src/a.ts';
+    await mark(issue, 'probe');
+    await mark({ ...issue, mergedAt: new Date() }, note);
+
+    const rows = await harness.db.execute<{ body: string }>(
+      sql`SELECT body FROM comments WHERE issue_id = ${issue.id} ORDER BY created_at ASC`,
+    );
+    const [first, ...rest] = (rows[1]?.body ?? '').split('\n');
+    expect(first?.endsWith(note)).toBe(true);
+    expect(/\blanding wrote ([^;\n]+)/u.exec(rows[1]?.body ?? '')?.[1]).toBe(
+      'packages/core/src/a.ts',
+    );
+    expect(rest.join('\n')).toMatch(/^NOT stamped by this call:/);
+  });
+
   it('lets unmark then mark actually move it', async () => {
     const issue = await insertIssue();
     await mark(issue, 'probe');
