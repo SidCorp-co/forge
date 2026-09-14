@@ -1,5 +1,5 @@
 /**
- * ISS-1007 — migration 0245, run against a real Postgres over the binding shapes
+ * ISS-1007 — migration 0246, run against a real Postgres over the binding shapes
  * the fleet actually holds.
  *
  * The statement's whole job is to keep a reply language that stopped being
@@ -46,6 +46,7 @@ async function bindRocketChat(
     rids: string[];
     bindingActive: boolean;
     connectionActive: boolean;
+    environment?: 'staging' | 'prod';
   },
 ): Promise<void> {
   const connectionId = randomUUID();
@@ -56,7 +57,7 @@ async function bindRocketChat(
   await harness.db.execute(sql`
     INSERT INTO integration_bindings (id, connection_id, project_id, provider, environment, config, active)
     VALUES (
-      ${randomUUID()}, ${connectionId}, ${args.projectId}, 'rocketchat', 'production',
+      ${randomUUID()}, ${connectionId}, ${args.projectId}, 'rocketchat', ${args.environment ?? 'staging'},
       ${JSON.stringify({ rids: args.rids })}::jsonb, ${args.bindingActive}
     )
   `);
@@ -69,12 +70,17 @@ async function styleOf(harness: Harness, projectId: string): Promise<string | un
   return rows[0]?.agent_config?.personaStyle as string | undefined;
 }
 
-describe('migration 0245 moves the reply language onto the projects that were getting it', () => {
+describe('migration 0246 moves the reply language onto the projects that were getting it', () => {
   let harness: Harness;
   const id: Record<string, string> = {};
 
   beforeAll(async () => {
     harness = await setupTestDatabase();
+    // cm:guard the settings schema is imported at the END of this file and `projects/routes.ts` pulls in `db/client.js`, so the three env keys must be set BEFORE that import or the case fails to run rather than to assert (ISS-1007).
+    process.env.DATABASE_URL = harness.url;
+    process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
+    process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
+    process.env.NODE_ENV ??= 'test';
     await truncateAll(harness.db);
     const user = await createTestUser(harness.db);
 
@@ -127,7 +133,7 @@ describe('migration 0245 moves the reply language onto the projects that were ge
       connectionActive: true,
     });
 
-    // cm:guard a project is judged by whether ANY connection routes it, not by whether every one does: reading it the other way would skip a project whose bot answers in a room every day because a second, dead binding sits beside the live one (ISS-1007).
+    // cm:guard a project is judged by whether ANY binding routes it, not by whether every one does: reading it the other way would skip a project whose bot answers in a room every day because a second, roomless binding sits beside the live one. The two are seeded in DIFFERENT environments because `integration_bindings_project_provider_env_label_uq` permits a project only one rocketchat binding per environment, so same-environment is a shape the fleet cannot hold (ISS-1007).
     const mixed = await make('mixed', {});
     await bindRocketChat(harness, {
       projectId: mixed,
@@ -135,6 +141,7 @@ describe('migration 0245 moves the reply language onto the projects that were ge
       rids: [],
       bindingActive: true,
       connectionActive: true,
+      environment: 'staging',
     });
     await bindRocketChat(harness, {
       projectId: mixed,
@@ -142,6 +149,7 @@ describe('migration 0245 moves the reply language onto the projects that were ge
       rids: ['GENERAL'],
       bindingActive: true,
       connectionActive: true,
+      environment: 'prod',
     });
 
     await make('noBinding', {});

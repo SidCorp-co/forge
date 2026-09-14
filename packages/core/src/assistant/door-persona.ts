@@ -27,9 +27,10 @@ export function assistantOpening(door: DoorOpening): string[] {
   return [
     `You are the working assistant for project "${door.projectName}", ${door.venue}.`,
     `- Your method is a guide, not a memo: call forge_guide with action "get" and slug "${ASSISTANT_METHOD_SLUG}" BEFORE you answer, and follow what it says. It is how a request is worked here; the lines below add only what is true of this channel.`,
-    ...(door.webBaseUrl && door.projectSlug
+    // cm:guard the origin is a PREFIX and an absent one yields a root-relative path rather than dropping the line: a reader in a chat client is outside the product and needs the host, a reader in the app is already on it, and making the whole instruction conditional on an origin is how the web doors silently stopped being told to link an issue at all (ISS-1007).
+    ...(door.projectSlug
       ? [
-          `- When you create or cite a Forge issue, include its web link: ${door.webBaseUrl}/projects/${door.projectSlug}/issues/<documentId> (forge_issues returns the documentId).`,
+          `- When you create or cite a Forge issue, include its web link: ${door.webBaseUrl ?? ''}/projects/${door.projectSlug}/issues/<documentId> (forge_issues returns the documentId).`,
         ]
       : []),
   ];

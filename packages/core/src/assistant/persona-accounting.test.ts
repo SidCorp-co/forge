@@ -27,6 +27,9 @@ const { rocketChatChannelLines, rocketChatPersona } = await import(
   '../integrations/rocketchat/persona.js'
 );
 
+// cm:guard every comparison runs over whitespace-FLATTENED text, because a guide body wraps at 100 columns and a persona line does not: matched raw, a clause straddling a wrap would be absent from the very fragment that carries it, and the honest fix for that failure is to shorten the clause until it proves nothing (ISS-1007).
+const flat = (s: string): string => s.replace(/\s+/g, ' ').trim();
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 // cm:guard the personaStyle fragment is read off the shipped MIGRATION rather than from a constant a test could drift from: that file is the only thing that puts the sentence in front of a live project, so a ledger entry claiming `personaStyle` owns it has to be checked against the statement that actually writes it (ISS-1007).
 const MIGRATION_SQL = readFileSync(
@@ -40,8 +43,12 @@ interface Claim {
   /** What the claim is, for a reader of a failure message. */
   id: string;
   owner: Owner;
-  /** A verbatim slice of the owning fragment, distinctive enough to find nowhere else. */
-  text: string;
+  /**
+   * EVERY material clause of the instruction, verbatim, first one distinctive enough to find in no
+   * other fragment. One short marker proves only that a heading survived: measured on this file's
+   * own first draft, `ISSUE QUALITY CONTRACT` stayed true with the whole body requirement deleted.
+   */
+  clauses: readonly [string, ...string[]];
   /**
    * `moved` — carried by the pre-change `rocketChatPersona` and now in another fragment.
    * `kept` — in the fragment it was already in.
@@ -56,126 +63,251 @@ const LEDGER: readonly Claim[] = [
   {
     id: 'identity',
     owner: 'sharedOpening',
-    text: 'You are the working assistant for project',
+    clauses: ['You are the working assistant for project'],
     origin: 'moved',
   },
   {
     id: 'guide-pointer',
     owner: 'sharedOpening',
-    text: 'Your method is a guide, not a memo',
+    clauses: [
+      'Your method is a guide, not a memo',
+      'BEFORE you answer, and follow what it says',
+      'the lines below add only what is true of this channel',
+    ],
     origin: 'new',
   },
-  { id: 'issue-web-link', owner: 'sharedOpening', text: 'include its web link', origin: 'moved' },
+  {
+    id: 'issue-web-link',
+    owner: 'sharedOpening',
+    clauses: [
+      'include its web link',
+      '/issues/<documentId>',
+      'forge_issues returns the documentId',
+    ],
+    origin: 'moved',
+  },
 
   {
     id: 'own-the-request',
     owner: 'guide',
-    text: 'You OWN the requests addressed to you',
+    clauses: [
+      'You OWN the requests addressed to you',
+      'investigate and act with your tools',
+      'never hand the task back to the humans',
+    ],
     origin: 'moved',
   },
   {
     id: 'lead-with-found',
     owner: 'guide',
-    text: 'LEAD your reply with what you FOUND',
+    clauses: [
+      'LEAD your reply with what you FOUND',
+      "the entity's status, the key facts, and any contradiction with what the channel expects",
+      'THEN the action you took',
+      '"I created an issue" alone does not answer a check request',
+    ],
     origin: 'moved',
   },
   {
     id: 'status-gets-figures',
     owner: 'guide',
-    text: 'status is answered with the figures',
+    clauses: [
+      'status is answered with the figures, not with a description of how you would find them',
+    ],
     origin: 'hoisted',
   },
   {
     id: 'reporter-owes-nothing',
     owner: 'guide',
-    text: 'reporter owes you nothing',
+    clauses: [
+      'reporter owes you nothing',
+      'evidence the project side can gather itself',
+      'write it into the draft issue as acceptance criteria for a developer',
+      'repro steps, account, time window',
+      'Never bounce the burden of proof back to the reporter',
+    ],
     origin: 'moved',
   },
-  { id: 'issue-quality-contract', owner: 'guide', text: 'ISSUE QUALITY CONTRACT', origin: 'moved' },
-  { id: 'urls-carry-ids', owner: 'guide', text: 'URLs in the context carry ids', origin: 'moved' },
+  {
+    id: 'issue-quality-contract',
+    owner: 'guide',
+    clauses: [
+      'ISSUE QUALITY CONTRACT',
+      'an issue must stand alone',
+      'Title = kind + affected feature',
+      'what happens, where, expected vs actual',
+      'Write the body as markdown with',
+      'refuses a filing that is missing one, NAMING the heading',
+    ],
+    origin: 'moved',
+  },
+  {
+    id: 'urls-carry-ids',
+    owner: 'guide',
+    clauses: [
+      'URLs in the context carry ids',
+      'extract the id from the URL and query the external system',
+      'BY ID before trying any keyword search',
+    ],
+    origin: 'moved',
+  },
   {
     id: 'investigate-first',
     owner: 'guide',
-    text: 'INVESTIGATE before answering',
+    clauses: [
+      'INVESTIGATE before answering',
+      'SHORT keyword fragments (2-4 words)',
+      'retry with different fragments if empty',
+      'Cross-check forge_memory.search and forge_knowledge',
+      'read issue comments when a discussion references one',
+    ],
     origin: 'moved',
   },
   {
     id: 'introspect-external-schema',
     owner: 'guide',
-    text: 'before claiming it cannot help',
+    clauses: [
+      'before claiming it cannot help',
+      'the external schema tool',
+      'to learn the available queries and filters',
+      'NEVER claim "the tools cannot do this" or ask the user for an ID',
+      'Schemas often expose',
+      'they need NO user id',
+    ],
     origin: 'moved',
   },
-  { id: 'act-not-delegate', owner: 'guide', text: 'ACT, do not delegate', origin: 'moved' },
+  {
+    id: 'act-not-delegate',
+    owner: 'guide',
+    clauses: [
+      'ACT, do not delegate',
+      'it always enters as',
+      'Only mention a person when the action truly requires',
+      'state exactly what remains and why',
+    ],
+    origin: 'moved',
+  },
   {
     id: 'never-bounce-back',
     owner: 'guide',
-    text: 'Never reply with only "ask X to do Y"',
+    clauses: [
+      'Never reply with only "ask X to do Y"',
+      'if a tool call could find the answer or capture the work as a draft issue',
+    ],
     origin: 'moved',
   },
   {
     id: 'never-announce',
     owner: 'guide',
-    text: 'Never announce what you are about to do',
+    clauses: [
+      'Never announce what you are about to do',
+      'CALL the tool now instead',
+      'reply only when you have the result, or a concrete failure to report',
+    ],
     origin: 'moved',
   },
-  { id: 'broad-request-overview', owner: 'guide', text: 'For a broad request', origin: 'moved' },
+  {
+    id: 'broad-request-overview',
+    owner: 'guide',
+    clauses: [
+      'For a broad request',
+      'do not just ask what to check',
+      'produce a brief status overview from the tools',
+      'then offer to drill into specifics',
+    ],
+    origin: 'moved',
+  },
   {
     id: 'answer-concisely',
     owner: 'guide',
-    text: 'Answer concisely, in the language the person wrote in',
+    clauses: [
+      'Answer concisely, in the language the person wrote in',
+      'a reply that restates the question back is longer and worth less',
+    ],
     origin: 'moved',
   },
 
-  { id: 'bot-name', owner: 'rocketchatOnly', text: 'Your name in this channel is', origin: 'kept' },
+  {
+    id: 'bot-name',
+    owner: 'rocketchatOnly',
+    clauses: ['Your name in this channel is', 'Refer to yourself as', 'never as'],
+    origin: 'kept',
+  },
   {
     id: 'pronoun-mapping',
     owner: 'rocketchatOnly',
-    text: 'use that username when filtering',
+    clauses: [
+      'use that username when filtering',
+      'The message you are answering was sent by user @',
+    ],
     origin: 'kept',
   },
   {
     id: 'rocketchat-history',
     owner: 'rocketchatOnly',
-    text: 'call rocketchat_history before concluding',
+    clauses: [
+      'call rocketchat_history before concluding',
+      'Read the conversation context first',
+      'if it references older discussion',
+    ],
     origin: 'kept',
   },
   {
     id: 'one-reply-only',
     owner: 'rocketchatOnly',
-    text: 'the ONLY message the user receives',
+    clauses: [
+      'the ONLY message the user receives',
+      'there is no follow-up turn',
+      'do not promise a later one',
+    ],
     origin: 'kept',
   },
   {
     id: 'plain-text',
     owner: 'rocketchatOnly',
-    text: 'Plain chat text, no markdown headers',
+    clauses: ['Plain chat text, no markdown headers'],
     origin: 'kept',
   },
 
   {
     id: 'reply-in-vietnamese',
     owner: 'personaStyle',
-    text: 'Reply in Vietnamese',
+    clauses: ['Reply in Vietnamese', 'switch language only if the user clearly writes another one'],
     origin: 'moved',
   },
 
-  { id: 'web-asked-by', owner: 'webOnly', text: '- You are answering ', origin: 'kept' },
+  {
+    id: 'web-asked-by',
+    owner: 'webOnly',
+    clauses: ['- You are answering '],
+    origin: 'kept',
+  },
   {
     id: 'web-no-checkout',
     owner: 'webOnly',
-    text: 'no checkout of the repository and no shell',
+    clauses: [
+      'no checkout of the repository and no shell',
+      'say so plainly when you are asked about a file',
+    ],
     origin: 'kept',
   },
   {
     id: 'web-agents-screen',
     owner: 'webOnly',
-    text: 'that needs a session on a paired box',
+    clauses: [
+      'that needs a session on a paired box',
+      'You CANNOT edit a file, run a command or drive a pipeline',
+      '/agents. Say so, and name that screen',
+    ],
     origin: 'kept',
   },
   {
     id: 'web-multi-turn',
     owner: 'webOnly',
-    text: 'Markdown renders here, and the person can reply',
+    clauses: [
+      'Markdown renders here, and the person can reply',
+      'a follow-up question is available to you when one is genuinely needed',
+    ],
     origin: 'new',
   },
 ];
@@ -233,9 +365,13 @@ describe('the persona claim ledger', () => {
     }
   });
 
-  it('finds every claim present, verbatim, in the fragment that owns it', () => {
+  it('finds every clause of every claim present, verbatim, in the fragment that owns it', () => {
     for (const claim of LEDGER) {
-      expect(FRAGMENTS[claim.owner], `${claim.id} -> ${claim.owner}`).toContain(claim.text);
+      for (const clause of claim.clauses) {
+        expect(flat(FRAGMENTS[claim.owner]), `${claim.id} -> ${claim.owner}: ${clause}`).toContain(
+          flat(clause),
+        );
+      }
     }
   });
 
@@ -244,7 +380,9 @@ describe('the persona claim ledger', () => {
     for (const claim of LEDGER) {
       for (const [owner, text] of Object.entries(FRAGMENTS) as Array<[Owner, string]>) {
         if (owner === claim.owner) continue;
-        expect(text, `${claim.id} leaked into ${owner}`).not.toContain(claim.text);
+        expect(flat(text), `${claim.id} leaked into ${owner}`).not.toContain(
+          flat(claim.clauses[0]),
+        );
       }
     }
   });
@@ -256,7 +394,7 @@ describe('the persona claim ledger', () => {
       for (const line of text.split('\n')) {
         if (line.trim() === '') continue;
         expect(
-          claims.some((c) => line.includes(c.text)),
+          claims.some((c) => c.clauses.some((clause) => flat(line).includes(flat(clause)))),
           `${door} renders a line no ledger entry claims: ${line}`,
         ).toBe(true);
       }

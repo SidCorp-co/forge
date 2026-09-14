@@ -27,8 +27,7 @@ SET agent_config = jsonb_set(
                || (p.agent_config ->> 'personaStyle')
         END
       )
-    ),
-    updated_at = now()
+    )
 WHERE position(
         'Reply in Vietnamese (switch language only if the user clearly writes another one).'
         IN coalesce(p.agent_config ->> 'personaStyle', '')
