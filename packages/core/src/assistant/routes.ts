@@ -123,6 +123,7 @@ chatRoutes.post(
       userKey: userId,
       adapter: 'web',
       contextBudgetTokens: env.CHAT_CONTEXT_BUDGET_TOKENS,
+      reasoningEffort: env.CHAT_REASONING_EFFORT,
     });
   },
 );

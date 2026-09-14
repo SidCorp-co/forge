@@ -31,7 +31,7 @@ export interface DuplicateSeen {
 }
 
 // cm:guard the way out has to be a FLAG the door reads, never a sentence it does not. The check is word overlap and not meaning — "Dark mode broken on the settings page" and "…on the profile page" score 0.750 — so a caller with only prose to answer with cannot restate its way past a deterministic check, and every false positive is final. `assistant/tools/registry.ts` carries the same escape under the same name for the same reason; one word for one thing across doors.
-// cm:edge naming -> packages/core/src/assistant/tools/registry.ts — `DEDUP_OVERRIDE_KEY` is this word at the chat door. Renaming it in one place gives a filer two names for one act.
+// cm:why `confirmNotDuplicate` is the one spelling of this flag: the chat door carried its own copy in `assistant/tools/registry.ts` until 2026-09-15 and files through this door now (ISS-1009).
 export function duplicateGap(seen: DuplicateSeen, override: string): CliGap {
   return {
     because: 'duplicate',

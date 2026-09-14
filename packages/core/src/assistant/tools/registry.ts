@@ -3,18 +3,11 @@
  * registry pattern: a curated allowlist over the `forge_*` MCP catalog,
  * resolved per project-context into an OpenAI toolset.
  *
- * ISS-609 extends the P1 read-only set with the write actions the RC bot needs
- * to act on Forge (`forge_issues` create/update + `forge_comments` create).
- * SAFETY: chat-created issues are FORCED to status `draft` — an `open` issue
- * auto-triages and spawns a pipeline run, so only a human flips draft→open.
+ * ISS-1009: the tracker is reached through the `forge` CLI tool alone; the
+ * per-verb `forge_issues` / `forge_comments` wrappers left chat with it.
  * Extend by adding a {@link ChatToolSpec} here — no other file changes.
  */
 
-import { db } from '../../db/client.js';
-import { activeIssuePrefix, heldIssuePrefixes } from '../../issues/issue-prefix-read.js';
-import { formatIssueRef } from '../../lib/issue-ref.js';
-import { forgeCommentsTool } from '../../mcp/tools/forge-comments.js';
-import { forgeIssuesTool } from '../../mcp/tools/forge-issues.js';
 import { forgeKnowledgeTool } from '../../mcp/tools/forge-knowledge.js';
 import { forgeMemorySearchTool } from '../../mcp/tools/forge-memory.js';
 import {
@@ -25,76 +18,13 @@ import { forgePipelineRunsGetTool } from '../../mcp/tools/forge-pipeline-runs.js
 import { forgeProjectPipelineRunsTool } from '../../mcp/tools/forge-project-pipeline-runs.js';
 import { forgeProjectsGetTool } from '../../mcp/tools/forge-projects.js';
 import type { McpContext } from '../../mcp/tools/lib.js';
-import { guardIssueWrites } from './guards.js';
-import { findDuplicateIssue } from './issue-dedup.js';
-import { resolveIssueDisplayId } from './issue-ref.js';
+import { forgeCliTool } from './forge-cli-tool.js';
 import { buildToolset, type ChatToolSpec, type ChatToolset } from './mcp-adapter.js';
-import { HTML_BODY_REFUSAL, refuseChatFiling } from './plugin-shape.js';
-
-/**
- * ISS-687 — wrap the pure `guardIssueWrites` (draft-force + thin-issue floor)
- * with the create-path dedup check. Fires on BOTH Bao's direct create and a
- * PM-proposed create (both flow through this one spec) — a near-duplicate
- * draft/open issue is rejected with tool-error feedback so the model comments
- * on the existing one instead of filing a repeat.
- */
-// cm:guard the floor is recall-first on purpose and this key is the only way back — the title score is Jaccard word overlap, which cannot separate a real repeat (measured 0.727 on 2026-09-04) from two issues about different pages ("Dark mode broken on the settings page" vs "…profile page" scores 0.750), so the guard refuses both; without an override every false positive is unrecoverable inside the turn, because the model cannot restate its way past a deterministic check
-const DEDUP_OVERRIDE_KEY = 'confirmNotDuplicate';
-
-async function guardIssueWritesDeduped(
-  args: Record<string, unknown>,
-  ctx?: { projectId: string | null },
-): Promise<string | null> {
-  const rejection = guardIssueWrites(args);
-  if (rejection) return rejection;
-  // cm:why one read, two readers: `resolveIssueDisplayId` and the parts arm of `readFiling` both want every prefix this project holds, and asking twice is two round trips for one answer.
-  const prefixes = ctx?.projectId ? await heldIssuePrefixes(ctx.projectId) : [];
-  if (ctx?.projectId) {
-    const unknownRef = await resolveIssueDisplayId(db, ctx.projectId, args, prefixes);
-    if (unknownRef) return unknownRef;
-  }
-  if (args.action === 'create') {
-    const data = (args.data ?? {}) as Record<string, unknown>;
-    if (data.descriptionFormat === 'html') return HTML_BODY_REFUSAL;
-    // cm:guard the shape is read BEFORE the duplicate query, the order `fileIssueThroughCli` takes: a filing that cannot be filed at all costs no read of the project's recent issues.
-    // cm:guard a filing naming NO category is read as a `feature` and passes, and that is the plugin's decision rather than an omission: `forge new -h` states it — "a create sent through the tracker's own tool carries no flag to refuse, so one arriving there is read as a feature". A refusal added here would be the server overruling the reader it delegates to (ISS-1006).
-    const shape = refuseChatFiling({
-      title: typeof data.title === 'string' ? data.title : '',
-      body: typeof data.description === 'string' ? data.description : '',
-      category: typeof data.category === 'string' ? data.category : null,
-      complexity: typeof data.complexity === 'string' ? data.complexity : null,
-    });
-    if (shape) return shape;
-  }
-  if (args.action === 'create' && ctx?.projectId) {
-    const data = (args.data ?? {}) as Record<string, unknown>;
-    // cm:guard consumed here, never forwarded — `forge_issues` validates `data` strictly, so leaving the flag on it turns an override into a 400
-    const overridden = data[DEDUP_OVERRIDE_KEY] === true;
-    delete data[DEDUP_OVERRIDE_KEY];
-    const title = typeof data.title === 'string' ? data.title : '';
-    const description = typeof data.description === 'string' ? data.description : '';
-    const duplicate = await findDuplicateIssue(db, {
-      projectId: ctx.projectId,
-      title,
-      description,
-    });
-    if (duplicate && !overridden) {
-      const ref = formatIssueRef(await activeIssuePrefix(ctx.projectId), duplicate.issSeq);
-      return `a near-duplicate issue already exists (${ref}: "${duplicate.title}", status draft/open) — comment on it via forge_comments instead of creating a new one. The check is word overlap, not meaning: when this is genuinely a different issue (two screens, two releases, two customers), re-send the same create with \`data.${DEDUP_OVERRIDE_KEY}: true\`.`;
-    }
-  }
-  return null;
-}
 
 /** Curated allowlist exposed to the chat model. */
 export const CHAT_TOOL_ALLOWLIST: ChatToolSpec[] = [
-  {
-    factory: forgeIssuesTool,
-    allowedActions: ['list', 'get', 'listTasks', 'create', 'update'],
-    guard: guardIssueWritesDeduped,
-    describe: '`documentId` also accepts the short `ISS-<n>` id shown as `issueId`.',
-  },
-  { factory: forgeCommentsTool, allowedActions: ['list', 'create'] },
+  // cm:guard the ONE tracker door: `forge_issues` and `forge_comments` are not offered beside it. Measured 2026-09-15 with both offered, the model reached the wrapper for a status question, a duplicate check and a settings change while the persona named the CLI — two doors to one tracker is which one a model in a hurry takes, and the wrapper knows nothing of `forge new`'s neighbours, fold or shape (ISS-1009).
+  { factory: forgeCliTool },
   { factory: forgeKnowledgeTool, allowedActions: ['list', 'get', 'search'] },
   { factory: forgeMemorySearchTool },
   { factory: forgeProjectsGetTool },

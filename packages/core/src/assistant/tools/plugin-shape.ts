@@ -10,11 +10,7 @@
 // cm:guard the reference is what carries `forge-plugin-shape.d.ts` into every program that compiles this file, and it is not redundant with core's own tsconfig: `@forge/contracts` reaches core through `@forge/core/public` and builds it under a tsconfig whose `include` is `src/**/*` of ITS OWN package, so the ambient declaration is absent there and the import falls to TS7016. Measured 2026-09-14 — `pnpm verify` stayed green and `pnpm test` failed at `@forge/contracts:build` (ISS-1006).
 /// <reference path="./forge-plugin-shape.d.ts" />
 
-import {
-  type PluginShape,
-  shapeOf,
-  shapeRefusal,
-} from 'forge-plugin/plugin/src/tracker/issue-shape.mjs';
+import { shapeOf, shapeRefusal } from 'forge-plugin/plugin/src/tracker/issue-shape.mjs';
 
 /**
  * `everySection` is passed, so the CLI's light path does not reach this door.
@@ -41,18 +37,15 @@ export interface ChatFiling {
  */
 // cm:guard the refusal is rendered by the PLUGIN's `shapeRefusal` and never composed here, so no wording a filer reads at this door was written on this side of the wire. A server-side string here would drift from the terminal's the first time either moved.
 export function refuseChatFiling(filing: ChatFiling): string | null {
-  return shapeRefusal(readChatFiling(filing));
-}
-
-/** The verdict itself, for a caller that wants the gaps rather than the prose. */
-export function readChatFiling(filing: ChatFiling): PluginShape {
-  return shapeOf(
-    {
-      title: filing.title,
-      body: filing.body,
-      kind: filing.category,
-      complexity: filing.complexity,
-    },
-    EVERY_SECTION,
+  return shapeRefusal(
+    shapeOf(
+      {
+        title: filing.title,
+        body: filing.body,
+        kind: filing.category,
+        complexity: filing.complexity,
+      },
+      EVERY_SECTION,
+    ),
   );
 }

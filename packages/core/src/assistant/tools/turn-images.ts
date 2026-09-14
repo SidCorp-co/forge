@@ -1,71 +1,153 @@
 /**
- * Carry the images that arrived with a chat turn into the issues the model
- * files during that same turn.
+ * Carry the images that arrived with a chat turn onto the issue the model
+ * files, or comments on, during that same turn.
  *
- * Server-side injection, not a tool the model calls: the picture is the whole
- * report on a "look at this" message, and a model that must remember to attach
- * it forgets on the turn it matters. Wrapping the toolset also keeps the
- * existing `forge_issues` create path — validation, mime allowlist, size caps,
- * partial-failure reporting — as the single implementation.
+ * Server-side, not a tool the model calls: the picture is the whole report on
+ * a "look at this" message, and a model that must remember to attach it
+ * forgets on the turn it matters. The upload is the CLI's own `forge attach`,
+ * run through the same `forge` tool once a `new` or a `comment` has landed, so
+ * the mime allowlist, the name-collision read and the size caps stay where the
+ * terminal's are.
  */
 
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { basename, join } from 'node:path';
 import { env } from '../../config/env.js';
+import type { CallToolResult } from '../../mcp/tool-result.js';
 import { base64Bytes, type TurnImage } from '../vision.js';
 import type { ChatToolset } from './mcp-adapter.js';
 
-const ISSUES_TOOL = 'forge_issues';
+const CLI_TOOL = 'forge';
 
-/** `forge_issues.data.attachments` accepts at most 10; the vision budget in
- *  `vision.ts` already bounds what a turn can be carrying. */
+/** What one `forge attach` call carries; the vision budget in `vision.ts`
+ *  already bounds what a turn can be holding. */
 const MAX_ATTACHED = 10;
 
-/**
- * Trim the set to what the persist layer will actually take, newest-first.
- */
-// cm:guard the TOTAL must stay under UPLOADS_MAX_BYTES — `decodeAndValidateAttachments` THROWS PAYLOAD_TOO_LARGE on the total (it collects per-file failures, but not this one) and `issues/create-service.ts` does not catch it, so one oversized set fails the whole create and the bug report is never filed at all: strictly worse than filing it with no picture
-function withinPersistLimits(images: readonly TurnImage[]): TurnImage[] {
-  const out: TurnImage[] = [];
-  let budget = env.UPLOADS_MAX_BYTES;
-  for (const image of images) {
-    if (out.length >= MAX_ATTACHED) break;
-    const size = base64Bytes(image.dataBase64);
-    if (size > budget) continue;
-    budget -= size;
-    out.push(image);
-  }
-  return out;
+const ISSUE_KEY = /\bISS-\d+\b/;
+
+interface CliRun {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
 }
 
 /**
- * Wrap `inner` so a `forge_issues` **create** in this turn is filed with the
- * turn's images attached. Every other call, and every turn with no images, is
- * passed through untouched.
+ * Trim the set to what the ticket service will take, newest-first; what is
+ * cut is named in the block the model reads, never dropped in silence.
  */
-// cm:why base64-inline rather than the `forge_uploads` presigned PUT the tool description prefers: that warning is about a MODEL emitting bytes (they land in the transcript and in chat_logs.toolCalls, costing context every later turn). Here the bytes are injected server-side AFTER the model emitted its arguments — run-turn-core replays the model's own `tc.arguments`, never these — so the transcript cost is zero and a presigned round-trip would only add a ticket to something already in memory.
-// cm:edge contract -> packages/core/src/assistant/tools/guards.ts — `attachments` must stay in CHAT_TOLERATED_DATA_KEYS for this injection to survive the guard; moving it to CHAT_REFUSED_DATA_KEYS silently drops every image the bot files
+function withinPersistLimits(images: readonly TurnImage[]): { kept: TurnImage[]; cut: string[] } {
+  const kept: TurnImage[] = [];
+  const cut: string[] = [];
+  for (const image of images) {
+    if (kept.length >= MAX_ATTACHED || base64Bytes(image.dataBase64) > env.UPLOADS_MAX_BYTES) {
+      cut.push(image.name);
+      continue;
+    }
+    kept.push(image);
+  }
+  return { kept, cut };
+}
+
+function argvOf(argsJson: string): string[] | null {
+  try {
+    const argv = (JSON.parse(argsJson) as { argv?: unknown }).argv;
+    return Array.isArray(argv) && argv.every((a) => typeof a === 'string') ? argv : null;
+  } catch {
+    return null;
+  }
+}
+
+function runOf(result: CallToolResult): CliRun | null {
+  const first = result.content[0];
+  if (first?.type !== 'text') return null;
+  try {
+    const run = JSON.parse(first.text) as Partial<CliRun>;
+    return typeof run.exitCode === 'number' && typeof run.stdout === 'string'
+      ? { exitCode: run.exitCode, stdout: run.stdout, stderr: run.stderr ?? '' }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+// cm:guard the key is read from where each verb PUTS the report and nowhere else: `new` names it in its own stdout (`ISS-n is filed, …`) and on the fold path that is the NEIGHBOUR's key, which is where the report went; `comment` names it in argv[1] and only when a `-` body rides along, because the same verb with no body is the thread read. No other verb a chat turn runs lands a report, so no other verb earns the pictures (ISS-1009).
+function landedOn(argv: readonly string[], stdout: string): string | null {
+  if (argv[0] === 'new') return stdout.match(ISSUE_KEY)?.[0] ?? null;
+  if (argv[0] === 'comment' && argv.includes('-')) return argv[1] ?? null;
+  return null;
+}
+
+/** File names as the reporter sees them, made safe as paths and unique within the set. */
+function fileNames(images: readonly TurnImage[]): string[] {
+  const seen = new Set<string>();
+  return images.map((image, i) => {
+    const base = basename(image.name).replace(/[^\w.-]+/g, '_') || `image-${i + 1}`;
+    const name = seen.has(base) ? `${i + 1}-${base}` : base;
+    seen.add(name);
+    return name;
+  });
+}
+
+async function attach(
+  inner: ChatToolset,
+  target: string,
+  images: readonly TurnImage[],
+  cut: readonly string[],
+): Promise<{ type: 'text'; text: string }> {
+  const dir = await mkdtemp(join(tmpdir(), 'forge-chat-images-'));
+  try {
+    const names = fileNames(images);
+    const paths = await Promise.all(
+      names.map(async (name, i) => {
+        const path = join(dir, name);
+        await writeFile(path, Buffer.from(images[i]?.dataBase64 ?? '', 'base64'));
+        return path;
+      }),
+    );
+    const result = await inner.execute(
+      CLI_TOOL,
+      JSON.stringify({ argv: ['attach', 'issue', target, ...paths] }),
+    );
+    const run = runOf(result) ?? {
+      exitCode: result.isError ? 1 : 0,
+      stdout: '',
+      stderr: result.content.map((b) => (b.type === 'text' ? b.text : '')).join('\n'),
+    };
+    return {
+      type: 'text',
+      text: JSON.stringify({
+        attached: { to: target, files: names, skipped: cut, ...run },
+      }),
+    };
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Wrap `inner` so a `forge new` or a `forge comment … -` that LANDS in this turn
+ * is followed by `forge attach issue <key> <files>` carrying the turn's images,
+ * and the model reads the attach result beside the write's. Every other call,
+ * a write that did not land, and every turn with no images pass through
+ * untouched.
+ */
 export function withTurnImages(inner: ChatToolset, images: readonly TurnImage[]): ChatToolset {
-  const attachments = withinPersistLimits(images).map((i) => ({
-    name: i.name,
-    mime: i.mime,
-    dataBase64: i.dataBase64,
-  }));
-  if (attachments.length === 0) return inner;
+  const { kept, cut } = withinPersistLimits(images);
+  if (kept.length === 0) return inner;
   return {
     tools: inner.tools,
-    execute(name, argsJson) {
-      if (name !== ISSUES_TOOL) return inner.execute(name, argsJson);
-      let args: Record<string, unknown>;
-      try {
-        args = argsJson.trim() ? (JSON.parse(argsJson) as Record<string, unknown>) : {};
-      } catch {
-        return inner.execute(name, argsJson);
-      }
-      if (args.action !== 'create') return inner.execute(name, argsJson);
-      const data = (args.data ?? {}) as Record<string, unknown>;
-      // cm:guard assign, never merge — the model has no bytes to contribute, so anything it put under `attachments` is invented, and merging would file a fabricated attachment alongside the real one
-      data.attachments = attachments;
-      args.data = data;
-      return inner.execute(name, JSON.stringify(args));
+    async execute(name, argsJson) {
+      const result = await inner.execute(name, argsJson);
+      if (name !== CLI_TOOL || result.isError) return result;
+      const argv = argvOf(argsJson);
+      const run = runOf(result);
+      // cm:guard attach only AFTER the write returned exit 0: a refused `new` has no row to attach to, and the model's next call will be the corrected filing, which is the one that earns the pictures — attaching on the refusal would send them to whatever key the refusal text happened to name (ISS-1009).
+      if (!argv || !run || run.exitCode !== 0) return result;
+      const target = landedOn(argv, run.stdout);
+      if (!target) return result;
+      const block = await attach(inner, target, kept, cut);
+      return { ...result, content: [...result.content, block] };
     },
   };
 }

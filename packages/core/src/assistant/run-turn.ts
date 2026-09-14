@@ -41,6 +41,7 @@ export interface RunTurnArgs {
   adapter: string;
   /** Estimated-token cap on each provider request (`env.CHAT_CONTEXT_BUDGET_TOKENS`). */
   contextBudgetTokens?: number | undefined;
+  reasoningEffort?: string | undefined;
 }
 
 export function runChatTurn({
@@ -54,6 +55,7 @@ export function runChatTurn({
   userKey,
   adapter,
   contextBudgetTokens,
+  reasoningEffort,
 }: RunTurnArgs) {
   return streamSSE(c, async (stream) => {
     // cm:guard buffering is off for Traefik and nginx, or a proxy holds the events until the turn
@@ -77,6 +79,7 @@ export function runChatTurn({
       messages: providerMessages,
       tools,
       contextBudgetTokens,
+      reasoningEffort,
       signal: ac.signal,
     });
     let step = await gen.next();
@@ -115,9 +118,7 @@ export function runChatTurn({
         source: adapter,
       });
     } catch (err) {
-      // chat_logs is best-effort audit — don't fail the request when the
-      // INSERT errors (e.g. db pool exhausted). The SSE stream has already
-      // delivered to the client; logging the failure is enough.
+      // cm:why `chat_logs` is best-effort audit: an INSERT error (a pool exhausted, say) must not fail a request whose SSE stream has already been delivered.
       console.error('chat_logs insert failed', err);
     }
   });

@@ -62,6 +62,8 @@ export interface ChatStreamRequest {
   messages: ChatMessage[];
   tools?: ChatTool[] | undefined;
   responseFormat?: ChatResponseFormat | undefined;
+  /** Passed through to an endpoint that reads it; omitted entirely when unset. */
+  reasoningEffort?: string | undefined;
   temperature?: number | undefined;
   /** OpenAI-compat `tool_choice`. `'required'` forces ≥1 tool call this round — agentic callers set it on the FIRST round so a lazy model cannot answer without investigating, and later rounds stay auto so the loop can terminate. */
   toolChoice?: 'required' | 'auto' | undefined;

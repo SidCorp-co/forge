@@ -12,6 +12,8 @@ import { beginPatRequest, withPatScope } from './pat-rest-surface.js';
 
 export type AuthVars = {
   userId: string;
+  /** Set once `assertEmailVerified` has read the row for this request, so a later mount does not read it again. */
+  emailVerified?: true;
   // cm:guard set ONLY for a device principal, and `userId` is left unset beside it on purpose — every handler authorizing through `loadProjectAccess(projectId, userId)` then fails closed for a device unless it honours the device principal by name (`requireUserOrDevice`).
   deviceId?: string;
   principal?: 'user' | 'device' | 'pat';
@@ -167,6 +169,11 @@ export function assertEmailVerified(): MiddlewareHandler<{ Variables: AuthVars }
       await next();
       return;
     }
+    // cm:guard memoised on the request context because this middleware is mounted 134 times and a request crosses several of those routers: measured 2026-09-15, one `GET /api/projects/:id/issues?limit=1` read `email_verified_at` EIGHT times — 3.2s of a 7.6s request over a remote link, and eight round trips for one fact on a local one. A refusal is never cached: only a pass sets the flag, so a later mount still refuses what the first would have (ISS-1009).
+    if (c.get('emailVerified')) {
+      await next();
+      return;
+    }
     const userId = c.get('userId');
     const [row] = await db
       .select({ emailVerifiedAt: users.emailVerifiedAt })
@@ -180,6 +187,7 @@ export function assertEmailVerified(): MiddlewareHandler<{ Variables: AuthVars }
         cause: { code: 'EMAIL_NOT_VERIFIED' },
       });
     }
+    c.set('emailVerified', true);
 
     await next();
   };

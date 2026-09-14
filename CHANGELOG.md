@@ -4663,6 +4663,25 @@
 
 ### Changed
 
+- **The chat assistant now works the tracker through the `forge` CLI, the same way a person at a
+  terminal does.** Filing through chat used to go through a tool of its own, and that tool knew
+  nothing of what the command line already does before it files: look for what is already open,
+  fold a report onto a near neighbour as a comment, or refuse with the exact command that clears
+  it. So the assistant wrote whole issues from one sentence, filed them beside issues that already
+  covered them, and told you it had found nothing when its search could not have found anything.
+  It now runs `forge` itself — reading `forge -h` and `forge <verb> -h` before it acts, filing
+  with `forge new`, and relaying what the command said rather than what it meant to do — as you,
+  scoped to the project you are talking about, with a credential minted for that one call and
+  revoked after it. The separate filing tool is gone from chat so there is one door, and the
+  assistant may take up to sixteen steps in a turn instead of eight, because reading the help
+  before acting is a step. Two things measured along the way are fixed with it: the tracker read
+  the same "is this email verified" row eight times on one request, and a command that ran out
+  of time reported nothing instead of saying it was stopped. A picture you post with a report
+  still lands on the issue: the assistant now attaches it with `forge attach` once the filing or
+  the comment has landed, and tells you if the upload was refused. And when `forge new` shows a
+  near neighbour it did not fold onto, the assistant relates the two issues and names both.
+
+
 - **A personal access token no longer counts as "a person is typing this", so driving Forge from the
   command line on your own token now meets the same recorded-work check an agent meets.** The check
   that refuses to move an issue to `developed` with nothing recorded against it was written for

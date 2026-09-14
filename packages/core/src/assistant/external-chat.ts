@@ -182,6 +182,7 @@ export async function runExternalChatTurn(
     temperature: 0.2,
     requireInitialToolUse: args.tools !== undefined,
     contextBudgetTokens: env.CHAT_CONTEXT_BUDGET_TOKENS,
+    reasoningEffort: env.CHAT_REASONING_EFFORT,
     responseFormat: args.responseFormat,
     signal: args.signal,
   });

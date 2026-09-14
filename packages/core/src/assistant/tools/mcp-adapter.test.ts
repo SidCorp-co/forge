@@ -1,14 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import type { CallToolResult } from '../../mcp/tool-result.js';
 import type { McpContext, McpTool } from '../../mcp/tools/lib.js';
-import { guardIssueWrites } from './guards.js';
-import { buildToolset, mergeToolsets, toolError, toolResultText } from './mcp-adapter.js';
+import {
+  buildToolset,
+  mergeToolsets,
+  RESULT_CAP,
+  toolError,
+  toolResultText,
+} from './mcp-adapter.js';
 
 /** The JSON the model reads out of a result's first text block. */
 const body = (r: CallToolResult) => JSON.parse((r.content[0] as { text: string }).text);
 
-// Minimal stub context — the read-only gate rejects before any handler runs,
-// and tools[] building only reads the descriptor, so no DB/principal is hit.
+// cm:why an empty context is enough here: building `tools[]` reads the descriptor only, and every guard in this file rejects before a handler could want a db or a principal.
 const ctx = {} as McpContext;
 
 function stubTool(name: string, onCall: (a: Record<string, unknown>) => unknown): McpTool {
@@ -132,127 +136,6 @@ describe('chat mcp-adapter', () => {
 
   // === ISS-609 — guard hook + toolset composition ===
 
-  it('guard can normalize args before dispatch (draft-first create)', async () => {
-    let received: Record<string, unknown> | null = null;
-    const { execute } = buildToolset(ctx, [
-      {
-        factory: () =>
-          stubTool('forge_issues', (a) => {
-            received = a;
-            return { ok: true };
-          }),
-        allowedActions: ['create'],
-        guard: guardIssueWrites,
-      },
-    ]);
-    const data = {
-      title: '[Bug] Category path renders too long on listings',
-      status: 'open',
-      description: `Source: https://hub.example.co/tasks?projectId=53&task=12608 and https://chat.example.co/group/x?msg=1. ${'The category breadcrumb concatenates every ancestor level so listing titles overflow. '.repeat(3)}Acceptance: only the leaf category is used.`,
-    };
-    await execute('forge_issues', JSON.stringify({ action: 'create', data }));
-    expect((received as unknown as { data: { status: string } }).data.status).toBe('draft');
-  });
-
-  // cm:guard the fixture refuses on its TITLE, not its body: ISS-1006 moved the body's floor out of `guardIssueWrites` and onto the plugin's shape reader, which names the missing section instead of counting characters. What this case owns is the ADAPTER contract — a guard that rejects stops the handler — so it must refuse for a reason this guard still holds. The body rule is proven in `registry-dedup.test.ts`.
-  it('guard rejects a create under the title floor, and the handler never runs', async () => {
-    let called = false;
-    const { execute } = buildToolset(ctx, [
-      {
-        factory: () =>
-          stubTool('forge_issues', () => {
-            called = true;
-            return { ok: true };
-          }),
-        allowedActions: ['create'],
-        guard: guardIssueWrites,
-      },
-    ]);
-    const out = await execute(
-      'forge_issues',
-      '{"action":"create","data":{"title":"Fix cat","description":"Category too long, use the last one."}}',
-    );
-    expect(called).toBe(false);
-    expect(body(out).error).toMatch(/too thin to be actionable/);
-  });
-
-  it('guard rejects any pipeline-dispatching status on update', async () => {
-    let called = false;
-    const { execute } = buildToolset(ctx, [
-      {
-        factory: () =>
-          stubTool('forge_issues', () => {
-            called = true;
-            return { ok: true };
-          }),
-        allowedActions: ['update'],
-        guard: guardIssueWrites,
-      },
-    ]);
-    // cm:guard every status in this list dispatches a pipeline job on transition, so all six must bounce — a status added to the registry as dispatching and not added here is one a chat turn can set, which is the fence `guardIssueWrites` exists to hold.
-    for (const status of [
-      'open',
-      'approved',
-      'awaiting_release',
-      'testing',
-      'in_progress',
-      'tested',
-    ]) {
-      const out = await execute(
-        'forge_issues',
-        `{"action":"update","data":{"status":"${status}"}}`,
-      );
-      expect(called).toBe(false);
-      expect(body(out).error).toMatch(/leave that transition to a human/);
-    }
-  });
-
-  it('guard allows the non-dispatching statuses and status-less updates', async () => {
-    const received: Array<Record<string, unknown>> = [];
-    const { execute } = buildToolset(ctx, [
-      {
-        factory: () =>
-          stubTool('forge_issues', (a) => {
-            received.push(a);
-            return { ok: true };
-          }),
-        allowedActions: ['update'],
-        guard: guardIssueWrites,
-      },
-    ]);
-    for (const status of ['draft', 'waiting', 'needs_info', 'on_hold', 'closed']) {
-      const out = await execute(
-        'forge_issues',
-        `{"action":"update","data":{"status":"${status}"}}`,
-      );
-      expect(body(out)).toEqual({ ok: true });
-    }
-    const out = await execute('forge_issues', '{"action":"update","data":{"title":"renamed"}}');
-    expect(body(out)).toEqual({ ok: true });
-    expect(received).toHaveLength(6);
-  });
-
-  it("guard rejects the 'unblock' operator escape hatch", async () => {
-    let called = false;
-    const { execute } = buildToolset(ctx, [
-      {
-        factory: () =>
-          stubTool('forge_issues', () => {
-            called = true;
-            return { ok: true };
-          }),
-        allowedActions: ['update'],
-        guard: guardIssueWrites,
-      },
-    ]);
-    const out = await execute(
-      'forge_issues',
-      '{"action":"update","data":{"status":"draft","unblock":true}}',
-    );
-    expect(called).toBe(false);
-    expect(body(out).error).toMatch(/unblock/);
-  });
-
   it('awaits an async guard before dispatch (rejection short-circuits)', async () => {
     let called = false;
     const { execute } = buildToolset(ctx, [
@@ -293,6 +176,36 @@ describe('chat mcp-adapter', () => {
     const out = await execute('forge_issues', '{"action":"create","data":{}}');
     expect(body(out)).toEqual({ ok: true });
     expect(received).toEqual({ action: 'create', data: {} });
+  });
+
+  // cm:guard these two are the ADAPTER's contract and use a guard of their own: the `forge_issues` guard this file once borrowed left chat with its tool (ISS-1009), and the rule that a rejecting guard stops the handler while an allowing one may rewrite the args is the adapter's whether any spec uses it.
+  it('a guard that rejects stops the handler; one that allows may rewrite the args', async () => {
+    let received: Record<string, unknown> | null = null;
+    const { execute } = buildToolset(ctx, [
+      {
+        factory: () =>
+          stubTool('forge_issues', (a) => {
+            received = a;
+            return { ok: true };
+          }),
+        allowedActions: ['update'],
+        guard: (args) => {
+          const data = (args.data ?? {}) as Record<string, unknown>;
+          if (data.status === 'approved') return 'leave that transition to a human';
+          data.touched = true;
+          args.data = data;
+          return null;
+        },
+      },
+    ]);
+    const refused = await execute(
+      'forge_issues',
+      '{"action":"update","data":{"status":"approved"}}',
+    );
+    expect(body(refused).error).toMatch(/leave that transition to a human/);
+    expect(received).toBeNull();
+    await execute('forge_issues', '{"action":"update","data":{"status":"waiting"}}');
+    expect((received as unknown as { data: { touched: boolean } }).data.touched).toBe(true);
   });
 
   it("passes the bound projectId to the guard's ctx argument", async () => {
@@ -373,8 +286,10 @@ describe('chat mcp-adapter — MCP result vocabulary', () => {
     const image = { type: 'image', data: 'QUJD', mimeType: 'image/png' } as const;
     const text = toolResultText({ content: [{ type: 'text', text: 'one' }, image] });
     expect(text).toBe(`one\n${JSON.stringify(image)}`);
-    const long = toolResultText({ content: [{ type: 'text', text: 'x'.repeat(30_000) }] });
-    expect(long.length).toBeLessThan(30_000);
+    const long = toolResultText({
+      content: [{ type: 'text', text: 'x'.repeat(RESULT_CAP + 6_000) }],
+    });
+    expect(long.length).toBeLessThan(RESULT_CAP + 6_000);
     expect(long.endsWith('[truncated]')).toBe(true);
   });
 
