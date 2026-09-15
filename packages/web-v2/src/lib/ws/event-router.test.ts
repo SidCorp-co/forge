@@ -89,7 +89,7 @@ describe("a dependency change reaches the issues list, not only the two issues i
 
 // cm:guard the prefix list is now ONE array read by both replays, so this is what says a prefix cannot be dropped from the reconnect path while it stays in the first-open one — the two used to be the same function and drift here is silent.
 describe("a reconnect still repairs every prefix it repaired before", () => {
-  it("invalidates the thirteen prefixes the replay has always invalidated", async () => {
+  it("invalidates every prefix a dropped connection has to repair", async () => {
     const c = capture();
     const { replayOnReconnect } = await import("./event-router");
     replayOnReconnect(c.qc);
@@ -108,9 +108,12 @@ describe("a reconnect still repairs every prefix it repaired before", () => {
       ["integrations"],
       ["integration-connections"],
       ["questions"],
+      ["notifications"],
+      ["notifications-unread"],
+      ["invitations-pending"],
     ]) {
       expect(c.has(key)).toBe(true);
     }
-    expect(c.keys).toHaveLength(13);
+    expect(c.keys).toHaveLength(16);
   });
 });

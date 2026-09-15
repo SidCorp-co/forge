@@ -331,6 +331,10 @@ const REPLAY_PREFIXES: readonly (readonly unknown[])[] = [
 	["integration-connections"],
 	// cm:guard the ONE recovery an empty decision panel has. `features/questions` polls only once an issue already carries a question — `agent_questions` has no index on `issue_id` — so a screen open across a dropped connection learns of its first question here or not until the next navigation (ISS-980).
 	["questions"],
+	// cm:guard the three notification keys are HERE because `refetchOnWindowFocus` is off since ISS-1019: `routeEvent` reaches them on every `notification.created`, but a notification arriving while the socket was down was repaired by returning to the tab and by nothing else, so without these the unread badge stays wrong until something unrelated refetches.
+	["notifications"],
+	["notifications-unread"],
+	["invitations-pending"],
 ];
 
 const QUESTIONS_PREFIX = "questions";
