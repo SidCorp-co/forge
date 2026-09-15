@@ -117,6 +117,7 @@ import {
 import { registerMemoryDecay } from './memory/decay.js';
 import { registerEmbeddingBackfill } from './memory/embedding-backfill.js';
 import { memoryListRoutes } from './memory/list-routes.js';
+import { memoryMineRoutes } from './memory/mine-routes.js';
 import { memorySearchRoutes } from './memory/search-routes.js';
 import { memoryWriteRoutes } from './memory/write-routes.js';
 import { projectMetricsRoutes } from './metrics/routes.js';
@@ -367,6 +368,7 @@ app.route('/api/jobs', jobLifecycleDeviceRoutes);
 app.route('/api/jobs', jobLifecycleUserRoutes);
 app.route('/api/webhooks', webhookInboundRoutes);
 app.route('/api/memory', memorySearchRoutes);
+app.route('/api/memory', memoryMineRoutes);
 app.route('/api/memory', memoryListRoutes);
 app.route('/api/memory', memoryWriteRoutes);
 app.route('/api/issue-step-contexts', stepHandoffRoutes);
