@@ -37,7 +37,13 @@ vi.mock("@/features/orgs/hooks", () => ({ useOrgs: () => ({ data: orgs() }) }));
 vi.mock("@/features/projects/hooks", () => ({
   useProjectsIncludingArchived: () => ({ data: [{ id: "proj-a", name: "forge-dev" }] }),
 }));
-vi.mock("./connection-edit-drawer", () => ({ ConnectionEditDrawer: () => null }));
+// Renders its subject's id rather than nothing, so "the row hands this
+// connection to the drawer" is an assertion and not an absence.
+vi.mock("./connection-edit-drawer", () => ({
+  ConnectionEditDrawer: ({ connection }: { connection: { id: string } }) => (
+    <div data-testid="connection-edit-drawer">{connection.id}</div>
+  ),
+}));
 
 function conn(over: Partial<ConnectionDirectoryItem> = {}): ConnectionDirectoryItem {
   return {
@@ -59,7 +65,10 @@ function conn(over: Partial<ConnectionDirectoryItem> = {}): ConnectionDirectoryI
   } as ConnectionDirectoryItem;
 }
 
-const BOUND = {
+// Typed rather than inferred: `environment` is a two-member union on
+// ConnectionUsage, and an untyped object literal widens it to `string`, which
+// vitest's transpile-only run never sees and `next build` fails on.
+const BOUND: ConnectionDirectoryItem["usage"] = {
   bindings: [{ id: "b1", projectId: "proj-a", environment: "prod", label: "", active: true }],
 };
 
@@ -178,6 +187,28 @@ describe("IntegrationsScreen", () => {
     expect(removeMutate).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     expect(removeMutate).toHaveBeenCalledWith("conn-1");
+  });
+
+  it("offers Enable, not Disable, on a row whose credential is switched off", () => {
+    connectionItems.mockReturnValue([conn({ active: false })]);
+    render(<IntegrationsScreen />);
+    openApp("Coolify deploy");
+    const names = within(row("Coolify deploy"))
+      .getAllByRole("button")
+      .map((b) => b.textContent?.trim());
+    expect(names).toEqual(["Enable", "Remove"]);
+  });
+
+  it("opens the edit drawer on THAT connection when its row is clicked", () => {
+    connectionItems.mockReturnValue([
+      conn({ id: "c1", displayName: "Staging token" }),
+      conn({ id: "c2", displayName: "Prod token" }),
+    ]);
+    render(<IntegrationsScreen />);
+    openApp("Coolify deploy");
+    expect(screen.queryByTestId("connection-edit-drawer")).toBeNull();
+    fireEvent.click(row("Prod token"));
+    expect(screen.getByTestId("connection-edit-drawer")).toHaveTextContent("c2");
   });
 
   it("explains read-only rather than offering buttons the API answers 403", () => {
