@@ -12,10 +12,12 @@ vi.mock('../db/client.js', () => ({ db: {} }));
 import {
   foldPresence,
   heartbeatOf,
+  namesHandle,
   PRESENCE_BOUNDS,
   PRESENCE_DEFAULTS,
   PresenceValidationError,
   validatePresence,
+  windowNamesAHandle,
 } from './presence.js';
 import { BACKOFF_AFTER, DORMANT_MS, LOOP_BOUNCE_MS, LOOP_LIMIT } from './proactivity.js';
 
@@ -149,5 +151,26 @@ describe('validatePresence', () => {
   it('refuses a non-integer and a wrong mode', () => {
     expect(() => validatePresence({ backoffAfter: 1.5 })).toThrow(PresenceValidationError);
     expect(() => validatePresence({ answerInGroup: 'question' })).toThrow(PresenceValidationError);
+  });
+});
+
+describe('namesHandle', () => {
+  it('matches @handle and the bare handle as a word, case-insensitively', () => {
+    expect(namesHandle('@babo can you check', 'babo')).toBe(true);
+    expect(namesHandle('Babo, the build?', 'babo')).toBe(true);
+    expect(namesHandle('ask babo.', 'babo')).toBe(true);
+  });
+
+  it('does not fire inside another word, on a hyphenated superset, or on a null handle', () => {
+    expect(namesHandle('forgery is a crime', 'forge')).toBe(false);
+    expect(namesHandle('@forge-dev please', 'forge')).toBe(false);
+    expect(namesHandle('@forge please', null)).toBe(false);
+  });
+
+  it('reads every message in the window against every handle', () => {
+    const messages = [{ content: 'the build' }, { content: 'I mean @babo' }];
+    expect(windowNamesAHandle(messages, [null, 'babo'])).toBe(true);
+    expect(windowNamesAHandle(messages, ['forge'])).toBe(false);
+    expect(windowNamesAHandle([], ['babo'])).toBe(false);
   });
 });

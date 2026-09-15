@@ -102,6 +102,39 @@ export async function projectsOfHandle(
   return rows.map((r) => r.projectId).sort();
 }
 
+/** A room's live handles with the name each answers to; `handle` is null where the org has minted none yet. */
+export interface RoomHandle {
+  userId: string;
+  handle: string | null;
+}
+
+// cm:guard the name is `organization_members.handle` and never `users.display_name`: the handle is unique within its org and is the one address the schema says a mention may resolve on; a display name is re-assignable and is read to decide nothing (ISS-1034 criteria 66, 67).
+export async function roomHandles(
+  conversationId: string,
+  tx: Executor = defaultDb,
+): Promise<RoomHandle[]> {
+  const rows = await tx
+    .select({ userId: conversationParticipants.userId, handle: organizationMembers.handle })
+    .from(conversationParticipants)
+    .leftJoin(organizationMembers, eq(organizationMembers.userId, conversationParticipants.userId))
+    .where(
+      and(
+        eq(conversationParticipants.conversationId, conversationId),
+        eq(conversationParticipants.kind, 'handle'),
+        isNull(conversationParticipants.removedAt),
+      ),
+    );
+  const byUser = new Map<string, RoomHandle>();
+  for (const r of rows) {
+    if (!r.userId) continue;
+    const seen = byUser.get(r.userId);
+    if (!seen || (seen.handle === null && r.handle)) {
+      byUser.set(r.userId, { userId: r.userId, handle: r.handle ?? null });
+    }
+  }
+  return [...byUser.values()];
+}
+
 /**
  * The live handle in this room that carries `projectId`, or null where none does.
  */

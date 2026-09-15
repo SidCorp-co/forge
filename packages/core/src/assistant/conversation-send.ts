@@ -70,14 +70,14 @@ export function webConversationTurn(args: {
     door: 'web-chat-reply',
     handleName: args.handleName,
     log: { adapter: 'web', projectId: args.project.id },
-    prepare: async ({ principalUserId, speakerUserId, conversationId }) => ({
+    prepare: async ({ principalUserId, speakerUserId, conversationId, handleUserId }) => ({
       persona: webConversationPersona(args.project.name, args.project.slug, args.askedBy),
       tools: buildProjectToolset(
         buildChatToolContext({
           userId: principalUserId,
           projectId: args.project.id,
           projectSlug: args.project.slug,
-          turn: { conversationId, speakerUserId },
+          turn: { conversationId, speakerUserId, handleUserId },
         }),
       ),
     }),

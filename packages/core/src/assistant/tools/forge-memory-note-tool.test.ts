@@ -4,10 +4,6 @@ const runMemoryWrite = vi.fn();
 vi.mock('../../memory/write-service.js', () => ({
   runMemoryWrite: (...a: unknown[]) => runMemoryWrite(...(a as [])),
 }));
-const handleForProject = vi.fn(async () => 'handle-1');
-vi.mock('../../conversations/participants.js', () => ({
-  handleForProject: (...a: unknown[]) => handleForProject(...(a as [])),
-}));
 const assertPrincipalIsMember = vi.fn(async () => undefined);
 vi.mock('../../mcp/tools/lib.js', () => ({
   assertPrincipalIsMember: (...a: unknown[]) => assertPrincipalIsMember(...(a as [])),
@@ -24,16 +20,18 @@ const call = (c: Ctx, raw: Record<string, unknown>) =>
 beforeEach(() => {
   runMemoryWrite.mockReset();
   runMemoryWrite.mockResolvedValue({ id: 'm1', degraded: false, embeddedAt: new Date() });
-  handleForProject.mockClear();
   assertPrincipalIsMember.mockClear();
 });
 
 describe('forge_memory.note stamps where a note came from', () => {
   it('writes a note row attributed to the speaker, the room and the handle, and to nothing the model chose', async () => {
-    const out = await call(ctx({ conversationId: 'c1', speakerUserId: 'alice' }), {
-      text: 'deploys go out on Thursdays',
-      title: 'deploy day',
-    });
+    const out = await call(
+      ctx({ conversationId: 'c1', speakerUserId: 'alice', handleUserId: 'handle-1' }),
+      {
+        text: 'deploys go out on Thursdays',
+        title: 'deploy day',
+      },
+    );
     expect(assertPrincipalIsMember).toHaveBeenCalledWith({ userId: 'agent-1' }, 'p1');
     const written = runMemoryWrite.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(written).toMatchObject({
@@ -53,7 +51,7 @@ describe('forge_memory.note stamps where a note came from', () => {
 
   // cm:guard two notes in one turn must be TWO rows: `runMemoryWrite` upserts on the ref, so a ref built from the message id would leave the second note standing on the first one's grave (ISS-1034 criterion 25).
   it('gives two notes from one room two different refs', async () => {
-    const c = ctx({ conversationId: 'c1', speakerUserId: 'alice' });
+    const c = ctx({ conversationId: 'c1', speakerUserId: 'alice', handleUserId: 'handle-1' });
     await call(c, { text: 'one' });
     await call(c, { text: 'two' });
     const refs = runMemoryWrite.mock.calls.map((a) => (a[0] as { sourceRef: string }).sourceRef);
@@ -62,7 +60,9 @@ describe('forge_memory.note stamps where a note came from', () => {
 
   it('refuses a turn whose newest message is from nobody Forge knows, and writes nothing', async () => {
     await expect(
-      call(ctx({ conversationId: 'c1', speakerUserId: null }), { text: 'x' }),
+      call(ctx({ conversationId: 'c1', speakerUserId: null, handleUserId: 'handle-1' }), {
+        text: 'x',
+      }),
     ).rejects.toThrow(/nobody Forge knows/);
     expect(runMemoryWrite).not.toHaveBeenCalled();
   });
@@ -70,7 +70,9 @@ describe('forge_memory.note stamps where a note came from', () => {
   it('refuses a turn that names no room', async () => {
     await expect(call(ctx(undefined), { text: 'x' })).rejects.toThrow(/names no room/);
     await expect(
-      call(ctx({ conversationId: 'c1', speakerUserId: 'alice' }, null), { text: 'x' }),
+      call(ctx({ conversationId: 'c1', speakerUserId: 'alice', handleUserId: 'handle-1' }, null), {
+        text: 'x',
+      }),
     ).rejects.toThrow(/names no room/);
     expect(runMemoryWrite).not.toHaveBeenCalled();
   });
@@ -84,7 +86,7 @@ describe('forge_memory.note stamps where a note came from', () => {
     expect(Object.keys(schema.properties).sort()).toEqual(['text', 'title']);
     expect(schema.required).toEqual(['text']);
     await expect(
-      call(ctx({ conversationId: 'c1', speakerUserId: 'alice' }), {
+      call(ctx({ conversationId: 'c1', speakerUserId: 'alice', handleUserId: 'handle-1' }), {
         text: 'x',
         source: 'policy',
       }),

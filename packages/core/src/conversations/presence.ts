@@ -140,3 +140,21 @@ export function heartbeatOf(self: PresenceConfig): { enabled: boolean; intervalM
     intervalMs: self.heartbeat?.intervalMs ?? PRESENCE_DEFAULTS.heartbeatIntervalMs,
   };
 }
+
+/**
+ * Whether a message names a handle: `@handle` or the bare handle as a word.
+ */
+// cm:guard the name matched is the ORG HANDLE and the match is a whole word, case-insensitive: a handle `forge` must not fire on "forgery", and `@Forge` typed by a person on a phone is the same address. A null handle — an org that has minted none — can be named by nobody, so it never matches (ISS-1034 criteria 66, 67).
+export function namesHandle(content: string, handle: string | null): boolean {
+  if (!handle) return false;
+  const escaped = handle.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&');
+  return new RegExp(`(^|[^\\w-])@?${escaped}(?![\\w-])`, 'i').test(content);
+}
+
+/** Whether any message in the window names any of the room's handles. */
+export function windowNamesAHandle(
+  messages: readonly { content: string }[],
+  handles: readonly (string | null)[],
+): boolean {
+  return messages.some((m) => handles.some((h) => namesHandle(m.content, h)));
+}

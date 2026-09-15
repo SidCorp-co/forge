@@ -7,7 +7,6 @@
  */
 import { z } from 'zod';
 import { writeAssistantPreferences } from '../../auth/preference-changes.js';
-import { handleForProject } from '../../conversations/participants.js';
 import { answerStyles } from '../../db/schema.js';
 import type { ContextScopedMcpToolFactory } from '../../mcp/tools/lib.js';
 
@@ -49,21 +48,16 @@ export const forgePreferencesTool: ContextScopedMcpToolFactory = (ctx) => ({
   handler: async (raw: Record<string, unknown>) => {
     const patch = input.parse(raw);
     const turn = ctx.turn;
-    const projectId = ctx.boundProjectId;
     // cm:guard the refusal names the reason and the way out rather than writing for the principal: in a room the principal is the org agent, and an unlinked speaker is a person Forge cannot identify — link the account, or ask them to set it on their account page (ISS-1034 criterion 22).
     if (!turn?.speakerUserId) {
       throw new Error(
         'forge_preferences writes the preferences of the linked person who spoke, and the newest message is from nobody Forge knows — nothing may be set on their behalf. They can link their account or set it on their account page.',
       );
     }
-    const handleUserId =
-      turn.conversationId && projectId
-        ? await handleForProject(turn.conversationId, projectId)
-        : null;
     const written = await writeAssistantPreferences({
       userId: turn.speakerUserId,
       patch,
-      actor: { kind: 'assistant', userId: handleUserId },
+      actor: { kind: 'assistant', userId: turn.handleUserId },
       conversationId: turn.conversationId,
     });
     return {

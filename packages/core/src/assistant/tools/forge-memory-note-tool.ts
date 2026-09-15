@@ -7,7 +7,6 @@
  */
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { handleForProject } from '../../conversations/participants.js';
 import { assertPrincipalIsMember, type ContextScopedMcpToolFactory } from '../../mcp/tools/lib.js';
 import { runMemoryWrite } from '../../memory/write-service.js';
 
@@ -53,7 +52,6 @@ export const forgeMemoryNoteTool: ContextScopedMcpToolFactory = (ctx) => ({
       );
     }
     await assertPrincipalIsMember(ctx.principal, projectId);
-    const handleUserId = await handleForProject(turn.conversationId, projectId);
     // cm:guard a FRESH id per note rather than the message id the plan first named: `runMemoryWrite` upserts on (projectId, source, sourceRef), so two notes from one turn under the message's id would leave one — the second silently replacing the first (ISS-1034 criterion 25).
     const sourceRef = `conversation:${turn.conversationId}:${randomUUID()}`;
     const result = await runMemoryWrite({
@@ -64,7 +62,7 @@ export const forgeMemoryNoteTool: ContextScopedMcpToolFactory = (ctx) => ({
       metadata: {
         conversationId: turn.conversationId,
         authorUserId: turn.speakerUserId,
-        handleUserId,
+        handleUserId: turn.handleUserId,
         ...(args.title ? { title: args.title } : {}),
       },
     });

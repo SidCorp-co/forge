@@ -65,9 +65,21 @@ vi.mock('./transcript.js', () => ({
 }));
 
 let verdict: unknown = { speak: true };
-vi.mock('./proactivity.js', () => ({
-  decideProactivity: async () => verdict,
+const decideProactivity = vi.fn(async (_input: unknown) => verdict);
+// cm:guard `decideProactivity` alone is replaced and the module's constants stay real, because `presence.js` folds a room with no self onto those constants — a whole-module mock would fold onto `undefined` and the pass-through assertions below would compare nothing with nothing (ISS-1034 criterion 32).
+vi.mock('./proactivity.js', async (orig) => ({
+  ...(await orig<typeof import('./proactivity.js')>()),
+  decideProactivity: (...a: unknown[]) => decideProactivity(a[0]),
 }));
+vi.mock('../config/env.js', () => ({ env: {} }));
+vi.mock('../db/client.js', () => ({ db: {} }));
+const handles = [{ userId: 'handle-1', handle: 'babo' }];
+vi.mock('./participants.js', () => ({
+  roomHandles: async () => handles,
+  handleForProject: async () => 'handle-1',
+}));
+let selves = new Map<string, { presence: Record<string, unknown> }>();
+vi.mock('../orgs/agent-selves.js', () => ({ readSelvesFor: async () => selves }));
 
 const runConversationTurn = vi.fn();
 vi.mock('./turn-runner.js', () => ({
@@ -75,6 +87,7 @@ vi.mock('./turn-runner.js', () => ({
 }));
 
 const { routeWindow } = await import('./route-window.js');
+const { BACKOFF_AFTER, DORMANT_MS, LOOP_BOUNCE_MS, LOOP_LIMIT } = await import('./proactivity.js');
 
 const WINDOW = {
   id: 'w1',
@@ -106,6 +119,7 @@ beforeEach(() => {
   messageRows = messages;
   delivered = false;
   verdict = { speak: true };
+  selves = new Map();
   runConversationTurn.mockResolvedValue({ kind: 'delivered', messageId: 'rc-9' });
 });
 
@@ -283,6 +297,7 @@ describe('whose preferences a room reply honours', () => {
     expect(runConversationTurn.mock.calls[0]?.[0]).toMatchObject({
       principalUserId: 'principal-1',
       speakerUserId: 'speaker-1',
+      handleUserId: 'handle-1',
     });
     expect(inputs.mock.calls[0]?.[0]).toMatchObject({ speakerUserId: 'speaker-1' });
   });
@@ -294,5 +309,58 @@ describe('whose preferences a room reply honours', () => {
       principalUserId: 'principal-1',
       speakerUserId: null,
     });
+  });
+});
+
+describe('the room’s presence reaches the guards', () => {
+  it('folds a room with no self onto today’s constants (criterion 32)', async () => {
+    await route();
+    expect(decideProactivity.mock.calls[0]?.[0]).toMatchObject({
+      conversationId: 'c1',
+      thresholds: {
+        dormantMs: DORMANT_MS,
+        backoffAfter: BACKOFF_AFTER,
+        loopBounceMs: LOOP_BOUNCE_MS,
+        loopLimit: LOOP_LIMIT,
+      },
+    });
+  });
+
+  it('passes a handle’s own numbers through (criterion 33)', async () => {
+    selves = new Map([['handle-1', { presence: { backoffAfter: 1 } }]]);
+    await route();
+    expect(decideProactivity.mock.calls[0]?.[0]).toMatchObject({
+      thresholds: { backoffAfter: 1, loopLimit: LOOP_LIMIT },
+    });
+  });
+});
+
+// cm:guard the three rows are one rule read from three sides — gated, let through, not gated — and the direct case is the one that would pass by accident if `mention` were applied to every venue: a direct room's one person names nobody and is still owed every answer (ISS-1034 criteria 66-68).
+describe('answerInGroup: mention', () => {
+  const mention = () => {
+    selves = new Map([['handle-1', { presence: { answerInGroup: 'mention' } }]]);
+  };
+
+  it('decides nothing-to-say with detail not-mentioned when no message names the handle', async () => {
+    mention();
+    await expect(route()).resolves.toEqual({
+      decision: 'nothing-to-say',
+      detail: { reason: 'not-mentioned', handles: ['babo'] },
+    });
+    expect(runConversationTurn).not.toHaveBeenCalled();
+    expect(decideProactivity).not.toHaveBeenCalled();
+  });
+
+  it('routes normally when a message in the window names the handle', async () => {
+    mention();
+    messageRows = messages.map((m) => ({ ...m, content: '@Babo why is CI red?' }));
+    await expect(route()).resolves.toMatchObject({ decision: 'answered' });
+    expect(runConversationTurn).toHaveBeenCalled();
+  });
+
+  it('answers a direct room whatever the mode says', async () => {
+    mention();
+    conversationRow = { ...conversation, shape: 'direct' };
+    await expect(route()).resolves.toMatchObject({ decision: 'answered' });
   });
 });

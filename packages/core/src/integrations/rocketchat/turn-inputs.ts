@@ -179,6 +179,7 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
       principalUserId,
       speakerUserId,
       conversationId,
+      handleUserId,
     }): Promise<TurnInputs> => {
       const s = await readSeed();
       setPhase('mcp');
@@ -187,7 +188,7 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
       const fast = await prepareFastTurn({
         route,
         principalUserId,
-        turn: { conversationId, speakerUserId },
+        turn: { conversationId, speakerUserId, handleUserId },
         restAuth,
         rid: subject.rid,
         images: subject.images,

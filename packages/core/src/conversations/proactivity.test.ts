@@ -223,3 +223,35 @@ describe('nothing is stored', () => {
     await expect(decide()).resolves.toEqual({ speak: true });
   });
 });
+
+// cm:guard the SAME fixture as the default case with the limit at one: what changes between the two is the threshold and nothing else, so a red here is the input being ignored and not the log being read differently (ISS-1034 criterion 33).
+describe('a room whose handle asked to back off sooner', () => {
+  const quiet = (n: number) => ({ decision: 'nothing-to-say', closedAt: ago(n * 1000) });
+  const thresholds = {
+    dormantMs: DORMANT_MS,
+    backoffAfter: 1,
+    loopBounceMs: LOOP_BOUNCE_MS,
+    loopLimit: LOOP_LIMIT,
+  };
+
+  it('backs off after ONE quiet window where the default needs three', async () => {
+    log(say('person', 'chatter', 60_000));
+    decisions.push(quiet(1));
+    await expect(decide()).resolves.toEqual({ speak: true });
+    await expect(
+      decideProactivity({ conversationId: 'c1', now: NOW, thresholds }),
+    ).resolves.toMatchObject({ speak: false, decision: 'guard-backoff' });
+  });
+
+  it('goes dormant sooner when told to', async () => {
+    log(say('person', 'chatter', 2 * 60 * 60 * 1000));
+    await expect(decide()).resolves.toEqual({ speak: true });
+    await expect(
+      decideProactivity({
+        conversationId: 'c1',
+        now: NOW,
+        thresholds: { ...thresholds, backoffAfter: BACKOFF_AFTER, dormantMs: 60 * 60 * 1000 },
+      }),
+    ).resolves.toMatchObject({ speak: false, decision: 'guard-dormant' });
+  });
+});

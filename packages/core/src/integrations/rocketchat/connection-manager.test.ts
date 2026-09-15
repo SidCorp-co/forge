@@ -106,6 +106,13 @@ const conversationsById = new Map<
 >();
 let lastOpened: { id: string; shape: 'direct' | 'group'; externalId: string } | null = null;
 
+// cm:guard the two ISS-1034 reads the window makes are answered at the module seam: `roomHandles`/`handleForProject` join tables this fake `select().from().where()` chain has no verb for, and `readSelvesFor` would otherwise consume a row the FIFO below queued for somebody else. Empty means "no self, no handle", which folds to today's constants — the regression these cases already guard (ISS-1034).
+vi.mock('../../conversations/participants.js', async (orig) => ({
+  ...(await orig<typeof import('../../conversations/participants.js')>()),
+  roomHandles: async () => [],
+  handleForProject: async () => null,
+}));
+vi.mock('../../orgs/agent-selves.js', () => ({ readSelvesFor: async () => new Map() }));
 vi.mock('../../conversations/windows.js', () => ({
   windowDeliveryKey: (id: string) => `window:${id}`,
   openOrExtendWindow: async (a: { conversationId: string }) => ({

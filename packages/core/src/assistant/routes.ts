@@ -129,7 +129,11 @@ chatRoutes.post(
         userId,
         projectId,
         projectSlug: project.slug,
-        turn: { conversationId: turn.conversationId, speakerUserId: userId },
+        turn: {
+          conversationId: turn.conversationId,
+          speakerUserId: userId,
+          handleUserId: turn.handleUserId,
+        },
       }),
     );
 

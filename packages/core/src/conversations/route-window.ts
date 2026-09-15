@@ -13,7 +13,10 @@
 
 import type { ConversationWindowDecision } from '../db/schema-conversations.js';
 import { logger } from '../logger.js';
+import { readSelvesFor } from '../orgs/agent-selves.js';
+import { handleForProject, roomHandles } from './participants.js';
 import { type ConversationVenue, codeAuthored, conversationTransport } from './ports.js';
+import { foldPresence, windowNamesAHandle } from './presence.js';
 import { decideProactivity } from './proactivity.js';
 import { linkedSpeakerOf } from './speaker.js';
 import {
@@ -39,6 +42,7 @@ export type WindowTurnInputs = Omit<
   | 'venue'
   | 'principalUserId'
   | 'speakerUserId'
+  | 'handleUserId'
   | 'speakerKey'
   | 'message'
   | 'questionAlreadyRecorded'
@@ -192,11 +196,26 @@ async function decide(
     principalUserId = speaker.authorUserId;
   }
 
-  const verdict = await decideProactivity({ conversationId: window.conversationId });
+  // cm:guard the presence is folded from the selves of the HANDLES IN THIS ROOM, read fresh per window and never cached on the route: an admin who tightens an agent's presence expects the next window to feel it, and a room with no self on any handle folds to the very constants the guards used before (ISS-1034 criteria 32-35).
+  const handles = await roomHandles(window.conversationId);
+  const selves = await readSelvesFor(handles.map((h) => h.userId));
+  const presence = foldPresence([...selves.values()].map((s) => s.presence));
+  // cm:guard `mention` gates GROUP venues only and reads every message the window collected, not just the newest: a direct room is one person talking to one agent and every message is addressed to it, while in a room a person who wrote "@babo can you check" and then "the build, I mean" in two messages has named the handle once and is owed one answer (ISS-1034 criteria 66-68).
+  if (venue.shape === 'group' && presence.answerInGroup === 'mention') {
+    const names = handles.map((h) => h.handle);
+    if (!windowNamesAHandle(messages, names)) {
+      return { decision: 'nothing-to-say', detail: { reason: 'not-mentioned', handles: names } };
+    }
+  }
+  const verdict = await decideProactivity({
+    conversationId: window.conversationId,
+    thresholds: presence,
+  });
   if (!verdict.speak) return { decision: verdict.decision, detail: verdict.detail };
 
   // cm:guard the SPEAKER is read separately from the PRINCIPAL and the two only coincide in a direct venue: a room runs under the org agent's authority, but the preferences a reply honours are the newest person's, and a room that read them off the principal would style every reply for the agent account (ISS-1034 criterion 19).
   const speakerUserId = linkedSpeakerOf(messages).userId;
+  const handleUserId = await handleForProject(window.conversationId, venue.projectId);
   const inputs = args.inputs({
     venue,
     messages,
@@ -209,6 +228,7 @@ async function decide(
     venue,
     principalUserId,
     speakerUserId,
+    handleUserId,
     speakerKey: speaker?.authorLabel ?? speaker?.authorUserId ?? 'unknown',
     message: messages.map((m) => m.content).join('\n'),
     questionAlreadyRecorded: true,
