@@ -1,22 +1,34 @@
 import type { QueryClient } from "@tanstack/react-query";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { routeEvent } from "./event-router";
+import { flushInvalidations } from "./invalidation-coalescer";
 
 function capture() {
   const keys: string[] = [];
   const qc = {
-    invalidateQueries: ({ queryKey }: { queryKey: unknown[] }) => {
+    invalidateQueries: ({ queryKey }: { queryKey?: unknown[] }) => {
       keys.push(JSON.stringify(queryKey));
     },
+    getQueryCache: () => ({
+      findAll: () => [],
+      subscribe: () => () => {},
+      get: () => undefined,
+    }),
   } as unknown as QueryClient;
   return { qc, keys, has: (k: unknown[]) => keys.includes(JSON.stringify(k)) };
 }
 
+// cm:guard `routeEvent` no longer invalidates synchronously — every key it decides on goes into a 250 ms window (ISS-1019) — so a case asserting without flushing reads an empty list and passes against a router that decided nothing at all.
 const send = (event: string, data: Record<string, unknown> = {}) => {
   const c = capture();
   routeEvent({ event, data, timestamp: "2026-09-12T12:00:00.000Z" }, c.qc);
+  flushInvalidations();
   return c;
 };
+
+afterEach(() => {
+  flushInvalidations();
+});
 
 // cm:guard the dashboard is keyed `['pulse']`, and this file's own guard says a key outside the invalidated prefixes stops refreshing with nothing red to say so — these cases ARE that red. Each event below moves a figure the surface draws, so dropping one leaves the dashboard confidently stale (ISS-988).
 describe("the workspace pulse is refreshed by every event that moves one of its figures", () => {
@@ -72,5 +84,33 @@ describe("a dependency change reaches the issues list, not only the two issues i
   it("still invalidates each endpoint's own dependency key for the detail panel", () => {
     expect(c.has(["issue", "i-from", "dependencies"])).toBe(true);
     expect(c.has(["issue", "i-to", "dependencies"])).toBe(true);
+  });
+});
+
+// cm:guard the prefix list is now ONE array read by both replays, so this is what says a prefix cannot be dropped from the reconnect path while it stays in the first-open one — the two used to be the same function and drift here is silent.
+describe("a reconnect still repairs every prefix it repaired before", () => {
+  it("invalidates the thirteen prefixes the replay has always invalidated", async () => {
+    const c = capture();
+    const { replayOnReconnect } = await import("./event-router");
+    replayOnReconnect(c.qc);
+
+    for (const key of [
+      ["issues"],
+      ["jobs"],
+      ["projects"],
+      ["agent-sessions"],
+      ["agent-session"],
+      ["conversations"],
+      ["attention"],
+      ["pulse"],
+      ["devices", "me"],
+      ["chat-logs"],
+      ["integrations"],
+      ["integration-connections"],
+      ["questions"],
+    ]) {
+      expect(c.has(key)).toBe(true);
+    }
+    expect(c.keys).toHaveLength(13);
   });
 });

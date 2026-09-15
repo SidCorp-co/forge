@@ -1,11 +1,10 @@
 'use client';
 
-// Ported verbatim from `packages/web/src/lib/ws/use-websocket.ts` (ISS-288).
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useAuth } from '@/providers/auth-provider';
 import { wsClient } from './client';
-import { replayOnReconnect, routeEvent } from './event-router';
+import { replayOnFirstOpen, replayOnReconnect, routeEvent } from './event-router';
 import { userRoom } from './rooms';
 
 /**
@@ -29,7 +28,11 @@ export function useWebSocket(): void {
     const room = userRoom(user.id);
     wsClient.subscribe(room);
     const off = wsClient.on((env) => routeEvent(env, qc));
-    const offOpen = wsClient.onOpen(() => replayOnReconnect(qc));
+    // cm:guard the first open is NOT a reconnect and must not be replayed as one: on a cold load the page's queries are still in flight, and the blanket replay is a second round of requests for a gap that is usually empty (ISS-1019).
+    const offOpen = wsClient.onOpen(({ first, openedAt }) => {
+      if (first) replayOnFirstOpen(qc, openedAt);
+      else replayOnReconnect(qc);
+    });
     return () => {
       wsClient.unsubscribe(room);
       off();

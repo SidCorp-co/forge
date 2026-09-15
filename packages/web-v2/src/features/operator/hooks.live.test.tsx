@@ -9,6 +9,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { routeEvent } from "@/lib/ws/event-router";
+import { flushInvalidations } from "@/lib/ws/invalidation-coalescer";
 import {
   useOperatorAdoption,
   useOperatorAlerts,
@@ -32,7 +33,10 @@ vi.mock("./api", () => ({
   },
 }));
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  flushInvalidations();
+});
 beforeEach(() => vi.clearAllMocks());
 
 function wrapper(qc: QueryClient) {
@@ -79,6 +83,8 @@ describe("the operator queries are reachable by the event router", () => {
     expect(fresh.every((q) => q.state.isInvalidated)).toBe(false);
 
     routeEvent({ event, data, timestamp: new Date().toISOString() }, qc);
+    // cm:guard `routeEvent` decides the keys and hands them to a 250 ms window rather than invalidating on the spot (ISS-1019), so without this the assertion below reads the cache before the window closes and passes against a router that decided nothing at all.
+    flushInvalidations();
 
     const after = qc.getQueryCache().getAll();
     expect(after).toHaveLength(4);
