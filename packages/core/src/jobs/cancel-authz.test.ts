@@ -55,7 +55,6 @@ const { errorHandler } = await import('../middleware/error.js');
 const { requestId } = await import('../middleware/request-id.js');
 const { signUserToken } = await import('../auth/jwt.js');
 
-const verifiedUser = { id: 'u-1', emailVerifiedAt: new Date() };
 const job = { id: 'j1', projectId: 'p1', status: 'running', deviceId: 'dev-1' };
 
 beforeEach(() => {
@@ -65,9 +64,9 @@ beforeEach(() => {
   testEnv.ADMIN_EMAILS = undefined;
 });
 
-// cm:guard the allow-list read is a THIRD `selectLimit` call, after assertEmailVerified and the route's own loadJob — queue only two and `assertPlatformAdmin` reads the JOB row as a user, which answers 401 instead of the 403 the test is about
-function queueLoads(...rows: unknown[]): void {
-  selectLimit.mockResolvedValueOnce([verifiedUser]);
+// cm:guard the caller's `users` row is read ONCE for the whole request and BOTH gates decide on it, so the first queued row carries `emailVerifiedAt` and `email` together — queue an allow-list read of its own and it is the JOB row `loadJob` takes next, which answers 500 instead of the 403 the test is about (ISS-1012)
+function queueLoads(email: string, ...rows: unknown[]): void {
+  selectLimit.mockResolvedValueOnce([{ id: 'u-1', emailVerifiedAt: new Date(), email }]);
   for (const row of rows) selectLimit.mockResolvedValueOnce([row]);
 }
 
@@ -87,7 +86,7 @@ async function post(verb: 'cancel' | 'resume'): Promise<Response> {
 describe('POST /:id/cancel — who is allowed through', () => {
   it('lets a project member through without reading the allow-list', async () => {
     projectRole.role = 'member';
-    queueLoads(job);
+    queueLoads('member@example.com', job);
 
     expect((await post('cancel')).status).toBe(200);
     expect(cancelJobMock).toHaveBeenCalled();
@@ -96,7 +95,7 @@ describe('POST /:id/cancel — who is allowed through', () => {
   it('lets a non-member on ADMIN_EMAILS through, matching the address case-insensitively', async () => {
     projectRole.role = null;
     testEnv.ADMIN_EMAILS = `someone-else@example.com, ${ADMIN_EMAIL}`;
-    queueLoads(job, { email: ADMIN_EMAIL.toUpperCase() });
+    queueLoads(ADMIN_EMAIL.toUpperCase(), job);
 
     expect((await post('cancel')).status).toBe(200);
     expect(cancelJobMock).toHaveBeenCalled();
@@ -105,7 +104,7 @@ describe('POST /:id/cancel — who is allowed through', () => {
   it('refuses a non-member who is not on the allow-list', async () => {
     projectRole.role = null;
     testEnv.ADMIN_EMAILS = ADMIN_EMAIL;
-    queueLoads(job, { email: 'outsider@example.com' });
+    queueLoads('outsider@example.com', job);
 
     const r = await post('cancel');
     expect(r.status).toBe(403);
@@ -116,7 +115,7 @@ describe('POST /:id/cancel — who is allowed through', () => {
   // cm:guard an unset ADMIN_EMAILS parses to the EMPTY allow-list, which must admit nobody — a `!raw` early return that fell through to "allow" would open every tenant's jobs to every signed-in user on any deploy that never set the var
   it('refuses everyone when ADMIN_EMAILS is unset', async () => {
     projectRole.role = null;
-    queueLoads(job, { email: ADMIN_EMAIL });
+    queueLoads(ADMIN_EMAIL, job);
 
     expect((await post('cancel')).status).toBe(403);
   });
@@ -127,7 +126,7 @@ describe('POST /:id/resume — not widened', () => {
   it('still refuses a platform admin who is a member of nothing', async () => {
     projectRole.role = null;
     testEnv.ADMIN_EMAILS = ADMIN_EMAIL;
-    queueLoads({ ...job, status: 'held' });
+    queueLoads(ADMIN_EMAIL, { ...job, status: 'held' });
 
     expect((await post('resume')).status).toBe(403);
     expect(resumeJobMock).not.toHaveBeenCalled();

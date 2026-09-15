@@ -16,8 +16,8 @@ import {
 } from '../db/schema.js';
 import { buildIlikePattern } from '../issues/search-predicate.js';
 import { listResponse, paginationSchema } from '../lib/pagination.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { requireAdmin } from '../middleware/require-admin.js';
+import { type AuthVars, assertEmailVerified, authUserRow, requireAuth } from '../middleware/auth.js';
+import { onAdminList, requireAdmin } from '../middleware/require-admin.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -219,23 +219,12 @@ adminProtected.get(
 const whoamiRoutes = new Hono<{ Variables: AuthVars }>();
 whoamiRoutes.use('*', requireAuth(), assertEmailVerified());
 whoamiRoutes.get('/whoami', async (c) => {
-  const userId = c.get('userId');
-  const [row] = await db
-    .select({ email: users.email })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
+  const row = await authUserRow(c, c.get('userId'));
   if (!row) {
     throw new HTTPException(401, { message: 'user not found', cause: { code: 'UNAUTHENTICATED' } });
   }
-  // cm:edge lockstep -> packages/core/src/middleware/auth.ts — the same ADMIN_EMAILS allow-list as `requireAdmin`, answering Yes/No instead of throwing, so the two must read the env the same way or the layout branches one way and the API the other
-  const { env } = await import('../config/env.js');
-  const allowed = (env.ADMIN_EMAILS ?? '')
-    .split(',')
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-  const isAdmin = allowed.includes(row.email.toLowerCase());
-  return c.json({ isAdmin, email: row.email });
+  // cm:edge lockstep -> packages/core/src/middleware/require-admin.ts — the same ADMIN_EMAILS allow-list as `requireAdmin`, answering Yes/No here instead of throwing, and through the SAME function so the two cannot read the env differently (ISS-1012)
+  return c.json({ isAdmin: onAdminList(row.email), email: row.email });
 });
 
 adminRoutes.route('/', whoamiRoutes);

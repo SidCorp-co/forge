@@ -12,8 +12,6 @@ import { beginPatRequest, withPatScope } from './pat-rest-surface.js';
 
 export type AuthVars = {
   userId: string;
-  /** Set once `assertEmailVerified` has read the row for this request, so a later mount does not read it again. */
-  emailVerified?: true;
   // cm:guard set ONLY for a device principal, and `userId` is left unset beside it on purpose — every handler authorizing through `loadProjectAccess(projectId, userId)` then fails closed for a device unless it honours the device principal by name (`requireUserOrDevice`).
   deviceId?: string;
   principal?: 'user' | 'device' | 'pat';
@@ -162,24 +160,53 @@ export function requireUserOrDevice(): MiddlewareHandler<{ Variables: AuthVars }
   };
 }
 
+/** The columns of the caller's `users` row that an auth gate decides on. */
+export type AuthUserRow = { email: string; emailVerifiedAt: Date | null };
+
+/**
+ * The caller's `users` row, read straight from the database.
+ *
+ * For a caller with no request to memoise against: the WebSocket
+ * `canSubscribe` gate reaches `isPlatformAdmin` outside any Hono context, and
+ * has no `c` to hold an answer on.
+ */
+export async function readAuthUser(userId: string): Promise<AuthUserRow | null> {
+  const [row] = await db
+    .select({ email: users.email, emailVerifiedAt: users.emailVerifiedAt })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  return row ?? null;
+}
+
+const AUTH_USER_VAR = 'authUserResolution';
+
+type AuthUserResolution = { userId: string; row: AuthUserRow | null };
+
+/**
+ * The one `users` read an authenticated request makes, however many routers
+ * its path crosses, and whichever gates read it.
+ */
+// cm:guard memoised on the request context because these gates self-mount on every router and Hono runs the middleware of EVERY router whose prefix matches: measured 2026-09-15, one `GET /api/projects/:id/issues?limit=1` read `email_verified_at` EIGHT times — 3.2s of a 7.6s request over a remote link (ISS-1009) — and one `GET /api/admin/overview` still cost three `users` reads after that landed, because the platform-admin gate had a lookup of its own (ISS-1012).
+// cm:guard what is memoised is the ROW and never a verdict, so every mount re-derives its own refusal and a later one still refuses what the first would have. That is the rule ISS-1009 wrote as "a refusal is never cached: only a pass sets the flag" — now held by there being no flag to set rather than by remembering not to set one. Reintroducing a boolean here re-opens it.
+// cm:guard keyed on the `userId` asked about and not merely present, the way `beginPatRequest` keys on the token: a request that somehow resolves two principals re-reads rather than answering the second one for the first. `users.id` is the whole of the input and no row changes within one request, so replaying the answer is sound; a caller wanting a column this does not select widens the SELECT rather than adding a second read.
+export async function authUserRow(c: Context, userId: string): Promise<AuthUserRow | null> {
+  const cached = c.get(AUTH_USER_VAR) as AuthUserResolution | undefined;
+  if (cached && cached.userId === userId) return cached.row;
+
+  const row = await readAuthUser(userId);
+  c.set(AUTH_USER_VAR, { userId, row } satisfies AuthUserResolution);
+  return row;
+}
+
 export function assertEmailVerified(): MiddlewareHandler<{ Variables: AuthVars }> {
   return async (c, next) => {
-    // cm:guard a device principal is exempt and cannot be otherwise: `userId` is deliberately left unset for one (see the guard on `requireUserOrDevice`), so the lookup below would find no row and refuse every paired box as unverified. The device token is the gate that stands in for the mailbox.
+    // cm:guard a device principal is exempt and cannot be otherwise: `userId` is deliberately left unset for one (see the guard on `requireUserOrDevice`), so the lookup below would find no row and refuse every paired box as unverified. The device token is the gate that stands in for the mailbox. The branch reads no row and writes none, so nothing about a device reaches the memo to be read back as "verified".
     if (c.get('principal') === 'device') {
       await next();
       return;
     }
-    // cm:guard memoised on the request context because this middleware is mounted 134 times and a request crosses several of those routers: measured 2026-09-15, one `GET /api/projects/:id/issues?limit=1` read `email_verified_at` EIGHT times — 3.2s of a 7.6s request over a remote link, and eight round trips for one fact on a local one. A refusal is never cached: only a pass sets the flag, so a later mount still refuses what the first would have (ISS-1009).
-    if (c.get('emailVerified')) {
-      await next();
-      return;
-    }
-    const userId = c.get('userId');
-    const [row] = await db
-      .select({ emailVerifiedAt: users.emailVerifiedAt })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
+    const row = await authUserRow(c, c.get('userId'));
 
     if (!row || row.emailVerifiedAt === null) {
       throw new HTTPException(403, {
@@ -187,7 +214,6 @@ export function assertEmailVerified(): MiddlewareHandler<{ Variables: AuthVars }
         cause: { code: 'EMAIL_NOT_VERIFIED' },
       });
     }
-    c.set('emailVerified', true);
 
     await next();
   };
