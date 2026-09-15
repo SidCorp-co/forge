@@ -154,8 +154,7 @@ describe('assertEmailVerified', () => {
     const gate = assertEmailVerified();
     const seen: string[] = [];
 
-    const app = new Hono<{ Variables: Vars }>();
-    app.use('*', requestId());
+    const app = new Hono<{ Variables: import('./auth.js').AuthVars }>();
     app.get('/twice', requireAuth(), async (c) => {
       for (let i = 0; i < 2; i += 1) {
         try {
@@ -185,8 +184,7 @@ describe('assertEmailVerified', () => {
     const gate = assertEmailVerified();
     const seen: string[] = [];
 
-    const app = new Hono<{ Variables: Vars }>();
-    app.use('*', requestId());
+    const app = new Hono<{ Variables: import('./auth.js').AuthVars }>();
     app.get('/switch', requireAuth(), async (c) => {
       await gate(c, async () => {
         seen.push('A:through');
@@ -229,8 +227,12 @@ describe('assertEmailVerified', () => {
     selectLimit.mockResolvedValue([VERIFIED]);
     const app = buildApp();
 
-    expect((await app.request('/verified', { headers: { authorization: `Bearer ${token}` } })).status).toBe(200);
-    expect((await app.request('/verified', { headers: { authorization: `Bearer ${token}` } })).status).toBe(200);
+    expect(
+      (await app.request('/verified', { headers: { authorization: `Bearer ${token}` } })).status,
+    ).toBe(200);
+    expect(
+      (await app.request('/verified', { headers: { authorization: `Bearer ${token}` } })).status,
+    ).toBe(200);
     expect(selectLimit.mock.calls.length).toBe(2);
   });
 

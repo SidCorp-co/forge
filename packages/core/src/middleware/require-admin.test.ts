@@ -115,7 +115,7 @@ describe('requireAdmin', () => {
     ]);
     const seen: string[] = [];
 
-    const a = app();
+    const a = new Hono<{ Variables: import('./auth.js').AuthVars }>();
     a.get('/twice', requireAuth(), async (c) => {
       for (let i = 0; i < 2; i += 1) {
         try {

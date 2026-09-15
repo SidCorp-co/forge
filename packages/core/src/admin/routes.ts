@@ -16,7 +16,12 @@ import {
 } from '../db/schema.js';
 import { buildIlikePattern } from '../issues/search-predicate.js';
 import { listResponse, paginationSchema } from '../lib/pagination.js';
-import { type AuthVars, assertEmailVerified, authUserRow, requireAuth } from '../middleware/auth.js';
+import {
+  type AuthVars,
+  assertEmailVerified,
+  authUserRow,
+  requireAuth,
+} from '../middleware/auth.js';
 import { onAdminList, requireAdmin } from '../middleware/require-admin.js';
 
 const badRequest = (details: unknown) =>
