@@ -219,7 +219,12 @@ export async function restorePreferenceChange(args: {
 
     const current = await readAssistantPreferences(args.userId, t);
     const key = change.field === 'answer_style' ? 'answerStyle' : 'assistantInstructions';
-    if ((current[key] ?? null) !== (change.newValue ?? null)) {
+    // cm:why the "still holds" check reads instructions through the canonical form on BOTH sides: a change an older writer recorded as "" and a row now holding null are the same value, and refusing that restore would block a valid undo chain (codex F1 of the merged-head read).
+    const same =
+      key === 'assistantInstructions'
+        ? canonicalInstructions(current[key]) === canonicalInstructions(change.newValue)
+        : (current[key] ?? null) === (change.newValue ?? null);
+    if (!same) {
       const [later] = await t
         .select()
         .from(preferenceChanges)

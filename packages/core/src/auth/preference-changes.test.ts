@@ -223,6 +223,46 @@ describe('writeAssistantPreferences', () => {
     });
   });
 
+  // cm:guard a legacy chain older → "" → new restores twice and ends at "older": the restore guard reads instructions through the canonical form on both sides (codex F1).
+  it('restores through a legacy empty-string change', async () => {
+    state.prefs.set(ALICE, {
+      userId: ALICE,
+      answerStyle: 'default',
+      assistantInstructions: '',
+      updatedAt: new Date(1),
+    });
+    state.changes.push({
+      id: 'c-legacy-a',
+      userId: ALICE,
+      field: 'assistant_instructions',
+      previousValue: 'older',
+      newValue: '',
+      changedBy: 'person',
+      changedByUserId: ALICE,
+      conversationId: null,
+      changedAt: new Date(++state.clock),
+    } as never);
+    await writeAssistantPreferences({
+      userId: ALICE,
+      patch: { assistantInstructions: 'new' },
+      actor: { kind: 'person', userId: ALICE },
+    });
+    const b = (await listPreferenceChanges(ALICE)).find((c) => c.newValue === 'new');
+    expect(b).toBeTruthy();
+    await restorePreferenceChange({
+      userId: ALICE,
+      changeId: (b as { id: string }).id,
+      actor: { kind: 'person', userId: ALICE },
+    });
+    expect((await readAssistantPreferences(ALICE)).assistantInstructions).toBeNull();
+    const restored = await restorePreferenceChange({
+      userId: ALICE,
+      changeId: 'c-legacy-a',
+      actor: { kind: 'person', userId: ALICE },
+    });
+    expect(restored?.assistantInstructions).toBe('older');
+  });
+
   // cm:guard the STORED side is canonicalised too: a row an older writer left padded reads equal to its canonical form (codex F1).
   it('writes no row when a legacy padded row is re-sent in canonical form', async () => {
     state.prefs.set(ALICE, {

@@ -61,6 +61,10 @@ describe('the carried read forms against the bundled CLI (criterion 14)', () => 
     );
     expect(alternatives.positionals).toEqual([{ required: false, literal: null }]);
     expect(formProblems({ argv: ['guide', '<slug>'], says: '' }, alternatives)).toEqual([]);
+    const tailOperand = parseUsage('Usage: forge issue [<uuid|ISS-45>] [--status s] <scope>');
+    expect(formProblems({ argv: ['issue', 'ISS-<n>'], says: '' }, tailOperand)).toEqual([
+      'required positional #2 is not carried',
+    ]);
     const optionalOnly = parseUsage('Usage: forge issue [<uuid|ISS-45>] [--status s]');
     expect(optionalOnly.positionals).toEqual([{ required: false, literal: null }]);
     expect(optionalOnly.options.get('--status')).toBe(true);

@@ -1,7 +1,7 @@
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { type MemorySource, retrievalAnalytics } from '../db/schema.js';
-import { EmbeddingUnavailableError, embed } from '../embeddings/index.js';
+import { EmbeddingUnavailableError, embedQuery } from '../embeddings/index.js';
 import { logger } from '../logger.js';
 import { expandIssueRelations } from './expand-relations.js';
 import { fastModelConfigured } from './llm.js';
@@ -131,7 +131,7 @@ async function retrieve(
   const attempted = input.queryVec === undefined;
   const embedMsNow = () => (attempted ? { embedMs: Date.now() - embedStarted } : {});
   try {
-    const queryVec = input.queryVec ?? (await embed(input.query));
+    const queryVec = input.queryVec ?? (await embedQuery(input.query));
     const embedMs = embedMsNow();
     if (requested === 'hybrid') {
       const fused = await hybridSearchMemories({

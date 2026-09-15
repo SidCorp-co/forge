@@ -10,6 +10,7 @@ vi.mock('../db/client.js', () => ({
 
 vi.mock('../embeddings/index.js', () => ({
   embed: vi.fn(async () => [0.1, 0.2]),
+  embedQuery: vi.fn(async () => [0.1, 0.2]),
   EmbeddingUnavailableError: class EmbeddingUnavailableError extends Error {},
 }));
 
@@ -356,7 +357,7 @@ describe('stale demotion', () => {
 const embeddings = await import('../embeddings/index.js');
 
 describe('embedMs — where a slow search went (ISS-1041)', () => {
-  const embedMock = vi.mocked(embeddings.embed);
+  const embedMock = vi.mocked(embeddings.embedQuery);
 
   it('is present on a semantic search that embedded the query (criterion 7)', async () => {
     embedMock.mockImplementationOnce(async () => {

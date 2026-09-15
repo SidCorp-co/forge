@@ -44,17 +44,15 @@ export function parseUsage(line: string): UsageShape {
   const after = line.replace(/^\s*Usage:\s*forge\s+\S+\s*/, '');
   const options = new Map<string, boolean>();
   const positionals: UsagePositional[] = [];
-  let seenOption = false;
   for (const group of topLevelGroups(after)) {
     const optional = group.startsWith('[');
     const inner = optional ? group.slice(1, -1) : group;
     if (inner.startsWith('--')) {
-      seenOption = true;
       const [flags, operand] = inner.split(/\s+/, 2);
       for (const flag of (flags as string).split('|')) options.set(flag, operand !== undefined);
       continue;
     }
-    if (seenOption) continue;
+    // cm:why a positional AFTER an option group still counts: a Usage line that grows a required operand at its tail is drift the carried form must fail on (codex F2 of the merged-head read).
     if (inner.includes('|')) {
       positionals.push({ required: !optional, literal: null });
       continue;

@@ -1,5 +1,5 @@
 /**
- * ISS-1041 — the query-vector cache in front of `embed()`: one request per
+ * ISS-1041 — the query-vector cache behind `embedQuery()`: one request per
  * text per TTL, bounded, and never filled from a fallback-model result.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -14,7 +14,7 @@ vi.mock('../config/env.js', () => ({
   },
 }));
 
-const { embed, QUERY_CACHE_MAX, QUERY_CACHE_TTL_MS, queryCacheSize, resetEmbeddingsClient } =
+const { embedQuery, QUERY_CACHE_MAX, QUERY_CACHE_TTL_MS, queryCacheSize, resetEmbeddingsClient } =
   await import('./index.js');
 
 let model = 'primary';
@@ -40,50 +40,50 @@ afterEach(() => {
   resetEmbeddingsClient();
 });
 
-describe('embed() and its query cache', () => {
+describe('embedQuery() and its cache', () => {
   it('makes one request for the same text asked twice within the TTL (criterion 1)', async () => {
-    const a = await embed('what broke');
-    const b = await embed('what broke');
+    const a = await embedQuery('what broke');
+    const b = await embedQuery('what broke');
     expect(embedDetailed).toHaveBeenCalledTimes(1);
     expect(b).toEqual(a);
   });
 
   it('makes a second request for a different text (criterion 2)', async () => {
-    await embed('what broke');
-    await embed('who fixed it');
+    await embedQuery('what broke');
+    await embedQuery('who fixed it');
     expect(embedDetailed).toHaveBeenCalledTimes(2);
   });
 
   it('makes a fresh request once the entry is older than the TTL (criterion 3)', async () => {
-    await embed('what broke');
+    await embedQuery('what broke');
     vi.advanceTimersByTime(QUERY_CACHE_TTL_MS + 1);
-    await embed('what broke');
+    await embedQuery('what broke');
     expect(embedDetailed).toHaveBeenCalledTimes(2);
   });
 
   it('holds at most QUERY_CACHE_MAX entries (criterion 4)', async () => {
-    for (let i = 0; i < QUERY_CACHE_MAX + 10; i++) await embed(`text ${i}`);
+    for (let i = 0; i < QUERY_CACHE_MAX + 10; i++) await embedQuery(`text ${i}`);
     expect(queryCacheSize()).toBe(QUERY_CACHE_MAX);
   });
 
   // cm:guard recency is insertion order and a hit re-inserts: the entry evicted is the one not asked for longest, not the one inserted first.
   it('evicts the least recently used entry when full (criterion 5)', async () => {
-    for (let i = 0; i < QUERY_CACHE_MAX; i++) await embed(`text ${i}`);
-    await embed('text 0'); // a hit — text 0 is now the most recent
+    for (let i = 0; i < QUERY_CACHE_MAX; i++) await embedQuery(`text ${i}`);
+    await embedQuery('text 0'); // a hit — text 0 is now the most recent
     embedDetailed.mockClear();
-    await embed('one more'); // evicts text 1, the least recently used
-    await embed('text 0');
-    await embed('text 1');
+    await embedQuery('one more'); // evicts text 1, the least recently used
+    await embedQuery('text 0');
+    await embedQuery('text 1');
     expect(embedDetailed.mock.calls.map((c) => c[0][0])).toEqual(['one more', 'text 1']);
   });
 
   it('does not cache a vector the fallback model produced (criterion 6)', async () => {
     model = 'fallback';
-    await embed('what broke');
+    await embedQuery('what broke');
     model = 'primary';
-    await embed('what broke');
+    await embedQuery('what broke');
     expect(embedDetailed).toHaveBeenCalledTimes(2);
-    await embed('what broke');
+    await embedQuery('what broke');
     expect(embedDetailed).toHaveBeenCalledTimes(2);
   });
 });
