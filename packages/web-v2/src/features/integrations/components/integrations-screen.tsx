@@ -9,7 +9,7 @@
 // the operator comes looking for an app before a credential. What a row holds,
 // and what it deliberately does not: `connection-row.tsx`.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   Card,
   CardContent,
@@ -36,6 +36,9 @@ import { PROVIDER_LABEL } from "./status-pill";
 
 /** Per-operator, shared across tabs: which apps this person leaves open. */
 const OPEN_APPS_KEY = "web-v2:integrations-open-apps";
+
+/** One identity for "nothing is shut under this filter", so reads do not re-allocate. */
+const EMPTY_APPS: string[] = [];
 
 const HELP_ACTIONS = [
   "Click an app to open it, then a row — rename, replace the key, edit config, Test, drill into bound projects, or remove the connection",
@@ -103,22 +106,31 @@ export function IntegrationsScreen() {
   // reads as a filter that does not work, and a header it renders open has to
   // stay clickable rather than become a control that does nothing.
   const [openApps, setOpenApps] = usePersistedState<string[]>(OPEN_APPS_KEY, []);
-  const [filterClosed, setFilterClosed] = useState<string[]>([]);
   const filtering = query.trim() !== "" || provider !== "";
-  // Every CHANGE to either filter, not only the clearing of both: a new
+  // Any CHANGE to either filter drops the transient collapses, because a new
   // question may not have its answer hidden behind a header shut in answer to
-  // the last one, and the collapse itself was only ever about that one filter.
-  useEffect(() => {
-    setFilterClosed((prev) => (prev.length === 0 ? prev : []));
-  }, [query, provider]);
+  // the last one — and returning to a filter typed before is a new question
+  // too, so what is compared is the PREVIOUS filter rather than the one a
+  // collapse was made under. Compared while rendering rather than in an effect:
+  // an effect would paint the stale set once before clearing it, and `closedNow`
+  // is what makes this render right whether or not the setState below has
+  // landed yet.
+  const filterKey = `${query}\u0000${provider}`;
+  const [lastFilterKey, setLastFilterKey] = useState(filterKey);
+  const [filterClosed, setFilterClosed] = useState<string[]>([]);
+  const closedNow = lastFilterKey === filterKey ? filterClosed : EMPTY_APPS;
+  if (lastFilterKey !== filterKey) {
+    setLastFilterKey(filterKey);
+    setFilterClosed(EMPTY_APPS);
+  }
 
   const isOpen = (key: string) =>
-    filtering ? !filterClosed.includes(key) : openApps.includes(key);
+    filtering ? !closedNow.includes(key) : openApps.includes(key);
 
   const toggleApp = (key: string) => {
     const flip = (prev: string[]) =>
       prev.includes(key) ? prev.filter((p) => p !== key) : [...prev, key];
-    if (filtering) setFilterClosed(flip);
+    if (filtering) setFilterClosed(flip(closedNow));
     else setOpenApps(flip);
   };
 
