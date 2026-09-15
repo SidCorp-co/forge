@@ -10,10 +10,9 @@
 // it alone — so all six stayed on the session surface, which keeps every
 // run-shaped verb it had.
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AgentWorking,
-  Banner,
   EmptyState,
   ErrorState,
   IconButton,
@@ -25,7 +24,7 @@ import { useStickToBottom } from "@/features/session/components/use-stick-to-bot
 import { formatApiError } from "@/lib/api/error";
 import { useConversation, useOpenConversation, useSendMessage } from "../hooks";
 import { composerRefusal } from "../membership";
-import { conversationTitle } from "../types";
+import { type OutboxMessage, conversationTitle } from "../types";
 import { ConversationMembers } from "./conversation-members";
 import { ConversationThread } from "./conversation-thread";
 import { ScopeNotice } from "./scope-notice";
@@ -71,6 +70,13 @@ export function ConversationChat({
   const open = useOpenConversation();
   const send = useSendMessage();
 
+  // cm:guard the outbox lives HERE and not in the query cache: the first message of a room creates
+  // the conversation before it can send, so at the moment a person presses Enter there is no cache
+  // entry to write an optimistic row into — `setQueryData` would find nothing and drop it silently,
+  // which is the exact failure this is fixing (ISS-1031).
+  const [outbox, setOutbox] = useState<OutboxMessage[]>([]);
+  const sending = useRef(false);
+
   const messages = useMemo(() => roomQ.data?.messages ?? [], [roomQ.data]);
   const windows = useMemo(() => roomQ.data?.windows ?? [], [roomQ.data]);
   const busy = send.isPending || open.isPending;
@@ -81,21 +87,59 @@ export function ConversationChat({
   const { scrollRef, bottomRef, onScroll } = useStickToBottom({
     conversationKey: resolvedId,
     ready: roomQ.isSuccess,
-    itemCount: messages.length,
+    itemCount: messages.length + outbox.length,
     live: busy,
   });
 
   // cm:guard the send is AWAITED and a failure rejects up into the composer, which is what keeps the typed text for a retry: resolving on a failure clears the box and the words are gone (ISS-462's contract, kept across the port).
   // cm:guard the id that just came back from `open` is handed to the send DIRECTLY and not read off `resolvedId`: state set in this same chain has not re-rendered yet, so the render's value is still undefined and the send would post to `/conversations/undefined/messages` (review F3).
+  // cm:guard this RETURNS as soon as the message is in the outbox and never awaits the round-trip.
+  // The composer clears on return, so the words leave the box the moment Enter is pressed and the
+  // thread shows them immediately; the send itself is driven by the drain below. Awaiting here is
+  // what made a person wait out the whole agent turn before seeing their own question (ISS-1031).
   const handleSend = async (message: string) => {
-    let id = resolvedId;
-    if (!id) {
-      id = (await open.mutateAsync({ projectId })).id;
-      setActiveId(id);
-      onConversationActive?.(id);
-    }
-    await send.mutateAsync({ conversationId: id, content: message });
+    setOutbox((o) => [...o, { id: crypto.randomUUID(), content: message, state: "queued" }]);
   };
+
+  const retry = useCallback((id: string) => {
+    setOutbox((o) => o.map((m) => (m.id === id ? { ...m, state: "queued", error: undefined } : m)));
+  }, []);
+
+  // cm:guard ONE send in flight per room, held by a ref rather than by `send.isPending`: the flag is
+  // state and lags a render behind, so two queued messages both read it as free and both post. The
+  // server serialises a room's windows, so the second would answer against a window the first had
+  // already claimed.
+  // cm:guard a failure STOPS the drain and keeps every message behind it queued rather than sending
+  // them into a room whose earlier question was refused — and the failed one keeps its words, which
+  // is ISS-462's contract carried onto the row instead of onto the box.
+  useEffect(() => {
+    if (sending.current) return;
+    if (outbox.some((m) => m.state === "failed")) return;
+    const next = outbox.find((m) => m.state === "queued");
+    if (!next) return;
+    sending.current = true;
+    setOutbox((o) => o.map((m) => (m.id === next.id ? { ...m, state: "sending" } : m)));
+    void (async () => {
+      try {
+        let id = resolvedId;
+        if (!id) {
+          id = (await open.mutateAsync({ projectId })).id;
+          setActiveId(id);
+          onConversationActive?.(id);
+        }
+        await send.mutateAsync({ conversationId: id, content: next.content });
+        setOutbox((o) => o.filter((m) => m.id !== next.id));
+      } catch (err) {
+        setOutbox((o) =>
+          o.map((m) =>
+            m.id === next.id ? { ...m, state: "failed", error: formatApiError(err) } : m,
+          ),
+        );
+      } finally {
+        sending.current = false;
+      }
+    })();
+  }, [outbox, resolvedId, projectId, open, send, onConversationActive]);
 
   // cm:guard the header is built ONCE and rendered above every body state, rather than the loading
   // and error states returning a screen of their own: a room whose read fails — one deleted in
@@ -135,7 +179,11 @@ export function ConversationChat({
     </header>
   );
 
-  if (resolvedId && roomQ.isLoading) {
+  // cm:guard the loader yields to anything of the person's OWN that is not sent yet. The first send
+  // of a draft opens the room, which starts this query, which replaced the whole thread — including
+  // the question they had just typed — with a spinner. Showing a spinner over somebody's unsent
+  // words is the same defect as never showing them at all (ISS-1031).
+  if (resolvedId && roomQ.isLoading && outbox.length === 0) {
     return (
       <div className="flex h-full min-h-0 flex-col">
         {header}
@@ -146,7 +194,11 @@ export function ConversationChat({
     );
   }
 
-  if (resolvedId && roomQ.isError) {
+  // cm:guard the error state yields to an unsent message for the same reason the loader above does,
+  // and this one matters more: a room that will not load is exactly when a person needs the words
+  // they typed handed back rather than replaced by a Retry button. The failed row carries them and
+  // the header still offers the way out ISS-1028 added (ISS-1031).
+  if (resolvedId && roomQ.isError && outbox.length === 0) {
     return (
       <div className="flex h-full min-h-0 flex-col">
         {header}
@@ -169,14 +221,7 @@ export function ConversationChat({
 
       <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-8 xl:max-w-4xl">
-          {send.isError && (
-            <div className="mb-6">
-              <Banner tone="danger">
-                <span className="font-medium">Couldn&apos;t send.</span> {formatApiError(send.error)}
-              </Banner>
-            </div>
-          )}
-          {messages.length === 0 ? (
+          {messages.length === 0 && outbox.length === 0 ? (
             <div className="flex min-h-[40dvh] flex-col">
               <div className="grid flex-1 place-items-center">
                 <EmptyState
@@ -188,7 +233,12 @@ export function ConversationChat({
               {emptyBody}
             </div>
           ) : (
-            <ConversationThread messages={messages} windows={windows} />
+            <ConversationThread
+              messages={messages}
+              windows={windows}
+              outbox={outbox}
+              onRetry={retry}
+            />
           )}
           {busy && (
             <div className="mt-6">
@@ -205,7 +255,7 @@ export function ConversationChat({
           <p className="fg-caption mt-0.5 text-muted">{refusal.wayOut}</p>
         </div>
       ) : canWrite ? (
-        <Composer onSend={handleSend} busy={busy} sticky={false} />
+        <Composer onSend={handleSend} busy={busy} queueWhileBusy sticky={false} />
       ) : (
         <ReadOnlyComposerNote sticky={false} />
       )}

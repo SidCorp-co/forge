@@ -2664,6 +2664,17 @@
 
 ### Fixed
 
+- **What you send appears in the chat the moment you send it.** Typing a question and pressing
+  Enter used to leave the words sitting in the box and the conversation looking untouched, for as
+  long as the agent took to answer — which on the first question of a new chat is the longest wait
+  there is. Nothing said the question had been accepted, so the natural thing to do was press Enter
+  again, or edit it, or reload. Your question now joins the conversation straight away, marked as
+  still being sent, and the box clears for the next one. Press Enter again while the agent is still
+  answering and that question is accepted too: it waits its turn visibly, under the one before it,
+  and sends itself when the answer lands. A question that cannot be sent keeps its words on screen
+  and says why, with a way to try it again, and nothing behind it is sent into a conversation whose
+  earlier question was refused. (ISS-1031)
+
 - **Opening the Issues list is one request again, not twenty-six.** Every row on the page asked the
   server separately for its own "Blocked by" / "Blocks" / subtask chips, so a page of twenty-five
   issues fired twenty-five extra requests before it could finish drawing — each one its own

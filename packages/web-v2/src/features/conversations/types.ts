@@ -119,11 +119,30 @@ export interface ConversationDetail extends ConversationRow, ConversationMembers
   windows: ConversationWindow[];
 }
 
+/**
+ * A message this browser has accepted and the server has not confirmed.
+ */
+// cm:guard the outbox exists because `POST /conversations/:id/messages` does not return until the
+// agent turn is OVER (core `assistant/conversation-send.ts` awaits `routeOneWebWindow`), so the
+// authoritative messages cannot carry what a person just said until the answer arrives with it.
+// Without a row of its own, pressing send left the text in the box and the thread unchanged for the
+// whole turn, and the question then appeared stamped at the moment the answer did (ISS-1031).
+export interface OutboxMessage {
+  /** Client-minted; never a server id, and never written anywhere. */
+  id: string;
+  content: string;
+  /** `queued` is waiting its turn, `sending` is the request in flight, `failed` kept its words. */
+  state: "queued" | "sending" | "failed";
+  /** Set on `failed` only — what the send was refused with. */
+  error?: string;
+}
+
 /** What the thread renders, in the order it renders it. */
 export type ThreadEntry =
   | { kind: "said"; key: string; message: ConversationMessage }
   | { kind: "silence"; key: string; decision: SilenceDecision; detail: unknown }
-  | { kind: "pending"; key: string };
+  | { kind: "pending"; key: string }
+  | { kind: "outbox"; key: string; item: OutboxMessage };
 
 /**
  * Every decision that is a SILENCE, with the sentence a person reads for it.
@@ -144,9 +163,13 @@ export const SILENCE_REASON: Record<SilenceDecision, string> = {
  */
 // cm:guard this is criterion 28, and the two states it separates are told apart by DIFFERENT SHAPES rather than by wording: a `silence` entry is a window that closed on a decision, and a `pending` entry is a window that has not closed at all. Rendering an unclosed window as a silence — or omitting it — is how "nobody has answered yet" and "it read this and said nothing" become the same thing on screen, which is the exact confusion this criterion names.
 // cm:guard a window whose decision is `answered` contributes NO entry, because the answer is already a message row below it.
+// cm:guard the outbox is appended AFTER every stored row and never interleaved by time: an unsent
+// message has no `seq`, and inventing one to sort it would put it above a row the server has already
+// numbered. It is always the newest thing in the room, because it has not happened yet.
 export function threadEntries(
   messages: ConversationMessage[],
   windows: ConversationWindow[],
+  outbox: OutboxMessage[] = [],
 ): ThreadEntry[] {
   const bySeq = new Map<number, ConversationWindow[]>();
   for (const w of windows) {
@@ -164,6 +187,7 @@ export function threadEntries(
         out.push({ kind: "silence", key: w.id, decision: w.decision, detail: w.decisionDetail });
     }
   }
+  for (const item of outbox) out.push({ kind: "outbox", key: item.id, item });
   return out;
 }
 
