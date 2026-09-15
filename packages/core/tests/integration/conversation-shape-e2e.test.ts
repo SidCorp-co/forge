@@ -209,4 +209,13 @@ describe('a Forge room’s shape follows who is in it', () => {
     expect(await shapeOf(room.id)).toBe('group');
     void thirdId;
   });
+
+  it('still refuses a channel venue arriving under another shape (criterion 46)', async () => {
+    const store = await import('../../src/conversations/store.js');
+    const externalId = `chat.example.co ${randomUUID()}`;
+    await store.openConversation({ adapter: 'rocketchat', externalId, shape: 'group', projectId });
+    await expect(
+      store.openConversation({ adapter: 'rocketchat', externalId, shape: 'direct', projectId }),
+    ).rejects.toMatchObject({ status: 409, cause: { code: 'CONVERSATION_SHAPE_CONFLICT' } });
+  });
 });

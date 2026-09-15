@@ -157,6 +157,47 @@ describe('a turn for a transport that is four functions', () => {
   });
 });
 
+describe('who the turn speaks as, and to', () => {
+  // cm:guard three values, three meanings, and the runner keeps them apart: an absent speaker is the principal speaking, an explicit null is an unlinked author and stays null, and the handle rides the request rather than a store read (ISS-1034 criteria 18-20, 62-64).
+  it('hands the linked speaker and their label to the turn, and the handle to the hooks, beside the principal', async () => {
+    let seen: Record<string, unknown> | null = null;
+    await runConversationTurn(
+      request({
+        speakerUserId: 'speaker-user',
+        handleUserId: 'handle-1',
+        prepare: async (hook: Record<string, unknown>) => {
+          seen = hook;
+          return {};
+        },
+      }),
+    );
+    expect(runExternalChatTurn.mock.calls[0]?.[0]).toMatchObject({
+      userId: 'user-1',
+      speakerUserId: 'speaker-user',
+      speakerLabel: 'speaker-1',
+    });
+    expect(seen).toMatchObject({
+      principalUserId: 'user-1',
+      speakerUserId: 'speaker-user',
+      handleUserId: 'handle-1',
+      conversationId: 'conv-1',
+    });
+  });
+
+  it('keeps an explicit null speaker null instead of falling back to the principal', async () => {
+    await runConversationTurn(request({ speakerUserId: null }));
+    expect(runExternalChatTurn.mock.calls[0]?.[0]).toMatchObject({
+      userId: 'user-1',
+      speakerUserId: null,
+    });
+  });
+
+  it('reads an absent speaker as the principal speaking', async () => {
+    await runConversationTurn(request());
+    expect(runExternalChatTurn.mock.calls[0]?.[0]).toMatchObject({ speakerUserId: 'user-1' });
+  });
+});
+
 describe('which text reaches the venue', () => {
   it('hands the model’s own text to deliver when the screen passes first time', async () => {
     runExternalChatTurn.mockResolvedValue({ ...answered, reply: '  spaced answer  ' });
