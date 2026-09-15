@@ -1,6 +1,5 @@
 'use client';
 
-// Ported verbatim from `packages/web/src/lib/ws/client.ts` (ISS-288).
 import { WS_URL } from '@/lib/api/client';
 
 interface Envelope {
@@ -11,6 +10,20 @@ interface Envelope {
 }
 
 type Listener = (env: Envelope) => void;
+
+/**
+ * Which open this is, and when it happened.
+ *
+ * `first` false is a reconnect: every event in the gap was dropped and the whole
+ * replay is owed. `first` true is a cold load, where most of the page's queries
+ * are still in flight and replaying them wholesale is a second round of requests
+ * for a gap that is usually empty — `openedAt` is what lets the caller tell the
+ * queries with a real gap from the ones without one.
+ */
+export interface SocketOpen {
+  first: boolean;
+  openedAt: number;
+}
 
 /**
  * Singleton WebSocket wrapper. One connection per browser tab, shared
@@ -30,7 +43,8 @@ class ForgeWebSocket {
   private readonly BASE_DELAY = 1000;
   private readonly MAX_DELAY = 30_000;
   private reconnectTimer?: ReturnType<typeof setTimeout>;
-  private onOpenCallbacks = new Set<() => void>();
+  private onOpenCallbacks = new Set<(open: SocketOpen) => void>();
+  private hasOpened = false;
   private explicitlyClosed = false;
   private bearerToken: string | undefined;
 
@@ -61,12 +75,14 @@ class ForgeWebSocket {
 
     ws.onopen = () => {
       this.retry = 0;
+      const open: SocketOpen = { first: !this.hasOpened, openedAt: Date.now() };
+      this.hasOpened = true;
       for (const room of this.rooms.keys()) {
         ws.send(JSON.stringify({ type: 'subscribe', room }));
       }
       for (const cb of this.onOpenCallbacks) {
         try {
-          cb();
+          cb(open);
         } catch {
           // keep the rest of the callbacks running
         }
@@ -132,7 +148,7 @@ class ForgeWebSocket {
     };
   }
 
-  onOpen(cb: () => void): () => void {
+  onOpen(cb: (open: SocketOpen) => void): () => void {
     this.onOpenCallbacks.add(cb);
     return () => {
       this.onOpenCallbacks.delete(cb);

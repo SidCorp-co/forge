@@ -40,16 +40,15 @@ export function NotificationsBell({ open, onClose }: NotificationsBellProps) {
   const { toast } = useToast();
   const { data: projects } = useProjects();
 
-  // Header notification bell (ISS-504). Workspace-global: list + unread count
-  // are scoped to the current user server-side. Realtime is free — the WS
-  // event-router invalidates these exact query keys on notification.created.
-  const notificationsQuery = useNotifications();
+  // cm:guard the list and the unread count are scoped to the current user SERVER-side, and realtime is free because the WS event-router invalidates these exact query keys on `notification.created` — pick another key and the bell stops updating with nothing red to say so (ISS-504).
+  // cm:guard both list queries are gated on `open` because the menu they feed renders only under `open` — the component itself must stay MOUNTED while closed, which is what the header comment is about, and that is a different thing from fetching while closed (ISS-1019).
+  const notificationsQuery = useNotifications(open);
   const { data: unread } = useUnreadCount();
   const markRead = useMarkRead();
   const markAllRead = useMarkAllRead();
 
   // ISS-597 — pending invitations (Accept/Decline from the bell).
-  const pendingQuery = usePendingInvitations();
+  const pendingQuery = usePendingInvitations(open);
   const acceptInvitation = useAcceptInvitation();
   const declineInvitation = useDeclineInvitation();
   const [declineTarget, setDeclineTarget] = useState<PendingInvitation | null>(null);

@@ -74,10 +74,15 @@ export function useProjectsIncludingArchived() {
  * Per-project pipeline-health rollup. Keyed `['projects', 'health']`, a child
  * of `['projects']` — so the same reconnect replay invalidates it too.
  */
+// cm:guard the five minutes are about ROUTE CHANGES and not about liveness: the rail mounts this query on every workspace route, so at the library's 60 s default a user moving around the app re-read the whole ten-aggregate rollup once a minute for a badge.
+// Every WebSocket invalidation of this key still fires and still refetches — `invalidateQueries` does not consult staleTime — so what this number changes is the UNPROMPTED refetch and nothing about how fast a real change reaches the screen (ISS-1018).
+export const PROJECT_HEALTH_STALE_MS = 300_000;
+
 export function useProjectHealth() {
   return useQuery({
     queryKey: ['projects', 'health'],
     queryFn: () => projectApi.health(),
+    staleTime: PROJECT_HEALTH_STALE_MS,
   });
 }
 
@@ -111,8 +116,7 @@ export function useProjectsConsole(): ProjectsConsole {
   return {
     items,
     totals,
-    // Cold load = the list is still loading. Health hydrates the metrics a beat
-    // later but the cards/rows can render from the list alone.
+    // cm:guard `isLoading` follows the LIST alone, never the health rollup: the cards and rows render from list fields, and gating them on health too would blank the console for the beat the metrics take to arrive.
     isLoading: projects.isLoading,
     isError: projects.isError,
     error: projects.error,

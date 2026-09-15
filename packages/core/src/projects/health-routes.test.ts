@@ -7,10 +7,12 @@ vi.mock('../config/env.js', () => ({
   env: { JWT_SECRET: TEST_SECRET, NODE_ENV: 'test' },
 }));
 
-// Each `await db.select()...chain()` resolves with the next item from the
-// queue. This mirrors drizzle's thenable QueryBuilder while keeping the test
-// independent of the exact chain shape (selectDistinct / leftJoin / innerJoin
-// / orderBy / groupBy / limit all coexist in this handler).
+/**
+ * Each `await db.select()...chain()` resolves with the next item from the queue.
+ * This mirrors drizzle's thenable QueryBuilder while keeping the test
+ * independent of the exact chain shape — selectDistinct, leftJoin, innerJoin,
+ * orderBy, groupBy and limit all coexist behind this handler.
+ */
 const queryQueue: unknown[] = [];
 
 // Captures every `sql` template handed to `db.execute(...)` so a test can assert
@@ -296,5 +298,32 @@ describe('GET /api/projects/health', () => {
     expect(serialized).toContain('IN (');
     expect(serialized).not.toContain('ANY(');
     expect(serialized).not.toContain('::uuid[]');
+  });
+});
+
+describe('GET /api/projects/health — what it does NOT serve', () => {
+  // cm:guard `agentConfig` is free-form jsonb this repo keeps off every MCP read, and web-v2 never read the `projectMeta` it was served as — serving it whole to every project member on a list route was the exposure, and this is what goes red if the select puts it back (ISS-1018).
+  it('serves no projectMeta, so the agentConfig jsonb never reaches a member of the project', async () => {
+    authVerified();
+    queryQueue.push([{ id: PROJECT_A_ID }]); // loadVisibleProjectIds
+    queryQueue.push([
+      {
+        id: PROJECT_A_ID,
+        slug: 'alpha',
+        name: 'Alpha',
+        agentConfig: { mcpServers: { token: 's3cr3t' } },
+      },
+    ]); // visibleProjects
+    queryQueue.push([{ projectId: PROJECT_A_ID, status: 'open', n: 1 }]); // statusRows
+
+    const res = await buildApp().request('/api/projects/health', {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<Record<string, unknown>>;
+    expect(body[0]).not.toHaveProperty('projectMeta');
+    expect(JSON.stringify(body)).not.toContain('s3cr3t');
+    expect(JSON.stringify(body)).not.toContain('mcpServers');
   });
 });

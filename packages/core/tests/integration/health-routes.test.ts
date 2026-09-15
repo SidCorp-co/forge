@@ -11,13 +11,14 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-// ISS-267 regression — `GET /api/projects/health` 500'd on staging because the
-// throughput query passed a JS Date through Drizzle's `sql` template, and
-// postgres-js cannot serialize Date instances at Bind time
-// (`ERR_INVALID_ARG_TYPE` from Buffer.byteLength). Mock-based tests didn't
-// catch it because they never hit the real driver. These tests run against a
-// real Postgres so any future Date-binding regression in this handler will
-// surface here.
+/**
+ * ISS-267 regression — `GET /api/projects/health` 500'd on staging because the
+ * throughput query passed a JS Date through Drizzle's `sql` template, and
+ * postgres-js cannot serialize Date instances at Bind time
+ * (`ERR_INVALID_ARG_TYPE` from Buffer.byteLength). Mock-based tests never hit
+ * the real driver and could not catch it; these run against a real Postgres, so
+ * a future Date-binding regression in this handler surfaces here.
+ */
 
 describe('ISS-267 /api/projects/health integration', () => {
   let harness: TestDatabase;
@@ -107,8 +108,7 @@ describe('ISS-267 /api/projects/health integration', () => {
       headers: { authorization: `Bearer ${token}` },
     });
 
-    // The pre-fix bug threw before any row work — even an empty project
-    // returned 500. Asserting 200 here locks in the binding fix.
+    // cm:why the pre-fix bug threw before any row work, so even an empty project returned 500 — asserting 200 on nothing at all is what locks the binding fix in.
     expect(res.status).toBe(200);
     const body = (await res.json()) as Array<{ projectSlug: string; throughput: number }>;
     const row = body.find((r) => r.projectSlug === project.slug);
@@ -180,7 +180,7 @@ describe('ISS-267 /api/projects/health integration', () => {
       projectId: project.id,
       createdById: user.id,
     });
-    // 8 days ago — outside the rolling window.
+    // cm:why eight days puts this outside the rolling seven-day window by a full day, so a boundary drifting by hours cannot make the case pass by accident.
     const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
     await insertActivity({
       issueId,

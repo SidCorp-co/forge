@@ -1,19 +1,15 @@
 "use client";
 
-// web-v2 feature module: notifications (header bell) — React Query hooks.
-//
-// Query keys MUST be exactly ["notifications"] and ["notifications-unread"]:
-// lib/ws/event-router.ts invalidates those keys on `notification.created` /
-// `notification.read`, so keying them this way makes realtime free — a new
-// notification lands in the bell with no reload. Drift here silently no-ops
-// the realtime path.
+// cm:guard the keys MUST be exactly ["notifications"] and ["notifications-unread"]: lib/ws/event-router.ts invalidates those on `notification.created` and `notification.read`, so keying them this way makes realtime free — and drift silently no-ops the realtime path with nothing red anywhere.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { invitationsApi, notificationsApi } from "./api";
 
-export function useNotifications() {
+// cm:guard `enabled` gates the LIST, never `useUnreadCount` below: the favicon and document-title indicator reads the count while the bell is closed, and the toast bridge reads the socket directly, so gating those two would take a surface away rather than a request (ISS-1019).
+export function useNotifications(enabled = true) {
   return useQuery({
     queryKey: ["notifications"],
     queryFn: () => notificationsApi.list(),
+    enabled,
   });
 }
 
@@ -50,10 +46,11 @@ export function useMarkAllRead() {
 
 // ISS-597 — pending invitations hooks.
 
-export function usePendingInvitations() {
+export function usePendingInvitations(enabled = true) {
   return useQuery({
     queryKey: ["invitations-pending"],
     queryFn: () => invitationsApi.pending(),
+    enabled,
   });
 }
 

@@ -4926,6 +4926,45 @@
   changed: sessions still go live exactly once and announce it exactly once, a session that is
   waiting on a person is still not counted as working, and a conversation that owes somebody an
   answer in a chat room still gets the whole of itself loaded so that answer can be written.
+- **A burst of activity no longer makes the app refetch everything, once per event.**
+  Every live update the server sends — an issue moving, a run finishing, a runner coming back —
+  told the screens that show it to reload. Twenty of those arriving together meant twenty reloads
+  of the same lists, which is why a busy few seconds used to leave the interface stuttering and a
+  beat behind. Updates arriving close together are now gathered up and the affected lists reload
+  once, within a quarter of a second of the first of them.
+
+- **A live update is no longer lost when it arrives during the first load of a screen.**
+  If something changed while a list was still loading for the first time, the update was dropped:
+  the list finished loading with the older answer and stayed on it until something unrelated
+  refreshed it. It now reloads once the first answer is in.
+
+- **Returning to the tab no longer reloads every screen, and a refused request is no longer asked
+  three times.** Switching back to Forge from another tab reloaded everything on the page, whether
+  or not anything had changed; that is now off everywhere except the cross-project activity feed,
+  which has no other way to know it is stale. And when the server answers that a request cannot be
+  allowed — not signed in, not permitted, no such thing — the app now shows you that straight
+  away instead of asking twice more first.
+
+- **The notification bell no longer loads its list while it is closed.** The list and any pending
+  invitations are fetched when you open it. The unread count is still kept live, so the dot on the
+  bell and the number in the tab title are unchanged.
+
+- **The projects console loads faster, and moving around the app stops re-reading it.**
+  The rollup behind the projects list and the rail badge — open work, blockers, throughput, average
+  cycle time, live runs, runners, spend, members, last activity — asked the database for each of
+  those figures in turn, waiting for one before starting the next, so it took as long as all ten
+  answers added together. It now asks for them at the same time, a few at once so a busy moment on
+  the console cannot crowd out the rest of the product, and the average cycle time is worked out in
+  a single pass instead of once per closed issue. The figures are the same; you get them sooner.
+  The other half is how often it was asked for at all: the rail carries a live count on every
+  screen, so simply walking around the app re-read the whole rollup about once a minute. It now
+  holds for five, and anything that actually changes one of those numbers still updates the screen
+  the moment it happens.
+
+- **A project's agent configuration is no longer sent to the browser with the projects list.**
+  Every row of the rollup above carried the project's whole agent-configuration document, which can
+  hold connection settings for the services a project talks to. Nothing on screen has ever read it.
+  It is no longer sent.
 
 - **Every place the assistant answers you now works to the same method, and your project chooses the
   language it answers in.** Until now that method lived inside the team-chat integration and nowhere

@@ -2,6 +2,8 @@
 
 // cm:guard a `features/*` hook must key its query under one of the prefixes invalidated below (e.g. ['projects']) — pick any other and the live update silently no-ops, with nothing red anywhere to say the screen stopped refreshing
 import type { QueryClient } from "@tanstack/react-query";
+import { invalidateThroughInFlight } from "./invalidate-through-inflight";
+import { scheduleInvalidation } from "./invalidation-coalescer";
 import { trackJobSeq } from "./seq-tracker";
 
 interface EventEnvelope {
@@ -23,41 +25,41 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "issue.created":
 		case "issue.updated":
 		case "issue.deleted": {
-			qc.invalidateQueries({ queryKey: ["issues", "list"] });
-			qc.invalidateQueries({ queryKey: ["issues", "search"] });
+			scheduleInvalidation(qc, ["issues", "list"]);
+			scheduleInvalidation(qc, ["issues", "search"]);
 			// cm:why an assignment or status edit moves an issue between the needs-review and awaiting-input buckets, which are derived on read and cached nowhere server-side — so nothing else tells the inbox it is stale (ISS-307)
-			qc.invalidateQueries({ queryKey: ["attention"] });
-			qc.invalidateQueries({ queryKey: ["pulse"] });
+			scheduleInvalidation(qc, ["attention"]);
+			scheduleInvalidation(qc, ["pulse"]);
 			// cm:why ISS-665 — the Overview "Recent changes" panel is ordered by `issues.updatedAt`, which every one of these three events bumps; without this it keeps the previous ordering until something unrelated refetches
-			qc.invalidateQueries({ queryKey: ["recent-changes"] });
+			scheduleInvalidation(qc, ["recent-changes"]);
 			if (data?.issueId) {
-				qc.invalidateQueries({ queryKey: ["issue", data.issueId] });
-				qc.invalidateQueries({ queryKey: ["activities", data.issueId] });
+				scheduleInvalidation(qc, ["issue", data.issueId]);
+				scheduleInvalidation(qc, ["activities", data.issueId]);
 			}
 			return;
 		}
 		case "issue.statusChanged": {
-			qc.invalidateQueries({ queryKey: ["issues", "list"] });
-			qc.invalidateQueries({ queryKey: ["issues", "search"] });
+			scheduleInvalidation(qc, ["issues", "list"]);
+			scheduleInvalidation(qc, ["issues", "search"]);
 			// cm:why the console's open-issue counts and health are derived from issue status, so a transition is the only event that dates the batch rollup (ISS-290)
-			qc.invalidateQueries({ queryKey: ["projects", "health"] });
-			qc.invalidateQueries({ queryKey: ["pulse"] });
+			scheduleInvalidation(qc, ["projects", "health"]);
+			scheduleInvalidation(qc, ["pulse"]);
 			// cm:why every attention bucket is derived from `issues.status` on read (packages/core/src/me/attention-buckets.ts) and none of them is cached server-side, so a status event is the only signal that the cross-project inbox and its rail badge are stale — nothing else fires for an issue in a project this client is not looking at.
-			qc.invalidateQueries({ queryKey: ["attention"] });
+			scheduleInvalidation(qc, ["attention"]);
 			// cm:why the Overview "Recent changes" panel is ordered by `issues.updatedAt`, and a status transition is the commonest writer of it — without this the panel keeps the previous ordering until something unrelated refetches (ISS-665).
-			qc.invalidateQueries({ queryKey: ["recent-changes"] });
+			scheduleInvalidation(qc, ["recent-changes"]);
 			if (data?.issueId) {
-				qc.invalidateQueries({ queryKey: ["issue", data.issueId] });
-				qc.invalidateQueries({ queryKey: ["activities", data.issueId] });
+				scheduleInvalidation(qc, ["issue", data.issueId]);
+				scheduleInvalidation(qc, ["activities", data.issueId]);
 				// cm:why a run that parks to ask writes the question and the issue's park status together, and core publishes nothing else a browser subscribes to — this is the only event that reaches a screen already open on an issue whose decision has just appeared (ISS-980).
-				qc.invalidateQueries({ queryKey: ["questions", data.issueId] });
+				scheduleInvalidation(qc, ["questions", data.issueId]);
 			}
 			return;
 		}
 		case "issue.pipelineHealth.changed": {
-			qc.invalidateQueries({ queryKey: ["issues", "list"] });
+			scheduleInvalidation(qc, ["issues", "list"]);
 			if (data?.issueId) {
-				qc.invalidateQueries({ queryKey: ["issue", data.issueId] });
+				scheduleInvalidation(qc, ["issue", data.issueId]);
 			}
 			// Fires on every job completion/failure + dispatch tick and carries
 			// projectId — the reliable hook for the active-runner snapshot, since
@@ -65,9 +67,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			// `status='running'` so `pipeline_run.status_changed` never fires, and
 			// `job.completed`/`job.failed` carry only jobId (no projectId to key on).
 			if (data?.projectId) {
-				qc.invalidateQueries({
-					queryKey: ["projects", data.projectId, "active-runners"],
-				});
+				scheduleInvalidation(qc, ["projects", data.projectId, "active-runners"]);
 			}
 			return;
 		}
@@ -75,11 +75,11 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "comment.updated":
 		case "comment.deleted": {
 			// cm:why a human comment is the receipt that clears an unseen agent-filed draft (ISS-881), and an @mention arrives as a comment too; without this the row the user just acted on stays on screen until something unrelated refetches.
-			qc.invalidateQueries({ queryKey: ["attention"] });
-			qc.invalidateQueries({ queryKey: ["pulse"] });
+			scheduleInvalidation(qc, ["attention"]);
+			scheduleInvalidation(qc, ["pulse"]);
 			if (data?.issueId) {
-				qc.invalidateQueries({ queryKey: ["comments", data.issueId] });
-				qc.invalidateQueries({ queryKey: ["activities", data.issueId] });
+				scheduleInvalidation(qc, ["comments", data.issueId]);
+				scheduleInvalidation(qc, ["activities", data.issueId]);
 			}
 			return;
 		}
@@ -87,9 +87,9 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "conversation.settled":
 		case "conversation.message": {
 			if (data?.conversationId) {
-				qc.invalidateQueries({ queryKey: ["conversations", data.conversationId] });
+				scheduleInvalidation(qc, ["conversations", data.conversationId]);
 			}
-			qc.invalidateQueries({ queryKey: ["conversations", "list"] });
+			scheduleInvalidation(qc, ["conversations", "list"]);
 			return;
 		}
 		case "agent-session.created":
@@ -97,14 +97,14 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "agent-session.status":
 		case "agent-session.deleted": {
 			// cm:why the sessions index keys its queries under ['agent-sessions'], and nothing else fires for a standalone session, so without this the live list never refreshes (ISS-291)
-			qc.invalidateQueries({ queryKey: ["agent-sessions"] });
+			scheduleInvalidation(qc, ["agent-sessions"]);
 			// cm:why `quality.sessionFailures` counts failed sessions by reason, so a session reaching `failed` is the only event that dates that figure — the issue and job events elsewhere in this switch never fire for a standalone interactive session (ISS-988)
-			qc.invalidateQueries({ queryKey: ["pulse"] });
+			scheduleInvalidation(qc, ["pulse"]);
 			if (data?.sessionId) {
-				qc.invalidateQueries({ queryKey: ["agent-session", data.sessionId] });
+				scheduleInvalidation(qc, ["agent-session", data.sessionId]);
 			}
 			if (data?.issueId) {
-				qc.invalidateQueries({ queryKey: ["activities", data.issueId] });
+				scheduleInvalidation(qc, ["activities", data.issueId]);
 			}
 			return;
 		}
@@ -113,18 +113,16 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "agent-session.turn.truncated": {
 			// cm:guard these three are the RUN detail's, not a conversation's: since ISS-1004 step 5 `features/session` is the screen whose subject is a session on a runner, and the chat surface reads `conversation.message` / `conversation.settled` above instead. The streaming-tail `turn.appended` is debounced ~100ms server-side (core `agent-sessions/broadcast.ts`), so a caret that stops moving is that debounce before it is this key (ISS-292).
 			if (data?.sessionId) {
-				qc.invalidateQueries({
-					queryKey: ["agent-session", data.sessionId, "turns"],
-				});
-				qc.invalidateQueries({ queryKey: ["agent-session", data.sessionId] });
+				scheduleInvalidation(qc, ["agent-session", data.sessionId, "turns"]);
+				scheduleInvalidation(qc, ["agent-session", data.sessionId]);
 			}
 			return;
 		}
 		// ISS-197 — recoveryStats refresh on the sessions panel.
 		case "session.recoveryChanged": {
-			qc.invalidateQueries({ queryKey: ["agent-sessions"] });
+			scheduleInvalidation(qc, ["agent-sessions"]);
 			if (data?.sessionId) {
-				qc.invalidateQueries({ queryKey: ["agent-session", data.sessionId] });
+				scheduleInvalidation(qc, ["agent-session", data.sessionId]);
 			}
 			return;
 		}
@@ -133,8 +131,8 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 				trackJobSeq(data.jobId, data.seq);
 			}
 			if (data?.jobId) {
-				qc.invalidateQueries({ queryKey: ["job", data.jobId, "events"] });
-				qc.invalidateQueries({ queryKey: ["job", data.jobId] });
+				scheduleInvalidation(qc, ["job", data.jobId, "events"]);
+				scheduleInvalidation(qc, ["job", data.jobId]);
 			}
 			return;
 		}
@@ -144,15 +142,15 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		// cm:edge contract -> packages/core/src/jobs/resume-job.ts — a resumed job leaves `held` for `queued`, so both the list and the job detail are stale; without this case the operator presses resume and the row keeps reading "held" until something unrelated invalidates it
 		case "job.resumed":
 		case "job.cancelled": {
-			qc.invalidateQueries({ queryKey: ["jobs", "list"] });
+			scheduleInvalidation(qc, ["jobs", "list"]);
 			// cm:edge contract -> packages/web-v2/src/features/operator/hooks.ts — A2 (stuck jobs) and the in-flight KPI both count `jobs` rows, so a reap that clears the alert must clear it on screen; without this the operator presses the button and the row it just cancelled is still listed
-			qc.invalidateQueries({ queryKey: ["admin", "ops"] });
+			scheduleInvalidation(qc, ["admin", "ops"]);
 			// ISS-307 — a job flipping to failed (incl. deploy) belongs in Attention's
 			// failed-jobs bucket; refresh the cross-project inbox + rail count.
-			qc.invalidateQueries({ queryKey: ["attention"] });
-			qc.invalidateQueries({ queryKey: ["pulse"] });
+			scheduleInvalidation(qc, ["attention"]);
+			scheduleInvalidation(qc, ["pulse"]);
 			if (data?.jobId) {
-				qc.invalidateQueries({ queryKey: ["job", data.jobId] });
+				scheduleInvalidation(qc, ["job", data.jobId]);
 			}
 			// NOTE: the active-runner snapshot is refreshed via
 			// `issue.pipelineHealth.changed` (which carries projectId and fires on
@@ -162,37 +160,35 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			return;
 		}
 		case "pipeline_run.status_changed": {
-			qc.invalidateQueries({ queryKey: ["pipeline-runs", "list"] });
+			scheduleInvalidation(qc, ["pipeline-runs", "list"]);
 			// cm:edge contract -> packages/web-v2/src/features/operator/hooks.ts — all four Operator Ops Console panels roll up from `pipeline_runs` and are keyed under this prefix; a key that does not start ["admin","ops"] leaves the console serving stale cross-tenant numbers with nothing to say it (ISS-653)
-			qc.invalidateQueries({ queryKey: ["admin", "ops"] });
+			scheduleInvalidation(qc, ["admin", "ops"]);
 			// Projects console (ISS-290): liveRuns / spend roll up from pipeline_runs.
-			qc.invalidateQueries({ queryKey: ["projects", "health"] });
-			qc.invalidateQueries({ queryKey: ["pulse"] });
+			scheduleInvalidation(qc, ["projects", "health"]);
+			scheduleInvalidation(qc, ["pulse"]);
 			if (data?.runId) {
-				qc.invalidateQueries({ queryKey: ["pipeline-run", data.runId] });
+				scheduleInvalidation(qc, ["pipeline-run", data.runId]);
 			}
 			// Cancel cascade flips jobs + agent_sessions too — invalidate defensively.
 			if (data?.status === "cancelled") {
-				qc.invalidateQueries({ queryKey: ["jobs"] });
-				qc.invalidateQueries({ queryKey: ["agent-sessions"] });
+				scheduleInvalidation(qc, ["jobs"]);
+				scheduleInvalidation(qc, ["agent-sessions"]);
 			}
 			// A run reaching a terminal status frees its runner — refresh the
 			// active-runner snapshot so the busy → idle flip reflects live.
 			if (data?.projectId) {
-				qc.invalidateQueries({
-					queryKey: ["projects", data.projectId, "active-runners"],
-				});
+				scheduleInvalidation(qc, ["projects", data.projectId, "active-runners"]);
 			}
 			return;
 		}
 		case "device.statusChanged": {
-			qc.invalidateQueries({ queryKey: ["admin", "devices"] });
-			qc.invalidateQueries({ queryKey: ["devices", "me"] });
+			scheduleInvalidation(qc, ["admin", "devices"]);
+			scheduleInvalidation(qc, ["devices", "me"]);
 			// Projects console (ISS-290): online-runner counts feed per-project health.
-			qc.invalidateQueries({ queryKey: ["projects", "health"] });
-			qc.invalidateQueries({ queryKey: ["pulse"] });
+			scheduleInvalidation(qc, ["projects", "health"]);
+			scheduleInvalidation(qc, ["pulse"]);
 			// ISS-307 — a runner going offline/online moves it in/out of Attention.
-			qc.invalidateQueries({ queryKey: ["attention"] });
+			scheduleInvalidation(qc, ["attention"]);
 			return;
 		}
 		// ISS-305 — runner browser-approve device login + revoke. The Runners
@@ -202,18 +198,16 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "device.login":
 		case "device.paired":
 		case "device.revoked": {
-			qc.invalidateQueries({ queryKey: ["devices", "me"] });
-			qc.invalidateQueries({ queryKey: ["projects", "health"] });
-			qc.invalidateQueries({ queryKey: ["pulse"] });
+			scheduleInvalidation(qc, ["devices", "me"]);
+			scheduleInvalidation(qc, ["projects", "health"]);
+			scheduleInvalidation(qc, ["pulse"]);
 			return;
 		}
 		// Workspace provisioning progress (project Runners screen live stepper).
 		// Rides the project room; refresh the project's runner list each step.
 		case "runner.provision": {
 			if (data?.projectId) {
-				qc.invalidateQueries({
-					queryKey: ["projects", data.projectId, "runners"],
-				});
+				scheduleInvalidation(qc, ["projects", data.projectId, "runners"]);
 			}
 			return;
 		}
@@ -226,54 +220,44 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "runner.status":
 		case "runner.updated": {
 			if (data?.runnerId) {
-				qc.invalidateQueries({
-					queryKey: ["runners", data.runnerId, "activity"],
-				});
+				scheduleInvalidation(qc, ["runners", data.runnerId, "activity"]);
 			}
 			if (data?.projectId) {
-				qc.invalidateQueries({
-					queryKey: ["projects", data.projectId, "runners"],
-				});
-				qc.invalidateQueries({
-					queryKey: ["projects", data.projectId, "active-runners"],
-				});
-				qc.invalidateQueries({ queryKey: ["projects", "health"] });
-				qc.invalidateQueries({ queryKey: ["pulse"] });
+				scheduleInvalidation(qc, ["projects", data.projectId, "runners"]);
+				scheduleInvalidation(qc, ["projects", data.projectId, "active-runners"]);
+				scheduleInvalidation(qc, ["projects", "health"]);
+				scheduleInvalidation(qc, ["pulse"]);
 			}
 			return;
 		}
 		case "user.preferencesChanged": {
-			qc.invalidateQueries({ queryKey: ["user-prefs"] });
+			scheduleInvalidation(qc, ["user-prefs"]);
 			return;
 		}
 		case "notification.created":
 		case "notification.read": {
-			qc.invalidateQueries({ queryKey: ["notifications"] });
-			qc.invalidateQueries({ queryKey: ["notifications-unread"] });
+			scheduleInvalidation(qc, ["notifications"]);
+			scheduleInvalidation(qc, ["notifications-unread"]);
 			// ISS-307 — unread @-mentions feed Attention's mentions bucket.
-			qc.invalidateQueries({ queryKey: ["attention"] });
-			qc.invalidateQueries({ queryKey: ["pulse"] });
+			scheduleInvalidation(qc, ["attention"]);
+			scheduleInvalidation(qc, ["pulse"]);
 			// ISS-597 — an invitation_received notification means a new pending
 			// invite; refresh the pending list so the actionable item appears live.
-			qc.invalidateQueries({ queryKey: ["invitations-pending"] });
+			scheduleInvalidation(qc, ["invitations-pending"]);
 			return;
 		}
 		case "dependencyChanged": {
 			// cm:why ISS-1017 — the issues list renders its badges from the search response (`withDependencies=1`), so the per-issue keys below no longer reach it and the chips would outlive a retracted edge until something unrelated refetched the list
-			qc.invalidateQueries({ queryKey: ["issues", "search"] });
+			scheduleInvalidation(qc, ["issues", "search"]);
 			if (data?.fromIssueId) {
-				qc.invalidateQueries({
-					queryKey: ["issue", data.fromIssueId, "dependencies"],
-				});
-				qc.invalidateQueries({ queryKey: ["issue", data.fromIssueId] });
-				qc.invalidateQueries({ queryKey: ["activities", data.fromIssueId] });
+				scheduleInvalidation(qc, ["issue", data.fromIssueId, "dependencies"]);
+				scheduleInvalidation(qc, ["issue", data.fromIssueId]);
+				scheduleInvalidation(qc, ["activities", data.fromIssueId]);
 			}
 			if (data?.toIssueId) {
-				qc.invalidateQueries({
-					queryKey: ["issue", data.toIssueId, "dependencies"],
-				});
-				qc.invalidateQueries({ queryKey: ["issue", data.toIssueId] });
-				qc.invalidateQueries({ queryKey: ["activities", data.toIssueId] });
+				scheduleInvalidation(qc, ["issue", data.toIssueId, "dependencies"]);
+				scheduleInvalidation(qc, ["issue", data.toIssueId]);
+				scheduleInvalidation(qc, ["activities", data.toIssueId]);
 			}
 			return;
 		}
@@ -285,8 +269,8 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "pm.escalation": {
 			// Web `usePmEscalations` is derived off `useNotifications`, so the
 			// notifications invalidation is the only key that matters here.
-			qc.invalidateQueries({ queryKey: ["notifications"] });
-			qc.invalidateQueries({ queryKey: ["notifications-unread"] });
+			scheduleInvalidation(qc, ["notifications"]);
+			scheduleInvalidation(qc, ["notifications-unread"]);
 			return;
 		}
 		case "integration.changed": {
@@ -296,17 +280,11 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			// connections list (keyed without a projectId). Connection-only mutations
 			// do not emit (no owner WS room) — they self-invalidate client-side.
 			if (data?.projectId) {
-				qc.invalidateQueries({
-					queryKey: ["integrations", "list", data.projectId],
-				});
-				qc.invalidateQueries({
-					queryKey: ["integrations", "status", data.projectId],
-				});
-				qc.invalidateQueries({
-					queryKey: ["integrations", "mcp-preview", data.projectId],
-				});
+				scheduleInvalidation(qc, ["integrations", "list", data.projectId]);
+				scheduleInvalidation(qc, ["integrations", "status", data.projectId]);
+				scheduleInvalidation(qc, ["integrations", "mcp-preview", data.projectId]);
 			}
-			qc.invalidateQueries({ queryKey: ["integration-connections"] });
+			scheduleInvalidation(qc, ["integration-connections"]);
 			return;
 		}
 		case "pat.created":
@@ -315,7 +293,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			// ISS-160 — keep the /settings/tokens list in sync. The `pat.used`
 			// event is throttled to 1/min/token in the dispatcher; we still
 			// invalidate the list so last-used relative timestamps refresh.
-			qc.invalidateQueries({ queryKey: ["tokens"] });
+			scheduleInvalidation(qc, ["tokens"]);
 			return;
 		}
 		default: {
@@ -329,32 +307,81 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 }
 
 /**
+ * The prefixes a dropped or freshly-opened connection has to repair. One list,
+ * read by both replays, so the two cannot drift apart.
+ */
+const REPLAY_PREFIXES: readonly (readonly unknown[])[] = [
+	["issues"],
+	["jobs"],
+	["projects"],
+	// cm:why ISS-291 — the sessions index refreshes after a dropped connection here.
+	["agent-sessions"],
+	// cm:why a run thread open across a reconnect re-pulls its turns and its status here, because every live update it has is an invalidation it may have missed (ISS-292)
+	["agent-session"],
+	// cm:guard an open conversation is replayed here or not at all: its reply arrives as ONE `conversation.message` frame, so a dropped frame leaves the answer invisible until something else refetches (ISS-1004)
+	["conversations"],
+	// cm:why ISS-307 — the cross-project Attention inbox and its rail count ride issue/job/notification events, so a dropped connection is repaired here.
+	["attention"],
+	["pulse"],
+	["devices", "me"],
+	// cm:why `chat_logs` has no per-row WS broadcast in core, so this plus window-focus and the Refresh button is the whole of the cross-project Activity feed's freshness until a `chat-log.created` event lands (ISS-314).
+	["chat-logs"],
+	// cm:why ISS-401/C — integration bindings, status and the owner-scoped connections list have no broadcast for connection-only mutations, so reconnect replay is their cross-client freshness.
+	["integrations"],
+	["integration-connections"],
+	// cm:guard the ONE recovery an empty decision panel has. `features/questions` polls only once an issue already carries a question — `agent_questions` has no index on `issue_id` — so a screen open across a dropped connection learns of its first question here or not until the next navigation (ISS-980).
+	["questions"],
+	// cm:guard the three notification keys are HERE because `refetchOnWindowFocus` is off since ISS-1019: `routeEvent` reaches them on every `notification.created`, but a notification arriving while the socket was down was repaired by returning to the tab and by nothing else, so without these the unread badge stays wrong until something unrelated refetches.
+	["notifications"],
+	["notifications-unread"],
+	["invitations-pending"],
+];
+
+const QUESTIONS_PREFIX = "questions";
+
+function underAReplayPrefix(queryKey: readonly unknown[]): boolean {
+	return REPLAY_PREFIXES.some((prefix) =>
+		prefix.every((segment, i) => Object.is(queryKey[i], segment)),
+	);
+}
+
+/**
  * On reconnect, replay dropped events for any job whose detail page is
  * still mounted. Project-room events don't have a seq; we just invalidate
  * the high-level caches so React Query refetches anything visible.
  */
+// cm:guard through `invalidateThroughInFlight` and not `qc.invalidateQueries`: a reconnect has a DEFINITE gap, and a query whose first request took its snapshot during the outage has its invalidation swallowed by TanStack exactly as any other first fetch does — so the one path with a certain gap was the one repairing nothing (ISS-1019).
 export function replayOnReconnect(qc: QueryClient): void {
-	qc.invalidateQueries({ queryKey: ["issues"] });
-	qc.invalidateQueries({ queryKey: ["jobs"] });
-	qc.invalidateQueries({ queryKey: ["projects"] });
-	// ISS-291 — refresh the sessions index after a dropped connection.
-	qc.invalidateQueries({ queryKey: ["agent-sessions"] });
-	// cm:why a run thread open across a reconnect re-pulls its turns and its status here, because every live update it has is an invalidation it may have missed (ISS-292)
-	qc.invalidateQueries({ queryKey: ["agent-session"] });
-	// cm:guard an open conversation is replayed here or not at all: its reply arrives as ONE `conversation.message` frame, so a dropped frame leaves the answer invisible until something else refetches (ISS-1004)
-	qc.invalidateQueries({ queryKey: ["conversations"] });
-	// ISS-307 — refresh the cross-project Attention inbox + rail count after a
-	// dropped connection (its buckets ride issue/job/notification events above).
-	qc.invalidateQueries({ queryKey: ["attention"] });
-	qc.invalidateQueries({ queryKey: ["pulse"] });
-	qc.invalidateQueries({ queryKey: ["devices", "me"] });
-	// cm:why `chat_logs` has no per-row WS broadcast in core, so this plus window-focus and the Refresh button is the whole of the cross-project Activity feed's freshness until a `chat-log.created` event lands (ISS-314).
-	qc.invalidateQueries({ queryKey: ["chat-logs"] });
-	// ISS-401/C — refresh integration bindings/status (per-project) + the owner-
-	// scoped connections list after a dropped connection. Connection mutations
-	// have no WS broadcast, so reconnect replay is their cross-client freshness.
-	qc.invalidateQueries({ queryKey: ["integrations"] });
-	qc.invalidateQueries({ queryKey: ["integration-connections"] });
-	// cm:guard the ONE recovery an empty decision panel has. `features/questions` polls only once an issue already carries a question — `agent_questions` has no index on `issue_id` — so a screen that was open across a dropped connection learns of its first question here or not until the next navigation (ISS-980).
-	qc.invalidateQueries({ queryKey: ["questions"] });
+	for (const prefix of REPLAY_PREFIXES) invalidateThroughInFlight(qc, { queryKey: prefix });
+}
+
+/**
+ * The FIRST open of a connection is not a reconnect, and replaying it as one is
+ * a second whole round of the page's queries a few hundred milliseconds after
+ * the first.
+ *
+ * What is owed is narrower. A query that already holds data whose `dataUpdatedAt`
+ * is at or before `openedAt` had its answer on screen while the socket was not
+ * yet delivering — that is a real gap and it is replayed. A query whose only data
+ * arrived after the open cannot have missed anything: the socket was already
+ * delivering by then. A query still fetching its first result is left to
+ * `invalidateThroughInFlight`, which picks it up when it settles.
+ *
+ * `questions` is replayed whatever its state, because its guard above says this
+ * replay is the one recovery an empty decision panel has.
+ *
+ * This is ONE call with ONE predicate rather than two passes, so a `questions`
+ * query holding pre-open data is refetched once and not twice.
+ */
+// cm:guard blanket suppression behind a `hasConnected` flag is refused, and this is the shape that replaces it: REST can complete before the socket connects, and a change in that gap reaches the screen through the first-open replay or through nothing (ISS-1019).
+export function replayOnFirstOpen(qc: QueryClient, openedAt: number): void {
+	invalidateThroughInFlight(qc, {
+		predicate: (query) => {
+			const key = query.queryKey as readonly unknown[];
+			if (key[0] === QUESTIONS_PREFIX) return true;
+			if (!underAReplayPrefix(key)) return false;
+			const { dataUpdatedAt } = query.state;
+			return dataUpdatedAt > 0 && dataUpdatedAt <= openedAt;
+		},
+	});
 }
