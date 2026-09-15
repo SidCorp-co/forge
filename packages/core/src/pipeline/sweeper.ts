@@ -19,7 +19,7 @@
  * /api/admin/alerts via `admin/alert-queries.ts`).
  */
 
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { type AlertSweepResult, runAlertSweep } from '../admin/alert-sweeper.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
@@ -387,14 +387,11 @@ type JobAlarmRow = {
  * DEMOTED (ISS-449) — alarm-only mirror of the loop monitor's session-lost
  * propagation (`reapSessionLostJobs`, was ISS-280 `reconcileOrphanedJobs`).
  */
-export async function alarmOrphanedJobs(
-  now: Date = new Date(),
-  scope: SweepScope = {},
-): Promise<OrphanReconcileResult> {
+export function orphanedJobAlarmQuery(now: Date = new Date(), scope: SweepScope = {}): SQL {
   const projectClause = scope.projectId ? sql`AND j.project_id = ${scope.projectId}` : sql``;
   // cm:edge lockstep -> packages/core/src/jobs/kill-gate.ts — a gated row deliberately survives the loop until killGraceMs() elapses; exclude it or every gate trips a false loop-miss
   const killGateCutoffIso = new Date(now.getTime() - killGraceMs()).toISOString();
-  const candidates = await db.execute<JobAlarmRow>(sql`
+  return sql`
     SELECT j.id, j.project_id, j.issue_id
     FROM jobs j
     JOIN agent_sessions s ON s.id = j.agent_session_id
@@ -406,7 +403,14 @@ export async function alarmOrphanedJobs(
       )
       AND (j.kill_requested_at IS NULL OR j.kill_requested_at <= ${killGateCutoffIso})
       ${projectClause}
-  `);
+  `;
+}
+
+export async function alarmOrphanedJobs(
+  now: Date = new Date(),
+  scope: SweepScope = {},
+): Promise<OrphanReconcileResult> {
+  const candidates = await db.execute<JobAlarmRow>(orphanedJobAlarmQuery(now, scope));
 
   await alarmLoopMiss('heartbeat', 'job', [...candidates]);
   return { reconciled: candidates.length };
@@ -419,14 +423,11 @@ export async function alarmOrphanedJobs(
  * ACKED job with no events is claimed-but-quiet, which is the result hop's
  * territory, not an ack miss.
  */
-export async function alarmNeverClaimedDispatches(
-  now: Date = new Date(),
-  scope: SweepScope = {},
-): Promise<OrphanReconcileResult> {
+export function neverClaimedAlarmQuery(now: Date = new Date(), scope: SweepScope = {}): SQL {
   const projectClause = scope.projectId ? sql`AND j.project_id = ${scope.projectId}` : sql``;
   const cutoffIso = new Date(now.getTime() - getLoopThresholds().ackMs).toISOString();
   const killGateCutoffIso = new Date(now.getTime() - killGraceMs()).toISOString();
-  const candidates = await db.execute<JobAlarmRow>(sql`
+  return sql`
     SELECT j.id, j.project_id, j.issue_id
     FROM jobs j
     WHERE j.status = 'dispatched'
@@ -438,7 +439,14 @@ export async function alarmNeverClaimedDispatches(
       )
       AND (j.kill_requested_at IS NULL OR j.kill_requested_at <= ${killGateCutoffIso})
       ${projectClause}
-  `);
+  `;
+}
+
+export async function alarmNeverClaimedDispatches(
+  now: Date = new Date(),
+  scope: SweepScope = {},
+): Promise<OrphanReconcileResult> {
+  const candidates = await db.execute<JobAlarmRow>(neverClaimedAlarmQuery(now, scope));
 
   await alarmLoopMiss('ack', 'job', [...candidates]);
   return { reconciled: candidates.length };

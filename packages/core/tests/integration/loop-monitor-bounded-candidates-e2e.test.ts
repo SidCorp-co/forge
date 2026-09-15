@@ -195,6 +195,11 @@ describe('ISS-1013 · the quiet-job candidate query is bounded by live jobs', ()
   let ownerId: string;
   let resultMissCandidateQuery: (scope?: { projectId?: string }) => ReturnType<typeof sql>;
   let staleAlarmQuery: (now?: Date) => ReturnType<typeof sql>;
+  let orphanedJobAlarmQuery: (now?: Date, scope?: { projectId?: string }) => ReturnType<typeof sql>;
+  let neverClaimedAlarmQuery: (
+    now?: Date,
+    scope?: { projectId?: string },
+  ) => ReturnType<typeof sql>;
 
   /** Every node of an ANALYZEd plan for one query, plus its total buffers. */
   async function planOf(query: ReturnType<typeof sql>): Promise<{
@@ -226,6 +231,9 @@ describe('ISS-1013 · the quiet-job candidate query is bounded by live jobs', ()
     process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
     ({ resultMissCandidateQuery } = await import('../../src/jobs/loop-monitor.js'));
     ({ staleAlarmQuery } = await import('../../src/jobs/stale-detector.js'));
+    ({ orphanedJobAlarmQuery, neverClaimedAlarmQuery } = await import(
+      '../../src/pipeline/sweeper.js'
+    ));
 
     await truncateAll(harness.db);
     ownerId = (await createTestUser(harness.db)).id;
@@ -259,6 +267,21 @@ describe('ISS-1013 · the quiet-job candidate query is bounded by live jobs', ()
       JOIN numbered nu ON nu.n = g % ${ARCHIVE_JOBS}
       ORDER BY g
     `);
+    // cm:guard every archive job also wrote the `result` event that ended it, and the fixture is
+    // dishonest without them. `job_events_result_idx` is PARTIAL on `kind = 'result'`, so its size
+    // is one row per job that has ever finished -- which is what the laterals reading it are
+    // measured against. Seed no results and that index holds a single row, every plan over it is
+    // trivially cheap, and criteria 4-8 report on a table the deployment does not have. Measured:
+    // with 1 row the planner read the whole index and criterion 18 failed; with one per archive job
+    // it keys on the driving row.
+    await harness.db.execute(sql`
+      INSERT INTO job_events (id, job_id, kind, data, seq, ts)
+      SELECT gen_random_uuid(), j.id, 'result', '{}'::jsonb,
+             ${EVENT_ROWS} + ${BUSIEST_JOB_EVENTS} + row_number() OVER (ORDER BY j.dispatched_at),
+             j.finished_at
+      FROM jobs j WHERE j.project_id = ${projectId} AND j.status = 'done'
+    `);
+
     // One job with the long tail: `(job_id, seq)` orders by seq, so `max(ts)`
     // over this job without `(job_id, ts)` reads every one of these rows.
     const tailJobRows = await harness.db.execute<{ id: string }>(sql`
@@ -441,26 +464,26 @@ describe('ISS-1013 · the quiet-job candidate query is bounded by live jobs', ()
     }
   });
 
+  // cm:guard the two queries come from `sweeper.ts` and are NOT pasted here. They used to be
+  // copies, and the copies had already drifted: both dropped the kill-gate term and
+  // `neverClaimed` dropped `j.dispatched_at < cutoff`, which are predicates that change
+  // selectivity and so change the plan. A criterion about the sweeper's cost, measured on a
+  // likeness of the sweeper, is the failure `resultMissCandidateQuery` was exported to prevent.
   it('bounds the two sweeper job alarms the same way', async () => {
-    const orphaned = sql`
-      SELECT j.id FROM jobs j
-      JOIN agent_sessions s ON s.id = j.agent_session_id
-      WHERE j.status IN ('dispatched', 'running')
-        AND s.status IN ('failed', 'cancelled_stale')
-        AND NOT EXISTS (SELECT 1 FROM job_events e WHERE e.job_id = j.id AND e.kind = 'result')
-        AND j.project_id = ${projectId}
-    `;
-    const neverClaimed = sql`
-      SELECT j.id FROM jobs j
-      WHERE j.status = 'dispatched' AND j.acked_at IS NULL AND j.dispatched_at IS NOT NULL
-        AND NOT EXISTS (SELECT 1 FROM job_events e WHERE e.job_id = j.id)
-        AND j.project_id = ${projectId}
-    `;
-    for (const query of [orphaned, neverClaimed]) {
+    const now = new Date();
+    const cases: Array<[string, ReturnType<typeof sql>]> = [
+      ['alarmOrphanedJobs', orphanedJobAlarmQuery(now, { projectId })],
+      ['alarmNeverClaimedDispatches', neverClaimedAlarmQuery(now, { projectId })],
+    ];
+    for (const [label, query] of cases) {
       const { nodes } = await planOf(query);
-      expect(nodesOn(nodes, 'job_events').length).toBeGreaterThan(0);
-      for (const node of nodesOn(nodes, 'job_events')) {
-        expect(`${node['Node Type']} ${boundBy(node)}`).toMatch(/job_id/);
+      const read = nodesOn(nodes, 'job_events');
+      expect(read.length, `${label} reads job_events in no node at all`).toBeGreaterThan(0);
+      for (const node of read) {
+        expect(
+          `${node['Node Type']} ${boundBy(node)}`,
+          `${label}: this job_events node is not keyed on the driving job — ${JSON.stringify(node['Node Type'])} over ${JSON.stringify(node['Index Name'] ?? '(no index)')}, rows ${String(node['Actual Rows'] ?? '?')}`,
+        ).toMatch(/job_id/);
       }
     }
   });

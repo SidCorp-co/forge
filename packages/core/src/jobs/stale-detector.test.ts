@@ -106,7 +106,13 @@ describe('runStaleSweep (alarm-only)', () => {
     expect(text).toMatch(/j\.status\s+IN\s*\(\s*'dispatched'\s*,\s*'running'\s*\)/);
     expect(text).toMatch(/interval\s+'\s*65\s*minutes'/);
     expect(text).toMatch(/COALESCE\(le\.max_ts,\s*j\.dispatched_at\)/);
-    expect(text).toMatch(/NOT\s+EXISTS[\s\S]*job_events[\s\S]*kind\s*=\s*'result'/);
+    // cm:guard ISS-1013 — BOTH halves, because either alone passes a query that no longer
+    // guards anything: the lateral without the guard reads `job_events` and ignores it, and
+    // `lr.job_id IS NULL` without the lateral is an unbound alias the type checker cannot see.
+    expect(text).toMatch(
+      /LEFT\s+JOIN\s+LATERAL[\s\S]*job_events\s+e\s+WHERE\s+e\.job_id\s*=\s*j\.id\s+AND\s+e\.kind\s*=\s*'result'[\s\S]*\)\s*lr\s+ON\s+true/,
+    );
+    expect(text).toMatch(/s\.runtime_state\s+IS\s+NOT\s+NULL\s+OR\s+lr\.job_id\s+IS\s+NULL/);
   });
 
   // cm:guard reads `job_events` through a lateral keyed on the driving row, never an aggregate over the table. The `GROUP BY job_id` assertion is negative and deliberately so: the shape this replaced was correct and merely unbounded, so nothing about the alarm's OUTPUT can go red when it comes back.
@@ -131,7 +137,7 @@ describe('runStaleSweep (alarm-only)', () => {
     const text = lastSqlText(0);
     expect(text).toMatch(/COALESCE\(lp\.max_ts,\s*j\.dispatched_at\)/);
     expect(text).toMatch(/s\.runtime_state\s+IS\s+DISTINCT\s+FROM\s+'awaiting_input'/);
-    expect(text).toMatch(/s\.runtime_state\s+IS\s+NOT\s+NULL\s+OR\s+NOT\s+EXISTS/);
+    expect(text).toMatch(/s\.runtime_state\s+IS\s+NOT\s+NULL\s+OR\s+lr\.job_id\s+IS\s+NULL/);
     expect(text).toMatch(/j\.kill_requested_at\s+IS\s+NULL\s+OR\s+j\.kill_requested_at\s*<=/);
   });
 
