@@ -20,6 +20,8 @@ import { forgeProjectPipelineRunsTool } from '../../mcp/tools/forge-project-pipe
 import { forgeProjectsGetTool } from '../../mcp/tools/forge-projects.js';
 import type { McpContext } from '../../mcp/tools/lib.js';
 import { forgeCliTool } from './forge-cli-tool.js';
+import { forgeMemoryNoteTool } from './forge-memory-note-tool.js';
+import { forgePreferencesTool } from './forge-preferences-tool.js';
 import { buildToolset, type ChatToolSpec, type ChatToolset } from './mcp-adapter.js';
 
 /** Curated allowlist exposed to the chat model. */
@@ -35,6 +37,9 @@ export const CHAT_TOOL_ALLOWLIST: ChatToolSpec[] = [
   { factory: forgeProjectPipelineRunsTool },
   { factory: forgeMetricsProjectStepDurationsTool },
   { factory: forgeMetricsProjectTimeseriesTool },
+  // cm:guard the two ISS-1034 writers are bound to the turn's LINKED SPEAKER by core and take no argument naming a person: `forge_preferences` restyles only whoever spoke, `forge_memory.note` files only under their name with `source` fixed to `note`. `forge_memory.write`, which takes a source and a ref, stays off this list for the same reason it always was (ISS-1034 criteria 21-27).
+  { factory: forgePreferencesTool },
+  { factory: forgeMemoryNoteTool },
 ];
 
 /** Build the OpenAI toolset for a project-scoped chat context. */

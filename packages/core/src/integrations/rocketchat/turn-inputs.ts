@@ -174,7 +174,12 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
       return { send: false, reason: 'agent-chat-dispatch-failed' };
     },
 
-    prepare: async ({ setPhase, principalUserId }): Promise<TurnInputs> => {
+    prepare: async ({
+      setPhase,
+      principalUserId,
+      speakerUserId,
+      conversationId,
+    }): Promise<TurnInputs> => {
       const s = await readSeed();
       setPhase('mcp');
       external = await buildExternalMcpToolsets(s.agentConfig);
@@ -182,6 +187,7 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
       const fast = await prepareFastTurn({
         route,
         principalUserId,
+        turn: { conversationId, speakerUserId },
         restAuth,
         rid: subject.rid,
         images: subject.images,

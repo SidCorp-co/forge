@@ -14,6 +14,10 @@
  * ISS-1009 replaced the `forge_issues` / `forge_comments` wrappers with the one
  * `forge` CLI tool: the tracker's own refusals are the fence on what a room may
  * write, and a second door beside it is the one a model in a hurry takes.
+ *
+ * ISS-1034 added `forge_preferences` and `forge_memory.note`, the two writers
+ * bound by core to the turn's linked speaker: neither takes a user, a source or
+ * a ref, which is why `forge_memory.write` is still not beside them.
  */
 
 import { describe, expect, it, vi } from 'vitest';
@@ -38,13 +42,15 @@ const FROZEN: ReadonlyArray<readonly [string, readonly string[] | null]> = [
   ['forge_project_pipeline_runs', null],
   ['forge_metrics.project_step_durations', null],
   ['forge_metrics.project_timeseries', null],
+  ['forge_preferences', null],
+  ['forge_memory.note', null],
 ];
 
 const nameOf = (spec: (typeof CHAT_TOOL_ALLOWLIST)[number]): string =>
   spec.factory({ projectId: null, userId: null } as never).name;
 
 describe('the chat tool allowlist', () => {
-  it('holds exactly the tools it held when the tracker moved onto the CLI', () => {
+  it('holds exactly the tools it held when the speaker-bound writers joined', () => {
     expect(CHAT_TOOL_ALLOWLIST.map(nameOf)).toEqual(FROZEN.map(([name]) => name));
   });
 

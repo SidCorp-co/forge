@@ -25,6 +25,12 @@ export interface McpTool {
  * scope by project resolve it via {@link resolveProjectIdFromSlug}.
  */
 // cm:guard there is NO device on this context and a new tool may not reintroduce one. Until ISS-931 it carried a `device` that `mcp/handler.ts` fabricated for every PAT — a row with a token id in its `id` column and `__pat_synthetic__` for a name — and the membership helpers it fed read only `ownerId`, so the 14 tools taking it never consulted the PAT `projectIds` allowlist. Gate through `assertPrincipalIsMember`/`assertPrincipalIsWriter`, which read the principal and DO consult it.
+/** The room a chat turn answers in and who it answers, for the speaker-bound tools (ISS-1034). */
+export interface ChatTurnFacts {
+  conversationId: string | null;
+  speakerUserId: string | null;
+}
+
 export type McpContext = {
   principal: McpPrincipal;
   projectSlug: string | null;
@@ -38,6 +44,13 @@ export type McpContext = {
    * `handler.ts` always sets it for real requests.
    */
   boundProjectId?: string | null;
+  /**
+   * ISS-1034 — what a CHAT turn tells the tools that write on the speaker's
+   * behalf. Absent on every `/mcp` transport request: a PAT holder speaks for
+   * itself, and `handler.ts` never sets it.
+   */
+  // cm:guard `speakerUserId` here is the LINKED author of the newest person message and never the principal: in a room the principal is the org agent, and a tool that fell back to `principal.userId` would set the agent account's preferences and file notes under its name (ISS-1034 criteria 22, 26).
+  turn?: ChatTurnFacts;
   /** ISS-150 audit-log fields, threaded through for `writeMcpAudit`. */
   requestId?: string;
   ip?: string | null;

@@ -15,6 +15,7 @@ import { buildProjectToolset } from '../../assistant/tools/registry.js';
 import { withTurnImages } from '../../assistant/tools/turn-images.js';
 import type { ImageResolver, TurnImage } from '../../assistant/vision.js';
 import { logger } from '../../logger.js';
+import type { ChatTurnFacts } from '../../mcp/tools/lib.js';
 import { buildRocketChatHistoryToolset } from './context.js';
 import {
   fetchAttachmentBytes,
@@ -89,6 +90,8 @@ export interface FastTurnInputs {
 export async function prepareFastTurn(opts: {
   route: { projectId: string; projectSlug: string };
   principalUserId: string;
+  /** The room and its linked speaker, for the tools that write on the speaker's behalf (ISS-1034). */
+  turn: ChatTurnFacts;
   restAuth: RocketChatRestAuth;
   rid: string;
   images: readonly RocketChatImageRef[];
@@ -99,6 +102,7 @@ export async function prepareFastTurn(opts: {
     userId: opts.principalUserId,
     projectId: opts.route.projectId,
     projectSlug: opts.route.projectSlug,
+    turn: opts.turn,
   });
   return {
     images,
