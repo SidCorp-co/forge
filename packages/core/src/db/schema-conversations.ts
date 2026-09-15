@@ -66,6 +66,10 @@ export const conversations = pgTable(
     title: text('title'),
     // cm:guard provenance for the reverse migration and NOTHING else — scope may never be read from it, and a reader that took `origin.projectId` for the room's project would restore the column this table exists to remove. Null on every conversation opened after 0241 ran.
     origin: jsonb('origin').$type<ConversationOrigin | null>(),
+    // cm:guard a soft archive that DESTROYS nothing: it takes the room out of the default list and
+    // out of its count, and every message it holds is still readable by id. A list that hid a room
+    // with no way back would be the delete this column exists to avoid (ISS-1028).
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -73,6 +77,7 @@ export const conversations = pgTable(
   (t) => ({
     venueUnique: uniqueIndex('conversations_venue_unique').on(t.adapter, t.externalId),
     updatedIdx: index('conversations_updated_idx').on(t.updatedAt),
+    archivedIdx: index('conversations_archived_idx').on(t.archivedAt),
     adapterKnown: check(
       'conversations_adapter_known',
       sql`${t.adapter} IN ('web','widget','rocketchat','telegram')`,

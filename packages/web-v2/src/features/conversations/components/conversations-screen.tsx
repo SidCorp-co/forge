@@ -12,12 +12,19 @@
 // rather than relying on a query parameter being passed.
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import { IconButton, SlideOver } from "@/design";
+import { ConfirmDialog, IconButton, SlideOver } from "@/design";
 import { useOrgScopedProjects, useProjects } from "@/features/projects/hooks";
 import { usePersistedState } from "@/lib/utils/use-persisted-state";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
-import { type ListedConversation, useConversationsAcrossProjects } from "../hooks";
+import {
+  type ListedConversation,
+  useArchiveConversation,
+  useConversationsAcrossProjects,
+  useDeleteConversation,
+  useRenameConversation,
+} from "../hooks";
+import { conversationTitle } from "../types";
 import { ConversationChat } from "./conversation-chat";
 import { ConversationSidebar } from "./conversation-sidebar";
 import { StartConversation } from "./start-conversation";
@@ -52,6 +59,11 @@ export function ConversationsScreen() {
     syncTabs: false,
   });
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false);
+  const [confirming, setConfirming] = useState<ListedConversation | null>(null);
+
+  const rename = useRenameConversation();
+  const archive = useArchiveConversation();
+  const remove = useDeleteConversation();
 
   const nameById = useMemo(() => {
     const m = new Map<string, { name: string; slug: string }>();
@@ -73,6 +85,12 @@ export function ConversationsScreen() {
     setMobileHistoryOpen(false);
   }, []);
 
+  // cm:guard a room archived or deleted while it is the OPEN one clears the selection, so the
+  // centre pane never holds a thread this screen's own sidebar no longer lists (ISS-1028).
+  const dropIfOpen = useCallback((conversationId: string) => {
+    setSelection((s) => (s?.conversationId === conversationId ? null : s));
+  }, []);
+
   // cm:guard the room is opened by the START step and arrives here already holding its members, so the selection carries a real conversation id rather than a draft: a room started with a colleague and a second agent has to exist before either can be put in it, and a draft that opens on the first send has nowhere to put them (ISS-1011 criterion 39).
   const openStarted = useCallback((conversationId: string, projectId: string) => {
     selectionKeyRef.current += 1;
@@ -90,6 +108,11 @@ export function ConversationsScreen() {
       {...(inDrawer ? { onClose: () => setMobileHistoryOpen(false) } : {})}
       onNew={startNew}
       onOpen={openRow}
+      onRename={(title, row) => rename.mutate({ id: row.id, title })}
+      onArchive={(archived, row) => {
+        archive.mutate({ id: row.id, archived }, { onSuccess: () => dropIfOpen(row.id) });
+      }}
+      onDelete={(row) => setConfirming(row)}
       loading={conversations.isLoading}
       error={conversations.error}
       onRetry={conversations.refetch}
@@ -139,6 +162,28 @@ export function ConversationsScreen() {
       >
         {sidebar(true)}
       </SlideOver>
+
+      <ConfirmDialog
+        open={confirming !== null}
+        title="Delete this conversation?"
+        message={
+          confirming
+            ? `“${conversationTitle(confirming)}” and everything said in it will be gone. Archive it instead to keep it out of the way.`
+            : ""
+        }
+        confirmLabel="Delete"
+        tone="danger"
+        loading={remove.isPending}
+        onConfirm={() => {
+          if (!confirming) return;
+          // cm:guard the selection is cleared on the SERVER's answer and not on the press, for the
+          // reason `conversation-list.tsx` states over the same two calls (review F2).
+          const id = confirming.id;
+          remove.mutate(id, { onSuccess: () => dropIfOpen(id) });
+          setConfirming(null);
+        }}
+        onClose={() => setConfirming(null)}
+      />
     </div>
   );
 }

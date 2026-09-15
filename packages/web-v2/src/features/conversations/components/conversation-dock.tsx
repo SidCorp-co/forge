@@ -6,17 +6,19 @@
 // a browser side panel. Desktop-only (md+); below md the layout keeps the
 // SlideOver overlay (a fixed split doesn't fit a phone width).
 //
-// The panel wraps the same `ConversationChat` the overlay and the Conversations
-// screen use, passing `onClose` so its header carries the collapse control (one
-// header, no dock chrome on top). Ported from the chat dock at ISS-1004 step 5:
-// the geometry is unchanged and what it wraps is not.
+// The panel wraps the same `ConversationPanel` the mobile overlay mounts,
+// passing `onClose` so its header carries the collapse control (one header, no
+// dock chrome on top). Ported from the chat dock at ISS-1004 step 5: the
+// geometry is unchanged. What it wraps changed at ISS-1028, from the chat alone
+// to the chat AND its history, because a dock that could only ever show a new
+// draft was the whole of the report.
 //
 // The splitter is an `<hr>` with a tabIndex and the arrow keys bound, never a
 // bare `role="separator"` div: it was pointer-only until that port — visible,
 // announcing nothing, and unmovable without a mouse.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ConversationChat } from "./conversation-chat";
+import { ConversationPanel } from "./conversation-panel";
 
 /** Width bounds for the dock (px). Below MIN the composer/header crowd; above
  *  MAX the content column gets uselessly narrow on common laptop widths. */
@@ -108,7 +110,7 @@ export function ConversationDock({
         className="absolute left-0 top-0 z-10 m-0 h-full w-1.5 -translate-x-1/2 cursor-col-resize touch-none border-0 bg-transparent transition-colors hover:bg-[color:var(--link)] focus-visible:bg-[color:var(--link)] focus-visible:outline-none"
       />
       <div className="flex min-h-0 flex-1 flex-col">
-        <ConversationChat projectId={projectId} onClose={onClose} />
+        <ConversationPanel projectId={projectId} onClose={onClose} />
       </div>
     </aside>
   );

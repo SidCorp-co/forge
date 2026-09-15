@@ -12,10 +12,14 @@ export interface ListedConversation extends ConversationRow {
   projectId: string;
 }
 
-export function useConversations(projectId: string | undefined) {
+// cm:guard the archived side is a SEPARATE cache key and not a filter over one list: the two are
+// two reads of two disjoint sets, and sharing a key would serve the archived rooms to the default
+// list for as long as the refetch took — which is the moment somebody has just archived one and is
+// looking to see it go (ISS-1028).
+export function useConversations(projectId: string | undefined, archived = false) {
   return useQuery({
-    queryKey: ["conversations", "list", projectId],
-    queryFn: () => conversationsApi.list(projectId as string),
+    queryKey: ["conversations", "list", projectId, archived ? "archived" : "live"],
+    queryFn: () => conversationsApi.list(projectId as string, 50, archived),
     enabled: !!projectId,
   });
 }
@@ -26,8 +30,11 @@ export function useConversations(projectId: string | undefined) {
 // cm:guard the fan-out is N reads and not one, because `/api/conversations` takes a project and the store has no cross-project list: a room's readability is a per-project role question, so a single endpoint would have to authorize every row before it knew what a page held — which is the unbounded read `store.ts:listConversationsInProject` already prices, once per project rather than once for the fleet. The set is the caller's own org projects and each read is cached by project.
 export function useConversationsAcrossProjects(projectIds: string[]) {
   const results = useQueries({
+    // cm:guard the key is the SAME one `useConversations` builds for the live side, down to the
+    // trailing segment: the dock and this screen read the same rooms, and two keys over one read
+    // would fetch every project twice and leave one copy stale after an archive.
     queries: projectIds.map((projectId) => ({
-      queryKey: ["conversations", "list", projectId],
+      queryKey: ["conversations", "list", projectId, "live"],
       queryFn: () => conversationsApi.list(projectId),
     })),
   });
@@ -178,5 +185,24 @@ export function useDeleteConversation() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["conversations"] }),
     onError: (err) =>
       toast({ title: "Couldn't delete", description: formatApiError(err), tone: "error" }),
+  });
+}
+
+// cm:guard the invalidate is the whole `["conversations"]` prefix rather than the one list the row
+// came from: archiving moves a room from one list to the other, so refreshing only the list it left
+// leaves it missing from both until something else happens to refetch.
+export function useArchiveConversation() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: (args: { id: string; archived: boolean }) =>
+      conversationsApi.setArchived(args.id, args.archived),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["conversations"] }),
+    onError: (err, args) =>
+      toast({
+        title: args.archived ? "Couldn't archive" : "Couldn't unarchive",
+        description: formatApiError(err),
+        tone: "error",
+      }),
   });
 }

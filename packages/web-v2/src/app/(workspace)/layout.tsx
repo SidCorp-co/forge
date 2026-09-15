@@ -15,8 +15,8 @@ import {
   type Command,
   type Crumb,
 } from "@/design";
-import { ConversationChat } from "@/features/conversations/components/conversation-chat";
 import { ConversationDock } from "@/features/conversations/components/conversation-dock";
+import { ConversationPanel } from "@/features/conversations/components/conversation-panel";
 import { useConversationDock } from "@/features/conversations/use-conversation-dock";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { useAuth } from "@/providers/auth-provider";
@@ -454,7 +454,10 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
               fitBody
               hideHeader
             >
-              <ConversationChat projectId={railProject.id} onClose={() => setChatOpen(false)} />
+              {/* cm:guard the phone mounts the same `ConversationPanel` the dock does rather than
+                  the chat alone: the two widths are one behaviour, and a history control that
+                  existed on desktop only would leave the phone exactly where ISS-1028 found it. */}
+              <ConversationPanel projectId={railProject.id} onClose={() => setChatOpen(false)} />
             </SlideOver>
           </div>
         )}

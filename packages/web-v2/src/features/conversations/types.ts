@@ -31,6 +31,8 @@ export interface ConversationRow {
   shape: ConversationShape;
   title: string | null;
   updatedAt: string;
+  /** Set = archived: out of the default list, still readable, still restorable (ISS-1028). */
+  archivedAt: string | null;
 }
 
 export interface ConversationMessage {

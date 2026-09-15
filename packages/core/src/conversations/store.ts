@@ -5,17 +5,13 @@
 // knows the pair `(adapter, externalId)` that names it and the handle that
 // gives it its scope.
 
-import { and, desc, eq, gte, isNull, lte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, lte, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db as defaultDb } from '../db/client.js';
-import { projectMembers } from '../db/schema.js';
 import type { ConversationWindowDecision } from '../db/schema-conversations.js';
 import {
-  type ConversationAdapter,
   type ConversationMessageRole,
-  type ConversationShape,
   conversationMessages,
-  conversationParticipants,
   conversations,
 } from '../db/schema-conversations.js';
 import type { ContentBlock } from '../lib/agent-stream-parser.js';
@@ -31,16 +27,25 @@ import { derivedScope } from './scope.js';
 // an interface change. The definitions live in `canonical-entry.ts`.
 export { asBlocks, toCanonicalEntry } from './canonical-entry.js';
 
+// cm:guard re-exported rather than moved out of reach, for the same reason `asBlocks` is above: the
+// room's own row moved to `rooms.ts` at ISS-1028 for the file's length, and a caller that imported
+// `getConversation` or `renameConversation` from here still does.
+export {
+  type ConversationListFilter,
+  countConversationsInProject,
+  deleteConversation,
+  getConversation,
+  listConversationsInProject,
+  renameConversation,
+  setConversationArchived,
+} from './rooms.js';
+
+import { type ConversationRow, findConversation, selection } from './rooms.js';
+
+export { type ConversationRow, findConversation };
+
 const conflict = (message: string, code: string) =>
   new HTTPException(409, { message, cause: { code } });
-
-export interface ConversationRow {
-  id: string;
-  adapter: ConversationAdapter;
-  externalId: string;
-  shape: ConversationShape;
-  title: string | null;
-}
 
 export interface ConversationImage {
   name: string;
@@ -66,39 +71,6 @@ export interface StoredConversationMessage {
   deliveryProof: unknown;
   silenceReason: string | null;
   createdAt: Date;
-}
-
-const selection = {
-  id: conversations.id,
-  adapter: conversations.adapter,
-  externalId: conversations.externalId,
-  shape: conversations.shape,
-  title: conversations.title,
-};
-
-export async function getConversation(
-  conversationId: string,
-  tx: Executor = defaultDb,
-): Promise<ConversationRow | null> {
-  const [row] = await tx
-    .select(selection)
-    .from(conversations)
-    .where(eq(conversations.id, conversationId))
-    .limit(1);
-  return row ?? null;
-}
-
-export async function findConversation(
-  adapter: ConversationAdapter,
-  externalId: string,
-  tx: Executor = defaultDb,
-): Promise<ConversationRow | null> {
-  const [row] = await tx
-    .select(selection)
-    .from(conversations)
-    .where(and(eq(conversations.adapter, adapter), eq(conversations.externalId, externalId)))
-    .limit(1);
-  return row ?? null;
 }
 
 // cm:guard the venue's shape and its project are settled when it is first opened and are NOT re-decided per message: a room rebound to another project arrives here as the same `(adapter, externalId)` under a different project, and the honest answer is a refusal naming both — widening the room would answer a stranger under a scope they were never granted, and returning it unchanged would compute the answer under the wrong project's access (ISS-1001 criterion 44).
@@ -393,82 +365,6 @@ export async function countMessages(
  * must authorize each row before it knows what a page contains.
  */
 // cm:guard an UNBOUNDED read is deliberate and priced: a room's readability is a per-project role question this join cannot ask, so paginating first hands back a short page and a total that counts rooms the caller may not see. The set is one project's rooms — 35 across the whole fleet on 2026-09-14 — so reading them to authorize them is cheap today. When a single project's rooms reach the thousands, this becomes a keyset walk that authorizes as it goes, and the condition that says so is this sentence (ISS-1001 criterion 10).
-export async function listConversationsInProject(
-  projectId: string,
-  opts: { limit?: number; offset?: number } = {},
-  tx: Executor = defaultDb,
-): Promise<ConversationRow[]> {
-  const bounded = tx
-    .selectDistinct({ ...selection, updatedAt: conversations.updatedAt })
-    .from(conversations)
-    .innerJoin(
-      conversationParticipants,
-      and(
-        eq(conversationParticipants.conversationId, conversations.id),
-        eq(conversationParticipants.kind, 'handle'),
-        isNull(conversationParticipants.removedAt),
-      ),
-    )
-    .innerJoin(
-      projectMembers,
-      and(
-        eq(projectMembers.userId, conversationParticipants.userId),
-        eq(projectMembers.projectId, projectId),
-      ),
-    )
-    .orderBy(desc(conversations.updatedAt));
-  if (opts.limit === undefined) return bounded;
-  return bounded.limit(opts.limit).offset(opts.offset ?? 0);
-}
-
-export async function countConversationsInProject(
-  projectId: string,
-  tx: Executor = defaultDb,
-): Promise<number> {
-  const rows = await tx
-    .selectDistinct({ id: conversations.id })
-    .from(conversations)
-    .innerJoin(
-      conversationParticipants,
-      and(
-        eq(conversationParticipants.conversationId, conversations.id),
-        eq(conversationParticipants.kind, 'handle'),
-        isNull(conversationParticipants.removedAt),
-      ),
-    )
-    .innerJoin(
-      projectMembers,
-      and(
-        eq(projectMembers.userId, conversationParticipants.userId),
-        eq(projectMembers.projectId, projectId),
-      ),
-    );
-  return rows.length;
-}
-
-export async function renameConversation(
-  conversationId: string,
-  title: string | null,
-  tx: Executor = defaultDb,
-): Promise<ConversationRow | null> {
-  const [row] = await tx
-    .update(conversations)
-    .set({ title, updatedAt: new Date() })
-    .where(eq(conversations.id, conversationId))
-    .returning(selection);
-  return row ?? null;
-}
-
-export async function deleteConversation(
-  conversationId: string,
-  tx: Executor = defaultDb,
-): Promise<boolean> {
-  const rows = await tx
-    .delete(conversations)
-    .where(eq(conversations.id, conversationId))
-    .returning({ id: conversations.id });
-  return rows.length > 0;
-}
 
 function toStored(row: typeof conversationMessages.$inferSelect): StoredConversationMessage {
   return {

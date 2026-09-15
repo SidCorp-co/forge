@@ -4829,6 +4829,17 @@
 
 ### Changed
 
+- **Ask agent opens onto your past conversations, and you can tidy them up.** Opening the panel
+  still starts a fresh chat — nothing you said before is pulled back in behind you — but your
+  earlier conversations are now listed right there in it, and a history control in the chat's own
+  header brings that list back from whatever conversation you are in. Picking one loads the whole
+  of it and keeps it open until you pick another or start a new one, so closing the panel no longer
+  feels like losing the thread. Hovering a conversation in the list offers three things it never
+  had: rename it, archive it to get it out of the way without losing a word of it, or delete it
+  after a confirmation. Archived conversations sit behind an Archived control in the same list and
+  come straight back out of it. The same list, and the same three actions, are on the phone and on
+  the full-page Conversations screen. (ISS-1028)
+
 - **One answer shows up once while the assistant is still writing it.** The Forge assistant streams
   its reply as a record that grows — the prose so far, the tools it has run, what they returned —
   and it ends by sending the finished record it saved. Those growing sends and the finished one
