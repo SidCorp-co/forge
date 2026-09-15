@@ -4796,6 +4796,19 @@
 
 ### Changed
 
+- **A long agent session's transcript keeps up with the agent.** The page you watch a running agent
+  on is built from the lines it has streamed so far, and the server rebuilt that page from the very
+  first line every few seconds. On a short job nobody would notice. On a long one the rebuild grew
+  with the job, until showing the newest paragraph meant re-reading hours of output several times a
+  minute — and the longer the session ran, the further behind its own transcript it fell. The server
+  now picks up where it left off and reads only what has arrived since. The transcript written when
+  the job finishes is still built from every line it ever streamed, so the finished record is not
+  taken on trust, and any session whose running total cannot be proven to be the one on the page is
+  rebuilt from the beginning rather than added to. A transcript is also no longer replaced by an
+  older copy of itself: where two servers, or a server and an edit made by hand, write the same
+  session at once, the one working from material that has since been replaced is turned away and
+  does its work again against what is actually stored.
+
 - **Every place the assistant answers you now works to the same method, and your project chooses the
   language it answers in.** Until now that method lived inside the team-chat integration and nowhere
   else: the assistant in the Forge app answered on a single sentence, and a correction to any rule

@@ -9,8 +9,9 @@
  * Id generation is a per-derive factory (`createIdFactory`) rather than a
  * module-level counter: ids only need to be unique within one session's message
  * array, and a shared mutable would make a multi-session server
- * non-deterministic. `buildSessionFromEvents` threads one factory per pass,
- * which is what makes a re-derive idempotent.
+ * non-deterministic. The factory is carried on `DeriveState` rather than held in
+ * `buildSessionFromEvents`, so a pass resumed from a checkpoint continues the
+ * ids the earlier pass issued instead of reissuing them from `msg-1`.
  */
 
 // Optional fields carry explicit `| undefined` because core compiles with
@@ -315,13 +316,11 @@ export function mergeMessages(messages: AgentMessage[], parsed: AgentMessage[]):
     const last = messages[messages.length - 1];
 
     if (p.type === 'assistant' && last?.type === 'assistant') {
-      // Merge tool calls
       const oldTools = last.toolCalls ?? [];
       const newTools = p.toolCalls ?? [];
       const existingIds = new Set(oldTools.map((t) => t.id));
       const merged = [...oldTools, ...newTools.filter((t) => !existingIds.has(t.id))];
 
-      // Merge content blocks
       const oldBlocks = last.blocks ?? [];
       const newBlocks = p.blocks ?? [];
       const existingToolIds = new Set(
@@ -360,6 +359,8 @@ export function mergeMessages(messages: AgentMessage[], parsed: AgentMessage[]):
   }
 }
 
+// cm:why a tool's duration is nowhere in the stream — the only record is the gap between the two job_events carrying its tool_use and its tool_result, which is why `startedAt` is derived in the fold below and not in the parser.
+
 /** A persisted job_event row, narrowed to the fields the derive reads. */
 export interface JobEventLike {
   kind: string;
@@ -385,46 +386,79 @@ function toEventTimestamp(ts: Date | string | number | null | undefined): number
 }
 
 /**
- * Re-derive the full session transcript from a job's ordered job_events.
+ * Everything a derive accumulates, and therefore everything a pass has to carry
+ * to resume where an earlier one stopped. There is no fifth component: the fold
+ * below reads and writes these four and nothing else, which is what lets an
+ * incremental flush be the same computation as a full re-derive rather than an
+ * approximation of one (ISS-1020).
+ *
+ * `messages` is mutated in place by `mergeMessages` — it replaces the tail and
+ * pushes — so a caller that also needs the pre-fold array must pass a copy.
+ */
+export interface DeriveState {
+  messages: AgentMessage[];
+  claudeSessionId: string | null;
+  /** tool_use id -> the ts of the job_event that opened it. First write wins. */
+  startedAt: Map<string, number>;
+  /** Session-scoped id generator; see the module header on why it is carried. */
+  makeId: () => string;
+}
+
+/** A derive state for a pass that starts from nothing. */
+export function createDeriveState(): DeriveState {
+  return { messages: [], claudeSessionId: null, startedAt: new Map(), makeId: createIdFactory() };
+}
+
+/**
+ * Fold one contiguous run of a job's ordered job_events into `state`.
  *
  * `stdout` events carry a raw Claude stream-json line under `data.line`
  * (see runner `dispatch.rs::map_event`); `progress` events may carry
- * `data.claudeSessionId`. The result is byte-equivalent to what the desktop
- * SessionTracker accumulates incrementally, so it is fully idempotent — the
- * same events always yield the same `AgentMessage[]` (a single id factory is
- * threaded across the whole pass).
+ * `data.claudeSessionId`.
  *
- * `events` MUST be ordered by seq (caller responsibility).
+ * `events` MUST be ordered by seq, and MUST start where the last call left off:
+ * this is a left fold, so applying `k+1..n` to the state `1..k` left is exactly
+ * applying `1..n` to a fresh one.
  */
-export function buildSessionFromEvents(events: JobEventLike[]): DerivedSession {
-  const makeId = createIdFactory();
-  const messages: AgentMessage[] = [];
-  let claudeSessionId: string | null = null;
-  // cm:why a tool's duration is nowhere in the stream — the only record is the gap between the two job_events carrying its tool_use and its tool_result, which is why it is derived here and not in the parser.
-  const startedAt = new Map<string, number>();
-
+export function applyEventsToState(state: DeriveState, events: JobEventLike[]): void {
   for (const ev of events) {
     if (ev.kind === 'stdout') {
       const line = (ev.data as { line?: unknown } | null | undefined)?.line;
       if (line == null) continue;
       const ts = toEventTimestamp(ev.ts);
-      const { messages: parsed, sessionId } = parseStreamMessages(line, makeId, ts);
-      if (sessionId) claudeSessionId = sessionId;
+      const { messages: parsed, sessionId } = parseStreamMessages(line, state.makeId, ts);
+      if (sessionId) state.claudeSessionId = sessionId;
       for (const p of parsed) {
         if (ts === undefined) continue;
         if (p.type === 'assistant') {
-          for (const tc of p.toolCalls ?? []) if (!startedAt.has(tc.id)) startedAt.set(tc.id, ts);
+          for (const tc of p.toolCalls ?? []) {
+            if (!state.startedAt.has(tc.id)) state.startedAt.set(tc.id, ts);
+          }
         } else if (p.type === 'tool_result' && p.toolName) {
-          const began = startedAt.get(p.toolName);
+          const began = state.startedAt.get(p.toolName);
           if (began !== undefined && ts >= began) p.durationMs = ts - began;
         }
       }
-      if (parsed.length > 0) mergeMessages(messages, parsed);
+      if (parsed.length > 0) mergeMessages(state.messages, parsed);
     } else if (ev.kind === 'progress') {
       const sid = (ev.data as { claudeSessionId?: unknown } | null | undefined)?.claudeSessionId;
-      if (typeof sid === 'string' && sid.length > 0) claudeSessionId = sid;
+      if (typeof sid === 'string' && sid.length > 0) state.claudeSessionId = sid;
     }
   }
+}
 
-  return { messages, claudeSessionId };
+/**
+ * Re-derive the full session transcript from a job's ordered job_events — the
+ * whole-list call of the fold above, and the authoritative one.
+ *
+ * The result is byte-equivalent to what the desktop SessionTracker accumulates
+ * incrementally, so it is fully idempotent: the same events always yield the
+ * same `AgentMessage[]`.
+ *
+ * `events` MUST be ordered by seq (caller responsibility).
+ */
+export function buildSessionFromEvents(events: JobEventLike[]): DerivedSession {
+  const state = createDeriveState();
+  applyEventsToState(state, events);
+  return { messages: state.messages, claudeSessionId: state.claudeSessionId };
 }

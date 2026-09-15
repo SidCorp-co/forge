@@ -216,9 +216,7 @@ describe('buildSessionFromEvents', () => {
   });
 
   it('is idempotent across real-time re-derives when events carry ts', () => {
-    // With per-event ts threaded through, re-derive is deterministic WITHOUT
-    // freezing the clock — settled messages keep their event timestamp, so
-    // entriesEqual stays true and syncTurnsWithMessages breaks on first-equal.
+    // cm:why threading each event's own ts is what makes a re-derive deterministic WITHOUT freezing the clock: a settled message keeps its event's timestamp, so `entriesEqual` stays true and `syncTurnsWithMessages` breaks on the first equal entry instead of rewriting every turn row on every flush.
     const events = [
       { kind: 'stdout', data: { line: initLine }, ts: '2026-05-30T10:00:00.000Z' },
       { kind: 'stdout', data: { line: assistantLine }, ts: '2026-05-30T10:00:05.000Z' },
