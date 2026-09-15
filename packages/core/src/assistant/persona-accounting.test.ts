@@ -76,7 +76,13 @@ const LEDGER: readonly Claim[] = [
   {
     id: 'issue-web-link',
     owner: 'sharedOpening',
-    clauses: ['include its web link', '/issues/<documentId>', '`forge new` echoes the documentId'],
+    clauses: [
+      'include its web link',
+      '/issues/<documentId>',
+      '`forge new` echoes the documentId',
+      'for an existing issue `forge issue ISS-<n>` prints it',
+      'the list does not',
+    ],
     origin: 'moved',
   },
 
@@ -492,5 +498,16 @@ describe('what each door says, read off the real text', () => {
       projectSlug: 'alpha',
     });
     expect(lines.join('\n')).toContain('/projects/alpha/issues/<documentId>');
+  });
+
+  // cm:guard the link line names the read that yields an existing issue's documentId and says the list yields none (ISS-1041, criterion 47): on beta a model given only the shape linked `/issues/351` off a title.
+  it("tells the model where an existing issue's documentId comes from, and that the list has none (criterion 47)", () => {
+    const text = assistantOpening({
+      projectName: 'Alpha',
+      venue: 'somewhere',
+      projectSlug: 'alpha',
+    }).join('\n');
+    expect(text).toContain('for an existing issue `forge issue ISS-<n>` prints it');
+    expect(text).toContain('the list does not');
   });
 });
