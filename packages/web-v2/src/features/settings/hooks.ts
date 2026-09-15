@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
 import { formatApiError } from "@/lib/api/error";
 import { settingsApi } from "./api";
-import type { CreatePatInput, Preferences } from "./types";
+import type { CreatePatInput } from "./types";
 
 export function usePreferences() {
   return useQuery({
@@ -18,11 +18,8 @@ export function useUpdatePreferences() {
   const qc = useQueryClient();
   const { toast } = useToast();
   return useMutation({
-    mutationFn: (
-      patch: Partial<
-        Pick<Preferences, "theme" | "language" | "notifyOnMention" | "lastSeenWhatsNew" | "activeOrgId">
-      >,
-    ) => settingsApi.updatePreferences(patch),
+    mutationFn: (patch: Parameters<typeof settingsApi.updatePreferences>[0]) =>
+      settingsApi.updatePreferences(patch),
     onSuccess: (data) => {
       qc.setQueryData(["settings", "preferences"], data);
       toast({ title: "Preferences saved", tone: "success" });
@@ -87,6 +84,25 @@ export function useMarkAllRead() {
     },
     onError: (err) => {
       toast({ title: "Action failed", description: formatApiError(err), tone: "error" });
+    },
+  });
+}
+
+export function usePreferenceChanges() {
+  return useQuery({
+    queryKey: ["settings", "preference-changes"],
+    queryFn: () => settingsApi.listPreferenceChanges(),
+  });
+}
+
+// cm:guard a restore invalidates BOTH the preferences and the trail: the restore is itself a write the trail records, and a screen that refreshed only the value would show a style with no row saying how it got there (ISS-1034 criterion 53).
+export function useRestorePreferenceChange() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => settingsApi.restorePreferenceChange(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["settings", "preferences"] });
+      qc.invalidateQueries({ queryKey: ["settings", "preference-changes"] });
     },
   });
 }

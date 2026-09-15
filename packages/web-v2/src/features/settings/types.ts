@@ -1,12 +1,19 @@
+import type { AnswerStyle } from "@forge/contracts";
 // web-v2 feature module: settings (workspace-global, user-scoped). Shapes
 // verified against `packages/core/src/auth/me.ts`, `pat/routes.ts`,
 // `notifications/routes.ts`, and `auth/reauth.ts` for ISS-299.
 export type ThemePref = "system" | "light" | "dark";
 export type LanguagePref = "en" | "vi";
 
+export type { AnswerStyle, PreferenceChange } from "@forge/contracts";
+
 export interface Preferences {
   theme: ThemePref;
   language: LanguagePref;
+  /** How the assistant sizes its replies to this person, on every surface (ISS-1034). */
+  answerStyle: AnswerStyle;
+  /** Standing instructions the assistant follows in every reply to this person; null when none. */
+  assistantInstructions: string | null;
   /** Notification delivery preference: when false, in-app `mention`
    *  notifications are suppressed server-side (gated in createNotification). */
   notifyOnMention: boolean;

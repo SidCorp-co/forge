@@ -15,6 +15,7 @@ import {
 } from "@/design";
 import { useAuth } from "@/providers/auth-provider";
 import { usePreferences, useUpdatePreferences } from "../hooks";
+import { AssistantPreferencesCard } from "./assistant-preferences-card";
 import type { LanguagePref, ThemePref } from "../types";
 
 const THEME_OPTIONS: SelectOption[] = [
@@ -103,6 +104,8 @@ export function AccountTab() {
           )}
         </CardContent>
       </Card>
+
+      <AssistantPreferencesCard />
     </div>
   );
 }

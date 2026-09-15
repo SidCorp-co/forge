@@ -8,6 +8,7 @@ import type {
   NotificationRow,
   PatToken,
   PatTokenCreated,
+  PreferenceChange,
   Preferences,
 } from "./types";
 
@@ -20,13 +21,28 @@ export const settingsApi = {
   /** `PATCH /api/auth/me/preferences` — partial. */
   updatePreferences: (
     patch: Partial<
-      Pick<Preferences, "theme" | "language" | "notifyOnMention" | "lastSeenWhatsNew" | "activeOrgId">
+      Pick<
+        Preferences,
+        | "theme"
+        | "language"
+        | "notifyOnMention"
+        | "lastSeenWhatsNew"
+        | "activeOrgId"
+        | "answerStyle"
+        | "assistantInstructions"
+      >
     >,
   ) =>
     apiClient<Preferences>(`/auth/me/preferences`, {
       method: "PATCH",
       body: JSON.stringify(patch),
     }),
+  /** `GET /api/auth/me/preferences/changes` — every write to how this person is answered (ISS-1034). */
+  listPreferenceChanges: () =>
+    apiClient<{ items: PreferenceChange[] }>(`/auth/me/preferences/changes`).then((r) => r.items),
+  /** `POST /api/auth/me/preferences/changes/:id/restore` — 409 `PREFERENCE_CHANGE_SUPERSEDED` when a later change moved the field. */
+  restorePreferenceChange: (id: string) =>
+    apiClient<Preferences>(`/auth/me/preferences/changes/${id}/restore`, { method: "POST" }),
 
   /** `GET /api/pat` → `{ tokens }`. */
   listTokens: () => apiClient<{ tokens: PatToken[] }>(`/pat`),

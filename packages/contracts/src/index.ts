@@ -1,4 +1,5 @@
 export * from "./admin.js";
+export * from "./assistant-self.js";
 export * from "./body-components.js";
 export * from "./divergence-charters.js";
 export * from "./domain-templates.js";
