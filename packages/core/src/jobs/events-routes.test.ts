@@ -7,18 +7,21 @@ vi.mock('../config/env.js', () => ({
   env: { DEVICE_TOKEN_PEPPER: TEST_PEPPER, NODE_ENV: 'test' },
 }));
 
+// cm:why the shape `readJobGate` answers with, not the whole `jobs` row: a double omitting `ackedAt` makes the handler's new gate read every job as already acked (ISS-1014).
 const jobRow: {
   id: string;
   projectId: string;
   deviceId: string;
   status: string;
   agentSessionId: string | null;
+  ackedAt: Date | null;
 } = {
   id: 'job-1',
   projectId: 'proj-1',
   deviceId: 'dev-1',
   status: 'running',
   agentSessionId: null,
+  ackedAt: null,
 };
 
 const verifyDeviceCredential = vi.fn(async (token: string) => {
@@ -44,17 +47,20 @@ const txInsert = vi.fn(() => ({
   },
 }));
 const txExecute = vi.fn();
+const txWith = vi.fn(() => ({ update: dbUpdate }));
 const transaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
-  const tx = { execute: txExecute, insert: txInsert, update: dbUpdate };
+  const tx = { execute: txExecute, insert: txInsert, update: dbUpdate, with: txWith };
   return fn(tx);
 });
 
+const selectFor = vi.fn(() => ({}));
 const selectLimit = vi.fn(async () => [jobRow]);
-const selectWhere = vi.fn(() => ({ limit: selectLimit }));
+// cm:why the same `.where()` link ends two different chains — `readJobGate` stops at `.limit()`, the heartbeat's locking CTE at `.for('update')`.
+const selectWhere = vi.fn(() => ({ limit: selectLimit, for: selectFor }));
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
 const dbSelect = vi.fn(() => ({ from: selectFrom }));
 
-// cm:why the two heartbeat writes end the chain at different links — the CAS `queued`→`running` calls `.returning()`, the plain heartbeat bump stops at `.where()` — so the double has to answer both shapes or one branch fails on the mock rather than on the route.
+// cm:why the writes through this double end the chain at different links — the heartbeat is `.set().from().where().returning()`, the ack stamp and the runtime-state sync stop at `.where()` — so it answers every shape or a branch fails on the mock rather than on the route.
 const updateReturning = vi.fn(async () => [] as unknown[]);
 const updateWhere = vi.fn(() => {
   const p = {
@@ -63,11 +69,14 @@ const updateWhere = vi.fn(() => {
   };
   return p as unknown as { returning: typeof updateReturning } & PromiseLike<unknown>;
 });
-const updateSet = vi.fn((..._args: unknown[]) => ({ where: updateWhere }));
+const dbWith = vi.fn((_a: string) => ({ as: () => ({ id: 'prev.id', status: 'prev.status' }) }));
+const updateFrom = vi.fn(() => ({ where: updateWhere }));
+const updateSet = vi.fn((..._args: unknown[]) => ({ where: updateWhere, from: updateFrom }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
 
+// cm:guard `$with` and the transaction's `with` both have to answer, and a double missing either is not a loud failure: the heartbeat's `try/catch` swallows the TypeError and logs a warning, so every assertion in the file still passes while the write under it never happens (found on ISS-1014).
 vi.mock('../db/client.js', () => ({
-  db: { select: dbSelect, transaction, update: dbUpdate },
+  db: { select: dbSelect, transaction, update: dbUpdate, $with: dbWith },
 }));
 
 const publishMock = vi.fn(() => 0);
@@ -88,11 +97,15 @@ function resetMocks(): void {
   jobRow.status = 'running';
   jobRow.deviceId = 'dev-1';
   jobRow.agentSessionId = null;
+  jobRow.ackedAt = null;
   insertReturning.mockReset();
   txExecute.mockReset();
   updateReturning.mockReset();
   updateReturning.mockResolvedValue([]);
   updateSet.mockClear();
+  updateFrom.mockClear();
+  txWith.mockClear();
+  dbWith.mockClear();
   updateWhere.mockClear();
   dbUpdate.mockClear();
 }
@@ -209,7 +222,6 @@ describe('jobs/events-routes POST /:id/events', () => {
   });
 
   it('accepts a batch, assigns contiguous monotonic seq, and publishes per event', async () => {
-    // First batch: baseSeq = 0 → 1,2,3
     // Two execute calls: advisory_xact_lock + MAX(seq) query.
     txExecute.mockResolvedValueOnce([]);
     txExecute.mockResolvedValueOnce([{ max_seq: 0 }]);
@@ -235,12 +247,10 @@ describe('jobs/events-routes POST /:id/events', () => {
     const json = (await r.json()) as { accepted: number; firstSeq: number; lastSeq: number };
     expect(json).toEqual({ accepted: 3, firstSeq: 1, lastSeq: 3 });
 
-    // Values inserted carry server-assigned sequential seq
     expect(insertValues).toHaveBeenCalledTimes(1);
     const vals = insertValues.mock.calls[0]?.[0] as Array<{ seq: number }>;
     expect(vals.map((v) => v.seq)).toEqual([1, 2, 3]);
 
-    // Publish fired once per persisted event, on the project room
     expect(publishMock).toHaveBeenCalledTimes(3);
     expect(publishMock).toHaveBeenCalledWith(
       'project:proj-1',
@@ -250,15 +260,18 @@ describe('jobs/events-routes POST /:id/events', () => {
       }),
     );
   });
+});
+
+describe('jobs/events-routes · the session heartbeat and the ack stamp', () => {
+  beforeEach(resetMocks);
 
   it('flips linked agent_session queued→running on first event and broadcasts status', async () => {
     jobRow.agentSessionId = 'session-1';
     txExecute.mockResolvedValueOnce([]);
     txExecute.mockResolvedValueOnce([{ max_seq: 0 }]);
     insertReturning.mockResolvedValueOnce([{ seq: 1, kind: 'stdout', ts: new Date(), data: {} }]);
-    // CAS UPDATE returns the flipped row.
     updateReturning.mockResolvedValueOnce([
-      { id: 'session-1', projectId: 'proj-1', deviceId: 'dev-1' },
+      { id: 'session-1', projectId: 'proj-1', deviceId: 'dev-1', startedRunning: true },
     ]);
 
     const app = buildApp();
@@ -271,10 +284,9 @@ describe('jobs/events-routes POST /:id/events', () => {
     );
     expect(r.status).toBe(200);
 
-    // 2 update calls: the ISS-449 ack-fallback stamp (jobs.ackedAt) + the
-    // session CAS queued→running. The heartbeat-only fallback path is skipped
-    // because the CAS returned a row.
+    // cm:why 2 and no more — the ack-fallback stamp plus the ONE heartbeat statement; the CAS-then-fallback pair it replaced spent two on the session alone (ISS-1014).
     expect(dbUpdate).toHaveBeenCalledTimes(2);
+    expect(updateFrom).toHaveBeenCalledTimes(1);
     const ackSetArg = updateSet.mock.calls[0]?.[0] as {
       ackedAt?: Date;
       killRequestedAt?: Date | null;
@@ -286,9 +298,15 @@ describe('jobs/events-routes POST /:id/events', () => {
       killConfirmedAt: null,
       killOutcome: null,
     });
-    const setArg = updateSet.mock.calls[1]?.[0] as { status?: string; startedAt?: Date };
+    const setArg = updateSet.mock.calls[1]?.[0] as {
+      status?: string;
+      startedAt?: unknown;
+      lastHeartbeatAt?: Date;
+    };
     expect(setArg?.status).toBe('running');
-    expect(setArg?.startedAt).toBeInstanceOf(Date);
+    expect(setArg?.lastHeartbeatAt).toBeInstanceOf(Date);
+    // cm:why `startedAt` arrives as SQL and not a Date — it is a CASE that stamps only on the flip.
+    expect(setArg?.startedAt).toBeDefined();
 
     // job.event (1) + agent-session.status to projectRoom + deviceRoom = 3 publishes
     expect(publishMock).toHaveBeenCalledTimes(3);
@@ -305,13 +323,14 @@ describe('jobs/events-routes POST /:id/events', () => {
     );
   });
 
-  it('falls through to heartbeat-only update when session is already running', async () => {
+  it('bumps an already-running session with one UPDATE and no status broadcast', async () => {
     jobRow.agentSessionId = 'session-1';
     txExecute.mockResolvedValueOnce([]);
     txExecute.mockResolvedValueOnce([{ max_seq: 0 }]);
     insertReturning.mockResolvedValueOnce([{ seq: 1, kind: 'stdout', ts: new Date(), data: {} }]);
-    // CAS UPDATE returns no row (status was not 'queued').
-    updateReturning.mockResolvedValueOnce([]);
+    updateReturning.mockResolvedValueOnce([
+      { id: 'session-1', projectId: 'proj-1', deviceId: 'dev-1', startedRunning: false },
+    ]);
 
     const app = buildApp();
     const r = await app.fetch(
@@ -323,13 +342,14 @@ describe('jobs/events-routes POST /:id/events', () => {
     );
     expect(r.status).toBe(200);
 
-    // 3 update calls: ack-fallback stamp + failed CAS + heartbeat-only bump.
-    expect(dbUpdate).toHaveBeenCalledTimes(3);
-    const heartbeatSetArg = updateSet.mock.calls[2]?.[0] as {
+    // cm:why 2 rather than the 3 this path used to spend — a CAS that matched nothing, then the bump (ISS-1014).
+    expect(dbUpdate).toHaveBeenCalledTimes(2);
+    expect(updateFrom).toHaveBeenCalledTimes(1);
+    const heartbeatSetArg = updateSet.mock.calls[1]?.[0] as {
       status?: string;
       lastHeartbeatAt?: Date;
     };
-    expect(heartbeatSetArg?.status).toBeUndefined();
+    expect(heartbeatSetArg?.status).toBe('running');
     expect(heartbeatSetArg?.lastHeartbeatAt).toBeInstanceOf(Date);
 
     // No agent-session.status broadcast — only the job.event publish.
@@ -356,8 +376,7 @@ describe('jobs/events-routes POST /:id/events', () => {
     );
     expect(r.status).toBe(200);
 
-    // Only the ISS-449 ack-fallback stamp fires (jobs.ackedAt) — no
-    // agent_sessions update without a linked session.
+    // cm:why one and not two: with no linked session the heartbeat is never reached, so only the ack-fallback stamp fires.
     expect(dbUpdate).toHaveBeenCalledTimes(1);
     const ackOnlySetArg = updateSet.mock.calls[0]?.[0] as { ackedAt?: Date; status?: string };
     expect(ackOnlySetArg?.ackedAt).toBeInstanceOf(Date);

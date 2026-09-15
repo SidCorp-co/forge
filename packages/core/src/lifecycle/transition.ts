@@ -12,7 +12,8 @@
 // cm:guard pass a `tx` when the flip must be atomic with a cascade or a sibling write (cancel audit, run-close cascade); `db` is for a standalone flip. Either way this module opens a transaction of its own — a real one on `db`, a savepoint on a `tx` — so the executor decides what the flip is atomic WITH, never whether it is atomic at all. Passing `db` while inside a transaction that later rolls back still leaves the audit row behind describing a status nothing holds.
 // cm:why `reason='pipeline_completed'` is the cascade's SUCCESS sentinel — a terminal pipeline step set its issue terminal while its own job/session was still active — so `resolvePipelineCompletedTarget` maps it to `done`/`completed` and a succeeded step is never recorded as `cancelled`/`failed` (ISS-444 amendment 2, ISS-352).
 
-import type { SQL } from 'drizzle-orm';
+import { eq, type SQL } from 'drizzle-orm';
+import type { PgColumn } from 'drizzle-orm/pg-core';
 import { type KernelExecutor, stampKernelTxn } from '../db/kernel-marker.js';
 import {
   agentSessions,
@@ -74,23 +75,48 @@ interface BaseArgs {
   source: string;
 }
 
-export interface JobTransitionArgs extends BaseArgs {
+// cm:why ISS-1014 — `returning` on each of the three shapes below names which columns a flip hands back. `.returning()` with no projection is `RETURNING *`, and on `agent_sessions` that is the `messages` transcript: 233 KB on average and 35 MB at the largest, pulled for every row a sweep flips (`closeIdleChatSessions` takes up to 200 a tick) so the caller can read four scalar columns off it. `id` is added to every projection, because the audit row below is written from it.
+// cm:guard on a SESSION the projection ALWAYS carries `metadata` too, and that is not a convenience: `fireEscalationBridge` / `fireAgentChatBridge` are gated on `metadata.escalation` / `metadata.agentChat`, and the heartbeat hop in `jobs/loop-monitor.ts` deliberately sweeps exactly those sessions. A projection without `metadata` would read every marked row as unmarked and drop the escalation and agent-chat replies this chokepoint owes — silently, with the room left waiting.
+export interface JobTransitionArgs<K extends keyof JobRow = keyof JobRow> extends BaseArgs {
   entity: 'job';
   to: Extract<JobStatus, 'done' | 'failed' | 'cancelled'>;
   /** Extra column writes applied alongside `status` (exitCode, error,
    *  finishedAt, failureKind, …). */
   set?: Partial<Omit<JobRow, 'id' | 'status'>>;
+  /** Columns to hand back; omit for the whole row. See the guard above the shapes. */
+  returning?: readonly K[];
 }
-export interface SessionTransitionArgs extends BaseArgs {
+export interface SessionTransitionArgs<K extends keyof SessionRow = keyof SessionRow>
+  extends BaseArgs {
   entity: 'session';
   to: (typeof terminalAgentSessionStatuses)[number];
   set?: Partial<Omit<SessionRow, 'id' | 'status'>>;
+  /** Columns to hand back; omit for the whole row. `metadata` is added to whatever
+   *  is asked for, because the completion bridges below are gated on it. */
+  returning?: readonly K[];
 }
-export interface RunTransitionArgs extends BaseArgs {
+export interface RunTransitionArgs<K extends keyof RunRow = keyof RunRow> extends BaseArgs {
   entity: 'run';
   to: Extract<PipelineRunStatus, 'completed' | 'failed' | 'cancelled'>;
   set?: Partial<Omit<RunRow, 'id' | 'status'>>;
+  /** Columns to hand back; omit for the whole row. See the guard above the shapes. */
+  returning?: readonly K[];
 }
+
+/**
+ * What a bulk session sweep reads off each row it flips: the three ids the WS
+ * broadcast needs, the run the wedge looks its issue up through, and the status
+ * the row landed on.
+ *
+ * Shared so the five sweep call sites cannot drift apart into five projections.
+ */
+export const SWEEP_SESSION_COLUMNS = [
+  'id',
+  'projectId',
+  'deviceId',
+  'pipelineRunId',
+  'status',
+] as const;
 
 /**
  * Map the `pipeline_completed` success sentinel to the success terminal status
@@ -120,35 +146,115 @@ export function resolvePipelineCompletedTarget<E extends KernelEntity, T extends
  * chat delivery for a transition that then rolls back is a side-effect with no
  * cause.
  */
-export async function applyKernelTransition(
+export async function applyKernelTransition<K extends keyof JobRow = keyof JobRow>(
   exec: KernelExecutor,
-  args: JobTransitionArgs,
-): Promise<JobRow[]>;
-export async function applyKernelTransition(
+  args: JobTransitionArgs<K>,
+): Promise<Array<Pick<JobRow, K | 'id'>>>;
+export async function applyKernelTransition<K extends keyof SessionRow = keyof SessionRow>(
   exec: KernelExecutor,
-  args: SessionTransitionArgs,
-): Promise<SessionRow[]>;
-export async function applyKernelTransition(
+  args: SessionTransitionArgs<K>,
+): Promise<Array<Pick<SessionRow, K | 'id' | 'metadata'>>>;
+export async function applyKernelTransition<K extends keyof RunRow = keyof RunRow>(
   exec: KernelExecutor,
-  args: RunTransitionArgs,
-): Promise<RunRow[]>;
+  args: RunTransitionArgs<K>,
+): Promise<Array<Pick<RunRow, K | 'id'>>>;
 export async function applyKernelTransition(
   exec: KernelExecutor,
   args: JobTransitionArgs | SessionTransitionArgs | RunTransitionArgs,
-): Promise<JobRow[] | SessionRow[] | RunRow[]> {
+): Promise<unknown[]> {
   const updated = await exec.transaction((tx) => writeTransition(tx, args));
 
   if (updated.length > 0) {
     // cm:why ISS-675 — the bridges hang HERE rather than on their callers because this chokepoint catches every terminal session write except the runner's own happy-path `PATCH /:id`, and the callers (sweeper, cascade, cancel, dispatch-failure, …) are too many to wire individually without one drifting and hanging an escalation silent. Gated on a metadata marker, so it is a no-op for the overwhelming majority of session transitions.
     if (args.entity === 'session') {
-      for (const row of updated as SessionRow[]) {
-        fireEscalationBridge(row);
-        fireAgentChatBridge(row);
-      }
+      await fireSessionBridges(exec, updated, args.returning === undefined);
     }
   }
 
-  return updated as JobRow[] | SessionRow[] | RunRow[];
+  return updated;
+}
+
+/**
+ * Fire the two completion bridges for the sessions this flip touched.
+ *
+ * The bridges need the WHOLE row — `messages`, `status`, `failureReason` — but
+ * only for a session whose `metadata` carries their marker, which is a handful
+ * of rows against a sweep's hundreds. So a narrow flip hydrates the marked ones
+ * and leaves the rest alone; a whole-row flip already has what they need.
+ */
+// cm:guard the hydration reads through `exec`, never the root `db`: a caller that passed its own `tx` has not committed the flip yet, and a second connection would read the PRE-flip row — the bridges would then screen a session that still looks active and post the wrong answer, or none.
+async function fireSessionBridges(
+  exec: KernelExecutor,
+  rows: Array<Record<string, unknown> & { id: string }>,
+  whole: boolean,
+): Promise<void> {
+  for (const row of rows) {
+    const metadata = row.metadata as { escalation?: unknown; agentChat?: unknown } | null;
+    if (!metadata?.escalation && !metadata?.agentChat) continue;
+    let full = row as unknown as SessionRow;
+    if (!whole) {
+      const hydrated = await hydrateSession(exec, row.id);
+      if (!hydrated) continue;
+      full = hydrated;
+    }
+    fireEscalationBridge(full);
+    fireAgentChatBridge(full);
+  }
+}
+
+/**
+ * The whole row behind one bridge-marked id, or `null` with the reason logged.
+ */
+// cm:guard best-effort, and it MUST stay that way: the flip is already committed by the time this runs, so a throw here would take the caller's whole sweep down AFTER its rows went terminal — the broadcasts and wedges for every row it had already flipped would never fire, and the next tick would not find those rows again because they are no longer candidates. The two bridges this feeds have always been best-effort for the same reason; this read is the only part of the path that could throw, so it carries the same contract.
+async function hydrateSession(exec: KernelExecutor, sessionId: string): Promise<SessionRow | null> {
+  try {
+    const [row] = await exec
+      .select()
+      .from(agentSessions)
+      .where(eq(agentSessions.id, sessionId))
+      .limit(1);
+    if (row) return row;
+    logger.error(
+      { sessionId },
+      'lifecycle.transition: a bridge-marked session could not be re-read after its flip; its completion reply was not delivered',
+    );
+    return null;
+  } catch (err) {
+    logger.error(
+      { err, sessionId },
+      'lifecycle.transition: re-reading a bridge-marked session after its flip failed; its completion reply was not delivered',
+    );
+    return null;
+  }
+}
+
+/**
+ * The drizzle `.returning()` argument for a named projection, or `undefined`
+ * when the caller asked for the whole row.
+ *
+ * The guard above the three argument shapes says why `id` — and, on a session,
+ * `metadata` — are in every projection whether or not the caller named them.
+ */
+function projectionFor(
+  table: typeof jobs | typeof agentSessions | typeof pipelineRuns,
+  entity: KernelEntity,
+  keys: readonly string[] | undefined,
+): Record<string, PgColumn> | undefined {
+  if (!keys) return undefined;
+  const columns = table as unknown as Record<string, PgColumn>;
+  const wanted = new Set<string>([...keys, 'id', ...(entity === 'session' ? ['metadata'] : [])]);
+  const projection: Record<string, PgColumn> = {};
+  for (const key of wanted) {
+    const column = columns[key];
+    if (!column) {
+      // cm:guard a name the table does not carry is REFUSED here rather than silently dropped from the projection: a caller that then reads the field would get `undefined` and read it as "the column is null", which is a state-never-lies violation wearing a typo (`VISION: state-never-lies`).
+      throw new Error(
+        `applyKernelTransition: returning names \`${key}\`, which is not a column of \`${entity}\``,
+      );
+    }
+    projection[key] = column;
+  }
+  return projection;
 }
 
 /**
@@ -161,32 +267,18 @@ export async function applyKernelTransition(
 async function writeTransition(
   exec: KernelExecutor,
   args: JobTransitionArgs | SessionTransitionArgs | RunTransitionArgs,
-): Promise<Array<{ id: string }>> {
+): Promise<Array<Record<string, unknown> & { id: string }>> {
   await stampKernelTxn(exec);
+  const table =
+    args.entity === 'job' ? jobs : args.entity === 'session' ? agentSessions : pipelineRuns;
+  const projection = projectionFor(table, args.entity, args.returning);
+  const write = exec
+    .update(table as typeof jobs)
+    .set({ ...(args.set ?? {}), status: args.to } as Partial<JobRow>)
+    .where(args.where);
   // cm:why `?? []` guards a TEST DOUBLE, not drizzle — `.returning()` always yields an array in production. It mirrors the tolerance the prior call sites had so a mock that omits the return cannot crash the chokepoint.
-  let updated: Array<{ id: string }>;
-  if (args.entity === 'job') {
-    updated =
-      (await exec
-        .update(jobs)
-        .set({ ...(args.set ?? {}), status: args.to })
-        .where(args.where)
-        .returning()) ?? [];
-  } else if (args.entity === 'session') {
-    updated =
-      (await exec
-        .update(agentSessions)
-        .set({ ...(args.set ?? {}), status: args.to })
-        .where(args.where)
-        .returning()) ?? [];
-  } else {
-    updated =
-      (await exec
-        .update(pipelineRuns)
-        .set({ ...(args.set ?? {}), status: args.to })
-        .where(args.where)
-        .returning()) ?? [];
-  }
+  const updated = ((projection ? await write.returning(projection) : await write.returning()) ??
+    []) as Array<Record<string, unknown> & { id: string }>;
 
   if (updated.length > 0) {
     await exec.insert(kernelTransitions).values(

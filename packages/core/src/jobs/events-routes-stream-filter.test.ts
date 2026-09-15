@@ -7,18 +7,21 @@ vi.mock('../config/env.js', () => ({
   env: { DEVICE_TOKEN_PEPPER: TEST_PEPPER, NODE_ENV: 'test' },
 }));
 
+// cm:why the shape `readJobGate` answers with — `ackedAt` included, because the handler gates its ack stamp on the row it already read (ISS-1014) and a double without the field reads every job as already acked.
 const jobRow: {
   id: string;
   projectId: string;
   deviceId: string;
   status: string;
   agentSessionId: string | null;
+  ackedAt: Date | null;
 } = {
   id: 'job-1',
   projectId: 'proj-1',
   deviceId: 'dev-1',
   status: 'running',
   agentSessionId: null,
+  ackedAt: null,
 };
 
 const verifyDeviceCredential = vi.fn(async (token: string) => {
@@ -44,17 +47,21 @@ const txInsert = vi.fn(() => ({
   },
 }));
 const txExecute = vi.fn();
+const txWith = vi.fn(() => ({ update: dbUpdate }));
 const transaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
-  const tx = { execute: txExecute, insert: txInsert, update: dbUpdate };
+  const tx = { execute: txExecute, insert: txInsert, update: dbUpdate, with: txWith };
   return fn(tx);
 });
 
+const selectFor = vi.fn(() => ({}));
 const selectLimit = vi.fn(async () => [jobRow]);
-const selectWhere = vi.fn(() => ({ limit: selectLimit }));
+// cm:why the same `.where()` link ends two different chains — `readJobGate` stops at `.limit()`, the heartbeat's locking CTE at `.for('update')`.
+const selectWhere = vi.fn(() => ({ limit: selectLimit, for: selectFor }));
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
 const dbSelect = vi.fn(() => ({ from: selectFrom }));
 
-// cm:why the mock chain has to end BOTH ways — the CAS to running ends at `.returning()` and the heartbeat bump ends at `.where()`, so `updateWhere` returns a thenable that is also `.returning()`-able or the bump path throws instead of asserting
+// cm:why the mock chain has to end BOTH ways — the heartbeat is `.set().from().where().returning()` and the ack stamp and runtime-state sync stop at `.where()`, so `updateWhere` returns a thenable that is also `.returning()`-able or one path throws instead of asserting
+// cm:guard `from` has to be on the `.set()` result, and a double missing it is not a loud failure: the heartbeat's `try/catch` swallows the TypeError and logs a warning, so every assertion in this file still passes while the write under it never happens (found on ISS-1014).
 const updateReturning = vi.fn(async () => [] as unknown[]);
 const updateWhere = vi.fn(() => {
   const p = {
@@ -63,11 +70,16 @@ const updateWhere = vi.fn(() => {
   };
   return p as unknown as { returning: typeof updateReturning } & PromiseLike<unknown>;
 });
-const updateSet = vi.fn((..._args: unknown[]) => ({ where: updateWhere }));
+const dbWith = vi.fn((_alias: string) => ({
+  as: (_q: unknown) => ({ id: 'prev.id', status: 'prev.status' }),
+}));
+const updateFrom = vi.fn(() => ({ where: updateWhere }));
+const updateSet = vi.fn((..._args: unknown[]) => ({ where: updateWhere, from: updateFrom }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
 
+// cm:guard `$with` and the transaction's `with` both have to answer, and a double missing either is not a loud failure: the heartbeat's `try/catch` swallows the TypeError and logs a warning, so every assertion in the file still passes while the write under it never happens (found on ISS-1014).
 vi.mock('../db/client.js', () => ({
-  db: { select: dbSelect, transaction, update: dbUpdate },
+  db: { select: dbSelect, transaction, update: dbUpdate, $with: dbWith },
 }));
 
 const publishMock = vi.fn(() => 0);
@@ -88,11 +100,15 @@ function resetMocks(): void {
   jobRow.status = 'running';
   jobRow.deviceId = 'dev-1';
   jobRow.agentSessionId = null;
+  jobRow.ackedAt = null;
   insertReturning.mockReset();
   txExecute.mockReset();
   updateReturning.mockReset();
   updateReturning.mockResolvedValue([]);
   updateSet.mockClear();
+  updateFrom.mockClear();
+  txWith.mockClear();
+  dbWith.mockClear();
   updateWhere.mockClear();
   dbUpdate.mockClear();
 }
