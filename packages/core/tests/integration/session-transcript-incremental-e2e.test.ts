@@ -393,6 +393,37 @@ describe('incremental transcript derivation', () => {
     );
     expect(await storedMessages()).toEqual(await fullRebuild());
   });
+
+  it('stores no session id over one derived from events it never read', async () => {
+    // cm:why the session id is the half of the derived result that moves without the transcript moving: a progress event carrying a new one leaves `messages` byte for byte as it was. A flush that read the row before that event, and guards only the transcript, writes the id from its own stale prefix straight over the newer one and nothing ever corrects it — the transcript is right and the id is a lie.
+    await insertEvents(0, 1);
+    const held = await harness.client.reserve();
+    let flushed: Promise<void> | null = null;
+    try {
+      await held.unsafe('BEGIN');
+      await held.unsafe(`UPDATE agent_sessions SET claude_session_id = 'claude-newer' WHERE id = $1`, [
+        sessionId,
+      ]);
+      flushed = transcript.maybeDeriveIncremental(jobId, sessionId, 8);
+      expect(flushed).not.toBeNull();
+      await waitForBlockedUpdate();
+      // cm:why the event lands here and not before the flush: it has to be absent from the read that blocked and present for the re-derive, which is the whole interleaving — insert it earlier and this flush folds it itself, and the case asserts nothing.
+      await harness.db.execute(sql`
+        INSERT INTO job_events (job_id, kind, data, seq, ts)
+        VALUES (${jobId}, 'progress', '{"claudeSessionId":"claude-newer"}'::jsonb, 99,
+                to_timestamp(4))
+      `);
+      await held.unsafe('COMMIT');
+    } finally {
+      held.release();
+    }
+    await flushed;
+
+    const rows = await harness.db.execute<{ claude_session_id: string | null }>(
+      sql`SELECT claude_session_id FROM agent_sessions WHERE id = ${sessionId}`,
+    );
+    expect(rows[0]?.claude_session_id).toBe('claude-newer');
+  });
 });
 
 /** Wait until the derive's UPDATE is the backend waiting on the row lock. */

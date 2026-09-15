@@ -114,9 +114,10 @@ function getState(sessionId: string): FlushState {
   return st;
 }
 
-/** The stored transcript's fingerprint, computed by Postgres over the jsonb
- *  bytes themselves rather than over a re-serialized copy of them. */
-const storedFingerprint = sql<string>`md5(${agentSessions.messages}::text)`;
+// cm:guard the fingerprint covers BOTH columns a derive writes, and it has to: `claudeSessionId` is half the derived result and it moves without `messages` moving at all, so a fingerprint over the transcript alone lets a flush holding a stale prefix put an old session id back over a newer one and sit there — the transcript looks right and the id is a lie. The two md5s are concatenated rather than hashed together so no transcript ending in an id's first characters can collide with a shorter one.
+/** The stored derived result's fingerprint, computed by Postgres over the
+ *  stored bytes themselves rather than over a re-serialized copy of them. */
+const storedFingerprint = sql<string>`md5(${agentSessions.messages}::text) || ':' || md5(coalesce(${agentSessions.claudeSessionId}, ''))`;
 
 interface Resumed {
   lastSeq: number;
@@ -187,9 +188,8 @@ async function deriveOnce(
     .limit(1);
   if (!existing) return 'nothing-to-write';
 
-  // Never overwrite / revive a session the user explicitly cancelled — a late
-  // stream that arrives after cancel must be dropped (mirrors the user PATCH
-  // guard in agent-sessions/routes.ts).
+  // cm:guard never overwrite or revive a session the user explicitly cancelled: a stream arriving after the cancel is dropped, and the derive is one of the doors it can arrive through.
+  // cm:edge lockstep -> packages/core/src/agent-sessions/routes.ts — the same rule guards the user PATCH, and it has to be on both: a late write reaching the row by the derive and one reaching it by the PATCH are the same fact arriving by two doors, and a guard on one leaves the other reviving the row.
   if (existing.status === 'failed' && existing.failureReason === 'user_cancelled') {
     return 'nothing-to-write';
   }
