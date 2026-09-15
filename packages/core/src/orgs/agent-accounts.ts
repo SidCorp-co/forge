@@ -217,7 +217,7 @@ export async function listAgentAccounts(orgId: string): Promise<AgentAccount[]> 
  * Every credential route asks through here, so "is this id an agent of the org
  * the caller is admin of" is one question with one answer rather than three.
  */
-async function loadOrgAgent(
+export async function loadOrgAgent(
   orgId: string,
   agentUserId: string,
 ): Promise<{ id: string; handle: string | null } | null> {

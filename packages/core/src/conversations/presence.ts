@@ -1,0 +1,142 @@
+// A handle's presence — how eager it is to speak in a room it was not summoned
+// into — as configuration with today's constants for defaults (ISS-1034).
+//
+// This is the ONE reader of `PresenceConfig`: the bounds a value must sit in,
+// what an unset key means, and how a room with several handles folds their
+// values into the one set of thresholds `decideProactivity` reads.
+
+import { z } from 'zod';
+import {
+  type AnswerInGroupMode,
+  answerInGroupModes,
+  type PresenceConfig,
+} from '../db/schema-agent-selves.js';
+
+/**
+ * Today's constants, and what an unset key folds as. `proactivity.ts` reads
+ * these back so the two cannot drift; `presence.test.ts` asserts they equal
+ * the values the guards were tuned at.
+ */
+export const PRESENCE_DEFAULTS = {
+  dormantMs: 24 * 60 * 60 * 1000,
+  backoffAfter: 3,
+  loopBounceMs: 5 * 60 * 1000,
+  loopLimit: 3,
+  answerInGroup: 'window' as AnswerInGroupMode,
+  heartbeatEnabled: false,
+  heartbeatIntervalMs: 60 * 60 * 1000,
+} as const;
+
+/** Inclusive bounds, named in every refusal. */
+export const PRESENCE_BOUNDS = {
+  dormantMs: [60_000, 30 * 24 * 60 * 60 * 1000],
+  backoffAfter: [1, 20],
+  loopBounceMs: [10_000, 60 * 60 * 1000],
+  loopLimit: [1, 20],
+  heartbeatIntervalMs: [5 * 60 * 1000, 7 * 24 * 60 * 60 * 1000],
+} as const;
+
+const bounded = (key: keyof typeof PRESENCE_BOUNDS) => {
+  const [lo, hi] = PRESENCE_BOUNDS[key];
+  return z
+    .number()
+    .int()
+    .min(lo, { error: `presence.${key} must be between ${lo} and ${hi}` })
+    .max(hi, { error: `presence.${key} must be between ${lo} and ${hi}` });
+};
+
+export const PRESENCE_KEYS = [
+  'dormantMs',
+  'backoffAfter',
+  'loopBounceMs',
+  'loopLimit',
+  'answerInGroup',
+  'heartbeat',
+] as const;
+const HEARTBEAT_KEYS = ['enabled', 'intervalMs'] as const;
+
+// cm:guard `strict` on both objects and a refusal that NAMES the accepted keys: a presence knob nobody reads is a setting an admin believes is in force, and the silent absorb is worse than the refusal. The messages carry the bound because the person fixing the payload is reading the error, not this file.
+export const presenceConfigSchema = z
+  .object({
+    dormantMs: bounded('dormantMs').optional(),
+    backoffAfter: bounded('backoffAfter').optional(),
+    loopBounceMs: bounded('loopBounceMs').optional(),
+    loopLimit: bounded('loopLimit').optional(),
+    answerInGroup: z.enum(answerInGroupModes).optional(),
+    heartbeat: z
+      .object({
+        enabled: z.boolean().optional(),
+        intervalMs: bounded('heartbeatIntervalMs').optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+export class PresenceValidationError extends Error {
+  readonly issues: string[];
+  constructor(issues: string[]) {
+    super(issues.join('; '));
+    this.name = 'PresenceValidationError';
+    this.issues = issues;
+  }
+}
+
+/** The shape, or a refusal that says which key or bound was wrong. */
+export function validatePresence(input: unknown): PresenceConfig {
+  const parsed = presenceConfigSchema.safeParse(input);
+  if (parsed.success) return parsed.data;
+  const issues = parsed.error.issues.map((i) => {
+    const path = i.path.length ? `presence.${i.path.join('.')}` : 'presence';
+    if (i.code === 'unrecognized_keys') {
+      const inner = i.path.length ? HEARTBEAT_KEYS : PRESENCE_KEYS;
+      return `${path}: unknown key(s) ${i.keys.map((k) => `\`${k}\``).join(', ')}; it takes only: ${inner.join(', ')}`;
+    }
+    return `${path}: ${i.message}`;
+  });
+  throw new PresenceValidationError(issues);
+}
+
+/** What `decideProactivity` reads: every key resolved, none optional. */
+export interface ResolvedPresence {
+  dormantMs: number;
+  backoffAfter: number;
+  loopBounceMs: number;
+  loopLimit: number;
+  answerInGroup: AnswerInGroupMode;
+}
+
+function defined<T>(values: readonly (T | undefined)[]): T[] {
+  return values.filter((v): v is T => v !== undefined);
+}
+
+/**
+ * One set of thresholds for a room with several handles: each key folds by
+ * its own operator, and a key nobody set folds as its default.
+ */
+// cm:guard the operator is PER KEY and not one "most conservative" rule, because conservatism points different ways: a shorter `dormantMs` and a smaller `backoffAfter`/`loopLimit` stop speech sooner (min), while a LONGER `loopBounceMs` counts more exchanges as bounces (max), and `mention` speaks less than `window`. A single min over the lot would make the loop breaker looser in exactly the room that set it tighter (ISS-1034, codex F4).
+export function foldPresence(selves: readonly PresenceConfig[]): ResolvedPresence {
+  const pick = <K extends keyof ResolvedPresence>(
+    key: K,
+    op: (values: number[]) => number,
+  ): number => {
+    const values = defined(selves.map((s) => s[key] as number | undefined));
+    return values.length ? op(values) : (PRESENCE_DEFAULTS[key] as number);
+  };
+  const modes = defined(selves.map((s) => s.answerInGroup));
+  return {
+    dormantMs: pick('dormantMs', (v) => Math.min(...v)),
+    backoffAfter: pick('backoffAfter', (v) => Math.min(...v)),
+    loopBounceMs: pick('loopBounceMs', (v) => Math.max(...v)),
+    loopLimit: pick('loopLimit', (v) => Math.min(...v)),
+    answerInGroup: modes.includes('mention') ? 'mention' : PRESENCE_DEFAULTS.answerInGroup,
+  };
+}
+
+/** A handle's heartbeat, resolved — read per handle, never folded across a room. */
+export function heartbeatOf(self: PresenceConfig): { enabled: boolean; intervalMs: number } {
+  return {
+    enabled: self.heartbeat?.enabled ?? PRESENCE_DEFAULTS.heartbeatEnabled,
+    intervalMs: self.heartbeat?.intervalMs ?? PRESENCE_DEFAULTS.heartbeatIntervalMs,
+  };
+}

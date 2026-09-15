@@ -20,12 +20,12 @@ export type AnswerInGroupMode = (typeof answerInGroupModes)[number];
  * `conversations/presence.ts`, the one reader of this shape.
  */
 export interface PresenceConfig {
-  dormantMs?: number;
-  backoffAfter?: number;
-  loopBounceMs?: number;
-  loopLimit?: number;
-  answerInGroup?: AnswerInGroupMode;
-  heartbeat?: { enabled?: boolean; intervalMs?: number };
+  dormantMs?: number | undefined;
+  backoffAfter?: number | undefined;
+  loopBounceMs?: number | undefined;
+  loopLimit?: number | undefined;
+  answerInGroup?: AnswerInGroupMode | undefined;
+  heartbeat?: { enabled?: boolean | undefined; intervalMs?: number | undefined } | undefined;
 }
 
 // cm:guard keyed on the agent's `users.id` and holding NO name column: the label a person reads is `users.display_name` (ISS-1003) and the address is `organization_members.handle`, and a third copy of either here is the drift ISS-1003's three-column split exists to refuse. A self RENDERS and decides nothing — `db/display-name-readers.test.ts` names who may read the name, and this table adds nothing to that list.

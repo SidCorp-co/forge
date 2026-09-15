@@ -28,7 +28,17 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
+const writeAssistantPreferences = vi.fn();
+const listPreferenceChanges = vi.fn();
+const restorePreferenceChange = vi.fn();
+vi.mock('./preference-changes.js', async (orig) => ({
+  ...(await orig<typeof import('./preference-changes.js')>()),
+  writeAssistantPreferences: (...a: unknown[]) => writeAssistantPreferences(...a),
+  listPreferenceChanges: (...a: unknown[]) => listPreferenceChanges(...a),
+  restorePreferenceChange: (...a: unknown[]) => restorePreferenceChange(...a),
+}));
 const { preferenceRoutes } = await import('./preferences.js');
+const { PreferenceRestoreConflict } = await import('./preference-changes.js');
 const { signUserToken } = await import('./jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
 const { requestId } = await import('../middleware/request-id.js');
@@ -72,6 +82,8 @@ describe('GET /api/auth/preferences', () => {
       userId: USER_ID,
       theme: 'system',
       language: 'en',
+      answerStyle: 'default',
+      assistantInstructions: null,
       updatedAt: null,
     });
   });
@@ -137,5 +149,116 @@ describe('PATCH /api/auth/preferences', () => {
     const body = (await res.json()) as { theme: string };
     expect(body.theme).toBe('dark');
     expect(seen).toEqual([{ userId: USER_ID, theme: 'dark', language: 'en' }]);
+  });
+});
+
+describe('assistant preferences (ISS-1034)', () => {
+  const headers = async () => ({
+    'content-type': 'application/json',
+    authorization: `Bearer ${await token()}`,
+  });
+
+  it('PATCH answerStyle goes through the one writer as the person, and answers the full row (criterion 13)', async () => {
+    writeAssistantPreferences.mockResolvedValueOnce({});
+    selectLimit.mockResolvedValueOnce([
+      {
+        userId: USER_ID,
+        theme: 'system',
+        language: 'en',
+        answerStyle: 'concise',
+        assistantInstructions: null,
+        updatedAt: null,
+      },
+    ]);
+    const res = await buildApp().request('/api/auth/preferences', {
+      method: 'PATCH',
+      headers: await headers(),
+      body: JSON.stringify({ answerStyle: 'concise' }),
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { answerStyle: string }).answerStyle).toBe('concise');
+    expect(writeAssistantPreferences).toHaveBeenCalledWith({
+      userId: USER_ID,
+      patch: { answerStyle: 'concise', assistantInstructions: undefined },
+      actor: { kind: 'person', userId: USER_ID },
+    });
+    expect(insertValues).not.toHaveBeenCalled();
+  });
+
+  it('PATCH with an unknown answerStyle is refused 400 naming the accepted values (criterion 14)', async () => {
+    const res = await buildApp().request('/api/auth/preferences', {
+      method: 'PATCH',
+      headers: await headers(),
+      body: JSON.stringify({ answerStyle: 'shouty' }),
+    });
+    expect(res.status).toBe(400);
+    const text = JSON.stringify(await res.json());
+    for (const v of ['default', 'concise', 'detailed', 'bullets']) expect(text).toContain(v);
+    expect(writeAssistantPreferences).not.toHaveBeenCalled();
+  });
+
+  it('GET /preferences/changes lists the caller’s trail (criterion 59)', async () => {
+    listPreferenceChanges.mockResolvedValueOnce([{ id: 'c-1', field: 'answer_style' }]);
+    const res = await buildApp().request('/api/auth/preferences/changes', {
+      headers: await headers(),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ items: [{ id: 'c-1', field: 'answer_style' }] });
+    expect(listPreferenceChanges).toHaveBeenCalledWith(USER_ID);
+  });
+
+  it('POST restore answers 404 for a change that is not the caller’s', async () => {
+    restorePreferenceChange.mockResolvedValueOnce(null);
+    const res = await buildApp().request(
+      '/api/auth/preferences/changes/99999999-9999-4999-8999-999999999999/restore',
+      { method: 'POST', headers: await headers() },
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it('POST restore answers 409 naming the later change once the field moved on (criterion 61)', async () => {
+    const change = { id: 'c-1', field: 'answer_style', changedAt: new Date(1) };
+    const later = { id: 'c-2', field: 'answer_style', changedBy: 'person', changedAt: new Date(2) };
+    restorePreferenceChange.mockRejectedValueOnce(
+      new PreferenceRestoreConflict(change as never, later as never),
+    );
+    const res = await buildApp().request(
+      '/api/auth/preferences/changes/99999999-9999-4999-8999-999999999999/restore',
+      { method: 'POST', headers: await headers() },
+    );
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { code: string; message: string; laterChangeId?: string };
+    expect(body.code).toBe('PREFERENCE_CHANGE_SUPERSEDED');
+    expect(body.message).toContain('c-2');
+  });
+
+  it('POST restore answers the full row when it applied (criterion 60)', async () => {
+    restorePreferenceChange.mockResolvedValueOnce({
+      userId: USER_ID,
+      answerStyle: 'default',
+      assistantInstructions: null,
+      updatedAt: null,
+    });
+    selectLimit.mockResolvedValueOnce([
+      {
+        userId: USER_ID,
+        theme: 'dark',
+        language: 'vi',
+        answerStyle: 'default',
+        assistantInstructions: null,
+        updatedAt: null,
+      },
+    ]);
+    const res = await buildApp().request(
+      '/api/auth/preferences/changes/99999999-9999-4999-8999-999999999999/restore',
+      { method: 'POST', headers: await headers() },
+    );
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { theme: string }).theme).toBe('dark');
+    expect(restorePreferenceChange).toHaveBeenCalledWith({
+      userId: USER_ID,
+      changeId: '99999999-9999-4999-8999-999999999999',
+      actor: { kind: 'person', userId: USER_ID },
+    });
   });
 });
