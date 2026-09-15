@@ -30,21 +30,46 @@ vi.mock('../db/client.js', () => ({
 const appended: string[] = [];
 const silences: string[] = [];
 /** Every assistant/silence append, with the blocks it carried. */
-const persisted: Array<{ text: string; blocks: unknown; silenceReason: string | null }> = [];
+const persisted: Array<{
+  text: string;
+  blocks: unknown;
+  silenceReason: string | null;
+  id: string | null;
+}> = [];
 vi.mock('./conversation-turn.js', () => ({
   appendAssistantMessage: (
     t: { pending: unknown[] },
     text: string,
-    opts?: { blocks?: unknown },
+    opts?: { blocks?: unknown; id?: string | null },
   ) => {
     appended.push(text);
-    persisted.push({ text, blocks: opts?.blocks ?? null, silenceReason: null });
-    t.pending.push({ role: 'assistant', content: text, blocks: opts?.blocks ?? null });
-  },
-  appendSilence: (t: { pending: unknown[] }, reason: string, opts?: { blocks?: unknown }) => {
-    silences.push(reason);
-    persisted.push({ text: '', blocks: opts?.blocks ?? null, silenceReason: reason });
+    persisted.push({
+      text,
+      blocks: opts?.blocks ?? null,
+      silenceReason: null,
+      id: opts?.id ?? null,
+    });
     t.pending.push({
+      role: 'assistant',
+      id: opts?.id ?? null,
+      content: text,
+      blocks: opts?.blocks ?? null,
+    });
+  },
+  appendSilence: (
+    t: { pending: unknown[] },
+    reason: string,
+    opts?: { blocks?: unknown; id?: string | null },
+  ) => {
+    silences.push(reason);
+    persisted.push({
+      text: '',
+      blocks: opts?.blocks ?? null,
+      silenceReason: reason,
+      id: opts?.id ?? null,
+    });
+    t.pending.push({
+      id: opts?.id ?? null,
       role: 'assistant',
       content: '',
       silenceReason: reason,
@@ -55,8 +80,12 @@ vi.mock('./conversation-turn.js', () => ({
   // final frame, which is what makes the stream and the transcript one thing rather than two that
   // resemble each other. A mock returning nothing would hide that frame from every assertion.
   persistMessages: async (t: { pending: Array<Record<string, unknown>> }) => {
+    // cm:guard the double honours a caller-supplied `id` because the REAL insert does: the column
+    // default only mints one where the caller did not. A double that always minted its own is what
+    // let ISS-1029 ship streaming 19 frames under one id and settling under another — the assertion
+    // below could not have failed against it, whatever the production code did.
     const rows = t.pending.map((m, i) => ({
-      id: `row-${i}`,
+      id: (m.id as string | null) ?? `row-${i}`,
       seq: i,
       externalId: null,
       role: m.role as string,
@@ -315,6 +344,25 @@ describe('runChatTurn writes the canonical transcript entry', () => {
     expect(captured.some((e) => e.event === 'chunk')).toBe(false);
     expect(captured.some((e) => e.event === 'tool_call')).toBe(false);
     expect(captured.some((e) => e.event === 'tool_result')).toBe(false);
+  });
+
+  // cm:guard ONE identity for the whole turn, growing frames and settled row alike. A client keyed
+  // by `id` reduces this stream to one assistant entry; with the row minting its own, the growing
+  // frames carried one id and the final frame another and a reducer showed the answer twice. Seen
+  // on beta before the fix: 19 frames under `a4e93846`, the 20th under `838917e6`
+  // (ISS-1029 review F1).
+  it('streams every frame of a turn under the id the row is written with', async () => {
+    const { provider, tools } = proseToolProse();
+    await run(provider, tools);
+
+    const ids = captured
+      .filter((e) => e.event === 'message')
+      .map((e) => (JSON.parse(e.data) as { id: string }).id);
+    expect(ids.length).toBeGreaterThan(1);
+
+    const rowId = persisted.at(-1)?.id;
+    expect(rowId, 'the turn wrote an assistant row').toBeDefined();
+    expect(new Set(ids), 'one identity across the whole turn').toEqual(new Set([rowId]));
   });
 
   it('keeps the tool work on a turn that ran tools and then said nothing', async () => {

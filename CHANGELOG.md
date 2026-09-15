@@ -4841,7 +4841,9 @@
   renderer behind them. `POST /api/chat` streams that same record as it builds, in place of the raw
   provider events it used to relay, and ends on the exact entry it saved. A turn that ran tools and
   then said nothing keeps the record of what it ran, which is the one turn anybody opens a
-  transcript to look at. Conversations stored before this change read back exactly as they did.
+  transcript to look at. Every frame of a turn and the row it settles as carry one identity, so a
+  reader that keys on it shows one answer rather than two. Conversations stored before this change
+  read back exactly as they did.
 
 - **A long agent session's transcript keeps up with the agent.** The page you watch a running agent
   on is built from the lines it has streamed so far, and the server rebuilt that page from the very

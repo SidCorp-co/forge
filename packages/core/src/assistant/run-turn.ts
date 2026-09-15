@@ -107,7 +107,13 @@ export function runChatTurn({
     // it with `features/session/types.ts parseMessages` and needs no second formatter. The
     // provider's own chunk/tool_call/tool_result events stay what they are — the adapter contract —
     // and end here, at the turn layer, rather than reaching a browser (ISS-1029).
-    const acc = createTranscriptAccumulator({ id: randomUUID() });
+    // cm:guard the entry's id is minted HERE, once, and carried into the row the turn writes, so
+    // every frame this route emits and the row it settles as share ONE identity. A client keyed by
+    // `id` must reduce the growing frames and the final one to a single assistant turn; letting the
+    // column mint its own gave the 19 growing frames one id and the settled frame another, and a
+    // reducer saw two turns for one answer (ISS-1029 review F1, confirmed on beta before the fix).
+    const entryId = randomUUID();
+    const acc = createTranscriptAccumulator({ id: entryId });
     let lastFlush = 0;
     // cm:guard the accumulator's refusal — a tool result naming no call this turn made — ends the
     // TURN, loudly, and does NOT escape this callback: the user's own message is still in
@@ -158,12 +164,12 @@ export function runChatTurn({
     // are there, so nothing renders twice (ISS-1029).
     const blocks = acc.blocks();
     if (result.terminal === 'done' && result.finalText.length > 0) {
-      appendAssistantMessage(turn, result.finalText, { blocks });
+      appendAssistantMessage(turn, result.finalText, { blocks, id: entryId });
     } else {
       // cm:guard the user's message is written even when the turn failed, and the failure is written BESIDE it rather than left absent: a transcript that stops without saying why reads to the next person as a message nobody answered (ISS-1001 invariant 7).
       // cm:guard the blocks go with it: a turn that ran tools and then said nothing keeps the
       // record of what it ran, which is the only thing that makes such a turn diagnosable (ISS-1029).
-      appendSilence(turn, result.errorMessage ?? result.terminal, { blocks });
+      appendSilence(turn, result.errorMessage ?? result.terminal, { blocks, id: entryId });
     }
     const written = await persistMessages(turn);
 
