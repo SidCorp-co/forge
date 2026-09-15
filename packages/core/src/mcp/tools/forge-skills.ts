@@ -16,10 +16,10 @@ import {
   createProjectSkill,
   deleteProjectSkill,
   getSkillForProject,
-  listProjectSkills,
+  listProjectSkillCatalog,
   requestSkillSync,
   SkillAlreadyShadowedError,
-  type SkillRow,
+  type SkillListRow,
   updateProjectSkill,
 } from '../../skills/service.js';
 import type { ContextScopedMcpToolFactory } from './lib.js';
@@ -92,8 +92,8 @@ const pushInputSchema = z
   })
   .strict();
 
-/** Skill row with the shadow marker added by the agent-facing dedup. */
-type SkillListRow = SkillRow & {
+/** Catalog row with the shadow marker added by the agent-facing dedup. */
+type SkillCatalogRow = SkillListRow & {
   shadowsGlobal: boolean;
   shadowedGlobalSkillId: string | null;
   // cm:guard adoption provenance, read by humans deciding whether to re-adopt — NOT a drift signal. Nothing compares it to `basedOnGlobalVersion` any more: the lane that did was deleted with the staged pipeline, so a gap here triggers nothing and must not be re-wired into one without a consumer that acts on it.
@@ -107,11 +107,11 @@ type SkillListRow = SkillRow & {
  * actually applies. Keeps the underlying REST crud GET untouched — only this
  * agent-facing surface dedups.
  */
-function dedupSkillsByName(rows: SkillRow[]): SkillListRow[] {
-  const globalByName = new Map<string, SkillRow>();
+function dedupSkillsByName(rows: SkillListRow[]): SkillCatalogRow[] {
+  const globalByName = new Map<string, SkillListRow>();
   for (const r of rows) if (r.scope === 'global') globalByName.set(r.name, r);
 
-  const out: SkillListRow[] = [];
+  const out: SkillCatalogRow[] = [];
   const shadowedNames = new Set<string>();
   for (const r of rows) {
     if (r.scope !== 'project') continue;
@@ -142,9 +142,11 @@ function dedupSkillsByName(rows: SkillRow[]): SkillListRow[] {
  * heavy fields (`skillMd` body, `prompt`, `files`, `tools`, `manifest`,
  * `changelog`, `localGuide`) that blow the MCP token cap; keeps the catalog
  * metadata + dedup hints. Bodies stay reachable via forge_skills.get /
- * forge_skills.effective.
+ * forge_skills.effective. Since ISS-1025 the QUERY stops at the same twelve
+ * columns (`skillListProjection`), so the seven are no longer read from the
+ * database and thrown away here.
  */
-function toSkillListRow(row: SkillListRow): Record<string, unknown> {
+function toSkillListRow(row: SkillCatalogRow): Record<string, unknown> {
   return {
     id: row.id,
     name: row.name,
@@ -172,7 +174,7 @@ export const forgeSkillsListTool: ContextScopedMcpToolFactory = ({ principal }) 
   handler: async (args) => {
     const { projectId } = listInputSchema.parse(args);
     await assertPrincipalIsMember(principal, projectId);
-    const skills = dedupSkillsByName(await listProjectSkills(projectId)).map(toSkillListRow);
+    const skills = dedupSkillsByName(await listProjectSkillCatalog(projectId)).map(toSkillListRow);
     return { skills };
   },
 });

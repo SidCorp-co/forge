@@ -4809,6 +4809,16 @@
   session at once, the one working from material that has since been replaced is turned away and
   does its work again against what is actually stored.
 
+- **The skill activity log answers with its most recent events rather than all of them, and says
+  which.** Asking what happened to a project's skills returned every event ever recorded against
+  them: on a project that has been reconciling for months that is the whole history, in one
+  response, however far back you meant to look. It now answers with the most recent 200 events,
+  still oldest-first the way it always read, and each answer carries the number it was capped at and
+  whether there were more behind it — so a page that stops short says so instead of looking like the
+  end of the record. Ask for more by naming how many, up to a thousand; ask for more than that and
+  it refuses and names the limit, rather than quietly handing back a smaller page than the one you
+  asked for.
+
 - **Every place the assistant answers you now works to the same method, and your project chooses the
   language it answers in.** Until now that method lived inside the team-chat integration and nowhere
   else: the assistant in the Forge app answered on a single sentence, and a correction to any rule

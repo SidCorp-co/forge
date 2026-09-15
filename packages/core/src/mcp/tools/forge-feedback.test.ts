@@ -316,8 +316,7 @@ describe('forge_feedback list', () => {
     const tool = forgeFeedbackTool(makeCtx());
 
     mockVisibleProjects([PROJECT_ID, PROJECT_ID_2]);
-    // No resolveEffectiveProjectId/assertPrincipalIsMember call for org scope —
-    // membership is fenced by loadVisibleProjectIdsForPrincipal itself.
+    // cm:guard no resolveEffectiveProjectId / assertPrincipalIsMember call on the org scope: the fence IS loadVisibleProjectIdsForPrincipal, and a queued membership row here would hide its removal.
     selectLimit.mockResolvedValueOnce([
       { ...baseReport, projectId: PROJECT_ID, projectSlug: PROJECT_SLUG },
       {
@@ -540,6 +539,8 @@ describe('forge_feedback review', () => {
       reviewedAt: expect.any(Date),
       linkedIssueId: FORGE_ISSUE_ID,
     });
+    // cm:guard the visible-project join runs ONCE for the fence and the link together; two calls here is the defect ISS-1025 removed
+    expect(h.selectDistinctWhere).toHaveBeenCalledTimes(1);
   });
 
   // cm:guard visibility is still the fence — relaxing same-project must not let a caller link to an issue in a project they cannot see.
@@ -626,8 +627,8 @@ describe('forge_feedback review', () => {
     const tool = forgeFeedbackTool(makeCtx());
     const FORGE_ISSUE_ID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 
-    mockVisibleProjects([PROJECT_ID, PROJECT_ID_2]); // cm:why scope=all fence
-    mockVisibleProjects([PROJECT_ID, PROJECT_ID_2]); // cm:why resolveLinkedIssue fence
+    // cm:why ONE queued resolution for BOTH the scope=all fence and the resolveLinkedIssue fence (ISS-1025): the handler used to run that join twice per call, and this test used to have to queue it twice
+    mockVisibleProjects([PROJECT_ID, PROJECT_ID_2]);
     selectLimit.mockResolvedValueOnce([{ id: FORGE_ISSUE_ID }]);
     updateReturning.mockResolvedValueOnce([{ id: 'r1' }, { id: 'r2' }, { id: 'r3' }]);
 

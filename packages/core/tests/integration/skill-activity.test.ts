@@ -14,6 +14,12 @@ type ActivityModule = typeof import('../../src/skills/activity.js');
 type ActivityChainIntegrityModule = typeof import('../../src/skills/activity-chain-integrity.js');
 type ActivityViewsModule = typeof import('../../src/skills/activity-views.js');
 
+let listByDevice: ActivityViewsModule['listByDevice'];
+
+/** The whole log for one device — every assertion here is about a handful of rows. */
+const deviceEvents = (projectId: string, deviceId: string) =>
+  listByDevice({ projectId, deviceId, limit: 1000 });
+
 // cm:why real Postgres, not a mocked `tx` (see src/skills/activity.test.ts) — only a real rollback proves §9.11's same-transaction invariant actually holds.
 describe('skill-activity log integration (ISS-797)', () => {
   let harness: TestDatabase;
@@ -22,7 +28,6 @@ describe('skill-activity log integration (ISS-797)', () => {
   let applyReconcileRun: (runId: string, actorUserId: string) => Promise<void>;
   let checkSkillActivityChainIntegrity: ActivityChainIntegrityModule['checkSkillActivityChainIntegrity'];
   let listBySkill: ActivityViewsModule['listBySkill'];
-  let listByDevice: ActivityViewsModule['listByDevice'];
   let listByPacket: ActivityViewsModule['listByPacket'];
   let summarizeByEventType: ActivityViewsModule['summarizeByEventType'];
 
@@ -108,7 +113,7 @@ describe('skill-activity log integration (ISS-797)', () => {
       .where(eq(schema.skills.id, skill.id));
     expect(reloaded?.contentHash).toBe('hash-v1');
 
-    const events = await listBySkill({ projectId: project.id, skillId: skill.id });
+    const { events } = await listBySkill({ projectId: project.id, skillId: skill.id, limit: 1000 });
     expect(events).toHaveLength(0);
   });
 
@@ -140,7 +145,7 @@ describe('skill-activity log integration (ISS-797)', () => {
       .where(eq(schema.skills.id, skill.id));
     expect(reloaded?.contentHash).toBe('hash-v2');
 
-    const events = await listBySkill({ projectId: project.id, skillId: skill.id });
+    const { events } = await listBySkill({ projectId: project.id, skillId: skill.id, limit: 1000 });
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
       eventType: 'skill.body.changed',
@@ -179,12 +184,12 @@ describe('skill-activity log integration (ISS-797)', () => {
       });
     });
 
-    const events = await listByDevice({ projectId: project.id, deviceId: device.id });
+    const { events } = await deviceEvents(project.id, device.id);
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ eventType: 'device.skill.applied', afterHash: 'hash-v1' });
 
-    const packetEvents = await listByPacket('P-1');
-    expect(summarizeByEventType(packetEvents)).toEqual({ 'device.skill.applied': 1 });
+    expect((await listByPacket('P-1', 1000)).events).toHaveLength(1);
+    expect(await summarizeByEventType('P-1')).toEqual({ 'device.skill.applied': 1 });
 
     const report = await checkSkillActivityChainIntegrity();
     expect(report.deviceHashMismatches).toEqual([]);
@@ -287,7 +292,7 @@ describe('skill-activity log integration (ISS-797)', () => {
 
     await applyReconcileRun(run.id, user.id);
 
-    const events = await listBySkill({ projectId: project.id, skillId: skill.id });
+    const { events } = await listBySkill({ projectId: project.id, skillId: skill.id, limit: 1000 });
     const changed = events.find((e: { eventType: string }) => e.eventType === 'skill.body.changed');
     expect(changed).toBeDefined();
     expect(changed?.afterHash).toBe(expectedHash);

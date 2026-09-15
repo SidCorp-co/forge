@@ -58,7 +58,7 @@ export interface UpsertKnowledgeResult {
 }
 
 // cm:why an MCP list response is spent from the caller's context window, so the cap is a token budget rather than a payload limit — raising it makes every list cost more of the window it is read in.
-const MAX_RESPONSE_CHARS = 38_000;
+export const MAX_RESPONSE_CHARS = 38_000;
 
 export async function upsertKnowledgeEntry(
   input: UpsertKnowledgeInput,
@@ -151,6 +151,39 @@ export interface ListKnowledgeResult {
   total: number;
 }
 
+/**
+ * The row cap on the LIST query. `MAX_RESPONSE_CHARS` is the real bound; this
+ * only stops an unbounded fetch on the way to it, so it must sit ABOVE the
+ * largest number of rows that can fit under the character cap — otherwise the
+ * database would cut a row the cap would have kept, which is the silent
+ * shortening this bound exists to prevent. `service.test.ts` holds it: the
+ * shortest row this projection can serialise, taken MAX_LIST_ROWS times, is
+ * longer than MAX_RESPONSE_CHARS.
+ */
+export const MAX_LIST_ROWS = 1000;
+
+/** `{"rows":[]}` — the envelope the cap is measured against. */
+const RESPONSE_ENVELOPE_CHARS = 11;
+
+/**
+ * Keep the longest prefix of `rows` whose serialisation fits under
+ * `MAX_RESPONSE_CHARS`, at least one row — a single row wider than the cap is
+ * returned rather than dropped, as it was before. `truncated` is now
+ * `returned < total` on every path, so that one row reads as complete instead
+ * of truncated; the projection's own field caps (slug 512, title 500) put the
+ * widest possible row near 1.2k characters, so nothing reaches it.
+ */
+// cm:guard the running count and the whole-array `JSON.stringify` it replaced measure the SAME thing — JavaScript string length over the same serialisation, never UTF-8 bytes — because a title outside the BMP would otherwise drop a row from a response that used to carry it. The old loop re-serialised every kept row for each row it dropped; on a project over the cap that is quadratic in the payload (ISS-1025).
+function trimToResponseCap(rows: KnowledgeListRow[]): KnowledgeListRow[] {
+  let used = RESPONSE_ENVELOPE_CHARS;
+  for (let i = 0; i < rows.length; i += 1) {
+    // biome-ignore lint/style/noNonNullAssertion: index is below rows.length
+    used += JSON.stringify(rows[i]!).length + (i > 0 ? 1 : 0);
+    if (used > MAX_RESPONSE_CHARS) return rows.slice(0, Math.max(1, i));
+  }
+  return rows;
+}
+
 export async function listKnowledgeEntries(
   input: ListKnowledgeInput,
 ): Promise<ListKnowledgeResult> {
@@ -161,7 +194,8 @@ export async function listKnowledgeEntries(
     ...(input.injection ? [eq(knowledgeEntries.injection, input.injection)] : []),
   ];
 
-  const rows = await db
+  // cm:guard `count(*) over ()` rather than a second `count(*)` query: a window function is evaluated before LIMIT, so `total` is the number of matching entries in the table while the fetch stays bounded — one query for both, which is what the list contract asks for.
+  const fetched = await db
     .select({
       id: knowledgeEntries.id,
       slug: knowledgeEntries.slug,
@@ -172,23 +206,18 @@ export async function listKnowledgeEntries(
       authoredBy: knowledgeEntries.authoredBy,
       orderIndex: knowledgeEntries.orderIndex,
       updatedAt: knowledgeEntries.updatedAt,
+      total: sql<number>`count(*) over ()`.mapWith(Number),
     })
     .from(knowledgeEntries)
     .where(and(...where))
-    .orderBy(asc(knowledgeEntries.orderIndex), asc(knowledgeEntries.slug));
+    .orderBy(asc(knowledgeEntries.orderIndex), asc(knowledgeEntries.slug))
+    .limit(MAX_LIST_ROWS);
 
-  const total = rows.length;
-  const serialized = JSON.stringify({ rows });
-  if (serialized.length <= MAX_RESPONSE_CHARS) {
-    return { rows, truncated: false, returned: total, total };
-  }
+  const total = fetched[0]?.total ?? 0;
+  const rows: KnowledgeListRow[] = fetched.map(({ total: _total, ...row }) => row);
 
-  // Trim rows from the tail until we fit under the cap.
-  let kept = rows;
-  while (kept.length > 1 && JSON.stringify({ rows: kept }).length > MAX_RESPONSE_CHARS) {
-    kept = kept.slice(0, kept.length - 1);
-  }
-  return { rows: kept, truncated: true, returned: kept.length, total };
+  const kept = trimToResponseCap(rows);
+  return { rows: kept, truncated: kept.length < total, returned: kept.length, total };
 }
 
 export interface GetKnowledgeResult {

@@ -13,11 +13,28 @@ const badRequest = (details: unknown) =>
 const forbidden = (message: string) =>
   new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
 
+/**
+ * The history is capped rather than whole (ISS-1025): every one of these views
+ * was an unbounded read of `skill_activity_events`, and a project that has been
+ * reconciling for months answers one of them with its entire log. A caller who
+ * wants more says so, up to the maximum, and every response states which cap it
+ * was answered under.
+ */
+const DEFAULT_ACTIVITY_LIMIT = 200;
+const MAX_ACTIVITY_LIMIT = 1000;
+
 const querySchema = z.object({
   projectId: z.uuid().optional(),
   skillId: z.uuid().optional(),
   deviceId: z.uuid().optional(),
   packetId: z.string().min(1).optional(),
+  // cm:guard a limit over the maximum is REFUSED and never clamped: a caller asking for 50,000 events and served 1,000 under a `truncated` flag it did not ask about reads the page as the whole log. The refusal names the maximum.
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_ACTIVITY_LIMIT, `limit must not exceed ${MAX_ACTIVITY_LIMIT}`)
+    .default(DEFAULT_ACTIVITY_LIMIT),
 });
 
 export const skillActivityRoutes = new Hono<{ Variables: AuthVars }>();
@@ -36,14 +53,22 @@ skillActivityRoutes.get('/', async (c) => {
     skillId: c.req.query('skillId'),
     deviceId: c.req.query('deviceId'),
     packetId: c.req.query('packetId'),
+    limit: c.req.query('limit'),
   });
   if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
-  const { projectId, skillId, deviceId, packetId } = parsed.data;
+  const { projectId, skillId, deviceId, packetId, limit } = parsed.data;
 
   if (packetId) {
     await assertPlatformAdmin(c);
-    const events = await listByPacket(packetId);
-    return c.json({ view: 'by-packet', packetId, events, summary: summarizeByEventType(events) });
+    const { events, truncated } = await listByPacket(packetId, limit);
+    return c.json({
+      view: 'by-packet',
+      packetId,
+      events,
+      limit,
+      truncated,
+      summary: await summarizeByEventType(packetId),
+    });
   }
 
   if (!projectId) {
@@ -53,12 +78,21 @@ skillActivityRoutes.get('/', async (c) => {
   if (!access.role) throw forbidden('not a project member');
 
   if (deviceId) {
-    const events = await listByDevice({ projectId, deviceId });
-    return c.json({ view: 'by-device', projectId, deviceId, events });
+    const { events, truncated } = await listByDevice({ projectId, deviceId, limit });
+    return c.json({ view: 'by-device', projectId, deviceId, events, limit, truncated });
   }
 
-  const events = await listBySkill(skillId ? { projectId, skillId } : { projectId });
-  return c.json({ view: 'by-skill', projectId, skillId: skillId ?? null, events });
+  const { events, truncated } = await listBySkill(
+    skillId ? { projectId, skillId, limit } : { projectId, limit },
+  );
+  return c.json({
+    view: 'by-skill',
+    projectId,
+    skillId: skillId ?? null,
+    events,
+    limit,
+    truncated,
+  });
 });
 
 // cm:why the §7 self-check (activity-chain-integrity.ts) had no operational surface before this — only an integration test called it, so a broken chain in production went undetected (ISS-798 fix review).

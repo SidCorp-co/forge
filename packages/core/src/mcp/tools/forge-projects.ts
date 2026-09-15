@@ -4,11 +4,12 @@ import {
   effectiveProjectRole,
   loadOrgRole,
   loadPersonalOrgId,
+  maxProjectRole,
+  orgDerivedProjectRole,
   orgRoleAtLeast,
 } from '../../lib/authz.js';
 import {
   createProject,
-  listProjectsByIds,
   ProjectSlugTakenError,
   readPreviewDeploy,
   readProjectSummary,
@@ -16,7 +17,7 @@ import {
 } from '../../projects/service.js';
 import {
   type ContextScopedMcpToolFactory,
-  loadVisibleProjectIdsForPrincipal,
+  loadVisibleProjectsWithRoleForPrincipal,
   principalUserId,
   zodToMcpSchema,
 } from './lib.js';
@@ -46,18 +47,16 @@ export const forgeProjectsListTool: ContextScopedMcpToolFactory = (ctx) => ({
   handler: async (args) => {
     inputSchema.parse(args);
     const { principal } = ctx;
-    const userId = principalUserId(principal);
 
-    const visibleIds = await loadVisibleProjectIdsForPrincipal(principal);
-    if (visibleIds.length === 0) return { projects: [] };
-
-    const rows = await listProjectsByIds(visibleIds);
-
-    const listed: ListedProject[] = [];
-    for (const r of rows) {
-      const access = await effectiveProjectRole(userId, r.id);
-      listed.push({ ...r, role: access?.role ?? null });
-    }
+    // cm:guard the role is derived from the SAME two columns `effectiveProjectRole` reads, through the SAME expression, and never by a per-row call: this handler ran `effectiveProjectRole` once per project — a third visit to `project_members` and `organization_members` after the visibility join had already selected both — and a visible list of fifty projects cost fifty-two serialised queries (ISS-1025). A future field that needs more than the role belongs in `listVisibleProjectsWithRole`'s projection, not in a loop reinstated here.
+    const rows = await loadVisibleProjectsWithRoleForPrincipal(principal);
+    const listed: ListedProject[] = rows.map((r) => ({
+      id: r.id,
+      slug: r.slug,
+      name: r.name,
+      orgId: r.orgId,
+      role: maxProjectRole(r.memberRole, orgDerivedProjectRole(r.orgRole)),
+    }));
     return { projects: listed };
   },
 });
@@ -181,12 +180,7 @@ const updateInputSchema = z
         workspaceSetup: z.string().trim().max(8000).nullable().optional(),
       })
       .strict()
-      // Zod v4 `.strict()` only rejects unknown keys; it does NOT strip
-      // explicit-undefined values from optional fields. So `{name: undefined}`
-      // would slip past an `Object.keys(o).length > 0` guard (one key) but
-      // the downstream `!== undefined` filter strips every field, leaving an
-      // empty Drizzle SET and producing malformed SQL. Refine on VALUES so
-      // the schema's intent (require at least one real field) matches runtime.
+      // cm:guard refine on VALUES and never on key count: zod v4 `.strict()` rejects unknown keys but does NOT strip an explicit `undefined` from an optional field, so `{name: undefined}` passes an `Object.keys(o).length > 0` guard and then loses every field to the downstream `!== undefined` filter, leaving an empty drizzle SET and malformed SQL.
       .refine((o) => Object.values(o).some((v) => v !== undefined), {
         message: 'patch must have at least one defined field',
       }),
