@@ -290,9 +290,10 @@ conversationRoutes.patch(
     const { title, archived } = c.req.valid('json');
     const userId = c.get('userId');
     await writableConversation(id, userId);
-    // cm:guard both writes run when both fields are sent, and the LAST one's row is what answers:
-    // each returns the row as it stands after its own update, so answering with the rename's row
-    // after archiving would hand the caller a row whose `archivedAt` is the value it just changed.
+    // cm:guard both writes RUN when both fields are sent, rather than the first one winning an
+    // if/else: a body carrying a rename and an archive together is one act to the caller, and an
+    // else-branch here silently drops the archive and answers 200 with the renamed row. Both
+    // writers return the whole of `selection`, so whichever runs last answers completely.
     let updated: ConversationRow | null = null;
     if (title !== undefined) updated = await renameConversation(id, title);
     if (archived !== undefined) updated = await setConversationArchived(id, archived);
