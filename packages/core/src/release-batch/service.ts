@@ -1,6 +1,12 @@
 // create: opens a system run, atomically claims N gate-status issues, moves each
 // to `releasing`, enqueues one release_batch job. finish: closes every claimed
-// issue. abort: cancels the run and every job under it and closes no issue.
+// issue and completes the run. abort: cancels the run and every job under it
+// and closes no issue.
+//
+// Both outcomes take the run terminal, and by different outcomes: `completed`
+// for a finish, `cancelled` for an abort. That is what stops
+// `getActiveReleaseBatch` answering a batch whose work is over, and what
+// keeps a finish from reading like an abort.
 //
 // finish and abort are the only writers that leave `releasing`. Both hand the
 // claim release to `releasing-recovery.ts`, which is also what a batch that
@@ -420,6 +426,9 @@ export async function finishReleaseBatch(
     actorUserId: actor.type === 'user' ? actor.id : undefined,
     comment: true,
   });
+
+  // cm:guard `completed` and never `failed`, INCLUDING when `failed` is non-empty. `getActiveReleaseBatch` reads `running|paused`, so a finish that left the run non-terminal answered its own runId forever and refused the next cut 409 BATCH_IN_FLIGHT until a person aborted a batch that had already shipped (ISS-1032; SidPeak held 4h19m on 2026-09-15). `cancelled` would collapse finish into abort, and either non-success outcome makes the cascade cancel the still-active `release_batch` job — the job whose own session is what CALLED this — with `failureKind: 'infra'` and a kill broadcast at it, which is ISS-352's false-failed badge over a release that did land. A partial finish is accounted for in `failed[]` and in each stranded issue's `reopen` and comment above, not in the run's status.
+  await closeRunIfOneShot(runId, 'completed');
 
   return { closed, failed };
 }
