@@ -23,6 +23,8 @@
  * budget the fixture next door was extracted for.
  */
 
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -185,6 +187,54 @@ describe('release batch finish takes its run terminal', () => {
     expect(await runStatus(runId)).toBe('completed');
   });
 
+  // cm:guard the retry must not PROBE again, and that is a different claim from the close being
+  // idempotent. The probes read the world now, not at the moment of the release: a site restarting,
+  // a cache, or a later deploy all make a second read fail over a release that demonstrably landed,
+  // and the caller would be handed RELEASE_NOT_VERIFIED about a batch that already closed its
+  // roster. Every other case in this file configures no probes, so none of them reaches this path.
+  it('raises nothing on a re-finish whose probes have stopped confirming', async () => {
+    const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
+    let serving = 'commit-before-the-release';
+    const probe: Server = createServer((_req, res) => res.end(serving));
+    await new Promise<void>((done) => probe.listen(0, '127.0.0.1', done));
+    const { port } = probe.address() as AddressInfo;
+    // cm:guard merged into the binding `beforeEach` already wrote, never a second
+    // `declareProduction()`: the binding is unique per (project, provider, environment, label), and
+    // a `||` keeps `releaseRunnerLabel` rather than clobbering the sibling key this project needs
+    // to resolve its release pool at all.
+    // cm:why `stableReads: 1` so one read confirms: the default is two, five seconds apart, and the
+    // case is about the SECOND call's probing rather than about the poll loop's patience.
+    await harness.db.execute(sql`
+      UPDATE integration_bindings
+      SET config = config || ${JSON.stringify({
+        verify: {
+          probes: [{ url: `http://127.0.0.1:${port}/version` }],
+          timeoutSeconds: 20,
+          stableReads: 1,
+        },
+      })}::jsonb
+      WHERE project_id = ${projectId} AND provider = 'coolify' AND environment = 'prod'
+    `);
+    const a = await insertIssue();
+    const { runId, jobId } = await claim([a]);
+    serving = 'commit-the-release-pushed';
+
+    const first = await finishReleaseBatch(runId, actor(), { commit: serving });
+    expect(first.closed).toEqual([a]);
+    await new Promise<void>((done) => probe.close(() => done()));
+
+    const second = await finishReleaseBatch(runId, actor(), { commit: serving }).catch(
+      (e: unknown) => e,
+    );
+
+    expect(second).toEqual({ closed: [], failed: [] });
+    expect({
+      run: await runStatus(runId),
+      issue: (await stored(a)).status,
+      job: await storedJob(jobId),
+    }).toEqual({ run: 'completed', issue: 'closed', job: { status: 'done', exitCode: 0 } });
+  }, 60_000);
+
   it('raises nothing when `finish` is called a second time', async () => {
     const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
     const a = await insertIssue();
@@ -194,6 +244,30 @@ describe('release batch finish takes its run terminal', () => {
     const second = await finishReleaseBatch(runId, actor()).catch((e: unknown) => e);
 
     expect(second).toEqual({ closed: [], failed: [] });
+  });
+
+  // cm:guard a run at `completed` is NOT on its own proof this function ran: `reapConcludedRuns`
+  // closes a `running` run `completed` once its last job is `done` and an hour has gone quiet, so a
+  // batch whose release job ended before anyone called `finish` sits at exactly that status with
+  // every issue still claimed. A re-finish shortcut keyed on the status alone answers that call
+  // with a silent empty success and strands the whole roster at `releasing` with the claim column —
+  // the only index onto those rows — never cleared. This case is the one that separates the two
+  // guards; the status is written here directly because reaching it through the reaper would need
+  // an hour of quiet and a dispatched job, and what is under test is `finish`'s reading of the
+  // status rather than the reaper's writing of it.
+  it('still closes a roster whose run went `completed` without a finish', async () => {
+    const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
+    const a = await insertIssue();
+    const { runId } = await claim([a]);
+    await harness.db.execute(sql`
+      UPDATE pipeline_runs SET status = 'completed' WHERE id = ${runId}
+    `);
+
+    const result = await finishReleaseBatch(runId, actor());
+
+    expect(result).toEqual({ closed: [a], failed: [] });
+    expect((await stored(a)).status).toBe('closed');
+    expect((await stored(a)).claim).toBeNull();
   });
 
   // cm:guard the second call must move NOTHING, and the run is the field that could move: `closeRunIfOneShot` matches only `running|paused`, so a re-finish that re-opened or re-closed the run would show here as a status other than the one the first call left.
