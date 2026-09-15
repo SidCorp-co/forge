@@ -9,10 +9,16 @@ import { and, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db as defaultDb } from '../db/client.js';
 import { organizationMembers, projectMembers, projects, users } from '../db/schema.js';
-import { conversationParticipants, conversations } from '../db/schema-conversations.js';
+import {
+  type ConversationAdapter,
+  conversationParticipants,
+  conversations,
+} from '../db/schema-conversations.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
-import type { Executor } from './db-executor.js';
+import type { Executor, TxOnly } from './db-executor.js';
 import { existingProjectHandle, handleNameForProject } from './handles.js';
+import { conversationTransport } from './ports.js';
+import { appendMessagesIn } from './store.js';
 
 const badRequest = (message: string, code: string) =>
   new HTTPException(400, { message, cause: { code } });
@@ -73,26 +79,101 @@ export function shapeForHandleCount(liveHandles: number): 'direct' | 'group' {
   return liveHandles > 1 ? 'group' : 'direct';
 }
 
-/**
- * Move a room's shape to match the handles now in it — upward only.
- */
-// cm:guard PROMOTION only, and the asymmetry is deliberate rather than an omission. Promoting is a widening the caller was shown and confirmed. Demoting is not its mirror: `conversation-access.ts:assertInTheRoom` fences a `direct` room to its live people, and a group room may record none of its people at all, so narrowing one back would hand nobody a room everybody could read a moment ago. A room that has been about several projects stays a shared room (ISS-1011).
-export async function settleShape(tx: Executor, conversationId: string): Promise<void> {
-  const live = await tx
-    .select({ id: conversationParticipants.id })
+/** What just changed in the room, for the line the room is told. */
+export interface MembershipChange {
+  kind: 'person' | 'handle';
+  /** How the room names them: a handle as `@name`, a person by their address. */
+  label: string;
+  verb: 'joined' | 'left';
+}
+
+/** How many of each kind are live in the room. */
+async function liveCounts(
+  tx: Executor,
+  conversationId: string,
+): Promise<{ handles: number; persons: number }> {
+  const rows = await tx
+    .select({ kind: conversationParticipants.kind })
     .from(conversationParticipants)
     .where(
       and(
         eq(conversationParticipants.conversationId, conversationId),
-        eq(conversationParticipants.kind, 'handle'),
         isNull(conversationParticipants.removedAt),
       ),
     );
-  if (shapeForHandleCount(live.length) !== 'group') return;
+  return {
+    handles: rows.filter((r) => r.kind === 'handle').length,
+    persons: rows.filter((r) => r.kind === 'person').length,
+  };
+}
+
+/**
+ * The shape a room takes from who is in it.
+ */
+// cm:guard `group` iff more than one handle OR more than one person, and the person half is what ISS-1034 added to ISS-1011's handle count: one person and one bot is a direct chat whoever is addressed, and a second person makes it a room. `null` for a room that records no persons — a channel adapter's room, whose membership is its channel's — because a count of zero people says nothing about how many are there (ISS-1034 criteria 41, 43, 45).
+export function shapeForCounts(counts: {
+  handles: number;
+  persons: number;
+}): 'direct' | 'group' | null {
+  if (counts.persons === 0) return null;
+  return counts.handles > 1 || counts.persons > 1 ? 'group' : 'direct';
+}
+
+/** Whether this adapter's rooms may change shape; an adapter nobody registered holds its shape. */
+function shapeFollows(adapter: ConversationAdapter): boolean {
+  return conversationTransport(adapter)?.shapeFollowsMembership === true;
+}
+
+/**
+ * Move a room's shape to match who is now in it.
+ */
+// cm:guard BOTH ways for a room whose transport says its shape follows its members and PROMOTION ONLY for a channel adapter's: a channel room's shape is settled when its venue is first seen and `assertVenueMatches` refuses a message arriving under another, so demoting one here would make the next message a conflict the room itself caused (ISS-987, ISS-1034 criterion 46). A Forge room reads its shape off the row on every request and can move.
+// cm:guard the flip and the `system` row are written TOGETHER, and the row is written only when the caller says what changed: a reader who opens the thread and finds the room a group with nobody having said why has a transcript that lies by omission, while a room opened already holding two people has nothing to explain (ISS-1034 criteria 42, 43).
+export async function settleShape(
+  tx: Executor,
+  conversationId: string,
+  change?: MembershipChange,
+): Promise<'direct' | 'group' | null> {
+  const [room] = await tx
+    .select({ adapter: conversations.adapter, shape: conversations.shape })
+    .from(conversations)
+    .where(eq(conversations.id, conversationId))
+    .limit(1);
+  if (!room) return null;
+  const counts = await liveCounts(tx, conversationId);
+  const movable = shapeFollows(room.adapter);
+  const target = movable ? shapeForCounts(counts) : shapeForHandleCount(counts.handles);
+  if (target === null || target === room.shape) return null;
+  if (!movable && target !== 'group') return null;
   await tx
     .update(conversations)
-    .set({ shape: 'group' })
-    .where(and(eq(conversations.id, conversationId), eq(conversations.shape, 'direct')));
+    .set({ shape: target })
+    .where(and(eq(conversations.id, conversationId), eq(conversations.shape, room.shape)));
+  if (change) {
+    const who = change.kind === 'handle' ? `@${change.label}` : change.label;
+    const now = target === 'group' ? 'a group' : 'a one-to-one chat';
+    await appendMessagesIn(tx as unknown as TxOnly, {
+      conversationId,
+      messages: [
+        {
+          role: 'system',
+          content: `${who} ${change.verb}; this room is now ${now}.`,
+          authorLabel: 'system',
+        },
+      ],
+    });
+  }
+  return target;
+}
+
+/** How a room names a person: their address, never their display name. */
+export async function personLabel(tx: Executor, userId: string): Promise<string> {
+  const [row] = await tx
+    .select({ email: users.email })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  return row?.email ?? userId;
 }
 
 /**

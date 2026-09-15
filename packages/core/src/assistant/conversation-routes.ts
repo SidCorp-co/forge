@@ -232,13 +232,14 @@ conversationRoutes.post(
           tx,
         });
       }
-      await settleShape(tx, room.id);
       // cm:guard the people are checked against the scope the room ENDED UP with, read back from the rows rather than projected from the request: the projection cannot know that a named agent was already the room's own, and a colleague refused on a project the room does not actually hold is a refusal about nothing.
       const scope = await derivedScope(room.id, tx);
       for (const person of people) {
         await assertPersonReachesScope(person, scope, tx);
         await addPerson({ conversationId: room.id, userId: person, actorUserId: userId, tx });
       }
+      // cm:guard settled AFTER the people as well as the handles, and with no change named: a room opened already holding two people is a group from its first row and owes its readers no line about why (ISS-1034 criteria 41, 42).
+      await settleShape(tx, room.id);
       const settled = await getConversation(room.id, tx);
       return settled ?? room;
     });
