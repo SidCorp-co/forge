@@ -80,14 +80,14 @@ describe("a refusal sends the screen back to the server", () => {
     listForIssue.mockResolvedValue({ questions: [aQuestion(2)] });
     const view = renderHook(() => useIssueQuestions("i-1"), { wrapper });
     await waitFor(() => expect(view.result.current.data).toBeDefined());
-    expect(view.result.current.data?.questions[0]?.steps[0]?.round).toBe(1);
+    expect(view.result.current.data?.questions[0]?.steps?.[0]?.round).toBe(1);
 
     answer.mockRejectedValueOnce(new Error("the round you were shown has been superseded"));
     const mutation = renderHook(() => useAnswerQuestion("i-1"), { wrapper });
     mutation.result.current.mutate({ questionId: "q-1", optionId: "o-1", round: 1 });
 
     await waitFor(() =>
-      expect(view.result.current.data?.questions[0]?.steps[0]?.round).toBe(2),
+      expect(view.result.current.data?.questions[0]?.steps?.[0]?.round).toBe(2),
     );
     expect(toast).toHaveBeenCalledWith(
       expect.objectContaining({ tone: "error", description: expect.stringMatching(/superseded/) }),

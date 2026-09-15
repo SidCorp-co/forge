@@ -133,6 +133,24 @@ describe('driver comparison E2E', () => {
     });
   });
 
+  // cm:guard the four percentiles and the born-under count come back from ONE `wait_stats` pass grouped by `(project_id, driver)` since ISS-1022, read out with `MAX(...)`, and the two null rules they carry are OPPOSITE: a percentile over no rows is NULL because there is no wait to report, while the born-under count over no rows is 0 because none were born. Swapping them makes a driver that started nothing look either instant or unused.
+  // cm:guard the born-under 0 is held in TWO places — `COALESCE(MAX(...), 0)` in the SQL and `Number(...)` in the mapping, which turns NULL into 0 as well — so removing either alone leaves this case green. The SQL coalesce is the one that states the rule; the mapping is incidental, and this comment is the only thing that says so.
+  it('reports null percentiles and a zero born-under count for a driver with no wait rows', async () => {
+    await closedIssue({
+      status: 'dropped',
+      filedMinutesAgo: 300,
+      startedMinutesAgo: null,
+      jobWithoutStart: true,
+    });
+
+    const r = await row();
+    expect(r.medianRequestToRunningSeconds).toBeNull();
+    expect(r.p95RequestToRunningSeconds).toBeNull();
+    expect(r.medianDriverWaitSeconds).toBeNull();
+    expect(r.p95DriverWaitSeconds).toBeNull();
+    expect(r.issuesBornUnderDriver).toBe(0);
+  });
+
   it('measures request to running from filing to the first session start', async () => {
     await closedIssue({ filedMinutesAgo: 120, startedMinutesAgo: 110 });
 

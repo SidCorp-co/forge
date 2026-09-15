@@ -28,6 +28,12 @@ import { type QuestionRefusalCode, QuestionRefused, voidQuestion } from './write
 
 const uuid = z.uuid();
 
+// cm:guard the page is named by a CURSOR and not by an offset, and `cursor` is the opaque `<created_at>|<id>` the previous page's `nextCursor` carried: an offset over a queue that is being answered starts past a row that shifted backward when an earlier one closed, which skips an open decision while `hasMore` still reads complete (ISS-1022).
+const pageSchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).optional().default(50),
+  cursor: z.string().min(3).max(200).optional(),
+});
+
 const askSchema = z
   .object({
     issueId: uuid,
@@ -126,6 +132,7 @@ export const questionRoutes = new Hono<{ Variables: AuthVars }>();
 questionRoutes.use('/', requireAuth(), assertEmailVerified());
 questionRoutes.use('*', requireAuth(), assertEmailVerified());
 
+// cm:guard the project arm is PAGED and the issue arm is not, and the asymmetry is deliberate: an issue's questions are a thread a person reads whole, a project's are a queue that grew unbounded and was returning every row with its full `steps` history. The default limit is what an unchanged caller now gets; `total` tells it how many are waiting, and `nextCursor` is how it reaches them (ISS-1022).
 // cm:guard the uuid is checked BEFORE either query reaches postgres: `issue_id` and `project_id` are uuid columns and a malformed literal raises 22P02, which leaves the handler as a 500 — a caller's typo must not read as a server fault.
 questionRoutes.get('/', async (c) => {
   const issueId = c.req.query('issueId');
@@ -140,13 +147,19 @@ questionRoutes.get('/', async (c) => {
   }
   if (projectId) {
     if (!uuid.safeParse(projectId).success) throw badRequest('projectId must be a uuid');
+    const page = pageSchema.safeParse({
+      limit: c.req.query('limit'),
+      cursor: c.req.query('cursor'),
+    });
+    if (!page.success) throw badRequest(z.prettifyError(page.error));
     const open = await projectQuestionsFor(
       projectId,
       c.get('userId'),
       status as (typeof questionStatuses)[number] | undefined,
+      page.data,
     );
     if (!open) throw notFound();
-    return c.json({ questions: open });
+    return c.json(open);
   }
   if (!uuid.safeParse(issueId).success) throw badRequest('issueId must be a uuid');
   const seen = await readQuestionsForIssue(issueId as string, c.get('userId'));

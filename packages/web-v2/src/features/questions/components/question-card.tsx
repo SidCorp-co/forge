@@ -22,11 +22,14 @@ import {
 import {
   type AgentQuestion,
   type AnswerInput,
+  currentRoundOf,
+  earlierRoundsOf,
   isChoiceStep,
   type OptionAuthority,
   type OptionBinding,
   type OptionExecutor,
   type QuestionStep,
+  roundCountOf,
   type VisibleOption,
 } from "../types";
 
@@ -211,7 +214,7 @@ function answeredWith(last: QuestionStep | undefined): string {
 }
 
 export function outcomeOf(question: AgentQuestion): string | null {
-  const last = question.steps[question.steps.length - 1];
+  const last = currentRoundOf(question);
   if (question.status === "answered") {
     return `Answered — ${answeredWith(last)}`;
   }
@@ -251,10 +254,12 @@ export function QuestionCard({
   context,
   highlighted,
 }: QuestionCardProps) {
-  const current = question.steps[question.steps.length - 1];
+  const current = currentRoundOf(question);
   const answerable = isAnswerable(question);
   const outcome = outcomeOf(question);
-  const earlier = question.steps.slice(0, -1);
+  const earlier = earlierRoundsOf(question);
+  // cm:guard the project queue sends only the live round, so the rounds before it are COUNTED here and not rendered: saying nothing would read as a decision asked once, and inventing rows for them would put words on screen nobody wrote (ISS-1022). The issue panel sends the history and renders it below.
+  const hidden = earlier.length === 0 ? roundCountOf(question) - 1 : 0;
   // cm:guard the marked option is the first ANSWERABLE one, never index zero: it is the target the project queue moves focus to after an answer, and a locked button takes focus nowhere. Where every option is locked there is no button to mark and the title below is the only destination (ISS-998).
   const firstEnabledId = answerable ? (question.options.find((o) => !o.locked)?.id ?? null) : null;
   // cm:guard the title below carries `data-question-title` and `tabIndex={-1}` so a card reached by a link, or one whose every option is server-locked, has a focus destination that is not the document body; -1 keeps it out of the tab order, where a heading stop would be a dead press on every screen (ISS-998).
@@ -283,6 +288,17 @@ export function QuestionCard({
               <RoundHistory key={step.round} step={step} />
             ))}
           </div>
+        )}
+        {hidden > 0 && (
+          // cm:guard the way to the history is named only where there IS one: a question carrying `issueId: null` is what a master asks, it is the shape this queue exists for, and telling its reader to open the issue sends them to a screen that does not exist (ISS-1022).
+          <p className="fg-caption text-subtle">
+            {hidden === 1 ? "1 earlier round" : `${hidden} earlier rounds`}
+            {question.issueId
+              ? hidden === 1
+                ? " — open the issue to read it"
+                : " — open the issue to read them"
+              : ", not shown in this queue"}
+          </p>
         )}
 
         {current && (

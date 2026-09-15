@@ -655,6 +655,8 @@ export const pipelineRuns = pgTable(
     projectStatusIdx: index('pipeline_runs_project_status_idx').on(t.projectId, t.status),
     issueIdx: index('pipeline_runs_issue_idx').on(t.issueId),
     projectStartedAtIdx: index('pipeline_runs_started_at_idx').on(t.projectId, t.startedAt),
+    // cm:guard ISS-1022 — named for the column it actually leads with, unlike its sibling above, whose name says `started_at` while its leading column is `project_id`. The cross-tenant readers (`/admin/overview`'s active-workspace count, `/admin/adoption`, `/admin/workspaces`) constrain `started_at` and nothing else.
+    startedAtIdx: index('pipeline_runs_started_at_only_idx').on(t.startedAt),
     // cm:guard at most one open issue-run per issue, mirroring the partial unique index in migration 0054 — `openIssueRun` relies on it for INSERT ... ON CONFLICT DO NOTHING, so widening the predicate here turns that conflict-free insert into a second live run for one issue
     issueOpenUq: uniqueIndex('pipeline_runs_issue_open_uq')
       .on(t.issueId)
@@ -1190,6 +1192,8 @@ export const comments = pgTable(
     // cm:guard the CHECK is the backstop, not a duplicate of the TS enum: `text(..., { enum })` is a compile-time type only and emits no constraint, so the ~17 kernel paths that `db.insert(comments)` without going through `prepareBody` have nothing else stopping an unrenderable format. Same reason `issues_complexity_chk` exists.
     formatChk: check('comments_format_chk', sql`${t.format} IN ('markdown', 'html')`),
     issueIdx: index('comments_issue_id_idx').on(t.issueId),
+    // cm:guard ISS-1022 — the thread page reads one issue's comments in `(created_at, id)` order and pages on that exact pair (`comments/service.ts`); on `issue_id` alone the planner had to sort every comment of the issue before it could take a page.
+    issueCreatedIdx: index('comments_issue_created_idx').on(t.issueId, t.createdAt, t.id),
     parentIdx: index('comments_parent_id_idx').on(t.parentId),
     parentFk: foreignKey({
       columns: [t.parentId],
@@ -1916,18 +1920,15 @@ export const usageRecords = pgTable(
     requestCount: integer('request_count').notNull().default(1),
     sessionId: text('session_id'),
     projectName: text('project_name'),
-    // ISS-439 — the job whose stored job_events this row was materialized from
-    // (CLI-runner path). Bare uuid (no FK, mirroring jobs.agent_session_id) so
-    // job retention/archival can't cascade-delete cost history. The partial
-    // unique index below makes it the idempotency key: a job's usage row is
-    // inserted ON CONFLICT DO NOTHING, so retries / sweeper-reaped terminals /
-    // re-running the backfill can never double-count.
+    // cm:guard the partial unique index below makes this column the idempotency key: a job's usage row is inserted ON CONFLICT DO NOTHING, so a retry, a sweeper-reaped terminal or a re-run of the backfill can never double-count. Bare uuid, no FK (mirroring `jobs.agent_session_id`), so job retention cannot cascade-delete cost history (ISS-439).
     jobId: uuid('job_id'),
     recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     projectRecordedIdx: index('usage_records_project_recorded_idx').on(t.projectId, t.recordedAt),
+    // cm:guard ISS-1022 — the admin spend readers (`admin/aggregate-routes.ts`, `admin/metric-series.ts`, `admin/alert-queries.ts` A4) are cross-tenant and constrain `recorded_at` alone, which leaves the composite above with an unbound leading column: Postgres then scans the whole of it (cost 1,010 on beta, 2026-09-15) instead of a range. A4 runs on the 5-minute sweeper as well as the GET.
+    recordedAtIdx: index('usage_records_recorded_at_idx').on(t.recordedAt),
     sessionIdIdx: index('usage_records_session_id_idx').on(t.sessionId),
     jobIdUq: uniqueIndex('usage_records_job_id_key').on(t.jobId).where(sql`job_id IS NOT NULL`),
   }),
@@ -2035,6 +2036,8 @@ export const notifications = pgTable(
       t.read,
       t.createdAt,
     ),
+    // cm:guard ISS-1022 — NOT a narrowing of `notifications_user_read_created_idx` above: `read` sits between the two columns the unfiltered bell list uses, so that index answers the `user_id` lookup and then leaves the `ORDER BY created_at DESC` to a sort. This one serves the list route's default (every notification of one user, newest first) and `read` stays for the unread-only arm.
+    userCreatedIdx: index('notifications_user_created_idx').on(t.userId, t.createdAt),
     projectCreatedIdx: index('notifications_project_created_idx').on(t.projectId, t.createdAt),
     // ISS-510 — resolver lookup: unread rows for a given resolution key.
     resolutionKeyIdx: index('notifications_resolution_key_read_idx').on(t.resolutionKey, t.read),

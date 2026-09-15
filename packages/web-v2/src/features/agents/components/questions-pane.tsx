@@ -15,6 +15,7 @@ import { QuestionCard } from "@/features/questions/components/question-card";
 import {
   useAnsweringQuestions,
   useAnswerProjectQuestion,
+  useLinkedQuestion,
   useProjectQuestions,
 } from "@/features/questions/hooks";
 import type { AgentQuestion, AnswerInput } from "@/features/questions/types";
@@ -44,7 +45,8 @@ function IssueContext({ question }: { question: AgentQuestion }) {
 }
 
 export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
-  const { data, isLoading, isError, error, refetch } = useProjectQuestions(scope.projectId);
+  const { data, isLoading, isError, error, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } =
+    useProjectQuestions(scope.projectId);
   const mutation = useAnswerProjectQuestion(scope.projectId);
   const { answering, answer } = useAnsweringQuestions(mutation.mutateAsync);
   const router = useRouter();
@@ -53,6 +55,14 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
 
   const questions = data?.questions ?? [];
   const focusPresent = !!focusQuestionId && questions.some((q) => q.id === focusQuestionId);
+  // cm:guard a link naming a question on a LATER page must walk to it before the pane says it is gone: the queue is paged since ISS-1022, and "no longer open" rendered against page one tells a reader to stop looking at a decision that is open, on page two, and still parked on them. So the pages are drained while the named question is missing, and the line below waits for `hasNextPage` to be false.
+  useEffect(() => {
+    if (!focusQuestionId || focusPresent || !hasNextPage || isFetchingNextPage) return;
+    void fetchNextPage();
+  }, [focusQuestionId, focusPresent, hasNextPage, isFetchingNextPage, fetchNextPage]);
+  // cm:guard and when the walk runs out, the conclusion is CHECKED rather than inferred: a question answered between two fetches leaves the queue while the walk is still in it, so a question missing from every page read is not evidence that it closed. This asks for it by id, and only core's own answer about that row — a 404, or a status that is not open — earns the line below; a lookup that merely failed earns the other one.
+  const linked = useLinkedQuestion(focusQuestionId ?? undefined, !!focusQuestionId && !focusPresent && !hasNextPage);
+  const walkedOut = !!focusQuestionId && !focusPresent && !hasNextPage;
   const questionsRef = useRef<AgentQuestion[]>(questions);
   questionsRef.current = questions;
 
@@ -144,7 +154,23 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
           context={<IssueContext question={question} />}
         />
       ))}
-      {focusQuestionId && !questions.some((q) => q.id === focusQuestionId) && (
+      {hasNextPage && (
+        // cm:guard the queue is PAGED since ISS-1022 and what is not on screen is said and reachable: reporting nothing would show the first page as if it were every open decision, which is the truncation-as-truth defect the pulse cap was fixed for in the same change. `total` is the uncapped count, so the line stays true whatever the page size is.
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            className="underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+            onClick={() => void fetchNextPage()}
+            disabled={isFetchingNextPage}
+          >
+            {isFetchingNextPage ? "Loading…" : "Load the rest"}
+          </button>
+          <span className="fg-caption text-muted">
+            {questions.length} of {data?.total ?? questions.length} open decisions
+          </span>
+        </div>
+      )}
+      {walkedOut && linked.gone && (
         // cm:guard a link that arrives naming a question no longer open says SO, rather than dropping the reader into a list they cannot tell apart: the run that sent them here is still parked, and silence would read as "the question was here somewhere".
         <p className="fg-caption text-muted">
           The decision that run named is no longer open.{" "}
@@ -154,6 +180,19 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
             onClick={() => router.refresh()}
           >
             Refresh
+          </button>
+        </p>
+      )}
+      {walkedOut && linked.unreachable && (
+        // cm:guard a lookup that FAILED is said as a failure and never as an answer: the line above is a claim about the decision, and rendering it on a 500 or a dropped connection tells a reader to stop looking at a question that may be open and parked on them. The way out is a retry of the lookup, not a page refresh (ISS-1022).
+        <p className="fg-caption text-muted">
+          That decision could not be looked up.{" "}
+          <button
+            type="button"
+            className="underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+            onClick={() => void linked.refetch()}
+          >
+            Try again
           </button>
         </p>
       )}

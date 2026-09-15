@@ -104,11 +104,38 @@ export async function driverComparison(args: {
       JOIN first_run fr ON fr.issue_id = sc.id
       LEFT JOIN driver_start ds ON ds.project_id = sc.project_id
       WHERE fr.started_at IS NOT NULL AND fr.started_at >= sc.created_at
+    -- cm:guard ISS-1022 - one grouped pass, not five correlated subqueries per output
+    -- group. MAX is not an aggregate over several values here: the LEFT JOIN below is on
+    -- exactly this CTE's grouping key, so each output group sees at most one row of it and
+    -- MAX is what carries a single value through the outer GROUP BY. That is why the four
+    -- percentiles stay NULL for a pair with no waits rows - MAX of nothing is NULL, which
+    -- is what the correlated subqueries answered - while the count is COALESCEd to 0,
+    -- because count(*) over an empty correlated set answered 0 and not NULL. Coalescing
+    -- the percentiles too would report a perfect zero wait for a driver that never ran.
+    ), wait_stats AS (
+      SELECT w.project_id, w.driver,
+             percentile_disc(0.5) WITHIN GROUP (ORDER BY w.wait_seconds)         AS median_request_to_running,
+             percentile_disc(0.95) WITHIN GROUP (ORDER BY w.wait_seconds)        AS p95_request_to_running,
+             percentile_disc(0.5) WITHIN GROUP (ORDER BY w.driver_wait_seconds)  AS median_driver_wait,
+             percentile_disc(0.95) WITHIN GROUP (ORDER BY w.driver_wait_seconds) AS p95_driver_wait,
+             count(*) FILTER (WHERE w.born_under_driver)::int                    AS issues_born_under_driver
+      FROM waits w
+      GROUP BY w.project_id, w.driver
     ), touches AS (
       SELECT sc.project_id, d.driver, count(*)::int AS n
       FROM issue_intervention_events e
       JOIN scope sc ON sc.id = e.issue_id
       JOIN driver d ON d.id = sc.id
+      -- cm:guard the predicate is the PROJECT and deliberately not occurred_at, against
+      -- this issue's own wording (ISS-1022, decision on the record): the guards above scope
+      -- both metrics to the issues that CLOSED in the window and never to the window's
+      -- events, so a time bound here would drop an intervention that happened before the
+      -- window on an issue that closed inside it - under-counting whichever driver held the
+      -- long-running work, which is the direction this measurement must never be wrong in.
+      -- The project predicate is redundant with the join to scope and is not there for
+      -- correctness: it is what stops the planner materialising the whole three-arm
+      -- intervention view before the join can discard it.
+      WHERE e.project_id IN ${args.projectIds}
       GROUP BY sc.project_id, d.driver
     )
     SELECT
@@ -117,24 +144,15 @@ export async function driverComparison(args: {
       count(*) FILTER (WHERE sc.status = 'closed')::int                 AS issues_closed,
       count(*) FILTER (WHERE sc.status = 'dropped')::int                AS issues_dropped,
       COALESCE(MAX(t.n), 0)                                             AS interventions,
-      (SELECT percentile_disc(0.5) WITHIN GROUP (ORDER BY w.wait_seconds)
-         FROM waits w
-         WHERE w.project_id = sc.project_id AND w.driver = d.driver)    AS median_request_to_running,
-      (SELECT percentile_disc(0.95) WITHIN GROUP (ORDER BY w.wait_seconds)
-         FROM waits w
-         WHERE w.project_id = sc.project_id AND w.driver = d.driver)    AS p95_request_to_running,
-      (SELECT percentile_disc(0.5) WITHIN GROUP (ORDER BY w.driver_wait_seconds)
-         FROM waits w
-         WHERE w.project_id = sc.project_id AND w.driver = d.driver)    AS median_driver_wait,
-      (SELECT percentile_disc(0.95) WITHIN GROUP (ORDER BY w.driver_wait_seconds)
-         FROM waits w
-         WHERE w.project_id = sc.project_id AND w.driver = d.driver)    AS p95_driver_wait,
-      (SELECT count(*)::int FROM waits w
-         WHERE w.project_id = sc.project_id AND w.driver = d.driver
-           AND w.born_under_driver)                                     AS issues_born_under_driver
+      MAX(ws.median_request_to_running)                                 AS median_request_to_running,
+      MAX(ws.p95_request_to_running)                                    AS p95_request_to_running,
+      MAX(ws.median_driver_wait)                                        AS median_driver_wait,
+      MAX(ws.p95_driver_wait)                                           AS p95_driver_wait,
+      COALESCE(MAX(ws.issues_born_under_driver), 0)                     AS issues_born_under_driver
     FROM scope sc
     JOIN driver d ON d.id = sc.id
     LEFT JOIN touches t ON t.project_id = sc.project_id AND t.driver = d.driver
+    LEFT JOIN wait_stats ws ON ws.project_id = sc.project_id AND ws.driver = d.driver
     GROUP BY sc.project_id, d.driver
     ORDER BY sc.project_id, d.driver
   `);
