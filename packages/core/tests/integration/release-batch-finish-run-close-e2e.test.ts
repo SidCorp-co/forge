@@ -21,6 +21,14 @@
  * file's cases are about the CLAIMS a finish releases, these are about the RUN
  * it closes, and its outer `describe` is already near the function-length
  * budget the fixture next door was extracted for.
+ *
+ * Two `describe`s over one, and the setup hoisted to file scope between them:
+ * the first group is what a FIRST finish leaves behind, the second is what a
+ * SECOND finish on the same run answers, which is a different question about
+ * the same function. One `describe` around both measured 157 lines against the
+ * 150-line function budget `check-size-budget.mjs` freezes, and biome counts a
+ * nested `describe` against its parent, so nesting them would not have paid.
+ * The hooks stay single: one `setupTestDatabase` serves the whole file.
  */
 
 import { createServer, type Server } from 'node:http';
@@ -36,41 +44,41 @@ import {
 } from '../helpers/index.js';
 import { releaseBatchFixture } from '../helpers/release-batch-fixture.js';
 
+let harness: TestDatabase;
+let projectId: string;
+let ownerId: string;
+
+beforeAll(async () => {
+  harness = await setupTestDatabase();
+  process.env.DATABASE_URL = harness.url;
+  process.env.NODE_ENV ??= 'test';
+  process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
+  process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
+}, 60_000);
+
+afterAll(async () => {
+  if (harness) await harness.cleanup();
+});
+
+const fx = releaseBatchFixture(
+  () => harness,
+  () => ({ projectId, ownerId }),
+);
+const { declareProduction, seedReleaseRunner, insertIssue, stored } = fx;
+const { runStatus, storedJob, claim } = fx;
+
+const actor = () => ({ type: 'user', id: ownerId }) as const;
+
+beforeEach(async () => {
+  await truncateAll(harness.db);
+  const owner = await createTestUser(harness.db);
+  ownerId = owner.id;
+  projectId = (await createTestProject(harness.db, owner.id)).id;
+  await declareProduction();
+  await seedReleaseRunner();
+});
+
 describe('release batch finish takes its run terminal', () => {
-  let harness: TestDatabase;
-  let projectId: string;
-  let ownerId: string;
-
-  beforeAll(async () => {
-    harness = await setupTestDatabase();
-    process.env.DATABASE_URL = harness.url;
-    process.env.NODE_ENV ??= 'test';
-    process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
-    process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
-  }, 60_000);
-
-  afterAll(async () => {
-    if (harness) await harness.cleanup();
-  });
-
-  const fx = releaseBatchFixture(
-    () => harness,
-    () => ({ projectId, ownerId }),
-  );
-  const { declareProduction, seedReleaseRunner, insertIssue, stored } = fx;
-  const { runStatus, storedJob, claim } = fx;
-
-  const actor = () => ({ type: 'user', id: ownerId }) as const;
-
-  beforeEach(async () => {
-    await truncateAll(harness.db);
-    const owner = await createTestUser(harness.db);
-    ownerId = owner.id;
-    projectId = (await createTestProject(harness.db, owner.id)).id;
-    await declareProduction();
-    await seedReleaseRunner();
-  });
-
   it('leaves the run at `completed` in the call that closes the claimed issues', async () => {
     const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
     const a = await insertIssue();
@@ -186,7 +194,9 @@ describe('release batch finish takes its run terminal', () => {
     expect(result.failed.map((f) => f.id)).toEqual([a]);
     expect(await runStatus(runId)).toBe('completed');
   });
+});
 
+describe('a finish already run answers from the record', () => {
   // cm:guard the retry must not PROBE again, and that is a different claim from the close being
   // idempotent. The probes read the world now, not at the moment of the release: a site restarting,
   // a cache, or a later deploy all make a second read fail over a release that demonstrably landed,
