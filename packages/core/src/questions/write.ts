@@ -68,6 +68,7 @@ export const questionRefusalCodes = [
   'QUESTION_SHAPE_INVALID',
   'QUESTION_ANSWER_WRONG_SHAPE',
   'QUESTION_MESSAGE_REFUSED',
+  'QUESTION_CURSOR_INVALID',
 ] as const;
 export type QuestionRefusalCode = (typeof questionRefusalCodes)[number];
 

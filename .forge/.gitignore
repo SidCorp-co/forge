@@ -12,3 +12,10 @@ knowledge.json
 
 # Anything a tool writes per machine.
 *.local.*
+
+# The archmap checker's per-machine graph cache and its refresh lock, written
+# here on every `pnpm verify`. Nothing in this repo writes it — the vendored
+# codemap checker does — so it is untracked litter that leaves every
+# contributor's `git status` dirty and is one `git add -A` away from being
+# committed as another machine's cache.
+.codemap-archmap-cache/

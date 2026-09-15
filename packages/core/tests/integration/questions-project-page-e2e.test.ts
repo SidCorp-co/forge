@@ -210,6 +210,66 @@ describe('ISS-1022 · GET /api/questions?projectId= is a page', () => {
     expect(new Set(seen)).toEqual(new Set(asked));
   });
 
+  // cm:guard the two silent readings of a bad cursor, both measured live on beta before this landed: `cursor=abc` had no separator and was DROPPED, so the caller got page one back as though it were the page it asked for — a drain loop that never advances and never says why; and a cursor whose timestamp had been corrupted went into the `::timestamptz` cast and came back a 500, a caller's typo reading as a server fault. Neither is a refusal a caller can act on (ISS-1022).
+  it('refuses a cursor it did not mint by name, rather than dropping it or raising on the cast', async () => {
+    for (let i = 0; i < 4; i++) await askChoice();
+    const { QuestionRefused } = await import('../../src/questions/write.js');
+
+    for (const bad of [
+      'abc',
+      'not-a-cursor|xyz',
+      Buffer.from('2026-09-14 19:40:03.428223 00|90a04d87-76c3-4a49-971e-f2a9f104f95a').toString(
+        'base64url',
+      ),
+      Buffer.from('2026-09-14 19:40:03.428223+00|not-a-uuid').toString('base64url'),
+      '2026-09-14 19:40:03.428223+00|90a04d87-76c3-4a49-971e-f2a9f104f95a',
+    ]) {
+      await expect(
+        read.projectQuestionsFor(ctx.projectId, ctx.adminId, undefined, { limit: 2, cursor: bad }),
+      ).rejects.toThrow(QuestionRefused);
+    }
+  });
+
+  // cm:guard the check is on the SHAPE and deliberately not on authenticity: a hand-built key that decodes is a legal starting point, because the cursor grants nothing — the page is already scoped by this caller's role on the project before the cursor is read at all. This case is here so that "refused" is never quietly widened into "issued by us", which would be a claim the implementation does not make (ISS-1022).
+  it('accepts a decodable key the caller built itself, because a cursor grants nothing', async () => {
+    const asked: string[] = [];
+    for (let i = 0; i < 4; i++) asked.push((await askChoice()).id);
+    const { sql } = await import('drizzle-orm');
+    const [row] = (await harness.db.execute(
+      sql`SELECT created_at::text AS at, id::text AS id FROM agent_questions
+          ORDER BY created_at DESC, id DESC OFFSET 1 LIMIT 1`,
+    )) as unknown as Array<{ at: string; id: string }>;
+    const handBuilt = Buffer.from(`${row?.at}|${row?.id}`).toString('base64url');
+
+    const page = await read.projectQuestionsFor(ctx.projectId, ctx.adminId, undefined, {
+      limit: 10,
+      cursor: handBuilt,
+    });
+    expect(page?.questions).toHaveLength(2);
+    expect(page?.total).toBe(4);
+  });
+
+  // cm:guard the cursor must survive a query string UNESCAPED, because "send it back exactly as it arrived" is the whole contract and a caller reading that sentence will do exactly that. The raw key carries a space and a `+`, and `+` in a query string decodes to a space — measured on beta, where the unescaped form answered 500 (ISS-1022).
+  it('mints a cursor with no character a query string would alter', async () => {
+    for (let i = 0; i < 4; i++) await askChoice();
+    const page = await read.projectQuestionsFor(ctx.projectId, ctx.adminId, undefined, {
+      limit: 2,
+    });
+    const cursor = page?.nextCursor as string;
+
+    expect(cursor).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(new URLSearchParams(`cursor=${cursor}`).get('cursor')).toBe(cursor);
+
+    const next = await read.projectQuestionsFor(ctx.projectId, ctx.adminId, undefined, {
+      limit: 2,
+      cursor: new URLSearchParams(`cursor=${cursor}`).get('cursor') as string,
+    });
+    expect(next?.questions).toHaveLength(2);
+    expect(new Set((next?.questions ?? []).map((q) => q.id))).not.toEqual(
+      new Set((page?.questions ?? []).map((q) => q.id)),
+    );
+  });
+
   it('applies a default page size when the caller asks for none', async () => {
     for (let i = 0; i < 3; i++) await askChoice();
     const page = await read.projectQuestionsFor(ctx.projectId, ctx.adminId);

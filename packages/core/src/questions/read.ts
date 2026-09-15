@@ -128,18 +128,41 @@ export type ProjectQuestionPage = {
   nextCursor: string | null;
 };
 
-/** One page's starting point, as `<created_at microseconds>|<id>` — the order key itself, not a count. */
+/** One page's starting point: base64url over `<created_at microseconds>|<id>` — the order key itself, not a count. */
 export type QuestionCursor = string;
 
 // cm:guard the page is a KEYSET over `(created_at, id)` and never an OFFSET, because this set is being answered while it is read: a question on an earlier page closing shifts every row behind it, and an offset then starts past the one it was going to return — a decision skipped, silently, with `hasMore` still saying the walk is complete. A keyset names the row it left off at, so a row leaving the set behind the cursor moves nothing in front of it (ISS-1022).
 // cm:guard the cursor carries `created_at` as TEXT at full precision and the predicate casts it back with `::timestamptz`, because a timestamp that has been through a JS `Date` has lost its microseconds and re-matches its own row, which pages forever on the same row (ISS-926 keyset defect).
+const CURSOR_KEY =
+  /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d{1,6})?[+-]\d{2}(?::\d{2})?)\|([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+
+// cm:guard the cursor is base64url on the wire and the encoding is not decoration: the key it wraps is `2026-09-14 19:40:03.428223+00|<uuid>`, which carries a SPACE and a `+`, and `+` in a query string decodes to a space. A caller that sends back what it was given without escaping it corrupts the timestamp and gets a refusal it cannot read — measured on beta 2026-09-15, where the unescaped form answered 500. base64url has no character a query string touches, so "send back what you were given" is true as written (ISS-1022).
+export function encodeCursor(key: string): QuestionCursor {
+  return Buffer.from(key, 'utf8').toString('base64url');
+}
+
+// cm:guard a cursor that does not DECODE to a `(created_at, id)` key is refused by name and never absorbed. It is a shape check and deliberately not an authenticity one: the cursor grants nothing a caller does not already have, since the page is scoped by their role on the project before the cursor is read at all, so a hand-built key that decodes is a legal starting point rather than a forgery. Both silent paths were live and both are defects: dropping an unparseable cursor hands the caller page one as though it were the page it asked for — a drain loop that never advances — and passing it into the `::timestamptz` cast leaves a caller's typo as a 500, which is the very fault the `uuid` guard on this route's `projectId` exists to prevent. Returning `null` is what lets `questions/routes.ts` answer 400 naming the shape (ISS-1022).
+export function decodeCursor(cursor: string): { at: string; id: string } | null {
+  let raw: string;
+  try {
+    raw = Buffer.from(cursor, 'base64url').toString('utf8');
+  } catch {
+    return null;
+  }
+  const m = CURSOR_KEY.exec(raw);
+  return m?.[1] && m[2] ? { at: m[1], id: m[2] } : null;
+}
+
 function cursorPredicate(cursor: QuestionCursor | undefined) {
   if (!cursor) return undefined;
-  const cut = cursor.lastIndexOf('|');
-  if (cut < 1) return undefined;
-  const at = cursor.slice(0, cut);
-  const id = cursor.slice(cut + 1);
-  return sql`(${agentQuestions.createdAt}, ${agentQuestions.id}) < (${at}::timestamptz, ${id}::uuid)`;
+  const key = decodeCursor(cursor);
+  if (!key) {
+    throw new QuestionRefused(
+      'the cursor does not decode to a `(created_at, id)` key: send back the `nextCursor` of the previous page exactly as it arrived',
+      'QUESTION_CURSOR_INVALID',
+    );
+  }
+  return sql`(${agentQuestions.createdAt}, ${agentQuestions.id}) < (${key.at}::timestamptz, ${key.id}::uuid)`;
 }
 
 export async function projectQuestionsFor(
@@ -202,7 +225,7 @@ export async function projectQuestionsFor(
     })),
     total,
     hasMore,
-    nextCursor: hasMore && last ? last.cursor : null,
+    nextCursor: hasMore && last ? encodeCursor(last.cursor) : null,
   };
 }
 
