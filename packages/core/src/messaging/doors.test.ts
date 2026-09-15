@@ -58,6 +58,7 @@ describe('the door table', () => {
       'non-empty',
       'status-matches-the-row',
       'only-verified-citations',
+      'issue-link-shape',
       'no-empty-promise',
       'progress-figures-match',
       'no-redacted-secret',

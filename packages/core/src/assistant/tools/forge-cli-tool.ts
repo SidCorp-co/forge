@@ -2,15 +2,17 @@
  * ISS-1009 — `forge` as one chat tool, in place of a wrapper per verb.
  *
  * The description is deliberately short: `DESCRIPTION_CAP` is 1024 and
- * `forge_issues` already loses 76% of its own text to it. Nothing about a
- * verb's arguments is repeated here, because `forge <verb> -h` is one call
- * away and is the copy that cannot go stale.
+ * `forge_issues` already loses 76% of its own text to it. The read forms the
+ * model repeats every turn ARE carried (`forge-cli-forms.ts`), held to the
+ * bundled `-h` by a whole-form test; everything else is `forge <verb> -h`,
+ * one call away and the copy that cannot go stale (ISS-1041).
  */
 
 import { z } from 'zod';
 import type { ContextScopedMcpToolFactory } from '../../mcp/tools/lib.js';
 import { runForgeCli } from './forge-cli.js';
 import { admitVerb } from './forge-cli-argv.js';
+import { readFormsLine } from './forge-cli-forms.js';
 
 const input = z
   .object({
@@ -29,7 +31,8 @@ const input = z
 const DESCRIPTION = [
   'Run the `forge` CLI as the person you are talking to, scoped to this project.',
   'This is the tracker: filing, reading, searching, comments, status, guides.',
-  'Start with `{"argv":["-h"]}` to see the verbs, then `forge <verb> -h` for its arguments —',
+  readFormsLine(),
+  'For anything else start with `{"argv":["-h"]}` to see the verbs, then `forge <verb> -h` for its arguments —',
   'do NOT guess a flag. File with `{"argv":["new","-","--title","...","--category","bug"],"body":"..."}`',
   '— the `-` is where your body is substituted.',
   'it reads the body against the sections that category owes, refuses a filing that is missing one',

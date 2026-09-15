@@ -186,26 +186,125 @@ describe('writeAssistantPreferences', () => {
     });
   });
 
-  it('a write that re-asserts the same value is still a row — a write is a write', async () => {
+  // cm:guard the trail records CHANGES, not writes (ISS-1041): the case this replaces held that "a write is a write" and it is exactly what put a previous==new row on beta.
+  it('writes no trail row and returns the stored row for a patch equal to what is stored (criteria 17, 18)', async () => {
     await writeAssistantPreferences({
       userId: ALICE,
-      patch: { answerStyle: 'concise' },
+      patch: { answerStyle: 'concise', assistantInstructions: 'no emoji' },
+      actor: { kind: 'person', userId: ALICE },
+    });
+    const stored = await readAssistantPreferences(ALICE);
+    const again = await writeAssistantPreferences({
+      userId: ALICE,
+      patch: { answerStyle: 'concise', assistantInstructions: 'no emoji' },
+      actor: { kind: 'assistant', userId: HANDLE },
+    });
+    expect(again).toEqual(stored);
+    expect(await listPreferenceChanges(ALICE)).toHaveLength(2);
+  });
+
+  it('writes exactly one row, for the changed field, when one of two moves (criterion 19)', async () => {
+    await writeAssistantPreferences({
+      userId: ALICE,
+      patch: { answerStyle: 'concise', assistantInstructions: 'no emoji' },
       actor: { kind: 'person', userId: ALICE },
     });
     await writeAssistantPreferences({
       userId: ALICE,
-      patch: { answerStyle: 'concise' },
+      patch: { answerStyle: 'bullets', assistantInstructions: 'no emoji' },
       actor: { kind: 'admin', userId: ADMIN },
     });
-    const trail = await listPreferenceChanges(ALICE);
-    expect(trail).toHaveLength(2);
+    const trail = (await listPreferenceChanges(ALICE)).filter((c) => c.changedBy === 'admin');
+    expect(trail).toHaveLength(1);
     expect(trail[0]).toMatchObject({
-      changedBy: 'admin',
+      field: 'answer_style',
       previousValue: 'concise',
-      newValue: 'concise',
+      newValue: 'bullets',
     });
   });
 
+  // cm:guard a legacy chain older → "" → new restores twice and ends at "older": the restore guard reads instructions through the canonical form on both sides (codex F1).
+  it('restores through a legacy empty-string change', async () => {
+    state.prefs.set(ALICE, {
+      userId: ALICE,
+      answerStyle: 'default',
+      assistantInstructions: '',
+      updatedAt: new Date(1),
+    });
+    state.changes.push({
+      id: 'c-legacy-a',
+      userId: ALICE,
+      field: 'assistant_instructions',
+      previousValue: 'older',
+      newValue: '',
+      changedBy: 'person',
+      changedByUserId: ALICE,
+      conversationId: null,
+      changedAt: new Date(++state.clock),
+    } as never);
+    await writeAssistantPreferences({
+      userId: ALICE,
+      patch: { assistantInstructions: 'new' },
+      actor: { kind: 'person', userId: ALICE },
+    });
+    const b = (await listPreferenceChanges(ALICE)).find((c) => c.newValue === 'new');
+    expect(b).toBeTruthy();
+    await restorePreferenceChange({
+      userId: ALICE,
+      changeId: (b as { id: string }).id,
+      actor: { kind: 'person', userId: ALICE },
+    });
+    expect((await readAssistantPreferences(ALICE)).assistantInstructions).toBeNull();
+    const restored = await restorePreferenceChange({
+      userId: ALICE,
+      changeId: 'c-legacy-a',
+      actor: { kind: 'person', userId: ALICE },
+    });
+    expect(restored?.assistantInstructions).toBe('older');
+  });
+
+  // cm:guard the STORED side is canonicalised too: a row an older writer left padded reads equal to its canonical form (codex F1).
+  it('writes no row when a legacy padded row is re-sent in canonical form', async () => {
+    state.prefs.set(ALICE, {
+      userId: ALICE,
+      answerStyle: 'default',
+      assistantInstructions: '  no emoji \n',
+      updatedAt: new Date(1),
+    });
+    await writeAssistantPreferences({
+      userId: ALICE,
+      patch: { assistantInstructions: 'no emoji' },
+      actor: { kind: 'person', userId: ALICE },
+    });
+    expect(await listPreferenceChanges(ALICE)).toHaveLength(0);
+  });
+
+  it.each([
+    ['empty against null', null, '', 0],
+    ['whitespace against null', null, '  \n ', 0],
+    ['padded against the same text', 'no emoji', '  no emoji \n', 0],
+    ['internal whitespace differs', 'no emoji', 'no  emoji', 1],
+    ['a real change', 'no emoji', 'emoji welcome', 1],
+  ])(
+    'canonicalises instructions — %s (criteria 16, 20, 21, 22)',
+    async (_label, stored, sent, rows) => {
+      if (stored !== null) {
+        await writeAssistantPreferences({
+          userId: ALICE,
+          patch: { assistantInstructions: stored },
+          actor: { kind: 'person', userId: ALICE },
+        });
+      }
+      const before = (await listPreferenceChanges(ALICE)).length;
+      const out = await writeAssistantPreferences({
+        userId: ALICE,
+        patch: { assistantInstructions: sent },
+        actor: { kind: 'person', userId: ALICE },
+      });
+      expect((await listPreferenceChanges(ALICE)).length - before).toBe(rows);
+      if (rows === 1) expect(out.assistantInstructions).toBe(sent.trim());
+    },
+  );
   it('writes nothing and appends nothing for an empty patch', async () => {
     await writeAssistantPreferences({
       userId: ALICE,

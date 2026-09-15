@@ -10,6 +10,7 @@ vi.mock('../db/client.js', () => ({
 
 vi.mock('../embeddings/index.js', () => ({
   embed: vi.fn(async () => [0.1, 0.2]),
+  embedQuery: vi.fn(async () => [0.1, 0.2]),
   EmbeddingUnavailableError: class EmbeddingUnavailableError extends Error {},
 }));
 
@@ -350,5 +351,68 @@ describe('stale demotion', () => {
     const res = await agentHybrid(8);
     expect(res.hits.length).toBeGreaterThan(0);
     expect(res.demotedStale).toBeUndefined();
+  });
+});
+
+const embeddings = await import('../embeddings/index.js');
+
+describe('embedMs — where a slow search went (ISS-1041)', () => {
+  const embedMock = vi.mocked(embeddings.embedQuery);
+
+  it('is present on a semantic search that embedded the query (criterion 7)', async () => {
+    embedMock.mockImplementationOnce(async () => {
+      await new Promise((r) => setTimeout(r, 5));
+      return [0.1, 0.2];
+    });
+    const out = await runMemorySearch({
+      projectId: PROJECT,
+      query: 'q',
+      strategy: 'semantic',
+      surface: 'agent',
+    });
+    expect(typeof out.embedMs).toBe('number');
+    expect(out.embedMs as number).toBeGreaterThanOrEqual(4);
+  });
+
+  // cm:guard the cache sits behind embedQuery() alone; a retrieval switched back to embed() would pay the proxy on every repeated question (criterion 44).
+  it('embeds the query through embedQuery, never embed (criterion 44)', async () => {
+    embedMock.mockClear();
+    vi.mocked(embeddings.embed).mockClear();
+    await runMemorySearch({
+      projectId: PROJECT,
+      query: 'q',
+      strategy: 'semantic',
+      surface: 'agent',
+    });
+    await runMemorySearch({ projectId: PROJECT, query: 'q', strategy: 'hybrid', surface: 'agent' });
+    expect(embedMock).toHaveBeenCalledTimes(2);
+    expect(embeddings.embed).not.toHaveBeenCalled();
+  });
+
+  it('is absent on an explicitly requested keyword search (criterion 8)', async () => {
+    const out = await runMemorySearch({
+      projectId: PROJECT,
+      query: 'q',
+      strategy: 'keyword',
+      surface: 'agent',
+    });
+    expect(out).not.toHaveProperty('embedMs');
+  });
+
+  // cm:guard the figure survives the degradation catch: the failed attempt IS the delay this field exposes.
+  it('is kept on a hybrid search whose embedding failed and degraded to keyword (criterion 9)', async () => {
+    embedMock.mockImplementationOnce(async () => {
+      await new Promise((r) => setTimeout(r, 5));
+      throw new embeddings.EmbeddingUnavailableError('down');
+    });
+    const out = await runMemorySearch({
+      projectId: PROJECT,
+      query: 'q',
+      strategy: 'hybrid',
+      surface: 'agent',
+    });
+    expect(out.degraded).toBe(true);
+    expect(out.strategy).toBe('keyword');
+    expect(out.embedMs as number).toBeGreaterThanOrEqual(4);
   });
 });

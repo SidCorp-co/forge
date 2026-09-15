@@ -2681,6 +2681,12 @@
 
 ### Fixed
 
+- **Asking the assistant a question is quicker and cleaner.** A repeated or retried search no
+  longer pays the embedding service twice, and a slow search now says where the time went; the
+  assistant is told the tracker commands it uses every turn instead of re-reading the help each
+  time; a preference it re-sends unchanged no longer appears in your Account history as a change;
+  and a reply that links an issue is held to a link the app can actually open.
+
 - **What you send appears in the chat the moment you send it.** Typing a question and pressing
   Enter used to leave the words sitting in the box and the conversation looking untouched, for as
   long as the agent took to answer — which on the first question of a new chat is the longest wait

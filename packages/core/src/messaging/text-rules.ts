@@ -174,6 +174,43 @@ export const ONLY_VERIFIED_CITATIONS: MessageRule = {
 };
 
 // cm:guard no \b wrapping: JS's non-unicode \b treats accented Vietnamese letters as non-word characters, so a boundary before a phrase-initial word never matches — the internal `\s+` already delimits each alternative // i18n-allow: refers to the Vietnamese phrase words above
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+/** A Forge issue-navigation target: `/projects/<slug>/issues/<segment>`, behind a host and/or a `#` or not. */
+// cm:why a backtick, a pipe and an asterisk end the segment too: a technical reply puts a valid path in inline code and the closing backtick is not part of the documentId (codex F3).
+// cm:guard a navigation path starts where a path starts — at the text's edge, after whitespace or an opening quote/bracket/backtick, or after an origin — never inside a longer path: `/api/projects/<uuid>/issues/search` is the API, not a link (codex F1 at effaee99).
+const ISSUE_NAV_RE =
+  /(?<![^\s([<"'`*_])(?:https?:\/\/[^\s/]+\/?)?(#?)\/projects\/([\w-]+)\/issues\/([^\s/?#)\]>,.;:!"'`|*]+)/gi;
+
+/** An issue link the web can open, or none. */
+// cm:guard scoped to Forge NAVIGATION targets and nothing else that has `/issues/` in it: `/api/issues/<id>/comments`, `packages/core/src/issues/routes.ts` and another host's tracker are legitimate in a role-holder's answer, and a rule refusing every `/issues/` path would refuse them in the one cell built to allow technical detail (ISS-1041, codex F5). What it refuses is the shape the persona prescribes and the model drifted from on beta: a hash route, or a segment that is not the documentId.
+export const ISSUE_LINK_SHAPE: MessageRule = {
+  id: 'issue-link-shape',
+  shape:
+    'an issue link reads <base>/projects/<slug>/issues/<documentId> — the documentId a UUID, never a hash route and never an issue key or number in the path',
+  // cm:why the example carries no link at all: in `public:report` the sibling `issue-references-exist` refuses any documentId the example facts do not know, and an example must pass every rule of its cell.
+  example: 'The CSV export fix is in; the tracker has the issue with its link.',
+  needs: [],
+  check: (text) => {
+    const breaks: RuleBreak[] = [];
+    for (const m of text.matchAll(ISSUE_NAV_RE)) {
+      const [whole, hash, slug, segment] = m as unknown as [string, string, string, string];
+      const want = `/projects/${slug}/issues/<documentId>`;
+      if (hash) {
+        breaks.push({
+          quote: whole,
+          why: `the link is a hash route the web does not serve — write ${want} (\`forge issue ISS-n\` prints the documentId)`,
+        });
+      } else if (!UUID_RE.test(segment)) {
+        breaks.push({
+          quote: whole,
+          why: `the link ends in "${segment}", which is not the issue's documentId — write ${want} (\`forge issue ISS-n\` prints it)`,
+        });
+      }
+    }
+    return breaks;
+  },
+};
+
 const EMPTY_PROMISE_RE =
   /sẽ\s+(kiểm tra|phản hồi|báo(\s+lại)?|cập nhật|xem)|đang\s+(kiểm tra|xử lý)|để\s+(mình|tôi)\s+(kiểm tra|xem)|chờ\s+(mình|tôi)|\bI('?ll| will)\s+(check|look into|get back|investigate)\b|\bget back to you\b/i; // i18n-allow: matches the Vietnamese/English "future promise, no result" phrasing being policed
 

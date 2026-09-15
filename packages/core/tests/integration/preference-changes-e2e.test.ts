@@ -63,11 +63,14 @@ describe('preference writes on one person', () => {
     const trail = (await prefs.listPreferenceChanges(alice))
       .filter((c) => c.field === 'answer_style')
       .sort((a, b) => a.changedAt.getTime() - b.changedAt.getTime() || a.id.localeCompare(b.id));
-    expect(trail).toHaveLength(styles.length);
+    // cm:guard the writers race, so a writer whose value is already stored when its turn comes writes no row (ISS-1041): the trail is as long as the number of writes that changed something, never longer than the writers, and never carries a row whose value did not change.
+    expect(trail.length).toBeGreaterThanOrEqual(1);
+    expect(trail.length).toBeLessThanOrEqual(styles.length);
     expect(trail[0]?.previousValue).toBe('default');
     for (let i = 1; i < trail.length; i++) {
       expect(trail[i]?.previousValue, `row ${i}`).toBe(trail[i - 1]?.newValue);
     }
+    for (const row of trail) expect(row.newValue, `row ${row.id}`).not.toBe(row.previousValue);
     const final = await prefs.readAssistantPreferences(alice);
     expect(final.answerStyle).toBe(trail.at(-1)?.newValue);
   });
@@ -93,5 +96,86 @@ describe('preference writes on one person', () => {
       }),
     ).rejects.toBeInstanceOf(prefs.PreferenceRestoreConflict);
     expect((await prefs.readAssistantPreferences(alice)).answerStyle).toBe('detailed');
+  });
+});
+
+describe('a write that changes nothing (ISS-1041)', () => {
+  // cm:guard the trail records CHANGES, not writes, against the real table: a value re-sent unchanged beside the one the assistant means to set leaves no row whose previous equals its new (criteria 17, 19, 20).
+  it('writes no trail row for a patch equal to what is stored, and one row for one field of two', async () => {
+    await prefs.writeAssistantPreferences({
+      userId: alice,
+      patch: { answerStyle: 'concise', assistantInstructions: 'no emoji' },
+      actor: person(),
+    });
+    const stored = await prefs.readAssistantPreferences(alice);
+    const again = await prefs.writeAssistantPreferences({
+      userId: alice,
+      patch: { answerStyle: 'concise', assistantInstructions: '  no emoji  ' },
+      actor: { kind: 'assistant', userId: alice },
+    });
+    expect(again).toEqual(stored);
+    expect(await prefs.listPreferenceChanges(alice)).toHaveLength(2);
+    await prefs.writeAssistantPreferences({
+      userId: alice,
+      patch: { answerStyle: 'bullets', assistantInstructions: 'no emoji' },
+      actor: { kind: 'assistant', userId: alice },
+    });
+    const trail = await prefs.listPreferenceChanges(alice);
+    expect(trail).toHaveLength(3);
+    expect(trail[0]).toMatchObject({
+      field: 'answer_style',
+      previousValue: 'concise',
+      newValue: 'bullets',
+    });
+    await prefs.writeAssistantPreferences({
+      userId: alice,
+      patch: { assistantInstructions: '   ' },
+      actor: person(),
+    });
+    expect(await prefs.listPreferenceChanges(alice)).toHaveLength(4);
+    expect((await prefs.readAssistantPreferences(alice)).assistantInstructions).toBeNull();
+    await prefs.writeAssistantPreferences({
+      userId: alice,
+      patch: { assistantInstructions: '' },
+      actor: person(),
+    });
+    expect(await prefs.listPreferenceChanges(alice)).toHaveLength(4);
+  });
+
+  it('PATCH /api/auth/preferences with the stored values answers 200, the current row, and adds no change (criteria 23-25)', async () => {
+    const { Hono } = await import('hono');
+    const { preferenceRoutes } = await import('../../src/auth/preferences.js');
+    const { errorHandler } = await import('../../src/middleware/error.js');
+    const { requestId } = await import('../../src/middleware/request-id.js');
+    const { signUserToken } = await import('../../src/auth/jwt.js');
+    const app = new Hono<{
+      Variables: import('../../src/middleware/request-id.js').RequestIdVars;
+    }>();
+    app.use('*', requestId());
+    app.route('/api/auth', preferenceRoutes);
+    app.onError(errorHandler);
+    const headers = {
+      authorization: `Bearer ${await signUserToken(alice)}`,
+      'content-type': 'application/json',
+    };
+    await prefs.writeAssistantPreferences({
+      userId: alice,
+      patch: { answerStyle: 'detailed', assistantInstructions: 'cite the row' },
+      actor: person(),
+    });
+    const before = await app.request('/api/auth/preferences/changes', { headers });
+    const beforeItems = ((await before.json()) as { items: unknown[] }).items;
+    const res = await app.request('/api/auth/preferences', {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ answerStyle: 'detailed', assistantInstructions: 'cite the row' }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      answerStyle: 'detailed',
+      assistantInstructions: 'cite the row',
+    });
+    const after = await app.request('/api/auth/preferences/changes', { headers });
+    expect(((await after.json()) as { items: unknown[] }).items).toHaveLength(beforeItems.length);
   });
 });

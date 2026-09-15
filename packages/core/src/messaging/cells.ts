@@ -12,6 +12,7 @@ import { type Audience, type CellId, type CellSpec, cellId, type Intent } from '
 import { PROGRESS_FIGURES_MATCH } from './progress-rule.js';
 import {
   COMMENT_HAS_TEXT,
+  ISSUE_LINK_SHAPE,
   NO_DEVELOPER_DETAIL,
   NO_EMPTY_PROMISE,
   NO_OPTION_LINE,
@@ -76,6 +77,7 @@ const SHIPPED: readonly CellSpec[] = [
     NON_EMPTY,
     STATUS_MATCHES_THE_ROW,
     ONLY_VERIFIED_CITATIONS,
+    ISSUE_LINK_SHAPE,
     NO_EMPTY_PROMISE,
     PROGRESS_FIGURES_MATCH,
     NO_REDACTED_SECRET,
@@ -86,6 +88,7 @@ const SHIPPED: readonly CellSpec[] = [
     ISSUE_REFERENCES_EXIST,
     NO_DEVELOPER_DETAIL,
     ONLY_VERIFIED_CITATIONS,
+    ISSUE_LINK_SHAPE,
     NO_EMPTY_PROMISE,
     PROGRESS_FIGURES_MATCH,
   ]),
