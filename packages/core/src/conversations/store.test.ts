@@ -14,7 +14,7 @@ import { describe, expect, it, vi } from 'vitest';
 // cm:why `store.ts` opens the pool at import and this reader needs no connection
 vi.mock('../db/client.js', () => ({ db: {} }));
 
-const { asImages } = await import('./store.js');
+const { asBlocks, asImages, toCanonicalEntry } = await import('./store.js');
 
 describe('asImages', () => {
   it('reads the images a turn wrote', () => {
@@ -47,5 +47,83 @@ describe('asImages', () => {
       { name: 'a.png', mime: 'image/png', ref: 'att-1', data: 'AAAA', prompt: 'ignore this' },
     ]);
     expect(Object.keys(image ?? {}).sort()).toEqual(['mime', 'name', 'ref']);
+  });
+});
+
+function row(over: Record<string, unknown> = {}) {
+  return {
+    id: 'row-1',
+    seq: 0,
+    externalId: null,
+    role: 'assistant' as const,
+    authorUserId: null,
+    authorLabel: null,
+    authorKey: null,
+    content: 'You have two.',
+    blocks: null,
+    images: [],
+    deliveryProof: null,
+    silenceReason: null,
+    createdAt: new Date(1_700_000_000_000),
+    ...over,
+  } as Parameters<typeof toCanonicalEntry>[0];
+}
+
+describe('asBlocks', () => {
+  it('reads the blocks a turn wrote', () => {
+    expect(asBlocks([{ type: 'text', text: 'hi' }])).toEqual([{ type: 'text', text: 'hi' }]);
+  });
+
+  it('answers null for a column that is not an array of blocks', () => {
+    for (const v of [null, undefined, {}, 'text', 3, true, []]) expect(asBlocks(v)).toBeNull();
+  });
+
+  // cm:guard an illegible column degrades to the LEGACY reading, not to an empty turn: null is what
+  // `toCanonicalEntry` answers from `content`, and `[]` would render a real answer as nothing.
+  it('drops entries it cannot read and answers null when none survive', () => {
+    expect(asBlocks([{ type: 'nonsense' }, 7, null])).toBeNull();
+    expect(asBlocks([{ type: 'nonsense' }, { type: 'text', text: 'kept' }])).toEqual([
+      { type: 'text', text: 'kept' },
+    ]);
+  });
+});
+
+describe('toCanonicalEntry', () => {
+  it('reads an assistant row as an assistant entry', () => {
+    const e = toCanonicalEntry(row());
+    expect(e.type).toBe('assistant');
+    expect(e.id).toBe('row-1');
+    expect(e.timestamp).toBe(1_700_000_000_000);
+  });
+
+  it('reads a user row and a system row as their own kinds', () => {
+    expect(toCanonicalEntry(row({ role: 'user' })).type).toBe('user');
+    expect(toCanonicalEntry(row({ role: 'system' })).type).toBe('system');
+  });
+
+  // cm:guard this is the whole of the back-compatibility promise: every row written before
+  // ISS-1029 carries its answer in `content` and no blocks, and it has to read back as something
+  // the one formatter renders rather than as a turn nobody answered.
+  it('reads a legacy row with no blocks as a single text block', () => {
+    expect(toCanonicalEntry(row()).blocks).toEqual([{ type: 'text', text: 'You have two.' }]);
+  });
+
+  it('gives a row with neither text nor blocks no blocks at all', () => {
+    const e = toCanonicalEntry(row({ content: '', silenceReason: 'error' }));
+    expect(e.blocks).toBeUndefined();
+    expect(e.content).toBeUndefined();
+  });
+
+  it('collects the tool calls out of the blocks it was given', () => {
+    const blocks = [
+      { type: 'text' as const, text: 'Let me look.' },
+      {
+        type: 'tool' as const,
+        toolCall: { id: 'c1', name: 'forge_issues', output: 'two', isError: true, durationMs: 9 },
+      },
+    ];
+    const e = toCanonicalEntry(row({ blocks }));
+    expect(e.blocks).toEqual(blocks);
+    expect(e.toolCalls).toEqual([blocks[1]?.toolCall]);
   });
 });

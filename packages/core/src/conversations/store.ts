@@ -18,11 +18,18 @@ import {
   conversationParticipants,
   conversations,
 } from '../db/schema-conversations.js';
+import type { ContentBlock } from '../lib/agent-stream-parser.js';
+import { asBlocks } from './canonical-entry.js';
 import type { Executor, TxOnly } from './db-executor.js';
 import { resolveProjectHandle } from './handles.js';
 import { attachOpeningHandle } from './participants.js';
 import type { ConversationVenue } from './ports.js';
 import { derivedScope } from './scope.js';
+
+// cm:guard re-exported rather than moved out of reach: `asBlocks` is used by `toStored` below and
+// `toCanonicalEntry` by every caller that had it from here, so the split is a file boundary and not
+// an interface change. The definitions live in `canonical-entry.ts`.
+export { asBlocks, toCanonicalEntry } from './canonical-entry.js';
 
 const conflict = (message: string, code: string) =>
   new HTTPException(409, { message, cause: { code } });
@@ -53,6 +60,8 @@ export interface StoredConversationMessage {
   /** The transport's own id for whoever spoke, where it named one. */
   authorKey: string | null;
   content: string;
+  /** Ordered canonical blocks, or null on a row written through the text-only door. */
+  blocks: ContentBlock[] | null;
   images: ConversationImage[];
   deliveryProof: unknown;
   silenceReason: string | null;
@@ -180,6 +189,8 @@ export interface AppendMessageArgs {
   authorKey?: string | null;
   externalId?: string | null;
   images?: readonly ConversationImage[] | undefined;
+  /** Ordered canonical blocks for this row; omit on a caller that has only text. */
+  blocks?: readonly ContentBlock[] | null | undefined;
   deliveryProof?: unknown;
   silenceReason?: string | null;
   db?: typeof defaultDb;
@@ -258,6 +269,10 @@ export async function appendMessagesIn(
           content: m.content,
           externalId: m.externalId ?? null,
           images: (m.images && m.images.length > 0 ? [...m.images] : null) as never,
+          // cm:guard an EMPTY blocks array is written as null, not as `[]`: `[]` would say "this
+          // turn produced nothing", which is a claim, while null says "this row carries its answer
+          // in `content`" — the legacy reading `toCanonicalEntry` already answers for.
+          blocks: (m.blocks && m.blocks.length > 0 ? [...m.blocks] : null) as never,
           deliveryProof: (m.deliveryProof ?? null) as never,
           silenceReason: m.silenceReason ?? null,
         })),
@@ -458,6 +473,7 @@ function toStored(row: typeof conversationMessages.$inferSelect): StoredConversa
     authorKey: row.authorKey,
     content: row.content,
     externalId: row.externalId,
+    blocks: asBlocks(row.blocks),
     images: asImages(row.images),
     deliveryProof: row.deliveryProof ?? null,
     silenceReason: row.silenceReason,

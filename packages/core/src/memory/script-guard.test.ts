@@ -7,7 +7,7 @@ const CYRILLIC_LEAK = `dieu kien la cach duy nhat de ${OBHOD} qua`;
 const HYBRID_LEAK = `dua tren bon ${FAK}t doc duoc`;
 const ASCII_SOURCE = 'the only way to bypass the condition, based on four readable facts';
 
-// cm:why the Vietnamese fixture alone is spelled in `\u` escapes: `scripts/check-source-language.mjs` flags Latin diacritics (its `NON_ENGLISH` range) and nothing else, so the Cyrillic and Han fixtures pass it literally — but its `i18n-allow` waiver is CM001 prose to `.forge/codemap`, so a literal here could satisfy neither gate. Reported on the `codemap` project; drop the escapes once `i18n-allow` is an exempt pragma there.
+// cm:why the Vietnamese fixture alone is spelled in `\u` escapes: `scripts/check-source-language.mjs` flags Latin diacritics (its `NON_ENGLISH` range) and nothing else, so the Cyrillic and Han fixtures pass it literally while a literal Vietnamese one would not. The escapes ARE the fixture — this suite's subject is which characters the guard names, and a waiver comment would only silence the language gate while leaving the same bytes to assert over.
 const VI_PRECOMPOSED = 'v\u01b0\u1ee3t qua \u0111i\u1ec1u ki\u1ec7n \u0111\u00e3 n\u00eau';
 const HAN_BEIJING = '北京';
 const HAN_CITY = '市';

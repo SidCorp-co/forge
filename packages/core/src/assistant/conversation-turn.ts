@@ -17,6 +17,7 @@ import {
   openConversation,
   readMessages,
   type StoredConversationMessage,
+  toCanonicalEntry,
 } from '../conversations/store.js';
 import { db as defaultDb } from '../db/client.js';
 import type {
@@ -25,10 +26,16 @@ import type {
   ConversationShape,
 } from '../db/schema-conversations.js';
 import { conversations } from '../db/schema-conversations.js';
+import type { ContentBlock } from '../lib/agent-stream-parser.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
 import type { ChatContentPart, ChatMessage } from './providers/types.js';
 
 export type { ConversationImage };
+// cm:why re-exported rather than imported from the store directly by its callers: `run-turn.ts` is
+// not on the store's reader list in `conversations/transport-free.test.ts`, and the argument for
+// widening that list is one this change does not have — the turn layer already owns the store for
+// everything else it writes.
+export { toCanonicalEntry };
 
 /** How many stored turns a turn is allowed to read back. Storage is unbounded; the window is not. */
 // cm:guard a READ window and no longer a delete: `chat_sessions` truncated the stored blob to this number, so turn 201 removed turn 1 from the record for good. Rows keep everything and the model still sees only what a prompt can hold (ISS-1001).
@@ -40,6 +47,8 @@ export interface PendingMessage {
   authorUserId: string | null;
   authorLabel: string | null;
   images: ConversationImage[];
+  /** Ordered canonical blocks for this turn, or null where the caller has only text. */
+  blocks: ContentBlock[] | null;
   deliveryProof: unknown;
   silenceReason: string | null;
 }
@@ -187,6 +196,10 @@ export function appendUserMessage(
     authorUserId: opts.authorUserId ?? null,
     authorLabel: opts.authorLabel ?? null,
     images: opts.images ? [...opts.images] : [],
+    // cm:why a user turn carries no blocks: what a person typed IS the text, and a single text
+    // block derived from it would be a second copy of `content` rather than a record of structure.
+    // `toCanonicalEntry` makes that block on the way out, for every row, in one place.
+    blocks: null,
     deliveryProof: null,
     silenceReason: null,
   });
@@ -197,7 +210,12 @@ export function appendUserMessage(
 export function appendAssistantMessage(
   turn: ConversationTurn,
   content: string,
-  opts: { authorUserId?: string | null; deliveryProof?: unknown } = {},
+  opts: {
+    authorUserId?: string | null;
+    deliveryProof?: unknown;
+    /** The canonical blocks this turn produced (ISS-1029); omit on a text-only caller. */
+    blocks?: ContentBlock[] | null;
+  } = {},
 ): void {
   turn.pending.push({
     role: 'assistant',
@@ -205,6 +223,7 @@ export function appendAssistantMessage(
     authorUserId: opts.authorUserId ?? turn.handleUserId,
     authorLabel: null,
     images: [],
+    blocks: opts.blocks ?? null,
     deliveryProof: opts.deliveryProof ?? null,
     silenceReason: null,
   });
@@ -212,10 +231,19 @@ export function appendAssistantMessage(
 
 /** A turn that produced no text, recorded as the reason rather than as nothing. */
 // cm:guard a silence with no row is indistinguishable from a turn that never ran, and a person looking at the room cannot tell "the model chose not to answer" from "nothing reached us" — which is the distinction ISS-1001 invariant 7 exists to make readable.
-export function appendSilence(turn: ConversationTurn, reason: string): void {
+export function appendSilence(
+  turn: ConversationTurn,
+  reason: string,
+  opts: { blocks?: ContentBlock[] | null } = {},
+): void {
   turn.pending.push({
     role: 'assistant',
     content: '',
+    // cm:guard the blocks a silent turn ALREADY accumulated are kept beside its reason: a turn that
+    // ran six tools and then returned no text is the one turn somebody opens the transcript to
+    // investigate, and dropping its work here would reproduce, on the failure path, exactly the
+    // defect ISS-1029 removes from the happy one. Only a turn that accumulated nothing writes null.
+    blocks: opts.blocks ?? null,
     // cm:guard by the same handle an answer would have been by: a silence is this handle declining to
     // speak, and an unattributed one cannot say WHICH handle went quiet in a room holding two.
     authorUserId: turn.handleUserId,
@@ -242,6 +270,7 @@ export async function persistMessages(
       authorUserId: m.authorUserId,
       authorLabel: m.authorLabel,
       images: m.images,
+      blocks: m.blocks,
       deliveryProof: m.deliveryProof,
       silenceReason: m.silenceReason,
     })),

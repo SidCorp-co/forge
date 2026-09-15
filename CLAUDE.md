@@ -31,9 +31,8 @@ record of the coupling. It is a Forge project too (`forge-plugin`, autonomous, p
 ## Commands
 
 **`pnpm verify` when you finish coding, before you push** — the conformance entrypoint. It reports
-every check it runs in one pass instead of stopping at the first, and prints the `cm:guard` /
-`cm:edge` / `cm:flow` declared on the files you touched. Exit `0` clean · `1` violations · `2` a
-check could not run. Hooks only make it arrive sooner; a contributor with no plugin installed is
+every check it runs in one pass instead of stopping at the first. Exit `0` clean · `1` violations ·
+`2` a check could not run. Hooks only make it arrive sooner; a contributor with no plugin installed is
 held to exactly the same bar.
 
 **A green `verify` is not a green CI.** It does not run the test suites or the build — it declares
@@ -62,15 +61,15 @@ DB (in `packages/core`): `pnpm db:generate` · `pnpm db:migrate` · `pnpm db:stu
 
 
 
-## Fifteen gates, six axes
+## Thirteen gates, six axes
 
 Each gate sits in `ci-passed`'s `needs` **and** is named in its result loop, so a violation blocks
-the merge. **That, not this file, is why they hold.** All fifteen run from `pnpm verify`, and
+the merge. **That, not this file, is why they hold.** All thirteen run from `pnpm verify`, and
 `verify --ci-parity` is itself a CI step: a `- run:` in `.github/workflows/ci.yml` that `verify`
 neither runs nor declares fails the build, so the local command and the workflow cannot drift
 apart.
 
-Six axes — form (gated 4×), knowledge (gated 5×), relations, behaviour (gated 3×), language, record.
+Six axes — form (gated 4×), knowledge (gated 3×), relations, behaviour (gated 3×), language, record.
 Five of them own a property of the code; `record` owns `CHANGELOG.md`, the external record of what
 shipped, which was nobody's until 1,034 lines of it left in silence. An axis measures
 at its weakest gate. `.forge/conformance.json` declares each axis's level and the repo's profile
@@ -79,7 +78,7 @@ disagrees with what the manifest claims.
 
 Thresholds live in one place per axis: `.arch.json` for architecture contracts, and
 `packages/core/biome.json` for the file/function line limits. **Do not add a rule to an axis another
-already owns** — no ESLint, no comment rules outside codemap, no comments inside `biome.json`.
+already owns** — no ESLint, no comment rules at all, no comments inside `biome.json`.
 
 Which gate owns what, the conformance levels and their baseline directions, and what each rule was
 born from: **[`scripts/README.md`](scripts/README.md)**.
@@ -170,7 +169,7 @@ comment under `Extra fixes:` as **reported**, not fixed.
 
 This is the single exception to *fix-it-now*, and it is a boundary rather than an amnesty: the two
 repos ship on different clocks, and a change landing there from here is a change none of this
-repo's fifteen gates has seen and none of that repo's reviewers asked for. The defect still leaves
+repo's thirteen gates has seen and none of that repo's reviewers asked for. The defect still leaves
 your hands owned — it leaves owned by a row somebody can open, which is exactly what
 `file-instead-of-fix` refuses everywhere else and requires here.
 
@@ -229,7 +228,6 @@ line number — a line number is stale the moment anything above it moves, and s
 
 | | |
 |---|---|
-| Comment & annotation doctrine | `.claude/rules/codemap.md` (auto-loads on source files) · `.forge/codemap/SPEC.md` |
 | Every gate, its baseline, its origin | `scripts/README.md` |
 | Architecture, orphan hygiene, observability | `docs/architecture/` |
 | Per-domain deep detail | `docs/modules/<domain>/` |

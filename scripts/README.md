@@ -2,7 +2,7 @@
 
 Project-level utilities. Each script has a comment header explaining its contract. A checker whose verdict is worth testing keeps that half in `lib/` — the CLI spawns, reads the tree and exits, none of which a test can call.
 
-## Fifteen gates, six axes
+## Thirteen gates, six axes
 
 Each gate sits in `ci-passed`'s `needs` **and** is named in its result loop. Both halves are
 load-bearing: `ci-passed` runs `if: always()`, so a job listed in `needs` but absent from the loop
@@ -17,9 +17,8 @@ to 84, the two length rules to 143 — and each stopped drifting the day it was 
 a sibling that stopped blocking, which is the whole failure mode here. `form` is gated four times
 (biome for `core`'s rules · `check-size-budget` for the length baseline biome cannot hold ·
 `check-lint-budget` for `web-v2` and `core` · a bare `biome check scripts` for the checkers themselves),
-`behaviour` three times (reachability · signal · flow coverage) and `knowledge` five (couplings ·
-the baseline draining on the files a change edits · the autonomous status standard · honest costs ·
-the mode-qualification of injected docs).
+`behaviour` three times (reachability · signal · flow coverage) and `knowledge` three (honest
+costs · the mode-qualification of injected docs · the PAT permission surface).
 
 **`record` is the axis that was missing.** The other five each own a property of the code, and on
 2026-08-28 commit `3df9a8e9` removed 1,034 lines from `CHANGELOG.md` inside a commit about dangling
@@ -32,14 +31,13 @@ passed, because the external record of what shipped belonged to none of them.
 | size | `check-size-budget` — `conformance` | file & function length, frozen per file | which rules exist — biome declares them |
 | lint debt | `check-lint-budget` — `conformance` | per (file, rule) biome violations in `web-v2` and `core`, frozen; drained on touch where a scope asks for it | which rules exist — each package's `biome.json` declares them |
 | checkers | `biome check scripts` — `conformance` | the files in `scripts/` that implement every other gate | anything under `packages/` |
-| knowledge | `cm verify` — `codemap` | `cm:` couplings, prose discipline, module headers | anything a tool can derive |
-| baseline drain | `check-codemap-drain` — `codemap` | whether a change that edited a file with frozen comment debt paid any of it (`CM013`) | what counts as prose, and the whole-tree prose verdict — the vendored checker owns both |
-| injected docs | `check-injected-doc-modes` — `codemap` | that a status transition in a guide body or a mandatory fact names the pipeline mode it belongs to | whether the prose around a qualified transition is true; a project's own `projectFacts`, which live in the DB |
+| injected docs | `check-injected-doc-modes` — `injected-docs` | that a status transition in a guide body or a mandatory fact names the pipeline mode it belongs to | whether the prose around a qualified transition is true; a project's own `projectFacts`, which live in the DB |
+| PAT surface | `check-pat-surface` — `injected-docs` | whether every route a project-scoped token can reach is covered by the permission menu that claims to fence it | whether a given fence is correct — that is review's |
 | costs | `check-honest-costs` — `lang-check` | whether `docs/VISION.md` and every `docs/proposals/*.md` price what adopting them costs | whether the price stated is honest — that is review's |
 | relations | `archmap check` — `archmap` | which module may depend on which | how a file is written |
 | reachability | `check-test-reachability` — `conformance` | whether every tracked test file is collected, and whether a skipped suite says why | what a test asserts once it runs |
 | behaviour | `check-test-signal` — `lang-check` | whether a test asserts behaviour or restates a declaration | how many tests exist, coverage % |
-| flows | `check-flow-coverage` — `core-integration` | whether the integration suite ENTERS the function every declared `cm:flow` step sits on | whether the flow ran through it — a function-hit cannot tell; which flows exist, codemap declares |
+| flows | `check-flow-coverage` — `core-integration` | whether the integration suite ENTERS the function every declared `cm:flow` step sits on | whether the flow ran through it — a function-hit cannot tell; which flows exist, `checkers.flow-coverage.flows` declares |
 | language | `check-source-language` — `lang-check` | English-only source policy | everything else |
 | record | `check-release-record` — `lang-check` | whether `CHANGELOG.md` keeps the heading its five readers parse for, and whether a published entry can leave without a declared reason | whether an entry is TRUE, or whether a change deserved one — that is review's |
 
@@ -83,7 +81,8 @@ endpoints"* is what the device-runner E2E said for months after those endpoints 
 
 ### Why flows is where the two axes meet
 
-codemap says *which line is step 4 of the dispatch flow*; the integration suite's v8 report says
+A `cm:flow` annotation says *which line is step 4 of the dispatch flow*; the integration suite's v8
+report says
 *which lines ran*. A step named in the map and executed by nothing is a step the next editor
 believes is defended. **A step reached only by unit tests does not count** — with 974 `vi.mock`
 calls in `packages/core`, a unit test can run a step's function with every neighbour stubbed, which
@@ -129,9 +128,11 @@ meaning what its row says. Measured 2026-08-25.
 - **No ESLint.** biome >= 2 covers `noExcessiveLinesPerFunction` and `noExcessiveLinesPerFile`,
   which is the whole reason ESLint would have been added. A second linter on the same axis means two
   configs drifting apart.
-- **No comment rules outside codemap.** A density or run-length rule contradicts it outright: the
-  19-line `/** */` block on `failReconcileRunIfNoVerdictRecorded` is documentation codemap exempts
-  by form, and 19 comment lines to a counter.
+- **No comment rules at all.** A density or run-length rule cannot tell documentation from noise:
+  the 19-line `/** */` block on `failReconcileRunIfNoVerdictRecorded` is documentation, and 19
+  comment lines to a counter are not. The comment-grammar gate that used to own this axis was
+  removed in ISS-1029 for that reason — it flagged prose that was right far more often than prose
+  that was wrong, and a checker at that noise level teaches the reader to skip it.
 - **No `biome.json` comments.** A comment inside it makes biome **silently ignore the whole
   enclosing block** — no config error, the `overrides` just stop applying. Put the reasoning in the
   commit message.
@@ -146,8 +147,8 @@ declared contract now blocks. That file is declared in `conformance.json` under 
 because without a direction `archmap lock` is an amnesty button.
 
 Exit codes: `0` clean · `1` a new violation · `2` **the gate could not run** (bad flag, unreadable
-manifest, a scope matching no files). Never read `2` as a pass — the same 1-vs-2 split `cm verify`
-uses.
+manifest, a scope matching no files). Never read `2` as a pass — it is the 1-vs-2 split every checker
+here uses.
 
 `.arch.json` declares `tsConfig: .arch-tsconfig.json`, and that line is load-bearing:
 dependency-cruiser runs with `--no-config`, so without it nothing resolves through a tsconfig
@@ -160,14 +161,13 @@ drop the support without a single test going red.
 
 ### Vendored checkers
 
-**`.forge/` is committed, all of it.** Both checkers are vendored there (`.forge/codemap/`,
-`.forge/archmap/`) and the CI jobs run those copies, so a contributor without a global install and
-the gate are held to the same reviewed version — bump with `cm install --upgrade` / `archmap install
---force` and commit the result. `.forge/.gitignore` is the only place an exception may be declared,
+**`.forge/` is committed, all of it.** archmap is vendored there (`.forge/archmap/`) and the CI job
+runs that copy, so a contributor without a global install and the gate are held to the same reviewed
+version — bump with `archmap install --force` and commit the result. `.forge/.gitignore` is the only place an exception may be declared,
 and it carries the reason; a blanket `.forge/` in `.git/info/exclude` is a **local** rule teammates
 never see, and it is why `orientation.md` went uncommitted for months.
 
-Both vendored shims must stay mode `100755` — `git ls-files -s .forge/*/[ac]*` to check. A shim
+The vendored shim must stay mode `100755` — `git ls-files -s .forge/archmap/archmap` to check. A shim
 committed `100644` fails the job with permission denied, not with a violation.
 
 ## verify.mjs — the conformance entrypoint (`pnpm verify`)
@@ -336,7 +336,7 @@ because it compares totals per *area* and this one is new (see `lib/baseline-rat
 
 ### Drain — the half freezing does not do
 
-Freezing stops growth; it does not reduce. The codemap baseline sat frozen for months at 3% drained,
+Freezing stops growth; it does not reduce. The comment-debt baseline sat frozen for months at 3% drained,
 which is the evidence that "not higher" and "lower when you edit it" are different rules. So for a
 scope that declares `drain`: **touch a file it matches and its count must come back strictly
 lower.** Equal fails. A file already at 0 stays at 0, a new file must be 0, and a rename carries its
@@ -395,57 +395,6 @@ Modes: `--all` (CI, in the always-on `conformance` job; also `pnpm --filter web-
 `--update-baseline` (`--accept-emptied-scope` to confirm a scope really did drain to zero).
 `--staged` exists for a pre-commit hook but **no hook runs it today**: `.githooks/pre-commit` runs
 `check-source-language` and `check-test-signal` and nothing else. The gate is the `conformance` job.
-
-## check-codemap-drain.mjs — the codemap baseline drains on the files a change edits
-
-The rule itself is **not this repo's**. `cm init` froze 12,454 comments across 965 files and the
-prose gate blocked only text that was NEW; the one path by which the frozen total could fall was
-*siting* — prose sharing a comment block with a `cm:` annotation, which is reported regardless of the
-baseline. Siting fires only when an author reaches for a tag, so a file could be refactored,
-extended and rewritten for years with its frozen count untouched, and codemap's own SPEC said so in
-its own words: *"Without this exception the baseline has no path that ever reduces."*
-
-`CM013`, in the vendored checker from **0.16.0**, asks what siting cannot: this change altered what
-the file *does* and paid none of that file's frozen debt — why is the count still the same? Deleting
-or rewording one comment satisfies it. Baseline behaviour is owned upstream in
-`SidCorp-co/codemap`, so the rule landed there and arrived here as a pin bump — never
-patch `.forge/codemap/lib/` in place, the weekly `codemap-upgrade` workflow re-vendors over it.
-
-This script is the wiring, and it exists rather than a fourth `cm verify` step for two reasons:
-
-- **the prose gate must stay whole-tree.** A scoped prose run on a push straight to `main` diffs
-  `origin/main` against itself, walks zero files and prints its success line — 15 `CM001` errors
-  reached `main` that way. `CM013` is the opposite case: it *needs* a base revision, because
-  "edited" has no meaning without one. Two scopes, two steps.
-- **an empty diff is not an empty scope.** `verify.mjs` turns a zero scan into exit `2`, and a
-  docs-only branch legitimately touches no source file. So the `scanned` count this reports is the
-  **baseline's** file count, never the diff's. Zero there means the baseline is absent or in the
-  pre-0.2 count format, which is precisely the state that must fail closed: without a readable
-  baseline nothing can tell inherited debt from debt this change introduced.
-
-The base revision comes from `lib/baseline-ratchet.mjs`'s `baseRev` — merge-base with `origin/main`,
-falling back to `HEAD~1` when they are equal — and the resolved sha is printed, because an unstated
-base reads identically to a base nobody computed. Unlike `check-lint-budget`'s drain, nothing is
-skipped on `main`: `HEAD~1` there is the previous `main` commit, so the change that just landed is
-the one measured.
-
-**What costs nothing, and why each is structural rather than an exemption list:** a reflow, a rewrap,
-a reindent and a repo-wide formatter run — the rule compares both revisions' code with comments
-stripped and whitespace normalized, so only an edit that changed what the file does can trigger it. A
-file move — the new path has no baseline entry to drain, the same reasoning `check-lint-budget`'s
-drain reaches from its own path-keyed baseline. A whole-tree run, and the mid-edit hook: the unit is
-a change, so the commit (`--staged`) and the PR (`--since`) are where it holds, and a rule that
-stopped an agent mid-keystroke to demand unrelated cleanup is one somebody switches off.
-
-Exit `0` clean · `1` an edited file paid nothing · `2` could not run (no baseline, no vendored
-checker, no base revision, or `cm` itself could not run — its exit `2` is forwarded, never read as
-a clean diff).
-
-**Priced.** A PR that edits one of the 965 baselined files now owes one comment's cleanup in each.
-Measured on this repo's history at the time it landed: a single-commit PR owes about 4, a five-commit
-range about 20. It ends at a file's zero. The per-file escape is `cm:ignore CM013 — <reason>`, read
-from **anywhere** in the file because the anchor line moves as the prose above it does; the repo-wide
-one is `enforce.drain: false` in `.forge/codemap.json`.
 
 ## check-branch-name.sh
 
@@ -514,12 +463,12 @@ Exit codes: `0` clean, `1` violations found, `2` invalid invocation.
 
 ## check-test-signal.mjs — low-signal test guard
 
-The test-side counterpart to codemap's comment rule: flags a test FILE that is mostly
+Flags a test FILE that is mostly
 declaration-shape assertions (`.columnType` / `.notNull` / `.hasDefault` / `.primary` /
 `.isUnique` / `.dataType`) — assertions that restate what the declaration already says and
 so can only fail on an intended change. FK `.onDelete` is deliberately not flagged.
-Baseline-frozen in `.forge/test-signal-baseline.json`, same contract as the codemap
-baseline. Wired into the commit path.
+Baseline-frozen in `.forge/test-signal-baseline.json`, same contract as the other frozen
+baselines. Wired into the commit path.
 
 The freeze comparison, the registry read, the baseline I/O and the staged-file collection are
 `lib/debt-ratchet.mjs`, shared with the two biome budgets; what lives in this script is the
@@ -557,8 +506,8 @@ tree: cache HIT without that input, cache MISS with it.
 
 ## check-flow-coverage.mjs — every declared flow step must be walked
 
-The join between the knowledge axis and the behaviour axis. codemap says *"this line is step 4 of
-the dispatch flow"*; a v8 coverage report says which lines a test executed. A step named in the map
+The join between the knowledge axis and the behaviour axis. A `cm:flow` annotation says *"this line
+is step 4 of the dispatch flow"*; a v8 coverage report says which lines a test executed. A step named in the map
 and executed by nothing is a step the next editor believes is defended.
 
 It is measured, never declared — a `// covers dispatch/tick` comment in a test file would be exactly
@@ -642,39 +591,6 @@ alone.
 It audits shape, not worth: a repo can pass all ten with an axis measuring something pointless. That
 is deliberate — choosing what to measure is the repo's call, and a tool that ruled on it would start
 dictating stacks.
-
-## check-lockstep.mjs — a declared pair where only one half moved
-
-The second join. `cm` knows which files carry `cm:edge lockstep` — *"these two must change
-together"*. `git` knows which files a change touched. Neither can know that one half moved and the
-other did not, and neither should: `cm` has no business knowing your merge-base, and `git` has never
-heard of an edge.
-
-Today: 49 lockstep edges across 66 files. The orphan-hygiene defences are the worked example —
-change `runs-cascade.ts` alone, tests stay green, merge, and an orphan job wedges a runner slot. Its
-fourth edge is the one that shows what the join is FOR: `runs-concluded.ts` defends the same
-invariant read backwards, and nothing but a declared pair can tell a reader of one direction that
-the other exists (ISS-923).
-
-**It ships advisory, and that is a design decision, not a stepping stone.** A lockstep edge means
-*"the other side likely needs this too"*, not *"every keystroke here needs a matching one there"* — a
-rename or a comment edit legitimately moves one side alone. Blocking on that teaches people to route
-around the checker, which costs more than the check earns. `pnpm verify` prints the drifting pairs
-after the summary table and does **not** let them change its exit code.
-
-```bash
-node scripts/check-lockstep.mjs                  # pairs drifting vs origin/main, exit 0
-node scripts/check-lockstep.mjs --staged         # same, against the index
-node scripts/check-lockstep.mjs --all            # every declared pair
-node scripts/check-lockstep.mjs --strict         # exit 1 when a pair drifted
-```
-
-Exit `2` when the graph cannot be read, when it carries **no** lockstep edge (the checker's whole
-scope is empty — that is not a pass), or when the changed set cannot be computed.
-
-It is not an axis and is deliberately absent from `.forge/conformance.json`. Attaching a level-1
-checker to the level-2 `knowledge` axis would drag that axis down to 1, because an axis measures at
-its weakest gate — the manifest telling the truth here is the system working, not a gap.
 
 ## upload-image.sh — attach images from a runner
 

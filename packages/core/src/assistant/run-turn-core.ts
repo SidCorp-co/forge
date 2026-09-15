@@ -247,7 +247,16 @@ export async function* runTurnEvents(
         iterations,
       )) {
         toolCalls.push(record);
-        yield { type: 'tool_result', id, result: text };
+        // cm:guard the error flag and the measured duration ride the event the transcript reads,
+        // not just the audit row: without them a transcript cannot say which tool failed or how
+        // long it took, which is the whole of ISS-1029 criteria 5 and 6.
+        yield {
+          type: 'tool_result',
+          id,
+          result: text,
+          isError: record.isError,
+          durationMs: record.durationMs,
+        };
         messages.push({ role: 'tool', tool_call_id: id, content: text });
       }
     }

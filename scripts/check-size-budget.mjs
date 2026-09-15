@@ -10,7 +10,7 @@
 //
 // Frozen per FILE, not per line: a file records its length and the length of its
 // longest function, and may only improve. Moving a function or reflowing a file
-// therefore is not a violation — the same property that lets codemap's baseline
+// therefore is not a violation — the same property that lets a frozen baseline
 // survive a refactor.
 //
 // Modes: --all (CI) · --staged (freeze-only; no hook runs it today) · --update-baseline
