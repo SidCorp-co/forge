@@ -51,9 +51,14 @@ export function ConnectionGroupSection({
         <span className="fg-h3">{group.label}</span>
         <span className="fg-body-sm text-muted">{groupSummary(group)}</span>
       </button>
-      {open && (
-        <div id={rowsId} className="forge-fade">
-          {group.connections.map((c) => (
+      {/* The container the header's aria-controls names exists while the
+          section is shut too — a disclosure pointing at nothing is a dangling
+          reference assistive technology cannot follow — and `hidden` is what
+          keeps an empty one out of the tree rather than exposing a region with
+          nothing in it. */}
+      <div id={rowsId} hidden={!open} className={open ? "forge-fade" : undefined}>
+        {open &&
+          group.connections.map((c) => (
             <ConnectionRow
               key={c.id}
               connection={c}
@@ -62,8 +67,7 @@ export function ConnectionGroupSection({
               onOpen={() => onOpenConnection(c.id)}
             />
           ))}
-        </div>
-      )}
+      </div>
     </Card>
   );
 }

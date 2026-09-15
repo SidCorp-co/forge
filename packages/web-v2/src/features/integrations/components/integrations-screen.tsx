@@ -98,16 +98,19 @@ export function IntegrationsScreen() {
   const groups = useMemo(() => groupConnectionsByApp(items), [items]);
 
   // Which apps stand open. The PERSISTED half is the operator's own choice and
-  // survives leaving the page; the transient half is theirs for the life of one
-  // filter, because a filter that leaves its match behind a shut header reads
-  // as a filter that does not work, and a header it renders open has to stay
-  // clickable rather than become a control that does nothing.
+  // survives leaving the page; the transient half is theirs for the life of ONE
+  // filter value, because a filter that leaves its match behind a shut header
+  // reads as a filter that does not work, and a header it renders open has to
+  // stay clickable rather than become a control that does nothing.
   const [openApps, setOpenApps] = usePersistedState<string[]>(OPEN_APPS_KEY, []);
   const [filterClosed, setFilterClosed] = useState<string[]>([]);
   const filtering = query.trim() !== "" || provider !== "";
+  // Every CHANGE to either filter, not only the clearing of both: a new
+  // question may not have its answer hidden behind a header shut in answer to
+  // the last one, and the collapse itself was only ever about that one filter.
   useEffect(() => {
-    if (!filtering) setFilterClosed([]);
-  }, [filtering]);
+    setFilterClosed((prev) => (prev.length === 0 ? prev : []));
+  }, [query, provider]);
 
   const isOpen = (key: string) =>
     filtering ? !filterClosed.includes(key) : openApps.includes(key);

@@ -90,7 +90,8 @@ export function groupConnectionsByApp(items: ConnectionDirectoryItem[]): Connect
 export function groupSummary(group: Pick<ConnectionGroup, "connections" | "needsAttention" | "off">): string {
   const count = group.connections.length;
   const parts = [`${count} connection${count === 1 ? "" : "s"}`];
-  if (group.needsAttention > 0) parts.push(`${group.needsAttention} need attention`);
+  if (group.needsAttention > 0)
+    parts.push(`${group.needsAttention} need${group.needsAttention === 1 ? "s" : ""} attention`);
   if (group.off > 0) parts.push(`${group.off} off`);
   return parts.join(" · ");
 }

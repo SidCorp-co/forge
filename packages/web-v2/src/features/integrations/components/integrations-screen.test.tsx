@@ -225,7 +225,7 @@ describe("IntegrationsScreen, grouped by app", () => {
     ]);
     render(<IntegrationsScreen />);
     expect(
-      within(appHeader("Coolify deploy")).getByText("2 connections · 1 need attention"),
+      within(appHeader("Coolify deploy")).getByText("2 connections · 1 needs attention"),
     ).toBeInTheDocument();
   });
 

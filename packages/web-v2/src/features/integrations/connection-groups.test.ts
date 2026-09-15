@@ -147,7 +147,7 @@ describe("groupSummary", () => {
   it("states both tallies when both are non-zero", () => {
     expect(
       groupSummary({ connections: [conn(), conn(), conn()], needsAttention: 1, off: 1 }),
-    ).toBe("3 connections · 1 need attention · 1 off");
+    ).toBe("3 connections · 1 needs attention · 1 off");
   });
 
   it("omits the attention tally rather than printing a zero", () => {
