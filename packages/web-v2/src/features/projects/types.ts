@@ -1,8 +1,10 @@
-// web-v2 feature module: projects. Types come from `@forge/contracts` where a
-// shared shape exists; the hand-rolled server projections (list row, detail,
-// health) are re-typed here to match the exact `core` route responses — see
-// `packages/core/src/projects/routes.ts` + `health-routes.ts`. Verified against
-// those routes for ISS-288 (do not guess field names).
+/**
+ * web-v2 feature module: projects. Types come from `@forge/contracts` where a
+ * shared shape exists; the hand-rolled server projections — list row, detail,
+ * health — are re-typed here to match the exact `core` route responses, in
+ * `packages/core/src/projects/routes.ts` and `health-routes.ts`. Verified
+ * against those routes for ISS-288; do not guess field names.
+ */
 import type { HealthKey } from '@/design';
 import type { Project, ProjectMember } from '@forge/contracts';
 
@@ -59,7 +61,6 @@ export interface ProjectHealthRow {
   id: string;
   projectName: string;
   projectSlug: string;
-  projectMeta: Record<string, unknown>;
   description: string | null;
   repoPath: string | null;
   throughput: number;

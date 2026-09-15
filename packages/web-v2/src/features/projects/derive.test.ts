@@ -34,7 +34,6 @@ function healthRow(over: Partial<ProjectHealthRow> & { id: string }): ProjectHea
     id: over.id,
     projectName: over.projectName ?? over.id,
     projectSlug: over.projectSlug ?? over.id,
-    projectMeta: {},
     description: over.description ?? null,
     repoPath: over.repoPath ?? null,
     throughput: 0,
@@ -111,7 +110,7 @@ describe('mergeProjects', () => {
     expect(a?.repoPath).toBe('org/a');
     expect(a?.memberCount).toBe(4);
     expect(a?.pinned).toBe(false);
-    // No health row → safe idle defaults, still rendered.
+    // cm:guard a list row with no matching health row must still RENDER, at idle defaults: a just-created project has no rollup yet, and dropping it here is how it vanishes from the console until the next sweep.
     expect(b?.health).toBe('idle');
     expect(b?.openIssues).toBe(0);
     expect(b?.pinned).toBe(true);

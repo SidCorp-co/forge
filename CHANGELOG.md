@@ -4926,6 +4926,22 @@
   changed: sessions still go live exactly once and announce it exactly once, a session that is
   waiting on a person is still not counted as working, and a conversation that owes somebody an
   answer in a chat room still gets the whole of itself loaded so that answer can be written.
+- **The projects console loads faster, and moving around the app stops re-reading it.**
+  The rollup behind the projects list and the rail badge — open work, blockers, throughput, average
+  cycle time, live runs, runners, spend, members, last activity — asked the database for each of
+  those figures in turn, waiting for one before starting the next, so it took as long as all ten
+  answers added together. It now asks for them at the same time, a few at once so a busy moment on
+  the console cannot crowd out the rest of the product, and the average cycle time is worked out in
+  a single pass instead of once per closed issue. The figures are the same; you get them sooner.
+  The other half is how often it was asked for at all: the rail carries a live count on every
+  screen, so simply walking around the app re-read the whole rollup about once a minute. It now
+  holds for five, and anything that actually changes one of those numbers still updates the screen
+  the moment it happens.
+
+- **A project's agent configuration is no longer sent to the browser with the projects list.**
+  Every row of the rollup above carried the project's whole agent-configuration document, which can
+  hold connection settings for the services a project talks to. Nothing on screen has ever read it.
+  It is no longer sent.
 
 - **Every place the assistant answers you now works to the same method, and your project chooses the
   language it answers in.** Until now that method lived inside the team-chat integration and nowhere
