@@ -5,7 +5,7 @@
 // knows the pair `(adapter, externalId)` that names it and the handle that
 // gives it its scope.
 
-import { and, desc, eq, gte, isNull, lte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db as defaultDb } from '../db/client.js';
 import { projectMembers } from '../db/schema.js';
@@ -40,6 +40,8 @@ export interface ConversationRow {
   externalId: string;
   shape: ConversationShape;
   title: string | null;
+  /** Set = archived: out of the default list, every message still readable by id. */
+  archivedAt: Date | null;
 }
 
 export interface ConversationImage {
@@ -74,7 +76,20 @@ const selection = {
   externalId: conversations.externalId,
   shape: conversations.shape,
   title: conversations.title,
+  archivedAt: conversations.archivedAt,
 };
+
+/** Which side of the archive a list is asking for. */
+export interface ConversationListFilter {
+  /** `true` lists ONLY archived rooms; absent or `false` lists only live ones. */
+  archived?: boolean;
+}
+
+// cm:guard a room is on exactly ONE side of this and never on both, which is what makes the toggle
+// in the panel a way BACK rather than a second copy: a list that filtered on nothing would put an
+// archived room straight back into the default list, and archiving would mean nothing (ISS-1028).
+const archiveSide = (archived: boolean | undefined) =>
+  archived ? isNotNull(conversations.archivedAt) : isNull(conversations.archivedAt);
 
 export async function getConversation(
   conversationId: string,
@@ -395,7 +410,7 @@ export async function countMessages(
 // cm:guard an UNBOUNDED read is deliberate and priced: a room's readability is a per-project role question this join cannot ask, so paginating first hands back a short page and a total that counts rooms the caller may not see. The set is one project's rooms — 35 across the whole fleet on 2026-09-14 — so reading them to authorize them is cheap today. When a single project's rooms reach the thousands, this becomes a keyset walk that authorizes as it goes, and the condition that says so is this sentence (ISS-1001 criterion 10).
 export async function listConversationsInProject(
   projectId: string,
-  opts: { limit?: number; offset?: number } = {},
+  opts: { limit?: number; offset?: number } & ConversationListFilter = {},
   tx: Executor = defaultDb,
 ): Promise<ConversationRow[]> {
   const bounded = tx
@@ -416,13 +431,17 @@ export async function listConversationsInProject(
         eq(projectMembers.projectId, projectId),
       ),
     )
+    .where(archiveSide(opts.archived))
     .orderBy(desc(conversations.updatedAt));
   if (opts.limit === undefined) return bounded;
   return bounded.limit(opts.limit).offset(opts.offset ?? 0);
 }
 
+// cm:guard the SAME `archiveSide` the list uses, and not a second predicate that says the same
+// thing: a count that disagreed with its list would page a screen past rooms it never showed.
 export async function countConversationsInProject(
   projectId: string,
+  opts: ConversationListFilter = {},
   tx: Executor = defaultDb,
 ): Promise<number> {
   const rows = await tx
@@ -442,7 +461,8 @@ export async function countConversationsInProject(
         eq(projectMembers.userId, conversationParticipants.userId),
         eq(projectMembers.projectId, projectId),
       ),
-    );
+    )
+    .where(archiveSide(opts.archived));
   return rows.length;
 }
 
@@ -454,6 +474,26 @@ export async function renameConversation(
   const [row] = await tx
     .update(conversations)
     .set({ title, updatedAt: new Date() })
+    .where(eq(conversations.id, conversationId))
+    .returning(selection);
+  return row ?? null;
+}
+
+// cm:guard archiving STAMPS and never deletes, and unarchiving clears the stamp rather than writing
+// a second row: the transcript is what a room is, and a "clean up my list" gesture that destroyed
+// one would be the loss this issue was filed about, under a friendlier verb (ISS-1028).
+// cm:guard `updatedAt` is left ALONE, unlike the rename above: the list is ordered by it, and
+// archiving a room is not something being said in it — bumping it would float a room to the top of
+// the archived list for having been put there, and drop it to the bottom of the live list on the
+// way back.
+export async function setConversationArchived(
+  conversationId: string,
+  archived: boolean,
+  tx: Executor = defaultDb,
+): Promise<ConversationRow | null> {
+  const [row] = await tx
+    .update(conversations)
+    .set({ archivedAt: archived ? new Date() : null })
     .where(eq(conversations.id, conversationId))
     .returning(selection);
   return row ?? null;

@@ -34,6 +34,7 @@ import {
   openConversationIn,
   readMessages,
   renameConversation,
+  setConversationArchived,
 } from '../conversations/store.js';
 import { listWindowsForConversation } from '../conversations/windows.js';
 import { db } from '../db/client.js';
@@ -60,11 +61,24 @@ const WINDOW_PAGE = READ_WINDOW;
 
 const idParamSchema = z.object({ id: z.uuid() });
 
+// cm:guard `archived` is an explicit four-value literal and NOT `z.coerce.boolean()`, which reads
+// the string "false" as true and would answer a caller asking for live rooms with the archived
+// ones: a query parameter arrives as text, and the coercion that looks right here is the one that
+// silently inverts the filter (ISS-1028).
+const archivedQuery = z
+  .union([z.literal('1'), z.literal('true'), z.literal('0'), z.literal('false')], {
+    error: "archived takes '1', '0', 'true' or 'false'",
+  })
+  .optional()
+  .transform((v) => v === '1' || v === 'true');
+
 const listQuerySchema = z
   .object({
     projectId: z.uuid(),
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(100).default(50),
+    /** `1`/`true` lists ONLY the archived rooms; anything else lists only the live ones. */
+    archived: archivedQuery,
   })
   .strict();
 
@@ -82,7 +96,19 @@ const createSchema = z
   })
   .strict();
 
-const patchSchema = z.object({ title: z.string().max(500).nullable() }).strict();
+// cm:guard a body holding NEITHER field is refused by name rather than answered 200 having written
+// nothing: `title` was required before this, so an empty object was already a 400, and widening it
+// to optional without this refinement would have turned every malformed rename into a silent no-op
+// the caller reads as a success (ISS-1028).
+const patchSchema = z
+  .object({
+    title: z.string().max(500).nullable().optional(),
+    archived: z.boolean().optional(),
+  })
+  .strict()
+  .refine((v) => v.title !== undefined || v.archived !== undefined, {
+    error: 'a PATCH body must carry `title` (a string or null) or `archived` (a boolean), or both',
+  });
 
 const sendSchema = z.object({ content: z.string().min(1).max(40_000) }).strict();
 
@@ -127,13 +153,13 @@ conversationRoutes.get(
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
-    const { projectId, page, pageSize } = c.req.valid('query');
+    const { projectId, page, pageSize, archived } = c.req.valid('query');
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
     assertProjectRole(access, 'viewer', 'not a project member');
 
-    const rows = await listConversationsInProject(projectId);
+    const rows = await listConversationsInProject(projectId, { archived });
 
     // cm:guard the rooms are filtered by the DERIVED scope BEFORE the page is cut and `total` counts what survived: paginating first returns a short page, hides the rooms behind it, and over-counts.
     // cm:why the role lookups are memoized per request because the rooms share their projects.
@@ -261,10 +287,15 @@ conversationRoutes.patch(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const { title } = c.req.valid('json');
+    const { title, archived } = c.req.valid('json');
     const userId = c.get('userId');
     await writableConversation(id, userId);
-    const updated = await renameConversation(id, title);
+    // cm:guard both writes run when both fields are sent, and the LAST one's row is what answers:
+    // each returns the row as it stands after its own update, so answering with the rename's row
+    // after archiving would hand the caller a row whose `archivedAt` is the value it just changed.
+    let updated: ConversationRow | null = null;
+    if (title !== undefined) updated = await renameConversation(id, title);
+    if (archived !== undefined) updated = await setConversationArchived(id, archived);
     if (!updated) throw notFound('conversation not found');
     return c.json(updated);
   },
