@@ -430,3 +430,61 @@ describe("Composer — the actions slot", () => {
     expect(screen.getByLabelText("Send message")).toBeInTheDocument();
   });
 });
+
+// cm:guard ISS-1031 moved the clear to BEFORE the await so a person's words leave the box the moment
+// they press Enter, and these two are the pair that keeps that honest. Clearing early is only safe
+// because a throw puts them back: ISS-462's contract is that a refused send never costs the typing,
+// and the session screen is the caller that still reports a refusal by throwing.
+describe("Composer · what pressing send does to the box", () => {
+  it("clears the box before the send has resolved", async () => {
+    let release: () => void = () => undefined;
+    const onSend = vi.fn(() => new Promise<void>((resolve) => { release = () => resolve(); }));
+    renderComposer({ onSend });
+
+    const box = textarea();
+    typeInto(box, "is the release ready?");
+    await act(async () => {
+      fireEvent.keyDown(box, { key: "Enter" });
+    });
+
+    expect(onSend).toHaveBeenCalledTimes(1);
+    expect(textarea().value).toBe("");
+    await act(async () => {
+      release();
+    });
+  });
+
+  it("puts the words back when the send throws", async () => {
+    const onSend = vi.fn(async () => {
+      throw new Error("no online runner");
+    });
+    renderComposer({ onSend });
+
+    const box = textarea();
+    typeInto(box, "is the release ready?");
+    await act(async () => {
+      fireEvent.keyDown(box, { key: "Enter" });
+    });
+
+    await waitFor(() => expect(textarea().value).toBe("is the release ready?"));
+  });
+
+  it("refuses the send while busy unless the caller queues", async () => {
+    const onSend = vi.fn(async () => undefined);
+    const view = render(<Composer onSend={onSend} busy />);
+    const box = screen.getByLabelText("Message") as HTMLTextAreaElement;
+    typeInto(box, "and how many are blocked?");
+    await act(async () => {
+      fireEvent.keyDown(box, { key: "Enter" });
+    });
+    expect(onSend).not.toHaveBeenCalled();
+
+    // cm:guard the SAME press with `queueWhileBusy` set must land, or this case is only asserting
+    // that `busy` disables something and would pass against a composer that refuses every send.
+    view.rerender(<Composer onSend={onSend} busy queueWhileBusy />);
+    await act(async () => {
+      fireEvent.keyDown(screen.getByLabelText("Message"), { key: "Enter" });
+    });
+    expect(onSend).toHaveBeenCalledTimes(1);
+  });
+});
