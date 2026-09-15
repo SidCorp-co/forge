@@ -7,6 +7,11 @@
  * result-event false-positive guard (ISS-258), runs at the loop threshold
  * PLUS the alarm margin (65 min), performs NO terminal write, and surfaces
  * every match as a `loop-miss` log + `pipeline_wedge` event.
+ *
+ * ISS-1013 — and it selects only what the loop should already have acted on.
+ * The four terms below each stand for a way the old copy answered wrongly, so
+ * each one is asserted by the fragment it would lose: the phase lateral, the
+ * park exemption, the residency-aware result guard, and the kill-gate grace.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -41,6 +46,10 @@ vi.mock('../pipeline/wedge.js', () => ({
 vi.mock('./loop-monitor.js', () => ({
   RESULT_QUIET_MINUTES: 60,
 }));
+
+// cm:why kill-gate is mocked for its IMPORT CHAIN and not its behaviour — it reaches `ws/server.js`, which validates env at module scope and throws here for want of a DATABASE_URL. Only the grace number is read.
+const KILL_GRACE_MS = 90_000;
+vi.mock('./kill-gate.js', () => ({ killGraceMs: () => KILL_GRACE_MS }));
 
 const loggerWarn = vi.fn();
 vi.mock('../logger.js', () => ({
@@ -95,9 +104,43 @@ describe('runStaleSweep (alarm-only)', () => {
     await runStaleSweep();
     const text = lastSqlText(0);
     expect(text).toMatch(/j\.status\s+IN\s*\(\s*'dispatched'\s*,\s*'running'\s*\)/);
-    expect(text).toMatch(/interval\s+'65 minutes'/);
+    expect(text).toMatch(/interval\s+'\s*65\s*minutes'/);
     expect(text).toMatch(/COALESCE\(le\.max_ts,\s*j\.dispatched_at\)/);
     expect(text).toMatch(/NOT\s+EXISTS[\s\S]*job_events[\s\S]*kind\s*=\s*'result'/);
+  });
+
+  // cm:guard reads `job_events` through a lateral keyed on the driving row, never an aggregate over the table. The `GROUP BY job_id` assertion is negative and deliberately so: the shape this replaced was correct and merely unbounded, so nothing about the alarm's OUTPUT can go red when it comes back.
+  it('reaches both history tables per driving job, with no unrestricted aggregate', async () => {
+    executeMock.mockResolvedValueOnce([]);
+    await runStaleSweep();
+    const text = lastSqlText(0);
+    expect(text).toMatch(
+      /LEFT\s+JOIN\s+LATERAL[\s\S]*job_events\s+e\s+WHERE\s+e\.job_id\s*=\s*j\.id[\s\S]*\)\s*le\s+ON\s+true/,
+    );
+    expect(text).toMatch(
+      /LEFT\s+JOIN\s+LATERAL[\s\S]*phase_journal\s+p\s+WHERE\s+p\.run_id\s*=\s*j\.pipeline_run_id[\s\S]*\)\s*lp\s+ON\s+true/,
+    );
+    expect(text).not.toMatch(/GROUP\s+BY\s+job_id/);
+    expect(text).not.toMatch(/GROUP\s+BY\s+run_id/);
+  });
+
+  // cm:guard each of the four terms the pre-ISS-1013 copy had lost. A phase-only driver, a human park and a gated job were each wedging a false operator alert every five minutes; the residency guard is the one that made the alarm see LESS, going permanently blind to a duplex job after its first turn wrote a `result`.
+  it('carries the loop\u2019s own phase, park, residency and kill-gate terms', async () => {
+    executeMock.mockResolvedValueOnce([]);
+    await runStaleSweep();
+    const text = lastSqlText(0);
+    expect(text).toMatch(/COALESCE\(lp\.max_ts,\s*j\.dispatched_at\)/);
+    expect(text).toMatch(/s\.runtime_state\s+IS\s+DISTINCT\s+FROM\s+'awaiting_input'/);
+    expect(text).toMatch(/s\.runtime_state\s+IS\s+NOT\s+NULL\s+OR\s+NOT\s+EXISTS/);
+    expect(text).toMatch(/j\.kill_requested_at\s+IS\s+NULL\s+OR\s+j\.kill_requested_at\s*<=/);
+  });
+
+  // cm:guard the kill-gate cutoff is the SWEEP's clock and not `Date.now()` at module load — a cutoff pinned to the wrong instant excludes every gated row forever or none of them, and either way the assertion above still passes.
+  it('pins the kill-gate cutoff one grace window behind the sweep instant', async () => {
+    executeMock.mockResolvedValueOnce([]);
+    const now = new Date('2026-06-12T12:00:00.000Z');
+    await runStaleSweep(now);
+    expect(lastSqlText(0)).toContain(new Date(now.getTime() - KILL_GRACE_MS).toISOString());
   });
 
   it('a match is ALARMED (loop-miss log + wedge), never reaped', async () => {

@@ -822,6 +822,10 @@ export const jobEvents = pgTable(
   (t) => ({
     jobIdSeqIdx: uniqueIndex('job_events_job_id_seq_idx').on(t.jobId, t.seq),
     tsIdx: index('job_events_ts_idx').on(t.ts),
+    // cm:guard ISS-1013 — `(job_id, seq)` above cannot answer `max(ts)` for one job: it orders by `seq`, so the planner reads that job's WHOLE event history and aggregates. This one lets the min/max transform take a single index-only tuple, which is what bounds the result hop's per-tick cost to the number of live jobs. Dropping it does not fail a test that only asks for the absence of a sequential scan — the planner falls back to scanning the other index end to end, which reads as an index scan in a plan and costs like a table scan.
+    jobIdTsIdx: index('job_events_job_id_ts_idx').on(t.jobId, t.ts),
+    // cm:guard ISS-1013 — PARTIAL on `kind = 'result'`, which is what makes `resident-session.ts`'s `RESULT_EVENT_LATERAL` one index tuple per live job instead of a walk through that job's whole history looking for a result it usually has not written. The predicate is why this is nearly free on a write-heavy table: a non-result insert evaluates it and writes no entry.
+    resultKindIdx: index('job_events_result_idx').on(t.jobId).where(sql`kind = 'result'`),
   }),
 );
 
