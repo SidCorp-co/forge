@@ -302,28 +302,38 @@ export function Composer({
     setWarnings([]);
   };
 
-  // cm:guard the box clears BEFORE the await and the text is put back if the send throws. Clearing
-  // after it kept ISS-462's contract — a refused send does not lose the words — at the price of
-  // holding them for the whole call, and `POST /conversations/:id/messages` does not return until
-  // the agent turn is over, so a person watched their own question sit in the box for the length of
-  // the answer. Both properties hold now: instant on the happy path, recovered on the refused one
-  // (ISS-1031).
+  // cm:guard WHICH clear a caller gets follows from whether it queues, and the two are one decision.
+  // A caller that queues (`queueWhileBusy`) never reports a refusal by throwing — it owns a row that
+  // keeps the words — so clearing before the await is free, and it is the whole point: the words
+  // leave the box the instant Enter is pressed rather than sitting there for the length of the
+  // answer, which is what `POST /conversations/:id/messages` not returning until the turn is over
+  // used to cost. A caller that does NOT queue reports refusals by throwing, and for it the clear
+  // stays where ISS-462 put it: on success only.
+  //
+  // Clearing early for BOTH and restoring in the catch was the first shape of this and it lost
+  // text — submit A, type B into the now-empty box, A is refused, and the restore overwrites B with
+  // A (ISS-1031 review F1). There is no restore here to get wrong, because the only caller that
+  // clears early is the one that cannot throw.
   const submit = async () => {
     if (!canSend) return;
     const text = value.trim();
     const staged = files.map(({ file }) => file);
-    const keptValue = value;
-    const keptFiles = files;
-    setValue("");
-    setFiles([]);
-    setWarnings([]);
-    setSlashOpen(false);
-    setSlashCaret(0);
+    const clear = () => {
+      setValue("");
+      setFiles([]);
+      setWarnings([]);
+      setSlashOpen(false);
+      setSlashCaret(0);
+    };
+    if (queueWhileBusy) {
+      clear();
+      await onSend(text, staged);
+      return;
+    }
     try {
       await onSend(text, staged);
+      clear();
     } catch {
-      setValue(keptValue);
-      setFiles(keptFiles);
       // Keep the text + files; the parent surfaces the error (Banner + toast).
     }
   };

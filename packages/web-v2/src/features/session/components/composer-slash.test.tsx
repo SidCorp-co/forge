@@ -436,10 +436,10 @@ describe("Composer — the actions slot", () => {
 // because a throw puts them back: ISS-462's contract is that a refused send never costs the typing,
 // and the session screen is the caller that still reports a refusal by throwing.
 describe("Composer · what pressing send does to the box", () => {
-  it("clears the box before the send has resolved", async () => {
+  it("clears the box before the send has resolved, for a caller that queues", async () => {
     let release: () => void = () => undefined;
     const onSend = vi.fn(() => new Promise<void>((resolve) => { release = () => resolve(); }));
-    renderComposer({ onSend });
+    render(<Composer onSend={onSend} queueWhileBusy />);
 
     const box = textarea();
     typeInto(box, "is the release ready?");
@@ -454,6 +454,9 @@ describe("Composer · what pressing send does to the box", () => {
     });
   });
 
+  // cm:guard the non-queueing caller keeps ISS-462's clear-on-success, and that is what makes this
+  // safe: there is no early clear to restore over, so a draft typed while the send was in flight
+  // cannot be overwritten by the refused one (ISS-1031 review F1).
   it("puts the words back when the send throws", async () => {
     const onSend = vi.fn(async () => {
       throw new Error("no online runner");
@@ -486,5 +489,29 @@ describe("Composer · what pressing send does to the box", () => {
       fireEvent.keyDown(screen.getByLabelText("Message"), { key: "Enter" });
     });
     expect(onSend).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not overwrite a draft typed while the refused send was in flight", async () => {
+    let fail: () => void = () => undefined;
+    const onSend = vi.fn(
+      () => new Promise<void>((_, reject) => { fail = () => reject(new Error("no")); }),
+    );
+    renderComposer({ onSend });
+
+    const box = textarea();
+    typeInto(box, "first question");
+    await act(async () => {
+      fireEvent.keyDown(box, { key: "Enter" });
+    });
+    // A non-queueing caller holds the text, so the person edits it rather than starting fresh.
+    await act(async () => {
+      typeInto(textarea(), "second question");
+    });
+
+    await act(async () => {
+      fail();
+    });
+
+    expect(textarea().value).toBe("second question");
   });
 });
