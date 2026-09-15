@@ -95,6 +95,8 @@ export const issuesApi = {
     params.set("withPipelineHealth", "1");
     // cm:why ISS-594 — the row's module attributions, and the only source for the list's Module cell: the search response carries no labels otherwise
     params.set("withModules", "1");
+    // cm:why ISS-1017 — the same grouped-query pattern as `withCost` above: it is the list's ONLY source of dependency edges, and dropping the flag reinstates the per-row `GET /issues/:id/dependencies` N+1 (25 a page) rather than losing the badges
+    params.set("withDependencies", "1");
     // cm:why the tab counts ride this response rather than an endpoint of their own: the figure on a tab and the rows beneath it are then one read of one narrowing, and cannot describe two different moments (ISS-1010)
     params.set("withBuckets", "1");
     if (opts.q) params.set("q", opts.q);

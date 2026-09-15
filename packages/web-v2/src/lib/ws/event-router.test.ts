@@ -54,3 +54,23 @@ describe("routeEvent", () => {
     expect(() => send("nothing.likeThis")).not.toThrow();
   });
 });
+
+// cm:guard the issues list renders its dependency badges from the search response since ISS-1017, so `['issue', id, 'dependencies']` no longer reaches it — these cases are the only thing that goes red if the list prefix is dropped from that branch and the chips start outliving the edge that was retracted.
+describe("a dependency change reaches the issues list, not only the two issues it names", () => {
+  const c = send("dependencyChanged", {
+    projectId: "p1",
+    edgeId: "e1",
+    fromIssueId: "i-from",
+    toIssueId: "i-to",
+    kind: "blocks",
+  });
+
+  it("invalidates the list the badges are rendered from", () => {
+    expect(c.has(["issues", "search"])).toBe(true);
+  });
+
+  it("still invalidates each endpoint's own dependency key for the detail panel", () => {
+    expect(c.has(["issue", "i-from", "dependencies"])).toBe(true);
+    expect(c.has(["issue", "i-to", "dependencies"])).toBe(true);
+  });
+});

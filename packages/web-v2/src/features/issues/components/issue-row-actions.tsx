@@ -198,8 +198,7 @@ function useRowMenuItems(
     { label: "Open issue", icon: "arrowRight", onSelect: open },
   ];
 
-  // Viewer = read-only: keep navigation, drop every mutation item (the server
-  // 403s them regardless — this is UX).
+  // cm:why a viewer keeps navigation and loses every mutation item; the server 403s those writes regardless, so this is the affordance and never the gate
   if (actions.canWrite === false) return items;
 
   const grouped = groupedTransitions(exits, row.status);
@@ -331,7 +330,7 @@ export function IssueTableRow({
         </button>
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
           {row.category && <MonoTag>{row.category}</MonoTag>}
-          <DepBadges id={row.id} slug={slug} />
+          <DepBadges deps={row.dependencies} slug={slug} />
         </div>
       </TD>
       <TD className="max-w-[160px]">
@@ -415,7 +414,7 @@ export function IssueMobileCard({
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           {row.category && <MonoTag>{row.category}</MonoTag>}
           {row.modules && row.modules.length > 0 && <ModuleCell modules={row.modules} />}
-          <DepBadges id={row.id} slug={slug} />
+          <DepBadges deps={row.dependencies} slug={slug} />
         </div>
 
         <div className="mt-3">

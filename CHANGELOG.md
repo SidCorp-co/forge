@@ -2631,6 +2631,14 @@
 
 ### Fixed
 
+- **Opening the Issues list is one request again, not twenty-six.** Every row on the page asked the
+  server separately for its own "Blocked by" / "Blocks" / subtask chips, so a page of twenty-five
+  issues fired twenty-five extra requests before it could finish drawing — each one its own
+  round-trip, on every page you turned to, every time you changed a filter, and again whenever you
+  came back to the list. The chips now arrive with the rows they belong to, in the same answer the
+  list already asks for, and they say exactly what they said before. The live update is unchanged
+  too: add or retract a dependency anywhere and the chips on an open list still move on their own.
+
 - **The assistant in the Forge web app can answer you properly again: with the figures, with the
   file, with the snippet.** Its replies were being checked against the rules written for somebody
   outside the project who cannot open the tracker — a reader who is owed plain language and should

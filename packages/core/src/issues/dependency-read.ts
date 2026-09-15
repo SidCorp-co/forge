@@ -5,7 +5,7 @@
  * `ISS-<seq>` without N extra round-trips (ISS-331).
  */
 
-import { and, eq, or } from 'drizzle-orm';
+import { and, eq, inArray, or } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../db/client.js';
 import { type IssueDependencyKind, issueDependencies, issues } from '../db/schema.js';
@@ -52,6 +52,29 @@ export async function loadIssueDependencyEdges(
   issueId: string,
   projectId: string,
 ): Promise<IssueDependencyEdges> {
+  const byIssue = await loadIssueDependencyEdgesForIssues([issueId], projectId);
+  return byIssue.get(issueId) ?? { outgoing: [], incoming: [] };
+}
+
+/**
+ * ISS-1017 — the same read over a PAGE of issues, in one query, so the issues
+ * list can render its dependency badges from the search response instead of
+ * one `GET /issues/:id/dependencies` per row (25 per page). The single-issue
+ * function above is this one called with a page of one, so the query, the
+ * prefix resolution and the enrichment have exactly one writer.
+ */
+// cm:guard `project_id` stays in the WHERE for the same reason the single-issue read keeps it, and the `OR` is over the two ENDPOINT columns so both composite indexes stay usable — a page's ids pushed into an endpoint-only filter constrains the non-leading column of both and Postgres degrades to scanning every edge in the table.
+// cm:guard every requested id gets an entry, `{ outgoing: [], incoming: [] }` included — a missing key is indistinguishable from a hydration that failed, and the caller would render a stale badge set from the previous page's cache.
+export async function loadIssueDependencyEdgesForIssues(
+  issueIds: string[],
+  projectId: string,
+): Promise<Map<string, IssueDependencyEdges>> {
+  const byIssue = new Map<string, IssueDependencyEdges>(
+    issueIds.map((id) => [id, { outgoing: [], incoming: [] }]),
+  );
+  if (byIssue.size === 0) return byIssue;
+  const ids = [...byIssue.keys()];
+
   const fromIssue = alias(issues, 'from_issue');
   const toIssue = alias(issues, 'to_issue');
   const rows = await db
@@ -82,7 +105,7 @@ export async function loadIssueDependencyEdges(
     .where(
       and(
         eq(issueDependencies.projectId, projectId),
-        or(eq(issueDependencies.fromIssueId, issueId), eq(issueDependencies.toIssueId, issueId)),
+        or(inArray(issueDependencies.fromIssueId, ids), inArray(issueDependencies.toIssueId, ids)),
       ),
     );
 
@@ -112,12 +135,13 @@ export async function loadIssueDependencyEdges(
     };
   };
 
-  const outgoing: IssueDependencyEdge[] = [];
-  const incoming: IssueDependencyEdge[] = [];
+  // cm:guard an edge whose BOTH endpoints are on the page is filed twice — outgoing on its `from` row and incoming on its `to` row — because each row answers for its own side; file it once and one of the two rows renders a badge the other one owns.
   for (const row of rows) {
-    (row.fromIssueId === issueId ? outgoing : incoming).push(enrich(row));
+    const edge = enrich(row);
+    byIssue.get(row.fromIssueId)?.outgoing.push(edge);
+    if (row.toIssueId !== row.fromIssueId) byIssue.get(row.toIssueId)?.incoming.push(edge);
   }
-  return { outgoing, incoming };
+  return byIssue;
 }
 
 export type IssueRelationDigest = {

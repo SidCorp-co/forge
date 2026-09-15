@@ -132,6 +132,11 @@ export interface IssueRow {
   /** ISS-594 — present when the search call opts in with `withModules=1` (the
    *  list does). Primary first; `[]` when the issue has no module. */
   modules?: ModuleAttribution[];
+  /** ISS-1017 — present when the search call opts in with
+   *  `withDependencies=1` (the list does), and the list row's ONLY source of
+   *  edges since it stopped fetching one `GET /issues/:id/dependencies` per
+   *  row. Both arrays are always present; empty means no edges. */
+  dependencies?: IssueDependencies;
 }
 
 /** Project member row from `GET /api/projects/:projectId/members`. */
