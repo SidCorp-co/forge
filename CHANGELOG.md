@@ -4829,6 +4829,14 @@
 
 ### Changed
 
+- **One answer shows up once while the assistant is still writing it.** The Forge assistant streams
+  its reply as a record that grows — the prose so far, the tools it has run, what they returned —
+  and it ends by sending the finished record it saved. Those growing sends and the finished one
+  were labelled as two different things, so a screen that groups by the label had the same answer
+  twice: a copy that stopped where the stream stopped, and the real one underneath it. The label is
+  now decided once, before the first send, and the saved record keeps it, so there is one answer on
+  the screen from the first word to the last. Nothing already stored changes. (ISS-1029)
+
 - **The Forge assistant's transcript now records what the turn actually did, not just the sentence
   it ended on.** A chat turn that searched the tracker, read three issues and then answered used to
   be stored as its final paragraph and nothing else. The tools it called, what they returned, which

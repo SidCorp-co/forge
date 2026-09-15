@@ -43,6 +43,8 @@ export const CONVERSATION_READ_WINDOW = 200;
 
 export interface PendingMessage {
   role: ConversationMessageRole;
+  /** The row id, where the caller minted it before the write; null lets the column default. */
+  id: string | null;
   content: string;
   authorUserId: string | null;
   authorLabel: string | null;
@@ -192,6 +194,7 @@ export function appendUserMessage(
 ): void {
   turn.pending.push({
     role: 'user',
+    id: null,
     content,
     authorUserId: opts.authorUserId ?? null,
     authorLabel: opts.authorLabel ?? null,
@@ -215,10 +218,13 @@ export function appendAssistantMessage(
     deliveryProof?: unknown;
     /** The canonical blocks this turn produced (ISS-1029); omit on a text-only caller. */
     blocks?: ContentBlock[] | null;
+    /** The id the turn already streamed this entry under; omit to let the column mint one. */
+    id?: string | null;
   } = {},
 ): void {
   turn.pending.push({
     role: 'assistant',
+    id: opts.id ?? null,
     content,
     authorUserId: opts.authorUserId ?? turn.handleUserId,
     authorLabel: null,
@@ -234,10 +240,11 @@ export function appendAssistantMessage(
 export function appendSilence(
   turn: ConversationTurn,
   reason: string,
-  opts: { blocks?: ContentBlock[] | null } = {},
+  opts: { blocks?: ContentBlock[] | null; id?: string | null } = {},
 ): void {
   turn.pending.push({
     role: 'assistant',
+    id: opts.id ?? null,
     content: '',
     // cm:guard the blocks a silent turn ALREADY accumulated are kept beside its reason: a turn that
     // ran six tools and then returned no text is the one turn somebody opens the transcript to
@@ -266,6 +273,7 @@ export async function persistMessages(
     conversationId: turn.conversationId,
     messages: turn.pending.map((m) => ({
       role: m.role,
+      ...(m.id ? { id: m.id } : {}),
       content: m.content,
       authorUserId: m.authorUserId,
       authorLabel: m.authorLabel,

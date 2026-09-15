@@ -462,6 +462,7 @@ describe('a turn continuing a conversation by id', () => {
     // cm:why the CHECK constraint refuses this role, and only the SECOND message carries it
     turn.pending.push({
       role: 'nonsense' as never,
+      id: null,
       content: 'answered',
       authorUserId: null,
       authorLabel: null,
