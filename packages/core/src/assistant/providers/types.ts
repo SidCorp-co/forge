@@ -44,7 +44,12 @@ export interface ChatStreamUsage {
 export type ChatStreamEvent =
   | { type: 'chunk'; text: string }
   | { type: 'tool_call'; id: string; name: string; arguments: unknown }
-  | { type: 'tool_result'; id: string; result: unknown }
+  // cm:guard `tool_result` is the ONLY member of this union no adapter emits — it is yielded once,
+  // by the loop in `run-turn-core.ts`, after it has executed the call itself. That is why it may
+  // carry what the loop measured and the others may not: nothing an adapter implements changes,
+  // so the 1:1 OpenAI-compat claim above still holds. Grep `providers/` before adding a third
+  // field here — if an adapter ever emits this event, these two become a contract it must fill.
+  | { type: 'tool_result'; id: string; result: unknown; isError?: boolean; durationMs?: number }
   | { type: 'usage'; usage: ChatStreamUsage }
   | { type: 'done' }
   | { type: 'error'; message: string };

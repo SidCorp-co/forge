@@ -154,6 +154,19 @@ export const conversationMessages = pgTable(
     // cm:guard kept so a window routed minutes later can still say who is being refused: the authority refusal is taken at ROUTE time, and without this the only speaker the row remembers is a display label, which no directory can be asked about. Null for anything this codebase wrote (ISS-1004).
     authorKey: text('author_key'),
     images: jsonb('images'),
+    /**
+     * The ordered blocks of the canonical transcript entry this row holds
+     * (ISS-1029) — the same `AgentMessage['blocks']` the Claude Code CLI path
+     * produces in `lib/agent-stream-parser.ts`.
+     */
+    // cm:guard NULL here is a legacy flat row and NOT a gap to fill: every row written before
+    // ISS-1029, and every row an adapter writes through the text-only door, carries its whole
+    // answer in `content`, and `toCanonicalEntry` reads one back as a single text block. A reader
+    // that treated null as "no blocks yet" would show an empty turn where a real answer is stored.
+    // cm:guard `content` is NOT derived from these and stays the final text on its own: it is what
+    // `toProviderMessages` replays to the model and what every preview reads, and deriving it here
+    // would put the same sentence in two columns that nothing keeps in step.
+    blocks: jsonb('blocks'),
     // cm:guard the receipt the adapter's own `deliver` returned, and a chip may claim only what it holds: a null here means the transport took the text without naming a message, which is NOT delivered (ISS-1001 invariant 8).
     deliveryProof: jsonb('delivery_proof'),
     // cm:guard why a turn said nothing, written INSTEAD of the text — a silence with no row is indistinguishable from a turn that never ran, which is the state invariant 7 exists to remove.

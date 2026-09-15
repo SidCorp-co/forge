@@ -353,3 +353,84 @@ describe('listing a project’s conversations', () => {
     expect(await store.listConversationsInProject(projectId, { limit: 20, offset: 0 })).toEqual([]);
   });
 });
+
+/**
+ * ISS-1029 — the blocks column, against a real Postgres: what goes in comes
+ * back, and the shape that predates the column is still writable and still
+ * readable.
+ */
+describe('the canonical blocks column', () => {
+  const blocks = [
+    { type: 'text' as const, text: 'Let me look.' },
+    {
+      type: 'tool' as const,
+      toolCall: {
+        id: 'c1',
+        name: 'forge_issues',
+        input: { action: 'list' },
+        output: 'two issues',
+        isError: true,
+        durationMs: 12,
+      },
+    },
+    { type: 'text' as const, text: 'That failed.' },
+  ];
+
+  it('round-trips the ordered blocks a turn wrote', async () => {
+    const room = await store.openConversation(venue(`chat.example.co ${randomUUID()}`));
+    const written = await store.appendMessage({
+      conversationId: room.id,
+      role: 'assistant',
+      content: 'That failed.',
+      blocks,
+    });
+    expect(written.blocks).toEqual(blocks);
+
+    const [read] = await store.readMessages(room.id, 50);
+    expect(read?.blocks).toEqual(blocks);
+    const entry = store.toCanonicalEntry(read as never);
+    expect(entry.type).toBe('assistant');
+    expect(entry.blocks).toEqual(blocks);
+    expect(entry.toolCalls).toEqual([(blocks[1] as { toolCall: unknown }).toolCall]);
+  });
+
+  // cm:guard criterion 20 — the previous shape, which names no blocks at all, still writes. The
+  // migration adds a NULLABLE column with no default precisely so this holds; a NOT NULL there
+  // would have made every older writer's insert a 500 the moment the ALTER landed.
+  it('still accepts an insert that names no blocks', async () => {
+    const room = await store.openConversation(venue(`chat.example.co ${randomUUID()}`));
+    const written = await store.appendMessage({
+      conversationId: room.id,
+      role: 'assistant',
+      content: 'You have two.',
+    });
+    expect(written.blocks).toBeNull();
+  });
+
+  // cm:guard criterion 19 — a row carrying the pre-column shape reads back through the NEW reader
+  // as the answer it holds, not as an empty turn. This is written with raw SQL naming only the
+  // columns that existed before 0247, which is exactly what a row already in the table looks like.
+  it('reads a row written in the pre-column shape as a single text block', async () => {
+    const room = await store.openConversation(venue(`chat.example.co ${randomUUID()}`));
+    await harness.db.execute(sql`
+      INSERT INTO conversation_messages (conversation_id, seq, role, content)
+      VALUES (${room.id}, 0, 'assistant', 'You have two.')
+    `);
+    const [read] = await store.readMessages(room.id, 50);
+    expect(read?.blocks).toBeNull();
+    expect(store.toCanonicalEntry(read as never).blocks).toEqual([
+      { type: 'text', text: 'You have two.' },
+    ]);
+  });
+
+  it('keeps an empty blocks array out of the column', async () => {
+    const room = await store.openConversation(venue(`chat.example.co ${randomUUID()}`));
+    const written = await store.appendMessage({
+      conversationId: room.id,
+      role: 'assistant',
+      content: 'hi',
+      blocks: [],
+    });
+    expect(written.blocks).toBeNull();
+  });
+});

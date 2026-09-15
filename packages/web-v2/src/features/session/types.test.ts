@@ -281,3 +281,103 @@ describe("tool labels + kinds", () => {
     expect(toolKind("SomethingElse")).toBe("generic");
   });
 });
+
+/**
+ * ISS-1029 — the Forge assistant path now persists the SAME canonical entry the
+ * Claude Code CLI path does, so this formatter renders both. These cases are
+ * written against what `packages/core/src/conversations/store.ts
+ * toCanonicalEntry` returns for an assistant `conversation_messages` row, and
+ * they exist to fail if that shape and this reader ever drift apart.
+ */
+// cm:guard nothing in `types.ts` was changed to make these pass, and nothing may be: the whole
+// point of the issue is that the assistant path was made to fit the reader that already existed.
+describe("parseMessages over an assistant conversation row", () => {
+  /** What `toCanonicalEntry` returns for a turn that wrote prose, called a failing tool, wrote more. */
+  const assistantEntry = {
+    id: "row-7",
+    type: "assistant" as const,
+    timestamp: 1_700_000_000_000,
+    content: "That failed.",
+    blocks: [
+      { type: "text" as const, text: "Let me look." },
+      {
+        type: "tool" as const,
+        toolCall: {
+          id: "c1",
+          name: "forge_issues",
+          input: { action: "list" },
+          output: "boom",
+          isError: true,
+          durationMs: 12,
+        },
+      },
+      { type: "text" as const, text: "That failed." },
+    ],
+    toolCalls: [
+      {
+        id: "c1",
+        name: "forge_issues",
+        input: { action: "list" },
+        output: "boom",
+        isError: true,
+        durationMs: 12,
+      },
+    ],
+  };
+
+  it("renders the prose, the tool and the prose after it, in that order", () => {
+    const items = parseMessages([assistantEntry]);
+    expect(items).toHaveLength(1);
+    expect(items[0]?.kind).toBe("agent");
+    expect(items[0]?.blocks.map((b) => b.type)).toEqual(["text", "tool", "text"]);
+  });
+
+  it("carries the tool's name, output and error state into the render block", () => {
+    const [item] = parseMessages([assistantEntry]);
+    const block = item?.blocks[1];
+    expect(block?.type).toBe("tool");
+    if (block?.type !== "tool") throw new Error("expected a tool block");
+    expect(block.tool.name).toBe("forge_issues");
+    // cm:guard `result ?? output` is the field-drift normalisation this formatter already carried;
+    // the assistant path writes `output`, like the CLI derive does, so it needs no new branch.
+    expect(block.tool.result).toBe("boom");
+    expect(block.tool.isError).toBe(true);
+    expect(block.tool.durationMs).toBe(12);
+  });
+
+  it("labels the tool the same way it labels one from a CLI session", () => {
+    const [item] = parseMessages([assistantEntry]);
+    const block = item?.blocks[1];
+    if (block?.type !== "tool") throw new Error("expected a tool block");
+    // A bare tool name falls to the default branch and labels as itself; the `mcp__` prefix is what
+    // routes a name through `formatMcpLabel`, and the assistant path's tools arrive either way.
+    expect(getToolLabel(block.tool)).toBe("forge_issues");
+    expect(
+      getToolLabel({ id: "c2", name: "mcp__forge__forge_issues", input: { action: "list" } }),
+    ).toBe("Issues(list)");
+  });
+
+  it("renders a legacy row, whose whole answer is its text, as one text block", () => {
+    // What `toCanonicalEntry` returns for a row written before the blocks column existed.
+    const items = parseMessages([
+      {
+        id: "row-1",
+        type: "assistant",
+        timestamp: 1_700_000_000_000,
+        content: "You have two.",
+        blocks: [{ type: "text", text: "You have two." }],
+      },
+    ]);
+    expect(items).toHaveLength(1);
+    expect(items[0]?.blocks).toEqual([{ type: "text", text: "You have two." }]);
+  });
+
+  it("renders the user side of the same conversation as an editable prompt", () => {
+    const items = parseMessages([
+      { id: "row-0", type: "user", timestamp: 1, content: "how many open issues?" },
+      assistantEntry,
+    ]);
+    expect(items.map((i) => i.kind)).toEqual(["prompt", "agent"]);
+    expect(items[0]?.text).toBe("how many open issues?");
+  });
+});

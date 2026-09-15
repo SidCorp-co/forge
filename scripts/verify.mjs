@@ -6,7 +6,7 @@
 // neither can be what correctness depends on. Everything reachable from here
 // works with a bare checkout and a node binary.
 //
-// Four contracts, ordered by what breaks without them:
+// Three contracts, ordered by what breaks without them:
 //   1. CI parity — every step in ci.yml is run here or explicitly declared as
 //      covered by another root script. `--ci-parity` proves it.
 //   2. Fail-closed — a checker that scanned zero files exits 2, never 0. A
@@ -14,10 +14,8 @@
 //   2b. One proposition per verdict — "the rule holds", "the rule is broken"
 //      and "I could not run" are three answers; see `MARKS` in lib/verify-report.mjs.
 //   3. Report everything — no early exit, so one fix cycle instead of six.
-//   4. Advisory — `cm impact` on changed files: the pull-side replacement for
-//      the PreToolUse hook that used to push guards into an agent's context.
 //
-// Modes: (none) full · --ci-parity the parity proof · --no-advisory
+// Modes: (none) full · --ci-parity the parity proof
 // Exit: 0 clean · 1 violations · 2 a check could not run.
 
 import { spawn, spawnSync } from 'node:child_process';
@@ -30,7 +28,7 @@ import { markFor, tally, tallyLine } from './lib/verify-report.mjs';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CI_PATH = join(ROOT, '.github', 'workflows', 'ci.yml');
 
-// cm:guard every entry needs a `scanned` pattern that matches the checker's OWN success line. Without it a checker that walked an empty scope reports clean and this script forwards that as a pass — the exact fail-open shape codemap's own CLI documents as the only bug class it has ever shipped.
+// cm:guard every entry needs a `scanned` pattern that matches the checker's OWN success line. Without it a checker that walked an empty scope reports clean and this script forwards that as a pass.
 const CHECKS = [
   {
     axis: 'language',
@@ -74,15 +72,6 @@ const CHECKS = [
     // cm:guard the skip is only legitimate because CI runs this WITH --require-sources after producing the reports, and ci-parity proves that step exists. Drop it there and this becomes a check that never runs anywhere.
     skipIf: /skipped — (no|stale) coverage report/,
   },
-  {
-    // cm:guard WHOLE TREE, never `--since`. A scoped run walks the diff against origin/main, and for a commit pushed straight to `main` that diff is EMPTY — cm prints its success line over zero files and this script forwards a green. 15 CM001 errors reached main that way before anyone looked. Legacy prose is frozen by content in the baseline, so a whole-tree run costs nothing and has no blind spot; if it ever goes red on untouched files, the baseline is stale, not the rule.
-    // cm:guard this comment sits ABOVE `label:` on purpose — conformance-audit R2 proves a check declares a `scanned:` pattern by looking at most 400 characters past its label, so prose wedged between the two reads as a check with no scan proof and fails the audit.
-    axis: 'knowledge',
-    label: 'codemap prose',
-    cmd: ['.forge/codemap/cm', 'verify'],
-    scanned: /"files":\s*(\d+)/,
-    json: true,
-  },
   // cm:guard this gate is what makes the PAT permission menu a proof rather than a habit: `PAT_PERMISSION_RESOURCES` declares reachability per-PREFIX while the property it claims is per-ROUTE, so one unfenced route under an admitted prefix is a project-scoped token reading another project with every handler around it looking correct. Measured on its first run: a text search inside the route span reported 80 of 285 routes unfenced and the three sampled were all its own false positives (a file-local `assertMember`, a service layer, two routers sharing a file) — the invariant is call-graph reachability, not a string, and a checker at 95% noise is worse than none because it teaches the reader to skip it.
   {
     // cm:guard the map is GENERATED and this gate is what keeps it that way — hand-kept, `docs/system.graph.json` sat 5 months and was missing 2 of its 9 modules (2026-09-11)
@@ -117,29 +106,6 @@ const CHECKS = [
     cmd: ['node', 'scripts/check-honest-costs.mjs'],
     scanned: /^honest-costs: (\d+) document/m,
     unit: 'documents',
-  },
-  // cm:guard this is NOT a second copy of `codemap prose` with a narrower scope — that gate is whole-tree for a measured reason (see its own guard), while CM013 asks whether a CHANGE paid any of its file's frozen debt, which a whole-tree run cannot ask at all because "edited" has no meaning without a base revision. Deleting this entry does not narrow the prose gate; it removes the only path by which the 12,454 frozen comments ever drain from work that was happening anyway.
-  {
-    axis: 'knowledge',
-    label: 'codemap drain',
-    // cm:edge naming -> scripts/check-codemap-drain.mjs — parses that script's success line
-    cmd: ['node', 'scripts/check-codemap-drain.mjs'],
-    scanned: /^codemap-drain: (\d+) file\(s\) frozen/m,
-    unit: 'baselined files',
-  },
-  {
-    axis: 'knowledge',
-    label: 'codemap referential',
-    cmd: ['.forge/codemap/cm', 'verify', '--tier', 'referential'],
-    scanned: /"files":\s*(\d+)/,
-    json: true,
-  },
-  {
-    axis: 'knowledge',
-    label: 'codemap structural',
-    cmd: ['.forge/codemap/cm', 'verify', '--tier', 'structural'],
-    scanned: /"files":\s*(\d+)/,
-    json: true,
   },
   {
     axis: 'relations',
@@ -230,13 +196,9 @@ const CI_COVERAGE = {
   'node scripts/check-test-signal.mjs --all': 'verify',
   'node scripts/check-size-budget.mjs --all': 'verify',
   'node scripts/check-lint-budget.mjs --all': 'verify',
-  'node scripts/check-codemap-drain.mjs': 'verify',
   'node scripts/conformance-status.mjs': 'verify',
   'node scripts/conformance-audit.mjs': 'verify',
   'node scripts/verify.mjs --ci-parity': 'verify, as its own final check',
-  '.forge/codemap/cm verify': 'verify',
-  '.forge/codemap/cm verify --tier referential': 'verify',
-  '.forge/codemap/cm verify --tier structural': 'verify',
   './.forge/archmap/archmap check': 'verify',
   'node scripts/check-test-reachability.mjs': 'verify',
   'pnpm exec biome check scripts': 'verify',
@@ -378,63 +340,6 @@ async function runAll(checks, base, width) {
   return results;
 }
 
-function advisory(base) {
-  if (!base) return null;
-  const changed = git(['diff', '--name-only', base, 'HEAD']);
-  const staged = git(['diff', '--name-only', '--cached']);
-  const dirty = git(['diff', '--name-only']);
-  // cm:why untracked is not optional here — a brand-new file is exactly the case with no LSP history and the highest chance of walking into a guard nobody told the author about
-  const untracked = git(['ls-files', '--others', '--exclude-standard']);
-  const files = [
-    ...new Set([changed, staged, dirty, untracked].filter(Boolean).join('\n').split('\n')),
-  ].filter((f) => f && existsSync(join(ROOT, f)));
-  if (files.length === 0) return null;
-
-  const hits = [];
-  for (const f of files.slice(0, 40)) {
-    const r = spawnSync('.forge/codemap/cm', ['impact', f, '--json'], {
-      cwd: ROOT,
-      encoding: 'utf8',
-    });
-    if (r.status !== 0 || !r.stdout) continue;
-    try {
-      // cm:edge contract -> .forge/codemap/cm — these five key names are `cm impact --json`'s output shape; a rename there turns this advisory silently empty, which reads as "no couplings" rather than as a break
-      const d = JSON.parse(r.stdout);
-      const rows = [
-        ...(d.guards ?? []).map((x) => ['guard', x.text ?? x.raw]),
-        ...(d.hacks ?? []).map((x) => ['hack ', x.text ?? x.raw]),
-        ...(d.outgoing ?? []).map((x) => ['edge ', `${x.kind} -> ${x.target} — ${x.text ?? ''}`]),
-        ...(d.incoming ?? []).map((x) => ['edge←', `${x.kind} from ${x.file} — ${x.text ?? ''}`]),
-        ...(d.flows ?? []).flatMap((f) =>
-          (f.steps ?? []).map((s) => [
-            'flow ',
-            `${f.name}/${s.step}${s.after ? ` after:${s.after}` : ''} — ${s.text ?? ''}`,
-          ]),
-        ),
-      ];
-      if (rows.length) hits.push({ file: f, rows });
-    } catch {}
-  }
-  return hits.length ? hits : null;
-}
-
-// cm:edge naming -> scripts/check-lockstep.mjs — reads that script's --json shape; it ships advisory on purpose, so a non-zero exit here must NOT reach the summary or a rename would silently start failing verify
-function lockstepDrift(base) {
-  if (!base) return null;
-  const r = spawnSync('node', ['scripts/check-lockstep.mjs', '--json', '--since', base], {
-    cwd: ROOT,
-    encoding: 'utf8',
-  });
-  if (r.status !== 0 || !r.stdout) return null;
-  try {
-    const body = r.stdout.slice(r.stdout.indexOf('{'));
-    const pairs = JSON.parse(body).oneSided ?? [];
-    return pairs.length ? pairs : null;
-  } catch {
-    return null;
-  }
-}
-
 function ciSteps() {
   if (!existsSync(CI_PATH)) return null;
   const lines = readFileSync(CI_PATH, 'utf8').split('\n');
@@ -540,7 +445,7 @@ function reportBlocked(results) {
   }
 }
 
-function report(results, adv, parity) {
+function report(results, parity) {
   const width = Math.max(...results.map((r) => r.label.length), 18);
   console.log('');
   for (const r of results) {
@@ -562,42 +467,15 @@ function report(results, adv, parity) {
     console.error((r.out ?? '').trimEnd());
   }
 
-  if (adv) {
-    console.log(
-      `\n${'─'.repeat(72)}\nDeclared couplings on files you changed — read before pushing:\n`,
-    );
-    for (const h of adv) {
-      console.log(`  ${h.file}`);
-      for (const [tag, text] of h.rows) console.log(`    ${tag}  ${text}`);
-    }
-  }
-
-  if (drift) {
-    console.log(
-      `\n${'─'.repeat(72)}\n${drift.length} declared lockstep pair(s) where only one half moved:\n`,
-    );
-    for (const p of drift) {
-      console.log(`  changed   ${p.moved}`);
-      console.log(`  untouched ${p.still}`);
-      if (p.why) console.log(`            ${p.why}`);
-      console.log('');
-    }
-    console.log(
-      '\n  Advice, not a verdict — a rename moves one side alone. Make the matching\n' +
-        '  change, or delete the cm:edge if the pair no longer holds.',
-    );
-  }
-
-  // cm:guard the lockstep drift above is ADVISORY and must stay out of this reduction — a `cm:edge lockstep` means "the other side likely needs this too", and blocking a rename on it teaches people to route around verify, which costs more than the check earns
   const codes = [...results.map((r) => r.code), parity];
   if (codes.includes(2)) return 2;
   return codes.some((c) => c !== 0) ? 1 : 0;
 }
 
 const args = process.argv.slice(2);
-const bad = args.filter((a) => !['--ci-parity', '--no-advisory'].includes(a));
+const bad = args.filter((a) => !['--ci-parity'].includes(a));
 if (bad.length) {
-  console.error(`usage: verify.mjs [--ci-parity] [--no-advisory]\nunknown: ${bad.join(' ')}`);
+  console.error(`usage: verify.mjs [--ci-parity]\nunknown: ${bad.join(' ')}`);
   process.exit(2);
 }
 
@@ -616,6 +494,4 @@ console.log(`verify: ${CHECKS.length} checks against ${base.slice(0, 8)}`);
 const WIDTH = Number(process.env.VERIFY_CONCURRENCY) || 6;
 const results = await runAll(CHECKS, base, WIDTH);
 
-const adv = args.includes('--no-advisory') ? null : advisory(base);
-const drift = args.includes('--no-advisory') ? null : lockstepDrift(base);
-process.exit(report(results, adv, ciParity(true)));
+process.exit(report(results, ciParity(true)));

@@ -466,6 +466,7 @@ describe('a turn continuing a conversation by id', () => {
       authorUserId: null,
       authorLabel: null,
       images: [],
+      blocks: null,
       deliveryProof: null,
       silenceReason: null,
     });

@@ -39,7 +39,7 @@ vi.mock('../db/client.js', () => ({
 
 // cm:why the store has its own suites; this file owns what the ROUTE owns — auth, membership,
 // opening the turn, and the prompt it builds.
-const persisted: Array<{ role: string; content: string; silenceReason: string | null }> = [];
+const persisted: Array<Record<string, unknown>> = [];
 const openTurnCalls: Array<Record<string, unknown>> = [];
 let seededHistory: Array<{ role: string; content: string }> = [];
 vi.mock('./conversation-turn.js', () => ({
@@ -55,17 +55,64 @@ vi.mock('./conversation-turn.js', () => ({
   appendUserMessage: (t: { pending: unknown[] }, content: string) => {
     t.pending.push({ role: 'user', content, images: [], silenceReason: null });
   },
-  appendAssistantMessage: (t: { pending: unknown[] }, content: string) => {
-    t.pending.push({ role: 'assistant', content, images: [], silenceReason: null });
+  appendAssistantMessage: (
+    t: { pending: unknown[] },
+    content: string,
+    opts?: { blocks?: unknown },
+  ) => {
+    t.pending.push({
+      role: 'assistant',
+      content,
+      images: [],
+      silenceReason: null,
+      blocks: opts?.blocks ?? null,
+    });
   },
-  appendSilence: (t: { pending: unknown[] }, reason: string) => {
-    t.pending.push({ role: 'assistant', content: '', images: [], silenceReason: reason });
+  appendSilence: (t: { pending: unknown[] }, reason: string, opts?: { blocks?: unknown }) => {
+    t.pending.push({
+      role: 'assistant',
+      content: '',
+      images: [],
+      silenceReason: reason,
+      blocks: opts?.blocks ?? null,
+    });
   },
+  // cm:why the double RETURNS the written rows, as the real one does: `runChatTurn` reads the
+  // assistant row back and streams it as the final frame, so a double answering `undefined` makes
+  // the route throw where production would not (ISS-1029).
   persistMessages: async (t: {
-    pending: Array<{ role: string; content: string; silenceReason: string | null }>;
+    pending: Array<{
+      role: string;
+      content: string;
+      silenceReason: string | null;
+      blocks?: unknown;
+    }>;
   }) => {
-    persisted.push(...t.pending.splice(0));
+    const rows = t.pending.splice(0).map((m, i) => ({
+      id: `row-${i}`,
+      seq: i,
+      externalId: null,
+      role: m.role,
+      authorUserId: null,
+      authorLabel: null,
+      authorKey: null,
+      content: m.content,
+      blocks: m.blocks ?? null,
+      images: [],
+      deliveryProof: null,
+      silenceReason: m.silenceReason,
+      createdAt: new Date(0),
+    }));
+    persisted.push(...rows);
+    return rows;
   },
+  toCanonicalEntry: (row: Record<string, unknown>) => ({
+    id: row.id,
+    type: row.role === 'user' ? 'user' : row.role === 'system' ? 'system' : 'assistant',
+    timestamp: (row.createdAt as Date).getTime(),
+    ...((row.content as string).length > 0 ? { content: row.content } : {}),
+    ...(row.blocks ? { blocks: row.blocks } : {}),
+  }),
   toProviderMessages: (t: {
     history: Array<{ role: string; content: string }>;
     pending: Array<{ role: string; content: string; silenceReason: string | null }>;
@@ -266,9 +313,14 @@ describe('POST /api/chat (mounted)', () => {
     const body = await res.text();
     expect(body).toContain('event: conversation');
     expect(body).toContain(CONVERSATION_ID);
-    expect(body).toContain('event: chunk');
-    expect(body).toContain('"text":"hi "');
-    expect(body).toContain('event: done');
+    // cm:guard the route speaks ONE event kind now — `message`, carrying the canonical transcript
+    // entry — in place of the provider's chunk/done vocabulary it used to relay. The old
+    // assertions named those two frames and are replaced here, not dropped (ISS-1029).
+    expect(body).toContain('event: message');
+    expect(body).not.toContain('event: chunk');
+    expect(body).not.toContain('event: done');
+    expect(body).toContain('"type":"assistant"');
+    expect(body).toContain('hi there');
 
     expect(persisted).toHaveLength(2);
     expect(persisted[0]).toMatchObject({ role: 'user', content: 'hi' });
@@ -374,9 +426,13 @@ describe('POST /api/chat (mounted)', () => {
 
     expect(res.status).toBe(200);
     const body = await res.text();
-    expect(body).toContain('event: error');
+    // cm:guard a failed turn still says so on the stream, as a canonical `system` entry carrying
+    // the reason rather than as an `error` frame — the reason is part of the transcript a reader
+    // sees, and `subtype` is how the canonical shape names a non-assistant entry (ISS-1029).
+    expect(body).toContain('event: message');
+    expect(body).toContain('"subtype":"error"');
     expect(body).toContain('upstream 500');
-    expect(body).toContain('"message":"upstream 500"');
+    expect(body).not.toContain('event: error');
 
     const logsCalls = insertValues.mock.calls.filter((c) => {
       const v = c[0] as { query?: string };

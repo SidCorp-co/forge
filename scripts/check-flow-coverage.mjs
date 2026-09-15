@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // Every declared cm:flow step must be reached by the integration suite.
 //
-// The join between the knowledge axis and the behaviour axis: codemap says "this
-// line is step 4 of the dispatch flow", coverage says which lines a test ran, and
-// a step named in the map and executed by nothing is a step the next editor
-// believes is defended. It is measured, never declared.
+// The join between the knowledge axis and the behaviour axis: a `cm:flow`
+// annotation says "this line is step 4 of the dispatch flow", coverage says which
+// lines a test ran, and a step named in the map and executed by nothing is a step
+// the next editor believes is defended. It is measured, never declared.
 //
 // THE EVIDENCE IS istanbul's per-function invocation count (`f`): a step counts
 // as reached when the authoritative suite ENTERED the annotated function, which
@@ -31,8 +31,7 @@ const CONFIG_PATH = join(ROOT, '.forge', 'conformance.json');
 const BASELINE_PATH = join(ROOT, '.forge', 'flow-coverage-baseline.json');
 
 const DEFAULTS = {
-  cm: '.forge/codemap/cm',
-  codemapConfig: '.forge/codemap.json',
+  flows: [],
   sources: [],
 };
 
@@ -51,17 +50,12 @@ function loadConfig() {
   }
 }
 
+// cm:guard the vocabulary lives in the manifest beside this checker's other config, NOT in the source annotations — a flow that exists only because somebody typed `cm:flow x:1` somewhere is a flow nobody declared, and this gate would then measure coverage of whatever was most recently invented rather than of the two paths the repo says it defends.
 function declaredFlows(cfg) {
-  const p = join(ROOT, cfg.codemapConfig);
-  if (!existsSync(p)) die(`${cfg.codemapConfig} not found — codemap owns the flow vocabulary`);
-  try {
-    return (JSON.parse(readFileSync(p, 'utf8')).flows ?? []).map((f) => f.name);
-  } catch (err) {
-    die(`${cfg.codemapConfig} is unreadable — ${err.message}`);
-  }
+  return (cfg.flows ?? []).map((f) => f.name);
 }
 
-// cm:guard the site list comes from grep but the COUNT comes from `cm flow`, and a disagreement exits 2 — parsing annotations here duplicates codemap's parser, so the only safe way to keep the copy is to make the tool audit it every run
+// cm:guard the site list is this scan and nothing cross-checks it, so `parseSites` in lib/flow-coverage.mjs is the only thing standing between a malformed annotation and a step silently vanishing from the gate — its 13 unit tests ARE that defence and deleting them un-gates this checker without failing it.
 function stepSites(flows) {
   const r = spawnSync('git', ['grep', '-n', '-I', '--', 'cm:flow'], {
     cwd: ROOT,
@@ -69,17 +63,6 @@ function stepSites(flows) {
   });
   if (r.status > 1 || r.error) die('git grep failed — not a checkout?');
   return parseSites(r.stdout, flows);
-}
-
-function toolStepCount(cfg, flow) {
-  const r = spawnSync(cfg.cm, ['flow', flow], { cwd: ROOT, encoding: 'utf8' });
-  if (r.error || r.status !== 0) return null;
-  const seen = new Set();
-  for (const line of (r.stdout ?? '').split('\n')) {
-    const m = /^\s+(\S+)\s{2,}\S+:\d+\s*$/.exec(line);
-    if (m) seen.add(m[1]);
-  }
-  return seen.size;
 }
 
 // cm:edge lockstep -> .forge/conformance.json — every entry in `checkers.flow-coverage.sources` declares the `scope` its report claims to measure; a source added there without one fails below rather than being trusted whole
@@ -160,7 +143,8 @@ const requireSources = args.includes('--require-sources');
 
 const cfg = loadConfig();
 const flows = declaredFlows(cfg);
-if (flows.length === 0) die('no flows declared in codemap — nothing this checker can measure');
+if (flows.length === 0)
+  die(`checkers.flow-coverage.flows is empty in ${CONFIG_PATH} — nothing this checker can measure`);
 if (cfg.sources.length === 0)
   die('checkers.flow-coverage.sources is empty in .forge/conformance.json');
 
@@ -168,15 +152,7 @@ const sites = stepSites(flows);
 for (const flow of flows) {
   const found = new Set(sites.get(flow).map((s) => s.step));
   if (found.size === 0)
-    die(`flow "${flow}" is declared in codemap but has no cm:flow annotation anywhere`);
-  const claimed = toolStepCount(cfg, flow);
-  if (claimed === null) die(`\`cm flow ${flow}\` failed — cannot audit the step list`);
-  if (claimed !== found.size) {
-    die(
-      `flow "${flow}": cm reports ${claimed} step(s), this scan found ${found.size}. ` +
-        'The annotation scan and codemap disagree; trust codemap and fix the scan.',
-    );
-  }
+    die(`flow "${flow}" is declared in ${CONFIG_PATH} but has no cm:flow annotation anywhere`);
 }
 
 const sources = cfg.sources.map(loadSource);

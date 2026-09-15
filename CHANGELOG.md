@@ -2098,6 +2098,22 @@
 
 ### Removed
 
+- **The comment-grammar gate is gone, and the rationale it recorded stays.** A vendored checker
+  read every comment in the repo and judged its form, its references and its density against a
+  grammar, with roughly 5,600 annotations frozen as debt behind it. It was four of the twenty-two
+  checks `pnpm verify` ran, a weekly re-vendoring workflow, a bot that commented on pull requests,
+  and a pre-commit arm. The rule it enforced was generic where the repository is not, so the great
+  majority of what it flagged was prose that was correct, and a checker whose findings are usually
+  wrong teaches its readers to skip the ones that are right. All of it is removed. The annotations
+  themselves are untouched: `cm:guard`, `cm:why` and `cm:edge` remain in the source as what they
+  always were, a record of why a line is the way it is, now read by people rather than graded by a
+  tool. Two checkers that were built on top of it were rebuilt rather than dropped — the flow
+  vocabulary they measured coverage against moved into `.forge/conformance.json` beside the rest of
+  that checker's configuration, so every declared flow step is still required to be walked by the
+  integration suite. The lockstep advisory, which could only ever read the removed tool's graph,
+  went with it. The knowledge axis now measures three gates instead of five and rises to level 3,
+  because what remains of it carries no frozen debt at all. (ISS-1029)
+
 - **The chat surface no longer runs on a runner, and six things went with that.** A conversation in
   the Forge app used to be a full agent session on a runner machine, with the project's code checked
   out beside it. It is now a conversation the agent answers from what it can read about the project —
@@ -4812,6 +4828,20 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+
+- **The Forge assistant's transcript now records what the turn actually did, not just the sentence
+  it ended on.** A chat turn that searched the tracker, read three issues and then answered used to
+  be stored as its final paragraph and nothing else. The tools it called, what they returned, which
+  of them failed, how long each took, and the commentary it wrote between them were dropped on the
+  way to the database, kept only in an audit table nobody reads beside the conversation. Two turns
+  that behaved completely differently were the same row, so a turn that went wrong could not be
+  investigated from the transcript at all. Each turn is now stored as the ordered record of itself,
+  in the same shape a Claude Code session has always been stored in, which means the screens that
+  already know how to draw an agent session can draw an assistant conversation with no second
+  renderer behind them. `POST /api/chat` streams that same record as it builds, in place of the raw
+  provider events it used to relay, and ends on the exact entry it saved. A turn that ran tools and
+  then said nothing keeps the record of what it ran, which is the one turn anybody opens a
+  transcript to look at. Conversations stored before this change read back exactly as they did.
 
 - **A long agent session's transcript keeps up with the agent.** The page you watch a running agent
   on is built from the lines it has streamed so far, and the server rebuilt that page from the very
