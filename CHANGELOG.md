@@ -146,6 +146,12 @@
   last agent, because a room about no project is readable by nobody, and the last person of a
   one-to-one room, for the same reason from the other side.
 
+- **A conversation about two projects is listed once, not once per project.** The list of rooms is
+  built by asking each of your projects for its rooms and putting the answers together, which was
+  exact while a room could only be about one project. Now that a room's membership can be changed it
+  can be about two, both projects answer with it, and it appeared twice — same title, same time,
+  differing only by the project named under it. Two rows that open the same room read as two rooms.
+
 - **You can start a conversation with more than two people in it.** Pick a project, choose the
   colleagues and the agents it opens with, and the room exists holding all of them before anybody
   says anything. Before the room is opened you are shown what it will be — which projects it will be

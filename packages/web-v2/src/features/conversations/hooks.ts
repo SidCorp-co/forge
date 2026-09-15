@@ -31,11 +31,17 @@ export function useConversationsAcrossProjects(projectIds: string[]) {
       queryFn: () => conversationsApi.list(projectId),
     })),
   });
+  // cm:guard ONE row per room, not one per project it is about: a room is listed by every project in its scope, and since ISS-1011 a room can be about more than one — so the same room came back from two of these reads and the list printed it twice, same title, same time, differing only by the project line under it. Two rows that open the same room read as two rooms. The kept row is the first by the sorted project order, which is stable across reads, and a room's projects are named inside the room rather than by repeating it in the list.
   const rows: ListedConversation[] = [];
+  const listed = new Set<string>();
   for (const [i, r] of results.entries()) {
     const projectId = projectIds[i];
     if (!projectId || !r.data) continue;
-    for (const row of r.data.items) rows.push({ ...row, projectId });
+    for (const row of r.data.items) {
+      if (listed.has(row.id)) continue;
+      listed.add(row.id);
+      rows.push({ ...row, projectId });
+    }
   }
   rows.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0));
   return {
