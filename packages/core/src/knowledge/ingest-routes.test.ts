@@ -23,14 +23,11 @@ vi.mock('../lib/authz.js', async (importOriginal) => ({
   loadProjectAccess: (...args: unknown[]) => projectAccess(...args),
 }));
 
-const upsertKnowledgeEntryMock = vi.fn(async (..._args: unknown[]) => ({
-  id: 'test-id',
-  slug: 'test-slug',
-  degraded: false,
-  truncated: false,
-}));
+const upsertKnowledgeEntriesMock = vi.fn(async (inputs: Array<{ slug: string }>) =>
+  inputs.map((i) => ({ id: `id-${i.slug}`, slug: i.slug, degraded: false, truncated: false })),
+);
 vi.mock('./service.js', () => ({
-  upsertKnowledgeEntry: (input: unknown) => upsertKnowledgeEntryMock(input),
+  upsertKnowledgeEntries: (inputs: unknown) => upsertKnowledgeEntriesMock(inputs as never),
 }));
 
 const { knowledgeIngestRoutes, resetRateLimits } = await import('./ingest-routes.js');
@@ -53,7 +50,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   selectLimit.mockReset();
   projectAccess.mockReset();
-  upsertKnowledgeEntryMock.mockClear();
+  upsertKnowledgeEntriesMock.mockClear();
   resetRateLimits();
 });
 
@@ -143,12 +140,78 @@ describe('POST /api/knowledge/ingest', () => {
     const body = (await res.json()) as { ok: boolean; processed: number; skipped: unknown[] };
     expect(body.ok).toBe(true);
     expect(body.processed).toBe(2);
-    expect(upsertKnowledgeEntryMock).toHaveBeenCalledTimes(2);
-    expect(upsertKnowledgeEntryMock.mock.calls[0]?.[0]).toMatchObject({
+    expect(upsertKnowledgeEntriesMock).toHaveBeenCalledTimes(1);
+    const batch = upsertKnowledgeEntriesMock.mock.calls[0]?.[0] as Array<Record<string, unknown>>;
+    expect(batch).toHaveLength(2);
+    expect(batch[0]).toMatchObject({
       projectId: PROJECT_ID,
       kind: 'reference',
       authoredBy: 'imported',
     });
+  });
+
+  // cm:guard a batch lands whole or not at all, so a failure names EVERY document it carried —
+  // reporting a subset as processed would tell the caller a document is stored that is not
+  it('reports every document of a failed batch as index_failed, and none as processed', async () => {
+    authVerified();
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'member',
+      orgRole: null,
+    });
+    upsertKnowledgeEntriesMock.mockRejectedValueOnce(new Error('deadlock detected'));
+
+    const res = await buildApp().request('/api/knowledge/ingest', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({
+        projectId: PROJECT_ID,
+        documents: [
+          { id: 'd1', title: 'T1', content: 'one' },
+          { id: 'd2', title: 'T2', content: 'two' },
+        ],
+      }),
+    });
+
+    const body = (await res.json()) as {
+      processed: number;
+      skipped: Array<{ id: string; reason: string }>;
+    };
+    expect(body.processed).toBe(0);
+    expect(body.skipped).toEqual([
+      { id: 'd1', reason: 'index_failed' },
+      { id: 'd2', reason: 'index_failed' },
+    ]);
+  });
+
+  // cm:guard two doc ids kebabing to one slug were last-writer-wins when this route upserted one at a time, and a multi-row upsert naming one conflict target twice is a hard Postgres error — so the batch de-duplicates and the LATER document, whole, is the one sent (ISS-1024)
+  it('sends one entry for two ids that reduce to the same slug, carrying the later document', async () => {
+    authVerified();
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'member',
+      orgRole: null,
+    });
+
+    const res = await buildApp().request('/api/knowledge/ingest', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({
+        projectId: PROJECT_ID,
+        documents: [
+          { id: 'Deploy Guide', title: 'First title', content: 'first body' },
+          { id: 'deploy-guide', title: 'Second title', content: 'second body' },
+        ],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const batch = upsertKnowledgeEntriesMock.mock.calls[0]?.[0] as Array<Record<string, unknown>>;
+    expect(batch.map((b) => b.slug)).toEqual(['deploy-guide', 'deploy-guide']);
+    expect(batch[1]).toMatchObject({ title: 'Second title' });
+    expect(batch[1]?.body).toContain('second body');
   });
 
   it('skips oversized docs', async () => {

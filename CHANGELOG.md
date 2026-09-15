@@ -2692,6 +2692,35 @@
   and says why, with a way to try it again, and nothing behind it is sent into a conversation whose
   earlier question was refused. (ISS-1031)
 
+- **Saving a memory that did not change no longer pays to have it read again.** Every write into
+  the project's memory — and that includes the silent one behind each edit to an issue's title or
+  description — sent the whole text off to be turned into a search vector, whether or not a word of
+  it had moved. On a project using the passage model it also threw away every passage of the
+  document and had them all read back in, for a save that changed nothing. A save now looks at what
+  is already stored: where the text is the same and the vector is still there, nothing is sent
+  anywhere, and the passages stay as they are. Where anything that feeds a vector has actually
+  moved — the text, or the heading each passage carries, which is built from the issue's own
+  priority and category — the work is done in full, as before. Nothing is left holding a search
+  vector for words it no longer says: where a save cannot be sure, it drops the vector and lets the
+  nightly repair job rebuild it, rather than keeping one that is out of date.
+
+- **Marking a memory as proposed for the knowledge base is now just that one mark.** The nightly
+  job that suggests a lesson for promotion recorded "already proposed" by re-running the whole save
+  path, so a bookkeeping note cost a full read of the lesson and, on the passage model, of every
+  passage in it. It writes the note and nothing else, and a note somebody else added in the
+  meantime is no longer overwritten by it.
+
+- **Importing documents, and saving project facts, no longer costs one round-trip per item.**
+  Bulk document import read each document separately, up to twenty per request, and saving project
+  facts did the same for each fact in the batch. Both now go in one. Two documents whose names
+  collapse to the same entry still behave as they did — the later one wins — and now the later one
+  wins whole, title included, where before an interrupted save could leave a mismatched pair.
+
+- **Searching knowledge and memory together reads your question once, not twice.** The two stores
+  were asked separately and each had the question read for it, doubling the cost of every unified
+  search. And a search that pulls in related issues now looks them up in one go instead of once per
+  result, which was twelve database queries for a single search.
+
 - **Opening the Issues list is one request again, not twenty-six.** Every row on the page asked the
   server separately for its own "Blocked by" / "Blocks" / subtask chips, so a page of twenty-five
   issues fired twenty-five extra requests before it could finish drawing — each one its own

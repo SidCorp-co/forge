@@ -6,14 +6,18 @@ vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-const indexMemoryMock = vi.fn();
-vi.mock('./indexer.js', () => ({
-  indexMemory: (input: unknown, opts?: unknown) => indexMemoryMock(input, opts),
+const embedMock = vi.fn();
+vi.mock('../embeddings/index.js', () => ({
+  embed: (t: string) => embedMock(t),
+  embedBatch: (t: string[]) => embedMock(t),
+  EmbeddingUnavailableError: class extends Error {},
 }));
 
 const selectResults: unknown[][] = [];
 const insertReturningMock = vi.fn();
 const insertValuesMock = vi.fn();
+const updateSetMock = vi.fn();
+const updateWhereMock = vi.fn();
 vi.mock('../db/client.js', () => {
   const nextResult = () => Promise.resolve(selectResults.shift() ?? []);
   const chain = () => {
@@ -33,6 +37,12 @@ vi.mock('../db/client.js', () => {
           return { returning: insertReturningMock };
         },
       }),
+      update: () => ({
+        set: (v: unknown) => {
+          updateSetMock(v);
+          return { where: (w: unknown) => Promise.resolve(updateWhereMock(w)) };
+        },
+      }),
     },
   };
 });
@@ -47,17 +57,36 @@ const {
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 
+/** The drizzle `sql` template behind the nth stamp's `metadata`, split into its literal SQL text
+ *  and its interpolated values — so a rewrite that stops concatenating fails here by name. */
+function stamp(n: number): { text: string; values: string[] } {
+  const set = updateSetMock.mock.calls[n]?.[0] as { metadata: unknown };
+  const chunks = (set.metadata as { queryChunks?: unknown[] }).queryChunks ?? [];
+  let text = '';
+  const values: string[] = [];
+  for (const chunk of chunks) {
+    const literal = (chunk as { value?: unknown }).value;
+    if (Array.isArray(literal)) text += literal.join('');
+    else if (typeof chunk === 'string') values.push(chunk);
+  }
+  return { text, values };
+}
+
+/** The jsonb literal the nth stamp concatenates onto the row's existing metadata. */
+function stampedJson(n: number): unknown {
+  const literal = stamp(n).values.find((v) => v.startsWith('{'));
+  if (!literal) throw new Error(`no jsonb literal in stamp ${n}`);
+  return JSON.parse(literal);
+}
+
 beforeEach(() => {
   selectResults.length = 0;
-  indexMemoryMock.mockReset();
+  embedMock.mockReset();
   insertReturningMock.mockReset();
   insertValuesMock.mockReset();
-  indexMemoryMock.mockResolvedValue({
-    id: 'm-new',
-    embeddedAt: new Date(),
-    truncated: false,
-    degraded: false,
-  });
+  updateSetMock.mockReset();
+  updateWhereMock.mockReset();
+  updateWhereMock.mockReturnValue(undefined);
   insertReturningMock.mockResolvedValue([{ id: 'issue-new' }]);
 });
 
@@ -148,7 +177,7 @@ describe('proposeKnowledgePromotions', () => {
     await proposeKnowledgePromotions(PROJECT_ID);
 
     expect(insertValuesMock).not.toHaveBeenCalled();
-    expect(indexMemoryMock).not.toHaveBeenCalled();
+    expect(updateSetMock).not.toHaveBeenCalled();
   });
 
   it('proposes on the same fixture once the project opts in', async () => {
@@ -157,15 +186,9 @@ describe('proposeKnowledgePromotions', () => {
     await proposeKnowledgePromotions(PROJECT_ID);
 
     expect(insertValuesMock).toHaveBeenCalledTimes(1);
-    expect(indexMemoryMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        projectId: PROJECT_ID,
-        source: 'knowledge',
-        sourceRef: 'consolidated:abc123',
-        metadata: expect.objectContaining({ promotionProposedAt: expect.any(String) }),
-      }),
-      undefined,
-    );
+    expect(updateSetMock).toHaveBeenCalledTimes(1);
+    expect(embedMock).not.toHaveBeenCalled();
+    expect(stampedJson(0)).toEqual({ promotionProposedAt: expect.any(String) });
   });
 
   // cm:guard `open` auto-triages into a pipeline run — that is the point (a `draft` had no owner and 63 of 71 were swept unworked), and it is why the opt-in above must hold
@@ -201,7 +224,7 @@ describe('proposeKnowledgePromotions', () => {
     await proposeKnowledgePromotions(PROJECT_ID);
 
     expect(insertValuesMock).not.toHaveBeenCalled();
-    expect(indexMemoryMock).not.toHaveBeenCalled();
+    expect(updateSetMock).not.toHaveBeenCalled();
   });
 
   it('early-returns when no candidates meet the criteria', async () => {
@@ -210,7 +233,7 @@ describe('proposeKnowledgePromotions', () => {
     await proposeKnowledgePromotions(PROJECT_ID);
 
     expect(insertValuesMock).not.toHaveBeenCalled();
-    expect(indexMemoryMock).not.toHaveBeenCalled();
+    expect(updateSetMock).not.toHaveBeenCalled();
   });
 
   it('handles multiple candidates, stamping each with promotionProposedAt', async () => {
@@ -236,21 +259,10 @@ describe('proposeKnowledgePromotions', () => {
     await proposeKnowledgePromotions(PROJECT_ID);
 
     expect(insertValuesMock).toHaveBeenCalledTimes(2);
-    expect(indexMemoryMock).toHaveBeenCalledTimes(2);
-    expect(indexMemoryMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        sourceRef: 'ref-1',
-        metadata: expect.objectContaining({ promotionProposedAt: expect.any(String) }),
-      }),
-      undefined,
-    );
-    expect(indexMemoryMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        sourceRef: 'ref-2',
-        metadata: expect.objectContaining({ promotionProposedAt: expect.any(String) }),
-      }),
-      undefined,
-    );
+    expect(updateSetMock).toHaveBeenCalledTimes(2);
+    expect(embedMock).not.toHaveBeenCalled();
+    expect(stampedJson(0)).toEqual({ promotionProposedAt: expect.any(String) });
+    expect(stampedJson(1)).toEqual({ promotionProposedAt: expect.any(String) });
   });
 
   it('skips stamp and logs a warning when insert returns no row', async () => {
@@ -260,20 +272,28 @@ describe('proposeKnowledgePromotions', () => {
     await proposeKnowledgePromotions(PROJECT_ID);
 
     // cm:guard no issue row means no stamp — stamping anyway would burn the memory's one proposal on a proposal that never reached anybody
-    expect(indexMemoryMock).not.toHaveBeenCalled();
+    expect(updateSetMock).not.toHaveBeenCalled();
   });
 
-  it('never writes knowledge_entries (only indexMemory for stamp + db.insert for issues)', async () => {
+  it('never writes knowledge_entries (one metadata stamp + db.insert for issues)', async () => {
     queuePromotion({});
 
     await proposeKnowledgePromotions(PROJECT_ID);
 
-    // cm:guard the only write this may make to the memory store is the idempotency stamp on the SAME sourceRef — a call carrying a new slug would mean it minted a curated entry itself, which is the one thing the proposal step exists to not do
-    const calls = indexMemoryMock.mock.calls.map(
-      (c) => c[0] as { source?: string; sourceRef?: string },
-    );
-    for (const call of calls) {
-      expect(call.sourceRef).toBe('consolidated:abc123');
+    // cm:guard the only write this may make to the memory store is the idempotency stamp, which is now an UPDATE addressed by the candidate's own id — a write carrying a body or a new slug would mean it minted a curated entry itself, the one thing the proposal step exists not to do
+    for (const call of updateSetMock.mock.calls) {
+      expect(Object.keys(call[0] as object).sort()).toEqual(['metadata', 'updatedAt']);
     }
+  });
+
+  // cm:guard the stamp merges with `||` at write time rather than replaying the object read a moment earlier: replaying it wipes whatever another writer added in between, which is exactly the wholesale-clobber shape. The test reads the SQL's own parameters, so a rewrite back to a read-modify-write fails here rather than in a support ticket six weeks later.
+  it('merges the stamp into whatever metadata the row holds, rather than replaying what it read', async () => {
+    queuePromotion({});
+
+    await proposeKnowledgePromotions(PROJECT_ID);
+
+    expect(stamp(0).text).toContain(' || ');
+    expect(stamp(0).text).toContain('::jsonb');
+    expect(stampedJson(0)).toEqual({ promotionProposedAt: expect.any(String) });
   });
 });

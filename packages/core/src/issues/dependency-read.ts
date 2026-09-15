@@ -188,11 +188,33 @@ function digest(edge: IssueDependencyEdge, issueId: string, now: number): IssueR
 export async function loadIssueRelations(
   issueId: string,
   projectId: string,
-): Promise<{ blocks: IssueRelationDigest[]; blockedBy: IssueRelationDigest[] }> {
-  const { outgoing, incoming } = await loadIssueDependencyEdges(issueId, projectId);
+): Promise<IssueRelations> {
+  const byIssue = await loadIssueRelationsForIssues([issueId], projectId);
+  return byIssue.get(issueId) ?? { blocks: [], blockedBy: [] };
+}
+
+export type IssueRelations = { blocks: IssueRelationDigest[]; blockedBy: IssueRelationDigest[] };
+
+/**
+ * ISS-1024 — the same projection over a SET of issues, off the one batched edge query, so
+ * `memory/expand-relations.ts` spends one query on five seeds instead of one per seed. The
+ * single-issue function above is this one called with a set of one, so `digest()` stays the only
+ * writer of what a relation says and the omission its doc promises cannot drift between callers.
+ */
+// cm:guard every requested id gets an entry, `{ blocks: [], blockedBy: [] }` included — for the
+// reason the edge read keeps one: a missing key is indistinguishable from a hydration that failed.
+export async function loadIssueRelationsForIssues(
+  issueIds: string[],
+  projectId: string,
+): Promise<Map<string, IssueRelations>> {
+  const edges = await loadIssueDependencyEdgesForIssues(issueIds, projectId);
   const now = Date.now();
-  return {
-    blocks: outgoing.map((e) => digest(e, issueId, now)),
-    blockedBy: incoming.map((e) => digest(e, issueId, now)),
-  };
+  const out = new Map<string, IssueRelations>();
+  for (const [issueId, { outgoing, incoming }] of edges) {
+    out.set(issueId, {
+      blocks: outgoing.map((e) => digest(e, issueId, now)),
+      blockedBy: incoming.map((e) => digest(e, issueId, now)),
+    });
+  }
+  return out;
 }

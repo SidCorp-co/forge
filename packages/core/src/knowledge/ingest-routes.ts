@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { upsertKnowledgeEntry } from './service.js';
+import { upsertKnowledgeEntries } from './service.js';
 
 function toKebabSlug(id: string): string {
   return (
@@ -103,9 +103,9 @@ knowledgeIngestRoutes.post(
       });
     }
 
-    let processed = 0;
-    let totalChunks = 0;
     const skipped: Array<{ id: string; reason: string }> = [];
+    const accepted: Array<{ id: string; input: Parameters<typeof upsertKnowledgeEntries>[0][0] }> =
+      [];
 
     for (const doc of documents) {
       const contentBytes = Buffer.byteLength(doc.content, 'utf8');
@@ -120,36 +120,42 @@ knowledgeIngestRoutes.post(
         continue;
       }
 
-      try {
-        const slug = toKebabSlug(doc.id);
-        // Two doc.ids kebabing to the same slug hit onConflictDoUpdate — last writer wins.
-        // processed still increments for both; callers should use unique doc.ids.
-        await upsertKnowledgeEntry({
+      accepted.push({
+        id: doc.id,
+        input: {
           projectId,
-          slug,
+          slug: toKebabSlug(doc.id),
           title: doc.title,
           body: text,
           kind: 'reference',
           injection: 'on_demand',
           confidence: 'inferred',
           authoredBy: 'imported',
-          orderIndex: processed,
+          orderIndex: accepted.length,
           metadata: {
             sourceId: doc.id,
             category: doc.category ?? null,
             ...(doc.metadata ?? {}),
           },
-        });
-        processed += 1;
-        totalChunks = processed;
+        },
+      });
+    }
+
+    let processed = 0;
+    // cm:guard one batch is one outcome — a failure names EVERY document it carried as `index_failed`, because a multi-row upsert either lands or does not and reporting a subset as processed would tell the caller a document is stored that is not.
+    if (accepted.length > 0) {
+      try {
+        await upsertKnowledgeEntries(accepted.map((a) => a.input));
+        processed = accepted.length;
       } catch (err) {
         logger.error(
-          { err, docId: doc.id, projectId },
-          'knowledge.ingest: upsertKnowledgeEntry failed',
+          { err, docIds: accepted.map((a) => a.id), projectId },
+          'knowledge.ingest: upsertKnowledgeEntries failed',
         );
-        skipped.push({ id: doc.id, reason: 'index_failed' });
+        for (const a of accepted) skipped.push({ id: a.id, reason: 'index_failed' });
       }
     }
+    const totalChunks = processed;
 
     return c.json({ ok: true, processed, totalChunks, skipped });
   },

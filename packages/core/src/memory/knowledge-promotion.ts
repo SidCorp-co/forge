@@ -10,7 +10,6 @@ import { and, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, memories, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
-import { indexMemory } from './indexer.js';
 
 // cm:guard these are DEFAULTS, not the thresholds in force — `pipelineConfig.knowledgePromotion` overrides `minRetrievals` and `candidatesPerRun` per project, and a reader that used the constant where the config belongs would report a rate the operator never chose.
 export const PROMOTION_RETRIEVAL_MIN = 3;
@@ -146,16 +145,16 @@ export async function proposeKnowledgePromotions(projectId: string): Promise<voi
       continue;
     }
 
-    await indexMemory({
-      projectId,
-      source: candidate.source as (typeof PROMOTABLE_SOURCES)[number],
-      sourceRef: candidate.sourceRef,
-      text: candidate.textContent,
-      metadata: {
-        ...((candidate.metadata ?? {}) as Record<string, unknown>),
-        promotionProposedAt: ageThreshold.toISOString(),
-      },
-    });
+    // cm:guard the stamp is a metadata-only write and must stay one: it ran through `indexMemory` until ISS-1024, which re-embedded the whole lesson (and, on a chunked project, re-embedded every passage of it) to set one key. `||` merges at write time rather than replaying the object read above, so a key another writer added since survives; and `promotionProposedAt` is read by no branch of memory/chunker.ts:contextPrefix, so no chunk set goes stale by it.
+    await db
+      .update(memories)
+      .set({
+        metadata: sql`${memories.metadata} || ${JSON.stringify({
+          promotionProposedAt: ageThreshold.toISOString(),
+        })}::jsonb`,
+        updatedAt: sql`now()`,
+      })
+      .where(eq(memories.id, candidate.id));
 
     logger.info(
       { projectId, sourceRef: candidate.sourceRef, issueId: inserted.id },

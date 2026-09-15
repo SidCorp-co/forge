@@ -33,12 +33,16 @@ type Digest = {
   expired: boolean;
 };
 const relations = new Map<string, { blocks: Digest[]; blockedBy: Digest[] }>();
-const loadIssueRelations = vi.fn(async (issueId: string, _projectId: string) => {
-  return relations.get(issueId) ?? { blocks: [], blockedBy: [] };
+// cm:guard the batched read is mocked as ONE call over the whole seed set, so a rewrite back to
+// one read per seed fails on the call count rather than on a timing that nobody watches (ISS-1024)
+const loadIssueRelationsForIssues = vi.fn(async (issueIds: string[], _projectId: string) => {
+  return new Map(
+    issueIds.map((id) => [id, relations.get(id) ?? { blocks: [], blockedBy: [] }] as const),
+  );
 });
 vi.mock('../issues/dependency-read.js', () => ({
-  loadIssueRelations: (issueId: string, projectId: string) =>
-    loadIssueRelations(issueId, projectId),
+  loadIssueRelationsForIssues: (issueIds: string[], projectId: string) =>
+    loadIssueRelationsForIssues(issueIds, projectId),
 }));
 
 const { EXPAND_SEED_LIMIT, expandIssueRelations } = await import('./expand-relations.js');
@@ -72,14 +76,14 @@ beforeEach(() => {
   selectQueue.length = 0;
   whereArgs.length = 0;
   relations.clear();
-  loadIssueRelations.mockClear();
+  loadIssueRelationsForIssues.mockClear();
 });
 
 describe('expandIssueRelations', () => {
   it('returns nothing when no ranked hit is an issue', async () => {
     const note: MemoryHit = { ...issueHit('x'), source: 'note' };
     expect(await expandIssueRelations({ projectId: PROJECT, hits: [note], topK: 5 })).toEqual([]);
-    expect(loadIssueRelations).not.toHaveBeenCalled();
+    expect(loadIssueRelationsForIssues).not.toHaveBeenCalled();
   });
 
   it('appends both directions, unexpired blocks/relates only, labelled with the seed ISS-n and score 0', async () => {
@@ -92,7 +96,7 @@ describe('expandIssueRelations', () => {
 
     const out = await expandIssueRelations({ projectId: PROJECT, hits: [issueHit('A')], topK: 5 });
 
-    expect(loadIssueRelations).toHaveBeenCalledWith('A', PROJECT);
+    expect(loadIssueRelationsForIssues).toHaveBeenCalledWith(['A'], PROJECT);
     expect(out.map((h) => h.sourceRef)).toEqual(['B', 'C']);
     expect(out.map((h) => h.via)).toEqual([
       { relation: 'blocks', from: 'ISS-12' },
@@ -126,8 +130,21 @@ describe('expandIssueRelations', () => {
       hits.slice(0, EXPAND_SEED_LIMIT).map((h, i) => ({ id: h.sourceRef, issSeq: i })),
     );
     await expandIssueRelations({ projectId: PROJECT, hits, topK: 10 });
-    expect(loadIssueRelations).toHaveBeenCalledTimes(EXPAND_SEED_LIMIT);
-    expect(loadIssueRelations).not.toHaveBeenCalledWith('F', PROJECT);
+    expect(loadIssueRelationsForIssues).toHaveBeenCalledTimes(1);
+    expect(loadIssueRelationsForIssues).toHaveBeenCalledWith(['A', 'B', 'C', 'D', 'E'], PROJECT);
+  });
+
+  // cm:guard the edge read is ONE call however many seeds there are — it was one per seed until
+  // ISS-1024, which with the label read and the hydration made twelve queries for every search
+  it('reads the edges of five seeds in one call', async () => {
+    const hits = ['A', 'B', 'C', 'D', 'E'].map((id) => issueHit(id));
+    for (const h of hits) relations.set(h.sourceRef, { blocks: [edge('Z')], blockedBy: [] });
+    selectQueue.push(hits.map((h, i) => ({ id: h.sourceRef, issSeq: i })));
+    selectQueue.push([memRow('Z')]);
+
+    await expandIssueRelations({ projectId: PROJECT, hits, topK: 10 });
+
+    expect(loadIssueRelationsForIssues).toHaveBeenCalledTimes(1);
   });
 
   it('a neighbour without a memory row does not consume a topK slot', async () => {
