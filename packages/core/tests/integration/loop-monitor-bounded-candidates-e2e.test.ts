@@ -110,6 +110,85 @@ function boundBy(node: PlanNode): string {
   return node['Index Cond'] ?? node['Recheck Cond'] ?? '';
 }
 
+/**
+ * The live jobs. The first six are the equality cases criterion 9 names, each
+ * a way the CTE and the lateral could disagree; the rest are bulk, so the
+ * outer set is the size a planner would actually be given.
+ */
+async function seedLiveJobs(
+  db: TestDatabase['db'],
+  projectId: string,
+  ownerId: string,
+): Promise<void> {
+  for (let i = 0; i < LIVE_JOBS; i++) {
+    const runId = randomUUID();
+    const jobId = randomUUID();
+    const sessionId = randomUUID();
+    // cm:guard there is no NULL-`pipeline_run_id` case to plant and there cannot be: the column is NOT NULL on both `jobs` and `agent_sessions`, so the NULL the CTE's outer join produced for a job with no run is unreachable in this schema. The representable case that exercises the same branch is a run carrying NO phase rows — the CTE's `last_phase` has no row for it, the lateral's aggregate returns NULL, and both must fall back to `dispatched_at`. Case 2 below is that, with events present, so the empty phase side is tested against a non-empty event side rather than against another empty one.
+    const parked = i === 4;
+    const resident = i === 5;
+
+    await db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, kind, status, started_at)
+      VALUES (${runId}, ${projectId}, 'pm', 'running', now() - interval '4 hours')
+    `);
+    await db.execute(sql`
+      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status, metadata,
+                                  started_at, last_heartbeat_at, runtime_state,
+                                  created_at, updated_at)
+      VALUES (${sessionId}, ${projectId}, ${runId}, 'running',
+              ${JSON.stringify({ type: 'pipeline' })}::jsonb,
+              now() - interval '4 hours', now() - interval '4 hours',
+              ${parked ? 'awaiting_input' : resident ? 'working' : null},
+              now() - interval '4 hours', now() - interval '4 hours')
+    `);
+    await db.execute(sql`
+      INSERT INTO jobs (id, project_id, pipeline_run_id, agent_session_id, created_by,
+                        type, status, queued_at, dispatched_at)
+      VALUES (${jobId}, ${projectId}, ${runId}, ${sessionId}, ${ownerId},
+              'drive', 'running', now() - interval '4 hours', now() - interval '4 hours')
+    `);
+
+    // case 1 (i === 0): no events and no phases at all.
+    // case 2 (i === 1): events but NO phase rows on its run — see the guard above.
+    if (i === 2) {
+      // case 3: the run carries ONE started phase that never ended. The
+      // lateral's COALESCE(ended_at, started_at) is what has to see it.
+      await db.execute(sql`
+        INSERT INTO phase_journal (id, project_id, run_id, phase, attempt, source, started_at)
+        VALUES (${randomUUID()}, ${projectId}, ${runId}, 'phase-4', 1, 'agent',
+                now() - interval '4 hours')
+      `);
+    }
+    if (i === 3) {
+      // case 4: an OLD phase that ENDED recently — greatest(started, ended)
+      // is the live signal, and ordering by started_at would miss it.
+      await db.execute(sql`
+        INSERT INTO phase_journal (id, project_id, run_id, phase, attempt, source,
+                                   started_at, ended_at)
+        VALUES (${randomUUID()}, ${projectId}, ${runId}, 'phase-2', 1, 'agent',
+                now() - interval '4 hours', now() - interval '2 minutes')
+      `);
+    }
+    if (resident) {
+      // case 6: a duplex turn already wrote a `result`; RESULT_GUARD must
+      // still let this job through because the session declares a state.
+      await db.execute(sql`
+        INSERT INTO job_events (id, job_id, kind, data, seq, ts)
+        VALUES (${randomUUID()}, ${jobId}, 'result', '{}'::jsonb, 1,
+                now() - interval '3 hours')
+      `);
+    }
+    if (i === 1 || i >= 6) {
+      await db.execute(sql`
+        INSERT INTO job_events (id, job_id, kind, data, seq, ts)
+        VALUES (${randomUUID()}, ${jobId}, 'progress', '{}'::jsonb, 1,
+                now() - interval '3 hours')
+      `);
+    }
+  }
+}
+
 describe('ISS-1013 · the quiet-job candidate query is bounded by live jobs', () => {
   let harness: TestDatabase;
   let projectId: string;
@@ -201,99 +280,12 @@ describe('ISS-1013 · the quiet-job candidate query is bounded by live jobs', ()
       WHERE pr.project_id = ${projectId}
     `);
 
-    await seedLiveJobs();
+    await seedLiveJobs(harness.db, projectId, ownerId);
     await harness.db.execute(sql`ANALYZE`);
   }, 600_000);
 
-  /**
-   * The live jobs. The first six are the equality cases criterion 9 names, each
-   * a way the CTE and the lateral could disagree; the rest are bulk, so the
-   * outer set is the size a planner would actually be given.
-   */
-  async function seedLiveJobs(): Promise<void> {
-    for (let i = 0; i < LIVE_JOBS; i++) {
-      const runId = randomUUID();
-      const jobId = randomUUID();
-      const sessionId = randomUUID();
-      // cm:guard there is no NULL-`pipeline_run_id` case to plant and there cannot be: the column is NOT NULL on both `jobs` and `agent_sessions`, so the NULL the CTE's outer join produced for a job with no run is unreachable in this schema. The representable case that exercises the same branch is a run carrying NO phase rows — the CTE's `last_phase` has no row for it, the lateral's aggregate returns NULL, and both must fall back to `dispatched_at`. Case 2 below is that, with events present, so the empty phase side is tested against a non-empty event side rather than against another empty one.
-      const parked = i === 4;
-      const resident = i === 5;
-
-      await harness.db.execute(sql`
-        INSERT INTO pipeline_runs (id, project_id, kind, status, started_at)
-        VALUES (${runId}, ${projectId}, 'pm', 'running', now() - interval '4 hours')
-      `);
-      await harness.db.execute(sql`
-        INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status, metadata,
-                                    started_at, last_heartbeat_at, runtime_state,
-                                    created_at, updated_at)
-        VALUES (${sessionId}, ${projectId}, ${runId}, 'running',
-                ${JSON.stringify({ type: 'pipeline' })}::jsonb,
-                now() - interval '4 hours', now() - interval '4 hours',
-                ${parked ? 'awaiting_input' : resident ? 'working' : null},
-                now() - interval '4 hours', now() - interval '4 hours')
-      `);
-      await harness.db.execute(sql`
-        INSERT INTO jobs (id, project_id, pipeline_run_id, agent_session_id, created_by,
-                          type, status, queued_at, dispatched_at)
-        VALUES (${jobId}, ${projectId}, ${runId}, ${sessionId}, ${ownerId},
-                'drive', 'running', now() - interval '4 hours', now() - interval '4 hours')
-      `);
-
-      // case 1 (i === 0): no events and no phases at all.
-      // case 2 (i === 1): events but NO phase rows on its run — see the guard above.
-      if (i === 2) {
-        // case 3: the run carries ONE started phase that never ended. The
-        // lateral's COALESCE(ended_at, started_at) is what has to see it.
-        await harness.db.execute(sql`
-          INSERT INTO phase_journal (id, project_id, run_id, phase, attempt, source, started_at)
-          VALUES (${randomUUID()}, ${projectId}, ${runId}, 'phase-4', 1, 'agent',
-                  now() - interval '4 hours')
-        `);
-      }
-      if (i === 3) {
-        // case 4: an OLD phase that ENDED recently — greatest(started, ended)
-        // is the live signal, and ordering by started_at would miss it.
-        await harness.db.execute(sql`
-          INSERT INTO phase_journal (id, project_id, run_id, phase, attempt, source,
-                                     started_at, ended_at)
-          VALUES (${randomUUID()}, ${projectId}, ${runId}, 'phase-2', 1, 'agent',
-                  now() - interval '4 hours', now() - interval '2 minutes')
-        `);
-      }
-      if (resident) {
-        // case 6: a duplex turn already wrote a `result`; RESULT_GUARD must
-        // still let this job through because the session declares a state.
-        await harness.db.execute(sql`
-          INSERT INTO job_events (id, job_id, kind, data, seq, ts)
-          VALUES (${randomUUID()}, ${jobId}, 'result', '{}'::jsonb, 1,
-                  now() - interval '3 hours')
-        `);
-      }
-      if (i === 1 || i >= 6) {
-        await harness.db.execute(sql`
-          INSERT INTO job_events (id, job_id, kind, data, seq, ts)
-          VALUES (${randomUUID()}, ${jobId}, 'progress', '{}'::jsonb, 1,
-                  now() - interval '3 hours')
-        `);
-      }
-    }
-  }
-
   afterAll(async () => {
     if (harness) await harness.cleanup();
-  });
-
-  it('DEBUG dumps the plans', async () => {
-    const text = async (q: ReturnType<typeof sql>) =>
-      [...(await harness.db.execute<Record<string, string>>(sql`EXPLAIN (ANALYZE, BUFFERS) ${q}`))]
-        .map((r) => Object.values(r)[0])
-        .join('\n');
-    const fs = await import('node:fs');
-    fs.writeFileSync(
-      '/tmp/claude-1000/-home-forge-projects-forge-dev/cf41efba-3689-4b6f-9ae8-486bfd19f25e/scratchpad/ISS-1013-plans.txt',
-      `=== NEW ===\n${await text(resultMissCandidateQuery({ projectId }))}\n=== OLD ===\n${await text(REPLACED_CTE_QUERY(projectId, 60))}\n=== ALARM ===\n${await text(staleAlarmQuery(new Date()))}\n=== ORPHAN ===\n${await text(sql`SELECT j.id FROM jobs j JOIN agent_sessions s ON s.id = j.agent_session_id WHERE j.status IN ('dispatched','running') AND s.status IN ('failed','cancelled_stale') AND NOT EXISTS (SELECT 1 FROM job_events e WHERE e.job_id = j.id AND e.kind = 'result') AND j.project_id = ${projectId}`)}\n`,
-    );
   });
 
   it('is planted at the shape the plans below are read on', async () => {
