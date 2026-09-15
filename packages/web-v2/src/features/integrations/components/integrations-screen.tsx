@@ -3,22 +3,19 @@
 // Workspace `/integrations` — the OWNER CONNECTION DIRECTORY (ISS-429).
 //
 // A connection is the credential (owned by a user or an org); bindings link it
-// into projects. Every card must answer three questions the provider name
-// cannot: what is this, what does it point at, and who uses it. BINDING-scoped
-// management (environment, webhook rotate, delivery log, disconnect) lives in
-// project settings → Integrations; this page deliberately does not duplicate
-// it, and opening a card hands the rest to the edit drawer (ISS-435).
+// into projects. The directory is one collapsible section per APP rather than
+// one grid of equal cards (ISS-1035): an org holding several credentials of one
+// app — a Coolify token per environment — read as an undifferentiated wall, and
+// the operator comes looking for an app before a credential. What a row holds,
+// and what it deliberately does not: `connection-row.tsx`.
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Badge,
-  Button,
   Card,
   CardContent,
   EmptyState,
   ErrorState,
   HelpButton,
-  Icon,
   Input,
   NativeSelect,
   PageContainer,
@@ -26,219 +23,22 @@ import {
 } from "@/design";
 import type { ConnectionDirectoryItem } from "@forge/contracts";
 import { formatApiError } from "@/lib/api/error";
-import { formatRelativeTime } from "@/lib/utils/format";
+import { usePersistedState } from "@/lib/utils/use-persisted-state";
 import { useActiveOrg } from "@/features/orgs/active-org";
 import { useOrgs } from "@/features/orgs/hooks";
 import { useProjectsIncludingArchived } from "@/features/projects/hooks";
-import { useCanManageConnection, useConnections, useRemoveConnection, useUpdateConnection } from "../hooks";
-import { connectionTarget, connectionTitle, matchesQuery } from "../connection-identity";
-import { deriveConnectionStatus } from "../derive";
+import { useConnections } from "../hooks";
+import { matchesQuery } from "../connection-identity";
+import { groupConnectionsByApp } from "../connection-groups";
 import { ConnectionEditDrawer } from "./connection-edit-drawer";
-import { DirectoryStatusPill, ENV_LABEL, PROVIDER_ICON, PROVIDER_LABEL } from "./status-pill";
+import { ConnectionGroupSection } from "./connection-group";
+import { PROVIDER_LABEL } from "./status-pill";
 
-/** Projects a connection is bound to, named — the line that tells two credentials apart. */
-function UsageLine({
-  connection,
-  projectName,
-}: {
-  connection: ConnectionDirectoryItem;
-  projectName: (id: string) => string;
-}) {
-  const bindings = connection.usage.bindings;
-  if (bindings.length === 0) {
-    return (
-      <p className="fg-body-sm text-subtle">
-        Not used by any project — share it from a project&apos;s settings → Integrations.
-      </p>
-    );
-  }
-  return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      {bindings.map((b) => (
-        <span
-          key={b.id}
-          className="fg-body-sm inline-flex items-center gap-1 rounded-pill border border-line bg-surface px-2 py-0.5"
-          title={b.active ? undefined : "this project has the integration switched off"}
-        >
-          <span className="max-w-[14ch] truncate">{projectName(b.projectId)}</span>
-          <span className="text-subtle">{ENV_LABEL[b.environment] ?? b.environment}</span>
-          {!b.active && <span className="text-subtle">· off</span>}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function RemoveButton({ connection }: { connection: ConnectionDirectoryItem }) {
-  const remove = useRemoveConnection();
-  const [armed, setArmed] = useState(false);
-  const count = connection.usage.bindings.length;
-
-  if (!armed) {
-    return (
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={(e) => {
-          e.stopPropagation();
-          setArmed(true);
-        }}
-      >
-        Remove
-      </Button>
-    );
-  }
-  return (
-    <span className="flex items-center gap-2">
-      <span className="fg-body-sm text-muted">
-        {count > 0 ? `Disconnects ${count} project${count > 1 ? "s" : ""}.` : "Delete it?"}
-      </span>
-      <Button
-        variant="danger"
-        size="sm"
-        loading={remove.isPending}
-        onClick={(e) => {
-          e.stopPropagation();
-          remove.mutate(connection.id);
-        }}
-      >
-        Delete
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={(e) => {
-          e.stopPropagation();
-          setArmed(false);
-        }}
-      >
-        Cancel
-      </Button>
-    </span>
-  );
-}
-
-// cm:guard show the provider pill only when the TITLE is not already the provider label — `displayName` falls back to that label, so printing both rendered "Coolify deploy Coolify deploy" on every one of the 17 unnamed rows on forge-beta 2026-09-06
-function ConnectionCard({
-  connection,
-  ownerLabel,
-  projectName,
-  onOpen,
-}: {
-  connection: ConnectionDirectoryItem;
-  /** ISS-477 — which principal owns this credential ("Personal" or an org name). */
-  ownerLabel: string;
-  projectName: (id: string) => string;
-  onOpen: () => void;
-}) {
-  const update = useUpdateConnection();
-  const canManage = useCanManageConnection(connection);
-  const checked = formatRelativeTime(connection.lastHealthAt);
-  const title = connectionTitle(connection);
-  const target = connectionTarget(connection);
-  const providerLabel = PROVIDER_LABEL[connection.provider] ?? connection.provider;
-
-  return (
-    <Card>
-      <CardContent>
-        {/* The card body opens the edit drawer (ISS-435); inner buttons keep
-            their own actions via stopPropagation. div+role, not <button> —
-            the shortcuts inside are real buttons and can't nest. */}
-        <div
-          role="button"
-          tabIndex={0}
-          aria-label={`Manage connection ${title}`}
-          className="flex cursor-pointer flex-col gap-2.5 focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-          onClick={onOpen}
-          onKeyDown={(e) => {
-            // Only when the card ITSELF is focused — Enter/Space on the inner
-            // buttons/links must keep their native activation.
-            if (e.target !== e.currentTarget) return;
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              onOpen();
-            }
-          }}
-        >
-          <div className="flex items-start justify-between gap-2">
-            <span className="inline-flex min-w-0 items-center gap-2">
-              <Icon
-                name={PROVIDER_ICON[connection.provider] ?? "link"}
-                size={18}
-                className="shrink-0 text-muted"
-              />
-              <span className="fg-h3 truncate">{title}</span>
-              {title !== providerLabel && (
-                <span className="fg-body-sm shrink-0 rounded-pill bg-sunken px-2 py-0.5 text-subtle">
-                  {providerLabel}
-                </span>
-              )}
-            </span>
-            <DirectoryStatusPill status={deriveConnectionStatus(connection)} />
-          </div>
-
-          {target && (
-            <p className="fg-body-sm truncate font-mono text-muted" title={target}>
-              {target}
-            </p>
-          )}
-
-          <UsageLine connection={connection} projectName={projectName} />
-
-          <p className="fg-body-sm text-subtle">
-            <Badge tone={connection.ownerType === "org" ? "accent" : "neutral"}>{ownerLabel}</Badge>{" "}
-            {connection.lastHealthStatus
-              ? `last health: ${connection.lastHealthStatus}${checked ? ` · ${checked}` : ""}`
-              : "never health-checked"}
-            {!connection.hasSecrets && " · no credential stored"}
-          </p>
-
-          <div className="flex flex-wrap items-center gap-2">
-            {canManage ? (
-              <>
-                {connection.active ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    loading={update.isPending}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      update.mutate({ id: connection.id, body: { active: false } });
-                    }}
-                  >
-                    Disable
-                  </Button>
-                ) : (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    loading={update.isPending}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      update.mutate({ id: connection.id, body: { active: true } });
-                    }}
-                  >
-                    Enable
-                  </Button>
-                )}
-                <span className="ml-auto" />
-                <RemoveButton connection={connection} />
-              </>
-            ) : (
-              // cm:guard say WHY the actions are absent rather than rendering buttons that 403 — a plain org member can see this credential and cannot change it, and a disabled button with no reason reads as a bug
-              <span className="fg-body-sm text-subtle">
-                Read-only — only an admin of {ownerLabel} can change this credential.
-              </span>
-            )}
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
+/** Per-operator, shared across tabs: which apps this person leaves open. */
+const OPEN_APPS_KEY = "web-v2:integrations-open-apps";
 
 const HELP_ACTIONS = [
-  "Click a card — rename, replace the key, edit config, Test, drill into bound projects, or remove the connection",
+  "Click an app to open it, then a row — rename, replace the key, edit config, Test, drill into bound projects, or remove the connection",
   "Disable / Enable — switch a credential off (every binding stops resolving) and back on",
   "Binding-scoped settings (environment, webhooks, delivery log) stay in the project's settings → Integrations tab",
 ];
@@ -294,6 +94,30 @@ export function IntegrationsScreen() {
       c.ownerType === "org" ? orgNameById.get(c.ownerId) ?? "Organization" : "Personal",
     [orgNameById],
   );
+
+  const groups = useMemo(() => groupConnectionsByApp(items), [items]);
+
+  // Which apps stand open. The PERSISTED half is the operator's own choice and
+  // survives leaving the page; the transient half is theirs for the life of one
+  // filter, because a filter that leaves its match behind a shut header reads
+  // as a filter that does not work, and a header it renders open has to stay
+  // clickable rather than become a control that does nothing.
+  const [openApps, setOpenApps] = usePersistedState<string[]>(OPEN_APPS_KEY, []);
+  const [filterClosed, setFilterClosed] = useState<string[]>([]);
+  const filtering = query.trim() !== "" || provider !== "";
+  useEffect(() => {
+    if (!filtering) setFilterClosed([]);
+  }, [filtering]);
+
+  const isOpen = (key: string) =>
+    filtering ? !filterClosed.includes(key) : openApps.includes(key);
+
+  const toggleApp = (key: string) => {
+    const flip = (prev: string[]) =>
+      prev.includes(key) ? prev.filter((p) => p !== key) : [...prev, key];
+    if (filtering) setFilterClosed(flip);
+    else setOpenApps(flip);
+  };
 
   // Track the SELECTED ID and re-derive the row from the live query data, so
   // the open drawer reflects every mutation (rename/health/active) without
@@ -389,9 +213,9 @@ export function IntegrationsScreen() {
       )}
 
       {connections.isLoading ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="flex flex-col gap-3">
           {[0, 1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-[148px] w-full" />
+            <Skeleton key={i} className="h-[52px] w-full" />
           ))}
         </div>
       ) : connections.isError ? (
@@ -404,14 +228,16 @@ export function IntegrationsScreen() {
           <CardContent>{renderEmpty()}</CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {items.map((c) => (
-            <ConnectionCard
-              key={c.id}
-              connection={c}
-              ownerLabel={ownerLabel(c)}
+        <div className="flex flex-col gap-3">
+          {groups.map((g) => (
+            <ConnectionGroupSection
+              key={g.provider}
+              group={g}
+              open={isOpen(g.provider)}
+              onToggle={() => toggleApp(g.provider)}
+              ownerLabel={ownerLabel}
               projectName={projectName}
-              onOpen={() => setSelectedId(c.id)}
+              onOpenConnection={setSelectedId}
             />
           ))}
         </div>
