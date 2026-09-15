@@ -27,7 +27,7 @@ describe('createLimiter', () => {
     let running = 0;
     let peak = 0;
 
-    const runs = gates.map((gate, i) =>
+    const runs = gates.map((gate) =>
       limiter.run(async () => {
         running += 1;
         peak = Math.max(peak, running);

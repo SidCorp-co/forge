@@ -67,7 +67,9 @@ const readBlockerRows = (projectIds: string[]) =>
     })
     .from(issues)
     .innerJoin(projects, eq(projects.id, issues.projectId))
-    .where(and(inArray(issues.projectId, projectIds), inArray(issues.status, [...BLOCKED_STATUSES])))
+    .where(
+      and(inArray(issues.projectId, projectIds), inArray(issues.status, [...BLOCKED_STATUSES])),
+    )
     .orderBy(issues.projectId, sql`${issues.updatedAt} DESC`);
 
 // cm:guard reads BOTH `released` and `awaiting_release` because `activity_log` is HISTORY: 4,488 rows were written while the rung was called `released` (renamed 2026-09-10, migration 0228) and no migration rewrites them — a payload records what the status was called when it happened. Drop either spelling and the figure silently loses one side of that date.
