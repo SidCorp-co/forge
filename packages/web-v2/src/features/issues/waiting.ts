@@ -6,8 +6,33 @@
 //
 // cm:edge lockstep -> packages/core/src/issues/pipeline-health-types.ts — `PipelineWaitingReason` is the authority on which gates exist and `WaitingReason` in ./types is a HAND-MIRROR of it, so nothing here breaks when a reason is added there: add it to that mirror and to all three records below in the same change. Until it is added, the reason arrives as an unrecognised string and degrades to UNKNOWN_GATE_COPY.
 
-import { formatCountdown } from "@/lib/utils/format";
-import type { PauseResumer, PipelineHealth, WaitingReason } from "./types";
+import { statusesForLabels } from "@forge/contracts/issue-vocabulary";
+import { formatCountdown, formatElapsed } from "@/lib/utils/format";
+import type {
+	IssueStatus,
+	PauseResumer,
+	PipelineHealth,
+	WaitingReason,
+} from "./types";
+
+// cm:guard ONE threshold for "this row has sat too long", shared by every surface that grades a row's stillness — a second copy is how two surfaces start disagreeing about which rows are stuck.
+export const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
+
+// cm:guard a TERMINAL row gets no figure at all, never a zero: an issue closed six months ago has not been waiting six months, and a number that keeps growing on finished work is the live-looking-but-dead reading `VISION: state-never-lies` refuses.
+const SETTLED = new Set<IssueStatus>(statusesForLabels("done", "dropped"));
+
+/** How long this row has sat where it is, graded against a caller-held instant
+ *  so every row in one render is comparable to the others. */
+export function waitedFor(
+	row: { status: IssueStatus; updatedAt: string },
+	now: number,
+): { label: string; stale: boolean } | null {
+	if (SETTLED.has(row.status)) return null;
+	const since = new Date(row.updatedAt).getTime();
+	if (Number.isNaN(since)) return null;
+	const ms = Math.max(0, now - since);
+	return { label: formatElapsed(ms), stale: ms >= STALE_AFTER_MS };
+}
 
 // cm:edge contract -> packages/core/src/jobs/hold.ts — mirrors AUTO_RELEASE_REASONS (`holdResumesItself`); a reason that changes lane there and not here tells the reader "no action needed" about a hold that is in fact waiting for them
 const SELF_RESUMING_HOLD_REASONS = new Set([

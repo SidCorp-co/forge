@@ -241,3 +241,31 @@ export function CostCell({ value }: { value: number | undefined }) {
   const text = cost <= 0 ? "—" : cost < 0.01 ? "<$0.01" : `$${cost.toFixed(2)}`;
   return <Stat icon="dollar">{text}</Stat>;
 }
+
+/** How long the row has sat where it is. A settled row renders a dash rather
+ *  than a figure, and a row past the stale threshold is told apart by its
+ *  colour and its icon before the number is read at all. */
+export function WaitingCell({
+  waited,
+}: {
+  waited: { label: string; stale: boolean } | null;
+}) {
+  if (!waited) return <span className="fg-caption text-muted">—</span>;
+  return (
+    <span
+      className={
+        waited.stale
+          ? "fg-caption inline-flex items-center gap-1 font-semibold text-[color:var(--amber-600)] tabular-nums"
+          : "fg-caption inline-flex items-center gap-1 text-muted tabular-nums"
+      }
+      title={
+        waited.stale
+          ? `No movement in ${waited.label} — longer than anything else here should take`
+          : `Last moved ${waited.label} ago`
+      }
+    >
+      {waited.stale && <Icon name="clock" size={12} />}
+      {waited.label}
+    </span>
+  );
+}

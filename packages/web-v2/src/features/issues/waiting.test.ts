@@ -3,9 +3,11 @@ import {
   deriveQueuedStep,
   hasLiveAgentSession,
   queuedChipStatus,
+  STALE_AFTER_MS,
+  waitedFor,
   WAITING_REASON_SHORT,
 } from "./waiting";
-import type { PipelineHealth, WaitingReason } from "./types";
+import type { IssueStatus, PipelineHealth, WaitingReason } from "./types";
 
 const QUEUED_AT = "2026-09-03T14:43:00.000Z";
 const NOW = new Date("2026-09-03T17:22:00.000Z");
@@ -192,5 +194,40 @@ describe("a gate this build has no words for", () => {
     expect(out?.gate?.detail).toMatch(/does not recognise/);
     expect(out?.gate?.needsAction).toBe(true);
     expect(queuedChipStatus(out as NonNullable<typeof out>)).toBe("waiting");
+  });
+});
+
+describe("how long a row has sat", () => {
+  const NOW_MS = Date.parse("2026-09-15T12:00:00.000Z");
+  const sat = (ms: number, status: IssueStatus = "in_progress") =>
+    waitedFor(
+      { status, updatedAt: new Date(NOW_MS - ms).toISOString() },
+      NOW_MS,
+    );
+
+  it("reads the span since the row last moved, not the wall clock", () => {
+    const realNow = vi.spyOn(Date, "now").mockReturnValue(NOW_MS + 9_000_000);
+    expect(sat(3 * 60 * 60 * 1000)?.label).toBe("3h");
+    realNow.mockRestore();
+  });
+
+  it("marks a row stale only once it crosses the one declared threshold", () => {
+    expect(sat(STALE_AFTER_MS - 1)?.stale).toBe(false);
+    expect(sat(STALE_AFTER_MS)?.stale).toBe(true);
+    expect(sat(3 * STALE_AFTER_MS)?.label).toBe("3d");
+  });
+
+  // cm:guard a settled row must render NO figure — a duration here gives every closed issue a number that grows forever, which reads as live state on work nobody is waiting for.
+  it("gives a settled row no figure at all, for either terminal outcome", () => {
+    expect(sat(9 * STALE_AFTER_MS, "closed")).toBeNull();
+    expect(sat(9 * STALE_AFTER_MS, "dropped")).toBeNull();
+  });
+
+  it("gives no figure rather than NaN when the timestamp is unusable", () => {
+    expect(waitedFor({ status: "open", updatedAt: "not a date" }, NOW_MS)).toBeNull();
+  });
+
+  it("never counts backwards from a row stamped in the future", () => {
+    expect(sat(-60_000)?.label).toBe("0s");
   });
 });

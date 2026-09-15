@@ -38,6 +38,7 @@ import {
 import { groupedTransitions, transitionLabels } from "../derive";
 import { useStatusExits } from "../hooks";
 import { useStatusLabeller } from "../vocabulary";
+import { waitedFor } from "../waiting";
 import {
   ISSUE_COMPLEXITIES,
   ISSUE_PRIORITIES,
@@ -51,6 +52,7 @@ import {
   ModuleCell,
   type RowActions,
   type RowSelection,
+  WaitingCell,
 } from "./issue-table-row";
 
 /** ISS-700 — shared row-open behaviour: a pending flag set synchronously
@@ -80,11 +82,7 @@ function failureTooltipLabel(info?: IssueFailureInfo | null): string {
   return short ? `${step} failed · ${short} · ${when}` : `${step} failed · ${when}`;
 }
 
-// The two status axes are SEPARATE chips (ISS-436): the issue chip always
-// shows the TRUE lifecycle label (an in-progress issue never reads as just
-// "Running"), and a live agent (running/queued/failed) adds a session-domain
-// chip beside it instead of replacing the label (reverses the ISS-366 D2
-// take-over, which made the lifecycle invisible whenever an agent was active).
+// cm:guard the agent chip is ADDED beside the lifecycle label, never swapped in for it (ISS-436) — the ISS-366 D2 take-over this reverses made the lifecycle invisible for as long as an agent was active.
 const hasLiveAgent = (s: IssueRow["agentStatus"]): boolean =>
   s === "running" || s === "queued" || s === "failed";
 
@@ -278,11 +276,15 @@ export function IssueTableRow({
   slug,
   actions,
   selection,
+  now,
 }: {
   row: IssueRow;
   slug: string;
   actions: RowActions;
   selection?: RowSelection;
+  /** One instant for the whole table, so the waiting figures on two rows are a
+   *  comparison and not two independent readings of the clock. */
+  now: number;
 }) {
   const { open, pending } = useOpenIssue(slug, row.id);
 
@@ -340,6 +342,9 @@ export function IssueTableRow({
         <StatusCell row={row} />
       </TD>
       <TD>
+        <WaitingCell waited={waitedFor(row, now)} />
+      </TD>
+      <TD>
         <PriorityCell priority={row.priority} />
       </TD>
       <TD>
@@ -370,11 +375,13 @@ export function IssueMobileCard({
   slug,
   actions,
   selection,
+  now,
 }: {
   row: IssueRow;
   slug: string;
   actions: RowActions;
   selection?: RowSelection;
+  now: number;
 }) {
   const { open, pending } = useOpenIssue(slug, row.id);
 
@@ -417,8 +424,9 @@ export function IssueMobileCard({
           <DepBadges deps={row.dependencies} slug={slug} />
         </div>
 
-        <div className="mt-3">
+        <div className="mt-3 flex items-center justify-between gap-2">
           <StatusCell row={row} />
+          <WaitingCell waited={waitedFor(row, now)} />
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2">

@@ -216,7 +216,12 @@ describe("row overflow menu", () => {
 
   function openRowMenu(status: IssueStatus) {
     wrap(
-      <IssueMobileCard row={row({ status })} slug="p1" actions={actions} />,
+      <IssueMobileCard
+        row={row({ status })}
+        slug="p1"
+        actions={actions}
+        now={Date.now()}
+      />,
     );
     fireEvent.click(screen.getByLabelText("Row actions"));
   }

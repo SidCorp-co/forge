@@ -79,6 +79,7 @@ const FILTERS: SegmentOption<IssueFilter>[] = [
   { value: "all", label: "All" },
 ];
 const VALID_FILTERS: IssueFilter[] = ["all", "draft", "findings", "you", "agent", "done"];
+const FINISHED_CUTS = ["closed", "dropped"];
 // cm:guard a DEFAULT, never a narrowing the reader chose: `isFiltered` compares against this rather than against a hardcoded `all`, so moving this line cannot make a project with no issues greet its owner with "No issues match this search or filter" and a Clear-filters button that clears nothing.
 // cm:why `all` is the owner's call (2026-09-14), taken after the counted tabs landed: the tab figures already say where the work is, so the landing view is a full ledger rather than a pre-made cut of it.
 const DEFAULT_FILTER: IssueFilter = "all";
@@ -150,7 +151,6 @@ export function IssuesListView({
   const search = useLocationSearch();
   const sp = useMemo(() => new URLSearchParams(search), [search]);
   const q = sp.get("q") ?? "";
-  // cm:guard the page opens on work a person still owes, never on `all`: measured on forge-dev 2026-09-14, `all` is 1011 rows of which 986 are closed, so the default view was 97% finished work.
   const rawFilter = decodeFilter<IssueFilter>(sp, "filter", DEFAULT_FILTER);
   const filter = VALID_FILTERS.includes(rawFilter) ? rawFilter : "all";
   const rawPriority = sp.get("priority") ?? "";
@@ -188,8 +188,7 @@ export function IssuesListView({
     [pathname],
   );
 
-  // Search box: local state for keystrokes, debounced (~300ms) into the URL's
-  // `q`. Follows external URL changes (pinned-view click, back/forward).
+  // cm:why keystrokes are held locally and only the settled value reaches the URL, but the effect below still follows the URL: a pinned-view click or back/forward changes `q` with nobody typing, and a box that only ever wrote would show the previous search over the new results.
   const [rawQ, setRawQ] = useState(q);
   const lastAppliedQ = useRef(q);
   useEffect(() => {
@@ -208,10 +207,7 @@ export function IssuesListView({
     return () => clearTimeout(t);
   }, [rawQ, q, setParams]);
 
-  // ── Pin this view (ISS-436: named pins, filters included) ──────────────────
-  // The pinnable href is simply the current URL (filters + `?tab=` live there
-  // already); `?new=1` (the New-issue deep-link) is stripped so a pin never
-  // reopens the dialog.
+  // cm:guard `?new=1` is stripped before the URL becomes a pin (ISS-436) — a pin carrying it reopens the New-issue dialog every time somebody opens their own saved view.
   const viewHref = useMemo(() => {
     const p = new URLSearchParams(search);
     p.delete("new");
@@ -300,12 +296,31 @@ export function IssuesListView({
   );
 
   const rows = useMemo(() => issuesQ.data?.items ?? [], [issuesQ.data]);
+  // cm:guard ONE instant for the whole table, and it is when the RESPONSE landed rather than when React re-rendered: read the clock per row and two issues that last moved in the same second print different figures, which turns the column from a comparison into noise.
+  const now = issuesQ.dataUpdatedAt || Date.now();
   const total = issuesQ.data?.totalCount ?? 0;
   // cm:guard the tabs carry a count only once the response that produced the rows has arrived. A zero standing in for "not loaded yet" is the one reading a person cannot recover from — an empty bucket and an unknown one look the same, and they mean opposite things.
-  const tabs = useMemo(
-    () => withCounts(FILTERS, issuesQ.data?.extra?.buckets),
-    [issuesQ.data],
-  );
+  const buckets = issuesQ.data?.extra?.buckets;
+  const tabs = useMemo(() => withCounts(FILTERS, buckets), [buckets]);
+  // cm:guard the two outcomes are counted from the SAME bucket figures the Finished tab sums, so "Closed 283 · Dropped 22" can never disagree with the 305 above it.
+  // cm:why finishing work and deciding not to do it share one tab because both are off the reader's plate, and narrow through the `?status=` the rest of the app already links with, because they are different outcomes and a second filter axis nothing else understands would be a worse way to say so.
+  const finishedCuts = useMemo<SegmentOption<string>[]>(() => {
+    const closed = buckets?.byStatus.closed;
+    const dropped = buckets?.byStatus.dropped;
+    const both =
+      closed === undefined && dropped === undefined
+        ? undefined
+        : (closed ?? 0) + (dropped ?? 0);
+    return [
+      { value: "", label: "Both", count: both },
+      { value: "closed", label: "Closed", count: closed },
+      { value: "dropped", label: "Dropped", count: dropped },
+    ];
+  }, [buckets]);
+  // cm:guard only the two cuts this control offers light up. A `?status=` naming anything else — a multi-status dashboard link, a status this control knows nothing about — falls back to "Both" rather than leaving every segment dark, which reads as a broken control rather than as a narrowing it cannot show.
+  const finishedCut = FINISHED_CUTS.includes(sp.get("status") ?? "")
+    ? (sp.get("status") as string)
+    : "";
   const pageCount = Math.max(1, Math.ceil(total / ISSUES_PAGE_SIZE));
 
   const groups = useMemo(() => groupRows(rows, groupBy), [rows, groupBy]);
@@ -317,10 +332,7 @@ export function IssuesListView({
     canWrite,
   };
 
-  // ── Bulk selection (ISS-463) — page-scoped Set of issue ids ────────────────
-  // Selection is reset whenever the visible result set changes (filter / search
-  // / sort / page), so "select all" never silently spans pages and stale ids
-  // can't leak into a bulk apply. Disabled entirely for viewers (canWrite).
+  // cm:guard the selection is page-scoped and cleared on ANY view change (ISS-463) — kept across a filter or a page turn, "select all" silently spans pages and a bulk apply lands on rows the person never saw.
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const bulkEnabled = canWrite;
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset on any view change, not on `selected` itself.
@@ -360,7 +372,8 @@ export function IssuesListView({
     !!priority ||
     !!createdBy ||
     !!label ||
-    !!moduleId;
+    !!moduleId ||
+    statusParam !== undefined;
   // cm:why "nothing is waiting on you" and "this project has no issues" are opposite readings of one empty table, and only the bucket totals tell them apart — without it the default tab tells a busy project it is empty.
   const projectHasIssues = tabs.some((o) => (o.count ?? 0) > 0);
 
@@ -377,6 +390,7 @@ export function IssuesListView({
     (groupBy !== "none" ? 1 : 0) +
     (sort !== "createdAt:desc" ? 1 : 0);
 
+  // cm:why the table starts at `lg` and not at `md`: it needs ~1100px before the columns stop colliding (ISS-308 C3), so tablets fall through to the cards rather than to a table that scrolls sideways.
   // cm:why ONE status column, carrying the lifecycle chip and the live-agent indicator: the separate Pipeline/Status pair it replaced rendered the same two fields twice (ISS-436). It carried a mini stage tracker as well until ISS-999 deleted the ladder that tracker drew.
   return (
     <>
@@ -467,7 +481,6 @@ export function IssuesListView({
           </Button>
           {pinOpen && (
             <>
-              {/* Click-away backdrop. */}
               <button
                 type="button"
                 aria-label="Close"
@@ -561,6 +574,17 @@ export function IssuesListView({
         </div>
       </SlideOver>
 
+      {filter === "done" && (
+        <div className="mb-4 flex items-center gap-2">
+          <span className="fg-caption text-muted">Outcome</span>
+          <SegmentedControl
+            options={finishedCuts}
+            value={finishedCut}
+            onChange={(v) => setParams({ status: v, page: "" })}
+          />
+        </div>
+      )}
+
       {bulkEnabled && (
         <BulkActionBar projectId={projectId} selectedRows={selectedRows} onCleared={clearSelection} />
       )}
@@ -631,9 +655,6 @@ export function IssuesListView({
 
       {!issuesQ.isLoading && !issuesQ.isError && rows.length > 0 && (
         <>
-          {/* Desktop only (≥lg): dense table, grouped sections when requested.
-              Tablets (768–1024) fall through to the card layout below — the
-              table needs horizontal scroll under ~1100px (ISS-308 C3). */}
           <div className="hidden space-y-6 lg:block">
             {groups.map((g) => (
               <section key={g.key}>
@@ -660,6 +681,7 @@ export function IssuesListView({
                         <TH>Issue</TH>
                         <TH>Module</TH>
                         <TH>Status</TH>
+                        <TH>Waiting</TH>
                         <TH>Priority</TH>
                         <TH>Complexity</TH>
                         <TH className="text-right">Cost</TH>
@@ -674,6 +696,7 @@ export function IssuesListView({
                           row={row}
                           slug={slug}
                           actions={actions}
+                          now={now}
                           selection={
                             bulkEnabled
                               ? {
@@ -691,7 +714,6 @@ export function IssuesListView({
             ))}
           </div>
 
-          {/* Mobile + tablet (<lg): stacked cards. */}
           <div className="space-y-4 lg:hidden">
             {groups.map((g) => (
               <section key={g.key}>
@@ -707,6 +729,7 @@ export function IssuesListView({
                       row={row}
                       slug={slug}
                       actions={actions}
+                      now={now}
                       selection={
                         bulkEnabled
                           ? {

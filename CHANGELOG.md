@@ -114,6 +114,23 @@
 
 ### Added
 
+- **The issues list now says how long each row has sat where it is.** A status answers who is
+  holding a piece of work; it has never been able to answer how long they have been holding it, and
+  that is the question a person is actually asking when they scan the list. Two issues at the same
+  status looked identical whether one moved a minute ago or had not moved in three days. A new
+  **Waiting** column carries the span since each row last moved, and a row that has sat longer than
+  a day is coloured and marked so it is the one you notice before you have read a single number.
+  Every figure in one table is measured from the same instant — the moment the list's own data
+  arrived — so two rows are a comparison and not two separate readings of the clock. Finished work
+  shows no figure at all: an issue closed six months ago has not been waiting six months, and a
+  number that only grows would read as something still live.
+
+- **The Finished tab can be narrowed to what was completed or to what was abandoned.** Closed and
+  dropped issues shared one tab and rendered the same way, so an archive of 305 rows could not tell
+  you that 22 of them were work somebody decided not to do. An **Outcome** control now splits them,
+  carrying both counts before you choose, and it narrows through the same status links the rest of
+  the product already uses rather than adding a filter axis of its own.
+
 - **A page that says what each issue status means and what it wants from you.** A status named a
   rung on a ladder and left the useful part unsaid: whether anything was expected of you, and what.
   Two of them looked alike and behaved in opposite ways — an issue asking you a question restarts
