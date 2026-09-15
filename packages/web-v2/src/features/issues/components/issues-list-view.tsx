@@ -79,8 +79,9 @@ const FILTERS: SegmentOption<IssueFilter>[] = [
   { value: "all", label: "All" },
 ];
 const VALID_FILTERS: IssueFilter[] = ["all", "draft", "findings", "you", "agent", "done"];
-// cm:guard a DEFAULT, never a narrowing the reader chose: `isFiltered` compares against this and not against `all`, or a project with no issues greets its owner with "No issues match this search or filter" and a Clear-filters button that clears nothing.
-const DEFAULT_FILTER: IssueFilter = "you";
+// cm:guard a DEFAULT, never a narrowing the reader chose: `isFiltered` compares against this rather than against a hardcoded `all`, so moving this line cannot make a project with no issues greet its owner with "No issues match this search or filter" and a Clear-filters button that clears nothing.
+// cm:why `all` is the owner's call (2026-09-14), taken after the counted tabs landed: the tab figures already say where the work is, so the landing view is a full ledger rather than a pre-made cut of it.
+const DEFAULT_FILTER: IssueFilter = "all";
 
 // cm:edge contract -> packages/web-v2/src/features/issues/derive.ts#filterToQueryParams — a tab's count is the sum of the statuses that same function asks the server for, so the two cannot name different sets. Counting a tab by any other rule is how a tab says 5 and lists 4.
 function withCounts(
@@ -120,8 +121,7 @@ const SORT_OPTIONS: SelectOption[] = [
   { value: "priority:asc", label: "Priority ↑" },
 ];
 
-// Server-backed extra filters (ISS-436) — the search endpoint always supported
-// `priority`/`assignee`; these expose them. "" = no filter.
+// cm:why the empty value is a real option and not a placeholder: "" is what the setter writes to CLEAR the filter from the query string, and a Select with no such entry can narrow but never widen (ISS-436).
 const PRIORITY_FILTER_OPTIONS: SelectOption[] = [
   { value: "", label: "Priority: any" },
   ...ISSUE_PRIORITIES.map((p) => ({ value: p, label: priorityLabel(p) })),

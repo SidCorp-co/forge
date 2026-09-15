@@ -160,12 +160,12 @@
   said in a room that does not exist yet. Rooms that open themselves when a message arrives keep
   working exactly as they did; this is a second way in, not a replacement.
 
-- **The Issues list opens on the work that is waiting for you, and every tab says how much it
-  holds.** Opening a project's issues showed all of them, newest first — measured on this project,
-  1,011 rows of which 986 were closed, so the default view was 97% finished work and the eleven
-  live issues were somewhere inside it. The tabs are now counted, and the page opens on the one
-  that matters: **Needs you**. Each tab carries its figure, so where the work sits is legible
-  before anything is clicked rather than after several are.
+- **Every tab on the Issues list says how much it holds.** Opening a project's issues showed all of
+  them, newest first — measured on this project, 1,011 rows of which 986 were closed, so eleven
+  live issues sat somewhere inside a page that was 97% finished work, and finding out where meant
+  clicking through the tabs one at a time. Each tab now carries its figure, and the one holding
+  work that waits on a person is marked, so where the work sits is legible before anything is
+  clicked. The list still opens on the whole ledger: the counts are what make that readable.
 
   The tabs also stopped naming rungs and started naming **who holds the work**. The old set —
   Active, Review, Blocked — was a hand-written partition of the status ladder, so it went wrong
