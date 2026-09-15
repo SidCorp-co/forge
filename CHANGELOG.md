@@ -114,6 +114,23 @@
 
 ### Added
 
+- **A page that says what each issue status means and what it wants from you.** A status named a
+  rung on a ladder and left the useful part unsaid: whether anything was expected of you, and what.
+  Two of them looked alike and behaved in opposite ways — an issue asking you a question restarts
+  on its own the moment you answer, while an issue someone paused restarts only when a person
+  resumes it, and both simply read as "stopped". The new **Read an issue's status** page under
+  Reference answers one question per status — who holds the work, and what you do — with a diagram
+  where what is yours and what is the agent's are coloured apart, and a section on the three that
+  catch people out: a paused issue is a brake and not a question, an issue at the release gate is
+  not finished, and reopening an issue hands it back to you rather than to an agent.
+
+- **An issue being worked by an agent no longer offers you a status change it would immediately
+  overwrite.** The picker stayed live while a job was running, so a move you made could be written
+  over seconds later by the agent holding the issue — which reads as the change silently not
+  taking. It now says so instead of offering the move. The one status left answerable however busy
+  the issue is, deliberately, is the one where somebody is asking you a question: answering is what
+  restarts the work, so greying it out would close the only way forward.
+
 - **You can now change who is in a conversation: add a colleague, add an agent, or take either one
   out.** Until now a room was whoever it was born with — on staging, all 74 of them were one person
   and one project's agent, every one opened by a message arriving rather than by anybody choosing.

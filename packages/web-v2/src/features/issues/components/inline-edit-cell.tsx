@@ -61,6 +61,9 @@ export function InlineSelect({
   );
 }
 
+// cm:guard `needs_info` is exempt from the lock and must stay exempt — it is the one park a person's answer restarts, so locking it greys out the only way forward on an issue whose session is still resident; everything else set while a drive job is live is written over by that job moments later, which reads as the edit silently not taking.
+const ANSWERABLE_WHILE_RUNNING = new Set<IssueStatus>(["needs_info"]);
+
 interface StatusEditProps {
   status: IssueStatus;
   agentStatus?: IssueAgentStatus;
@@ -80,8 +83,11 @@ export function StatusEdit({ status, agentStatus, onTransition, disabled, size }
   const statusLabel = useStatusLabeller();
   const { exits, isPending, isError } = useStatusExits();
   const grouped = groupedTransitions(exits, status);
+  const heldByAgent = agentStatus === "running" && !ANSWERABLE_WHILE_RUNNING.has(status);
   let items: MenuItem[];
-  if (isPending) {
+  if (heldByAgent) {
+    items = [{ label: "An agent is working this — your move would be overwritten", disabled: true }];
+  } else if (isPending) {
     items = [{ label: "Loading status moves…", disabled: true }];
   } else if (isError) {
     items = [{ label: "Couldn't load status moves", disabled: true }];

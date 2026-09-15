@@ -55,8 +55,8 @@ function wrap(ui: ReactNode) {
   );
 }
 
-function openPicker(status: IssueStatus) {
-  wrap(<StatusEdit status={status} onTransition={vi.fn()} />);
+function openPicker(status: IssueStatus, agentStatus?: "running" | null) {
+  wrap(<StatusEdit status={status} agentStatus={agentStatus} onTransition={vi.fn()} />);
   fireEvent.click(screen.getByLabelText(`Change status (currently ${status})`));
 }
 
@@ -250,5 +250,34 @@ describe("row overflow menu", () => {
     openRowMenu("dropped");
     expect(statusItems()).toEqual(["Loading status moves…"]);
     await vi.waitFor(() => expect(statusItems()).toEqual([]));
+  });
+});
+
+describe("StatusEdit, while an agent is working the issue", () => {
+  it("offers no move, and says why rather than going quiet", () => {
+    get.mockReturnValue(ANSWERED);
+    openPicker("in_progress", "running");
+    expect(labels()).toEqual([
+      "An agent is working this — your move would be overwritten",
+    ]);
+    expect(screen.getByRole("menuitem")).toHaveAttribute("aria-disabled", "true");
+  });
+
+  // cm:guard `needs_info` is the one park a person's answer restarts — the lock must never reach it, or the only way forward on a resident session is greyed out.
+  it("leaves needs_info answerable however busy the issue is", () => {
+    get.mockReturnValue(ANSWERED);
+    openPicker("needs_info", "running");
+    expect(labels()).not.toContain(
+      "An agent is working this — your move would be overwritten",
+    );
+    expect(labels().length).toBeGreaterThan(0);
+  });
+
+  it("locks nothing when no agent holds the issue", () => {
+    get.mockReturnValue(ANSWERED);
+    openPicker("in_progress", null);
+    expect(labels()).not.toContain(
+      "An agent is working this — your move would be overwritten",
+    );
   });
 });
