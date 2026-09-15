@@ -286,7 +286,9 @@ describe('incremental transcript derivation', () => {
     expect(await storedTurns()).toEqual(await storedTurns(other.sessionId));
     expect((await storedTurns()).length).toBeGreaterThan(1);
   });
+});
 
+describe('what a derive refuses to fold onto, and what it refuses to write over', () => {
   it('re-derives from every event when the stored transcript is not the one it wrote', async () => {
     await insertEvents(0, 4);
     await flush();
@@ -311,18 +313,22 @@ describe('incremental transcript derivation', () => {
   });
 
   it('re-derives from every event when it holds no checkpoint', async () => {
+    // cm:guard the transcript is asserted on THIS flush, not on a later one. A flush that logged the fallback and then selected nothing would leave the row untouched, and a case that only reads the row after a subsequent full derive passes either way — it is that derive it is measuring.
+    await harness.db.execute(sql`
+      UPDATE agent_sessions
+      SET messages = '[{"id":"msg-1","type":"system","timestamp":1,"content":"not ours"}]'::jsonb
+      WHERE id = ${sessionId}
+    `);
     await insertEvents(0, 4);
     const debug = vi.spyOn(logger, 'debug');
     await flush();
+
     expect(debug).toHaveBeenCalledWith(
       expect.objectContaining({ agentSessionId: sessionId }),
       expect.stringContaining('no checkpoint'),
     );
-
-    // cm:why nothing is carried across, so poisoning what this flush read has to show through the next derive — which is the only way to see from outside that it read the lot.
-    await poisonEventsUpTo(4);
-    await transcript.deriveSessionFinal(jobId, sessionId);
-    expect(textOf(await storedMessages())).toContain('POISONED');
+    expect(await storedMessages()).toEqual(await fullRebuild());
+    expect(textOf(await storedMessages())).not.toContain('not ours');
   });
 
   it('re-derives from every event on the final derive, whatever checkpoint stands', async () => {
