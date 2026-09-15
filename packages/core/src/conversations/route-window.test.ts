@@ -7,6 +7,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { WindowContext } from './route-window.js';
 
 const conversation = {
   id: 'c1',
@@ -267,6 +268,31 @@ describe('authority', () => {
     await route();
     expect(runConversationTurn.mock.calls[0]?.[0]).toMatchObject({
       principalUserId: 'principal-1',
+    });
+  });
+});
+
+// cm:guard the speaker is asserted DISTINCT from the principal in a room, because in a direct venue the two are the same id and a test there would pass with the speaker read off the principal — the very substitution that would style every room reply for the org agent (ISS-1034 criterion 19).
+describe('whose preferences a room reply honours', () => {
+  it('names the newest linked person as the speaker while the room runs as the principal', async () => {
+    const inputs = vi.fn((_c: WindowContext) => ({
+      door: 'chat-sync' as const,
+      handleName: 'Babo',
+    }));
+    await routeWindow({ window: WINDOW, manySpeakersPrincipalUserId: 'principal-1', inputs });
+    expect(runConversationTurn.mock.calls[0]?.[0]).toMatchObject({
+      principalUserId: 'principal-1',
+      speakerUserId: 'speaker-1',
+    });
+    expect(inputs.mock.calls[0]?.[0]).toMatchObject({ speakerUserId: 'speaker-1' });
+  });
+
+  it('passes a null speaker, not the principal, when the newest person is linked to nobody', async () => {
+    messageRows = messages.map((m) => ({ ...m, authorUserId: null }));
+    await route();
+    expect(runConversationTurn.mock.calls[0]?.[0]).toMatchObject({
+      principalUserId: 'principal-1',
+      speakerUserId: null,
     });
   });
 });

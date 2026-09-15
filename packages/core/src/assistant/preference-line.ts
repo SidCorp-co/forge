@@ -1,0 +1,49 @@
+// The one renderer of what a turn knows about the PERSON it is answering: their
+// reply style and standing instructions where the speaker is linked, and the
+// plain statement that nothing is known where they are not (ISS-1034).
+//
+// Rendered into the turn context, not the system prompt, because it changes
+// with the speaker and a group room has more than one.
+
+import type { AnswerStyle } from '../db/schema.js';
+
+export interface SpeakerPreferences {
+  answerStyle: AnswerStyle;
+  assistantInstructions: string | null;
+}
+
+export interface SpeakerInput {
+  /** The Forge user the newest person message is linked to, or null when nobody Forge knows. */
+  speakerUserId: string | null;
+  /** The transport's own label for them, for the unlinked sentence only. */
+  speakerLabel: string | null;
+  /** Their preferences, read by the caller when `speakerUserId` is set. */
+  preferences: SpeakerPreferences | null;
+}
+
+const STYLE_MEANING: Record<AnswerStyle, string | null> = {
+  default: null,
+  concise: 'answer in as few sentences as the question needs; no preamble, no recap',
+  detailed: 'give the full picture — context, evidence and the reasoning between them',
+  bullets: 'answer as a bulleted list; one point per line, prose only where a list cannot carry it',
+};
+
+/**
+ * What the turn is told about the speaker, or null when there is nothing to say.
+ */
+// cm:guard an UNLINKED speaker gets a sentence and never a silent default: the turn would otherwise answer a stranger in the voice of whoever's preferences were nearest, and the tools bound to the speaker would have nobody to refuse for. The label is quoted for the reader and decides nothing (ISS-1034 criteria 19, 20).
+export function speakerSection(input: SpeakerInput): string | null {
+  if (!input.speakerUserId) {
+    if (!input.speakerLabel) return null;
+    return `Speaker: the newest message is from ${input.speakerLabel}, who is not linked to a Forge user. No preferences apply to this reply, and nothing may be written on their behalf.`;
+  }
+  const prefs = input.preferences;
+  if (!prefs) return null;
+  const lines: string[] = [];
+  const meaning = STYLE_MEANING[prefs.answerStyle];
+  if (meaning)
+    lines.push(`Reply style for the person you are answering: ${prefs.answerStyle} — ${meaning}.`);
+  const instructions = prefs.assistantInstructions?.trim();
+  if (instructions) lines.push(`Their standing instructions for every reply:\n${instructions}`);
+  return lines.length ? lines.join('\n') : null;
+}

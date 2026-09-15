@@ -10,6 +10,7 @@
  */
 
 import { eq } from 'drizzle-orm';
+import { readAssistantPreferences } from '../auth/preference-changes.js';
 import { env } from '../config/env.js';
 import { db as defaultDb } from '../db/client.js';
 import { appConfig, chatLogs, projects } from '../db/schema.js';
@@ -20,6 +21,7 @@ import {
   type ProjectProgress,
 } from '../issues/progress.js';
 import { logger } from '../logger.js';
+import { readSelvesFor } from '../orgs/agent-selves.js';
 import { detectStateConfab } from './confab.js';
 import { PROVIDER_HISTORY_WINDOW } from './context-budget.js';
 import {
@@ -31,6 +33,7 @@ import {
   persistMessages,
   toProviderMessages,
 } from './conversation-turn.js';
+import { speakerSection } from './preference-line.js';
 import { defaultChatProviderId } from './providers/bootstrap.js';
 import { type ChatTurnKind, resolveForProject } from './providers/registry.js';
 import type { ChatResponseFormat } from './providers/types.js';
@@ -55,6 +58,15 @@ export interface ExternalChatTurnArgs {
   tools?: ChatToolset | undefined;
   /** `chat_logs.user_key` audit key (e.g. the external user id). */
   userKey?: string | null;
+  /**
+   * The Forge user the newest person message is LINKED to — whose preferences
+   * this reply honours and whose writes the speaker-bound tools make. Distinct
+   * from `userId`, which is who the turn ACTS as (ISS-1034).
+   */
+  // cm:guard three values, three meanings: absent means "the principal spoke" (every caller that predates the split, and every direct venue); a string names a linked speaker who is not the principal (a group venue); `null` means the newest author is nobody Forge knows, which the turn is TOLD rather than left to guess (codex F1).
+  speakerUserId?: string | null | undefined;
+  /** The transport's own label for the speaker, quoted in the unlinked sentence and nowhere else. */
+  speakerLabel?: string | null | undefined;
   /** Channel persona for the system prompt (ISS-609); override still wins. */
   persona?: string | null;
   /** Seeded recent-conversation block for the system prompt (ISS-609). */
@@ -150,8 +162,20 @@ export async function runExternalChatTurn(
     });
   }
 
+  // cm:guard the self is read off the HANDLE the turn speaks as (`turn.handleUserId`, the participant row carrying this project) and never off "the project's agent": a project may hold more than one agent account and the room names which one is in it (ISS-1034 criterion 3).
+  const selves = turn?.handleUserId ? await readSelvesFor([turn.handleUserId], dbi) : new Map();
+  const self = turn?.handleUserId ? (selves.get(turn.handleUserId) ?? null) : null;
+  const speakerUserId =
+    args.speakerUserId === undefined ? (args.userId ?? null) : args.speakerUserId;
+  const speakerContext = speakerSection({
+    speakerUserId,
+    speakerLabel: args.speakerLabel ?? args.userKey ?? null,
+    preferences: speakerUserId ? await readAssistantPreferences(speakerUserId, dbi) : null,
+  });
+
   const systemPrompt = buildSystemPrompt({
     project: { name: project.name, agentConfig: project.agentConfig },
+    self,
     appConfig: appCfg ?? null,
     persona: args.persona ?? null,
     progressFacts: progress ? buildProgressFactsBlock(progress) : null,
@@ -169,7 +193,7 @@ export async function runExternalChatTurn(
         ? toProviderMessages(turn, resolvedImages).slice(-PROVIDER_HISTORY_WINDOW)
         : [{ role: 'user' as const, content: args.message }]),
     ],
-    { conversationContext: args.conversationContext },
+    { conversationContext: args.conversationContext, speakerContext },
   );
 
   const startedAt = Date.now();

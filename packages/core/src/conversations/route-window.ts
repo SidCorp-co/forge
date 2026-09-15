@@ -15,6 +15,7 @@ import type { ConversationWindowDecision } from '../db/schema-conversations.js';
 import { logger } from '../logger.js';
 import { type ConversationVenue, codeAuthored, conversationTransport } from './ports.js';
 import { decideProactivity } from './proactivity.js';
+import { linkedSpeakerOf } from './speaker.js';
 import {
   deliveredDecisionUnderKey,
   getConversation,
@@ -37,6 +38,7 @@ export type WindowTurnInputs = Omit<
   ConversationTurnRequest,
   | 'venue'
   | 'principalUserId'
+  | 'speakerUserId'
   | 'speakerKey'
   | 'message'
   | 'questionAlreadyRecorded'
@@ -73,6 +75,8 @@ export interface WindowContext {
   /** The messages this window collected, oldest first. */
   messages: StoredConversationMessage[];
   principalUserId: string;
+  /** The Forge user the newest person message is linked to; null in a room where nobody Forge knows spoke last. */
+  speakerUserId: string | null;
   /**
    * Make this turn's right to answer durable, for an answer this turn will not deliver itself.
    */
@@ -191,16 +195,20 @@ async function decide(
   const verdict = await decideProactivity({ conversationId: window.conversationId });
   if (!verdict.speak) return { decision: verdict.decision, detail: verdict.detail };
 
+  // cm:guard the SPEAKER is read separately from the PRINCIPAL and the two only coincide in a direct venue: a room runs under the org agent's authority, but the preferences a reply honours are the newest person's, and a room that read them off the principal would style every reply for the agent account (ISS-1034 criterion 19).
+  const speakerUserId = linkedSpeakerOf(messages).userId;
   const inputs = args.inputs({
     venue,
     messages,
     principalUserId,
+    speakerUserId,
     reserve: () => reserveDelivery(window.id, claim),
   });
   const outcome = await runConversationTurn({
     ...inputs,
     venue,
     principalUserId,
+    speakerUserId,
     speakerKey: speaker?.authorLabel ?? speaker?.authorUserId ?? 'unknown',
     message: messages.map((m) => m.content).join('\n'),
     questionAlreadyRecorded: true,

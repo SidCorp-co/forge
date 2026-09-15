@@ -108,4 +108,56 @@ describe('buildSystemPrompt', () => {
     });
     expect(prompt).not.toContain('AUTHORITATIVE');
   });
+
+  describe('the self (ISS-1034)', () => {
+    it('renders soul and greeting before the persona and instructions after it (criterion 3)', () => {
+      const prompt = buildSystemPrompt({
+        project: { name: 'Acme' },
+        persona: 'PERSONA LINE',
+        self: {
+          soul: 'Patient and exact.',
+          greeting: 'Hello there.',
+          emoji: '🦞',
+          instructions: 'Cite issue keys.',
+        },
+      });
+      const who = prompt.indexOf('## Who you are\nPatient and exact.');
+      const persona = prompt.indexOf('PERSONA LINE');
+      const instructions = prompt.indexOf('## Your standing instructions\nCite issue keys.');
+      expect(who).toBeGreaterThanOrEqual(0);
+      expect(persona).toBeGreaterThan(who);
+      expect(instructions).toBeGreaterThan(persona);
+      expect(prompt).toContain('You open with: Hello there.');
+      expect(prompt).toContain('🦞');
+    });
+
+    it('renders nothing of an empty self, so a handle with no row reads exactly as before (criterion 4)', () => {
+      const bare = buildSystemPrompt({ project: { name: 'Acme' }, persona: 'PERSONA LINE' });
+      expect(
+        buildSystemPrompt({ project: { name: 'Acme' }, persona: 'PERSONA LINE', self: null }),
+      ).toBe(bare);
+      expect(
+        buildSystemPrompt({
+          project: { name: 'Acme' },
+          persona: 'PERSONA LINE',
+          self: { soul: '  ', instructions: null },
+        }),
+      ).toBe(bare);
+    });
+
+    it('the override replaces the self with the persona, and progressFacts still follows (criteria 8, 9)', () => {
+      const prompt = buildSystemPrompt({
+        project: { name: 'Acme' },
+        persona: 'PERSONA LINE',
+        self: { soul: 'Patient and exact.', instructions: 'Cite issue keys.' },
+        appConfig: { systemPromptOverride: 'OVERRIDE.' },
+        progressFacts: 'PROGRESS FACTS',
+      });
+      expect(prompt.startsWith('OVERRIDE.')).toBe(true);
+      expect(prompt).not.toContain('Patient and exact.');
+      expect(prompt).not.toContain('Cite issue keys.');
+      expect(prompt).not.toContain('PERSONA LINE');
+      expect(prompt.indexOf('PROGRESS FACTS')).toBeGreaterThan(0);
+    });
+  });
 });

@@ -77,6 +77,10 @@ export interface TurnHookContext {
   setPhase: (phase: string) => void;
   signal: AbortSignal;
   principalUserId: string;
+  /** The linked author of the newest person message, or null when nobody Forge knows (ISS-1034). */
+  speakerUserId: string | null;
+  /** The room this turn answers in, for the tools that write on the speaker's behalf. */
+  conversationId: string;
 }
 
 // cm:guard `send: false` is the explicit "this turn posts nothing" case, and it is not a failure: an adapter that handed the turn to a slower path answers through that path, and posting here as well double-replies (ISS-727).
@@ -90,6 +94,11 @@ export interface ConversationTurnRequest {
   principalUserId: string;
   /** The transport's own id for the speaker, for the audit row. */
   speakerKey: string;
+  /**
+   * The Forge user the newest person message is linked to. Absent: the
+   * principal spoke. `null`: nobody Forge knows did (ISS-1034).
+   */
+  speakerUserId?: string | null | undefined;
   message: string;
   /** The door the reply goes out of; its row carries the pair and the repair budget. */
   door: DoorId;
@@ -156,10 +165,13 @@ interface TurnContext {
 
 async function composeReply(ctx: TurnContext): Promise<TurnReply> {
   const { req } = ctx;
+  const speakerUserId = req.speakerUserId === undefined ? req.principalUserId : req.speakerUserId;
   const hook: TurnHookContext = {
     setPhase: ctx.setPhase,
     signal: ctx.abort.signal,
     principalUserId: req.principalUserId,
+    speakerUserId,
+    conversationId: ctx.conversationId,
   };
 
   const early = await req.divertBeforeTurn?.(hook);
@@ -177,6 +189,8 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
     record: req.questionAlreadyRecorded ? ('silence-only' as const) : ('question-only' as const),
     userId: req.principalUserId,
     userKey: req.speakerKey,
+    speakerUserId,
+    speakerLabel: req.speakerKey,
     persona: inputs.persona ?? null,
     conversationContext: inputs.conversationContext ?? null,
     tools: inputs.tools,

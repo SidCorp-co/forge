@@ -231,7 +231,7 @@ describe('restorePreferenceChange', () => {
     const [assistantChange] = await listPreferenceChanges(ALICE);
     const restored = await restorePreferenceChange({
       userId: ALICE,
-      changeId: assistantChange?.id,
+      changeId: assistantChange?.id ?? '',
       actor: { kind: 'person', userId: ALICE },
     });
     expect(restored?.assistantInstructions).toBe('be brief');
@@ -261,14 +261,14 @@ describe('restorePreferenceChange', () => {
     await expect(
       restorePreferenceChange({
         userId: ALICE,
-        changeId: assistantChange?.id,
+        changeId: assistantChange?.id ?? '',
         actor: { kind: 'person', userId: ALICE },
       }),
     ).rejects.toBeInstanceOf(PreferenceRestoreConflict);
     try {
       await restorePreferenceChange({
         userId: ALICE,
-        changeId: assistantChange?.id,
+        changeId: assistantChange?.id ?? '',
         actor: { kind: 'person', userId: ALICE },
       });
     } catch (err) {
@@ -288,7 +288,7 @@ describe('restorePreferenceChange', () => {
     expect(
       await restorePreferenceChange({
         userId: ALICE,
-        changeId: bobs?.id,
+        changeId: bobs?.id ?? '',
         actor: { kind: 'person', userId: ALICE },
       }),
     ).toBeNull();

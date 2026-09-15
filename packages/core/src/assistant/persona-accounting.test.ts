@@ -66,14 +66,11 @@ const LEDGER: readonly Claim[] = [
     clauses: ['You are the working assistant for project'],
     origin: 'moved',
   },
+  // cm:guard this row was ISS-1007's `guide-pointer` — the sentence telling the model to FETCH the method — and ISS-1034 replaced it in place rather than deleting it: the method now renders inline (asserted below by body, not by slug), and the one sentence the opening still owns is the seam between method and channel. The count stays thirty because a row left and a row arrived (ISS-1034).
   {
-    id: 'guide-pointer',
+    id: 'method-then-channel',
     owner: 'sharedOpening',
-    clauses: [
-      'Your method is a guide, not a memo',
-      'BEFORE you answer, and follow what it says',
-      'the lines below add only what is true of this channel',
-    ],
+    clauses: ['The lines below add only what is true of this channel'],
     origin: 'new',
   },
   {
@@ -355,9 +352,13 @@ const OPENING = {
   webBaseUrl: 'https://forge.example.co',
 };
 
+const GUIDE_BODY = ASSISTANT_METHOD_GUIDE.body.trim();
+/** The opening with the guide body it renders inline taken back out: what the opening itself owns. */
+// cm:guard the shared-opening fragment is the opening MINUS the guide body, so that "no claim in any fragment but its owner" still bites: the opening renders the guide whole since ISS-1034, and comparing the raw opening would report every guide clause as leaked into it — or be weakened until it caught nothing (ISS-1034).
+const withoutGuide = (text: string): string => text.replace(GUIDE_BODY, '');
 const FRAGMENTS: Record<Owner, string> = {
   guide: ASSISTANT_METHOD_GUIDE.body,
-  sharedOpening: assistantOpening({ ...OPENING, venue: 'somewhere' }).join('\n'),
+  sharedOpening: withoutGuide(assistantOpening({ ...OPENING, venue: 'somewhere' }).join('\n')),
   rocketchatOnly: rocketChatChannelLines('bob', { botName: 'Bao' }).join('\n'),
   webOnly: webDoorLines('alpha', 'Alice').join('\n'),
   personaStyle: MIGRATION_SQL,
@@ -430,7 +431,8 @@ describe('the persona claim ledger', () => {
   it('accounts for every instruction line both doors render', () => {
     for (const { door, text, fragments } of RENDERED) {
       const claims = LEDGER.filter((c) => fragments.includes(c.owner));
-      for (const line of text.split('\n')) {
+      expect(text, `${door} renders the method body whole`).toContain(GUIDE_BODY);
+      for (const line of withoutGuide(text).split('\n')) {
         if (line.trim() === '') continue;
         expect(
           claims.some((c) => c.clauses.some((clause) => flat(line).includes(flat(clause)))),
@@ -442,16 +444,19 @@ describe('the persona claim ledger', () => {
 });
 
 describe('what each door says, read off the real text', () => {
-  it('points the Rocket.Chat room at the guide by its slug', () => {
-    expect(rocketChatPersona('Alpha', 'bob', { botName: 'Bao' })).toContain(
-      ASSISTANT_METHOD_GUIDE.slug,
-    );
+  // cm:guard the method is asserted PRESENT by body and the fetch instruction ABSENT, at both doors: ISS-1007 pointed each door at the guide by slug and every turn paid a `forge_guide get` round before it could answer; ISS-1034 renders the body in the opening instead, and a door that both carried the body and still said to fetch it would pay the round for nothing (ISS-1034 criteria 6, 7).
+  it('carries the method body in the Rocket.Chat room and tells it to fetch nothing', () => {
+    const persona = rocketChatPersona('Alpha', 'bob', { botName: 'Bao' });
+    expect(persona).toContain(GUIDE_BODY);
+    expect(persona).not.toContain('forge_guide get');
+    expect(persona).not.toContain('BEFORE you answer');
   });
 
-  it('points the Forge web app at the same slug', () => {
-    expect(webConversationPersona('Alpha', 'alpha', 'Alice')).toContain(
-      ASSISTANT_METHOD_GUIDE.slug,
-    );
+  it('carries the same body in the Forge web app and tells it to fetch nothing', () => {
+    const persona = webConversationPersona('Alpha', 'alpha', 'Alice');
+    expect(persona).toContain(GUIDE_BODY);
+    expect(persona).not.toContain('forge_guide get');
+    expect(persona).not.toContain('BEFORE you answer');
   });
 
   // cm:guard the Vietnamese instruction is asserted ABSENT from the rendered persona rather than merely moved in the ledger, because this is the sentence `confab.ts` reads the door's language off and the one the migration has to have carried: a persona that still hardcodes it means every project gets it whatever its style says (ISS-1007).
