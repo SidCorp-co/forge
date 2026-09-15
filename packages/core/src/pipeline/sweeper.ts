@@ -21,7 +21,6 @@
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { type AlertSweepResult, runAlertSweep } from '../admin/alert-sweeper.js';
-import { type HeartbeatTickResult, runHeartbeatTick } from '../conversations/heartbeat.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { broadcastSessionEvent } from '../jobs/agent-session-link.js';
@@ -142,8 +141,6 @@ export interface SweepResult {
   retryRescueThresholds: RetryRescueAlertResult;
   /** ISS-652 — Tier 1 ops alert engine push pass. */
   alerts: AlertSweepResult;
-  /** ISS-1034 — rooms whose handle asked for a heartbeat, given a fresh window when owed one. */
-  conversationHeartbeat: HeartbeatTickResult;
   queueSnapshots: number;
 }
 
@@ -211,7 +208,6 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     detectRetryRescueThresholds(now),
   );
   const alerts = await runPass('alertSweep', () => runAlertSweep(now));
-  const conversationHeartbeat = await runPass('conversationHeartbeat', () => runHeartbeatTick(now));
   const queueSnapshots = await runPass('recordQueueSnapshots', () => recordQueueSnapshots());
 
   // Preserve the ISS-449 missed-tick contract: if ANY pass failed, do NOT
@@ -247,7 +243,6 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     orphanedPauses: orphanedPauses as OrphanedPauseResult,
     retryRescueThresholds: retryRescueThresholds as RetryRescueAlertResult,
     alerts: alerts as AlertSweepResult,
-    conversationHeartbeat: conversationHeartbeat as HeartbeatTickResult,
     queueSnapshots: queueSnapshots as number,
   };
 }

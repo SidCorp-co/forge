@@ -106,24 +106,22 @@ export interface ResolvedPresence {
   answerInGroup: AnswerInGroupMode;
 }
 
-function defined<T>(values: readonly (T | undefined)[]): T[] {
-  return values.filter((v): v is T => v !== undefined);
-}
-
 /**
  * One set of thresholds for a room with several handles: each key folds by
  * its own operator, and a key nobody set folds as its default.
  */
 // cm:guard the operator is PER KEY and not one "most conservative" rule, because conservatism points different ways: a shorter `dormantMs` and a smaller `backoffAfter`/`loopLimit` stop speech sooner (min), while a LONGER `loopBounceMs` counts more exchanges as bounces (max), and `mention` speaks less than `window`. A single min over the lot would make the loop breaker looser in exactly the room that set it tighter (ISS-1034, codex F4).
 export function foldPresence(selves: readonly PresenceConfig[]): ResolvedPresence {
+  // cm:guard a handle that left a key UNSET joins the fold with that key's DEFAULT rather than dropping out of it: one handle at `backoffAfter: 20` beside one that said nothing folds to min(20, 3) = 3, because the silent handle asked for the default and the default is a value, not an abstention. Dropping it would let one handle's loosening govern a room another handle expected to be tighter (ISS-1034 criterion 35, codex F4).
   const pick = <K extends keyof ResolvedPresence>(
     key: K,
     op: (values: number[]) => number,
   ): number => {
-    const values = defined(selves.map((s) => s[key] as number | undefined));
-    return values.length ? op(values) : (PRESENCE_DEFAULTS[key] as number);
+    const fallback = PRESENCE_DEFAULTS[key] as number;
+    const values = selves.map((s) => (s[key] as number | undefined) ?? fallback);
+    return values.length ? op(values) : fallback;
   };
-  const modes = defined(selves.map((s) => s.answerInGroup));
+  const modes = selves.map((s) => s.answerInGroup);
   return {
     dormantMs: pick('dormantMs', (v) => Math.min(...v)),
     backoffAfter: pick('backoffAfter', (v) => Math.min(...v)),

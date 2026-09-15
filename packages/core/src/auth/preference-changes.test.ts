@@ -123,6 +123,7 @@ function fakeDb() {
   const db = {
     select: () => ({ from: selectFrom }),
     insert,
+    execute: async () => [],
     transaction: async (fn: (t: unknown) => Promise<unknown>) => fn(db),
   };
   return db;

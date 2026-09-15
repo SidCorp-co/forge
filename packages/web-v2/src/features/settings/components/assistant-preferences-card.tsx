@@ -9,10 +9,10 @@ import { Button, Card, CardContent, Field, Select, type SelectOption, Skeleton, 
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import {
+  useAssistantPreferences,
   usePreferenceChanges,
-  usePreferences,
   useRestorePreferenceChange,
-  useUpdatePreferences,
+  useUpdateAssistantPreferences,
 } from "../hooks";
 
 export const ANSWER_STYLE_OPTIONS: SelectOption[] = [
@@ -39,9 +39,9 @@ export function describeChange(change: PreferenceChange): string {
 }
 
 export function AssistantPreferencesCard() {
-  const prefsQ = usePreferences();
+  const prefsQ = useAssistantPreferences();
   const changesQ = usePreferenceChanges();
-  const update = useUpdatePreferences();
+  const update = useUpdateAssistantPreferences();
   const restore = useRestorePreferenceChange();
   const { toast } = useToast();
 

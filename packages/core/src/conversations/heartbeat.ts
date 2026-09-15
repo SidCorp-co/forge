@@ -18,6 +18,7 @@ import {
   conversations,
   conversationWindows,
 } from '../db/schema-conversations.js';
+import { logger } from '../logger.js';
 import type { Executor } from './db-executor.js';
 import { heartbeatOf } from './presence.js';
 import { GUARD_WINDOW } from './proactivity.js';
@@ -192,29 +193,63 @@ async function factsFor(c: Candidate, now: Date, tx: Executor): Promise<Heartbea
 // cm:guard the open goes through `openOrExtendWindow` and nothing else, and that is what makes two ticks safe: its conflict target is the partial unique index over collecting windows, so the second tick's insert lands on the first's row and extends it — one window between them, routed once by the drain that owns the adapter (ISS-1034 criteria 37, 65).
 export async function runHeartbeatTick(
   now: Date = new Date(),
-  tx: Executor = defaultDb,
+  dbi: typeof defaultDb = defaultDb,
 ): Promise<HeartbeatTickResult> {
-  const rooms = await candidates(tx);
+  const rooms = await candidates(dbi);
   const result: HeartbeatTickResult = { rooms: rooms.length, opened: 0, skipped: {} };
   for (const room of rooms) {
-    const verdict = heartbeatDue(await factsFor(room, now, tx));
+    // cm:guard the facts are read and the window opened in ONE transaction under a per-room advisory lock, because the collecting index alone is not the whole fence: tick A opens, the drain claims (a claimed window leaves the index's predicate), and tick B — which read "due" before A committed — would open a second heartbeat over the same messages. Under the lock B re-reads after A's commit and finds the window open or the heartbeat recent (codex F3, criterion 65).
+    const verdict = await dbi.transaction(async (tx) => {
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtext('conversation_heartbeat'), hashtext(${room.conversationId}))`,
+      );
+      const due = heartbeatDue(await factsFor(room, now, tx as unknown as Executor));
+      if (!due.due) return due;
+      await openOrExtendWindow(
+        {
+          conversationId: room.conversationId,
+          projectId: room.projectId,
+          adapter: room.adapter,
+          seq: due.firstSeq,
+          lastSeq: due.lastSeq,
+          origin: 'heartbeat',
+          now,
+        },
+        tx as unknown as Executor,
+      );
+      return due;
+    });
     if (!verdict.due) {
       result.skipped[verdict.reason] = (result.skipped[verdict.reason] ?? 0) + 1;
       continue;
     }
-    await openOrExtendWindow(
-      {
-        conversationId: room.conversationId,
-        projectId: room.projectId,
-        adapter: room.adapter,
-        seq: verdict.firstSeq,
-        lastSeq: verdict.lastSeq,
-        origin: 'heartbeat',
-        now,
-      },
-      tx,
-    );
     result.opened += 1;
   }
   return result;
+}
+
+export const HEARTBEAT_TICK_MS = 60_000;
+
+/**
+ * Start ticking. Returns the stop.
+ */
+// cm:guard the tick lives with the conversations runtime and NOT as a pass of `pipeline/sweeper.ts`: that file coordinates six modules against the archmap limit and a seventh is refused, and a room's heartbeat is the store's own concern rather than the pipeline's. Two cores ticking at once open one window between them (criterion 65), so nothing here elects a leader (ISS-1034).
+// cm:guard a tick still running is never overlapped by the next, the rule every drain in this tree follows: two ticks over one candidate list would read the same facts and both decide "due" before either row lands.
+export function startConversationHeartbeat(
+  tick: () => Promise<unknown> = () => runHeartbeatTick(),
+  intervalMs: number = HEARTBEAT_TICK_MS,
+): () => void {
+  let running = false;
+  const run = (): void => {
+    if (running) return;
+    running = true;
+    void tick()
+      .catch((err) => logger.error({ err }, 'conversations: the heartbeat tick failed'))
+      .finally(() => {
+        running = false;
+      });
+  };
+  const timer = setInterval(run, intervalMs);
+  timer.unref?.();
+  return () => clearInterval(timer);
 }

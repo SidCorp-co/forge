@@ -49,6 +49,20 @@ export async function listMine(
     .limit(MINE_LIMIT);
 }
 
+/** One note the caller authored, by id, or null. */
+export async function findMine(
+  userId: string,
+  id: string,
+  dbi = defaultDb,
+): Promise<{ id: string; projectId: string } | null> {
+  const [row] = await dbi
+    .select({ id: memories.id, projectId: memories.projectId })
+    .from(memories)
+    .where(and(eq(memories.id, id), eq(memories.source, 'note'), authoredBy(userId)))
+    .limit(1);
+  return row ?? null;
+}
+
 /** Remove one note the caller authored; false when no such row is theirs. */
 // cm:guard a HARD delete, the same one `DELETE /api/memory/:id` makes, and not an archive: the person asked for the note to be gone, and an archived row still answers `includeArchived:true` reads and every revision listing — "no longer appears in forge_memory.search" has to be true of every reader, not the default one (ISS-1034 criterion 31).
 export async function deleteMine(userId: string, id: string, dbi = defaultDb): Promise<boolean> {

@@ -4,6 +4,7 @@
 // `reauth(password)` then retry.
 import { apiClient, apiClientList } from "@/lib/api/client";
 import type {
+  AssistantPreferences,
   CreatePatInput,
   NotificationRow,
   PatToken,
@@ -21,28 +22,29 @@ export const settingsApi = {
   /** `PATCH /api/auth/me/preferences` — partial. */
   updatePreferences: (
     patch: Partial<
-      Pick<
-        Preferences,
-        | "theme"
-        | "language"
-        | "notifyOnMention"
-        | "lastSeenWhatsNew"
-        | "activeOrgId"
-        | "answerStyle"
-        | "assistantInstructions"
-      >
+      Pick<Preferences, "theme" | "language" | "notifyOnMention" | "lastSeenWhatsNew" | "activeOrgId">
     >,
   ) =>
     apiClient<Preferences>(`/auth/me/preferences`, {
       method: "PATCH",
       body: JSON.stringify(patch),
     }),
-  /** `GET /api/auth/me/preferences/changes` — every write to how this person is answered (ISS-1034). */
+  // cm:guard the four calls below go to `/auth/preferences`, NOT `/auth/me/preferences`: the two routes are different files in core, and `/me/preferences` refuses `answerStyle` under a strict schema — a card wired to it saved nothing and listed nothing (codex F1).
+  /** `GET /api/auth/preferences` — the full row, the assistant fields included (ISS-1034). */
+  getAssistantPreferences: () =>
+    apiClient<Preferences & AssistantPreferences>(`/auth/preferences`),
+  /** `PATCH /api/auth/preferences` — the assistant fields, as the person. */
+  updateAssistantPreferences: (patch: Partial<AssistantPreferences>) =>
+    apiClient<Preferences & AssistantPreferences>(`/auth/preferences`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  /** `GET /api/auth/preferences/changes` — every write to how this person is answered. */
   listPreferenceChanges: () =>
-    apiClient<{ items: PreferenceChange[] }>(`/auth/me/preferences/changes`).then((r) => r.items),
-  /** `POST /api/auth/me/preferences/changes/:id/restore` — 409 `PREFERENCE_CHANGE_SUPERSEDED` when a later change moved the field. */
+    apiClient<{ items: PreferenceChange[] }>(`/auth/preferences/changes`).then((r) => r.items),
+  /** `POST /api/auth/preferences/changes/:id/restore` — 409 `PREFERENCE_CHANGE_SUPERSEDED` when a later change moved the field. */
   restorePreferenceChange: (id: string) =>
-    apiClient<Preferences>(`/auth/me/preferences/changes/${id}/restore`, { method: "POST" }),
+    apiClient<AssistantPreferences>(`/auth/preferences/changes/${id}/restore`, { method: "POST" }),
 
   /** `GET /api/pat` → `{ tokens }`. */
   listTokens: () => apiClient<{ tokens: PatToken[] }>(`/pat`),

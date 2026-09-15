@@ -16,8 +16,8 @@ const restore = vi.fn(async () => ({}));
 let prefs: Record<string, unknown> | undefined;
 let changes: PreferenceChange[] = [];
 vi.mock("../hooks", () => ({
-  usePreferences: () => ({ data: prefs, isLoading: false }),
-  useUpdatePreferences: () => ({ mutate: update, isPending: false }),
+  useAssistantPreferences: () => ({ data: prefs, isLoading: false }),
+  useUpdateAssistantPreferences: () => ({ mutate: update, isPending: false }),
   usePreferenceChanges: () => ({ data: changes, isLoading: false }),
   useRestorePreferenceChange: () => ({ mutateAsync: restore, isPending: false }),
 }));

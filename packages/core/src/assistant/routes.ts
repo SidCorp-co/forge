@@ -14,18 +14,15 @@ import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { readAssistantPreferences } from '../auth/preference-changes.js';
 import { env } from '../config/env.js';
 import { addPerson } from '../conversations/participants.js';
 import { db } from '../db/client.js';
 import { appConfig, projects } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { readSelvesFor } from '../orgs/agent-selves.js';
 import { PROVIDER_HISTORY_WINDOW } from './context-budget.js';
 import { appendUserMessage, openTurn, toProviderMessages } from './conversation-turn.js';
 import { webConversationPersona } from './door-persona.js';
-import { speakerSection } from './preference-line.js';
 import { defaultChatProviderId } from './providers/bootstrap.js';
 import { resolveForProject } from './providers/registry.js';
 import { runChatTurn } from './run-turn.js';
@@ -33,6 +30,7 @@ import { buildSystemPrompt } from './system-prompt.js';
 import { buildChatToolContext } from './tools/principal.js';
 import { buildProjectToolset } from './tools/registry.js';
 import { applyTurnContext } from './turn-context.js';
+import { loadTurnSelf } from './turn-self.js';
 
 const chatRequestSchema = z
   .object({
@@ -103,17 +101,17 @@ chatRoutes.post(
 
     // cm:guard this door takes the SAME persona the browser's conversation route takes, and passing none is what it used to do: `system-prompt.ts`'s fallback is one sentence with no method in it, so a turn here answered without the investigate-first and issue-quality rules every other door is held to (ISS-1007).
     // cm:guard the self is read off `turn.handleUserId` and the preferences off the signed-in person, the same two reads `external-chat.ts` makes for the browser door: a door that skipped either would answer as a nameless agent to a person whose style it ignores, and nothing else in the request would say so (ISS-1034 criteria 3, 17).
-    const selves = turn.handleUserId ? await readSelvesFor([turn.handleUserId], db) : new Map();
-    const systemPrompt = buildSystemPrompt({
-      project,
-      self: turn.handleUserId ? (selves.get(turn.handleUserId) ?? null) : null,
-      appConfig: appCfg ?? null,
-      persona: webConversationPersona(project.name, project.slug, null),
-    });
-    const speakerContext = speakerSection({
+    const { self, speakerContext } = await loadTurnSelf({
+      handleUserId: turn.handleUserId,
       speakerUserId: userId,
       speakerLabel: null,
-      preferences: await readAssistantPreferences(userId, db),
+      db,
+    });
+    const systemPrompt = buildSystemPrompt({
+      project,
+      self,
+      appConfig: appCfg ?? null,
+      persona: webConversationPersona(project.name, project.slug, null),
     });
     const providerMessages = applyTurnContext(
       [

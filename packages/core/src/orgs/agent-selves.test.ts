@@ -108,4 +108,39 @@ describe('agentSelfPatchSchema', () => {
     expect(agentSelfPatchSchema.safeParse({ greeting: 'x'.repeat(501) }).success).toBe(false);
     expect(agentSelfPatchSchema.safeParse({ emoji: '🦞', greeting: 'hello' }).success).toBe(true);
   });
+
+  // cm:guard the exact payload the web editor sends for a blank interval, and the assertion is that the save LANDS with the interval unset and `enabled` kept — a top-level-only merge refused it (codex F5).
+  it('merges heartbeat by its own keys: a nested null unsets the interval and keeps enabled', async () => {
+    loadOrgAgent.mockResolvedValue({ id: AGENT, handle: 'babo' });
+    stored.row = {
+      userId: AGENT,
+      presence: { heartbeat: { enabled: true, intervalMs: 1_800_000 } },
+    };
+    const self = await writeAgentSelf(
+      ORG,
+      AGENT,
+      {
+        presence: {
+          answerInGroup: 'window',
+          heartbeat: { enabled: false, intervalMs: null },
+          backoffAfter: null,
+          dormantMs: null,
+        },
+      },
+      ADMIN,
+    );
+    expect(self?.presence).toEqual({ answerInGroup: 'window', heartbeat: { enabled: false } });
+  });
+
+  it('a patch naming only the interval keeps enabled as it was', async () => {
+    loadOrgAgent.mockResolvedValue({ id: AGENT, handle: 'babo' });
+    stored.row = { userId: AGENT, presence: { heartbeat: { enabled: true } } };
+    const self = await writeAgentSelf(
+      ORG,
+      AGENT,
+      { presence: { heartbeat: { intervalMs: 600_000 } } },
+      ADMIN,
+    );
+    expect(self?.presence).toEqual({ heartbeat: { enabled: true, intervalMs: 600_000 } });
+  });
 });

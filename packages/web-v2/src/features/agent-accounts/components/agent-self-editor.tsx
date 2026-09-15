@@ -91,10 +91,18 @@ export function AgentSelfEditor({
     if (selfQ.data) setDraft(draftOf(selfQ.data));
   }, [selfQ.data]);
 
-  if (selfQ.isLoading || !draft) return <Skeleton className="h-40 w-full rounded-md" />;
+  // cm:guard the error branch comes BEFORE the no-draft branch: a first read that fails leaves no draft, and a skeleton returned first would spin for ever over a refusal the admin could act on (codex F6).
   if (selfQ.isError) {
-    return <p className="fg-body-sm text-danger">{formatApiError(selfQ.error)}</p>;
+    return (
+      <div className="flex items-center gap-3" data-testid={`agent-self-error-${agentUserId}`}>
+        <p className="fg-body-sm text-danger">{formatApiError(selfQ.error)}</p>
+        <Button variant="secondary" onClick={() => void selfQ.refetch()}>
+          Try again
+        </Button>
+      </div>
+    );
   }
+  if (selfQ.isLoading || !draft) return <Skeleton className="h-40 w-full rounded-md" />;
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft((d) => (d ? { ...d, [key]: value } : d));
 

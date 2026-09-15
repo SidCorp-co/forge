@@ -6,8 +6,9 @@ import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { deleteMine, listMine } from './mine-service.js';
+import { deleteMine, findMine, listMine } from './mine-service.js';
 
 const listQuerySchema = z.object({ projectId: z.uuid().optional() });
 const idParamSchema = z.object({ id: z.uuid() });
@@ -25,7 +26,19 @@ memoryMineRoutes.get(
   }),
   async (c) => {
     const { projectId } = c.req.valid('query');
-    const items = await listMine(c.get('userId'), { projectId });
+    const userId = c.get('userId');
+    const rows = await listMine(userId, { projectId });
+    // cm:guard authorship alone lists a row, and the PROJECT fence still applies over it: a token bound to one project may hold the very account that wrote notes in three, and `effectiveProjectRole` is the one reader of the token's fence — a row whose project it refuses is left out rather than shown under a credential that may not see that project (ISS-1034 criterion 28; check-pat-surface).
+    const readable = new Map<string, boolean>();
+    const items = [];
+    for (const row of rows) {
+      let ok = readable.get(row.projectId);
+      if (ok === undefined) {
+        ok = (await effectiveProjectRole(userId, row.projectId))?.role !== undefined;
+        readable.set(row.projectId, ok);
+      }
+      if (ok) items.push(row);
+    }
     return c.json({ items });
   },
 );
@@ -38,7 +51,10 @@ memoryMineRoutes.delete(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const removed = await deleteMine(c.get('userId'), id);
+    const userId = c.get('userId');
+    const mine = await findMine(userId, id);
+    if (mine) await assertProjectAccess(mine.projectId, userId);
+    const removed = mine ? await deleteMine(userId, id) : false;
     if (!removed) {
       throw new HTTPException(404, {
         message: 'no note of yours has that id',

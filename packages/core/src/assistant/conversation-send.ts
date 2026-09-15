@@ -16,6 +16,7 @@
 import { eq } from 'drizzle-orm';
 import { collectInboundMessage } from '../conversations/collect-inbound.js';
 import { type ProjectHandle, resolveProjectHandle } from '../conversations/handles.js';
+import { startConversationHeartbeat } from '../conversations/heartbeat.js';
 import { registerConversationTransport } from '../conversations/ports.js';
 import { routeWindow, type WindowTurnInputs } from '../conversations/route-window.js';
 import {
@@ -244,7 +245,13 @@ export async function drainWebConversationWindows(): Promise<void> {
 // cm:guard NOT gated on the `chatProvider` flag — that flag gates the SSE `/api/chat` surface, while `/api/conversations` is mounted unconditionally, so gating this would leave a send endpoint whose reply had nowhere to be delivered.
 export function registerWebConversationAdapter(): () => void {
   registerConversationTransport(webConversationPorts);
-  return startWebConversationDrain();
+  const stopDrain = startWebConversationDrain();
+  // cm:guard the heartbeat starts HERE for the reason the registration itself does — `index.ts` is at its coordinator limit and may not reach one more module — and it is not the web adapter's: the tick opens windows in every adapter's rooms and each adapter's own drain routes them (ISS-1034 criteria 36-38).
+  const stopHeartbeat = startConversationHeartbeat();
+  return () => {
+    stopDrain();
+    stopHeartbeat();
+  };
 }
 
 /**

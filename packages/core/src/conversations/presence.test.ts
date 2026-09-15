@@ -60,6 +60,14 @@ describe('foldPresence', () => {
     expect(foldPresence([{ answerInGroup: 'window' }, {}]).answerInGroup).toBe('window');
   });
 
+  // cm:guard the default JOINS the fold as a value: one handle loosening a guard beside one that said nothing folds to the tighter of the two, which is the default (codex F4).
+  it('a handle that left a key unset votes its default, so one loosening cannot govern (criterion 35)', () => {
+    expect(foldPresence([{ backoffAfter: 20 }, {}]).backoffAfter).toBe(BACKOFF_AFTER);
+    expect(foldPresence([{ loopBounceMs: 60_000 }, {}]).loopBounceMs).toBe(LOOP_BOUNCE_MS);
+    expect(foldPresence([{ loopBounceMs: 60_000 }]).loopBounceMs).toBe(60_000);
+    expect(foldPresence([{ dormantMs: 120_000 }, {}]).dormantMs).toBe(120_000);
+  });
+
   it('a key one self leaves unset folds as that key’s default, not as zero (criterion 35)', () => {
     const folded = foldPresence([{ backoffAfter: 1 }, { dormantMs: 120_000 }]);
     expect(folded.backoffAfter).toBe(1);

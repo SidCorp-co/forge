@@ -333,6 +333,20 @@ describe('the room’s presence reaches the guards', () => {
       thresholds: { backoffAfter: 1, loopLimit: LOOP_LIMIT },
     });
   });
+
+  // cm:guard the second handle has NO self row and still counts: its default joins the fold, so one handle's longer bounce is capped back to the default by the handle that never wrote one (codex F4).
+  it('folds a handle with no self row as the defaults, not as absent', async () => {
+    handles.push({ userId: 'handle-2', handle: 'nabo' });
+    selves = new Map([['handle-1', { presence: { loopBounceMs: 60_000 } }]]);
+    try {
+      await route();
+      expect(decideProactivity.mock.calls[0]?.[0]).toMatchObject({
+        thresholds: { loopBounceMs: LOOP_BOUNCE_MS },
+      });
+    } finally {
+      handles.pop();
+    }
+  });
 });
 
 // cm:guard the three rows are one rule read from three sides — gated, let through, not gated — and the direct case is the one that would pass by accident if `mention` were applied to every venue: a direct room's one person names nobody and is still owed every answer (ISS-1034 criteria 66-68).

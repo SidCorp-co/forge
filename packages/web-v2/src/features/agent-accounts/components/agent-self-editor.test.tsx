@@ -12,15 +12,22 @@ import { AgentSelfEditor, patchOf } from "./agent-self-editor";
 expect.extend(matchers);
 
 const save = vi.fn(async () => ({}));
+const refetch = vi.fn();
 let self: AgentSelf;
+let failed: Error | null = null;
 vi.mock("../hooks", () => ({
-  useAgentSelf: () => ({ data: self, isLoading: false, isError: false }),
+  useAgentSelf: () =>
+    failed
+      ? { data: undefined, isLoading: false, isError: true, error: failed, refetch }
+      : { data: self, isLoading: false, isError: false, refetch },
   useUpdateAgentSelf: () => ({ mutateAsync: save, isPending: false }),
 }));
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 
 beforeEach(() => {
   save.mockClear();
+  refetch.mockClear();
+  failed = null;
   self = {
     userId: "agent-1",
     soul: "I am Babo, the Alpha project's assistant.",
@@ -74,6 +81,17 @@ describe("the agent self editor (criterion 51)", () => {
         },
       },
     });
+  });
+});
+
+describe("a first read that fails (codex F6)", () => {
+  it("shows the refusal and a retry, not a skeleton", () => {
+    failed = new Error("org admin required");
+    renderEditor();
+    expect(screen.getByTestId("agent-self-error-agent-1")).toHaveTextContent(/org admin required/);
+    fireEvent.click(screen.getByRole("button", { name: /try again/i }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+    expect(screen.queryByLabelText("Soul")).toBeNull();
   });
 });
 

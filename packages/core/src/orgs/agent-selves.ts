@@ -104,6 +104,19 @@ export async function writeAgentSelf(
   if (patch.presence !== undefined) {
     const merged: Record<string, unknown> = { ...current.presence };
     for (const [key, value] of Object.entries(patch.presence)) {
+      // cm:guard `heartbeat` is merged BY ITS OWN KEYS and a nested null unsets one: the editor sends `{ heartbeat: { enabled, intervalMs: null } }` to clear an interval, and a merge that stopped at the top level would hand that null to the strict validator — or replace the object and drop `enabled` (codex F5).
+      if (key === 'heartbeat' && value !== null && typeof value === 'object') {
+        const hb: Record<string, unknown> = {
+          ...((merged.heartbeat as Record<string, unknown> | undefined) ?? {}),
+        };
+        for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+          if (v === null) delete hb[k];
+          else hb[k] = v;
+        }
+        if (Object.keys(hb).length === 0) delete merged.heartbeat;
+        else merged.heartbeat = hb;
+        continue;
+      }
       if (value === null) delete merged[key];
       else merged[key] = value;
     }

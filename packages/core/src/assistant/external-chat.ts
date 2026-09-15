@@ -10,7 +10,6 @@
  */
 
 import { eq } from 'drizzle-orm';
-import { readAssistantPreferences } from '../auth/preference-changes.js';
 import { env } from '../config/env.js';
 import { db as defaultDb } from '../db/client.js';
 import { appConfig, chatLogs, projects } from '../db/schema.js';
@@ -21,7 +20,6 @@ import {
   type ProjectProgress,
 } from '../issues/progress.js';
 import { logger } from '../logger.js';
-import { readSelvesFor } from '../orgs/agent-selves.js';
 import { detectStateConfab } from './confab.js';
 import { PROVIDER_HISTORY_WINDOW } from './context-budget.js';
 import {
@@ -33,7 +31,6 @@ import {
   persistMessages,
   toProviderMessages,
 } from './conversation-turn.js';
-import { speakerSection } from './preference-line.js';
 import { defaultChatProviderId } from './providers/bootstrap.js';
 import { type ChatTurnKind, resolveForProject } from './providers/registry.js';
 import type { ChatResponseFormat } from './providers/types.js';
@@ -41,6 +38,7 @@ import { runTurnEvents, usageForLog } from './run-turn-core.js';
 import { buildSystemPrompt } from './system-prompt.js';
 import type { ChatToolset } from './tools/mcp-adapter.js';
 import { applyTurnContext } from './turn-context.js';
+import { loadTurnSelf } from './turn-self.js';
 import { type ImageResolver, resolveVisionImages, type TurnImage } from './vision.js';
 
 export interface ExternalChatTurnArgs {
@@ -163,14 +161,13 @@ export async function runExternalChatTurn(
   }
 
   // cm:guard the self is read off the HANDLE the turn speaks as (`turn.handleUserId`, the participant row carrying this project) and never off "the project's agent": a project may hold more than one agent account and the room names which one is in it (ISS-1034 criterion 3).
-  const selves = turn?.handleUserId ? await readSelvesFor([turn.handleUserId], dbi) : new Map();
-  const self = turn?.handleUserId ? (selves.get(turn.handleUserId) ?? null) : null;
   const speakerUserId =
     args.speakerUserId === undefined ? (args.userId ?? null) : args.speakerUserId;
-  const speakerContext = speakerSection({
+  const { self, speakerContext } = await loadTurnSelf({
+    handleUserId: turn?.handleUserId ?? null,
     speakerUserId,
     speakerLabel: args.speakerLabel ?? args.userKey ?? null,
-    preferences: speakerUserId ? await readAssistantPreferences(speakerUserId, dbi) : null,
+    db: dbi,
   });
 
   const systemPrompt = buildSystemPrompt({

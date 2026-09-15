@@ -199,7 +199,8 @@ async function decide(
   // cm:guard the presence is folded from the selves of the HANDLES IN THIS ROOM, read fresh per window and never cached on the route: an admin who tightens an agent's presence expects the next window to feel it, and a room with no self on any handle folds to the very constants the guards used before (ISS-1034 criteria 32-35).
   const handles = await roomHandles(window.conversationId);
   const selves = await readSelvesFor(handles.map((h) => h.userId));
-  const presence = foldPresence([...selves.values()].map((s) => s.presence));
+  // cm:guard ONE presence per live handle, `{}` for a handle with no self row, so the fold sees every handle in the room: a map of the rows that exist would let a handle that never wrote a self vanish from a fold whose defaults it is owed (codex F4).
+  const presence = foldPresence(handles.map((h) => selves.get(h.userId)?.presence ?? {}));
   // cm:guard `mention` gates GROUP venues only and reads every message the window collected, not just the newest: a direct room is one person talking to one agent and every message is addressed to it, while in a room a person who wrote "@babo can you check" and then "the build, I mean" in two messages has named the handle once and is owed one answer (ISS-1034 criteria 66-68).
   if (venue.shape === 'group' && presence.answerInGroup === 'mention') {
     const names = handles.map((h) => h.handle);

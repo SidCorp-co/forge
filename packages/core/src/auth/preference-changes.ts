@@ -8,7 +8,7 @@
  * records it can offer one.
  */
 
-import { and, desc, eq, gt } from 'drizzle-orm';
+import { and, desc, eq, gt, sql } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
 import { type AnswerStyle, userPreferences } from '../db/schema.js';
 import {
@@ -54,6 +54,16 @@ export interface PreferenceChange {
 
 type Tx = Pick<typeof defaultDb, 'select' | 'insert' | 'update'>;
 
+// cm:guard every writer takes THIS lock before it reads the current value, and the restore takes it before its "still holds" check: two writes that both read the old value would each record it as their predecessor, and a restore racing a newer edit would pass its check and then erase that edit — the exact overwrite the trail exists to make visible. A transaction-scoped advisory lock keyed on the user works before a `user_preferences` row exists and is re-entrant for the restore's nested write (codex F2).
+async function lockPreferences(
+  tx: Pick<typeof defaultDb, 'execute'>,
+  userId: string,
+): Promise<void> {
+  await tx.execute(
+    sql`select pg_advisory_xact_lock(hashtext('user_preferences'), hashtext(${userId}))`,
+  );
+}
+
 const FIELD_OF: Record<keyof AssistantPreferencePatch, PreferenceChangeField> = {
   answerStyle: 'answer_style',
   assistantInstructions: 'assistant_instructions',
@@ -90,6 +100,7 @@ export async function writeAssistantPreferences(args: {
 }): Promise<AssistantPreferences> {
   const dbi = args.db ?? defaultDb;
   return dbi.transaction(async (tx) => {
+    await lockPreferences(tx as unknown as typeof defaultDb, args.userId);
     const before = await readAssistantPreferences(args.userId, tx as unknown as Tx);
     const fields = (Object.keys(args.patch) as (keyof AssistantPreferencePatch)[]).filter(
       (k) => args.patch[k] !== undefined,
@@ -172,6 +183,7 @@ export async function restorePreferenceChange(args: {
 }): Promise<AssistantPreferences | null> {
   const dbi = args.db ?? defaultDb;
   return dbi.transaction(async (tx) => {
+    await lockPreferences(tx as unknown as typeof defaultDb, args.userId);
     const t = tx as unknown as Tx;
     const [change] = await t
       .select()

@@ -88,6 +88,30 @@ export function useMarkAllRead() {
   });
 }
 
+export function useAssistantPreferences() {
+  return useQuery({
+    queryKey: ["settings", "assistant-preferences"],
+    queryFn: () => settingsApi.getAssistantPreferences(),
+  });
+}
+
+export function useUpdateAssistantPreferences() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: (patch: Parameters<typeof settingsApi.updateAssistantPreferences>[0]) =>
+      settingsApi.updateAssistantPreferences(patch),
+    onSuccess: (data) => {
+      qc.setQueryData(["settings", "assistant-preferences"], data);
+      qc.invalidateQueries({ queryKey: ["settings", "preference-changes"] });
+      toast({ title: "Answer preferences saved", tone: "success" });
+    },
+    onError: (err) => {
+      toast({ title: "Couldn't save answer preferences", description: formatApiError(err), tone: "error" });
+    },
+  });
+}
+
 export function usePreferenceChanges() {
   return useQuery({
     queryKey: ["settings", "preference-changes"],
@@ -101,7 +125,7 @@ export function useRestorePreferenceChange() {
   return useMutation({
     mutationFn: (id: string) => settingsApi.restorePreferenceChange(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["settings", "preferences"] });
+      qc.invalidateQueries({ queryKey: ["settings", "assistant-preferences"] });
       qc.invalidateQueries({ queryKey: ["settings", "preference-changes"] });
     },
   });

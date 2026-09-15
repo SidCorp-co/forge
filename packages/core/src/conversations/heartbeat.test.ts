@@ -1,9 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../config/env.js', () => ({ env: {} }));
 vi.mock('../db/client.js', () => ({ db: {} }));
 
-import { type HeartbeatFacts, heartbeatDue } from './heartbeat.js';
+import { type HeartbeatFacts, heartbeatDue, startConversationHeartbeat } from './heartbeat.js';
 
 const NOW = new Date('2026-09-15T12:00:00.000Z');
 const HOUR = 60 * 60 * 1000;
@@ -94,5 +94,32 @@ describe('heartbeatDue', () => {
       ],
     });
     expect(heartbeatDue(f)).toEqual({ due: false, reason: 'newest-not-a-person' });
+  });
+});
+
+describe('startConversationHeartbeat', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('ticks once per interval and never overlaps a tick still running', async () => {
+    vi.useFakeTimers();
+    let release: () => void = () => undefined;
+    const tick = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const stop = startConversationHeartbeat(tick, 1000);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(tick).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(tick).toHaveBeenCalledTimes(1);
+    release();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(tick).toHaveBeenCalledTimes(2);
+    stop();
+    release();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(tick).toHaveBeenCalledTimes(2);
   });
 });
