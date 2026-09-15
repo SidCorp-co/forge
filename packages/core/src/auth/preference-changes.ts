@@ -128,9 +128,11 @@ export async function writeAssistantPreferences(args: {
       });
     if (!row) throw new Error('user_preferences: upsert returned no row');
 
+    // cm:guard the row is stamped at the INSERT with `clock_timestamp()`, never with the transaction's `now()`: the lock above serialises writers that already opened their transactions, and `now()` is transaction start, so two racing writes would commit in one order and read back in the other — a trail whose `previousValue` chain and whose order disagree, and a restore that misses the later change it must name (ISS-1034 criteria 58, 61).
     await tx.insert(preferenceChanges).values(
       fields.map((k) => ({
         userId: args.userId,
+        changedAt: sql`clock_timestamp()`,
         field: FIELD_OF[k],
         previousValue: before[k] ?? null,
         newValue: (args.patch[k] as string | null | undefined) ?? null,
