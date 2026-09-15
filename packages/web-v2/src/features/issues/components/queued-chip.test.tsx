@@ -15,7 +15,6 @@ import type { IssueRow, PipelineHealth } from "../types";
 expect.extend(matchers);
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
-vi.mock("../hooks", () => ({ useIssueDeps: () => ({ data: undefined }) }));
 
 afterEach(cleanup);
 

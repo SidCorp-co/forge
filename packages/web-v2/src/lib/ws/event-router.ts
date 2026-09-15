@@ -28,8 +28,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			// cm:why an assignment or status edit moves an issue between the needs-review and awaiting-input buckets, which are derived on read and cached nowhere server-side — so nothing else tells the inbox it is stale (ISS-307)
 			qc.invalidateQueries({ queryKey: ["attention"] });
 			qc.invalidateQueries({ queryKey: ["pulse"] });
-			// ISS-665 — the Overview "Recent changes" panel is driven by
-			// `issues.updatedAt`, which every one of these events bumps.
+			// cm:why ISS-665 — the Overview "Recent changes" panel is ordered by `issues.updatedAt`, which every one of these three events bumps; without this it keeps the previous ordering until something unrelated refetches
 			qc.invalidateQueries({ queryKey: ["recent-changes"] });
 			if (data?.issueId) {
 				qc.invalidateQueries({ queryKey: ["issue", data.issueId] });
@@ -260,6 +259,8 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			return;
 		}
 		case "dependencyChanged": {
+			// cm:why ISS-1017 — the issues list renders its badges from the search response (`withDependencies=1`), so the per-issue keys below no longer reach it and the chips would outlive a retracted edge until something unrelated refetched the list
+			qc.invalidateQueries({ queryKey: ["issues", "search"] });
 			if (data?.fromIssueId) {
 				qc.invalidateQueries({
 					queryKey: ["issue", data.fromIssueId, "dependencies"],

@@ -16,8 +16,12 @@ import {
   PRIORITY_LABELS,
   openBlockingRefs,
 } from "../derive";
-import { useIssueDeps } from "../hooks";
-import type { IssueDependencyEdge, IssueStatus, ModuleAttribution } from "../types";
+import type {
+  IssueDependencies,
+  IssueDependencyEdge,
+  IssueStatus,
+  ModuleAttribution,
+} from "../types";
 
 export interface RowActions {
   patch: (args: { id: string; body: PatchIssueInput }) => void;
@@ -121,31 +125,33 @@ function RelationChip({
   );
 }
 
-/** Lazy dependency badges. Readable labelled chips (Blocked by / Blocks /
- *  Subtasks / Subtask of) that each reveal the actual related `ISS-X` issues —
- *  clickable to navigate — instead of an opaque emoji + count (ISS-366 D3). The
- *  edge data is already enriched (displayId/title/status, ISS-331); no extra
- *  fetch. Renders nothing when the issue has no relations. */
-export function DepBadges({ id, slug }: { id: string; slug: string }) {
+/** Dependency badges. Readable labelled chips (Blocked by / Blocks / Subtasks
+ *  / Subtask of) that each reveal the actual related `ISS-X` issues — clickable
+ *  to navigate — instead of an opaque emoji + count (ISS-366 D3). The edge data
+ *  is already enriched (displayId/title/status, ISS-331). Renders nothing when
+ *  the issue has no relations. */
+// cm:guard `deps` is a PROP, exactly as `CostCell` takes `value` — this component is rendered once per row in the desktop table and once per mobile card, so a data-fetching hook here is one request per row (ISS-1017, the ISS-437 rule). Its source is the search response's `withDependencies=1` hydration, and `undefined` means the caller did not ask rather than "no edges".
+export function DepBadges({
+  deps,
+  slug,
+}: {
+  deps: IssueDependencies | undefined;
+  slug: string;
+}) {
   const router = useRouter();
-  const { data } = useIssueDeps(id);
   const navigate = (otherId: string) =>
     router.push(`/projects/${slug}/issues/${otherId}`);
 
-  const incoming = data?.incoming ?? [];
-  const outgoing = data?.outgoing ?? [];
+  const incoming = deps?.incoming ?? [];
+  const outgoing = deps?.outgoing ?? [];
   // cm:why Edge `kind` encodes "from <verb> to": an INCOMING `blocks` means this issue is blocked-by; an OUTGOING one means it blocks. `decomposes`/`parent` run parent→child, so an OUTGOING one is a subtask of this epic and an INCOMING one is this issue's parent. Mirrors `depCounts` + the rail's `PropertiesRail`.
   const blockedBy = incoming.filter((e) => e.kind === "blocks");
   const blocks = outgoing.filter((e) => e.kind === "blocks");
   const subtasks = outgoing.filter((e) => isParentEdge(e.kind));
   const parents = incoming.filter((e) => isParentEdge(e.kind));
 
-  // Only blockers that are NOT terminal (released/closed) are actually holding
-  // this issue back — a plain "Blocked by N" count hides this, so a stuck issue
-  // is invisible while scanning the list. Surface the still-open ones as a loud
-  // red chip (naming the blocker when there's one, e.g. "Blocked by ISS-21");
-  // fully-resolved blockers stay a muted count.
-  const openBlockers = openBlockingRefs(data);
+  // cm:why a plain "Blocked by N" count hides whether anything is still holding the issue back, so a stuck row is invisible to someone scanning the list — the still-open blockers get the loud red chip and the fully-resolved ones stay a muted count
+  const openBlockers = openBlockingRefs(deps);
   const refToMenuItem = (r: BlockingRef): MenuItem => ({
     label: r.title ? `${r.displayId} · ${r.title}` : r.displayId,
     icon: "arrowRight",
@@ -201,10 +207,6 @@ export function DepBadges({ id, slug }: { id: string; slug: string }) {
   );
 }
 
-/** Per-issue cost from the search row itself (`withCost=1`, ISS-437) — the
- *  old per-row `useIssueCost` lazy fetch was a 25-request N+1 whose silent
- *  failures rendered as "—" exactly like a real zero. `<$0.01` marks a
- *  non-zero cost that would otherwise round down to a misleading dash. */
 /**
  * A row's PRIMARY module (ISS-594), or an em dash when it has none.
  *
@@ -230,6 +232,10 @@ export function ModuleCell({ modules }: { modules: ModuleAttribution[] | undefin
   );
 }
 
+/** Per-issue cost from the search row itself (`withCost=1`, ISS-437) — the
+ *  old per-row `useIssueCost` lazy fetch was a 25-request N+1 whose silent
+ *  failures rendered as "—" exactly like a real zero. `<$0.01` marks a
+ *  non-zero cost that would otherwise round down to a misleading dash. */
 export function CostCell({ value }: { value: number | undefined }) {
   const cost = value ?? 0;
   const text = cost <= 0 ? "—" : cost < 0.01 ? "<$0.01" : `$${cost.toFixed(2)}`;

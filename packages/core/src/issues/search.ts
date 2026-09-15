@@ -34,6 +34,7 @@ import {
   buildOriginCondition,
   hydrateCreatorsForIssues,
 } from './creator.js';
+import { loadIssueDependencyEdgesForIssues } from './dependency-read.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import { listModulesForIssues, resolveModuleIdsTolerant } from './label-service.js';
 import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
@@ -121,6 +122,8 @@ const searchQuerySchema = z
     withPipelineHealth: z.coerce.boolean().optional().default(false),
     // cm:why opt-in like the hydrators above: it is two grouped reads, and only the issues list needs them. What it returns is a count PER STATUS plus the two origin counts, never a count per tab — the tabs are the client's mapping (contracts `statusesForLabels`), and a second copy of that mapping here is the drift the label axis exists to prevent.
     withBuckets: z.coerce.boolean().optional().default(false),
+    // cm:why opt-in like withCost/withFailureInfo: ONE grouped read of `issue_dependencies` over the page replaced the list row's per-row `GET /issues/:id/dependencies` — 25 requests a page at ISSUES_PAGE_SIZE (ISS-1017)
+    withDependencies: z.coerce.boolean().optional().default(false),
     // cm:why ISS-594 — the ONLY way a list row learns its modules: this response serializes the raw `issues` row, which has no label columns, and the alternative for web-v2's module cell was one `GET /issues/:id` per row
     withModules: z.coerce.boolean().optional().default(false),
   })
@@ -355,6 +358,18 @@ searchRoutes.get(
       serialized = serialized.map((r) => ({
         ...r,
         modules: moduleMap.get(r.id as string) ?? [],
+      }));
+    }
+
+    // cm:guard every row gets the key when the flag is on, both arrays empty included — a row that omits it is indistinguishable from one whose hydration failed, and the badges would render the previous page's relations on the next cache hit (ISS-1017, the ISS-437 rule)
+    if (q.withDependencies && serialized.length > 0) {
+      const depMap = await loadIssueDependencyEdgesForIssues(
+        serialized.map((r) => r.id as string),
+        projectId,
+      );
+      serialized = serialized.map((r) => ({
+        ...r,
+        dependencies: depMap.get(r.id as string) ?? { outgoing: [], incoming: [] },
       }));
     }
 
