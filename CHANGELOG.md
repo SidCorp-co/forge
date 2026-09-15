@@ -4829,6 +4829,14 @@
 
 ### Changed
 
+- **One answer shows up once while the assistant is still writing it.** The Forge assistant streams
+  its reply as a record that grows — the prose so far, the tools it has run, what they returned —
+  and it ends by sending the finished record it saved. Those growing sends and the finished one
+  were labelled as two different things, so a screen that groups by the label had the same answer
+  twice: a copy that stopped where the stream stopped, and the real one underneath it. The label is
+  now decided once, before the first send, and the saved record keeps it, so there is one answer on
+  the screen from the first word to the last. Nothing already stored changes. (ISS-1029)
+
 - **The Forge assistant's transcript now records what the turn actually did, not just the sentence
   it ended on.** A chat turn that searched the tracker, read three issues and then answered used to
   be stored as its final paragraph and nothing else. The tools it called, what they returned, which
@@ -4841,9 +4849,7 @@
   renderer behind them. `POST /api/chat` streams that same record as it builds, in place of the raw
   provider events it used to relay, and ends on the exact entry it saved. A turn that ran tools and
   then said nothing keeps the record of what it ran, which is the one turn anybody opens a
-  transcript to look at. Every frame of a turn and the row it settles as carry one identity, so a
-  reader that keys on it shows one answer rather than two. Conversations stored before this change
-  read back exactly as they did.
+  transcript to look at. Conversations stored before this change read back exactly as they did.
 
 - **A long agent session's transcript keeps up with the agent.** The page you watch a running agent
   on is built from the lines it has streamed so far, and the server rebuilt that page from the very
