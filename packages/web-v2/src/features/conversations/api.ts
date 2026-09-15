@@ -32,10 +32,18 @@ export interface SendResult extends Pick<ConversationDetail, "messages" | "windo
 }
 
 export const conversationsApi = {
+  // cm:guard `archived` is sent as the string "1" or "0" and never as `String(boolean)`: the route
+  // takes a four-value literal by name rather than coercing, and "false" coerced would have asked
+  // for the archived side while meaning the live one (ISS-1028).
   /** `GET /api/conversations?projectId=` — the rooms this project's handle speaks in. */
-  list: (projectId: string, pageSize = 50) =>
+  list: (projectId: string, pageSize = 50, archived = false) =>
     apiClientList<ConversationRow>(
-      `/conversations?${new URLSearchParams({ projectId, page: "1", pageSize: String(pageSize) })}`,
+      `/conversations?${new URLSearchParams({
+        projectId,
+        page: "1",
+        pageSize: String(pageSize),
+        archived: archived ? "1" : "0",
+      })}`,
     ),
 
   /** `GET /api/conversations/:id` — the room, its people, its messages and its window decisions. */
@@ -105,6 +113,13 @@ export const conversationsApi = {
     apiClient<ConversationRow>(`/conversations/${id}`, {
       method: "PATCH",
       body: JSON.stringify({ title }),
+    }),
+
+  /** `PATCH /api/conversations/:id` — file it away, or bring it back. */
+  setArchived: (id: string, archived: boolean) =>
+    apiClient<ConversationRow>(`/conversations/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ archived }),
     }),
 
   /** `DELETE /api/conversations/:id`. */

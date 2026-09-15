@@ -151,12 +151,13 @@ describe('an archived room leaves the default list', () => {
   });
 
   it('refuses a query value that is neither true nor false by name', async () => {
-    const res = await app.request(
-      `/api/conversations?projectId=${projectId}&archived=maybe`,
-      { headers: await auth(ownerId) },
-    );
+    const res = await app.request(`/api/conversations?projectId=${projectId}&archived=maybe`, {
+      headers: await auth(ownerId),
+    });
     expect(res.status).toBe(400);
-    expect(JSON.stringify(await res.json())).toContain("archived takes '1', '0', 'true' or 'false'");
+    expect(JSON.stringify(await res.json())).toContain(
+      "archived takes '1', '0', 'true' or 'false'",
+    );
   });
 });
 

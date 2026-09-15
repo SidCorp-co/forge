@@ -94,6 +94,7 @@ describe("conversationTitle", () => {
     shape: "direct" as const,
     title: null,
     updatedAt: "2026-09-14T00:00:00.000Z",
+    archivedAt: null,
   };
 
   it("prefers the room's own name", () => {

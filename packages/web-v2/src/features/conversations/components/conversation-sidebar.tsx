@@ -15,6 +15,11 @@ interface ProjectInfo {
   slug: string;
 }
 
+// cm:guard the three actions arrive as props rather than being wired here: the dock's list owns the
+// same three, and a second copy of a destructive control is a second place for them to disagree
+// about what a press means. Each carries the ROW, which the row's own handler does not need and this
+// screen does — its list spans projects, so the mutation has to know which room it is about
+// (ISS-1028).
 interface ConversationSidebarProps {
   rows: ListedConversation[];
   nameById: Map<string, ProjectInfo>;
@@ -32,6 +37,12 @@ interface ConversationSidebarProps {
    *  SlideOver, and the drawer's own Esc/backdrop-click already close it, but
    *  a visible close control is still expected here). */
   onClose?: () => void;
+  /** Commit a new title for a row. Absent = the rows show no rename control. */
+  onRename?: (title: string, row: ListedConversation) => void;
+  /** File a row away, or bring it back. */
+  onArchive?: (archived: boolean, row: ListedConversation) => void;
+  /** Ask to delete a row — the caller owns the confirmation. */
+  onDelete?: (row: ListedConversation) => void;
 }
 
 export function ConversationSidebar({
@@ -47,6 +58,9 @@ export function ConversationSidebar({
   error,
   onRetry,
   onClose,
+  onRename,
+  onArchive,
+  onDelete,
 }: ConversationSidebarProps) {
   return (
     <div
@@ -111,6 +125,9 @@ export function ConversationSidebar({
                         project={nameById.get(row.projectId)}
                         open={row.id === activeConversationId}
                         onOpen={() => onOpen(row)}
+                        {...(onRename ? { onRename: (title) => onRename(title, row) } : {})}
+                        {...(onArchive ? { onArchive: (a) => onArchive(a, row) } : {})}
+                        {...(onDelete ? { onDelete: () => onDelete(row) } : {})}
                       />
                     ))}
                   </div>

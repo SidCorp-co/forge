@@ -35,6 +35,9 @@ export function ConversationChat({
   conversationId,
   onClose,
   onConversationActive,
+  onOpenHistory,
+  onNew,
+  emptyBody,
 }: {
   projectId: string;
   /** Omitted = a draft: no room exists until the first message opens one. */
@@ -43,6 +46,19 @@ export function ConversationChat({
   onClose?: () => void;
   /** Fires once a draft's first send has opened a real room, so the caller can follow it. */
   onConversationActive?: (id: string) => void;
+  // cm:guard the way into the list is a control in THIS header rather than a link to the
+  // `/conversations` page: the panel exists so a person never leaves the screen they are on, and
+  // ISS-732's promise that history stayed reachable was kept on that page and nowhere here, which
+  // is what made closing the panel read as losing the conversation (ISS-1028).
+  /** When set, render the control that opens the conversation list. */
+  onOpenHistory?: () => void;
+  /** When set, render the control that drops back to a fresh draft. */
+  onNew?: () => void;
+  // cm:guard rendered UNDER the empty state and only while the room holds nothing, so the list is
+  // on screen the moment the panel opens without a single room being resumed: the issue asks for
+  // both a new draft on open and the list on open, and this is what makes them one screen.
+  /** Rendered beneath the empty state of a room with no messages. */
+  emptyBody?: React.ReactNode;
 }) {
   const [activeId, setActiveId] = useState<string | undefined>(conversationId);
   const [membersOpen, setMembersOpen] = useState(false);
@@ -113,6 +129,17 @@ export function ConversationChat({
               Ask the agent about this project — it reads the project, not the repository.
             </p>
           </div>
+          {onOpenHistory && (
+            <IconButton
+              icon="clock"
+              size="sm"
+              aria-label="Conversation history"
+              onClick={onOpenHistory}
+            />
+          )}
+          {onNew && (
+            <IconButton icon="plus" size="sm" aria-label="New conversation" onClick={onNew} />
+          )}
           {roomQ.data && (
             <IconButton
               icon="users"
@@ -137,12 +164,15 @@ export function ConversationChat({
             </div>
           )}
           {messages.length === 0 ? (
-            <div className="grid min-h-[40dvh] place-items-center">
-              <EmptyState
-                title="Start a conversation"
-                message="Ask the agent anything about this project — its issues, its progress and what it knows."
-                mascot
-              />
+            <div className="flex min-h-[40dvh] flex-col">
+              <div className="grid flex-1 place-items-center">
+                <EmptyState
+                  title="Start a conversation"
+                  message="Ask the agent anything about this project — its issues, its progress and what it knows."
+                  mascot
+                />
+              </div>
+              {emptyBody}
             </div>
           ) : (
             <ConversationThread messages={messages} windows={windows} />
