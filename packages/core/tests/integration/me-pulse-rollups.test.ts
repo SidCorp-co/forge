@@ -141,6 +141,31 @@ describe('GET /api/me/pulse — rollups (ISS-988) · the output', () => {
     expect(body.quality.finished.closedUnmerged).toBe(1);
   });
 
+  // cm:guard ISS-1022 — the two rows with NO activity_log at all, which the correlated form and the grouped one can disagree about silently: a grouped LEFT JOIN yields NULL for both evidence flags where the old form yielded false for each EXISTS, so folding the NULL late would move a row with a real `merged_at` and no audit trail out of `merged`. Work claimed through `applyMergeMarker` on an issue whose transitions predate the trail is exactly that row, so the pair below is planted rather than reasoned about.
+  it('counts an issue with no activity trail and a merged_at stamp as merged', async () => {
+    const { user, project, token } = await seed.member();
+    await seed.addIssue({
+      projectId: project.id,
+      userId: user.id,
+      status: 'closed',
+      seq: 21,
+      mergedAt: true,
+    });
+
+    const body = await seed.pulse(token);
+    expect(body.quality.finished.merged).toBe(1);
+    expect(body.quality.finished.closedUnmerged).toBe(0);
+  });
+
+  it('counts an issue with no activity trail and no merged_at stamp as closed-unmerged', async () => {
+    const { user, project, token } = await seed.member();
+    await seed.addIssue({ projectId: project.id, userId: user.id, status: 'closed', seq: 22 });
+
+    const body = await seed.pulse(token);
+    expect(body.quality.finished.merged).toBe(0);
+    expect(body.quality.finished.closedUnmerged).toBe(1);
+  });
+
   it('reads a logged transition into the release rung as merge evidence', async () => {
     const { user, project, token } = await seed.member();
     const id = await seed.addIssue({

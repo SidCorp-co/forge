@@ -6,8 +6,9 @@
 // `wakeMastersForAnswer` publishes to DEVICE rooms, which no browser subscribes
 // to. So this module refetches its own key and nothing else will do it for it.
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
+import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { questionsApi } from "./api";
@@ -58,13 +59,56 @@ export function useAnswerQuestion(issueId: string) {
 // cm:guard polled, and unconditionally unlike the issue-scoped hook above: `agent_questions` is indexed on `(project_id, status)` (`db/schema-questions.ts`), so this read is cheap where the issue-scoped one is a scan, and a queue that only refreshed when it already held a row could never show the first question to arrive. No websocket event carries a question to a browser — `wakeMastersForAnswer` publishes to DEVICE rooms — so nothing else will refresh it.
 const PROJECT_QUEUE_POLL_MS = 30_000;
 
+// cm:guard the route is PAGED since ISS-1022 and this hook drains it rather than showing page one: a project with more open decisions than the page size would otherwise present the first fifty as the whole queue, with no control reaching the rest and nothing on screen saying so. `total` is the uncapped count and is what the pane reports; `hasMore` is what ends the walk.
 export function useProjectQuestions(projectId: string | undefined) {
-  return useQuery({
+  const query = useInfiniteQuery({
     queryKey: projectQuestionsKey(projectId ?? ""),
-    queryFn: () => questionsApi.listOpenForProject(projectId as string),
+    queryFn: ({ pageParam }) =>
+      questionsApi.listOpenForProject(projectId as string, pageParam ?? undefined),
+    initialPageParam: null as string | null,
+    // cm:guard the next page is the server's own `nextCursor` and never a count this client computes: the queue is being answered while it is read, so an offset starts past a row that shifted backward when an earlier one closed.
+    getNextPageParam: (last) => (last.hasMore ? (last.nextCursor ?? undefined) : undefined),
     enabled: Boolean(projectId),
     refetchInterval: PROJECT_QUEUE_POLL_MS,
   });
+  const pages = query.data?.pages ?? [];
+  return {
+    ...query,
+    data: pages.length
+      ? {
+          questions: pages.flatMap((p) => p.questions),
+          total: pages[pages.length - 1]?.total,
+          hasMore: pages[pages.length - 1]?.hasMore,
+        }
+      : undefined,
+  };
+}
+
+// cm:guard asked ONLY once the paged walk has run out, and it is what makes "no longer open" a fact rather than an inference: a question answered between two fetches leaves the set while the walk is still in it, so its absence from every page read is not evidence it closed. This lookup names the row by id, whatever page it would have been on (ISS-1022).
+// cm:guard `gone` reads the STATUS of the refusal and never merely `isError`, because a 500, a timeout and a dropped connection all present as an error and none of them is evidence about the question: only a 404 is core saying the row is not reachable. Treat every other failure as unknown — telling a reader their decision closed because the API blinked sends them away from one that is open and still parked on them (ISS-1022).
+export function linkedVerdict(q: {
+  isError: boolean;
+  isSuccess: boolean;
+  error?: unknown;
+  data?: { status: string } | undefined;
+}): { gone: boolean; unreachable: boolean } {
+  const absent = q.isError && q.error instanceof ApiError && q.error.status === 404;
+  return {
+    /** Core answered about this row: it is not reachable, or it is reachable and not open. */
+    gone: absent || (q.isSuccess && q.data?.status !== undefined && q.data.status !== "open"),
+    /** The lookup itself failed, so nothing is known about the row. */
+    unreachable: q.isError && !absent,
+  };
+}
+
+export function useLinkedQuestion(questionId: string | undefined, enabled: boolean) {
+  const query = useQuery({
+    queryKey: ["questions", "one", questionId ?? ""],
+    queryFn: () => questionsApi.get(questionId as string),
+    enabled: Boolean(questionId) && enabled,
+    retry: false,
+  });
+  return { ...query, ...linkedVerdict(query) };
 }
 
 // cm:guard the refetch is on BOTH arms for the same reason the issue-scoped mutation does it: every refusal core raises — stale round, already answered, expired, voided — means the queue on screen has moved, and answering again against it would repeat the refusal forever (ISS-980 criterion 19).

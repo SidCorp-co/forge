@@ -73,7 +73,12 @@ export interface AgentQuestion {
   issueId: string | null;
   status: QuestionStatus;
   blockerKind: BlockerKind;
-  steps: QuestionStep[];
+  // cm:guard `steps` is the WHOLE history and the project queue does not send it: `GET /api/questions?projectId=` drops it and sends `currentStep` plus `rounds` instead, because it used to return every round of every open decision in one unpaged response (ISS-1022). Read the live round through `currentRoundOf`, never off this array.
+  steps?: QuestionStep[];
+  /** The live round, on the rows the project queue sends. The issue-scoped read sends `steps` instead. */
+  currentStep?: QuestionStep | null;
+  /** How many rounds the decision has had. Present wherever `steps` is not. */
+  rounds?: number;
   maxRounds: number;
   voidReason: string | null;
   endedReason: string | null;
@@ -93,6 +98,27 @@ export interface AgentQuestion {
 
 export interface QuestionListResponse {
   questions: AgentQuestion[];
+  /** Every question matching the filter, uncapped by the page. Absent on the issue-scoped read. */
+  total?: number;
+  /** Whether a further page remains. Absent on the issue-scoped read. */
+  hasMore?: boolean;
+  /** Where the next page starts. Opaque — pass it back, never parse it. Null on the last page. */
+  nextCursor?: string | null;
+}
+
+// cm:guard the ONE place either shape is resolved to the live round, so a caller cannot read `steps` on a row that has none and render `undefined`: the issue-scoped read sends the whole history and the project queue sends `currentStep` alone (ISS-1022).
+export function currentRoundOf(question: AgentQuestion): QuestionStep | undefined {
+  return question.steps?.[question.steps.length - 1] ?? question.currentStep ?? undefined;
+}
+
+/** The rounds BEFORE the live one, which only the issue-scoped read carries. */
+export function earlierRoundsOf(question: AgentQuestion): QuestionStep[] {
+  return question.steps ? question.steps.slice(0, -1) : [];
+}
+
+/** How many rounds the decision has had, from whichever of the two shapes arrived. */
+export function roundCountOf(question: AgentQuestion): number {
+  return question.steps?.length ?? question.rounds ?? (question.currentStep ? 1 : 0);
 }
 
 // cm:guard exactly ONE of `optionId` and `text` — core refuses a body carrying both rather than picking one, because a caller that sent both does not know which round it is answering (ISS-996).

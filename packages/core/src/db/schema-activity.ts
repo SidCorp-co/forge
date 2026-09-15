@@ -42,6 +42,8 @@ export const activityLog = pgTable(
   (t) => ({
     issueCreatedIdx: index('activity_log_issue_created_idx').on(t.issueId, t.createdAt),
     dedupeKeyIdx: index('activity_log_dedupe_key_idx').on(t.dedupeKey),
+    // cm:guard every cross-tenant reader of this table constrains a time range and never `issue_id`, so without this one the planner takes `activity_log_issue_created_idx` with `created_at` non-leading, which scans the whole index rather than ranging it (cost 4,546, beta 2026-09-15). There is deliberately NO `(action, created_at)` companion: at this table's `created_at` correlation of 0.969 a scan of this index is nearly sequential and beat that composite 105 to 1,160 on an action-filtered window (ISS-1022).
+    createdAtIdx: index('activity_log_created_at_idx').on(t.createdAt),
   }),
 );
 
