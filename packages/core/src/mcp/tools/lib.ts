@@ -3,6 +3,10 @@ import { type ActorAgency, actorAgency, type TransitionActor } from '../../issue
 import { loadVisibleProjectIds } from '../../lib/authz.js';
 import type { McpPrincipal } from '../../middleware/require-pat.js';
 import type { Actor } from '../../pipeline/activity.js';
+import {
+  listVisibleProjectsWithRole,
+  type VisibleProjectWithRole,
+} from '../../projects/service.js';
 import { loadUserProjectRoleFlags } from './project-authz.js';
 import { patEffectiveProjectIds, resolveProjectIdFromSlug } from './project-scope.js';
 
@@ -207,6 +211,22 @@ export async function loadVisibleProjectIdsForPrincipal(
     ids = ids.filter((id) => allowSet.has(id));
   }
   return ids;
+}
+
+/**
+ * The same visible set, carrying each project's list columns and the two raw
+ * role columns the visibility join already reads (ISS-1025). The PAT allowlist
+ * narrowing is the one above, applied to the same rows, so a tool that needs
+ * the roles never has to ask for them a project at a time.
+ */
+export async function loadVisibleProjectsWithRoleForPrincipal(
+  principal: McpPrincipal,
+): Promise<VisibleProjectWithRole[]> {
+  const rows = await listVisibleProjectsWithRole(principalUserId(principal));
+  const allow = patEffectiveProjectIds(principal);
+  if (allow === null) return rows;
+  const allowSet = new Set(allow);
+  return rows.filter((r) => allowSet.has(r.id));
 }
 
 /**

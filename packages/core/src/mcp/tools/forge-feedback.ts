@@ -35,9 +35,7 @@ const inputSchema = z
     scope: z.enum(['project', 'all']).optional(),
     reportId: z.uuid().optional(),
     reviewed: z.boolean().optional(),
-    // review: the issue this report was curated INTO (distinct from the
-    // report's own issueId, which is its source issue). Must belong to the
-    // same project as the report.
+    // cm:guard the issue this report was curated INTO, distinct from the report's own `issueId`, which is the issue it was observed on.
     linkedIssueId: z.uuid().optional(),
     // bulk-review field: stamp every report sharing this signalKey
     signalKey: z.string().max(500).optional(),
@@ -237,13 +235,20 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
       case 'review': {
         const reviewed = input.reviewed ?? true;
 
+        // cm:guard one resolution per call, shared by the scope condition and the link lookup: a bulk review with `scope="all"` and a `linkedIssueId` ran `loadVisibleProjectIdsForPrincipal` TWICE, the same join over `projects`/`project_members`/`organization_members` asked and answered a second time inside `resolveLinkedIssue` (ISS-1025). Memoized on the promise, not the value, so two awaits in flight still share one query.
+        let visibleIdsOnce: Promise<string[]> | null = null;
+        const visibleIds = (): Promise<string[]> => {
+          visibleIdsOnce ??= loadVisibleProjectIdsForPrincipal(principal);
+          return visibleIdsOnce;
+        };
+
         // cm:why a report records WHERE the defect was observed, not who owns the fix — which almost always lands in the Forge project itself, so linkedIssueId resolves against every project the caller can SEE rather than the report's own project; requiring same-project made the field unusable for exactly the reports it exists to close, and caller visibility still bounds the lookup
         const resolveLinkedIssue = async (linkedIssueId: string): Promise<string> => {
-          const visibleIds = await loadVisibleProjectIdsForPrincipal(principal);
-          if (visibleIds.length === 0) {
+          const ids = await visibleIds();
+          if (ids.length === 0) {
             throw new Error('NOT_FOUND: linkedIssueId not found in any project you can see');
           }
-          if (!(await issueVisibleIn(linkedIssueId, visibleIds))) {
+          if (!(await issueVisibleIn(linkedIssueId, ids))) {
             throw new Error('NOT_FOUND: linkedIssueId not found in any project you can see');
           }
           return linkedIssueId;
@@ -258,13 +263,13 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (input.signalKey) {
           // Bulk stamp: every report carrying this signalKey, within scope.
           if (input.scope === 'all') {
-            const visibleIds = await loadVisibleProjectIdsForPrincipal(principal);
-            if (visibleIds.length === 0) {
+            const ids = await visibleIds();
+            if (ids.length === 0) {
               return { ok: true, count: 0, scope: 'all', linkedIssueId: null };
             }
             const updated = await stampReviewed(
               [
-                inArray(feedbackReports.projectId, visibleIds),
+                inArray(feedbackReports.projectId, ids),
                 eq(feedbackReports.signalKey, input.signalKey),
               ],
               { reviewedAt: reviewed ? new Date() : null, ...(await linkPatch()) },

@@ -91,17 +91,53 @@ export const skillProjection = {
   pinnedAt: skills.pinnedAt,
 } as const;
 
+/** One catalog row: exactly the stored columns `forge_skills.list` renders. */
+export type SkillListRow = {
+  id: string;
+  name: string;
+  description: string;
+  scope: 'global' | 'project';
+  projectId: string | null;
+  version: number;
+  contentHash: string;
+  target: SkillTarget | null;
+  evalScore: number | null;
+  basedOnGlobalVersion: number | null;
+  pinned: boolean | null;
+  pinnedReason: string | null;
+};
+
 /**
- * List all skills visible to a project: its own project-scoped skills plus
- * every global skill. Ordered by scope then name — result shape matches the
- * `forge_skills.list` MCP tool and the REST list endpoint.
+ * The catalog projection: the twelve columns a `forge_skills.list` row is
+ * rendered from, and nothing else.
  */
-export async function listProjectSkills(projectId: string): Promise<SkillRow[]> {
+// cm:guard every column here is read by `toSkillListRow` or by the dedup beside it (`mcp/tools/forge-skills.ts`), and none of the seven heavy fields — `prompt`, `skillMd`, `files`, `tools`, `manifest`, `changelog`, `localGuide` — may join them: the catalog surface selected all seven for every global and project skill and then dropped them (ISS-1025), which is the same token-cap overflow ISS-428 removed from the RESPONSE without ever removing it from the query. A field the list starts rendering is added in both places or in neither.
+export const skillListProjection = {
+  id: skills.id,
+  name: skills.name,
+  description: skills.description,
+  scope: skills.scope,
+  projectId: skills.projectId,
+  version: skills.version,
+  contentHash: skills.contentHash,
+  target: skills.target,
+  evalScore: skills.evalScore,
+  basedOnGlobalVersion: skills.basedOnGlobalVersion,
+  pinned: skills.pinned,
+  pinnedReason: skills.pinnedReason,
+} as const;
+
+/**
+ * The catalog of skills visible to a project: its own project-scoped skills
+ * plus every global skill, in the columns the catalog row renders. Ordered by
+ * scope then name — the order the `forge_skills.list` MCP tool returns.
+ */
+export async function listProjectSkillCatalog(projectId: string): Promise<SkillListRow[]> {
   return db
-    .select(skillProjection)
+    .select(skillListProjection)
     .from(skills)
     .where(or(eq(skills.scope, 'global'), eq(skills.projectId, projectId)))
-    .orderBy(skills.scope, skills.name) as Promise<SkillRow[]>;
+    .orderBy(skills.scope, skills.name) as Promise<SkillListRow[]>;
 }
 
 /**
@@ -380,9 +416,7 @@ export async function resolveOrAdoptProjectSkill(
     files: (Array.isArray(global.files) ? global.files : []) as SkillFileInput[],
     basedOnGlobalSkillId: global.id,
     basedOnGlobalVersion: global.version,
-    // ISS-741 — this is the SYSTEM provisioning bridge (bootstrap fan-out +
-    // domain-template apply), not a user create/adopt path; it must keep
-    // delivering forge-onboard's disk copy until ISS-742 retires it.
+    // cm:guard ISS-741 — this is the SYSTEM provisioning bridge (bootstrap fan-out + domain-template apply) and not a user create/adopt path, which is the only reason it may name a reserved meta skill; it must keep delivering forge-onboard's disk copy until ISS-742 retires it.
     allowReservedMetaName: true,
   });
   return created.id;

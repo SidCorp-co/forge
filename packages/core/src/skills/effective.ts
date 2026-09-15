@@ -12,8 +12,9 @@ import { hashSkillBody } from './hash.js';
  *   (`resolveEffectiveSkillsForProject`) as adoptable rows. They are NEVER a
  *   runtime fallback.
  *
- * - `resolveProjectSkills` → the usable set (project rows only). The device
- *   sync manifest + skills-zip resolve from this, hashed uniformly via
+ * - `resolveRegisteredEffectiveSkills` → the usable set: the project rows that
+ *   are registered to a stage or flagged `installOnly`. The device sync
+ *   manifest + skills-zip resolve from this, hashed uniformly via
  *   `hashSkillBody(effectiveMd, files)`.
  * - `resolveEffectiveSkillsForProject` → the catalog: project rows + global
  *   templates, deduped by name (the `shadowsGlobal` flag is a catalog hint,
@@ -163,7 +164,6 @@ const skillBodyProjection = {
  * shadowed is dropped; everything else is unflagged.
  */
 export function dedupEffectiveSkills(rows: SkillBodyRow[]): EffectiveSkill[] {
-  // Index globals by name so a same-name project skill can shadow them.
   const globalByName = new Map<string, SkillBodyRow>();
   for (const r of rows) if (r.scope === 'global') globalByName.set(r.name, r);
 
@@ -224,18 +224,6 @@ export async function resolveEffectiveSkillsForProject(
 }
 
 /**
- * The USABLE set: project-scoped skills only. No globals, no shadow merge —
- * this is exactly what may be installed/dispatched.
- */
-export async function resolveProjectSkills(projectId: string): Promise<EffectiveSkill[]> {
-  const rows = (await db
-    .select(skillBodyProjection)
-    .from(skills)
-    .where(and(eq(skills.scope, 'project'), eq(skills.projectId, projectId)))) as SkillBodyRow[];
-  return rows.map(computeEffectiveSkill);
-}
-
-/**
  * The device-sync manifest set: the project's USABLE (project-scoped) skills
  * that are EITHER (a) registered to a stage by name, OR (b) flagged
  * `installOnly` (manual / user-invocable utilities force-synced without a stage
@@ -253,9 +241,7 @@ export async function resolveRegisteredEffectiveSkills(
     .from(skillRegistrations)
     .where(eq(skillRegistrations.projectId, projectId));
 
-  // Resolve registered ids → names. Matching by NAME (not id) keeps legacy
-  // registrations that still point at a global working IFF the project has
-  // adopted a same-name project skill — the global itself is never returned.
+  // cm:guard resolve registered ids to NAMES and match on those: a legacy registration still pointing at a global keeps working IFF the project has adopted a same-name project skill, and the global itself is never returned.
   const registeredIds = [...new Set(regs.map((r) => r.skillId))];
   let registeredNames = new Set<string>();
   if (registeredIds.length > 0) {
@@ -266,10 +252,18 @@ export async function resolveRegisteredEffectiveSkills(
     registeredNames = new Set(nameRows.map((n) => n.name));
   }
 
-  // installOnly skills are force-synced even with zero stage registrations, so
-  // do NOT early-return on an empty registration set.
-  const projectSkills = await resolveProjectSkills(projectId);
-  return projectSkills.filter((s) => registeredNames.has(s.name) || s.installOnly);
+  // cm:guard the registered-name set and the `installOnly` flag are put into the WHERE rather than applied to loaded rows: this is a BODY projection — `skill_md`, `prompt` and the base64 `files` — and `computeEffectiveSkill` sha256s every row it is handed, so filtering afterwards transferred and hashed every skill the project owns on each sync-status call to keep the few that are registered (ISS-1025). The two conditions are the same two facts the in-memory filter tested, so a legacy registration that resolves to a same-name project skill, and an `installOnly` skill under an empty registration set, both still come back.
+  const nameCondition =
+    registeredNames.size > 0
+      ? or(inArray(skills.name, [...registeredNames]), eq(skills.installOnly, true))
+      : eq(skills.installOnly, true);
+  const rows = (await db
+    .select(skillBodyProjection)
+    .from(skills)
+    .where(
+      and(eq(skills.scope, 'project'), eq(skills.projectId, projectId), nameCondition),
+    )) as SkillBodyRow[];
+  return rows.map(computeEffectiveSkill);
 }
 
 /**

@@ -11,7 +11,16 @@
 import { randomBytes } from 'node:crypto';
 import { and, count, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { agentSessions, issues, projectMembers, projects } from '../db/schema.js';
+import {
+  agentSessions,
+  issues,
+  type OrgMemberRole,
+  organizationMembers,
+  type ProjectMemberRole,
+  projectMembers,
+  projects,
+} from '../db/schema.js';
+import { visibleProjectsWhere } from '../lib/authz.js';
 import { isUniqueViolation, uniqueViolationConstraint } from '../lib/db-errors.js';
 
 /** The project's id, or `null` when no project carries that slug. */
@@ -128,6 +137,49 @@ export const projectListColumns = {
 export async function listProjectsByIds(ids: string[]) {
   if (ids.length === 0) return [];
   return db.select(projectListColumns).from(projects).where(inArray(projects.id, ids));
+}
+
+/** One visible project, with the two membership rows the visibility join already reads. */
+export type VisibleProjectWithRole = {
+  id: string;
+  slug: string;
+  name: string;
+  orgId: string;
+  memberRole: ProjectMemberRole | null;
+  orgRole: OrgMemberRole | null;
+};
+
+/**
+ * Every project the user can see, with the raw role columns beside it — the
+ * ONE query behind `forge_projects.list` (ISS-1025). The visibility predicate
+ * is `lib/authz.ts`'s own `visibleProjectsWhere()`, and the caller derives the
+ * effective role through that module's `maxProjectRole` /
+ * `orgDerivedProjectRole`, so this widens the projection without restating the
+ * rule. The list tool used to run this join for the ids, a second query for
+ * the columns, and then `effectiveProjectRole` once per row — a third visit to
+ * these same two tables per project, serialised.
+ */
+// cm:why no DISTINCT: `project_members` is PRIMARY KEY (user_id, project_id) and `organization_members` is PRIMARY KEY (org_id, user_id), so each left join matches at most one row and the wider projection is already one row per project. `loadVisibleProjectIds` keeps its `selectDistinct` because narrowing to `projects.id` alone is where duplicates would be visible if either key ever widened.
+export async function listVisibleProjectsWithRole(
+  userId: string | null | undefined,
+): Promise<VisibleProjectWithRole[]> {
+  if (!userId) return [];
+  return db
+    .select({
+      ...projectListColumns,
+      memberRole: projectMembers.role,
+      orgRole: organizationMembers.role,
+    })
+    .from(projects)
+    .leftJoin(
+      projectMembers,
+      and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, userId)),
+    )
+    .leftJoin(
+      organizationMembers,
+      and(eq(organizationMembers.orgId, projects.orgId), eq(organizationMembers.userId, userId)),
+    )
+    .where(and(...visibleProjectsWhere()));
 }
 
 /** The scalar view of one project, without its config blobs. */

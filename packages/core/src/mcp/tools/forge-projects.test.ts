@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { OrgMemberRole, ProjectMemberRole } from '../../db/schema.js';
+import { maxProjectRole, orgDerivedProjectRole } from '../../lib/authz.js';
 import { makeFakePrincipal } from '../fake-principal.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
@@ -68,14 +70,6 @@ function chainOnce(impl: ReturnType<typeof vi.fn>, rows: unknown[]) {
   impl.mockImplementationOnce(() => chain);
 }
 
-/** loadVisibleProjectIds — db.selectDistinct({id}).from(projects).leftJoin x2.where(). */
-function mockVisibleIds(ids: string[]) {
-  chainOnce(
-    selectDistinctImpl,
-    ids.map((id) => ({ id })),
-  );
-}
-
 /** Any plain db.select(...) in handler order. */
 function mockSelect(rows: unknown[]) {
   chainOnce(selectImpl, rows);
@@ -101,16 +95,39 @@ const patCtx = (
 });
 
 describe('forge_projects.list', () => {
+  /**
+   * The ONE query the tool now runs: `listVisibleProjectsWithRole` —
+   * db.select({...list columns, memberRole, orgRole}).from(projects)
+   * .leftJoin x2 .where(). No per-project `effectiveProjectRole` follows it.
+   */
+  function mockVisibleProjects(
+    rows: Array<{
+      id: string;
+      slug?: string;
+      name?: string;
+      orgId?: string;
+      memberRole: ProjectMemberRole | null;
+      orgRole: OrgMemberRole | null;
+    }>,
+  ) {
+    mockSelect(
+      rows.map((r) => ({
+        id: r.id,
+        slug: r.slug ?? r.id.slice(0, 1),
+        name: r.name ?? r.id.slice(0, 1).toUpperCase(),
+        orgId: r.orgId ?? ORG_ID,
+        memberRole: r.memberRole,
+        orgRole: r.orgRole,
+      })),
+    );
+  }
+
   it('returns visible projects with effective (org-aware) role mapping', async () => {
     const tool = forgeProjectsListTool(patCtx());
-    mockVisibleIds([PROJECT_A, PROJECT_B]);
-    mockSelect([
-      { id: PROJECT_A, slug: 'a', name: 'A', orgId: ORG_ID },
-      { id: PROJECT_B, slug: 'b', name: 'B', orgId: ORG_ID },
+    mockVisibleProjects([
+      { id: PROJECT_A, memberRole: null, orgRole: 'owner' }, // org owner → implicit admin
+      { id: PROJECT_B, memberRole: 'member', orgRole: null }, // explicit member row
     ]);
-    // per-project effectiveProjectRole, in row order:
-    mockAccess({ memberRole: null, orgRole: 'owner' }); // org owner → implicit admin
-    mockAccess({ memberRole: 'member', orgRole: null }); // explicit member row
 
     const result = (await tool.handler({})) as {
       projects: Array<{ id: string; orgId: string; role: string }>;
@@ -121,11 +138,66 @@ describe('forge_projects.list', () => {
     expect(result.projects[0]?.orgId).toBe(ORG_ID);
   });
 
+  /**
+   * ISS-1025 — the handler awaited `effectiveProjectRole` once per row, so a
+   * visible list of fifty projects cost fifty-two serialised queries. The
+   * count is the assertion: a reinstated loop moves it and nothing else here
+   * would notice.
+   */
+  it.each([1, 50])('issues exactly one query for %i visible project(s)', async (n) => {
+    const tool = forgeProjectsListTool(patCtx());
+    mockVisibleProjects(
+      Array.from({ length: n }, (_, i) => ({
+        id: `${String(i).padStart(8, '0')}-0000-4000-8000-000000000000`,
+        memberRole: 'member' as const,
+        orgRole: null,
+      })),
+    );
+
+    const result = (await tool.handler({})) as { projects: unknown[] };
+    expect(result.projects).toHaveLength(n);
+    expect(selectImpl).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * The role the list renders must be the role `effectiveProjectRole` would
+   * have returned for the same two columns — every pairing, not just the one
+   * the N+1 was noticed on. `maxProjectRole(memberRole,
+   * orgDerivedProjectRole(orgRole))` is the rule both paths run.
+   */
+  const PROJECT_ROLES: Array<ProjectMemberRole | null> = [null, 'viewer', 'member', 'admin'];
+  const ORG_ROLES: Array<OrgMemberRole | null> = [null, 'member', 'admin', 'owner'];
+  const matrix = PROJECT_ROLES.flatMap((memberRole) =>
+    ORG_ROLES.map((orgRole) => ({ memberRole, orgRole })),
+  );
+
+  it.each(matrix)(
+    'role for memberRole=$memberRole orgRole=$orgRole matches lib/authz.ts',
+    async ({ memberRole, orgRole }) => {
+      const tool = forgeProjectsListTool(patCtx());
+      mockVisibleProjects([{ id: PROJECT_A, memberRole, orgRole }]);
+
+      const result = (await tool.handler({})) as {
+        projects: Array<{ role: ProjectMemberRole | null }>;
+      };
+      expect(result.projects[0]?.role).toBe(
+        maxProjectRole(memberRole, orgDerivedProjectRole(orgRole)),
+      );
+    },
+  );
+
+  it('a pairing that derives no role surfaces role null rather than a guess', async () => {
+    const tool = forgeProjectsListTool(patCtx());
+    // cm:guard org `member` derives nothing and there is no membership row, so the visibility predicate would not return this project at all — if it ever did, the role must be null rather than defaulted to something the caller can act on
+    mockVisibleProjects([{ id: PROJECT_A, memberRole: null, orgRole: 'member' }]);
+
+    const result = (await tool.handler({})) as { projects: Array<{ role: unknown }> };
+    expect(result.projects[0]?.role).toBeNull();
+  });
+
   it('viewer-role member surfaces as viewer', async () => {
     const tool = forgeProjectsListTool(patCtx());
-    mockVisibleIds([PROJECT_B]);
-    mockSelect([{ id: PROJECT_B, slug: 'b', name: 'B', orgId: ORG_ID }]);
-    mockAccess({ memberRole: 'viewer', orgRole: null });
+    mockVisibleProjects([{ id: PROJECT_B, memberRole: 'viewer', orgRole: null }]);
 
     const result = (await tool.handler({})) as { projects: Array<{ role: string }> };
     expect(result.projects[0]?.role).toBe('viewer');
@@ -133,9 +205,7 @@ describe('forge_projects.list', () => {
 
   it('explicit admin row + org owner does not duplicate and stays admin', async () => {
     const tool = forgeProjectsListTool(patCtx());
-    mockVisibleIds([PROJECT_A]);
-    mockSelect([{ id: PROJECT_A, slug: 'a', name: 'A', orgId: ORG_ID }]);
-    mockAccess({ memberRole: 'admin', orgRole: 'owner' });
+    mockVisibleProjects([{ id: PROJECT_A, memberRole: 'admin', orgRole: 'owner' }]);
 
     const result = (await tool.handler({})) as {
       projects: Array<{ id: string; role: string }>;
@@ -146,10 +216,11 @@ describe('forge_projects.list', () => {
 
   it('PAT principal with projectIds allowlist filters output to allowed projects only (ISS-150)', async () => {
     const tool = forgeProjectsListTool(patCtx({ scopes: ['read'], projectIds: [PROJECT_A] }));
-    // user can see both projects, allowlist narrows to PROJECT_A
-    mockVisibleIds([PROJECT_A, PROJECT_B]);
-    mockSelect([{ id: PROJECT_A, slug: 'a', name: 'A', orgId: ORG_ID }]);
-    mockAccess({ memberRole: 'member', orgRole: null });
+    // cm:why the query returns both projects and the allowlist is what narrows the answer to one
+    mockVisibleProjects([
+      { id: PROJECT_A, memberRole: 'member', orgRole: null },
+      { id: PROJECT_B, memberRole: 'member', orgRole: null },
+    ]);
 
     const result = (await tool.handler({})) as {
       projects: Array<{ id: string }>;
@@ -160,13 +231,10 @@ describe('forge_projects.list', () => {
 
   it('PAT principal with null projectIds (global) sees everything the user can access', async () => {
     const tool = forgeProjectsListTool(patCtx({ scopes: ['read'], projectIds: null }));
-    mockVisibleIds([PROJECT_A, PROJECT_B]);
-    mockSelect([
-      { id: PROJECT_A, slug: 'a', name: 'A', orgId: ORG_ID },
-      { id: PROJECT_B, slug: 'b', name: 'B', orgId: ORG_ID },
+    mockVisibleProjects([
+      { id: PROJECT_A, memberRole: 'admin', orgRole: null },
+      { id: PROJECT_B, memberRole: 'member', orgRole: null },
     ]);
-    mockAccess({ memberRole: 'admin', orgRole: null });
-    mockAccess({ memberRole: 'member', orgRole: null });
 
     const result = (await tool.handler({})) as { projects: unknown[] };
     expect(result.projects).toHaveLength(2);
@@ -174,11 +242,10 @@ describe('forge_projects.list', () => {
 
   it('returns [] when the user can see no projects', async () => {
     const tool = forgeProjectsListTool(patCtx());
-    mockVisibleIds([]);
+    mockVisibleProjects([]);
 
     const result = (await tool.handler({})) as { projects: unknown[] };
     expect(result.projects).toEqual([]);
-    expect(selectImpl).not.toHaveBeenCalled();
   });
 });
 

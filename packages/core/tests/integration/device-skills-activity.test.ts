@@ -11,13 +11,19 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
+type ActivityViews = typeof import('../../src/skills/activity-views.js');
+let listByDevice: ActivityViews['listByDevice'];
+
+/** The whole log for one device — every assertion here is about a handful of rows. */
+const deviceEvents = async (projectId: string, deviceId: string) =>
+  (await listByDevice({ projectId, deviceId, limit: 1000 })).events;
+
 // cm:why exercises the real route handler (not a hand-crafted tx like skill-activity.test.ts) — the original gap was that nothing called this endpoint from a test at all.
 describe('device skills report -> activity log (ISS-798 fix)', () => {
   let harness: TestDatabase;
   let app: Hono<{ Variables: RequestIdVars }>;
   let pairDevice: typeof import('../helpers/pair-device.js').pairDevice;
   let schema: typeof import('../../src/db/schema.js');
-  let listByDevice: typeof import('../../src/skills/activity-views.js').listByDevice;
 
   beforeAll(async () => {
     harness = await setupTestDatabase();
@@ -102,7 +108,7 @@ describe('device skills report -> activity log (ISS-798 fix)', () => {
     });
     expect(res.status).toBe(200);
 
-    const events = await listByDevice({ projectId: project.id, deviceId: device.id });
+    const events = await deviceEvents(project.id, device.id);
     const types = events.map((e) => e.eventType).sort();
     expect(types).toEqual(['device.skill.applied', 'device.skill.observed']);
   });
@@ -118,7 +124,7 @@ describe('device skills report -> activity log (ISS-798 fix)', () => {
     });
     expect(res.status).toBe(200);
 
-    const events = await listByDevice({ projectId: project.id, deviceId: device.id });
+    const events = await deviceEvents(project.id, device.id);
     expect(events).toHaveLength(2);
   });
 
@@ -132,7 +138,7 @@ describe('device skills report -> activity log (ISS-798 fix)', () => {
       skills: [{ skillId: skill.id, installedHash: 'h2', observedSha: 'h2' }],
     });
 
-    const events = await listByDevice({ projectId: project.id, deviceId: device.id });
+    const events = await deviceEvents(project.id, device.id);
     const applied = events.filter((e) => e.eventType === 'device.skill.applied');
     expect(applied).toHaveLength(2);
     expect(applied[1]).toMatchObject({ beforeHash: 'h1', afterHash: 'h2' });
@@ -156,7 +162,7 @@ describe('device skills report -> activity log (ISS-798 fix)', () => {
     });
     expect(res.status).toBe(200);
 
-    const events = await listByDevice({ projectId: project.id, deviceId: device.id });
+    const events = await deviceEvents(project.id, device.id);
     const shadowed = events.filter((e) => e.eventType === 'device.skill.shadowed');
     const observed = events.filter((e) => e.eventType === 'device.skill.observed');
     expect(shadowed).toHaveLength(1);
@@ -182,7 +188,7 @@ describe('device skills report -> activity log (ISS-798 fix)', () => {
     });
     expect(res.status).toBe(200);
 
-    const events = await listByDevice({ projectId: project.id, deviceId: device.id });
+    const events = await deviceEvents(project.id, device.id);
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
       eventType: 'device.sync.failed',
@@ -204,7 +210,7 @@ describe('device skills report -> activity log (ISS-798 fix)', () => {
     expect((await post()).status).toBe(200);
     expect((await post()).status).toBe(200);
 
-    const events = await listByDevice({ projectId: project.id, deviceId: device.id });
+    const events = await deviceEvents(project.id, device.id);
     expect(events.filter((e) => e.eventType === 'device.sync.failed')).toHaveLength(1);
   });
 
@@ -221,7 +227,7 @@ describe('device skills report -> activity log (ISS-798 fix)', () => {
     await fail('manifest pull failed: network timeout');
     await fail('manifest pull failed: 500 from core');
 
-    const events = await listByDevice({ projectId: project.id, deviceId: device.id });
+    const events = await deviceEvents(project.id, device.id);
     expect(events.filter((e) => e.eventType === 'device.sync.failed')).toHaveLength(2);
   });
 
@@ -243,7 +249,7 @@ describe('device skills report -> activity log (ISS-798 fix)', () => {
     });
     expect(res.status).toBe(200);
 
-    const events = await listByDevice({ projectId: project.id, deviceId: device.id });
+    const events = await deviceEvents(project.id, device.id);
     const observed = events.filter((e) => e.eventType === 'device.skill.observed');
     expect(observed).toHaveLength(1);
   });
@@ -267,7 +273,7 @@ describe('device skills report -> activity log (ISS-798 fix)', () => {
     });
     expect(res.status).toBe(200);
 
-    const events = await listByDevice({ projectId: project.id, deviceId: device.id });
+    const events = await deviceEvents(project.id, device.id);
     const applied = events.find((e) => e.eventType === 'device.skill.applied');
     expect(applied).toMatchObject({ packetId: 'packet-1' });
     const observed = events.find((e) => e.eventType === 'device.skill.observed');
@@ -300,7 +306,7 @@ describe('device skills report -> activity log (ISS-798 fix)', () => {
     });
     expect(res.status).toBe(200);
 
-    const events = await listByDevice({ projectId: project.id, deviceId: device.id });
+    const events = await deviceEvents(project.id, device.id);
     const applied = events.find((e) => e.eventType === 'device.skill.applied');
     // cm:why applied always carries packetId because the packet DID reach the device (BLOCKER D)
     expect(applied?.packetId).toBe('packet-1');
