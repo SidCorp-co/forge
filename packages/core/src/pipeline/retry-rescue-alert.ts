@@ -3,6 +3,7 @@ import { db } from '../db/client.js';
 import { notifications, projects } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
+import { retryRescuesSince } from '../metrics/queries.js';
 import { emitNotification } from '../notifications/emit.js';
 
 export const RETRY_RESCUE_ALERT_THRESHOLD = 5;
@@ -33,9 +34,12 @@ export async function detectRetryRescueThresholds(
       failure_reason: string;
       rescues: number | string;
     }>(sql`
+      -- cm:guard the project list is NULL, meaning every project, and that is the one
+      -- caller entitled to pass it: this runs on the sweeper across the whole
+      -- deployment. An empty array here would be the opposite answer and would
+      -- silence the alert entirely.
       SELECT project_id, failure_reason, count(*)::int AS rescues
-      FROM retry_rescues
-      WHERE rescued_at >= ${start}
+      FROM ${retryRescuesSince(null, sql`${start}`)}
       GROUP BY project_id, failure_reason
       HAVING count(*) >= ${RETRY_RESCUE_ALERT_THRESHOLD}
     `);

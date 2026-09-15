@@ -20,6 +20,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import {
   answerAs,
   askAs,
+  decodeCursor,
   projectQuestionsFor,
   readQuestionFor,
   readQuestionsForIssue,
@@ -27,6 +28,21 @@ import {
 import { type QuestionRefusalCode, QuestionRefused, voidQuestion } from './write.js';
 
 const uuid = z.uuid();
+
+// cm:guard the page is named by a CURSOR and not by an offset, and `cursor` is the opaque `<created_at>|<id>` the previous page's `nextCursor` carried: an offset over a queue that is being answered starts past a row that shifted backward when an earlier one closed, which skips an open decision while `hasMore` still reads complete (ISS-1022).
+// cm:guard the cursor is DECODED and shape-checked here and one that fails is refused by name, never absorbed: both silent readings were live on beta and both are defects — an unparseable cursor that is dropped hands the caller page one as though it were the page it asked for, which is a drain loop that never advances, and one passed through to the `::timestamptz` cast leaves a caller's typo as a 500. That is exactly the fault the `uuid` guard on `projectId` below exists to prevent (ISS-1022).
+const pageSchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).optional().default(50),
+  cursor: z
+    .string()
+    .min(3)
+    .max(200)
+    .refine((v) => decodeCursor(v) !== null, {
+      message:
+        'cursor must be the `nextCursor` of the previous page, sent back exactly as it arrived',
+    })
+    .optional(),
+});
 
 const askSchema = z
   .object({
@@ -84,6 +100,7 @@ const REFUSAL_STATUS: Record<QuestionRefusalCode, ContentfulStatusCode> = {
   QUESTION_SHAPE_INVALID: 400,
   QUESTION_ANSWER_WRONG_SHAPE: 400,
   QUESTION_MESSAGE_REFUSED: 400,
+  QUESTION_CURSOR_INVALID: 400,
 };
 
 // cm:guard answering and voiding stay a SESSION's, and the test is the CREDENTIAL rather than `agency`: an agency test would have refused some agents and waved the rest through, because until ISS-1003 an agent holding a person's token read `human`. Putting `/api/questions` on the PAT menu (`auth/pat-permissions.ts`) made these two reachable by every token holding no explicit grant, since an absent grant array reads as the whole menu — this is what keeps that widening to asking, listing and reading back. The one hole in it is `master_or_peer`, below, and that hole is opened by an ESTABLISHED identity rather than by a relaxed test.
@@ -126,6 +143,7 @@ export const questionRoutes = new Hono<{ Variables: AuthVars }>();
 questionRoutes.use('/', requireAuth(), assertEmailVerified());
 questionRoutes.use('*', requireAuth(), assertEmailVerified());
 
+// cm:guard the project arm is PAGED and the issue arm is not, and the asymmetry is deliberate: an issue's questions are a thread a person reads whole, a project's are a queue that grew unbounded and was returning every row with its full `steps` history. The default limit is what an unchanged caller now gets; `total` tells it how many are waiting, and `nextCursor` is how it reaches them (ISS-1022).
 // cm:guard the uuid is checked BEFORE either query reaches postgres: `issue_id` and `project_id` are uuid columns and a malformed literal raises 22P02, which leaves the handler as a 500 — a caller's typo must not read as a server fault.
 questionRoutes.get('/', async (c) => {
   const issueId = c.req.query('issueId');
@@ -140,13 +158,24 @@ questionRoutes.get('/', async (c) => {
   }
   if (projectId) {
     if (!uuid.safeParse(projectId).success) throw badRequest('projectId must be a uuid');
-    const open = await projectQuestionsFor(
-      projectId,
-      c.get('userId'),
-      status as (typeof questionStatuses)[number] | undefined,
-    );
-    if (!open) throw notFound();
-    return c.json({ questions: open });
+    const page = pageSchema.safeParse({
+      limit: c.req.query('limit'),
+      cursor: c.req.query('cursor'),
+    });
+    if (!page.success) throw badRequest(z.prettifyError(page.error));
+    try {
+      const open = await projectQuestionsFor(
+        projectId,
+        c.get('userId'),
+        status as (typeof questionStatuses)[number] | undefined,
+        page.data,
+      );
+      if (!open) throw notFound();
+      return c.json(open);
+    } catch (e) {
+      if (e instanceof QuestionRefused) throw refused(e);
+      throw e;
+    }
   }
   if (!uuid.safeParse(issueId).success) throw badRequest('issueId must be a uuid');
   const seen = await readQuestionsForIssue(issueId as string, c.get('userId'));

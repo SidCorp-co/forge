@@ -116,6 +116,8 @@ export const agentQuestions = pgTable(
   (t) => [
     index('agent_questions_project_status_idx').on(t.projectId, t.status),
     index('agent_questions_session_idx').on(t.agentSessionId),
+    // cm:guard ISS-1022 — `readQuestionsForIssue` is the door every issue screen opens and it filters on `issue_id` first; neither index above leads with it, so the lookup was a sequential scan of the whole table.
+    index('agent_questions_issue_idx').on(t.issueId),
   ],
 );
 

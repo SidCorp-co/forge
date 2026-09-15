@@ -12,28 +12,37 @@ const windowExpr = sql`now() - (${PULSE_QUALITY_WINDOW_DAYS}::int * interval '1 
  */
 // cm:guard `merged_at IS NOT NULL` is NOT shipped-evidence and must never be the test here: `markMergedOnClose` stamps it on EVERY close, so the bare column degenerates to "closed" and reports never-merged work as merged — which is the one figure section 5 exists to expose (ISS-817, re-met by ISS-988).
 // cm:edge lockstep -> packages/core/src/issues/progress.ts#computeProjectProgress — the same two disjuncts, and the same timestamp-identity trick for spotting the auto-stamp; a change to the evidence rule there is a change to this figure's meaning
-const SHIPPED_EVIDENCE = sql`(
-  EXISTS (
-    SELECT 1 FROM activity_log a
-    WHERE a.issue_id = i.id AND a.action = 'issue.statusChanged'
-      AND a.payload ->> 'to' = ${BASE_MERGE_STATE}
-  )
-  OR (i.merged_at IS NOT NULL AND NOT EXISTS (
-    SELECT 1 FROM activity_log a
-    WHERE a.issue_id = i.id AND a.action = 'issue.statusChanged'
-      AND a.payload ->> 'to' = 'closed' AND a.created_at = i.merged_at
-  ))
-)`;
-
+// cm:guard the two disjuncts are decided in ONE grouped pass over `activity_log`, not as four correlated `EXISTS` per issue, and the rule is unchanged: on beta the two forms returned identical counts over 5,059 issues across 34 projects, 222.3ms against 37.2ms (ISS-1022).
+// cm:guard each flag is COALESCEd to false ON ITS OWN, before the OR and before the NOT: coalescing the finished expression instead silently reclassifies an issue with no `activity_log` rows and a non-null `merged_at` from merged to unmerged, and such rows exist (`applyMergeMarker` on transitions predating the audit trail).
 async function readFinished(scope: ReturnType<typeof idList>) {
   const [row] = (await db.execute(sql`
+    WITH scope_issues AS (
+      SELECT i.id, i.status, i.merged_at, i.reopen_count
+      FROM issues i WHERE i.project_id IN (${scope})
+    ), evidence AS (
+      SELECT a.issue_id,
+             bool_or(a.payload ->> 'to' = ${BASE_MERGE_STATE}) AS reached_merge_state,
+             bool_or(a.payload ->> 'to' = 'closed' AND a.created_at = s.merged_at)
+               AS stamped_by_close_itself
+      FROM activity_log a
+      JOIN scope_issues s ON s.id = a.issue_id
+      WHERE a.action = 'issue.statusChanged'
+      GROUP BY a.issue_id
+    ), judged AS (
+      SELECT s.status, s.reopen_count,
+             (coalesce(e.reached_merge_state, false)
+              OR (s.merged_at IS NOT NULL AND NOT coalesce(e.stamped_by_close_itself, false)))
+               AS shipped
+      FROM scope_issues s
+      LEFT JOIN evidence e ON e.issue_id = s.id
+    )
     SELECT
-      count(*) FILTER (WHERE status = 'closed' AND ${SHIPPED_EVIDENCE})::int AS merged,
-      count(*) FILTER (WHERE status = 'closed' AND NOT ${SHIPPED_EVIDENCE})::int AS closed_unmerged,
+      count(*) FILTER (WHERE status = 'closed' AND shipped)::int AS merged,
+      count(*) FILTER (WHERE status = 'closed' AND NOT shipped)::int AS closed_unmerged,
       count(*) FILTER (WHERE status = 'dropped')::int AS dropped,
       count(*) FILTER (WHERE reopen_count > 0)::int AS reopened_issues,
       coalesce(sum(reopen_count), 0)::int AS reopen_events
-    FROM issues i WHERE i.project_id IN (${scope})
+    FROM judged
   `)) as unknown as Array<{
     merged: number;
     closed_unmerged: number;

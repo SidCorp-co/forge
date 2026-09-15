@@ -5,6 +5,8 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "@/lib/api/client";
+import { linkedVerdict } from "@/features/questions/hooks";
 import type { AgentQuestion, AnswerInput } from "@/features/questions/types";
 
 expect.extend(matchers);
@@ -16,11 +18,17 @@ if (!Element.prototype.scrollIntoView) {
 }
 
 let list: {
-  data?: { questions: AgentQuestion[] };
+  data?: { questions: AgentQuestion[]; total?: number; hasMore?: boolean };
   isLoading: boolean;
   isError: boolean;
   error?: unknown;
+  hasNextPage?: boolean;
+  isFetchingNextPage?: boolean;
 };
+const fetchNextPage = vi.fn();
+/** The authoritative single-question read the pane checks before concluding a linked decision is gone. */
+let linked: { isError: boolean; isSuccess: boolean; error?: unknown; data?: { status: string } };
+const linkedRefetch = vi.fn();
 const refetch = vi.fn();
 const mutate = vi.fn();
 /** Each call's resolver, so a test can settle one answer while another is still in flight. */
@@ -35,7 +43,9 @@ const mutateAsync = vi.fn((input: AnswerInput) => {
 // cm:guard `useAnsweringQuestions` is the REAL one and only the two fetch hooks are replaced: holding each card on its own answer is what this file asserts, and a stub of it would assert the stub.
 vi.mock("@/features/questions/hooks", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/features/questions/hooks")>()),
-  useProjectQuestions: () => ({ ...list, refetch }),
+  useProjectQuestions: () => ({ ...list, refetch, fetchNextPage }),
+  // cm:guard only the FETCH is stubbed; `gone` / `unreachable` are computed by the real `linkedVerdict`, because the rule under test here is exactly which failures are evidence about the decision and which are not. Hard-coding those two flags in the fixture would assert the fixture.
+  useLinkedQuestion: () => ({ ...linked, refetch: linkedRefetch, ...linkedVerdict(linked) }),
   useAnswerProjectQuestion: () => ({ mutate, mutateAsync }),
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
@@ -66,7 +76,7 @@ function withOptions(
   return {
     ...q,
     options,
-    steps: q.steps.map((step) => ({ ...step, options })),
+    steps: (q.steps ?? []).map((step) => ({ ...step, options })),
   } as AgentQuestion;
 }
 
@@ -113,7 +123,9 @@ function question(over: Partial<AgentQuestion> = {}): AgentQuestion {
 
 beforeEach(() => {
   list = { isLoading: false, isError: false, data: { questions: [] } };
+  linked = { isError: true, isSuccess: false, error: new ApiError(404, "not found") };
   refetch.mockClear();
+  fetchNextPage.mockClear();
   mutate.mockClear();
   mutateAsync.mockClear();
   settle = [];
@@ -151,6 +163,118 @@ describe("the project's open decisions", () => {
     expect(screen.getByText(/asked by a master — no issue behind it/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /choose dispatch the staging deploy/i }));
     expect(mutate).toHaveBeenCalledWith({ questionId: "q-1", optionId: "opt-a", round: 1 });
+  });
+
+  // cm:guard the route is paged since ISS-1022, so what the first page left behind must be both SAID and REACHABLE: a pane that rendered page one alone would show fifty decisions as the whole queue, and a reader draining it would never learn the rest were there. The count comes from `total`, which core reports uncapped by the page.
+  it("says how many open decisions are not on screen, and fetches the rest on request", () => {
+    list = {
+      isLoading: false,
+      isError: false,
+      data: { questions: [question({ id: "q-1" })], total: 63, hasMore: true },
+      hasNextPage: true,
+    };
+    render(<QuestionsPane scope={scope} />);
+
+    expect(screen.getByText(/1 of 63 open decisions/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /load the rest/i }));
+    expect(fetchNextPage).toHaveBeenCalled();
+  });
+
+  it("offers no load control when the first page is the whole queue", () => {
+    list = {
+      isLoading: false,
+      isError: false,
+      data: { questions: [question({ id: "q-1" })], total: 1, hasMore: false },
+      hasNextPage: false,
+    };
+    render(<QuestionsPane scope={scope} />);
+
+    expect(screen.queryByRole("button", { name: /load the rest/i })).toBeNull();
+    expect(screen.queryByText(/open decisions/i)).toBeNull();
+  });
+
+  // cm:guard the queue is paged, so a link naming a question on a later page must reach it rather than be told it is gone: "no longer open" rendered against page one sends the reader away from a decision that is open and still parked on them (ISS-1022).
+  it("walks to a later page for a linked question rather than calling it closed", () => {
+    list = {
+      isLoading: false,
+      isError: false,
+      data: { questions: [question({ id: "q-1" })], total: 60, hasMore: true },
+      hasNextPage: true,
+    };
+    render(<QuestionsPane scope={scope} focusQuestionId="q-59" />);
+
+    expect(screen.queryByText(/no longer open/i)).toBeNull();
+    expect(fetchNextPage).toHaveBeenCalled();
+  });
+
+  it("says a linked question is gone only once every page has been read and the question itself refused", () => {
+    list = {
+      isLoading: false,
+      isError: false,
+      data: { questions: [question({ id: "q-1" })], total: 1, hasMore: false },
+      hasNextPage: false,
+    };
+    linked = { isError: true, isSuccess: false, error: new ApiError(404, "not found") };
+    render(<QuestionsPane scope={scope} focusQuestionId="q-59" />);
+
+    expect(screen.getByText(/no longer open/i)).toBeInTheDocument();
+  });
+
+  // cm:guard a lookup that FAILED is not an answer about the decision: a 500, a timeout or a dropped connection all present as `isError`, and reading any of them as "no longer open" tells a person to stop looking at a decision that may be open and still parked on them (ISS-1022).
+  it("does not call a linked question gone when its own read merely failed", () => {
+    list = {
+      isLoading: false,
+      isError: false,
+      data: { questions: [question({ id: "q-1" })], total: 1, hasMore: false },
+      hasNextPage: false,
+    };
+    linked = { isError: true, isSuccess: false, error: new ApiError(500, "upstream is down") };
+    render(<QuestionsPane scope={scope} focusQuestionId="q-59" />);
+
+    expect(screen.queryByText(/no longer open/i)).toBeNull();
+    expect(screen.getByText(/could not be looked up/i)).toBeInTheDocument();
+  });
+
+  it("offers to retry the lookup rather than the page when it could not be reached", () => {
+    list = {
+      isLoading: false,
+      isError: false,
+      data: { questions: [question({ id: "q-1" })], total: 1, hasMore: false },
+      hasNextPage: false,
+    };
+    linked = { isError: true, isSuccess: false, error: new TypeError("Failed to fetch") };
+    render(<QuestionsPane scope={scope} focusQuestionId="q-59" />);
+
+    expect(screen.queryByText(/no longer open/i)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /try again/i }));
+    expect(linkedRefetch).toHaveBeenCalled();
+  });
+
+  it("calls a linked question gone when its own read comes back answered", () => {
+    list = {
+      isLoading: false,
+      isError: false,
+      data: { questions: [question({ id: "q-1" })], total: 1, hasMore: false },
+      hasNextPage: false,
+    };
+    linked = { isError: false, isSuccess: true, data: { status: "answered" } };
+    render(<QuestionsPane scope={scope} focusQuestionId="q-59" />);
+
+    expect(screen.getByText(/no longer open/i)).toBeInTheDocument();
+  });
+
+  // cm:guard paging over a set being answered can step PAST the row it was looking for — a question closing on an earlier page shifts the rest backward — so absence from every page read is not evidence a decision closed. Only the question's own read is (ISS-1022).
+  it("does not call a linked question gone when the question itself is still open", () => {
+    list = {
+      isLoading: false,
+      isError: false,
+      data: { questions: [question({ id: "q-1" })], total: 1, hasMore: false },
+      hasNextPage: false,
+    };
+    linked = { isError: false, isSuccess: true, data: { status: "open" } };
+    render(<QuestionsPane scope={scope} focusQuestionId="q-59" />);
+
+    expect(screen.queryByText(/no longer open/i)).toBeNull();
   });
 
   it("marks the card a run row linked to, among several", () => {

@@ -8,7 +8,9 @@ import { activityLog, issues, jobTypes } from '../db/schema.js';
 import { effectiveProjectRole, loadVisibleProjectIds } from '../lib/authz.js';
 import { utcDayText } from '../lib/time-buckets.js';
 import { buildInterventionsReport } from '../metrics/interventions-report.js';
+import { retryRescuesSince } from '../metrics/queries.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { cycleTimeTransitionsSql } from './cycle-time-sql.js';
 import { driverComparison } from './driver-comparison.js';
 
 const badRequest = (details: unknown) =>
@@ -32,7 +34,9 @@ const querySchema = z.object({
   projectId: z.uuid().optional(),
 });
 
+// cm:guard ISS-1022 — `days` is NOT optional decoration: without it this route ran two window functions over every `issue.statusChanged` row of every visible project, which on beta was a Seq Scan of `activity_log` yielding 40,671 rows at cost 9,119 per request. The bound is the same 1..90 with a default of 30 that every sibling schema in this file carries, so a caller reading one route's window vocabulary can read them all.
 const cycleTimeQuerySchema = z.object({
+  days: z.coerce.number().int().min(1).max(90).optional().default(30),
   projectId: z.uuid().optional(),
 });
 
@@ -102,6 +106,11 @@ pipelineAnalyticsRoutes.get(
  * Computed via LAG over the per-issue activity stream — `prev_to` is the
  * status the issue was IN before the current transition fired, and the
  * delta to that prior event is the time-in-status.
+ *
+ * The `days` window is the row set the LAG runs over, so the oldest transition
+ * inside it has no predecessor and contributes nothing: the figure is
+ * time-in-status for the pairs that BOTH fall in the window, not for every pair
+ * whose second half does. That is what a caller widening `days` is buying.
  */
 pipelineAnalyticsRoutes.get(
   '/cycle-time',
@@ -109,31 +118,14 @@ pipelineAnalyticsRoutes.get(
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
-    const { projectId } = c.req.valid('query');
+    const { days, projectId } = c.req.valid('query');
     const userId = c.get('userId');
 
     const projectIds = await loadVisibleProjectIdsScoped(userId, projectId);
     if (projectIds.length === 0) return c.json([]);
 
     const rows = await db.execute(sql`
-      WITH transitions AS (
-        SELECT
-          ${activityLog.issueId} AS issue_id,
-          ${issues.projectId} AS project_id,
-          ${activityLog.payload} ->> 'to' AS to_status,
-          ${activityLog.createdAt} AS created_at,
-          LAG(${activityLog.createdAt}) OVER (
-            PARTITION BY ${activityLog.issueId}
-            ORDER BY ${activityLog.createdAt}
-          ) AS prev_created_at,
-          LAG(${activityLog.payload} ->> 'to') OVER (
-            PARTITION BY ${activityLog.issueId}
-            ORDER BY ${activityLog.createdAt}
-          ) AS prev_to
-        FROM ${activityLog}
-        INNER JOIN ${issues} ON ${issues.id} = ${activityLog.issueId}
-        WHERE ${activityLog.action} = 'issue.statusChanged'
-          AND ${issues.projectId} IN ${projectIds}
+      WITH transitions AS (${cycleTimeTransitionsSql(projectIds, days)}
       )
       SELECT
         prev_to AS status,
@@ -224,9 +216,13 @@ pipelineAnalyticsRoutes.get(
 );
 
 /**
- * ISS-826 — retry failures that a later attempt rescued, reconstructed from
- * the durable `retry_rescues` view. Grouping by the original failure reason
- * makes repeated eventually-green failures observable as one operational signal.
+ * ISS-826 — retry failures that a later attempt rescued. Grouping by the
+ * original failure reason makes repeated eventually-green failures observable
+ * as one operational signal.
+ *
+ * ISS-1022 — read through `retry_rescues_since`, not the `retry_rescues` view:
+ * the view's recursion walks every `retry_of` chain in `jobs` before a caller's
+ * project and window filter can apply, so the bound has to reach the anchor.
  */
 pipelineAnalyticsRoutes.get(
   '/retry-rescues',
@@ -242,9 +238,7 @@ pipelineAnalyticsRoutes.get(
     const rows = await db.execute(sql`
       SELECT project_id, failure_kind, failure_reason, count(*)::int AS rescues,
              max(rescued_at) AS last_rescued_at
-      FROM retry_rescues
-      WHERE project_id IN ${projectIds}
-        AND rescued_at >= now() - (${days}::int * interval '1 day')
+      FROM ${retryRescuesSince(projectIds, sql`now() - (${days}::int * interval '1 day')`)}
       GROUP BY project_id, failure_kind, failure_reason
       ORDER BY rescues DESC, last_rescued_at DESC
       LIMIT 2000

@@ -41,16 +41,22 @@ export async function readPulseFlow(projectIds: string[], now: Date): Promise<Pu
       WHERE i.project_id IN (${scope}) AND a.created_at >= ${windowStart}::date AND ${outOfTerminal}
       GROUP BY 1
     `) as unknown as Promise<Array<{ week: string; n: number }>>,
+    // cm:guard the two pre-window `activity_log` counts are ONE pass filtered two ways, not two scans of the same rows: both read the same predicate over the same join and differ only in which side of the transition they look at. The issue count stays its own subquery because it counts a different table (ISS-1022).
+    // cm:guard the window is NOT narrowed and must not be: this is the cumulative backlog the walk starts from, so a time bound would not trim rows, it would report a different number. No index serves this read and none is expected to — it reads everything older than the window, so a sequential scan is the right plan, and the fold above is the only thing that halves it (ISS-1022).
     db.execute(sql`
       SELECT
         (SELECT count(*)::int FROM issues i
           WHERE i.project_id IN (${scope}) AND i.created_at < ${windowStart}::date) AS created,
-        (SELECT count(*)::int FROM activity_log a JOIN issues i ON i.id = a.issue_id
-          WHERE i.project_id IN (${scope}) AND a.created_at < ${windowStart}::date
-            AND ${intoTerminal}) AS closed,
-        (SELECT count(*)::int FROM activity_log a JOIN issues i ON i.id = a.issue_id
-          WHERE i.project_id IN (${scope}) AND a.created_at < ${windowStart}::date
-            AND ${outOfTerminal}) AS reopened
+        terminal.closed,
+        terminal.reopened
+      FROM (
+        SELECT
+          count(*) FILTER (WHERE ${intoTerminal})::int AS closed,
+          count(*) FILTER (WHERE ${outOfTerminal})::int AS reopened
+        FROM activity_log a JOIN issues i ON i.id = a.issue_id
+        WHERE i.project_id IN (${scope}) AND a.created_at < ${windowStart}::date
+          AND a.action = 'issue.statusChanged'
+      ) terminal
     `) as unknown as Promise<Array<{ created: number; closed: number; reopened: number }>>,
   ]);
 

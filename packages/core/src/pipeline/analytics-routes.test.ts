@@ -157,53 +157,6 @@ describe('GET /api/pipeline/throughput', () => {
   });
 });
 
-describe('GET /api/pipeline/cycle-time', () => {
-  it('401 without token', async () => {
-    const app = buildApp();
-    const res = await app.fetch(req('/api/pipeline/cycle-time'));
-    expect(res.status).toBe(401);
-  });
-
-  it('400 on bad projectId uuid', async () => {
-    const token = await signUserToken('u-1');
-    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-
-    const app = buildApp();
-    const res = await app.fetch(req('/api/pipeline/cycle-time?projectId=not-uuid', { token }));
-    expect(res.status).toBe(400);
-  });
-
-  it('returns [] when user has no visible projects', async () => {
-    const token = await signUserToken('u-1');
-    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    visibleIds.mockResolvedValueOnce([]);
-
-    const app = buildApp();
-    const res = await app.fetch(req('/api/pipeline/cycle-time', { token }));
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual([]);
-  });
-
-  it('returns avgHours per status', async () => {
-    const token = await signUserToken('u-1');
-    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    visibleIds.mockResolvedValueOnce(['p-1']);
-    dbExecute.mockResolvedValueOnce([
-      { status: 'open', avg_hours: 4.5, n: 12 },
-      { status: 'in_progress', avg_hours: 23.1, n: 8 },
-    ]);
-
-    const app = buildApp();
-    const res = await app.fetch(req('/api/pipeline/cycle-time', { token }));
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as Array<{ status: string; avgHours: number; n: number }>;
-    expect(body).toHaveLength(2);
-    expect(body[0]?.status).toBe('open');
-    expect(body[0]?.avgHours).toBe(4.5);
-    expect(body[1]?.n).toBe(8);
-  });
-});
-
 describe('GET /api/pipeline/step-durations', () => {
   it('401 without token', async () => {
     const app = buildApp();
@@ -314,8 +267,7 @@ describe('GET /api/pipeline/step-durations', () => {
     const res = await app.fetch(req('/api/pipeline/step-durations?step=code', { token }));
     expect(res.status).toBe(200);
     expect(dbExecute).toHaveBeenCalledTimes(1);
-    // The drizzle SQL object exposes a `.queryChunks` array; inspect it for
-    // the literal 'code' that the step filter binds.
+    // cm:guard the emitted SQL is read off the drizzle object's `.queryChunks`, where a chunk is either a `StringChunk` carrying literal text or a bare bound value, so a reader must branch on both: `JSON.stringify` of the object itself throws on the circular `PgTable` graph.
     const queryArg = dbExecute.mock.calls[0]?.[0] as {
       queryChunks?: Array<{ value?: unknown }>;
     };

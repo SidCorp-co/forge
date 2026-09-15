@@ -80,6 +80,37 @@ describe("the decision card", () => {
     expect(onAnswer).toHaveBeenCalledWith({ questionId: "q-1", optionId: "opt-a", round: 3 });
   });
 
+  // cm:guard this is the PROJECT QUEUE's row shape and it is a different shape, not a smaller one: `GET /api/questions?projectId=` stopped sending `steps` in ISS-1022 and sends `currentStep` plus `rounds` instead, so a card reading `steps[steps.length - 1]` renders nothing at all on that screen — no prompt, no round, and a submit bound to `undefined`. The issue panel's shape is covered by every other case here; this one covers the other caller.
+  it("renders the live round and submits it when the row carries currentStep instead of steps", () => {
+    const onAnswer = vi.fn();
+    const full = question();
+    const queued = {
+      ...full,
+      steps: undefined,
+      currentStep: full.steps?.[1],
+      rounds: 3,
+    } as AgentQuestion;
+    render(<QuestionCard question={queued} onAnswer={onAnswer} pending={false} />);
+
+    expect(screen.getByText(/Round three, the one on screen/)).toBeInTheDocument();
+    expect(screen.getByText(/Round 3/)).toBeInTheDocument();
+    expect(screen.getByText(/2 earlier rounds/)).toBeInTheDocument();
+    expect(screen.queryByText(/Round one, already answered/)).toBeNull();
+    // cm:guard the fixture carries `issueId: null` — a master's question, which is the shape the project queue exists for — so the line must not offer an issue to open.
+    expect(screen.queryByText(/open the issue/i)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /choose rewrite the migration/i }));
+    expect(onAnswer).toHaveBeenCalledWith({ questionId: "q-1", optionId: "opt-a", round: 3 });
+  });
+
+  it("names the issue as the way to the earlier rounds when there is one", () => {
+    const full = question({ issueId: "i-1" });
+    const queued = { ...full, steps: undefined, currentStep: full.steps?.[1], rounds: 3 } as AgentQuestion;
+    render(<QuestionCard question={queued} onAnswer={vi.fn()} pending={false} />);
+
+    expect(screen.getByText(/2 earlier rounds — open the issue to read them/i)).toBeInTheDocument();
+  });
+
   // cm:guard `disabled` comes from the SERVER's verdict and from nothing else — this client has no access to the org-derived half of the rule, so a second opinion here is a lock drawn in pixels.
   it("disables exactly the options the server locked, and leaves them on screen", () => {
     render(

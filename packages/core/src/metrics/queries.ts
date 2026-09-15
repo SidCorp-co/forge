@@ -203,9 +203,7 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
     }
 
     case 'cycle_time': {
-      // Work-start = first transition into in_progress/approved (ISS-380 AC #3),
-      // NOT issues.created_at. Falls back to created_at for issues that predate
-      // those transitions so older resolved issues still contribute.
+      // cm:guard work-start is the first transition into in_progress/approved and NOT `issues.created_at` (ISS-380 AC #3), falling back to `created_at` only for issues predating those transitions, so older resolved issues still contribute rather than dropping out of the series.
       const rows = (await db.execute(sql`
         WITH resolved AS (
           SELECT al.issue_id,
@@ -218,11 +216,16 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
             AND al.created_at >= ${cutoff}
           GROUP BY al.issue_id
         ),
+        -- cm:guard ISS-1022 - scoped to the issues the resolved CTE above selected,
+        -- and that changes no figure: the outer query LEFT JOINs this on exactly
+        -- those ids, so every row it used to compute for another tenant's issue was
+        -- discarded. Without the scope it aggregated every transition in the table.
         work_start AS (
           SELECT al.issue_id, min(al.created_at) AS started_at
           FROM activity_log al
           WHERE al.action = 'issue.statusChanged'
             AND al.payload ->> 'to' IN ('in_progress', 'approved')
+            AND al.issue_id IN (SELECT r.issue_id FROM resolved r)
           GROUP BY al.issue_id
         )
         SELECT ${utcDateTrunc(bucket, sql`r.resolved_at`)} AS bucket,
@@ -524,6 +527,23 @@ export async function stepDurationsForProject(
   return result as unknown as ProjectStepDurationRow[];
 }
 
+/**
+ * The bounded rescue set: `retry_rescues_since`, called safely.
+ */
+// cm:guard the ONE place the function is called from, so its argument contract lives here and not in three callers: a NULL project list means EVERY project and an empty list means NO rows, so passing `null` for "I have no visible projects" hands that caller the whole fleet (ISS-1022).
+// cm:guard each id is bound as its own parameter through `sql.join`, never interpolated as a JS array — drizzle expands an interpolated array as a ROW CONSTRUCTOR, so `= ANY(tuple)` is a malformed array literal that throws at Bind time. Same idiom as `me/pulse-sql.ts#idList`.
+// cm:edge contract -> packages/core/drizzle/migrations/0250_bounded_read_indexes.sql — the function's signature and its null/empty and inclusive-`since` semantics are defined there
+export function retryRescuesSince(projectIds: readonly string[] | null, since: SQL): SQL {
+  const scope =
+    projectIds === null
+      ? sql`NULL::uuid[]`
+      : sql`ARRAY[${sql.join(
+          projectIds.map((id) => sql`${id}`),
+          sql`, `,
+        )}]::uuid[]`;
+  return sql`retry_rescues_since(${scope}, ${since})`;
+}
+
 export type RetryRescueRow = {
   failure_kind: string | null;
   failure_reason: string;
@@ -535,9 +555,7 @@ export async function retryRescues(projectId: string, days: number): Promise<Ret
   const result = await db.execute(sql`
     SELECT failure_kind, failure_reason, count(*)::int AS rescues,
            max(rescued_at) AS last_rescued_at
-    FROM retry_rescues
-    WHERE project_id = ${projectId}
-      AND rescued_at >= now() - (${days}::int * interval '1 day')
+    FROM ${retryRescuesSince([projectId], windowCutoff(days))}
     GROUP BY failure_kind, failure_reason
     ORDER BY rescues DESC, last_rescued_at DESC
   `);

@@ -5001,6 +5001,30 @@
   hold connection settings for the services a project talks to. Nothing on screen has ever read it.
   It is no longer sent.
 
+- **The screens that read a whole project — analytics, your pulse, the question list — now ask the
+  database for what they show instead of reading everything and cutting it down afterwards.** Ten
+  reads walked whole tables. The cycle-time chart had no time window at all, so one request scanned
+  every status change of every project you can see, back to the beginning. The retry-rescue figure
+  walked the retry chain of every job in the deployment before it looked at which project you had
+  asked about. Your pulse fetched every stale issue in order to show you twenty of them, and the
+  count beside the list was the number it had cut to — so an operator with four hundred abandoned
+  issues was told about twenty. The question list handed back every open question of a project with
+  its entire history of rounds attached, in one response with no page.
+  Each of those now asks a narrower question. **Cycle time takes a `days` window and defaults to
+  thirty**, up to ninety; the chart looks the same, and a request for a window outside that range is
+  refused rather than quietly widened. **Your pulse counts every stale issue and shows you the first
+  twenty**, so the total beside the list is now the real total and not the size of the list.
+  **The question list is paged** — up to two hundred a page, fifty by default — and each row carries
+  the round that is live rather than the whole history, plus the number of rounds it has had; reading
+  the questions on a single issue is unchanged and still carries everything. No figure on any of
+  these screens changes its meaning: where a time bound would have altered what a number means, the
+  bound was not added and an index was added instead.
+  Six of those indexes ship with this change, on the columns these reads actually constrain. A
+  seventh was built, measured and dropped: on this deployment the rows of the busiest table are
+  written in time order and stay that way, which makes the simpler index nearly as fast to scan as
+  the table itself, and a second index on that table that wins no query would only cost every write.
+
+
 - **Every place the assistant answers you now works to the same method, and your project chooses the
   language it answers in.** Until now that method lived inside the team-chat integration and nowhere
   else: the assistant in the Forge app answered on a single sentence, and a correction to any rule
