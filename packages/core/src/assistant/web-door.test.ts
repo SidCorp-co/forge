@@ -115,6 +115,7 @@ describe('the persona the Forge UI turn carries', () => {
   it('names the runner surface as a route a person can actually follow', () => {
     const persona = webConversationPersona('Forge', 'forge-dev', 'Alice');
     expect(persona).toContain('/projects/forge-dev/agents');
-    expect(persona).not.toContain('<slug>');
+    // `forge guide <slug>` in the inlined method is a CLI placeholder the model fills; the route one is the defect.
+    expect(persona).not.toContain('/projects/<slug>');
   });
 });

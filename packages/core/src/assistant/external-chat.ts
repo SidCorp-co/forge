@@ -38,6 +38,7 @@ import { runTurnEvents, usageForLog } from './run-turn-core.js';
 import { buildSystemPrompt } from './system-prompt.js';
 import type { ChatToolset } from './tools/mcp-adapter.js';
 import { applyTurnContext } from './turn-context.js';
+import { loadTurnSelf } from './turn-self.js';
 import { type ImageResolver, resolveVisionImages, type TurnImage } from './vision.js';
 
 export interface ExternalChatTurnArgs {
@@ -55,6 +56,15 @@ export interface ExternalChatTurnArgs {
   tools?: ChatToolset | undefined;
   /** `chat_logs.user_key` audit key (e.g. the external user id). */
   userKey?: string | null;
+  /**
+   * The Forge user the newest person message is LINKED to — whose preferences
+   * this reply honours and whose writes the speaker-bound tools make. Distinct
+   * from `userId`, which is who the turn ACTS as (ISS-1034).
+   */
+  // cm:guard three values, three meanings: absent means "the principal spoke" (every caller that predates the split, and every direct venue); a string names a linked speaker who is not the principal (a group venue); `null` means the newest author is nobody Forge knows, which the turn is TOLD rather than left to guess (codex F1).
+  speakerUserId?: string | null | undefined;
+  /** The transport's own label for the speaker, quoted in the unlinked sentence and nowhere else. */
+  speakerLabel?: string | null | undefined;
   /** Channel persona for the system prompt (ISS-609); override still wins. */
   persona?: string | null;
   /** Seeded recent-conversation block for the system prompt (ISS-609). */
@@ -150,8 +160,19 @@ export async function runExternalChatTurn(
     });
   }
 
+  // cm:guard the self is read off the HANDLE the turn speaks as (`turn.handleUserId`, the participant row carrying this project) and never off "the project's agent": a project may hold more than one agent account and the room names which one is in it (ISS-1034 criterion 3).
+  const speakerUserId =
+    args.speakerUserId === undefined ? (args.userId ?? null) : args.speakerUserId;
+  const { self, speakerContext } = await loadTurnSelf({
+    handleUserId: turn?.handleUserId ?? null,
+    speakerUserId,
+    speakerLabel: args.speakerLabel ?? args.userKey ?? null,
+    db: dbi,
+  });
+
   const systemPrompt = buildSystemPrompt({
     project: { name: project.name, agentConfig: project.agentConfig },
+    self,
     appConfig: appCfg ?? null,
     persona: args.persona ?? null,
     progressFacts: progress ? buildProgressFactsBlock(progress) : null,
@@ -169,7 +190,7 @@ export async function runExternalChatTurn(
         ? toProviderMessages(turn, resolvedImages).slice(-PROVIDER_HISTORY_WINDOW)
         : [{ role: 'user' as const, content: args.message }]),
     ],
-    { conversationContext: args.conversationContext },
+    { conversationContext: args.conversationContext, speakerContext },
   );
 
   const startedAt = Date.now();

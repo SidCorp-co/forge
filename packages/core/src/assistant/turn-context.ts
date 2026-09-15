@@ -9,6 +9,8 @@ import type { ChatContentPart, ChatMessage } from './providers/types.js';
 export interface TurnContext {
   conversationContext?: string | null | undefined;
   pageContext?: Record<string, unknown> | null | undefined;
+  /** What is known about the person the newest message is from — `preference-line.ts` renders it (ISS-1034). */
+  speakerContext?: string | null | undefined;
 }
 
 export function renderTurnContext(ctx: TurnContext): string | null {
@@ -22,6 +24,9 @@ export function renderTurnContext(ctx: TurnContext): string | null {
   if (ctx.pageContext && Object.keys(ctx.pageContext).length > 0) {
     sections.push(`Page context:\n${JSON.stringify(ctx.pageContext, null, 2)}`);
   }
+  // cm:guard on the newest USER message with the other volatile context and never in the system prompt: the speaker changes between turns in a group room, and a byte that moves in the system message is the cached prefix `tools[]` sits in gone for every round of the turn (ISS-1034).
+  const speaker = ctx.speakerContext?.trim();
+  if (speaker) sections.push(speaker);
   return sections.length > 0 ? sections.join('\n\n') : null;
 }
 

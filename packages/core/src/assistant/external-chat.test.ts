@@ -55,6 +55,18 @@ vi.mock('./conversation-turn.js', () => ({
     }),
 }));
 
+/** What the turn is told about who it speaks as and to; each case sets it. */
+const turnSelf: { self: unknown; speakerContext: string | null } = {
+  self: null,
+  speakerContext: null,
+};
+const loadTurnSelfCalls: Array<Record<string, unknown>> = [];
+vi.mock('./turn-self.js', () => ({
+  loadTurnSelf: async (input: Record<string, unknown>) => {
+    loadTurnSelfCalls.push(input);
+    return { self: turnSelf.self, speakerContext: turnSelf.speakerContext };
+  },
+}));
 vi.mock('./providers/bootstrap.js', () => ({ defaultChatProviderId: () => 'mock' }));
 vi.mock('../config/env.js', () => ({ env: { CHAT_CONTEXT_BUDGET_TOKENS: 80_000 } }));
 const buildSystemPromptCalls: Array<Record<string, unknown>> = [];
@@ -265,5 +277,78 @@ describe('runExternalChatTurn — what a turn writes to the room it reads', () =
     selectCall = 0;
     await runExternalChatTurn({ ...base, message: 'asked' });
     expect(persisted).toEqual([['user:asked', 'assistant:The answer is 42.']]);
+  });
+});
+
+describe('runExternalChatTurn — who the turn speaks as, and to', () => {
+  const reset = () => {
+    selectCall = 0;
+    seenRequests.length = 0;
+    buildSystemPromptCalls.length = 0;
+    loadTurnSelfCalls.length = 0;
+    turnSelf.self = null;
+    turnSelf.speakerContext = null;
+  };
+
+  // cm:guard the speaker is the LINKED AUTHOR handed in, never the principal the turn acts as: a group window runs as the room's execution principal, and a preference line bound to it would hand one person's style to everyone in the room (ISS-1034 criteria 18, 62).
+  it('hands the linked speaker, not the principal, to the self read, and puts the style line on the newest user message', async () => {
+    reset();
+    turnSelf.speakerContext = 'Reply style for the person you are answering: concise — short.';
+    await runExternalChatTurn({
+      projectId: 'p1',
+      adapter: 'rocketchat' as const,
+      conversationId: 'conv-1',
+      message: 'status?',
+      userId: 'principal-1',
+      userKey: 'thanh',
+      speakerUserId: 'speaker-1',
+    });
+    expect(loadTurnSelfCalls[0]).toMatchObject({
+      speakerUserId: 'speaker-1',
+      speakerLabel: 'thanh',
+      handleUserId: null,
+    });
+    const messages = seenRequests[0]?.messages as Array<{ role: string; content: string }>;
+    expect(messages[0]).toEqual({ role: 'system', content: 'SYS' });
+    expect(messages.at(-1)?.role).toBe('user');
+    expect(messages.at(-1)?.content).toContain(
+      'Reply style for the person you are answering: concise',
+    );
+    expect(messages.at(-1)?.content).toMatch(/---\n\nstatus\?$/);
+  });
+
+  // cm:guard an explicit null speaker stays null — it is the unlinked author, and falling back to the principal here would bind the unlinked person's turn to whoever the room runs as (ISS-1034 criteria 19, 20, 63).
+  it('keeps an explicit null speaker null and lets the unlinked sentence ride the newest user message', async () => {
+    reset();
+    turnSelf.speakerContext =
+      'Speaker: the newest message is from guest.42, who is not linked to a Forge user.';
+    await runExternalChatTurn({
+      projectId: 'p1',
+      adapter: 'rocketchat' as const,
+      conversationId: 'conv-1',
+      message: 'hello',
+      userId: 'principal-1',
+      userKey: 'guest.42',
+      speakerUserId: null,
+      speakerLabel: 'guest.42',
+    });
+    expect(loadTurnSelfCalls[0]).toMatchObject({ speakerUserId: null, speakerLabel: 'guest.42' });
+    const messages = seenRequests[0]?.messages as Array<{ role: string; content: string }>;
+    expect(messages.at(-1)?.content).toContain('not linked to a Forge user');
+    expect(buildSystemPromptCalls[0]).not.toHaveProperty('speakerContext');
+  });
+
+  it('treats an absent speaker as the principal speaking, and hands the self to the system prompt', async () => {
+    reset();
+    turnSelf.self = { soul: 'I am Babo.', instructions: null, presence: {} };
+    await runExternalChatTurn({
+      projectId: 'p1',
+      adapter: 'rocketchat' as const,
+      conversationId: 'conv-1',
+      message: 'hello',
+      userId: 'principal-1',
+    });
+    expect(loadTurnSelfCalls[0]).toMatchObject({ speakerUserId: 'principal-1' });
+    expect(buildSystemPromptCalls[0]?.self).toEqual(turnSelf.self);
   });
 });

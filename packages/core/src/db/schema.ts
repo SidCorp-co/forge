@@ -138,6 +138,10 @@ export const emailVerificationTokens = pgTable(
   }),
 );
 
+/** How a person wants the assistant to answer them, on every surface (ISS-1034). */
+export const answerStyles = ['default', 'concise', 'detailed', 'bullets'] as const;
+export type AnswerStyle = (typeof answerStyles)[number];
+
 export const userPreferences = pgTable('user_preferences', {
   userId: uuid('user_id')
     .primaryKey()
@@ -164,6 +168,14 @@ export const userPreferences = pgTable('user_preferences', {
   activeOrgId: uuid('active_org_id').references(() => organizations.id, {
     onDelete: 'set null',
   }),
+  /**
+   * How the assistant answers this person, read on every turn for the linked
+   * speaker whichever door they came through (ISS-1034). Per person, never per
+   * room or per project.
+   */
+  answerStyle: text('answer_style', { enum: answerStyles }).notNull().default('default'),
+  /** Free text the person wants every reply to honour — what to always include, never repeat. */
+  assistantInstructions: text('assistant_instructions'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -16,6 +16,7 @@ import { db as defaultDb } from '../db/client.js';
 import type { ConversationAdapter, ConversationShape } from '../db/schema-conversations.js';
 import {
   type ConversationWindowDecision,
+  type ConversationWindowOrigin,
   conversations,
   conversationWindows,
 } from '../db/schema-conversations.js';
@@ -110,6 +111,10 @@ export interface OpenOrExtendArgs {
   adapter: ConversationAdapter;
   /** The sequence number of the message that just landed. */
   seq: number;
+  /** The newest seq the window covers when it opens over a range; defaults to `seq` (ISS-1034 heartbeat). */
+  lastSeq?: number | undefined;
+  /** Who opened it: the inbound collector (default) or the heartbeat tick. */
+  origin?: ConversationWindowOrigin | undefined;
   now?: Date;
 }
 
@@ -133,7 +138,8 @@ export async function openOrExtendWindow(
       openedAt: now,
       extendedAt: now,
       firstSeq: args.seq,
-      lastSeq: args.seq,
+      lastSeq: args.lastSeq ?? args.seq,
+      origin: args.origin ?? 'inbound',
     })
     .onConflictDoUpdate({
       target: conversationWindows.conversationId,

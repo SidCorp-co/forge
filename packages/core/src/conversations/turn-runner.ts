@@ -77,6 +77,12 @@ export interface TurnHookContext {
   setPhase: (phase: string) => void;
   signal: AbortSignal;
   principalUserId: string;
+  /** The linked author of the newest person message, or null when nobody Forge knows (ISS-1034). */
+  speakerUserId: string | null;
+  /** The room this turn answers in, for the tools that write on the speaker's behalf. */
+  conversationId: string;
+  /** The handle answering for the venue's project in this room, or null where none is in it. */
+  handleUserId: string | null;
 }
 
 // cm:guard `send: false` is the explicit "this turn posts nothing" case, and it is not a failure: an adapter that handed the turn to a slower path answers through that path, and posting here as well double-replies (ISS-727).
@@ -90,6 +96,13 @@ export interface ConversationTurnRequest {
   principalUserId: string;
   /** The transport's own id for the speaker, for the audit row. */
   speakerKey: string;
+  /**
+   * The Forge user the newest person message is linked to. Absent: the
+   * principal spoke. `null`: nobody Forge knows did (ISS-1034).
+   */
+  speakerUserId?: string | null | undefined;
+  /** The handle answering for `venue.projectId` in this room, as the window read it; null where none is in it. */
+  handleUserId?: string | null | undefined;
   message: string;
   /** The door the reply goes out of; its row carries the pair and the repair budget. */
   door: DoorId;
@@ -156,10 +169,15 @@ interface TurnContext {
 
 async function composeReply(ctx: TurnContext): Promise<TurnReply> {
   const { req } = ctx;
+  const speakerUserId = req.speakerUserId === undefined ? req.principalUserId : req.speakerUserId;
+  // cm:guard the handle arrives ON THE REQUEST from the window that routed it and this runner reads the store for nothing new: every adapter test drives this runner against a FIFO of mocked selects, and one more query here shifted all of them (measured: 20 Rocket.Chat cases red at once). The chat tools stamp what the hook carries; a turn nobody gave a handle stamps null (ISS-1034 criterion 25).
   const hook: TurnHookContext = {
     setPhase: ctx.setPhase,
     signal: ctx.abort.signal,
     principalUserId: req.principalUserId,
+    speakerUserId,
+    conversationId: ctx.conversationId,
+    handleUserId: req.handleUserId ?? null,
   };
 
   const early = await req.divertBeforeTurn?.(hook);
@@ -177,6 +195,8 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
     record: req.questionAlreadyRecorded ? ('silence-only' as const) : ('question-only' as const),
     userId: req.principalUserId,
     userKey: req.speakerKey,
+    speakerUserId,
+    speakerLabel: req.speakerKey,
     persona: inputs.persona ?? null,
     conversationContext: inputs.conversationContext ?? null,
     tools: inputs.tools,

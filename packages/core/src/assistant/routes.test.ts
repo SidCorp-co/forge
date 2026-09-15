@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ChatMessage } from './providers/types.js';
+import type { ChatMessage, ChatStreamEvent, ChatStreamRequest } from './providers/types.js';
 
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
 
@@ -8,7 +8,7 @@ vi.mock('../config/env.js', () => ({
   env: { JWT_SECRET: TEST_SECRET, NODE_ENV: 'test' },
 }));
 
-import { ASSISTANT_METHOD_SLUG } from '../guides/assistant-method-guide.js';
+import { ASSISTANT_METHOD_GUIDE } from '../guides/assistant-method-guide.js';
 
 const selectLimit = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
@@ -123,6 +123,11 @@ vi.mock('./conversation-turn.js', () => ({
 }));
 
 const addPerson = vi.fn(async (..._a: unknown[]) => undefined);
+// cm:guard the two ISS-1034 loaders are mocked at the module seam rather than fed through the select FIFO: each is one more `select().from().where()` and threading them through the queue would shift every `mockResolvedValueOnce` below by one, so a test about the SSE door's history would fail on a row order it never asserted (ISS-1034).
+vi.mock('../orgs/agent-selves.js', () => ({ readSelvesFor: vi.fn(async () => new Map()) }));
+vi.mock('../auth/preference-changes.js', () => ({
+  readAssistantPreferences: vi.fn(async () => null),
+}));
 vi.mock('../conversations/participants.js', () => ({
   addPerson: (...args: unknown[]) => addPerson(...args),
 }));
@@ -194,6 +199,18 @@ function appConfigProviderRow(row: { chatProviderId: string | null; chatModel: s
 
 function seedConversation(messages: Array<{ role: string; content: string }> = []) {
   seededHistory = messages;
+}
+
+/** Registers the `mock` provider streaming `events`; `onReq` sees the request before the first one. */
+function mockProvider(events: ChatStreamEvent[], onReq?: (req: ChatStreamRequest) => void) {
+  register('mock', () => ({
+    id: 'mock',
+    defaultModel: 'mock-default',
+    async *stream(req: ChatStreamRequest) {
+      onReq?.(req);
+      yield* events;
+    },
+  }));
 }
 
 function chatLogsInsert() {
@@ -283,16 +300,12 @@ describe('POST /api/chat (mounted)', () => {
   });
 
   it('streams chunk + done, persists session + chat_logs (no WS broadcast)', async () => {
-    register('mock', () => ({
-      id: 'mock',
-      defaultModel: 'mock-default',
-      async *stream() {
-        yield { type: 'chunk' as const, text: 'hi ' };
-        yield { type: 'chunk' as const, text: 'there' };
-        yield { type: 'usage' as const, usage: { promptTokens: 5, completionTokens: 2 } };
-        yield { type: 'done' as const };
-      },
-    }));
+    mockProvider([
+      { type: 'chunk', text: 'hi ' },
+      { type: 'chunk', text: 'there' },
+      { type: 'usage', usage: { promptTokens: 5, completionTokens: 2 } },
+      { type: 'done' },
+    ]);
 
     authVerified();
     projectAccessAsMember();
@@ -352,16 +365,12 @@ describe('POST /api/chat (mounted)', () => {
 
   it('second turn with the same conversationId includes prior turn in provider call', async () => {
     let captured: ChatMessage[] = [];
-    register('mock', () => ({
-      id: 'mock',
-      defaultModel: 'mock-default',
-      async *stream(req: { messages: ChatMessage[] }) {
+    mockProvider(
+      [{ type: 'chunk', text: 'po' }, { type: 'chunk', text: 'ng' }, { type: 'done' }],
+      (req) => {
         captured = req.messages;
-        yield { type: 'chunk' as const, text: 'po' };
-        yield { type: 'chunk' as const, text: 'ng' };
-        yield { type: 'done' as const };
       },
-    }));
+    );
 
     authVerified();
     projectAccessAsMember();
@@ -402,14 +411,10 @@ describe('POST /api/chat (mounted)', () => {
   });
 
   it('writes chat_logs.error and emits error SSE on provider failure', async () => {
-    register('mock', () => ({
-      id: 'mock',
-      defaultModel: 'mock-default',
-      async *stream() {
-        yield { type: 'chunk' as const, text: 'partial' };
-        yield { type: 'error' as const, message: 'upstream 500' };
-      },
-    }));
+    mockProvider([
+      { type: 'chunk', text: 'partial' },
+      { type: 'error', message: 'upstream 500' },
+    ]);
 
     authVerified();
     projectAccessAsMember();
@@ -465,15 +470,9 @@ describe('the system prompt POST /api/chat opens with', () => {
   // cm:guard the system message is read for what it CONTAINS, not merely for its role: this door passed no persona until ISS-1007 and answered on `system-prompt.ts`'s one-sentence fallback, which asserting `role === 'system'` could never have told apart from a turn carrying the whole method.
   it('opens with the web persona rather than the one-line fallback', async () => {
     let captured: ChatMessage[] = [];
-    register('mock', () => ({
-      id: 'mock',
-      defaultModel: 'mock-default',
-      async *stream(req: { messages: ChatMessage[] }) {
-        captured = req.messages;
-        yield { type: 'chunk' as const, text: 'ok' };
-        yield { type: 'done' as const };
-      },
-    }));
+    mockProvider([{ type: 'chunk', text: 'ok' }, { type: 'done' }], (req) => {
+      captured = req.messages;
+    });
     authVerified();
     projectAccessAsMember();
     projectInfoRow({});
@@ -491,7 +490,7 @@ describe('the system prompt POST /api/chat opens with', () => {
 
     const system = captured[0]?.content ?? '';
     expect(system).not.toBe('You are a helpful assistant for project "Forge Dev".');
-    expect(system).toContain(ASSISTANT_METHOD_SLUG);
+    expect(system).toContain(ASSISTANT_METHOD_GUIDE.body.trim());
     expect(system).toContain('/projects/forge-dev/agents');
   });
 });

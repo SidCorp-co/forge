@@ -54,7 +54,25 @@ export type ProactivityVerdict =
 export interface ProactivityInput {
   conversationId: string;
   now?: Date;
+  /** The room's numbers; absent, today's constants (ISS-1034). */
+  thresholds?: ProactivityThresholds | undefined;
 }
+
+/** The four numbers the guards read. Semantics never move; only these do. */
+export interface ProactivityThresholds {
+  dormantMs: number;
+  backoffAfter: number;
+  loopBounceMs: number;
+  loopLimit: number;
+}
+
+// cm:guard the defaults ARE the constants above, by reference and not by copy: `presence.test.ts` asserts `PRESENCE_DEFAULTS` equal them so a room with no self decides exactly as before ISS-1034, and a second literal here would be the copy that drifts (ISS-1034 criterion 32).
+export const DEFAULT_THRESHOLDS: ProactivityThresholds = {
+  dormantMs: DORMANT_MS,
+  backoffAfter: BACKOFF_AFTER,
+  loopBounceMs: LOOP_BOUNCE_MS,
+  loopLimit: LOOP_LIMIT,
+};
 
 /**
  * Which of the messages in hand were written by an agent.
@@ -87,6 +105,7 @@ export async function decideProactivity(
   tx: Executor = defaultDb,
 ): Promise<ProactivityVerdict> {
   const now = input.now ?? new Date();
+  const t = input.thresholds ?? DEFAULT_THRESHOLDS;
   const messages = await readMessages(input.conversationId, GUARD_WINDOW, tx);
   const agents = await agentAuthors(messages, tx);
 
@@ -96,7 +115,7 @@ export async function decideProactivity(
   const anchorAt = anchor?.createdAt ?? messages[0]?.createdAt ?? now;
 
   const silentFor = now.getTime() - anchorAt.getTime();
-  if (silentFor > DORMANT_MS) {
+  if (silentFor > t.dormantMs) {
     return {
       speak: false,
       decision: 'guard-dormant',
@@ -104,10 +123,10 @@ export async function decideProactivity(
     };
   }
 
-  const loop = agentLoop(messages, agents, anchor);
+  const loop = agentLoop(messages, agents, anchor, t);
   if (loop) return loop;
 
-  return backoff(input.conversationId, anchorAt, tx);
+  return backoff(input.conversationId, anchorAt, t, tx);
 }
 
 /**
@@ -119,11 +138,12 @@ function agentLoop(
   messages: readonly StoredConversationMessage[],
   agents: ReadonlySet<string>,
   anchor: StoredConversationMessage | null,
+  t: ProactivityThresholds,
 ): ProactivityVerdict | null {
   const after = anchor
     ? messages.filter((m) => m.createdAt.getTime() > anchor.createdAt.getTime())
     : [...messages];
-  if (after.length < LOOP_LIMIT) return null;
+  if (after.length < t.loopLimit) return null;
 
   // cm:guard the classification is CHRONOLOGICAL and each message's identifiers join `seen` as it passes, so only the FIRST mention of a name introduces it: judged backwards against a set frozen before the run, agents repeating `ISS-42` at each other would each be introducing it again and the breaker would never fire, which is the escape hatch the whole guard exists to close (ISS-1004, review pass 1 F5).
   const seen = new Set<string>();
@@ -141,15 +161,15 @@ function agentLoop(
     if (!m) break;
     if (!isAgentMessage(m, agents)) break;
     // cm:guard the gap is between this message and the one AFTER it, and the newest message is compared with NOTHING: measuring the newest against `now` would make a qualifying burst stop being one the moment a restart delayed its window, so the same three messages would be cut or not cut depending on how busy the drain loop was (ISS-1004, review pass 2 F6).
-    if (previousAt !== null && previousAt - m.createdAt.getTime() > LOOP_BOUNCE_MS) break;
+    if (previousAt !== null && previousAt - m.createdAt.getTime() > t.loopBounceMs) break;
     if (!carriedNothing[i]) break;
     previousAt = m.createdAt.getTime();
     run += 1;
-    if (run >= LOOP_LIMIT) {
+    if (run >= t.loopLimit) {
       return {
         speak: false,
         decision: 'guard-agent-loop',
-        detail: { identicalRun: run, bounceMs: LOOP_BOUNCE_MS },
+        detail: { identicalRun: run, bounceMs: t.loopBounceMs },
       };
     }
   }
@@ -164,9 +184,10 @@ function agentLoop(
 async function backoff(
   conversationId: string,
   since: Date,
+  t: ProactivityThresholds,
   tx: Executor,
 ): Promise<ProactivityVerdict> {
-  const decisions = await recentDecisions(conversationId, { since, limit: BACKOFF_AFTER + 4 }, tx);
+  const decisions = await recentDecisions(conversationId, { since, limit: t.backoffAfter + 4 }, tx);
   let run = 0;
   for (const d of decisions) {
     if (d.decision === 'undetermined') continue;
@@ -178,7 +199,7 @@ async function backoff(
     if (d.decision !== 'nothing-to-say') break;
     run += 1;
   }
-  if (run >= BACKOFF_AFTER) {
+  if (run >= t.backoffAfter) {
     return {
       speak: false,
       decision: 'guard-backoff',

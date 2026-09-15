@@ -1,3 +1,4 @@
+export type { AgentSelf, AgentSelfPatch, PresenceConfig } from "@forge/contracts";
 // cm:edge contract -> packages/core/src/orgs/agent-accounts-routes.ts — these are the response shapes of `/api/orgs/:orgId/agents`; a field renamed there and not here fails only at runtime, and `orgs/agent-accounts.ts` is where the row is built.
 
 /** One row of `GET /api/orgs/:orgId/agents`. */

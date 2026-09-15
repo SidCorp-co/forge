@@ -12,6 +12,7 @@
 // person is looking hardest at what they just changed.
 
 import { zValidator } from '@hono/zod-validator';
+import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -20,6 +21,7 @@ import {
   addableHandles,
   addablePeople,
   assertPersonReachesScope,
+  personLabel,
   projectsNamed,
   settleShape,
 } from '../conversations/membership.js';
@@ -31,6 +33,7 @@ import {
 } from '../conversations/participants.js';
 import { derivedScope } from '../conversations/scope.js';
 import { getConversation } from '../conversations/store.js';
+import { conversationParticipants } from '../db/schema-conversations.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
@@ -145,6 +148,12 @@ conversationMemberRoutes.post(
     await withMembershipLock(id, actor, async (tx, _room, scope) => {
       await assertPersonReachesScope(joining, scope, tx);
       await addPerson({ conversationId: id, userId: joining, actorUserId: actor, tx });
+      // cm:guard the person add settles the shape too, which ISS-1011 reserved for the handle add: a second person turns a one-to-one chat into a room, and a row still calling itself `direct` would fence the newcomer out of the very room they were just put in (ISS-1034 criterion 41).
+      await settleShape(tx, id, {
+        kind: 'person',
+        label: await personLabel(tx, joining),
+        verb: 'joined',
+      });
     });
     return c.json(await membershipOf(id, actor), 201);
   },
@@ -189,9 +198,41 @@ conversationMemberRoutes.delete(
     const { id, participantId } = c.req.valid('param');
     const actor = c.get('userId');
     await withMembershipLock(id, actor, async (tx) => {
+      const leaving = await participantLabel(tx, id, participantId);
       // cm:guard joins the lock rather than taking its own: `removeParticipant` fences its last-one-out count on the same conversation row, so a second `FOR UPDATE` from inside this transaction would be the same lock re-taken, while a second TRANSACTION would be the race it exists to stop.
       await removeParticipant({ conversationId: id, participantId, tx: tx as never });
+      if (leaving) await settleShape(tx, id, { ...leaving, verb: 'left' });
     });
     return c.json(await membershipOf(id, actor));
   },
 );
+
+/** Who a participant row is, for the line the room is told when they leave. */
+async function participantLabel(
+  tx: Parameters<typeof settleShape>[0],
+  conversationId: string,
+  participantId: string,
+): Promise<{ kind: 'person' | 'handle'; label: string } | null> {
+  const [row] = await tx
+    .select({
+      kind: conversationParticipants.kind,
+      userId: conversationParticipants.userId,
+      label: conversationParticipants.label,
+      externalKey: conversationParticipants.externalKey,
+    })
+    .from(conversationParticipants)
+    .where(
+      and(
+        eq(conversationParticipants.id, participantId),
+        eq(conversationParticipants.conversationId, conversationId),
+      ),
+    )
+    .limit(1);
+  if (!row) return null;
+  if (row.kind === 'handle')
+    return { kind: 'handle', label: row.label ?? row.userId ?? participantId };
+  const label = row.userId
+    ? await personLabel(tx, row.userId)
+    : (row.label ?? row.externalKey ?? participantId);
+  return { kind: 'person', label };
+}

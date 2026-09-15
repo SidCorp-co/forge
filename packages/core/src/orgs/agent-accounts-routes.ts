@@ -7,10 +7,14 @@
  */
 
 import { zValidator } from '@hono/zod-validator';
+import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { projectMemberRoles } from '../db/schema.js';
+import { writeAssistantPreferences } from '../auth/preference-changes.js';
+import { PresenceValidationError } from '../conversations/presence.js';
+import { db } from '../db/client.js';
+import { answerStyles, organizationMembers, projectMemberRoles } from '../db/schema.js';
 import { assertOrgAccess } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
 import {
@@ -21,6 +25,7 @@ import {
   revokeAgentCredentials,
   setAgentDisplayName,
 } from './agent-accounts.js';
+import { agentSelfPatchSchema, readAgentSelf, writeAgentSelf } from './agent-selves.js';
 
 export const agentAccountRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -144,5 +149,92 @@ agentAccountRoutes.patch(
     );
     if (displayName === undefined) throw notFound('agent not found');
     return c.json({ displayName });
+  },
+);
+
+// ---------------------------------------------------------------------------
+// The agent's SELF (ISS-1034): who it is, how it presents, how present it is.
+// ---------------------------------------------------------------------------
+
+agentAccountRoutes.get(
+  '/:orgId/agents/:agentUserId/self',
+  zValidator('param', agentParamSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  async (c) => {
+    const { orgId, agentUserId } = c.req.valid('param');
+    await assertOrgAccess(orgId, c.get('userId'), 'admin');
+    const self = await readAgentSelf(orgId, agentUserId);
+    if (!self) throw notFound('agent not found');
+    return c.json(self);
+  },
+);
+
+// cm:guard a presence refusal is the validator's own sentence — which key, which bound — and not `Invalid input`: the admin fixing the payload reads this response and nothing else (ISS-1034 criterion 39/40).
+agentAccountRoutes.patch(
+  '/:orgId/agents/:agentUserId/self',
+  zValidator('param', agentParamSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  zValidator('json', agentSelfPatchSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  async (c) => {
+    const { orgId, agentUserId } = c.req.valid('param');
+    const actor = c.get('userId');
+    await assertOrgAccess(orgId, actor, 'admin');
+    try {
+      const self = await writeAgentSelf(orgId, agentUserId, c.req.valid('json'), actor);
+      if (!self) throw notFound('agent not found');
+      return c.json(self);
+    } catch (err) {
+      if (err instanceof PresenceValidationError) {
+        throw new HTTPException(400, {
+          message: err.message,
+          cause: { code: 'PRESENCE_INVALID', issues: err.issues },
+        });
+      }
+      throw err;
+    }
+  },
+);
+
+const memberParamSchema = z.object({ orgId: z.uuid(), userId: z.uuid() });
+
+const memberAssistantPrefsSchema = z
+  .object({
+    answerStyle: z.enum(answerStyles).optional(),
+    assistantInstructions: z.string().trim().max(2000).nullable().optional(),
+  })
+  .strict()
+  .refine((v) => v.answerStyle !== undefined || v.assistantInstructions !== undefined, {
+    error: 'at least one of answerStyle/assistantInstructions is required',
+  });
+
+// cm:guard an admin writes a MEMBER's assistant preferences through the same writer the person and the assistant use, so the trail shows `admin` and the person can restore it — a direct UPDATE here would be the one write nobody could undo (ISS-1034 criterion 58).
+agentAccountRoutes.patch(
+  '/:orgId/members/:userId/assistant-preferences',
+  zValidator('param', memberParamSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  zValidator('json', memberAssistantPrefsSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  async (c) => {
+    const { orgId, userId } = c.req.valid('param');
+    const actor = c.get('userId');
+    await assertOrgAccess(orgId, actor, 'admin');
+    const [member] = await db
+      .select({ userId: organizationMembers.userId })
+      .from(organizationMembers)
+      .where(and(eq(organizationMembers.orgId, orgId), eq(organizationMembers.userId, userId)))
+      .limit(1);
+    if (!member) throw notFound('membership not found');
+    const prefs = await writeAssistantPreferences({
+      userId,
+      patch: c.req.valid('json'),
+      actor: { kind: 'admin', userId: actor },
+    });
+    return c.json(prefs);
   },
 );

@@ -30,6 +30,7 @@ import { buildSystemPrompt } from './system-prompt.js';
 import { buildChatToolContext } from './tools/principal.js';
 import { buildProjectToolset } from './tools/registry.js';
 import { applyTurnContext } from './turn-context.js';
+import { loadTurnSelf } from './turn-self.js';
 
 const chatRequestSchema = z
   .object({
@@ -99,8 +100,16 @@ chatRoutes.post(
     appendUserMessage(turn, message, { authorUserId: userId });
 
     // cm:guard this door takes the SAME persona the browser's conversation route takes, and passing none is what it used to do: `system-prompt.ts`'s fallback is one sentence with no method in it, so a turn here answered without the investigate-first and issue-quality rules every other door is held to (ISS-1007).
+    // cm:guard the self is read off `turn.handleUserId` and the preferences off the signed-in person, the same two reads `external-chat.ts` makes for the browser door: a door that skipped either would answer as a nameless agent to a person whose style it ignores, and nothing else in the request would say so (ISS-1034 criteria 3, 17).
+    const { self, speakerContext } = await loadTurnSelf({
+      handleUserId: turn.handleUserId,
+      speakerUserId: userId,
+      speakerLabel: null,
+      db,
+    });
     const systemPrompt = buildSystemPrompt({
       project,
+      self,
       appConfig: appCfg ?? null,
       persona: webConversationPersona(project.name, project.slug, null),
     });
@@ -109,12 +118,21 @@ chatRoutes.post(
         { role: 'system' as const, content: systemPrompt },
         ...toProviderMessages(turn).slice(-PROVIDER_HISTORY_WINDOW),
       ],
-      { pageContext },
+      { pageContext, speakerContext },
     );
 
     // cm:guard the toolset is NOT read-only, and this annotation claimed it was until ISS-1005 measured it: `CHAT_TOOL_ALLOWLIST` permits `forge_issues` create and update and `forge_comments` create. The fence is `guardIssueWrites`, not absence — a created issue is forced to `draft` so it cannot auto-triage and spawn a run, `data.relations` is refused outright, and an update may only reach draft/waiting/needs_info/on_hold/closed. That fence is per-key and open by default, which is how `data.relations` reached chat unclassified in ISS-868 and let a room retract a live `blocks` edge, so a key added to the allowlist is unfenced until somebody classifies it. It IS fenced to this project and this caller, and widening it here widens it for every room.
     const tools = buildProjectToolset(
-      buildChatToolContext({ userId, projectId, projectSlug: project.slug }),
+      buildChatToolContext({
+        userId,
+        projectId,
+        projectSlug: project.slug,
+        turn: {
+          conversationId: turn.conversationId,
+          speakerUserId: userId,
+          handleUserId: turn.handleUserId,
+        },
+      }),
     );
 
     return runChatTurn({

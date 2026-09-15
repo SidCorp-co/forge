@@ -1,7 +1,7 @@
 // cm:edge contract -> packages/core/src/orgs/agent-accounts-routes.ts — the paths and their bodies are the wire shape. `/api/orgs` is deliberately absent from the PAT surface, so every call here is a signed-in org admin's and none of it is reachable by a token.
 
 import { apiClient } from "@/lib/api/client";
-import type { AgentAccountRow, AgentCredentialMinted } from "./types";
+import type { AgentAccountRow, AgentCredentialMinted, AgentSelf, AgentSelfPatch } from "./types";
 
 export const agentAccountsApi = {
   /** `GET /api/orgs/:orgId/agents` */
@@ -25,5 +25,14 @@ export const agentAccountsApi = {
     apiClient<{ displayName: string | null }>(`/orgs/${orgId}/agents/${agentUserId}`, {
       method: "PATCH",
       body: JSON.stringify({ displayName }),
+    }),
+  /** `GET /api/orgs/:orgId/agents/:agentUserId/self` — who the agent is, and when it speaks (ISS-1034). */
+  getSelf: (orgId: string, agentUserId: string) =>
+    apiClient<AgentSelf>(`/orgs/${orgId}/agents/${agentUserId}/self`),
+  /** `PATCH …/self` — any subset; 400 `PRESENCE_INVALID` names the key and its bound. */
+  updateSelf: (orgId: string, agentUserId: string, patch: AgentSelfPatch) =>
+    apiClient<AgentSelf>(`/orgs/${orgId}/agents/${agentUserId}/self`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
     }),
 };

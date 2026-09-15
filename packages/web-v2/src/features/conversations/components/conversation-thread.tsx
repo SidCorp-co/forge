@@ -28,6 +28,17 @@ function Said({ message }: { message: ConversationMessage }) {
       </div>
     );
   }
+  // cm:guard a `system` row is ONE muted line and never a bubble: it is the room telling its readers what happened to it — who joined, why it is a group now — and rendered as an assistant turn it would read as the agent claiming somebody joined (ISS-1034 criterion 48).
+  if (message.role === "system") {
+    return (
+      <p
+        className="fg-caption text-center text-subtle"
+        data-testid="thread-system"
+      >
+        {message.content}
+      </p>
+    );
+  }
   if (message.role === "user") {
     return (
       <div className="flex flex-col items-end">

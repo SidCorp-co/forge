@@ -60,6 +60,12 @@ export interface ConversationTransport {
   readonly adapter: ConversationAdapter;
   deliver(venue: ConversationVenue, message: ScreenedMessage): Promise<DeliveryReceipt>;
   fetchHistory(venue: ConversationVenue, limit: number): Promise<ConversationHistoryMessage[]>;
+  /**
+   * Whether a room's shape follows who is in it — both ways — or is settled
+   * when its venue is first seen. Absent: settled (ISS-1034).
+   */
+  // cm:guard declared by the TRANSPORT and never inferred from its name, because the store names no transport: a channel whose room is a chat client's own has a shape the client decided and `assertVenueMatches` holds it to; a room Forge itself owns has nothing outside it to disagree with, and its shape may move with its members (ISS-1034 criteria 41-46).
+  shapeFollowsMembership?: boolean;
 }
 
 /** The inbound half: typed to the transport's own frame, so it is called where that frame exists. */

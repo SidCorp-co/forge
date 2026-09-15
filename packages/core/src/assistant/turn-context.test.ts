@@ -61,4 +61,26 @@ describe('applyTurnContext', () => {
     expect(applyTurnContext(messages, {})).toEqual(messages);
     expect(applyTurnContext(messages, { conversationContext: ' ' })).toEqual(messages);
   });
+
+  describe('speakerContext (ISS-1034)', () => {
+    it('rides the newest user message after the other sections, never the system message', () => {
+      const out = applyTurnContext(
+        [
+          { role: 'system', content: 'SYS' },
+          { role: 'user', content: 'older' },
+          { role: 'assistant', content: 'reply' },
+          { role: 'user', content: 'newest' },
+        ],
+        { speakerContext: 'Reply style for the person you are answering: concise — brief.' },
+      );
+      expect(out[0]?.content).toBe('SYS');
+      expect(out[1]?.content).toBe('older');
+      expect(out[3]?.content).toBe(
+        'Reply style for the person you are answering: concise — brief.\n\n---\n\nnewest',
+      );
+    });
+    it('is omitted when empty', () => {
+      expect(renderTurnContext({ speakerContext: '  ' })).toBeNull();
+    });
+  });
 });

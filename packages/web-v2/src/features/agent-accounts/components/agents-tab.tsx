@@ -39,8 +39,10 @@ import {
 } from "../hooks";
 import { agentAddress, agentLabel, reachOf } from "../label";
 import type { AgentAccountRow } from "../types";
+import { AgentSelfEditor } from "./agent-self-editor";
 
 export function AgentsTab() {
+  const [selfOpen, setSelfOpen] = useState<string | null>(null);
   const { activeOrg } = useActiveOrg();
   const orgId = activeOrg?.id ?? null;
   const agentsQ = useAgentAccounts(orgId);
@@ -107,6 +109,7 @@ export function AgentsTab() {
     }
   }
 
+  const openAgent = selfOpen ? agents.find((a) => a.userId === selfOpen) : undefined;
   return (
     <div className="space-y-6">
       <header>
@@ -234,6 +237,15 @@ export function AgentsTab() {
                           >
                             Revoke
                           </Button>
+                          <Button
+                            variant="ghost"
+                            aria-expanded={selfOpen === agent.userId}
+                            onClick={() =>
+                              setSelfOpen(selfOpen === agent.userId ? null : agent.userId)
+                            }
+                          >
+                            {selfOpen === agent.userId ? "Close self" : "Self"}
+                          </Button>
                         </div>
                       </TD>
                     </TR>
@@ -241,6 +253,16 @@ export function AgentsTab() {
                 })}
               </TBody>
             </Table>
+            {openAgent && (
+              <div className="mt-6 border-t border-line pt-6">
+                <h3 className="fg-h3 mb-3">Self of {agentLabel(openAgent)}</h3>
+                <AgentSelfEditor
+                  orgId={orgId}
+                  agentUserId={openAgent.userId}
+                  handle={agentAddress(openAgent)}
+                />
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

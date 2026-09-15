@@ -74,4 +74,22 @@ describe("ConversationThread", () => {
     );
     expect(screen.getByText(/The agent said nothing here/)).toBeInTheDocument();
   });
+
+  // cm:guard asserted by test id AND by the absence of the assistant renderer's text: a system line that came out as a bubble would still contain the text, so the text alone proves nothing (ISS-1034 criterion 48).
+  it("renders a system row as one muted line, not as an assistant bubble", () => {
+    const joined: ConversationMessage = {
+      ...asked,
+      id: "m9",
+      seq: 9,
+      role: "system",
+      authorUserId: null,
+      authorLabel: "system",
+      content: "bob@example.com joined; this room is now a group.",
+    };
+    render(<ConversationThread messages={[asked, joined]} windows={[]} />);
+    const line = screen.getByTestId("thread-system");
+    expect(line).toHaveTextContent("bob@example.com joined; this room is now a group.");
+    expect(line.tagName).toBe("P");
+    expect(line.closest("[class*='rounded-lg']")).toBeNull();
+  });
 });

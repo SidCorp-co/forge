@@ -1,12 +1,12 @@
 // What every assistant door says, and what the Forge web doors add to it.
 //
-// One method reaches every door as a GUIDE rather than as prose copied into
-// each persona: the opening below tells the model which slug to fetch, and
-// `guides/assistant-method-guide.ts` holds the text. A channel's own persona is
-// then only what is true of that channel.
+// One method reaches every door from ONE module: `guides/assistant-method-guide.ts`
+// holds the text and the opening below renders it whole, so a door carries the
+// method as part of who it is rather than as something it goes and fetches. A
+// channel's own persona is then only what is true of that channel (ISS-1034).
 
 // cm:guard this module parses NO environment and must not start to: `web-door.test.ts` and `conversation-send.test.ts` mock `db/client.js` precisely so that composing a persona needs no env, and an `env` import here makes both fail to COLLECT rather than fail an assertion — a whole file's coverage gone for a string. A door that has a web origin passes it in (ISS-1007).
-import { ASSISTANT_METHOD_SLUG } from '../guides/assistant-method-guide.js';
+import { ASSISTANT_METHOD_GUIDE } from '../guides/assistant-method-guide.js';
 
 /** What a door tells `assistantOpening` about itself. */
 export interface DoorOpening {
@@ -21,12 +21,15 @@ export interface DoorOpening {
  * The lines every door opens with: who the assistant is, where the method
  * lives, and how to link an issue it cites.
  */
-// cm:guard the pointer names the slug and says to read it BEFORE answering, because that sentence is the whole of what replaced twenty bullets of prose: a persona that merely mentions a guide exists leaves the model to decide whether the method is worth a tool call, and the method it would be skipping is the one that stops it filing a thin issue (ISS-1007).
-// cm:edge contract -> packages/core/src/guides/assistant-method-guide.ts — ASSISTANT_METHOD_SLUG is interpolated below and must resolve through `forge_guide`, which requires that tool on CHAT_TOOL_ALLOWLIST. Drop it from the allowlist and this line sends the model after something it cannot fetch, which is strictly worse than the prose it replaced.
+// cm:guard the method body is RENDERED here and no line tells the model to fetch it: ISS-1007 made it a guide so twenty bullets stopped being copied into each persona, and the one copy stays — in `assistant-method-guide.ts` — but a method the model must spend a tool round retrieving is one it can skip, and measured on beta 2026-09-15 the fetch cost a provider round-trip on every turn including "ping" for a 2 ms read of a constant. Delivering the text is what the ISS-1007 guard asked for; fetching was the means, not the end (ISS-1034).
+// cm:edge contract -> packages/core/src/guides/assistant-method-guide.ts — the body interpolated below is that module's export, still served by `forge_guide get answering-as-the-assistant` for a reader outside a turn; that module imports only a type, which is what lets this env-free module import it.
 export function assistantOpening(door: DoorOpening): string[] {
   return [
     `You are the working assistant for project "${door.projectName}", ${door.venue}.`,
-    `- Your method is a guide, not a memo: call forge_guide with action "get" and slug "${ASSISTANT_METHOD_SLUG}" BEFORE you answer, and follow what it says. It is how a request is worked here; the lines below add only what is true of this channel.`,
+    '',
+    ASSISTANT_METHOD_GUIDE.body.trim(),
+    '',
+    'The lines below add only what is true of this channel.',
     // cm:guard the origin is a PREFIX and an absent one yields a root-relative path rather than dropping the line: a reader in a chat client is outside the product and needs the host, a reader in the app is already on it, and making the whole instruction conditional on an origin is how the web doors silently stopped being told to link an issue at all (ISS-1007).
     ...(door.projectSlug
       ? [

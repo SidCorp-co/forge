@@ -86,6 +86,8 @@ export async function publishToConversationReaders(
 // cm:guard `web` is already a legal `conversations.adapter` value and has been since ISS-1001, so registering this adapter is one `registerConversationTransport` call and no migration — which is the property `ports.test.ts` asserts and this file is the first real instance of (ISS-1004 step 5).
 export const webConversationPorts: ConversationAdapterPorts<WebConversationFrame> = {
   adapter: 'web',
+  // cm:guard the Forge UI's rooms move between `direct` and `group` as people come and go: nothing outside Forge holds an opinion about their shape, and the route reads it off the row on every request (ISS-1034 criteria 41-44).
+  shapeFollowsMembership: true,
 
   // cm:guard the venue is built from the room the route already read and its shape is NOT re-decided here: the route authorized the caller against that exact row, and a second read that disagreed would answer under a binding nobody checked.
   async resolveVenue(frame: WebConversationFrame): Promise<ConversationVenue | null> {
