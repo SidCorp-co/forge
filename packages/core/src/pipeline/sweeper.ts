@@ -34,7 +34,7 @@ import {
 import { parkedOnAHuman } from '../jobs/park-deadline.js';
 import { recordPipelineSweeperTick } from '../jobs/pgboss-health.js';
 import { NON_CLIENT_METADATA_TYPES, PIPELINE_METADATA_TYPES } from '../jobs/session-kinds.js';
-import { applyKernelTransition } from '../lifecycle/transition.js';
+import { applyKernelTransition, SWEEP_SESSION_COLUMNS } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { boss } from '../queue/boss.js';
@@ -555,6 +555,7 @@ export async function reapOrphanedOneShotRuns(
       // (the missed-`/desktop/status` case).
       const flipped = await applyKernelTransition(db, {
         entity: 'session',
+        returning: SWEEP_SESSION_COLUMNS,
         to: 'failed',
         set: { failureReason: 'heartbeat_timeout', updatedAt: now },
         where: and(
@@ -652,6 +653,7 @@ export async function closeIdleChatSessions(
   // cm:edge lockstep -> packages/core/src/agent-sessions/routes.ts — fourth writer of the completed-carries-no-reason contract (ISS-759)
   const flipped = await applyKernelTransition(db, {
     entity: 'session',
+    returning: SWEEP_SESSION_COLUMNS,
     to: 'completed',
     set: { failureReason: null, failureDetail: null, updatedAt: now },
     where: and(
@@ -793,7 +795,7 @@ export async function registerPipelineSweeper(): Promise<void> {
     }
   });
   // biome-ignore lint/suspicious/noExplicitAny: pg-boss v10 type drift
-  await (boss as any).schedule(PIPELINE_SWEEPER_QUEUE, '* * * * *'); // every minute
+  await (boss as any).schedule(PIPELINE_SWEEPER_QUEUE, '* * * * *');
   registered = true;
 }
 

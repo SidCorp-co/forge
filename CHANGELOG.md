@@ -4836,6 +4836,20 @@
   it refuses and names the limit, rather than quietly handing back a smaller page than the one you
   asked for.
 
+- **The busiest path in the system stopped doing work nobody reads.** Every running agent reports to
+  Forge about twice a second, and each of those reports used to load the whole job row — the prompt
+  it was given, the block-by-block breakdown of that prompt, and the failure payload — to read eight
+  small fields. It then wrote to the database three times over: once to try a change that could only
+  ever apply to the very first report, once to do the thing that change was standing in for, and
+  once more to stamp a claim that had already been stamped. It now reads the eight fields it uses,
+  makes the session's liveness stamp in one write, and skips the claim entirely once it is made. The
+  same trimming reaches the housekeeping pass that closes sessions gone quiet: closing two hundred of
+  them no longer drags two hundred whole conversation transcripts — a quarter of a megabyte each on
+  average — through the server to read five short values. Nothing about what any of it does has
+  changed: sessions still go live exactly once and announce it exactly once, a session that is
+  waiting on a person is still not counted as working, and a conversation that owes somebody an
+  answer in a chat room still gets the whole of itself loaded so that answer can be written.
+
 - **Every place the assistant answers you now works to the same method, and your project chooses the
   language it answers in.** Until now that method lived inside the team-chat integration and nowhere
   else: the assistant in the Forge app answered on a single sentence, and a correction to any rule

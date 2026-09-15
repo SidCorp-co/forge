@@ -24,7 +24,7 @@ import { SYNTHETIC_REAP_ERRORS, syncAgentSessionLifecycle } from './agent-sessio
 import { cancelJob, JobCancelError } from './cancel-job.js';
 import { finalizeFailedJob } from './finalize-failure.js';
 import { isResumeFailedError, reclassifyAbortedResume } from './handle-resume-failed.js';
-import { readJob } from './job-queries.js';
+import { readJobGate } from './job-queries.js';
 import { salvageSchema, salvageSet } from './prior-attempts.js';
 import { JobResumeError, resumeHeldJob } from './resume-job.js';
 import type { RetryOutcome } from './retry.js';
@@ -83,7 +83,7 @@ const RUNNABLE_STATUSES = new Set(['dispatched', 'running']);
 // cm:guard these markers are written by SERVER-side reapers only — the orphan reconcilers and the stale-detector — never by a real runner `/fail` (ISS-378). That is what makes a late successful `/complete` on a job carrying one reconcilable rather than a conflict: the runner did finish, its report was lost (a core outage), and a sweep reaped the row first. Add a marker a runner CAN write and this list starts forgiving a genuine contradiction.
 
 async function loadJob(jobId: string) {
-  const row = await readJob(jobId);
+  const row = await readJobGate(jobId);
   if (!row) throw notFound('job not found');
   return row;
 }
@@ -302,9 +302,6 @@ jobLifecycleDeviceRoutes.post(
 
     const status: 'done' | 'cancelled' | 'failed' =
       input.exitCode === 0 ? 'done' : input.exitCode === -1 ? 'cancelled' : 'failed';
-    // Mutable companion to `input.error` for the failure paths below
-    // (resume-fail / retry) that refine the reason without reassigning the
-    // validated input object.
     const effectiveError: string | null = input.error ?? null;
 
     let [updated] = await applyKernelTransition(db, {
@@ -386,9 +383,6 @@ jobLifecycleDeviceRoutes.post(
       void clearRunnerLimit(updated.runnerId, updated.projectId);
       void clearRunnerQuarantine(updated.runnerId, updated.projectId);
     }
-
-    // ISS-40 PR-E — re-tick the project so newly-freed slots get filled.
-    // Fire-and-forget; never await.
 
     // ISS-164 — refresh pipelineHealth for the linked issue (activeSession
     // clears, queued siblings may now classify differently).

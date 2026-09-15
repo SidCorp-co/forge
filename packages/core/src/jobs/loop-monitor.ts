@@ -17,7 +17,7 @@ import type { SQL } from 'drizzle-orm';
 import { and, eq, inArray, isNotNull, lt, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, jobs, pipelineRuns } from '../db/schema.js';
-import { applyKernelTransition } from '../lifecycle/transition.js';
+import { applyKernelTransition, SWEEP_SESSION_COLUMNS } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { resumeLapsedAnswers } from '../pipeline/answer-resume.js';
 import { CLASSIFIER_VERSION } from '../pipeline/failure-classifier.js';
@@ -395,6 +395,7 @@ export async function reapZombieSessions(
   // cm:guard the CAS on `status='queued'` is what keeps a worker claiming concurrently from being stomped, and `dispatchedAt` falls back to `createdAt` because rows predating that column have none — without the fallback every one of them reads as queued since the epoch and is failed on the first tick.
   const queuedFailed = await applyKernelTransition(db, {
     entity: 'session',
+    returning: SWEEP_SESSION_COLUMNS,
     to: 'failed',
     set: { failureReason: 'queue_timeout', updatedAt: now },
     where: and(
@@ -430,6 +431,7 @@ export async function reapZombieSessions(
   // cm:guard escalation and agent-chat sessions (ISS-675, ISS-727) MUST match here even though they carry no `metadata.type`: they ride the same runner heartbeat, and an attached-then-hung runner has `claudeSessionId` set, so the no-client hop below can never claim it — dropping them from this hop leaves the session `running` forever, no completion bridge, silence in the room, and the per-rid dedup never clears.
   const heartbeatFailed = await applyKernelTransition(db, {
     entity: 'session',
+    returning: SWEEP_SESSION_COLUMNS,
     to: 'failed',
     set: { failureReason: 'heartbeat_timeout', updatedAt: now },
     where: and(
@@ -487,6 +489,7 @@ export async function reapZombieSessions(
   // metadata.type (plain chat, schedule.run) counts as "not pipeline/pm".
   const noClientFailed = await applyKernelTransition(db, {
     entity: 'session',
+    returning: SWEEP_SESSION_COLUMNS,
     to: 'failed',
     set: { failureReason: 'no_client_ack', updatedAt: now },
     where: and(
@@ -494,11 +497,7 @@ export async function reapZombieSessions(
       sql`${agentSessions.claudeSessionId} IS NULL`,
       sql`COALESCE(${agentSessions.metadata}->>'type','') NOT IN ${NON_CLIENT_METADATA_TYPES}`,
       or(
-        // ISS-584 (C) fast path: the runner ACKed (a live client received the
-        // turn) but claude never emitted a session id within the short grace →
-        // claude died on startup. Positive ack evidence, so a SHORT window is
-        // safe (no false-positive on runners that don't ack — they fall through
-        // to the conservative heartbeat branches below).
+        // cm:why the short window is safe HERE and nowhere else in this hop: the ack is positive evidence that a live client received the turn, so a NULL `claudeSessionId` past `ackFastMs` means claude died on startup rather than that the runner is old. A runner that does not ack matches none of this and falls through to the conservative heartbeat branches below (ISS-584 C).
         and(
           sql`${agentSessions.metadata}->>'acked' = 'true'`,
           sql`COALESCE(${agentSessions.dispatchedAt}, ${agentSessions.createdAt}) < ${ackFastCutoffIso}`,

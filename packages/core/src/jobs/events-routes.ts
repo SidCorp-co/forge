@@ -1,5 +1,6 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, asc, eq, gt, isNull, notInArray, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, isNull, notInArray, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -21,7 +22,7 @@ import { type DeviceVars, requireDevice } from '../middleware/require-device.js'
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { broadcastSessionEvent } from './agent-session-link.js';
-import { readJob } from './job-queries.js';
+import { readJobGate } from './job-queries.js';
 import { maybeDeriveIncremental } from './session-transcript.js';
 
 const badRequest = (details: unknown) =>
@@ -52,6 +53,9 @@ const eventBatchSchema = z
 
 const TERMINAL_STATUSES = new Set(['done', 'failed', 'cancelled'] as const);
 
+/** The linked session as it stood BEFORE the heartbeat UPDATE below — see the guard there. */
+const previousSession = alias(agentSessions, 'prev');
+
 const eventsListQuerySchema = z
   .object({
     sinceSeq: z.coerce.number().int().min(0).optional(),
@@ -78,7 +82,7 @@ jobEventsListRoutes.get(
     const { sinceSeq, limit } = c.req.valid('query');
     const userId = c.get('userId');
 
-    const job = await readJob(jobId);
+    const job = await readJobGate(jobId);
     if (!job) throw notFound('job not found');
 
     const access = await loadProjectAccess(job.projectId, userId);
@@ -138,7 +142,7 @@ jobEventsRoutes.post(
     const { events } = c.req.valid('json');
     const device = c.get('device');
 
-    const job = await readJob(jobId);
+    const job = await readJobGate(jobId);
     if (!job) throw notFound('job not found');
     if (job.deviceId !== device.id) {
       throw forbidden('job is not dispatched to this device');
@@ -192,23 +196,23 @@ jobEventsRoutes.post(
       });
     }
 
-    // ISS-449 (I3) — fallback ack: the first event batch proves the runner
-    // claimed the job even when the explicit POST /:id/ack was lost or the
-    // runner predates it. Best-effort; the explicit ack (or a prior batch)
-    // wins via the isNull guard.
-    try {
-      await db
-        .update(jobs)
-        // cm:edge lockstep -> packages/core/src/jobs/lifecycle-routes.ts — the explicit ack clears the same kill columns; a first ack that leaves them behind hands a later reap a confirmation about a process that had not started yet (ISS-785)
-        .set({
-          ackedAt: new Date(),
-          killRequestedAt: null,
-          killConfirmedAt: null,
-          killOutcome: null,
-        })
-        .where(and(eq(jobs.id, jobId), isNull(jobs.ackedAt)));
-    } catch (err) {
-      logger.warn({ err, jobId }, 'job-events: ack fallback stamp failed (continuing)');
+    // cm:why ISS-449 (I3) — fallback ack: the first event batch proves the runner claimed the job even when the explicit POST /:id/ack was lost or the runner predates it. Best-effort; the explicit ack (or a prior batch) wins via the isNull guard.
+    // cm:guard the `isNull` predicate below is the RACE guard and stays; this branch is the CHEAP guard, on the row this handler already read. Without it the statement ran on every batch of every running job and matched nothing after the first (ISS-1014). Dropping the predicate and keeping only this branch would be the other way round and is wrong: the read is outside the write, so two concurrent first batches would both stamp.
+    if (job.ackedAt === null) {
+      try {
+        await db
+          .update(jobs)
+          // cm:edge lockstep -> packages/core/src/jobs/lifecycle-routes.ts — the explicit ack clears the same kill columns; a first ack that leaves them behind hands a later reap a confirmation about a process that had not started yet (ISS-785)
+          .set({
+            ackedAt: new Date(),
+            killRequestedAt: null,
+            killConfirmedAt: null,
+            killOutcome: null,
+          })
+          .where(and(eq(jobs.id, jobId), isNull(jobs.ackedAt)));
+      } catch (err) {
+        logger.warn({ err, jobId }, 'job-events: ack fallback stamp failed (continuing)');
+      }
     }
 
     // cm:guard server-side and NOT in the worker on purpose: the worker keys its local session by `jobId` and would have to learn the linked `agentSessionId` to PATCH the row itself. Moving it there couples every worker to the linkage for a bump core can do from the id it already has.
@@ -218,36 +222,44 @@ jobEventsRoutes.post(
     if (linkedSessionId && events.some((e) => !isParkEvent(e))) {
       try {
         const heartbeatNow = new Date();
-        const flipped = await withKernelMarker(db, async (tx) =>
+        // cm:why ONE statement, self-joined on its own pre-update snapshot (ISS-1014). It replaces a CAS on `status='queued'` that missed on every batch after the first plus a second UPDATE that then did the bump — two statements inside a transaction, about twice a second for every running job on the box. `UPDATE ... FROM agent_sessions prev` reads `prev` from the statement's snapshot, i.e. the row as it stood BEFORE this write, which is the only way one statement can still report whether the queued→running flip was THIS batch's. That is what keeps the broadcast firing exactly once.
+        // cm:guard an ISO STRING, never the `Date` — inside a raw `sql` template drizzle has no column type to serialise a Date against, so postgres-js is handed a bare Date at bind time and throws `The "string" argument must be of type string`. The same trap is already named on `ackFastCutoffIso` in `jobs/loop-monitor.ts`; the `.toISOString()` plus the cast is the fix.
+        // cm:guard `startedAt` is stamped ONLY on the flip, and deliberately not as `COALESCE(started_at, now)`: a row already `running` with a NULL `started_at` keeps it NULL, exactly as the two statements left it. Filling it in is a second behaviour change, and `loop-monitor.ts`'s heartbeat hop reads that column as a fallback cutoff.
+        // cm:guard `status` is written as the bare literal `'running'` and the WHERE is what makes that safe: the statement matches only `queued` or `running`, so the write is the flip on one and the same value on the other. Widening that WHERE would turn this into a door that revives a cancelled or failed session — and `lifecycle/transition-guard.test.ts` would not catch it, because `'running'` is not a terminal literal.
+        // cm:guard still inside `withKernelMarker` because this writes `status` — an unstamped status write on a kernel table charges its whole traffic to the north-star interventions metric as manual SQL (`db/kernel-marker.ts`).
+        const beat = await withKernelMarker(db, async (tx) =>
           tx
             .update(agentSessions)
             .set({
               status: 'running',
-              startedAt: heartbeatNow,
+              startedAt: sql`CASE WHEN ${agentSessions.status} = 'queued' THEN ${heartbeatNow.toISOString()}::timestamptz ELSE ${agentSessions.startedAt} END`,
               lastHeartbeatAt: heartbeatNow,
               updatedAt: heartbeatNow,
             })
-            .where(and(eq(agentSessions.id, linkedSessionId), eq(agentSessions.status, 'queued')))
+            .from(previousSession)
+            .where(
+              and(
+                eq(previousSession.id, agentSessions.id),
+                eq(agentSessions.id, linkedSessionId),
+                inArray(agentSessions.status, ['queued', 'running']),
+              ),
+            )
             .returning({
               id: agentSessions.id,
               projectId: agentSessions.projectId,
               deviceId: agentSessions.deviceId,
+              startedRunning: sql<boolean>`${previousSession.status} = 'queued'`,
             }),
         );
-        if (flipped.length > 0) {
-          const row = flipped[0];
-          if (row) {
-            broadcastSessionEvent(row.id, row.projectId, row.deviceId, 'agent-session.status', {
-              status: 'running',
-            });
-          }
-        } else {
-          // Already running (or terminal). Bump heartbeat only — guarded so we
-          // don't revive cancelled/failed/completed rows.
-          await db
-            .update(agentSessions)
-            .set({ lastHeartbeatAt: heartbeatNow, updatedAt: heartbeatNow })
-            .where(and(eq(agentSessions.id, linkedSessionId), eq(agentSessions.status, 'running')));
+        const beaten = beat[0];
+        if (beaten?.startedRunning) {
+          broadcastSessionEvent(
+            beaten.id,
+            beaten.projectId,
+            beaten.deviceId,
+            'agent-session.status',
+            { status: 'running' },
+          );
         }
       } catch (err) {
         logger.warn(
@@ -259,6 +271,7 @@ jobEventsRoutes.post(
 
     // cm:guard the JOB-EVENTS door is the ONLY writer of `runtime_state` on the pipeline path. The session-keyed PATCH cannot serve it: the runner keys a pipeline session by `job_id`, so a PATCH to `/api/agent-sessions/:id` with that id 404s. Without this write the column stays NULL for every duplex job, and all three readers of it — the quiet-clock exemption (loop-monitor.ts), the residency deadline (park-deadline.ts) and the result guard (resident-session.ts) — are inert on the path they were built for.
     // cm:guard OUTSIDE the heartbeat branch above, and that separation is the point: a park-only batch must record the park while NOT counting as activity. Folding this in there would make the two rules one, and the park would be invisible in exactly the case it matters.
+    // cm:guard and it stays a SECOND statement for a second reason found while collapsing the heartbeat into one (ISS-1014): the two match different row sets. The heartbeat takes `status IN ('queued','running')`; this one takes every non-terminal status, `idle` included. Folding them would silently stop recording the park on an idle session — so a batch that reports a runtime state writes `agent_sessions` twice, on purpose.
     if (job.agentSessionId) {
       const reported = events.reduce<SessionRuntimeState | undefined>(
         (acc, e) => runtimeStateOf(e) ?? acc,
