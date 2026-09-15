@@ -44,6 +44,27 @@ describe('the carried read forms against the bundled CLI (criterion 14)', () => 
       '1 positional(s) carried, Usage line takes 0',
     ]);
   });
+
+  // cm:guard a REQUIRED positional or a literal subcommand the Usage line grows is drift the carried form must fail on, not an upper bound it slips under (codex F2).
+  it('refuses a form that misses a required positional or a literal subcommand', () => {
+    const show = parseUsage('Usage: forge issue show <uuid> [--full]');
+    expect(formProblems({ argv: ['issue', 'ISS-<n>'], says: '' }, show)).toEqual([
+      'positional #1 must be the word `show`, not `ISS-<n>`',
+      'required positional #2 is not carried',
+    ]);
+    const twoRequired = parseUsage('Usage: forge guide <slug> <part>');
+    expect(formProblems({ argv: ['guide', '<slug>'], says: '' }, twoRequired)).toEqual([
+      'required positional #2 is not carried',
+    ]);
+    const alternatives = parseUsage(
+      'Usage: forge guide [contract [part]|<skill> [reference]|slug] [--for ISS-nn]',
+    );
+    expect(alternatives.positionals).toEqual([{ required: false, literal: null }]);
+    expect(formProblems({ argv: ['guide', '<slug>'], says: '' }, alternatives)).toEqual([]);
+    const optionalOnly = parseUsage('Usage: forge issue [<uuid|ISS-45>] [--status s]');
+    expect(optionalOnly.positionals).toEqual([{ required: false, literal: null }]);
+    expect(optionalOnly.options.get('--status')).toBe(true);
+  });
 });
 
 describe('the forge tool description', () => {

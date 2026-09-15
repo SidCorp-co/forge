@@ -176,8 +176,9 @@ export const ONLY_VERIFIED_CITATIONS: MessageRule = {
 // cm:guard no \b wrapping: JS's non-unicode \b treats accented Vietnamese letters as non-word characters, so a boundary before a phrase-initial word never matches — the internal `\s+` already delimits each alternative // i18n-allow: refers to the Vietnamese phrase words above
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 /** A Forge issue-navigation target: `/projects/<slug>/issues/<segment>`, behind a host and/or a `#` or not. */
+// cm:why a backtick, a pipe and an asterisk end the segment too: a technical reply puts a valid path in inline code and the closing backtick is not part of the documentId (codex F3).
 const ISSUE_NAV_RE =
-  /(?:https?:\/\/[^\s/]+\/?)?(#?)\/projects\/([\w-]+)\/issues\/([^\s/?#)\]>,.;:!"']+)/gi;
+  /(?:https?:\/\/[^\s/]+\/?)?(#?)\/projects\/([\w-]+)\/issues\/([^\s/?#)\]>,.;:!"'`|*]+)/gi;
 
 /** An issue link the web can open, or none. */
 // cm:guard scoped to Forge NAVIGATION targets and nothing else that has `/issues/` in it: `/api/issues/<id>/comments`, `packages/core/src/issues/routes.ts` and another host's tracker are legitimate in a role-holder's answer, and a rule refusing every `/issues/` path would refuse them in the one cell built to allow technical detail (ISS-1041, codex F5). What it refuses is the shape the persona prescribes and the model drifted from on beta: a hash route, or a segment that is not the documentId.

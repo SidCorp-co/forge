@@ -25,32 +25,67 @@ export function readFormsLine(): string {
   return `Read forms that need no -h: ${forms}.`;
 }
 
-/** A Usage line, read as the options it names (with whether each takes an operand) and how many positionals it takes. */
-export interface UsageShape {
-  readonly options: ReadonlyMap<string, boolean>;
-  readonly positionals: number;
+/** One positional slot of a Usage line: required outside brackets, optional inside; a literal is a word the caller must type as it stands. */
+export interface UsagePositional {
+  readonly required: boolean;
+  /** The word itself for a literal subcommand (`show`), null for a placeholder (`<uuid>`). */
+  readonly literal: string | null;
 }
 
+/** A Usage line, read as the options it names (with whether each takes an operand) and the positional slots before them, in order. */
+export interface UsageShape {
+  readonly options: ReadonlyMap<string, boolean>;
+  readonly positionals: readonly UsagePositional[];
+}
+
+// cm:guard positionals keep their ORDER, whether they are required, and their literal word: an upper bound on the count let `issue ISS-<n>` pass a Usage line that had grown a required `show` subcommand (codex F2). A bracketed group holding alternatives (`[contract [part]|<skill> [reference]|slug]`) is ONE optional slot the caller fills with any of them, so it carries no literal.
 /** `Usage: forge issue [<uuid|ISS-45>] [--status s] …` → its shape. */
 export function parseUsage(line: string): UsageShape {
   const after = line.replace(/^\s*Usage:\s*forge\s+\S+\s*/, '');
-  const tokens = after.replace(/[[\]]/g, ' ').split(/\s+/).filter(Boolean);
   const options = new Map<string, boolean>();
-  let positionals = 0;
+  const positionals: UsagePositional[] = [];
   let seenOption = false;
-  for (let i = 0; i < tokens.length; i++) {
-    const t = tokens[i] as string;
-    if (t.startsWith('--')) {
+  for (const group of topLevelGroups(after)) {
+    const optional = group.startsWith('[');
+    const inner = optional ? group.slice(1, -1) : group;
+    if (inner.startsWith('--')) {
       seenOption = true;
-      const next = tokens[i + 1];
-      const takesOperand = next !== undefined && !next.startsWith('--');
-      for (const flag of t.split('|')) options.set(flag, takesOperand);
-      if (takesOperand) i++;
-    } else if (!seenOption) {
-      positionals++;
+      const [flags, operand] = inner.split(/\s+/, 2);
+      for (const flag of (flags as string).split('|')) options.set(flag, operand !== undefined);
+      continue;
+    }
+    if (seenOption) continue;
+    if (inner.includes('|')) {
+      positionals.push({ required: !optional, literal: null });
+      continue;
+    }
+    for (const word of inner.replace(/[[\]]/g, ' ').split(/\s+/).filter(Boolean)) {
+      positionals.push({
+        required: !optional,
+        literal: /^[a-z][\w-]*$/.test(word) ? word : null,
+      });
     }
   }
   return { options, positionals };
+}
+
+/** Split a Usage tail into its top-level tokens: a bare word, or one `[…]` group with its nesting intact. */
+function topLevelGroups(text: string): string[] {
+  const groups: string[] = [];
+  let depth = 0;
+  let current = '';
+  for (const ch of text) {
+    if (ch === '[') depth++;
+    if (depth === 0 && /\s/.test(ch)) {
+      if (current) groups.push(current);
+      current = '';
+      continue;
+    }
+    current += ch;
+    if (ch === ']') depth--;
+  }
+  if (current) groups.push(current);
+  return groups;
 }
 
 /** Why a carried form does not fit the Usage line; empty when it does. */
@@ -72,7 +107,26 @@ export function formProblems(form: CliForm, usage: UsageShape): string[] {
       positionals++;
     }
   }
-  if (positionals > usage.positionals)
-    problems.push(`${positionals} positional(s) carried, Usage line takes ${usage.positionals}`);
+  const carried = rest.filter(
+    (t, i) =>
+      !t.startsWith('--') &&
+      !(
+        i > 0 &&
+        (rest[i - 1] as string).startsWith('--') &&
+        usage.options.get(rest[i - 1] as string)
+      ),
+  );
+  usage.positionals.forEach((slot, i) => {
+    const got = carried[i];
+    if (slot.required && got === undefined) {
+      problems.push(`required positional ${slot.literal ?? `#${i + 1}`} is not carried`);
+    } else if (slot.literal !== null && got !== undefined && got !== slot.literal) {
+      problems.push(`positional #${i + 1} must be the word \`${slot.literal}\`, not \`${got}\``);
+    }
+  });
+  if (positionals > usage.positionals.length)
+    problems.push(
+      `${positionals} positional(s) carried, Usage line takes ${usage.positionals.length}`,
+    );
   return problems;
 }

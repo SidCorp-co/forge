@@ -223,6 +223,22 @@ describe('writeAssistantPreferences', () => {
     });
   });
 
+  // cm:guard the STORED side is canonicalised too: a row an older writer left padded reads equal to its canonical form (codex F1).
+  it('writes no row when a legacy padded row is re-sent in canonical form', async () => {
+    state.prefs.set(ALICE, {
+      userId: ALICE,
+      answerStyle: 'default',
+      assistantInstructions: '  no emoji \n',
+      updatedAt: new Date(1),
+    });
+    await writeAssistantPreferences({
+      userId: ALICE,
+      patch: { assistantInstructions: 'no emoji' },
+      actor: { kind: 'person', userId: ALICE },
+    });
+    expect(await listPreferenceChanges(ALICE)).toHaveLength(0);
+  });
+
   it.each([
     ['empty against null', null, '', 0],
     ['whitespace against null', null, '  \n ', 0],

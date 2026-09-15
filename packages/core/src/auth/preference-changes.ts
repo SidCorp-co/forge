@@ -119,8 +119,13 @@ export async function writeAssistantPreferences(args: {
         ? { assistantInstructions: canonicalInstructions(args.patch.assistantInstructions) }
         : {}),
     };
+    // cm:why the STORED side is canonicalised too: a row an older writer left holding "" or padded text must read equal to its canonical form, or the first canonical write after this lands is a row that changed nothing (codex F1).
+    const stored: Record<keyof AssistantPreferencePatch, string | null> = {
+      answerStyle: before.answerStyle,
+      assistantInstructions: canonicalInstructions(before.assistantInstructions),
+    };
     const fields = (Object.keys(patch) as (keyof AssistantPreferencePatch)[]).filter(
-      (k) => patch[k] !== undefined && (patch[k] ?? null) !== (before[k] ?? null),
+      (k) => patch[k] !== undefined && (patch[k] ?? null) !== stored[k],
     );
     if (fields.length === 0) return before;
     const set = {
@@ -150,7 +155,7 @@ export async function writeAssistantPreferences(args: {
         userId: args.userId,
         changedAt: sql`clock_timestamp()`,
         field: FIELD_OF[k],
-        previousValue: before[k] ?? null,
+        previousValue: stored[k],
         newValue: (patch[k] as string | null | undefined) ?? null,
         changedBy: args.actor.kind,
         changedByUserId: args.actor.userId,

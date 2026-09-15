@@ -45,6 +45,12 @@ describe('issue-link-shape', () => {
     expect(check('Upstream tracks it at https://github.com/acme/repo/issues/24.')).toEqual([]);
   });
 
+  // cm:guard inline code is how a technical reply quotes a path, and the closing backtick is not part of the documentId (codex F3).
+  it('passes a valid path in inline code and still refuses an issue key in one', () => {
+    expect(check(`Open \`/projects/acme/issues/${UUID}\` in the app.`)).toEqual([]);
+    expect(check('Open `/projects/acme/issues/ISS-24` in the app.')).toHaveLength(1);
+  });
+
   it('passes a reply with no link (criterion 34)', () => {
     expect(check('Four issues are open; ISS-2 is the oldest.')).toEqual([]);
   });
