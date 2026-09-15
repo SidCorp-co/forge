@@ -119,6 +119,10 @@ function getState(sessionId: string): FlushState {
  *  stored bytes themselves rather than over a re-serialized copy of them. */
 const storedFingerprint = sql<string>`md5(${agentSessions.messages}::text) || ':' || md5(coalesce(${agentSessions.claudeSessionId}, ''))`;
 
+// cm:guard the cancel is re-checked in the WRITE and not only in the read above, because a cancel moves neither column the fingerprint covers: it lands on `status` and `failure_reason`, so a cancel committing between the two would leave the swap intact and the late stream would be written, broadcast and dual-written to the turn table by the very derive the read-time guard says drops it.
+// cm:guard `is not distinct from`, never `=`: `failure_reason` is nullable, and a plain equality makes the whole conjunction NULL for a failed session carrying no reason — `NOT NULL` is NULL, the row matches nothing, and every derive on such a session silently writes nothing at all.
+const notUserCancelled = sql`not (${agentSessions.status} = 'failed' and ${agentSessions.failureReason} is not distinct from 'user_cancelled')`;
+
 interface Resumed {
   lastSeq: number;
   state: DeriveState;
@@ -225,7 +229,23 @@ async function deriveOnce(
     claudeSessionId:
       claudeSessionId && existing.claudeSessionId !== claudeSessionId ? claudeSessionId : null,
   });
-  if (!written) return 'lost-race';
+  if (!written) {
+    // cm:guard zero rows is two outcomes wearing one face, and telling them apart is the point: the swap losing is retried against what now stands, the cancel firing is the answer. Collapse them and a cancelled session burns three re-derives and then logs that the write was lost, which reads as a fault where there was none.
+    const [now] = await db
+      .select({ status: agentSessions.status, failureReason: agentSessions.failureReason })
+      .from(agentSessions)
+      .where(eq(agentSessions.id, agentSessionId))
+      .limit(1);
+    if (!now) return 'nothing-to-write';
+    if (now.status === 'failed' && now.failureReason === 'user_cancelled') {
+      logger.debug(
+        { jobId, agentSessionId },
+        'session-transcript: the session was cancelled under this derive — nothing written',
+      );
+      return 'nothing-to-write';
+    }
+    return 'lost-race';
+  }
 
   if (st) {
     st.checkpoint = {
@@ -237,8 +257,7 @@ async function deriveOnce(
     };
   }
 
-  // First new turn fires immediately (client learns the id); subsequent
-  // appends ride the tail-debouncer to keep WS load manageable.
+  // cm:why the FIRST new turn fires immediately and every append after it rides the tail-debouncer: the client learns the turn id from that first broadcast and cannot render the stream without it, while the rest are the same turn growing and would cost one frame each.
   written.sync.appended.forEach((t, i) => {
     broadcastTurnAppended(written.updated, t, { isStreamingTail: i > 0 });
   });
@@ -278,7 +297,13 @@ async function writeTranscript(
         updatedAt: new Date(),
         ...(w.claudeSessionId ? { claudeSessionId: w.claudeSessionId } : {}),
       })
-      .where(and(eq(agentSessions.id, agentSessionId), eq(storedFingerprint, w.baseline)))
+      .where(
+        and(
+          eq(agentSessions.id, agentSessionId),
+          eq(storedFingerprint, w.baseline),
+          notUserCancelled,
+        ),
+      )
       // cm:why the next checkpoint's fingerprint comes back on this RETURNING rather than from a select after it. RETURNING evaluates against the row as written, so it is the same answer a re-read would give — and a re-read is a second detoast of the largest jsonb column in the schema, on the write this issue exists to make cheaper.
       .returning({ ...getTableColumns(agentSessions), fingerprint: storedFingerprint });
     if (!row) return null;

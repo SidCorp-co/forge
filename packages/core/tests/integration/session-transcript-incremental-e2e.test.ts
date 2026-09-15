@@ -401,9 +401,10 @@ describe('incremental transcript derivation', () => {
     let flushed: Promise<void> | null = null;
     try {
       await held.unsafe('BEGIN');
-      await held.unsafe(`UPDATE agent_sessions SET claude_session_id = 'claude-newer' WHERE id = $1`, [
-        sessionId,
-      ]);
+      await held.unsafe(
+        `UPDATE agent_sessions SET claude_session_id = 'claude-newer' WHERE id = $1`,
+        [sessionId],
+      );
       flushed = transcript.maybeDeriveIncremental(jobId, sessionId, 8);
       expect(flushed).not.toBeNull();
       await waitForBlockedUpdate();
@@ -423,6 +424,30 @@ describe('incremental transcript derivation', () => {
       sql`SELECT claude_session_id FROM agent_sessions WHERE id = ${sessionId}`,
     );
     expect(rows[0]?.claude_session_id).toBe('claude-newer');
+  });
+
+  it('writes nothing over a session cancelled after it read the row', async () => {
+    // cm:why the cancel has to be re-checked in the write and not only in the read: it moves neither column the fingerprint covers, so a cancel committing in that window leaves the swap intact and the late stream lands anyway — in the transcript, in the turn table and on the wire.
+    await insertEvents(0, 4);
+    const held = await harness.client.reserve();
+    let flushed: Promise<void> | null = null;
+    try {
+      await held.unsafe('BEGIN');
+      await held.unsafe(
+        `UPDATE agent_sessions SET status = 'failed', failure_reason = 'user_cancelled' WHERE id = $1`,
+        [sessionId],
+      );
+      flushed = transcript.maybeDeriveIncremental(jobId, sessionId, 8);
+      expect(flushed).not.toBeNull();
+      await waitForBlockedUpdate();
+      await held.unsafe('COMMIT');
+    } finally {
+      held.release();
+    }
+    await flushed;
+
+    expect(await storedMessages()).toEqual([]);
+    expect(await storedTurns()).toEqual([]);
   });
 });
 
