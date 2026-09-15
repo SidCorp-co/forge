@@ -52,6 +52,7 @@ import {
   devicePublicRoutes,
   deviceUserRoutes,
 } from './devices/routes.js';
+import { deviceMcpServerRoutes } from './devices/mcp-servers-routes.js';
 import { runLedgerRoutes } from './devices/run-ledger-routes.js';
 import { registerRunSessionReaper } from './devices/run-session-reaper.js';
 import { deviceSkillRoutes, deviceSkillStatusRoutes } from './devices/skills-routes.js';
@@ -402,6 +403,7 @@ app.route('/api/devices', devicePublicRoutes);
 app.route('/api/devices', deviceLoginRoutes);
 app.route('/api/devices', deviceAuthRoutes);
 app.route('/api/devices', deviceSkillRoutes);
+app.route('/api/devices', deviceMcpServerRoutes);
 app.route('/api/devices', devicePoolRoutes);
 app.route('/api', deviceOwnerRoutes);
 app.route('/api/projects', deviceUserRoutes);

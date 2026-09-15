@@ -157,6 +157,75 @@ fn mcp_config_dir() -> PathBuf {
     dir
 }
 
+/// The MCP config a resident master's pane is started with: the servers its
+/// project declares, resolved by core, for the whole life of that session.
+///
+/// Returns the path to hand `claude --mcp-config`, or `None` when the project
+/// resolved no servers — in which case any file left from a previous session is
+/// REMOVED rather than left to configure a project that no longer declares it.
+///
+/// Distinct from [`write`], which is one job's temp config, and from
+/// [`write_persistent`], which writes only `forge` into the checkout. This one
+/// carries rendered integration credentials, so it never goes near the checkout.
+// cm:guard one file per PROJECT, and the prefix is what keeps it off the per-job path: `forge-mcp-<slug>-<job>.json` and `forge-master-mcp-<slug>.json` share a folder, and a project slugged `session` would otherwise collide with a job of another project. One per project is safe because one master per project is the bound `daemon::master` already enforces.
+// cm:guard the write is UNCONDITIONAL even when the bytes are unchanged, because the mtime is what keeps this file out of `sweep_stale`. A master runs for days and the sweep drops anything older than 24h; a version that skipped an identical write would delete a live master's config out from under the next comparison and report every project on the box as mis-configured.
+pub fn write_session(slug: &str, servers: &serde_json::Map<String, Value>) -> Result<Option<PathBuf>> {
+    write_session_in(&mcp_config_dir(), slug, servers)
+}
+
+/// [`write_session`] with the directory named rather than resolved — the same
+/// test seam, and for the same reason, as [`write_in`].
+// cm:guard tests pass a directory of their own; production passes `mcp_config_dir()` and nothing else.
+fn write_session_in(
+    dir: &Path,
+    slug: &str,
+    servers: &serde_json::Map<String, Value>,
+) -> Result<Option<PathBuf>> {
+    let path = session_path_in(dir, slug);
+    if servers.is_empty() {
+        let _ = std::fs::remove_file(&path);
+        return Ok(None);
+    }
+    let doc = serde_json::json!({ "mcpServers": Value::Object(servers.clone()) });
+    let body = serde_json::to_string_pretty(&doc).map_err(|e| Error::Other(e.to_string()))?;
+    // cm:guard write-then-rename, never a bare `fs::write` — the same reason `write_in` carries: a truncating write is a partial document to anything reading the path mid-write.
+    let tmp = path.with_extension(format!("tmp.{}", std::process::id()));
+    std::fs::write(&tmp, body)?;
+    restrict_perms(&tmp);
+    std::fs::rename(&tmp, &path)?;
+    Ok(Some(path))
+}
+
+/// What [`write_session`] would write for these servers, as the bytes on disk.
+///
+/// The comparison a sweep makes against a LIVE pane: a pane carries the MCP
+/// configuration it was started with and cannot be told a new one, so the only
+/// question worth asking is whether the file it was given still says what core
+/// says now.
+pub fn session_matches(slug: &str, servers: &serde_json::Map<String, Value>) -> bool {
+    session_matches_in(&mcp_config_dir(), slug, servers)
+}
+
+fn session_matches_in(dir: &Path, slug: &str, servers: &serde_json::Map<String, Value>) -> bool {
+    let path = session_path_in(dir, slug);
+    let on_disk = std::fs::read_to_string(&path).ok();
+    match (on_disk, servers.is_empty()) {
+        // No file and nothing to declare: a pane started with no `--mcp-config`
+        // is exactly what this project asks for.
+        (None, true) => true,
+        (None, false) => false,
+        (Some(_), true) => false,
+        (Some(text), false) => serde_json::from_str::<Value>(&text)
+            .ok()
+            .and_then(|doc| doc.get("mcpServers").cloned())
+            == Some(Value::Object(servers.clone())),
+    }
+}
+
+fn session_path_in(dir: &Path, slug: &str) -> PathBuf {
+    dir.join(format!("forge-master-mcp-{}.json", sanitize_slug(slug)))
+}
+
 /// Sanitize a project slug into a filesystem-safe token. Non `[A-Za-z0-9_-]`
 /// chars become `-`; an empty / all-stripped slug falls back to `default`, so
 /// the runner still resolves to a single stable path.
