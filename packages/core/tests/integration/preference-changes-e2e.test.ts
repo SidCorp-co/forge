@@ -63,11 +63,14 @@ describe('preference writes on one person', () => {
     const trail = (await prefs.listPreferenceChanges(alice))
       .filter((c) => c.field === 'answer_style')
       .sort((a, b) => a.changedAt.getTime() - b.changedAt.getTime() || a.id.localeCompare(b.id));
-    expect(trail).toHaveLength(styles.length);
+    // cm:guard the writers race, so a writer whose value is already stored when its turn comes writes no row (ISS-1041): the trail is as long as the number of writes that changed something, never longer than the writers, and never carries a row whose value did not change.
+    expect(trail.length).toBeGreaterThanOrEqual(1);
+    expect(trail.length).toBeLessThanOrEqual(styles.length);
     expect(trail[0]?.previousValue).toBe('default');
     for (let i = 1; i < trail.length; i++) {
       expect(trail[i]?.previousValue, `row ${i}`).toBe(trail[i - 1]?.newValue);
     }
+    for (const row of trail) expect(row.newValue, `row ${row.id}`).not.toBe(row.previousValue);
     const final = await prefs.readAssistantPreferences(alice);
     expect(final.answerStyle).toBe(trail.at(-1)?.newValue);
   });
