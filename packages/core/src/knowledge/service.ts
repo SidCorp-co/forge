@@ -68,12 +68,16 @@ export async function upsertKnowledgeEntry(
   return row;
 }
 
-/** The later of two inputs on one slug, whole — a multi-row upsert may name a conflict target once. */
+// cm:guard the key is `(projectId, slug)`, which is the conflict target the upsert names — keying on the slug alone drops one project's entry for another's of the same name and then hands both callers the surviving project's row id, which is a row in somebody else's project.
+const entryKey = (input: { projectId: string; slug: string }) =>
+  `${input.projectId}\u0000${input.slug}`;
+
+/** The later of two inputs on one key, whole — a multi-row upsert may name a conflict target once. */
 // cm:guard the WHOLE later input wins, never a field-by-field merge: `knowledgeEmbedText` embeds title AND body, so keeping an earlier title beside a later body would store a vector for a string no row says. Ingest documents two doc ids kebabing to one slug as last-writer-wins (knowledge/ingest-routes.ts), and a batch that sent both to one `INSERT ... ON CONFLICT DO UPDATE` would raise `ON CONFLICT DO UPDATE command cannot affect row a second time` and fail the whole request instead.
-function lastPerSlug(inputs: UpsertKnowledgeInput[]): UpsertKnowledgeInput[] {
-  const bySlug = new Map<string, UpsertKnowledgeInput>();
-  for (const input of inputs) bySlug.set(input.slug, input);
-  return [...bySlug.values()];
+function lastPerKey(inputs: UpsertKnowledgeInput[]): UpsertKnowledgeInput[] {
+  const byKey = new Map<string, UpsertKnowledgeInput>();
+  for (const input of inputs) byKey.set(entryKey(input), input);
+  return [...byKey.values()];
 }
 
 /**
@@ -89,7 +93,7 @@ export async function upsertKnowledgeEntries(
   inputs: UpsertKnowledgeInput[],
 ): Promise<UpsertKnowledgeResult[]> {
   if (inputs.length === 0) return [];
-  const entries = lastPerSlug(inputs);
+  const entries = lastPerKey(inputs);
 
   const embedTexts = entries.map((e) => knowledgeEmbedText(e.title, e.body));
   for (const [i, text] of embedTexts.entries()) {
@@ -157,11 +161,15 @@ export async function upsertKnowledgeEntries(
         updatedAt: sql`now()`,
       },
     })
-    .returning({ id: knowledgeEntries.id, slug: knowledgeEntries.slug });
+    .returning({
+      id: knowledgeEntries.id,
+      slug: knowledgeEntries.slug,
+      projectId: knowledgeEntries.projectId,
+    });
 
-  const idBySlug = new Map(rows.map((r) => [r.slug, r.id]));
+  const idByKey = new Map(rows.map((r) => [entryKey(r), r.id]));
   return inputs.map((input) => {
-    const id = idBySlug.get(input.slug);
+    const id = idByKey.get(entryKey(input));
     if (!id) throw new Error(`knowledge.service: upsert returned no row for ${input.slug}`);
     const embedText = knowledgeEmbedText(input.title, input.body);
     return { id, slug: input.slug, degraded, truncated: embedText.length > MAX_EMBED_CHARS };

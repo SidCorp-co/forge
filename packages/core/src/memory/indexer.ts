@@ -78,7 +78,7 @@ async function upsertChunkedParent(
   vector: number[] | null,
   preserveUnchangedVector: boolean,
   outage: boolean,
-): Promise<LandedRow> {
+): Promise<{ row: LandedRow; chunksDegraded: boolean }> {
   const { row, generation } = await db.transaction(async (tx) => {
     const [r] = await upsertParent(tx, input, vector, preserveUnchangedVector);
     if (!r) throw new Error('memory.indexer: upsert returned no row');
@@ -94,7 +94,7 @@ async function upsertChunkedParent(
     }
     return { row: r, generation: await invalidateChunks(tx, r.id) };
   });
-  if (generation === null || outage) return row;
+  if (generation === null || outage) return { row, chunksDegraded: outage };
   try {
     await chunkAndPublish({
       id: row.id,
@@ -110,8 +110,9 @@ async function upsertChunkedParent(
       { projectId: input.projectId, source: input.source, sourceRef: input.sourceRef },
       'memory.indexer: embeddings unavailable for the chunk set, row stays flat-only for backfill',
     );
+    return { row, chunksDegraded: true };
   }
-  return row;
+  return { row, chunksDegraded: false };
 }
 
 // cm:guard ISS-898 — embed the PROJECTION, never the raw body. An `html` component description embedded verbatim spends its vector budget on tag and attribute names, so two issues sharing a template read as similar because they share markup rather than because they share a problem.
@@ -156,10 +157,12 @@ export interface IndexResult {
    */
   truncated: boolean;
   /**
-   * True when the embeddings service was unavailable and the row was stored
-   * WITHOUT a vector (memory-v2 phase 1 degraded write). The row is
-   * keyword-searchable immediately; the backfill job re-embeds it once the
-   * service recovers. `embeddedAt` is stale/meaningless until then.
+   * True when the embeddings service was unavailable and this write could not
+   * finish indexing the row (memory-v2 phase 1 degraded write). Either the row
+   * was stored WITHOUT a vector, or — on a chunked project — its passages could
+   * not be re-embedded and it is searchable through its flat arm alone. The row
+   * is keyword-searchable immediately; the backfill and reindex jobs complete it
+   * once the service recovers. `embeddedAt` is stale/meaningless until then.
    */
   degraded: boolean;
   /**
@@ -272,9 +275,10 @@ async function writeOnce(
   }
 
   const preserve = skip || outage;
-  const row = chunked
+  const written = chunked
     ? await upsertChunkedParent(input, vector, preserve, outage)
-    : (await upsertParent(db, input, vector, preserve))[0];
+    : { row: (await upsertParent(db, input, vector, preserve))[0], chunksDegraded: false };
+  const row = written.row;
 
   if (!row) {
     // Shouldn't happen — UPSERT with returning always returns a row.
@@ -288,7 +292,13 @@ async function writeOnce(
       'memory.indexer: the text moved under the skip, re-embedding the text that landed',
     );
   }
-  return { row, degraded: outage || raceLost, raceLost, nearDuplicate };
+  // cm:guard `chunksDegraded` is part of this answer and not a detail of the chunk arm: a write whose whole-document embed was SKIPPED sees no outage of its own, so a chunk publish that met one would otherwise report `degraded: false` while the row has just been invalidated to flat-only retrieval — an explicit caller told its write landed normally when half of it did not (ISS-1024).
+  return {
+    row,
+    degraded: outage || raceLost || written.chunksDegraded,
+    raceLost,
+    nearDuplicate,
+  };
 }
 
 /**

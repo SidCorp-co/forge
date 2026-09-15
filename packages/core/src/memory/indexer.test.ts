@@ -393,6 +393,29 @@ describe('indexMemory leaves a chunk set alone only where it is the set this wri
     expect(invalidateChunksMock).toHaveBeenCalledTimes(1);
     expect(chunkAndPublishMock).not.toHaveBeenCalled();
   });
+
+  // cm:guard a write whose whole-document embed was SKIPPED meets no outage of its own, so a chunk publish that met one has to be carried out to the caller or the answer says the write landed normally while the row sits invalidated to flat-only retrieval
+  it('reports degraded when the chunk publish alone met an outage, the flat embed having been skipped', async () => {
+    selectLimitMock.mockResolvedValueOnce(stored(input.text));
+    chunkSetMatchesMock.mockResolvedValueOnce(false);
+    chunkAndPublishMock.mockRejectedValueOnce(new FakeEmbeddingUnavailableError('down'));
+
+    const result = await indexMemory(input);
+
+    expect(embedMock).not.toHaveBeenCalled();
+    expect(result.degraded).toBe(true);
+  });
+
+  it('reports no degradation when the chunk publish succeeded after a skipped flat embed', async () => {
+    selectLimitMock.mockResolvedValueOnce(stored(input.text));
+    chunkSetMatchesMock.mockResolvedValueOnce(false);
+
+    const result = await indexMemory(input);
+
+    expect(embedMock).not.toHaveBeenCalled();
+    expect(chunkAndPublishMock).toHaveBeenCalledTimes(1);
+    expect(result.degraded).toBe(false);
+  });
 });
 
 // cm:guard the skip's swap and the outage's preserve are ONE clause, and this is what says so: the integration suite proves that clause's two branches against real Postgres through the outage path, and this equality is what carries the proof across to the skip. Emit a different clause for the skip and that proof silently stops covering it.

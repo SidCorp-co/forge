@@ -27,7 +27,7 @@ vi.mock('../logger.js', () => ({
 
 const inserted: Array<Record<string, unknown>[]> = [];
 const conflicts: Array<{ set: Record<string, unknown> }> = [];
-let returned: Array<{ id: string; slug: string }> = [];
+let returned: Array<{ id: string; slug: string; projectId: string }> = [];
 vi.mock('../db/client.js', () => ({
   db: {
     insert: () => ({
@@ -76,7 +76,7 @@ beforeEach(() => {
 describe('upsertKnowledgeEntries', () => {
   it('embeds every entry of a batch in one call', async () => {
     const entries = [entry('a', 'A', 'body a'), entry('b', 'B', 'body b'), entry('c', 'C', 'c')];
-    returned = entries.map((e) => ({ id: `id-${e.slug}`, slug: e.slug }));
+    returned = entries.map((e) => ({ id: `id-${e.slug}`, slug: e.slug, projectId: e.projectId }));
 
     await upsertKnowledgeEntries(entries);
 
@@ -90,7 +90,7 @@ describe('upsertKnowledgeEntries', () => {
   });
 
   it('sends the later of two inputs on one slug, and embeds that one only', async () => {
-    returned = [{ id: 'id-a', slug: 'a' }];
+    returned = [{ id: 'id-a', slug: 'a', projectId: PROJECT }];
 
     const results = await upsertKnowledgeEntries([
       entry('a', 'First title', 'first body'),
@@ -109,7 +109,7 @@ describe('upsertKnowledgeEntries', () => {
   // vector only when NEITHER moved. Comparing `body` alone kept a vector for a superseded title.
   it('preserves a stored vector under an outage only when title AND body are unchanged', async () => {
     embedBatchMock.mockRejectedValueOnce(new FakeOutage('down'));
-    returned = [{ id: 'id-a', slug: 'a' }];
+    returned = [{ id: 'id-a', slug: 'a', projectId: PROJECT }];
 
     const [result] = await upsertKnowledgeEntries([entry('a', 'A', 'body a')]);
 
@@ -121,7 +121,7 @@ describe('upsertKnowledgeEntries', () => {
   });
 
   it('overwrites the stored vector outright when the embed succeeded', async () => {
-    returned = [{ id: 'id-a', slug: 'a' }];
+    returned = [{ id: 'id-a', slug: 'a', projectId: PROJECT }];
     await upsertKnowledgeEntries([entry('a', 'A', 'body a')]);
     expect(embeddingClause()).toBe('excluded.embedding');
   });
@@ -140,8 +140,28 @@ describe('upsertKnowledgeEntries', () => {
     expect(embedBatchMock).not.toHaveBeenCalled();
   });
 
+  // cm:guard the conflict target is `(project_id, slug)`, so the de-duplication key is the pair — keyed on the slug alone one project's entry drops another project's of the same name, and both callers are then handed the surviving project's row id, which is a row in somebody else's project
+  it('keeps both entries when two projects send the same slug', async () => {
+    const OTHER = '22222222-2222-4222-8222-222222222222';
+    const mine = entry('deploy-guide', 'Mine', 'my body');
+    const theirs = { ...entry('deploy-guide', 'Theirs', 'their body'), projectId: OTHER };
+    returned = [
+      { id: 'id-mine', slug: 'deploy-guide', projectId: PROJECT },
+      { id: 'id-theirs', slug: 'deploy-guide', projectId: OTHER },
+    ];
+
+    const results = await upsertKnowledgeEntries([mine, theirs]);
+
+    expect(inserted[0]).toHaveLength(2);
+    expect(embedBatchMock.mock.calls[0]?.[0]).toEqual([
+      knowledgeEmbedText('Mine', 'my body'),
+      knowledgeEmbedText('Theirs', 'their body'),
+    ]);
+    expect(results.map((r) => r.id)).toEqual(['id-mine', 'id-theirs']);
+  });
+
   it('upsertKnowledgeEntry is the batch of one', async () => {
-    returned = [{ id: 'id-a', slug: 'a' }];
+    returned = [{ id: 'id-a', slug: 'a', projectId: PROJECT }];
     const result = await upsertKnowledgeEntry(entry('a', 'A', 'body a'));
     expect(result).toMatchObject({ id: 'id-a', slug: 'a', degraded: false, truncated: false });
     expect(embedBatchMock).toHaveBeenCalledTimes(1);
