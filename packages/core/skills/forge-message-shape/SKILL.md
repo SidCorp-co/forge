@@ -87,6 +87,7 @@ status **asserted of** an issue this project does hold still is.
 | `non-empty` | there is text |
 | `status-matches-the-row` | as in `role:report` |
 | `only-verified-citations` | every issue key named is a real issue of this project |
+| `issue-link-shape` | an issue link reads `<base>/projects/<slug>/issues/<documentId>` — never a hash route, never a key or number in the path |
 | `no-empty-promise` | no commitment to do something later — a chat turn ends, and nothing will come back to keep it |
 | `progress-figures-match` | figures quoted match the progress snapshot this turn was shown |
 | `no-redacted-secret` | as above |
@@ -110,6 +111,7 @@ are checked against the snapshot the model was actually given.
 | `issue-references-exist` | every issue key named is a real issue of this project — the reader cannot check |
 | `no-developer-detail` | no file paths, stack frames, branch names or internals |
 | `only-verified-citations` | a claim about an issue matches its row |
+| `issue-link-shape` | as in `role:chat` |
 | `no-empty-promise` | no commitment to do something later that nothing will hold you to |
 | `progress-figures-match` | figures quoted match the progress the run was given |
 

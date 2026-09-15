@@ -34,6 +34,16 @@ export interface AssistantPreferencePatch {
   assistantInstructions?: string | null | undefined;
 }
 
+/**
+ * The one form `assistantInstructions` is compared and stored in: outer
+ * whitespace trimmed, blank text null, internal whitespace kept.
+ */
+// cm:guard ONE canonical form on both sides of the comparison and in what is stored: the HTTP schema trims, the reader treats blank as absent, and a trail that compared raw text would record "" against null as a change that changed nothing (ISS-1041 criteria 16-22, codex F4).
+export function canonicalInstructions(v: string | null): string | null {
+  const t = v?.trim() ?? '';
+  return t.length ? t : null;
+}
+
 export interface PreferenceActor {
   kind: PreferenceChangeActor;
   /** The person, the admin, or the handle that spoke. */
@@ -102,15 +112,21 @@ export async function writeAssistantPreferences(args: {
   return dbi.transaction(async (tx) => {
     await lockPreferences(tx as unknown as typeof defaultDb, args.userId);
     const before = await readAssistantPreferences(args.userId, tx as unknown as Tx);
-    const fields = (Object.keys(args.patch) as (keyof AssistantPreferencePatch)[]).filter(
-      (k) => args.patch[k] !== undefined,
-    );
-    if (fields.length === 0) return before;
-
-    const set = {
+    // cm:guard the trail records CHANGES, not writes: a field is kept only where its canonical value differs from the stored row, so a value the assistant re-sends unchanged beside the one it means to set leaves no row whose previous equals its new (ISS-1041 criteria 17-22).
+    const patch: AssistantPreferencePatch = {
       ...(args.patch.answerStyle !== undefined ? { answerStyle: args.patch.answerStyle } : {}),
       ...(args.patch.assistantInstructions !== undefined
-        ? { assistantInstructions: args.patch.assistantInstructions }
+        ? { assistantInstructions: canonicalInstructions(args.patch.assistantInstructions) }
+        : {}),
+    };
+    const fields = (Object.keys(patch) as (keyof AssistantPreferencePatch)[]).filter(
+      (k) => patch[k] !== undefined && (patch[k] ?? null) !== (before[k] ?? null),
+    );
+    if (fields.length === 0) return before;
+    const set = {
+      ...(fields.includes('answerStyle') ? { answerStyle: patch.answerStyle } : {}),
+      ...(fields.includes('assistantInstructions')
+        ? { assistantInstructions: patch.assistantInstructions }
         : {}),
     };
     const [row] = await tx
@@ -135,7 +151,7 @@ export async function writeAssistantPreferences(args: {
         changedAt: sql`clock_timestamp()`,
         field: FIELD_OF[k],
         previousValue: before[k] ?? null,
-        newValue: (args.patch[k] as string | null | undefined) ?? null,
+        newValue: (patch[k] as string | null | undefined) ?? null,
         changedBy: args.actor.kind,
         changedByUserId: args.actor.userId,
         conversationId: args.conversationId ?? null,

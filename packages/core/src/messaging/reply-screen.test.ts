@@ -166,3 +166,30 @@ describe("screenReplyAtDoor, over the chat-sync door's public:report cell", () =
     });
   });
 });
+
+describe("screenReplyAtDoor, over the web-chat-reply door's role:chat cell (ISS-1041)", () => {
+  const UUID2 = '9d963292-3095-4bb4-980e-a0cf4e8bc4f2';
+  const screen = (reply: string) =>
+    screenReplyAtDoor('web-chat-reply', {
+      projectId: 'proj-1',
+      segments: [reply],
+      toolCalls: [],
+      progress: null,
+    });
+
+  it('refuses a hash-route issue link naming the issue-link-shape rule (criterion 37)', async () => {
+    selectWhere.mockResolvedValue([]);
+    const verdict = await screen('The CSV export bug is tracked at #/projects/acme/issues/24.');
+    expect(verdict.ok).toBe(false);
+    expect(verdict.ok ? [] : verdict.refusals.map((r) => r.rule)).toContain('issue-link-shape');
+  });
+
+  it('raises no issue-link-shape refusal for an API path and a repository path (criterion 38)', async () => {
+    selectWhere.mockResolvedValue([]);
+    const verdict = await screen(
+      `Comments are added with POST /api/issues/${UUID2}/comments; the handler is in the issues routes module.`,
+    );
+    const rules = verdict.ok ? [] : verdict.refusals.map((r) => r.rule);
+    expect(rules).not.toContain('issue-link-shape');
+  });
+});

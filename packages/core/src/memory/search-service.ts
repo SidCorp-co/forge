@@ -60,6 +60,8 @@ export interface MemorySearchResult {
   hits: MemoryHit[];
   model: string;
   took_ms: number;
+  /** What the query's embedding took, over every attempt; absent when none was made here (a keyword search, or a vector the caller supplied). */
+  embedMs?: number;
   /** Strategy actually executed — differs from the request when degraded. */
   strategy: MemorySearchStrategy;
   /** True when hybrid fell back to keyword because embeddings were down. */
@@ -111,6 +113,7 @@ async function retrieve(
   resolved: MemorySearchStrategy;
   degraded: boolean;
   breakdown?: HybridBreakdown;
+  embedMs?: number;
 }> {
   const requested: MemorySearchStrategy = input.strategy ?? 'semantic';
   const base = {
@@ -123,8 +126,13 @@ async function retrieve(
     const hits = await keywordSearchMemories({ ...base, query: input.query });
     return { hits, resolved: requested, degraded: false };
   }
+  // cm:guard the embedding is timed around every ATTEMPT and the figure survives the degradation catch: on beta the service answers in 0.7 s or 11 s and a 28 s turn read as "memory search was slow" with nothing separating the embedding from the rest; a hybrid that waited on a failed embedding and fell back to keyword is exactly the delay this exposes, so `embedMs` is absent only when no embedding was attempted here (ISS-1041 criteria 7-9).
+  const embedStarted = Date.now();
+  const attempted = input.queryVec === undefined;
+  const embedMsNow = () => (attempted ? { embedMs: Date.now() - embedStarted } : {});
   try {
     const queryVec = input.queryVec ?? (await embed(input.query));
+    const embedMs = embedMsNow();
     if (requested === 'hybrid') {
       const fused = await hybridSearchMemories({
         ...base,
@@ -132,22 +140,30 @@ async function retrieve(
         queryVec,
         query: input.query,
       });
-      return { hits: fused.hits, resolved: requested, degraded: false, breakdown: fused.breakdown };
+      return {
+        hits: fused.hits,
+        resolved: requested,
+        degraded: false,
+        breakdown: fused.breakdown,
+        ...embedMs,
+      };
     }
     return {
       hits: await searchMemories({ ...base, queryVec }),
       resolved: requested,
       degraded: false,
+      ...embedMs,
     };
   } catch (err) {
     if (!(err instanceof EmbeddingUnavailableError) || requested !== 'hybrid') throw err;
     // cm:why only `hybrid` degrades: its keyword arm needs no embedding, so a caller asking for it gets answers with `degraded: true` rather than a 503. `semantic` has no second arm to fall back to and must still throw — quietly answering a similarity query with ts_rank scores would hand every threshold caller (knowledge dedup at > 0.8) numbers on a different scale.
+    const embedMs = embedMsNow();
     logger.warn(
-      { projectId: input.projectId, err: (err as Error).message },
+      { projectId: input.projectId, err: (err as Error).message, ...embedMs },
       'memory.search: embeddings unavailable, hybrid degraded to keyword',
     );
     const hits = await keywordSearchMemories({ ...base, query: input.query });
-    return { hits, resolved: 'keyword', degraded: true };
+    return { hits, resolved: 'keyword', degraded: true, ...embedMs };
   }
 }
 
@@ -224,6 +240,7 @@ export async function runMemorySearch(input: RunMemorySearchInput): Promise<Memo
     hits,
     model: env.EMBEDDINGS_MODEL,
     took_ms: tookMs,
+    ...(retrieved.embedMs !== undefined ? { embedMs: retrieved.embedMs } : {}),
     strategy: retrieved.resolved,
     ...(retrieved.degraded ? { degraded: true } : {}),
     reranked: outcome.reranked,

@@ -48,6 +48,24 @@ const FAILURE_THRESHOLD = 5;
 const OPEN_DURATION_MS = 30_000;
 const RETRY_DELAYS_MS = [250, 1_000, 4_000];
 
+/** Vectors and the model that produced them — the configured one, or its fallback. */
+export interface EmbedDetailed {
+  vectors: number[][];
+  model: string;
+}
+
+/** Vectors and the model that produced them — the configured one, or its fallback. */
+export interface EmbedDetailed {
+  vectors: number[][];
+  model: string;
+}
+
+/** Vectors and the model that produced them — the configured one, or its fallback. */
+export interface EmbedDetailed {
+  vectors: number[][];
+  model: string;
+}
+
 export class EmbeddingsClient {
   private readonly cfg: EmbeddingsConfig;
   private readonly breaker: CircuitBreakerState;
@@ -72,11 +90,16 @@ export class EmbeddingsClient {
   }
 
   async embedBatch(texts: string[]): Promise<number[][]> {
-    if (texts.length === 0) return [];
+    return (await this.embedDetailed(texts)).vectors;
+  }
+
+  // cm:guard the model that PRODUCED the vectors rides beside them, because this is the one place the fallback is chosen: a caller caching by the configured model would otherwise keep serving a fallback vector after the primary recovers (ISS-1041 criterion 6).
+  async embedDetailed(texts: string[]): Promise<EmbedDetailed> {
+    if (texts.length === 0) return { vectors: [], model: this.cfg.model };
     this.assertBreakerClosed();
 
     try {
-      return await this.embedWith(texts, this.cfg.model);
+      return { vectors: await this.embedWith(texts, this.cfg.model), model: this.cfg.model };
     } catch (err) {
       if (err instanceof EmbeddingUnavailableError) throw err;
       if (this.cfg.fallbackModel && !isRetriable(err)) {
@@ -85,7 +108,10 @@ export class EmbeddingsClient {
           'embeddings: primary failed, trying fallback',
         );
         try {
-          return await this.embedWith(texts, this.cfg.fallbackModel);
+          return {
+            vectors: await this.embedWith(texts, this.cfg.fallbackModel),
+            model: this.cfg.fallbackModel,
+          };
         } catch (fallbackErr) {
           this.recordFailure();
           throw fallbackErr;

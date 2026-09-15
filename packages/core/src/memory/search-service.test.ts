@@ -352,3 +352,51 @@ describe('stale demotion', () => {
     expect(res.demotedStale).toBeUndefined();
   });
 });
+
+const embeddings = await import('../embeddings/index.js');
+
+describe('embedMs — where a slow search went (ISS-1041)', () => {
+  const embedMock = vi.mocked(embeddings.embed);
+
+  it('is present on a semantic search that embedded the query (criterion 7)', async () => {
+    embedMock.mockImplementationOnce(async () => {
+      await new Promise((r) => setTimeout(r, 5));
+      return [0.1, 0.2];
+    });
+    const out = await runMemorySearch({
+      projectId: PROJECT,
+      query: 'q',
+      strategy: 'semantic',
+      surface: 'agent',
+    });
+    expect(typeof out.embedMs).toBe('number');
+    expect(out.embedMs as number).toBeGreaterThanOrEqual(4);
+  });
+
+  it('is absent on an explicitly requested keyword search (criterion 8)', async () => {
+    const out = await runMemorySearch({
+      projectId: PROJECT,
+      query: 'q',
+      strategy: 'keyword',
+      surface: 'agent',
+    });
+    expect(out).not.toHaveProperty('embedMs');
+  });
+
+  // cm:guard the figure survives the degradation catch: the failed attempt IS the delay this field exposes.
+  it('is kept on a hybrid search whose embedding failed and degraded to keyword (criterion 9)', async () => {
+    embedMock.mockImplementationOnce(async () => {
+      await new Promise((r) => setTimeout(r, 5));
+      throw new embeddings.EmbeddingUnavailableError('down');
+    });
+    const out = await runMemorySearch({
+      projectId: PROJECT,
+      query: 'q',
+      strategy: 'hybrid',
+      surface: 'agent',
+    });
+    expect(out.degraded).toBe(true);
+    expect(out.strategy).toBe('keyword');
+    expect(out.embedMs as number).toBeGreaterThanOrEqual(4);
+  });
+});
