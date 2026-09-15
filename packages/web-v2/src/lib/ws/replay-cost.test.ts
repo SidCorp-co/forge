@@ -25,6 +25,29 @@ function deferred<T>() {
 const tick = (ms = 40) => new Promise<void>((r) => setTimeout(r, ms));
 const unsubs: Array<() => void> = [];
 
+// cm:guard the BEFORE side has to be the replay this change removed, written out here, and not
+// `replayOnReconnect` — that function is still live and has since been fixed too, so using it as the
+// baseline would compare the new behaviour against itself and report every figure as unchanged.
+const REMOVED_BLANKET_REPLAY = [
+	["issues"],
+	["jobs"],
+	["projects"],
+	["agent-sessions"],
+	["agent-session"],
+	["conversations"],
+	["attention"],
+	["pulse"],
+	["devices", "me"],
+	["chat-logs"],
+	["integrations"],
+	["integration-connections"],
+	["questions"],
+];
+
+function blanketReplay(qc: QueryClient): void {
+	for (const queryKey of REMOVED_BLANKET_REPLAY) qc.invalidateQueries({ queryKey });
+}
+
 function client() {
 	return new QueryClient({
 		defaultOptions: { queries: { staleTime: 60_000, gcTime: 300_000, retry: false } },
@@ -44,7 +67,7 @@ afterEach(() => {
 describe("what a first-open replay costs, by the state of the query it lands on", () => {
 	// cm:guard ONE call, not two: `Query.fetch` returns the existing retryer when a fetch is running and the query holds no data, so the blanket replay never doubled a cold load's in-flight queries and removing it saves nothing there (ISS-1019).
 	it("costs a query still in flight with no data ONE call, under either replay", async () => {
-		for (const replay of [replayOnReconnect, (qc: QueryClient) => replayOnFirstOpen(qc, Date.now())]) {
+		for (const replay of [blanketReplay, (qc: QueryClient) => replayOnFirstOpen(qc, Date.now())]) {
 			const qc = client();
 			let calls = 0;
 			const gate = deferred<string>();
@@ -64,7 +87,7 @@ describe("what a first-open replay costs, by the state of the query it lands on"
 
 	// cm:guard TWO calls under the blanket replay and two under the new one: a query already settled when the socket opened had its answer on screen while the socket was not delivering, which is a real gap, so this is the one case the first-open replay must keep paying for.
 	it("costs a query settled before the open TWO calls, under either replay", async () => {
-		for (const replay of [replayOnReconnect, (qc: QueryClient) => replayOnFirstOpen(qc, Date.now())]) {
+		for (const replay of [blanketReplay, (qc: QueryClient) => replayOnFirstOpen(qc, Date.now())]) {
 			const qc = client();
 			let calls = 0;
 			mount(qc, ["issues", "list"], async () => {
@@ -84,7 +107,7 @@ describe("what a first-open replay costs, by the state of the query it lands on"
 	// cm:guard the mixed cold load the issue asks for, both ways, and the point is that the totals are EQUAL: the first-open half of ISS-1019 moves no request count, and what it buys is a rule that is explicit and tested rather than accidental.
 	it("costs a mixed cold load the same total under both replays", async () => {
 		const totals: number[] = [];
-		for (const replay of [replayOnReconnect, (qc: QueryClient) => replayOnFirstOpen(qc, Date.now())]) {
+		for (const replay of [blanketReplay, (qc: QueryClient) => replayOnFirstOpen(qc, Date.now())]) {
 			const qc = client();
 			let calls = 0;
 			const gate = deferred<string>();
@@ -109,9 +132,28 @@ describe("what a first-open replay costs, by the state of the query it lands on"
 	});
 
 	// cm:guard the ONE figure this change moves, and it moves UP: a questions query on its first fetch had its unconditional replay swallowed by the blanket path, and `invalidateThroughInFlight` is that prefix's recovery finally happening rather than appearing to.
+	// cm:guard a reconnect has a DEFINITE gap, so a query whose first request took its snapshot during the outage must be repaired — this is the case that goes red if `replayOnReconnect` goes back to calling `qc.invalidateQueries` directly and has its invalidation swallowed.
+	it("repairs a query whose first fetch was running across a reconnect", async () => {
+		const qc = client();
+		let calls = 0;
+		const gate = deferred<string>();
+		mount(qc, ["issues", "list"], () => {
+			calls += 1;
+			return gate.promise;
+		});
+		await tick(5);
+		expect(calls).toBe(1);
+
+		replayOnReconnect(qc);
+		gate.resolve("v1");
+		await tick();
+
+		expect(calls).toBe(2);
+	});
+
 	it("raises a first-fetch questions query from one call to two", async () => {
 		const counts: number[] = [];
-		for (const replay of [replayOnReconnect, (qc: QueryClient) => replayOnFirstOpen(qc, Date.now())]) {
+		for (const replay of [blanketReplay, (qc: QueryClient) => replayOnFirstOpen(qc, Date.now())]) {
 			const qc = client();
 			let calls = 0;
 			const gate = deferred<string>();

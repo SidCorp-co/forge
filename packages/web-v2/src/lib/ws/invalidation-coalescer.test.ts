@@ -78,6 +78,19 @@ describe("scheduleInvalidation", () => {
 		expect(c.keys).toHaveLength(2);
 	});
 
+	// cm:guard one window, EVERY client that asked for it: overwriting a single slot with the last schedule leaves the first consumer's screen stale, and `use-websocket.ts` states that multiple mounted calls are safe.
+	it("fires one window into every client that scheduled it", () => {
+		const a = capture();
+		const b = capture();
+		scheduleInvalidation(a.qc, ["pulse"]);
+		scheduleInvalidation(b.qc, ["pulse"]);
+
+		vi.advanceTimersByTime(INVALIDATE_WINDOW_MS);
+
+		expect(a.keys).toEqual([JSON.stringify(["pulse"])]);
+		expect(b.keys).toEqual([JSON.stringify(["pulse"])]);
+	});
+
 	it("closes every open window when flushed", () => {
 		const c = capture();
 		scheduleInvalidation(c.qc, ["a"]);

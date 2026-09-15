@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { QueryClient, QueryObserver, focusManager } from "@tanstack/react-query";
+import { type QueryClient, QueryObserver, focusManager } from "@tanstack/react-query";
 import { afterEach, describe, expect, it } from "vitest";
 import { ApiError } from "@/lib/api/client";
 import { QUERY_MAX_RETRIES, createQueryClient, shouldRetryQuery } from "./query-provider";

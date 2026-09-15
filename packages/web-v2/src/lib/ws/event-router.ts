@@ -346,8 +346,9 @@ function underAReplayPrefix(queryKey: readonly unknown[]): boolean {
  * still mounted. Project-room events don't have a seq; we just invalidate
  * the high-level caches so React Query refetches anything visible.
  */
+// cm:guard through `invalidateThroughInFlight` and not `qc.invalidateQueries`: a reconnect has a DEFINITE gap, and a query whose first request took its snapshot during the outage has its invalidation swallowed by TanStack exactly as any other first fetch does — so the one path with a certain gap was the one repairing nothing (ISS-1019).
 export function replayOnReconnect(qc: QueryClient): void {
-	for (const prefix of REPLAY_PREFIXES) qc.invalidateQueries({ queryKey: prefix });
+	for (const prefix of REPLAY_PREFIXES) invalidateThroughInFlight(qc, { queryKey: prefix });
 }
 
 /**

@@ -18,7 +18,8 @@ import { invalidateThroughInFlight } from "./invalidate-through-inflight";
 export const INVALIDATE_WINDOW_MS = 250;
 
 interface Window {
-	qc: QueryClient;
+	// cm:guard a SET of clients, never one slot overwritten by the last schedule: two mounted consumers on different QueryClients that route the same key inside one window would otherwise leave the first one's screen stale, and `use-websocket.ts` states that multiple calls are safe.
+	clients: Set<QueryClient>;
 	queryKey: readonly unknown[];
 	timer: ReturnType<typeof setTimeout>;
 }
@@ -30,7 +31,7 @@ function fire(hash: string): void {
 	if (!w) return;
 	open.delete(hash);
 	clearTimeout(w.timer);
-	invalidateThroughInFlight(w.qc, { queryKey: w.queryKey });
+	for (const qc of w.clients) invalidateThroughInFlight(qc, { queryKey: w.queryKey });
 }
 
 /** Invalidate `queryKey` once, at the end of the window its first event opened. */
@@ -39,10 +40,14 @@ export function scheduleInvalidation(qc: QueryClient, queryKey: readonly unknown
 	const existing = open.get(hash);
 	if (existing) {
 		// cm:guard the timer is NOT restarted here — that is the whole difference between a fixed window and a trailing one, and the fixed one is what keeps a burst of any length from postponing its own refetch indefinitely.
-		existing.qc = qc;
+		existing.clients.add(qc);
 		return;
 	}
-	open.set(hash, { qc, queryKey, timer: setTimeout(() => fire(hash), INVALIDATE_WINDOW_MS) });
+	open.set(hash, {
+		clients: new Set([qc]),
+		queryKey,
+		timer: setTimeout(() => fire(hash), INVALIDATE_WINDOW_MS),
+	});
 }
 
 /** Close every open window now. The test seam; nothing in the app calls it. */
