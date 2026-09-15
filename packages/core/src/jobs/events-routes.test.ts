@@ -7,7 +7,7 @@ vi.mock('../config/env.js', () => ({
   env: { DEVICE_TOKEN_PEPPER: TEST_PEPPER, NODE_ENV: 'test' },
 }));
 
-// cm:why the shape `readJobGate` answers with, not the whole `jobs` row: `ackedAt` is here because the handler now gates its stamp on the row it already read (ISS-1014), so a double that omits the field would make the gate read every job as already acked and the ack test would pass by accident.
+// cm:why the shape `readJobGate` answers with, not the whole `jobs` row: a double omitting `ackedAt` makes the handler's new gate read every job as already acked (ISS-1014).
 const jobRow: {
   id: string;
   projectId: string;
@@ -47,17 +47,20 @@ const txInsert = vi.fn(() => ({
   },
 }));
 const txExecute = vi.fn();
+const txWith = vi.fn(() => ({ update: dbUpdate }));
 const transaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
-  const tx = { execute: txExecute, insert: txInsert, update: dbUpdate };
+  const tx = { execute: txExecute, insert: txInsert, update: dbUpdate, with: txWith };
   return fn(tx);
 });
 
+const selectFor = vi.fn(() => ({}));
 const selectLimit = vi.fn(async () => [jobRow]);
-const selectWhere = vi.fn(() => ({ limit: selectLimit }));
+// cm:why the same `.where()` link ends two different chains — `readJobGate` stops at `.limit()`, the heartbeat's locking CTE at `.for('update')`.
+const selectWhere = vi.fn(() => ({ limit: selectLimit, for: selectFor }));
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
 const dbSelect = vi.fn(() => ({ from: selectFrom }));
 
-// cm:why the writes through this double end the chain at different links — the heartbeat is `.set().from().where().returning()` and the ack stamp and the runtime-state sync stop at `.where()` — so the double has to answer every shape or one branch fails on the mock rather than on the route.
+// cm:why the writes through this double end the chain at different links — the heartbeat is `.set().from().where().returning()`, the ack stamp and the runtime-state sync stop at `.where()` — so it answers every shape or a branch fails on the mock rather than on the route.
 const updateReturning = vi.fn(async () => [] as unknown[]);
 const updateWhere = vi.fn(() => {
   const p = {
@@ -66,12 +69,14 @@ const updateWhere = vi.fn(() => {
   };
   return p as unknown as { returning: typeof updateReturning } & PromiseLike<unknown>;
 });
+const dbWith = vi.fn((_a: string) => ({ as: () => ({ id: 'prev.id', status: 'prev.status' }) }));
 const updateFrom = vi.fn(() => ({ where: updateWhere }));
 const updateSet = vi.fn((..._args: unknown[]) => ({ where: updateWhere, from: updateFrom }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
 
+// cm:guard `$with` and the transaction's `with` both have to answer, and a double missing either is not a loud failure: the heartbeat's `try/catch` swallows the TypeError and logs a warning, so every assertion in the file still passes while the write under it never happens (found on ISS-1014).
 vi.mock('../db/client.js', () => ({
-  db: { select: dbSelect, transaction, update: dbUpdate },
+  db: { select: dbSelect, transaction, update: dbUpdate, $with: dbWith },
 }));
 
 const publishMock = vi.fn(() => 0);
@@ -99,6 +104,8 @@ function resetMocks(): void {
   updateReturning.mockResolvedValue([]);
   updateSet.mockClear();
   updateFrom.mockClear();
+  txWith.mockClear();
+  dbWith.mockClear();
   updateWhere.mockClear();
   dbUpdate.mockClear();
 }
@@ -215,7 +222,6 @@ describe('jobs/events-routes POST /:id/events', () => {
   });
 
   it('accepts a batch, assigns contiguous monotonic seq, and publishes per event', async () => {
-    // First batch: baseSeq = 0 → 1,2,3
     // Two execute calls: advisory_xact_lock + MAX(seq) query.
     txExecute.mockResolvedValueOnce([]);
     txExecute.mockResolvedValueOnce([{ max_seq: 0 }]);
@@ -241,12 +247,10 @@ describe('jobs/events-routes POST /:id/events', () => {
     const json = (await r.json()) as { accepted: number; firstSeq: number; lastSeq: number };
     expect(json).toEqual({ accepted: 3, firstSeq: 1, lastSeq: 3 });
 
-    // Values inserted carry server-assigned sequential seq
     expect(insertValues).toHaveBeenCalledTimes(1);
     const vals = insertValues.mock.calls[0]?.[0] as Array<{ seq: number }>;
     expect(vals.map((v) => v.seq)).toEqual([1, 2, 3]);
 
-    // Publish fired once per persisted event, on the project room
     expect(publishMock).toHaveBeenCalledTimes(3);
     expect(publishMock).toHaveBeenCalledWith(
       'project:proj-1',
@@ -372,8 +376,7 @@ describe('jobs/events-routes · the session heartbeat and the ack stamp', () => 
     );
     expect(r.status).toBe(200);
 
-    // Only the ISS-449 ack-fallback stamp fires (jobs.ackedAt) — no
-    // agent_sessions update without a linked session.
+    // cm:why one and not two: with no linked session the heartbeat is never reached, so only the ack-fallback stamp fires.
     expect(dbUpdate).toHaveBeenCalledTimes(1);
     const ackOnlySetArg = updateSet.mock.calls[0]?.[0] as { ackedAt?: Date; status?: string };
     expect(ackOnlySetArg?.ackedAt).toBeInstanceOf(Date);

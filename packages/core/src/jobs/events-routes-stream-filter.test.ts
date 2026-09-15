@@ -47,13 +47,16 @@ const txInsert = vi.fn(() => ({
   },
 }));
 const txExecute = vi.fn();
+const txWith = vi.fn(() => ({ update: dbUpdate }));
 const transaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
-  const tx = { execute: txExecute, insert: txInsert, update: dbUpdate };
+  const tx = { execute: txExecute, insert: txInsert, update: dbUpdate, with: txWith };
   return fn(tx);
 });
 
+const selectFor = vi.fn(() => ({}));
 const selectLimit = vi.fn(async () => [jobRow]);
-const selectWhere = vi.fn(() => ({ limit: selectLimit }));
+// cm:why the same `.where()` link ends two different chains — `readJobGate` stops at `.limit()`, the heartbeat's locking CTE at `.for('update')`.
+const selectWhere = vi.fn(() => ({ limit: selectLimit, for: selectFor }));
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
 const dbSelect = vi.fn(() => ({ from: selectFrom }));
 
@@ -67,12 +70,16 @@ const updateWhere = vi.fn(() => {
   };
   return p as unknown as { returning: typeof updateReturning } & PromiseLike<unknown>;
 });
+const dbWith = vi.fn((_alias: string) => ({
+  as: (_q: unknown) => ({ id: 'prev.id', status: 'prev.status' }),
+}));
 const updateFrom = vi.fn(() => ({ where: updateWhere }));
 const updateSet = vi.fn((..._args: unknown[]) => ({ where: updateWhere, from: updateFrom }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
 
+// cm:guard `$with` and the transaction's `with` both have to answer, and a double missing either is not a loud failure: the heartbeat's `try/catch` swallows the TypeError and logs a warning, so every assertion in the file still passes while the write under it never happens (found on ISS-1014).
 vi.mock('../db/client.js', () => ({
-  db: { select: dbSelect, transaction, update: dbUpdate },
+  db: { select: dbSelect, transaction, update: dbUpdate, $with: dbWith },
 }));
 
 const publishMock = vi.fn(() => 0);
@@ -100,6 +107,8 @@ function resetMocks(): void {
   updateReturning.mockResolvedValue([]);
   updateSet.mockClear();
   updateFrom.mockClear();
+  txWith.mockClear();
+  dbWith.mockClear();
   updateWhere.mockClear();
   dbUpdate.mockClear();
 }

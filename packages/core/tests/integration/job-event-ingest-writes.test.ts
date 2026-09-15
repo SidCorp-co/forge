@@ -20,6 +20,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
+import postgres from 'postgres';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const publish = vi.fn((_room: string, _payload: unknown) => 0);
@@ -108,6 +109,7 @@ afterAll(async () => {
 beforeEach(async () => {
   await truncateAll(harness.db);
   publish.mockClear();
+  resetGate();
   ownerId = (await createTestUser(harness.db, { emailVerifiedAt: new Date() })).id;
   const org = await seedOrg(harness.db, ownerId);
   projectId = (await createTestProject(harness.db, ownerId, { orgId: org.id })).id;
@@ -212,6 +214,25 @@ async function withWideColumnsHidden<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
+let gate: Promise<void>;
+let openGate: () => void;
+
+function resetGate(): void {
+  let release: () => void = () => {};
+  gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  openGate = release;
+}
+
+async function waitFor(predicate: () => Promise<boolean>): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (await predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error('waitFor: the condition never held');
+}
+
 const stdout = { kind: 'stdout', data: { line: { type: 'assistant' } } };
 const park = { kind: 'progress', data: { runtimeState: 'awaiting_input' } };
 const working = { kind: 'progress', data: { runtimeState: 'working' } };
@@ -299,6 +320,42 @@ describe('ISS-1014 · one batch, one heartbeat statement', () => {
       (c) => (c[1] as { event?: string } | undefined)?.event === 'agent-session.status',
     );
     expect(statusPublishes).toHaveLength(2);
+  });
+
+  // cm:guard the exactly-once property the collapsed statement could most easily have lost, and the reason the locking CTE is a CTE and not a plain `UPDATE ... FROM agent_sessions prev` self-join. The old CAS on `status='queued'` was exclusive; a widened predicate is not, so without the lock BOTH batches read their own pre-write snapshot as `queued` and both announce a flip that happened once.
+  // cm:guard the test's own `FOR UPDATE` is what makes this deterministic rather than a race it might win: it holds both requests at the heartbeat until they are demonstrably both in flight, so the interleaving under test always happens. Take the lock away and the two POSTs simply run one after the other and the case proves nothing. Measured on ISS-1014: with the lock and without the CTE's `FOR UPDATE` this goes red at 4 status publishes; with both it is 2.
+  it('broadcasts the queued flip once when two first batches contend for it', async () => {
+    const { jobId, sessionId } = await seed('queued');
+    publish.mockClear();
+
+    const holder = postgres(harness.url, { max: 1, onnotice: () => {} });
+    const released = holder.begin(async (tx) => {
+      await tx`SELECT id FROM agent_sessions WHERE id = ${sessionId} FOR UPDATE`;
+      await gate;
+    });
+    try {
+      const inFlight = [post(jobId, [stdout]), post(jobId, [stdout])];
+      await waitFor(async () => {
+        const rows = await harness.db.execute<{ n: string }>(
+          sql`SELECT count(*) AS n FROM job_events WHERE job_id = ${jobId}`,
+        );
+        return Number(rows[0]?.n) === 2;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      openGate();
+      await released;
+      const responses = await Promise.all(inFlight);
+      expect(responses.map((r) => r.status)).toEqual([200, 200]);
+    } finally {
+      openGate();
+      await holder.end({ timeout: 5 });
+    }
+
+    const statusPublishes = publish.mock.calls.filter(
+      (c) => (c[1] as { event?: string } | undefined)?.event === 'agent-session.status',
+    );
+    expect(statusPublishes).toHaveLength(2);
+    expect((await session(sessionId)).status).toBe('running');
   });
 
   it('bumps an already-running session in ONE statement and broadcasts no status', async () => {

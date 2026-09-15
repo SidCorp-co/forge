@@ -193,22 +193,38 @@ async function fireSessionBridges(
     if (!metadata?.escalation && !metadata?.agentChat) continue;
     let full = row as unknown as SessionRow;
     if (!whole) {
-      const [hydrated] = await exec
-        .select()
-        .from(agentSessions)
-        .where(eq(agentSessions.id, row.id))
-        .limit(1);
-      if (!hydrated) {
-        logger.error(
-          { sessionId: row.id },
-          'lifecycle.transition: a bridge-marked session could not be re-read after its flip; its completion reply was not delivered',
-        );
-        continue;
-      }
+      const hydrated = await hydrateSession(exec, row.id);
+      if (!hydrated) continue;
       full = hydrated;
     }
     fireEscalationBridge(full);
     fireAgentChatBridge(full);
+  }
+}
+
+/**
+ * The whole row behind one bridge-marked id, or `null` with the reason logged.
+ */
+// cm:guard best-effort, and it MUST stay that way: the flip is already committed by the time this runs, so a throw here would take the caller's whole sweep down AFTER its rows went terminal — the broadcasts and wedges for every row it had already flipped would never fire, and the next tick would not find those rows again because they are no longer candidates. The two bridges this feeds have always been best-effort for the same reason; this read is the only part of the path that could throw, so it carries the same contract.
+async function hydrateSession(exec: KernelExecutor, sessionId: string): Promise<SessionRow | null> {
+  try {
+    const [row] = await exec
+      .select()
+      .from(agentSessions)
+      .where(eq(agentSessions.id, sessionId))
+      .limit(1);
+    if (row) return row;
+    logger.error(
+      { sessionId },
+      'lifecycle.transition: a bridge-marked session could not be re-read after its flip; its completion reply was not delivered',
+    );
+    return null;
+  } catch (err) {
+    logger.error(
+      { err, sessionId },
+      'lifecycle.transition: re-reading a bridge-marked session after its flip failed; its completion reply was not delivered',
+    );
+    return null;
   }
 }
 
