@@ -2,7 +2,7 @@ import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { knowledgeEntries, type knowledgeKinds } from '../db/schema.js';
-import { EmbeddingUnavailableError, embed } from '../embeddings/index.js';
+import { EmbeddingUnavailableError, embedBatch } from '../embeddings/index.js';
 import { logger } from '../logger.js';
 
 const MAX_EMBED_CHARS = 8192;
@@ -63,44 +63,81 @@ export const MAX_RESPONSE_CHARS = 38_000;
 export async function upsertKnowledgeEntry(
   input: UpsertKnowledgeInput,
 ): Promise<UpsertKnowledgeResult> {
-  const embedText = knowledgeEmbedText(input.title, input.body);
-  const truncated = embedText.length > MAX_EMBED_CHARS;
-  const toEmbed = truncated ? knowledgeEmbedInput(input.title, input.body) : embedText;
+  const [row] = await upsertKnowledgeEntries([input]);
+  if (!row) throw new Error('knowledge.service: upsert returned no row');
+  return row;
+}
 
-  if (truncated) {
+/** The later of two inputs on one slug, whole — a multi-row upsert may name a conflict target once. */
+// cm:guard the WHOLE later input wins, never a field-by-field merge: `knowledgeEmbedText` embeds title AND body, so keeping an earlier title beside a later body would store a vector for a string no row says. Ingest documents two doc ids kebabing to one slug as last-writer-wins (knowledge/ingest-routes.ts), and a batch that sent both to one `INSERT ... ON CONFLICT DO UPDATE` would raise `ON CONFLICT DO UPDATE command cannot affect row a second time` and fail the whole request instead.
+function lastPerSlug(inputs: UpsertKnowledgeInput[]): UpsertKnowledgeInput[] {
+  const bySlug = new Map<string, UpsertKnowledgeInput>();
+  for (const input of inputs) bySlug.set(input.slug, input);
+  return [...bySlug.values()];
+}
+
+/**
+ * The one write path for a knowledge entry: one `embedBatch` over every entry's embed text and
+ * one multi-row upsert. `upsertKnowledgeEntry` is this called with a single input, so the embed
+ * text, the truncation cut and the conflict clause have exactly one writer.
+ *
+ * An embeddings OUTAGE degrades the WHOLE batch — `embedBatch` either answers for every text or
+ * throws — and each row is then written without a vector for the backfill, preserving the stored
+ * one where neither title nor body moved.
+ */
+export async function upsertKnowledgeEntries(
+  inputs: UpsertKnowledgeInput[],
+): Promise<UpsertKnowledgeResult[]> {
+  if (inputs.length === 0) return [];
+  const entries = lastPerSlug(inputs);
+
+  const embedTexts = entries.map((e) => knowledgeEmbedText(e.title, e.body));
+  for (const [i, text] of embedTexts.entries()) {
+    const entry = entries[i];
+    if (!entry || text.length <= MAX_EMBED_CHARS) continue;
     logger.warn(
-      { projectId: input.projectId, slug: input.slug, originalLen: embedText.length },
+      { projectId: entry.projectId, slug: entry.slug, originalLen: text.length },
       'knowledge.service: truncated text before embed',
     );
   }
 
-  let vector: number[] | null = null;
+  let vectors: Array<number[] | null> = entries.map(() => null);
+  let degraded = false;
   try {
-    vector = await embed(toEmbed);
+    const embedded = await embedBatch(entries.map((e) => knowledgeEmbedInput(e.title, e.body)));
+    // cm:guard a short answer is REFUSED by name rather than spread over the rows: the missing slots would be written as `excluded.embedding = NULL` on a batch this path calls healthy, which overwrites good stored vectors with nothing and leaves the backfill no null to find.
+    if (embedded.length !== embedTexts.length) {
+      throw new Error(
+        `knowledge.service: embeddings returned ${embedded.length} vectors for ${embedTexts.length} texts`,
+      );
+    }
+    vectors = embedded;
   } catch (err) {
     if (!(err instanceof EmbeddingUnavailableError)) throw err;
+    degraded = true;
     logger.warn(
-      { projectId: input.projectId, slug: input.slug },
-      'knowledge.service: embeddings unavailable, storing degraded row for backfill',
+      { projectId: entries[0]?.projectId, slugs: entries.map((e) => e.slug) },
+      'knowledge.service: embeddings unavailable, storing degraded rows for backfill',
     );
   }
-  const degraded = vector === null;
 
-  const [row] = await db
+  const rows = await db
     .insert(knowledgeEntries)
-    .values({
-      projectId: input.projectId,
-      slug: input.slug,
-      title: input.title,
-      body: input.body,
-      kind: input.kind,
-      injection: input.injection,
-      confidence: input.confidence,
-      authoredBy: input.authoredBy,
-      orderIndex: input.orderIndex,
-      embedding: vector,
-      metadata: input.metadata ?? {},
-    })
+    .values(
+      entries.map((input, i) => ({
+        projectId: input.projectId,
+        slug: input.slug,
+        title: input.title,
+        body: input.body,
+        kind: input.kind,
+        injection: input.injection,
+        confidence: input.confidence,
+        authoredBy: input.authoredBy,
+        orderIndex: input.orderIndex,
+        embedding: vectors[i] ?? null,
+        metadata: input.metadata ?? {},
+      })),
+    )
     .onConflictDoUpdate({
       target: [knowledgeEntries.projectId, knowledgeEntries.slug],
       set: {
@@ -111,19 +148,24 @@ export async function upsertKnowledgeEntry(
         confidence: sql`excluded.confidence`,
         authoredBy: sql`excluded.authored_by`,
         orderIndex: sql`excluded.order_index`,
-        // Degraded re-write: preserve existing vector when body unchanged.
+        // cm:guard the degraded re-write preserves the stored vector only when NEITHER half of the embed text moved: `knowledgeEmbedText` is title, blank line, body, so a title-only edit under an outage kept a vector for the superseded title until ISS-1024.
         embedding: degraded
-          ? sql`CASE WHEN ${knowledgeEntries.body} = excluded.body THEN ${knowledgeEntries.embedding} ELSE excluded.embedding END`
+          ? sql`CASE WHEN ${knowledgeEntries.body} = excluded.body AND ${knowledgeEntries.title} = excluded.title THEN ${knowledgeEntries.embedding} ELSE excluded.embedding END`
           : sql`excluded.embedding`,
         metadata: sql`excluded.metadata`,
         archivedAt: sql`null`,
         updatedAt: sql`now()`,
       },
     })
-    .returning({ id: knowledgeEntries.id });
+    .returning({ id: knowledgeEntries.id, slug: knowledgeEntries.slug });
 
-  if (!row) throw new Error('knowledge.service: upsert returned no row');
-  return { id: row.id, slug: input.slug, degraded, truncated };
+  const idBySlug = new Map(rows.map((r) => [r.slug, r.id]));
+  return inputs.map((input) => {
+    const id = idBySlug.get(input.slug);
+    if (!id) throw new Error(`knowledge.service: upsert returned no row for ${input.slug}`);
+    const embedText = knowledgeEmbedText(input.title, input.body);
+    return { id, slug: input.slug, degraded, truncated: embedText.length > MAX_EMBED_CHARS };
+  });
 }
 
 export interface ListKnowledgeInput {

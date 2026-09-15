@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { env } from '../config/env.js';
-import { deleteKnowledgeEntry, upsertKnowledgeEntry } from '../knowledge/service.js';
+import { deleteKnowledgeEntry, upsertKnowledgeEntries } from '../knowledge/service.js';
 import { assertOrgRoleOnProject, loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import type { AuthVars } from '../middleware/auth.js';
@@ -122,7 +122,6 @@ projectFactsRoutes.patch(
     });
     if (ac === null) throw notFound();
 
-    // AC6: write-through to knowledge_entries when the flag is ON.
     if (
       env.KNOWLEDGE_INJECTION_ENABLED &&
       patch.projectFacts !== undefined &&
@@ -137,30 +136,33 @@ projectFactsRoutes.patch(
         (ac.projectFactsConfig as Record<string, { alwaysInject?: boolean }> | undefined) ?? {};
       const factsMap = (ac.projectFacts as Record<string, string> | undefined) ?? {};
       const patchEntries = Object.entries(patch.projectFacts as Record<string, string | null>);
-      for (let i = 0; i < patchEntries.length; i++) {
-        const [key, value] = patchEntries[i] as [string, string | null];
+      const writes: Parameters<typeof upsertKnowledgeEntries>[0] = [];
+      for (const [key, value] of patchEntries) {
         if (reserved.has(key)) continue;
         if (value === null) {
           await deleteKnowledgeEntry(id, key).catch(() => undefined);
-        } else {
-          const alwaysInject = factsConfig[key]?.alwaysInject === true;
-          await upsertKnowledgeEntry({
-            projectId: id,
-            slug: key,
-            title: key,
-            body: value,
-            kind: 'guide',
-            injection: alwaysInject ? 'always' : 'on_demand',
-            confidence: 'verified',
-            authoredBy: 'human',
-            orderIndex: Object.keys(factsMap).indexOf(key),
-          }).catch((err: Error) => {
-            logger.warn(
-              { err: err.message, key },
-              'project-facts REST: knowledge write-through failed',
-            );
-          });
+          continue;
         }
+        writes.push({
+          projectId: id,
+          slug: key,
+          title: key,
+          body: value,
+          kind: 'guide',
+          injection: factsConfig[key]?.alwaysInject === true ? 'always' : 'on_demand',
+          confidence: 'verified',
+          authoredBy: 'human',
+          orderIndex: Object.keys(factsMap).indexOf(key),
+        });
+      }
+      // cm:guard the write-through is ONE batch so a patch of N keys costs one embeddings call rather than N, matching the lockstep partners above; a failure logs every key it carried, because the upsert lands whole or not at all and naming one would hide the rest.
+      if (writes.length > 0) {
+        await upsertKnowledgeEntries(writes).catch((err: Error) => {
+          logger.warn(
+            { err: err.message, keys: writes.map((w) => w.slug) },
+            'project-facts REST: knowledge write-through failed',
+          );
+        });
       }
     }
 

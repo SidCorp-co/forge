@@ -48,6 +48,12 @@ export interface RunMemorySearchInput {
   sourceFilter?: MemorySource[] | undefined;
   strategy?: MemorySearchStrategy | undefined;
   surface: MemorySearchSurface;
+  /**
+   * The query already embedded by the caller. `knowledge/unified-search.ts` holds one because it
+   * searches two stores from one query, and embedding it a second time here buys nothing but the
+   * call. Absent, this function embeds the query itself as it always did.
+   */
+  queryVec?: number[] | undefined;
 }
 
 export interface MemorySearchResult {
@@ -118,7 +124,7 @@ async function retrieve(
     return { hits, resolved: requested, degraded: false };
   }
   try {
-    const queryVec = await embed(input.query);
+    const queryVec = input.queryVec ?? (await embed(input.query));
     if (requested === 'hybrid') {
       const fused = await hybridSearchMemories({
         ...base,
@@ -201,8 +207,7 @@ export async function runMemorySearch(input: RunMemorySearchInput): Promise<Memo
   const tookMs = Date.now() - startedAt;
   logRetrieval(input, hits, retrieved.resolved, requested, tookMs, retrieved.breakdown, outcome);
 
-  // Usage tracking (phase 2) — detached; a tracking failure never fails the
-  // search. Natural-key reads (forge_memory.get) intentionally do NOT count.
+  // cm:guard retrieval counts come from SEARCH hits only — a natural-key read (forge_memory.get) deliberately does not bump them, because the decay and promotion jobs read the count as evidence the row answered a question somebody asked rather than that somebody knew its ref.
   if (hits.length > 0) {
     const hitIds = hits.map((h) => h.id);
     queueMicrotask(() => {

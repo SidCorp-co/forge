@@ -6,7 +6,10 @@
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, memories, projects } from '../db/schema.js';
-import { loadIssueRelations } from '../issues/dependency-read.js';
+import {
+  type IssueRelationDigest,
+  loadIssueRelationsForIssues,
+} from '../issues/dependency-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { deriveMemoryStaleness, type MemoryHit, type MemoryVia } from './search.js';
 
@@ -21,10 +24,7 @@ export interface ExpandRelationsInput {
 
 type Neighbour = { issueId: string; via: MemoryVia };
 
-function isExpandable(kind: string): kind is MemoryVia['relation'] {
-  return (EXPAND_RELATION_KINDS as ReadonlyArray<string>).includes(kind);
-}
-
+/** One read for every seed's `ISS-<n>`, never one per seed. */
 async function displayIds(issueIds: string[]): Promise<Map<string, string>> {
   if (issueIds.length === 0) return new Map();
   const rows = await db
@@ -35,14 +35,17 @@ async function displayIds(issueIds: string[]): Promise<Map<string, string>> {
   return new Map(rows.map((r) => [r.id, formatIssueRef(r.issuePrefix, r.issSeq)]));
 }
 
+function isExpandable(kind: string): kind is MemoryVia['relation'] {
+  return (EXPAND_RELATION_KINDS as ReadonlyArray<string>).includes(kind);
+}
+
 // cm:guard both directions are walked (`blocks` and `blockedBy`) and expired edges are dropped — the blocked issue is as relevant to a reader as its blocker, and an edge past `validUntil` was retracted on purpose (forge_issues.update with validUntil in the past is the documented retraction), so surfacing it would resurrect a relation someone removed
-async function neighboursOf(
-  seed: MemoryHit,
-  projectId: string,
+// cm:guard the digest this reads carries ids, kind and expiry ONLY — no title, no description, no `reason` — because these rows are inlined into an agent's context without the untrusted-data framing the issue's own fields get; it is the same `digest()` the single-issue read builds, batched, so the omission cannot drift between the two callers (ISS-1024)
+function neighboursOf(
+  relations: { blocks: IssueRelationDigest[]; blockedBy: IssueRelationDigest[] },
   from: string,
-): Promise<Neighbour[]> {
-  const { blocks, blockedBy } = await loadIssueRelations(seed.sourceRef, projectId);
-  return [...blocks, ...blockedBy]
+): Neighbour[] {
+  return [...relations.blocks, ...relations.blockedBy]
     .filter((edge) => !edge.expired && isExpandable(edge.kind))
     .map((edge) => ({
       issueId: edge.otherIssueId,
@@ -68,10 +71,15 @@ export async function expandIssueRelations(input: ExpandRelationsInput): Promise
   const seeds = input.hits.filter((h) => h.source === 'issue').slice(0, EXPAND_SEED_LIMIT);
   if (seeds.length === 0 || input.topK <= 0) return [];
 
-  const labels = await displayIds(seeds.map((s) => s.sourceRef));
-  const perSeed = await Promise.all(
-    seeds.map((seed) =>
-      neighboursOf(seed, input.projectId, labels.get(seed.sourceRef) ?? seed.sourceRef),
+  const seedRefs = seeds.map((s) => s.sourceRef);
+  const [labels, relations] = await Promise.all([
+    displayIds(seedRefs),
+    loadIssueRelationsForIssues(seedRefs, input.projectId),
+  ]);
+  const perSeed = seeds.map((seed) =>
+    neighboursOf(
+      relations.get(seed.sourceRef) ?? { blocks: [], blockedBy: [] },
+      labels.get(seed.sourceRef) ?? seed.sourceRef,
     ),
   );
   const present = new Set(input.hits.filter((h) => h.source === 'issue').map((h) => h.sourceRef));

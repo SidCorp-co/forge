@@ -61,13 +61,11 @@ export async function runUnifiedSearch(input: {
     return { knowledge: knowledgeHits, memory: memoryHits };
   }
 
-  // Semantic or hybrid — need an embedding.
   let queryVec: number[] | null = null;
   try {
     queryVec = await embed(query);
   } catch (err) {
     if (!(err instanceof EmbeddingUnavailableError)) throw err;
-    // Degrade to keyword for all sub-queries.
     logger.warn(
       { projectId, scope, strategy },
       'knowledge.unified-search: embeddings unavailable, degrading to keyword',
@@ -93,7 +91,7 @@ export async function runUnifiedSearch(input: {
     return { knowledge: knowledgeHits, memory: memoryHits, degraded: true };
   }
 
-  // Run both stores in parallel (no cross-store dedup or score blending).
+  // cm:guard the two stores are scored independently and NEVER blended or de-duplicated across — each hit carries its `origin` so the caller can tell them apart, and a fused list would put a knowledge cosine and a memory RRF value on one scale.
   const tasks: Promise<void>[] = [];
 
   if (needsKnowledge) {
@@ -109,10 +107,12 @@ export async function runUnifiedSearch(input: {
 
   if (needsMemory) {
     tasks.push(
-      runMemorySearch({ projectId, query, topK, strategy, surface: 'agent' }).then((result) => {
-        memoryHits.push(...result.hits.map((h) => ({ ...h, origin: 'memory' as const })));
-        if (result.degraded) degraded = true;
-      }),
+      runMemorySearch({ projectId, query, queryVec, topK, strategy, surface: 'agent' }).then(
+        (result) => {
+          memoryHits.push(...result.hits.map((h) => ({ ...h, origin: 'memory' as const })));
+          if (result.degraded) degraded = true;
+        },
+      ),
     );
   }
 
