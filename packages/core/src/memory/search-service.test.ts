@@ -374,6 +374,21 @@ describe('embedMs — where a slow search went (ISS-1041)', () => {
     expect(out.embedMs as number).toBeGreaterThanOrEqual(4);
   });
 
+  // cm:guard the cache sits behind embedQuery() alone; a retrieval switched back to embed() would pay the proxy on every repeated question (criterion 44).
+  it('embeds the query through embedQuery, never embed (criterion 44)', async () => {
+    embedMock.mockClear();
+    vi.mocked(embeddings.embed).mockClear();
+    await runMemorySearch({
+      projectId: PROJECT,
+      query: 'q',
+      strategy: 'semantic',
+      surface: 'agent',
+    });
+    await runMemorySearch({ projectId: PROJECT, query: 'q', strategy: 'hybrid', surface: 'agent' });
+    expect(embedMock).toHaveBeenCalledTimes(2);
+    expect(embeddings.embed).not.toHaveBeenCalled();
+  });
+
   it('is absent on an explicitly requested keyword search (criterion 8)', async () => {
     const out = await runMemorySearch({
       projectId: PROJECT,

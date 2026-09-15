@@ -14,8 +14,15 @@ vi.mock('../config/env.js', () => ({
   },
 }));
 
-const { embedQuery, QUERY_CACHE_MAX, QUERY_CACHE_TTL_MS, queryCacheSize, resetEmbeddingsClient } =
-  await import('./index.js');
+const {
+  embed,
+  embedBatch,
+  embedQuery,
+  QUERY_CACHE_MAX,
+  QUERY_CACHE_TTL_MS,
+  queryCacheSize,
+  resetEmbeddingsClient,
+} = await import('./index.js');
 
 let model = 'primary';
 const embedDetailed = vi.fn(async (texts: string[]) => ({
@@ -85,5 +92,16 @@ describe('embedQuery() and its cache', () => {
     expect(embedDetailed).toHaveBeenCalledTimes(2);
     await embedQuery('what broke');
     expect(embedDetailed).toHaveBeenCalledTimes(2);
+  });
+
+  // cm:guard the indexer's identical-text skip and the backfill count the client's calls; a cache on the write path would hide a re-embed the caller meant to make (criterion 45).
+  it('leaves embed() and embedBatch() uncached — the same text twice reaches the client twice (criterion 45)', async () => {
+    await embed('what broke');
+    await embed('what broke');
+    expect(embedDetailed).toHaveBeenCalledTimes(2);
+    await embedBatch(['what broke', 'and why']);
+    await embedBatch(['what broke', 'and why']);
+    expect(embedDetailed).toHaveBeenCalledTimes(4);
+    expect(queryCacheSize()).toBe(0);
   });
 });

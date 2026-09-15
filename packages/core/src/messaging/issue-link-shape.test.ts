@@ -45,27 +45,26 @@ describe('issue-link-shape', () => {
     expect(check('Upstream tracks it at https://github.com/acme/repo/issues/24.')).toEqual([]);
   });
 
-  // cm:guard the API's project-scoped routes carry `/projects/<id>/issues/` inside a longer path; a rule that starts matching mid-path refuses an explanation of the real endpoint (codex F1 at effaee99, criterion 43).
-  it('passes the project-scoped API path, root-relative and absolute, and still refuses the navigation shapes beside it (criterion 43)', () => {
+  // cm:guard the API's project-scoped routes carry `/projects/<id>/issues/` inside a longer path; a rule that starts matching mid-path refuses an explanation of the real endpoint (codex F1 at effaee99).
+  it('passes the project-scoped API path, root-relative, absolute and in inline code (criterion 43)', () => {
     expect(check(`GET /api/projects/${UUID}/issues/search finds issues by text.`)).toEqual([]);
     expect(
       check(`Call https://forge.example/api/projects/${UUID}/issues/search?q=csv for the same.`),
     ).toEqual([]);
     expect(check(`The route is \`/api/projects/${UUID}/issues/${UUID}\`.`)).toEqual([]);
-    expect(
-      check(
-        `GET /api/projects/${UUID}/issues/search finds it; open /projects/acme/issues/ISS-24 to read it.`,
-      ),
-    ).toHaveLength(1);
-    expect(check(`See https://forge.example/#/projects/acme/issues/${UUID} for it.`)).toHaveLength(
-      1,
-    );
   });
 
-  // cm:guard inline code is how a technical reply quotes a path, and the closing backtick is not part of the documentId (codex F3).
-  it('passes a valid path in inline code and still refuses an issue key in one', () => {
-    expect(check(`Open \`/projects/acme/issues/${UUID}\` in the app.`)).toEqual([]);
-    expect(check('Open `/projects/acme/issues/ISS-24` in the app.')).toHaveLength(1);
+  it('refuses only the navigation target beside an API path (criterion 46)', () => {
+    const key = check(
+      `GET /api/projects/${UUID}/issues/search finds it; open /projects/acme/issues/ISS-24 to read it.`,
+    );
+    expect(key.map((b) => b.quote)).toEqual(['/projects/acme/issues/ISS-24']);
+    const hash = check(
+      `https://forge.example/api/projects/${UUID}/issues/search answers; https://forge.example/#/projects/acme/issues/${UUID} does not open.`,
+    );
+    expect(hash.map((b) => b.quote)).toEqual([
+      `https://forge.example/#/projects/acme/issues/${UUID}`,
+    ]);
   });
 
   it('passes a reply with no link (criterion 34)', () => {
