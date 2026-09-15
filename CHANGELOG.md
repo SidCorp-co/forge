@@ -4892,6 +4892,19 @@
 
 ### Changed
 
+- **The watchdog that spots a stalled job stops reading every event the deployment has ever
+  recorded.** Twice a minute, and again every five minutes, Forge asks a small question: which of
+  the jobs running right now have gone quiet long enough to be treated as wedged? It was answering
+  it by first working out the last thing that happened to *every* job that has ever run — 3.9
+  million events and 11 GB of them on the beta deployment, read end to end 132,683 times — and only
+  then narrowing to the few dozen jobs actually in flight. It now asks each running job about
+  itself, which is the same answer for a fraction of the work, and the database is told how to find
+  it. The same pass also stops raising false alarms: a driver that reports its progress by naming
+  the phase it is in, a job paused for someone to answer a question, and a job the system is already
+  in the middle of stopping were each being reported every five minutes as work the watchdog had
+  missed, and a long-running conversational session was being missed in the other direction. Which
+  jobs get stopped, and when, is unchanged. (ISS-1013)
+
 - **Ask agent opens onto your past conversations, and you can tidy them up.** Opening the panel
   still starts a fresh chat — nothing you said before is pulled back in behind you — but your
   earlier conversations are now listed right there in it, and a history control in the chat's own

@@ -14,14 +14,35 @@
  * of the loop tick: a row crossing the 60-min threshold between loop ticks
  * would otherwise race a false alarm. With the margin, only a row the loop
  * has demonstrably had time to handle (and didn't) fires.
+ *
+ * ISS-1013 — the pass stays an INDEPENDENT query on its own schedule, and
+ * that independence is the whole of what it buys: a pass fed from the loop's
+ * own recorded counts is silent exactly when the loop has stopped running,
+ * which is the one thing this alarm exists to catch. What it no longer is, is
+ * a SECOND predicate. It takes `quietJobCandidateQuery` — the result hop's own
+ * builder — so the two cannot drift; until ISS-1013 it carried a copy that had
+ * drifted four ways at once, and every one of them was a wrong answer:
+ *
+ *   - no phase term, so every autonomous driver declaring phases and emitting
+ *     no job_events wedged an operator alert every five minutes for working;
+ *   - no park exemption, so every human park quiet past 65 minutes did too;
+ *   - no kill-gate exclusion, so a job the gate is deliberately holding read
+ *     as a loop that had missed it — the exact term `sweeper.ts`'s two job
+ *     alarms already carry, and for the same stated reason;
+ *   - the raw `NOT EXISTS result` guard rather than `RESULT_GUARD`, so a
+ *     duplex session's job went permanently invisible to this alarm after its
+ *     first turn wrote a `result` — the one case where a genuine loop miss
+ *     matters most, and the only one of the four that made the alarm see LESS.
  */
 
-import { sql } from 'drizzle-orm';
+import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { logger } from '../logger.js';
 import { emitPipelineWedge } from '../pipeline/wedge.js';
 import { boss } from '../queue/boss.js';
+import { killGraceMs } from './kill-gate.js';
 import { RESULT_QUIET_MINUTES } from './loop-monitor.js';
+import { quietJobCandidateQuery } from './progress-signal.js';
 
 export const STALE_DETECTOR_QUEUE = 'stale-job-detector';
 
@@ -35,14 +56,24 @@ type StaleAlarmRow = {
   issue_id: string | null;
 };
 
+/** The alarm's candidate query: the loop's own, at threshold plus margin, and
+ *  with the kill-gate grace excluded. Exported so a plan is read off the
+ *  subject rather than off a likeness of it. */
+export function staleAlarmQuery(now: Date = new Date()): SQL {
+  return quietJobCandidateQuery({
+    columns: sql`j.id, j.project_id, j.issue_id`,
+    quietMinutes: RESULT_QUIET_MINUTES + ALARM_MARGIN_MINUTES,
+    // cm:edge lockstep -> packages/core/src/pipeline/sweeper.ts — the same term `alarmOrphanedJobs` and `alarmNeverClaimedDispatches` carry: a gated row deliberately survives the loop until killGraceMs() elapses, so reporting it is reporting the gate working.
+    killGateCutoffIso: new Date(now.getTime() - killGraceMs()).toISOString(),
+  });
+}
+
 /**
- * Detect (do NOT reap) `dispatched`/`running` jobs whose latest job_event is
- * older than the loop's result threshold + margin (or whose dispatched_at is,
- * if no events), excluding jobs that already emitted a `result` event (those
- * are finalize-drops, not stale runners — ISS-258 false-positive guard,
- * preserved verbatim from the reaper era).
+ * Detect (do NOT reap) `dispatched`/`running` jobs the result hop should have
+ * acted on and did not: quiet past the loop's threshold plus the margin, by
+ * the loop's own definition of quiet, and not held by the kill gate.
  */
-export async function runStaleSweep(): Promise<{
+export async function runStaleSweep(now: Date = new Date()): Promise<{
   failed: number;
   durationMs: number;
 }> {
@@ -52,25 +83,7 @@ export async function runStaleSweep(): Promise<{
   // would otherwise be invisible) is detectable from logs alone.
   logger.debug('stale-job-detector: alarm sweep start');
   const thresholdMinutes = RESULT_QUIET_MINUTES + ALARM_MARGIN_MINUTES;
-  const stale = await db.execute<StaleAlarmRow>(
-    sql.raw(`
-    WITH last_event AS (
-      SELECT job_id, MAX(ts) AS max_ts
-      FROM job_events
-      GROUP BY job_id
-    )
-    SELECT j.id, j.project_id, j.issue_id
-    FROM jobs j
-    LEFT JOIN last_event le ON le.job_id = j.id
-    WHERE j.status IN ('dispatched', 'running')
-      AND NOT EXISTS (
-        SELECT 1 FROM job_events
-        WHERE job_id = j.id AND kind = 'result'
-      )
-      AND GREATEST(COALESCE(le.max_ts, j.dispatched_at), j.dispatched_at) <
-          now() - interval '${thresholdMinutes} minutes'
-  `),
-  );
+  const stale = await db.execute<StaleAlarmRow>(staleAlarmQuery(now));
 
   if (stale.length > 0) {
     logger.warn({ hop: 'result', entity: 'job', ids: stale.map((r) => r.id) }, 'loop-miss');

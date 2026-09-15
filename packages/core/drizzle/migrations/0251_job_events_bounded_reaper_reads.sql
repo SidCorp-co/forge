@@ -1,0 +1,40 @@
+-- ISS-1013 — the two indexes that bound the result hop's per-tick cost to the
+-- number of live jobs.
+--
+-- Additive in both statements: two indexes. No column, no constraint, no drop,
+-- no row written. Running it backwards is two `DROP INDEX IF EXISTS`, and
+-- nothing is lost.
+--
+-- Measured on the beta deployment 2026-09-15, before this landed: `job_events`
+-- 3.9 million rows and 11 GB, sequentially scanned 132,683 times for 341
+-- billion tuples read. `reapResultMisses` and `runStaleSweep` each opened with
+-- `SELECT job_id, MAX(ts) FROM job_events GROUP BY job_id` and only then joined
+-- the result to the few dozen `dispatched|running` jobs.
+--
+-- `job_events_job_id_ts_idx` — `job_events_job_id_seq_idx` already carries
+-- `job_id` in first position and cannot serve `max(ts)` for one job: it orders
+-- by `seq`, so the planner reads that job's whole event history. `(job_id, ts)`
+-- lets the min/max transform take a single index-only tuple per job.
+--
+-- `job_events_result_idx` — the result guard's `NOT EXISTS (... kind =
+-- 'result')` sits under an `OR`, so the planner cannot make it an anti-join and
+-- compiles it to a HASHED SubPlan: one parallel sequential scan of the whole
+-- table, built once per statement whatever the driving row is. Bounding the two
+-- maxima and leaving that alone moves the cost rather than removing it —
+-- measured on this branch's fixture, 13,683 of the rewritten query's 13,969
+-- shared buffers were that one subplan. `resident-session.ts` now reads the
+-- guard through a lateral, and this partial index is what makes that lateral one
+-- tuple per live job. PARTIAL because a result event is one row in a job's
+-- history: the predicate keeps the index small and costs a non-result insert
+-- only the predicate evaluation, on a write-heavy table.
+--
+-- cm:guard NEITHER is `CONCURRENTLY`, and neither can be: `src/db/migrate.ts`
+-- wraps the whole run in one transaction and a CONCURRENTLY build is refused
+-- inside one. Both statements therefore hold a write lock on `job_events` until
+-- that transaction commits. At 3.9 million rows that is on the order of a minute
+-- and roughly 160 MB for the two-column btree plus a fraction of that for the
+-- partial one, and the container is not serving while it migrates — so the lock
+-- and the disk are paid, not avoided, and this comment is where that price is
+-- stated.
+CREATE INDEX IF NOT EXISTS "job_events_job_id_ts_idx" ON "job_events" USING btree ("job_id","ts");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "job_events_result_idx" ON "job_events" USING btree ("job_id") WHERE kind = 'result';
