@@ -242,7 +242,7 @@ export async function createReleaseBatch(
       pipelineRunId: run.id,
       createdBy: userId,
       type: 'release_batch',
-      skillName: 'forge-release-batch',
+      skillName: 'release-flow',
       promptString,
       payloadExtras: {
         releaseBatch: true,
