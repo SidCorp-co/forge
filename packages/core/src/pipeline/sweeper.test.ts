@@ -54,6 +54,10 @@ vi.mock('./retry-rescue-alert.js', () => ({
 
 // cm:why ISS-652 — alertSweep issues its own real db.execute calls (alert-queries.ts); this suite's db.execute mock is a single shared mockResolvedValueOnce queue, so an unmocked pass would silently consume another pass's queued result
 const alertsMock = vi.fn(async (_now?: Date) => ({ evaluated: 0, notified: 0, resolved: 0 }));
+const heartbeatMock = vi.fn(async () => ({ rooms: 0, opened: 0, skipped: {} }));
+vi.mock('../conversations/heartbeat.js', () => ({
+  runHeartbeatTick: (...a: unknown[]) => heartbeatMock(...(a as [])),
+}));
 vi.mock('../admin/alert-sweeper.js', () => ({ runAlertSweep: (now?: Date) => alertsMock(now) }));
 
 const dbExecute = vi.fn(async (..._args: unknown[]) => [] as Array<Record<string, unknown>>);
@@ -217,6 +221,20 @@ describe('runPipelineSweep — watch-only alarm passes', () => {
 
     expect(resumeOrphanedPausesMock).toHaveBeenCalledTimes(1);
     expect(result.orphanedPauses).toEqual({ detected: 2, resumed: 2 });
+  });
+});
+
+describe('runPipelineSweep — conversation heartbeat (ISS-1034)', () => {
+  // cm:guard the pass must stay in the sweep AND in SweepResult: a heartbeat wired into the driver but dropped from the result is a window nobody can see was owed, which is the silence the tick exists to end.
+  it('runs the heartbeat tick and exposes what it opened', async () => {
+    heartbeatMock.mockResolvedValueOnce({ rooms: 2, opened: 1, skipped: { 'window-open': 1 } });
+    const result = await runPipelineSweep();
+    expect(heartbeatMock).toHaveBeenCalledTimes(1);
+    expect(result.conversationHeartbeat).toEqual({
+      rooms: 2,
+      opened: 1,
+      skipped: { 'window-open': 1 },
+    });
   });
 });
 
