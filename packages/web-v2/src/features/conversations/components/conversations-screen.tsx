@@ -110,8 +110,7 @@ export function ConversationsScreen() {
       onOpen={openRow}
       onRename={(title, row) => rename.mutate({ id: row.id, title })}
       onArchive={(archived, row) => {
-        archive.mutate({ id: row.id, archived });
-        dropIfOpen(row.id);
+        archive.mutate({ id: row.id, archived }, { onSuccess: () => dropIfOpen(row.id) });
       }}
       onDelete={(row) => setConfirming(row)}
       loading={conversations.isLoading}
@@ -177,8 +176,10 @@ export function ConversationsScreen() {
         loading={remove.isPending}
         onConfirm={() => {
           if (!confirming) return;
-          remove.mutate(confirming.id);
-          dropIfOpen(confirming.id);
+          // cm:guard the selection is cleared on the SERVER's answer and not on the press, for the
+          // reason `conversation-list.tsx` states over the same two calls (review F2).
+          const id = confirming.id;
+          remove.mutate(id, { onSuccess: () => dropIfOpen(id) });
           setConfirming(null);
         }}
         onClose={() => setConfirming(null)}

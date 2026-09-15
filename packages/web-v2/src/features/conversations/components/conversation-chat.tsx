@@ -97,60 +97,73 @@ export function ConversationChat({
     await send.mutateAsync({ conversationId: id, content: message });
   };
 
+  // cm:guard the header is built ONCE and rendered above every body state, rather than the loading
+  // and error states returning a screen of their own: a room whose read fails — one deleted in
+  // another tab, a dropped connection — used to render as an error and a Retry button with no
+  // history control and no way to start a new chat, so the only way out of a room that no longer
+  // loads was to close the panel and open it again (review F3).
+  const header = (
+    <header className="@container flex-none border-b border-line bg-app/95 px-4 py-3">
+      <div className="flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <h1 className="fg-h2 truncate">
+            {roomQ.data ? conversationTitle(roomQ.data, messages[0]?.content) : "New conversation"}
+          </h1>
+          <p className="fg-body-sm hidden text-muted @[560px]:block">
+            Ask the agent about this project — it reads the project, not the repository.
+          </p>
+        </div>
+        {onOpenHistory && (
+          <IconButton
+            icon="clock"
+            size="sm"
+            aria-label="Conversation history"
+            onClick={onOpenHistory}
+          />
+        )}
+        {onNew && <IconButton icon="plus" size="sm" aria-label="New conversation" onClick={onNew} />}
+        {roomQ.data && (
+          <IconButton
+            icon="users"
+            size="sm"
+            aria-label="Who is in this room"
+            onClick={() => setMembersOpen(true)}
+          />
+        )}
+        {onClose && <IconButton icon="x" size="sm" aria-label="Close conversation" onClick={onClose} />}
+      </div>
+    </header>
+  );
+
   if (resolvedId && roomQ.isLoading) {
     return (
-      <div className="grid h-full min-h-0 place-items-center py-12">
-        <ProjectLoader label="loading conversation…" />
+      <div className="flex h-full min-h-0 flex-col">
+        {header}
+        <div className="grid min-h-0 flex-1 place-items-center py-12">
+          <ProjectLoader label="loading conversation…" />
+        </div>
       </div>
     );
   }
 
   if (resolvedId && roomQ.isError) {
     return (
-      <div className="grid h-full min-h-0 place-items-center px-4 py-12">
-        <ErrorState
-          title="Couldn't load this conversation"
-          message={formatApiError(roomQ.error)}
-          onRetry={() => roomQ.refetch()}
-        />
+      <div className="flex h-full min-h-0 flex-col">
+        {header}
+        <div className="grid min-h-0 flex-1 place-items-center px-4 py-12">
+          <ErrorState
+            title="Couldn't load this conversation"
+            message={formatApiError(roomQ.error)}
+            onRetry={() => roomQ.refetch()}
+          />
+        </div>
       </div>
     );
   }
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="@container flex-none border-b border-line bg-app/95 px-4 py-3">
-        <div className="flex items-center gap-3">
-          <div className="min-w-0 flex-1">
-            <h1 className="fg-h2 truncate">
-              {roomQ.data ? conversationTitle(roomQ.data, messages[0]?.content) : "New conversation"}
-            </h1>
-            <p className="fg-body-sm hidden text-muted @[560px]:block">
-              Ask the agent about this project — it reads the project, not the repository.
-            </p>
-          </div>
-          {onOpenHistory && (
-            <IconButton
-              icon="clock"
-              size="sm"
-              aria-label="Conversation history"
-              onClick={onOpenHistory}
-            />
-          )}
-          {onNew && (
-            <IconButton icon="plus" size="sm" aria-label="New conversation" onClick={onNew} />
-          )}
-          {roomQ.data && (
-            <IconButton
-              icon="users"
-              size="sm"
-              aria-label="Who is in this room"
-              onClick={() => setMembersOpen(true)}
-            />
-          )}
-          {onClose && <IconButton icon="x" size="sm" aria-label="Close conversation" onClick={onClose} />}
-        </div>
-      </header>
+      {header}
 
       {roomQ.data && <ScopeNotice room={roomQ.data} />}
 

@@ -23,6 +23,8 @@ const detail = vi.fn();
 const rename = vi.fn();
 const remove = vi.fn();
 const setArchived = vi.fn();
+const openRoom = vi.fn();
+const sendMsg = vi.fn();
 
 vi.mock("../api", () => ({
   conversationsApi: {
@@ -31,15 +33,19 @@ vi.mock("../api", () => ({
     rename: (...a: unknown[]) => rename(...a),
     remove: (...a: unknown[]) => remove(...a),
     setArchived: (...a: unknown[]) => setArchived(...a),
-    open: async () => ({ id: "cNew" }),
-    send: async () => ({ conversationId: "cNew", messages: [], windows: [] }),
+    open: (...a: unknown[]) => openRoom(...a),
+    send: (...a: unknown[]) => sendMsg(...a),
   },
 }));
 vi.mock("@/features/projects/hooks", () => ({
   useProjects: () => ({ data: [{ id: "p1", name: "Alpha", slug: "alpha", role: "member" }] }),
 }));
 vi.mock("@/features/session/components/composer", () => ({
-  Composer: () => <div data-testid="composer" />,
+  Composer: ({ onSend }: { onSend: (m: string) => Promise<void> }) => (
+    <button type="button" data-testid="composer" onClick={() => void onSend("hello")}>
+      send
+    </button>
+  ),
   ReadOnlyComposerNote: () => null,
 }));
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
@@ -62,7 +68,9 @@ const archived = [roomRow("c3", "Old migration", "2026-09-10T00:00:00.000Z")];
 afterEach(cleanup);
 
 beforeEach(() => {
-  for (const m of [list, detail, rename, remove, setArchived]) m.mockReset();
+  for (const m of [list, detail, rename, remove, setArchived, openRoom, sendMsg]) m.mockReset();
+  openRoom.mockResolvedValue(roomRow("cNew", "Brand new"));
+  sendMsg.mockResolvedValue({ conversationId: "cNew", messages: [], windows: [] });
   // cm:guard the mock branches on the ARCHIVED argument rather than answering one list for every
   // call: the whole of the Archived toggle is that the two reads return disjoint sets, and a mock
   // that ignored the flag would make the toggle look like it worked whatever the code sent.
@@ -245,5 +253,62 @@ describe("ConversationPanel · managing a room from the list", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Archive Release plan" }));
 
     expect(await screen.findByRole("heading", { name: "New conversation" })).toBeInTheDocument();
+  });
+});
+
+// cm:guard the three cases below are the review's F1, F2 and F3. Each is a defect that leaves the
+// screen looking like it worked: a room the person did not choose, a room they are told is gone and
+// is not, and a room they cannot get out of.
+describe("ConversationPanel \u00b7 what a slow or failing request must not do", () => {
+  it("does not jump to the room a draft opened after the person had already moved on", async () => {
+    let settle: (row: unknown) => void = () => undefined;
+    openRoom.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          settle = resolve;
+        }),
+    );
+
+    mount();
+    // A draft's first send, still opening its room.
+    fireEvent.click(await screen.findByTestId("composer"));
+    await waitFor(() => expect(openRoom).toHaveBeenCalledTimes(1));
+
+    // The person gives up waiting and opens an earlier conversation instead.
+    fireEvent.click(screen.getByRole("button", { name: "Open Release plan in Alpha" }));
+    await screen.findByText("everything said in c1");
+
+    // The draft's room finally arrives, and its send runs. It must not take the screen.
+    settle(roomRow("cNew", "Brand new"));
+    // cm:guard the assertion waits for the SEND, which is the step after the callback this guards:
+    // asserting straight after `settle` passes whatever the panel does, because the callback has not
+    // run yet and the screen still holds the room the person chose.
+    await waitFor(() => expect(sendMsg).toHaveBeenCalledWith("cNew", "hello"));
+    expect(detail).not.toHaveBeenCalledWith("cNew");
+    expect(screen.getByText("everything said in c1")).toBeInTheDocument();
+  });
+
+  it("keeps the open conversation when the archive it asked for is refused", async () => {
+    setArchived.mockRejectedValue(new Error("no"));
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Open Release plan in Alpha" }));
+    await screen.findByText("everything said in c1");
+
+    fireEvent.click(screen.getByRole("button", { name: "Conversation history" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Archive Release plan" }));
+    await waitFor(() => expect(setArchived).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole("button", { name: "Back to chat" }));
+    expect(await screen.findByText("everything said in c1")).toBeInTheDocument();
+  });
+
+  it("keeps the way out of a conversation whose own read fails", async () => {
+    detail.mockRejectedValue(new Error("gone"));
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Open Release plan in Alpha" }));
+
+    expect(await screen.findByText("Couldn't load this conversation")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Conversation history" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "New conversation" })).toBeInTheDocument();
   });
 });

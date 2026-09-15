@@ -41,21 +41,32 @@ export function ConversationPanel({
   // is free to run twice, and depending on the value would rebuild the callback the list holds on
   // every switch.
   const openIdRef = useRef<string | undefined>(undefined);
+  const generation = useRef(0);
 
   const projectsQ = useProjects();
   const project = projectsQ.data?.find((p) => p.id === projectId);
 
   const show = useCallback((id: string | undefined) => {
     openIdRef.current = id;
-    setOpenId(id);
-    setMount((m) => m + 1);
+    generation.current += 1;
+    setMount(generation.current);
     setView("chat");
+    setOpenId(id);
   }, []);
 
-  const settled = useCallback((id: string) => {
-    openIdRef.current = id;
-    setOpenId(id);
-  }, []);
+  // cm:guard a draft settling into its room is IGNORED unless it comes from the chat that is still
+  // mounted, which is what the generation compares: the send chain in `ConversationChat` holds this
+  // callback across an await, so a person who pressed New conversation, or picked another room,
+  // while the first message was still opening its own had that choice overwritten the moment the
+  // request landed — the panel jumping to a room they had already left (review F1).
+  const settledIn = useCallback(
+    (forGeneration: number) => (id: string) => {
+      if (forGeneration !== generation.current) return;
+      openIdRef.current = id;
+      setOpenId(id);
+    },
+    [],
+  );
 
   const openRow = useCallback((row: ListedConversation) => show(row.id), [show]);
   const startNew = useCallback(() => show(undefined), [show]);
@@ -115,7 +126,7 @@ export function ConversationPanel({
       key={mount}
       projectId={projectId}
       conversationId={openId}
-      onConversationActive={settled}
+      onConversationActive={settledIn(mount)}
       onOpenHistory={() => setView("history")}
       onNew={startNew}
       // cm:guard the inline list is rendered ONLY while no room is open: once a room is, its own

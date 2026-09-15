@@ -73,15 +73,17 @@ export function ConversationList({
   }));
   const project = { name: projectName, slug: projectSlug };
 
+  // cm:guard the panel is told the room is gone only once the SERVER says so, and never on the way
+  // to asking: a refused archive — a viewer's role, a dropped connection — would otherwise clear the
+  // open room, leaving a person looking at a fresh draft, a toast, and a conversation that is still
+  // there and no longer on screen (review F2).
   const doArchive = (row: ListedConversation, archived: boolean) => {
-    archive.mutate({ id: row.id, archived });
-    onGone(row.id);
+    archive.mutate({ id: row.id, archived }, { onSuccess: () => onGone(row.id) });
   };
 
   const doDelete = (row: ListedConversation) => {
     setConfirming(null);
-    remove.mutate(row.id);
-    onGone(row.id);
+    remove.mutate(row.id, { onSuccess: () => onGone(row.id) });
   };
 
   return (
