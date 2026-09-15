@@ -57,6 +57,14 @@ interface ComposerProps {
   disabled?: boolean;
   /** Send is in flight / the agent is busy. */
   busy?: boolean;
+  /**
+   * Accept a send while `busy`, for a caller that queues rather than refuses.
+   */
+  // cm:guard OPT-IN, and the session screen deliberately does not set it: this changes what Enter
+  // does mid-turn, and the two screens answer that differently — a conversation queues the question
+  // and shows it, a runner session does not. Defaulting it on would have changed the session screen
+  // by side effect, in a diff that never named it (ISS-1031).
+  queueWhileBusy?: boolean;
   placeholder?: string;
   /** Enable file attachment UI (Chat / "My conversations" only, ISS-499). */
   allowAttachments?: boolean;
@@ -105,6 +113,7 @@ export function Composer({
   onSend,
   disabled,
   busy,
+  queueWhileBusy,
   placeholder = "Message the agent…",
   allowAttachments = false,
   sticky = true,
@@ -120,7 +129,12 @@ export function Composer({
   const rowRef = useRef<HTMLDivElement>(null);
   const slashPanelRef = useRef<HTMLDivElement>(null);
   // Sendable when there's text OR at least one staged file.
-  const canSend = !disabled && !busy && (value.trim().length > 0 || files.length > 0);
+  // cm:guard `busy` stops a send ONLY where the caller has not said it queues. It used to stop every
+  // one, and `submit` below opened with a bare `if (!canSend) return;`, so Enter mid-turn reached a
+  // silent early return while the textarea stayed editable and the caret stayed blinking — an
+  // interface whose shape promised a thing it would not do (ISS-1031).
+  const canSend =
+    !disabled && (queueWhileBusy || !busy) && (value.trim().length > 0 || files.length > 0);
 
   // cm:guard `slashOpen` must stay a separate flag from "a token exists" (ISS-718) — a token remains under the caret after Escape, so deriving openness from the token alone re-opens the panel the user just dismissed and makes Escape look broken
   const [slashOpen, setSlashOpen] = useState(false);
@@ -288,20 +302,28 @@ export function Composer({
     setWarnings([]);
   };
 
+  // cm:guard the box clears BEFORE the await and the text is put back if the send throws. Clearing
+  // after it kept ISS-462's contract — a refused send does not lose the words — at the price of
+  // holding them for the whole call, and `POST /conversations/:id/messages` does not return until
+  // the agent turn is over, so a person watched their own question sit in the box for the length of
+  // the answer. Both properties hold now: instant on the happy path, recovered on the refused one
+  // (ISS-1031).
   const submit = async () => {
     if (!canSend) return;
     const text = value.trim();
     const staged = files.map(({ file }) => file);
+    const keptValue = value;
+    const keptFiles = files;
+    setValue("");
+    setFiles([]);
+    setWarnings([]);
+    setSlashOpen(false);
+    setSlashCaret(0);
     try {
       await onSend(text, staged);
-      // Clear only on success — a thrown send (e.g. 409 no online runner)
-      // leaves the typed text + files in place so the user can retry (ISS-462).
-      setValue("");
-      setFiles([]);
-      setWarnings([]);
-      setSlashOpen(false);
-      setSlashCaret(0);
     } catch {
+      setValue(keptValue);
+      setFiles(keptFiles);
       // Keep the text + files; the parent surfaces the error (Banner + toast).
     }
   };

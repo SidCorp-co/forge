@@ -274,8 +274,14 @@ describe("ConversationPanel \u00b7 what a slow or failing request must not do", 
     fireEvent.click(await screen.findByTestId("composer"));
     await waitFor(() => expect(openRoom).toHaveBeenCalledTimes(1));
 
+    // cm:guard the way back to the list is the HEADER control here, not the draft's inline list.
+    // Since ISS-1031 a sent message shows in the thread the moment it is typed, so the empty state
+    // the inline list hangs off is gone by this point — a screen saying "Start a conversation"
+    // underneath the question somebody just asked is the contradiction that change removed. The
+    // property this case guards is unchanged: the draft's room must not take the screen.
+    fireEvent.click(screen.getByRole("button", { name: "Conversation history" }));
     // The person gives up waiting and opens an earlier conversation instead.
-    fireEvent.click(screen.getByRole("button", { name: "Open Release plan in Alpha" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open Release plan in Alpha" }));
     await screen.findByText("everything said in c1");
 
     // The draft's room finally arrives, and its send runs. It must not take the screen.

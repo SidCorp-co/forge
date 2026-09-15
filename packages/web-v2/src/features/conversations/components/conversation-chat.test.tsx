@@ -34,9 +34,14 @@ vi.mock("../api", () => ({
 vi.mock("@/features/projects/hooks", () => ({
   useProjects: () => ({ data: [{ id: "p1", name: "Alpha", slug: "alpha", role: "member" }] }),
 }));
+// cm:guard the double takes the message as an ARGUMENT so a test can send two different ones, and
+// it never reads `busy`: the real composer accepts a send while busy only when the caller passes
+// `queueWhileBusy`, and this chat does. A double that refused while busy would make the queue below
+// untestable and would have passed against the defect (ISS-1031).
+let nextMessage = "is the release ready?";
 vi.mock("@/features/session/components/composer", () => ({
   Composer: ({ onSend }: { onSend: (m: string) => Promise<void> }) => (
-    <button type="button" onClick={() => void onSend("is the release ready?")}>
+    <button type="button" onClick={() => void onSend(nextMessage)}>
       send
     </button>
   ),
@@ -49,6 +54,7 @@ const { ConversationChat } = await import("./conversation-chat");
 afterEach(cleanup);
 
 beforeEach(() => {
+  nextMessage = "is the release ready?";
   open.mockReset();
   send.mockReset();
   detail.mockReset();
@@ -133,6 +139,106 @@ describe("ConversationChat · the first message of a draft", () => {
       fireEvent.click(screen.getByRole("button", { name: "send" }));
     });
     await waitFor(() => expect(screen.getByText("two issues left")).toBeInTheDocument());
+  });
+});
+
+// cm:guard ISS-1031 — `POST /conversations/:id/messages` does not return until the agent turn is
+// over, so before this the thread could not show a person's own question until the answer arrived
+// with it: the words sat in the box and the room looked untouched for the whole wait. These four
+// cases are that behaviour, and each was watched failing against the code as it stood.
+describe("ConversationChat \u00b7 what a person sees between pressing send and being answered", () => {
+  it("shows the message in the thread before the server has answered", async () => {
+    let answer: (v: unknown) => void = () => undefined;
+    send.mockImplementation(() => new Promise((resolve) => { answer = resolve; }));
+
+    mount();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "send" }));
+    });
+
+    // The server has said nothing yet and the question is already on screen.
+    expect(screen.getByText("is the release ready?")).toBeInTheDocument();
+    expect(screen.getByTestId("thread-outbox-sending")).toBeInTheDocument();
+    await act(async () => {
+      answer({ conversationId: "c1", windowId: "w1", seq: 0, decision: "answered", messages: [], windows: [] });
+    });
+  });
+
+  it("queues a second question typed while the first is still being answered", async () => {
+    let answer: (v: unknown) => void = () => undefined;
+    send.mockImplementation(() => new Promise((resolve) => { answer = resolve; }));
+
+    mount();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "send" }));
+    });
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+
+    nextMessage = "and how many are blocked?";
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "send" }));
+    });
+
+    // Visible, and NOT sent: one request is in flight, and the room serialises.
+    expect(screen.getByText("and how many are blocked?")).toBeInTheDocument();
+    expect(screen.getByTestId("thread-outbox-queued")).toBeInTheDocument();
+    expect(send).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      answer({ conversationId: "c1", windowId: "w1", seq: 0, decision: "answered", messages: [], windows: [] });
+    });
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+    expect(send.mock.calls[1]?.[1]).toBe("and how many are blocked?");
+  });
+
+  it("keeps the words and says why when the send is refused", async () => {
+    send.mockRejectedValue(new Error("no online runner"));
+
+    mount();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "send" }));
+    });
+
+    await waitFor(() => expect(screen.getByTestId("thread-outbox-failed")).toBeInTheDocument());
+    expect(screen.getByText("is the release ready?")).toBeInTheDocument();
+    expect(screen.getByText(/Couldn't send/)).toBeInTheDocument();
+  });
+
+  it("stops the queue at a refusal rather than sending what was behind it", async () => {
+    send.mockRejectedValue(new Error("no online runner"));
+
+    mount();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "send" }));
+    });
+    await waitFor(() => expect(screen.getByTestId("thread-outbox-failed")).toBeInTheDocument());
+
+    nextMessage = "and how many are blocked?";
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "send" }));
+    });
+
+    // The second is held, not fired into a room whose first question was refused.
+    expect(screen.getByTestId("thread-outbox-queued")).toBeInTheDocument();
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops the optimistic row once the stored messages carry it", async () => {
+    mount();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "send" }));
+    });
+    await waitFor(() => expect(screen.getByText("two issues left")).toBeInTheDocument());
+
+    // cm:why the heading renders the first message's text too, so the count is taken inside the
+    // thread rather than over the document — asserting over the whole screen counts the title.
+    expect(screen.queryByTestId("thread-outbox-sending")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("thread-outbox-queued")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("thread-outbox-failed")).not.toBeInTheDocument();
+    const said = screen
+      .getAllByText("is the release ready?")
+      .filter((el) => el.closest("h1") === null);
+    expect(said).toHaveLength(1);
   });
 });
 
