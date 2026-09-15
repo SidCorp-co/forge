@@ -192,6 +192,10 @@ export const conversationMessages = pgTable(
  */
 // cm:guard the five silences are told APART and are not one `silent`: a person asking why nothing was said is owed the difference between nobody having anything to add, a guard pacing the room, authority refusing, an agent that could not be reached, and an outcome nobody knows yet. Collapsing them is the unreadable silence ISS-1004 exists to remove.
 // cm:guard `undetermined` is NOT a failure and no caller may act on it as one: the reply may still arrive by the path the turn was handed to, and re-routing the window on it is how one answer becomes two (ISS-1004 rule 4).
+/** What opened a window: a message that arrived, or a heartbeat tick re-reading a quiet room (ISS-1034). */
+export const conversationWindowOrigins = ['inbound', 'heartbeat'] as const;
+export type ConversationWindowOrigin = (typeof conversationWindowOrigins)[number];
+
 export const conversationWindowDecisions = [
   'answered',
   'nothing-to-say',
@@ -237,8 +241,14 @@ export const conversationWindows = pgTable(
     closedAt: timestamp('closed_at', { withTimezone: true }),
     decision: text('decision', { enum: conversationWindowDecisions }),
     decisionDetail: jsonb('decision_detail'),
+    // cm:guard a heartbeat window is told apart by THIS column and never by its message range: a heartbeat re-reads messages an inbound window already routed, so the two ranges overlap by design, and the eligibility rule ("no heartbeat window newer than the interval") has to find the last heartbeat by what it was rather than by what it held (ISS-1034).
+    origin: text('origin', { enum: conversationWindowOrigins }).notNull().default('inbound'),
   },
   (t) => ({
+    originKnown: check(
+      'conversation_windows_origin_known',
+      sql`${t.origin} IN ('inbound','heartbeat')`,
+    ),
     // cm:guard ONE COLLECTING window per conversation, as a database fact rather than a convention: without it two messages seconds apart become two decisions and two costs. The predicate is `claimed_at IS NULL` and NOT `closed_at IS NULL` on purpose — a window being routed has already snapshotted its messages, so a message arriving mid-route must open the SUCCESSOR rather than join a turn that will never read it or collide with an index (ISS-1004 rule 1).
     oneCollecting: uniqueIndex('conversation_windows_one_collecting')
       .on(t.conversationId)
