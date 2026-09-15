@@ -189,128 +189,127 @@ async function seedLiveJobs(
   }
 }
 
+let harness: TestDatabase;
+let projectId: string;
+let ownerId: string;
+let resultMissCandidateQuery: (scope?: { projectId?: string }) => ReturnType<typeof sql>;
+let staleAlarmQuery: (now?: Date) => ReturnType<typeof sql>;
+let orphanedJobAlarmQuery: (now?: Date, scope?: { projectId?: string }) => ReturnType<typeof sql>;
+let neverClaimedAlarmQuery: (now?: Date, scope?: { projectId?: string }) => ReturnType<typeof sql>;
+
+/** Every node of an ANALYZEd plan for one query, plus its total buffers. */
+async function planOf(query: ReturnType<typeof sql>): Promise<{
+  nodes: PlanNode[];
+  buffers: number;
+}> {
+  const rows = await harness.db.execute<Record<string, unknown>>(
+    sql`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${query}`,
+  );
+  const raw = Object.values(rows[0] as Record<string, unknown>)[0];
+  const parsed = (typeof raw === 'string' ? JSON.parse(raw) : raw) as Array<{ Plan: PlanNode }>;
+  const nodes = flatten(parsed[0]?.Plan as PlanNode);
+  const buffers = nodes.reduce(
+    (n, p) => n + (p['Shared Hit Blocks'] ?? 0) + (p['Shared Read Blocks'] ?? 0),
+    0,
+  );
+  return { nodes, buffers };
+}
+
+function nodesOn(nodes: PlanNode[], relation: string): PlanNode[] {
+  return nodes.filter((n) => n['Relation Name'] === relation);
+}
+
+beforeAll(async () => {
+  harness = await setupTestDatabase();
+  process.env.DATABASE_URL = harness.url;
+  process.env.NODE_ENV ??= 'test';
+  process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
+  process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
+  ({ resultMissCandidateQuery } = await import('../../src/jobs/loop-monitor.js'));
+  ({ staleAlarmQuery } = await import('../../src/jobs/stale-detector.js'));
+  ({ orphanedJobAlarmQuery, neverClaimedAlarmQuery } = await import(
+    '../../src/pipeline/sweeper.js'
+  ));
+
+  await truncateAll(harness.db);
+  ownerId = (await createTestUser(harness.db)).id;
+  projectId = (await createTestProject(harness.db, ownerId)).id;
+
+  // The archive: terminal jobs and their runs, carrying the history the old
+  // aggregate had to read in full before it could answer anything.
+  await harness.db.execute(sql`
+    INSERT INTO pipeline_runs (id, project_id, kind, status, started_at)
+    SELECT gen_random_uuid(), ${projectId}, 'pm', 'completed',
+           now() - ((${ARCHIVE_JOBS} - g) * interval '30 minutes')
+    FROM generate_series(1, ${ARCHIVE_JOBS}) g
+  `);
+  await harness.db.execute(sql`
+    INSERT INTO jobs (id, project_id, pipeline_run_id, created_by, type, status,
+                      queued_at, dispatched_at, finished_at)
+    SELECT gen_random_uuid(), ${projectId}, pr.id, ${ownerId}, 'drive', 'done',
+           pr.started_at, pr.started_at, pr.started_at + interval '20 minutes'
+    FROM pipeline_runs pr WHERE pr.project_id = ${projectId}
+  `);
+  // cm:guard `ORDER BY g` and ONE statement, because physical order is what `pg_stats.correlation` measures and the fixture asserts it below. Shuffle this and the planner reads a differently-clustered table, which is a different question from the one this file asks.
+  await harness.db.execute(sql`
+    WITH numbered AS (
+      SELECT id, (row_number() OVER (ORDER BY dispatched_at)) - 1 AS n
+      FROM jobs WHERE project_id = ${projectId} AND status = 'done'
+    )
+    INSERT INTO job_events (id, job_id, kind, data, seq, ts)
+    SELECT gen_random_uuid(), nu.id, 'progress', '{}'::jsonb, g,
+           now() - ((${EVENT_ROWS} - g) * interval '1 second')
+    FROM generate_series(1, ${EVENT_ROWS}) g
+    JOIN numbered nu ON nu.n = g % ${ARCHIVE_JOBS}
+    ORDER BY g
+  `);
+  // cm:guard every archive job also wrote the `result` event that ended it, and the fixture is
+  // dishonest without them. `job_events_result_idx` is PARTIAL on `kind = 'result'`, so its size
+  // is one row per job that has ever finished -- which is what the laterals reading it are
+  // measured against. Seed no results and that index holds a single row, every plan over it is
+  // trivially cheap, and criteria 4-8 report on a table the deployment does not have. Measured:
+  // with 1 row the planner read the whole index and criterion 18 failed; with one per archive job
+  // it keys on the driving row.
+  // cm:why both constants carry an explicit `::int`: two bind parameters added together are
+  // `unknown + unknown`, which Postgres refuses as an ambiguous operator rather than guessing.
+  await harness.db.execute(sql`
+    INSERT INTO job_events (id, job_id, kind, data, seq, ts)
+    SELECT gen_random_uuid(), j.id, 'result', '{}'::jsonb,
+           ${EVENT_ROWS}::int + ${BUSIEST_JOB_EVENTS}::int + row_number() OVER (ORDER BY j.dispatched_at),
+           j.finished_at
+    FROM jobs j WHERE j.project_id = ${projectId} AND j.status = 'done'
+  `);
+
+  // One job with the long tail: `(job_id, seq)` orders by seq, so `max(ts)`
+  // over this job without `(job_id, ts)` reads every one of these rows.
+  const tailJobRows = await harness.db.execute<{ id: string }>(sql`
+    SELECT id FROM jobs WHERE project_id = ${projectId} AND status = 'done'
+    ORDER BY dispatched_at LIMIT 1
+  `);
+  await harness.db.execute(sql`
+    INSERT INTO job_events (id, job_id, kind, data, seq, ts)
+    SELECT gen_random_uuid(), ${tailJobRows[0]?.id}, 'progress', '{}'::jsonb,
+           ${EVENT_ROWS} + g, now() - ((${BUSIEST_JOB_EVENTS} - g) * interval '1 second')
+    FROM generate_series(1, ${BUSIEST_JOB_EVENTS}) g
+  `);
+  await harness.db.execute(sql`
+    INSERT INTO phase_journal (id, project_id, run_id, phase, attempt, source, started_at, ended_at)
+    SELECT gen_random_uuid(), ${projectId}, pr.id, 'phase-' || p, 1, 'agent',
+           pr.started_at + (p * interval '1 minute'),
+           pr.started_at + (p * interval '1 minute') + interval '30 seconds'
+    FROM pipeline_runs pr, generate_series(1, ${PHASES_PER_RUN}) p
+    WHERE pr.project_id = ${projectId}
+  `);
+
+  await seedLiveJobs(harness.db, projectId, ownerId);
+  await harness.db.execute(sql`ANALYZE`);
+}, 600_000);
+
+afterAll(async () => {
+  if (harness) await harness.cleanup();
+});
+
 describe('ISS-1013 · the quiet-job candidate query is bounded by live jobs', () => {
-  let harness: TestDatabase;
-  let projectId: string;
-  let ownerId: string;
-  let resultMissCandidateQuery: (scope?: { projectId?: string }) => ReturnType<typeof sql>;
-  let staleAlarmQuery: (now?: Date) => ReturnType<typeof sql>;
-  let orphanedJobAlarmQuery: (now?: Date, scope?: { projectId?: string }) => ReturnType<typeof sql>;
-  let neverClaimedAlarmQuery: (
-    now?: Date,
-    scope?: { projectId?: string },
-  ) => ReturnType<typeof sql>;
-
-  /** Every node of an ANALYZEd plan for one query, plus its total buffers. */
-  async function planOf(query: ReturnType<typeof sql>): Promise<{
-    nodes: PlanNode[];
-    buffers: number;
-  }> {
-    const rows = await harness.db.execute<Record<string, unknown>>(
-      sql`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${query}`,
-    );
-    const raw = Object.values(rows[0] as Record<string, unknown>)[0];
-    const parsed = (typeof raw === 'string' ? JSON.parse(raw) : raw) as Array<{ Plan: PlanNode }>;
-    const nodes = flatten(parsed[0]?.Plan as PlanNode);
-    const buffers = nodes.reduce(
-      (n, p) => n + (p['Shared Hit Blocks'] ?? 0) + (p['Shared Read Blocks'] ?? 0),
-      0,
-    );
-    return { nodes, buffers };
-  }
-
-  function nodesOn(nodes: PlanNode[], relation: string): PlanNode[] {
-    return nodes.filter((n) => n['Relation Name'] === relation);
-  }
-
-  beforeAll(async () => {
-    harness = await setupTestDatabase();
-    process.env.DATABASE_URL = harness.url;
-    process.env.NODE_ENV ??= 'test';
-    process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
-    process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
-    ({ resultMissCandidateQuery } = await import('../../src/jobs/loop-monitor.js'));
-    ({ staleAlarmQuery } = await import('../../src/jobs/stale-detector.js'));
-    ({ orphanedJobAlarmQuery, neverClaimedAlarmQuery } = await import(
-      '../../src/pipeline/sweeper.js'
-    ));
-
-    await truncateAll(harness.db);
-    ownerId = (await createTestUser(harness.db)).id;
-    projectId = (await createTestProject(harness.db, ownerId)).id;
-
-    // The archive: terminal jobs and their runs, carrying the history the old
-    // aggregate had to read in full before it could answer anything.
-    await harness.db.execute(sql`
-      INSERT INTO pipeline_runs (id, project_id, kind, status, started_at)
-      SELECT gen_random_uuid(), ${projectId}, 'pm', 'completed',
-             now() - ((${ARCHIVE_JOBS} - g) * interval '30 minutes')
-      FROM generate_series(1, ${ARCHIVE_JOBS}) g
-    `);
-    await harness.db.execute(sql`
-      INSERT INTO jobs (id, project_id, pipeline_run_id, created_by, type, status,
-                        queued_at, dispatched_at, finished_at)
-      SELECT gen_random_uuid(), ${projectId}, pr.id, ${ownerId}, 'drive', 'done',
-             pr.started_at, pr.started_at, pr.started_at + interval '20 minutes'
-      FROM pipeline_runs pr WHERE pr.project_id = ${projectId}
-    `);
-    // cm:guard `ORDER BY g` and ONE statement, because physical order is what `pg_stats.correlation` measures and the fixture asserts it below. Shuffle this and the planner reads a differently-clustered table, which is a different question from the one this file asks.
-    await harness.db.execute(sql`
-      WITH numbered AS (
-        SELECT id, (row_number() OVER (ORDER BY dispatched_at)) - 1 AS n
-        FROM jobs WHERE project_id = ${projectId} AND status = 'done'
-      )
-      INSERT INTO job_events (id, job_id, kind, data, seq, ts)
-      SELECT gen_random_uuid(), nu.id, 'progress', '{}'::jsonb, g,
-             now() - ((${EVENT_ROWS} - g) * interval '1 second')
-      FROM generate_series(1, ${EVENT_ROWS}) g
-      JOIN numbered nu ON nu.n = g % ${ARCHIVE_JOBS}
-      ORDER BY g
-    `);
-    // cm:guard every archive job also wrote the `result` event that ended it, and the fixture is
-    // dishonest without them. `job_events_result_idx` is PARTIAL on `kind = 'result'`, so its size
-    // is one row per job that has ever finished -- which is what the laterals reading it are
-    // measured against. Seed no results and that index holds a single row, every plan over it is
-    // trivially cheap, and criteria 4-8 report on a table the deployment does not have. Measured:
-    // with 1 row the planner read the whole index and criterion 18 failed; with one per archive job
-    // it keys on the driving row.
-    await harness.db.execute(sql`
-      INSERT INTO job_events (id, job_id, kind, data, seq, ts)
-      SELECT gen_random_uuid(), j.id, 'result', '{}'::jsonb,
-             ${EVENT_ROWS} + ${BUSIEST_JOB_EVENTS} + row_number() OVER (ORDER BY j.dispatched_at),
-             j.finished_at
-      FROM jobs j WHERE j.project_id = ${projectId} AND j.status = 'done'
-    `);
-
-    // One job with the long tail: `(job_id, seq)` orders by seq, so `max(ts)`
-    // over this job without `(job_id, ts)` reads every one of these rows.
-    const tailJobRows = await harness.db.execute<{ id: string }>(sql`
-      SELECT id FROM jobs WHERE project_id = ${projectId} AND status = 'done'
-      ORDER BY dispatched_at LIMIT 1
-    `);
-    await harness.db.execute(sql`
-      INSERT INTO job_events (id, job_id, kind, data, seq, ts)
-      SELECT gen_random_uuid(), ${tailJobRows[0]?.id}, 'progress', '{}'::jsonb,
-             ${EVENT_ROWS} + g, now() - ((${BUSIEST_JOB_EVENTS} - g) * interval '1 second')
-      FROM generate_series(1, ${BUSIEST_JOB_EVENTS}) g
-    `);
-    await harness.db.execute(sql`
-      INSERT INTO phase_journal (id, project_id, run_id, phase, attempt, source, started_at, ended_at)
-      SELECT gen_random_uuid(), ${projectId}, pr.id, 'phase-' || p, 1, 'agent',
-             pr.started_at + (p * interval '1 minute'),
-             pr.started_at + (p * interval '1 minute') + interval '30 seconds'
-      FROM pipeline_runs pr, generate_series(1, ${PHASES_PER_RUN}) p
-      WHERE pr.project_id = ${projectId}
-    `);
-
-    await seedLiveJobs(harness.db, projectId, ownerId);
-    await harness.db.execute(sql`ANALYZE`);
-  }, 600_000);
-
-  afterAll(async () => {
-    if (harness) await harness.cleanup();
-  });
-
   it('is planted at the shape the plans below are read on', async () => {
     const [events] = await harness.db.execute<{ n: string; busiest: string }>(sql`
       SELECT count(*)::text AS n,

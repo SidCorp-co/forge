@@ -13,9 +13,12 @@
 import { sql } from 'drizzle-orm';
 import { describe, expect, it, vi } from 'vitest';
 
+const { dbExecute } = vi.hoisted(() => ({
+  dbExecute: vi.fn(async (..._args: unknown[]) => [] as Array<Record<string, unknown>>),
+}));
 vi.mock('../db/client.js', () => ({
   db: {
-    execute: vi.fn(async () => []),
+    execute: dbExecute,
     transaction: async <T>(cb: (tx: unknown) => Promise<T>): Promise<T> => cb({}),
   },
 }));
@@ -38,7 +41,9 @@ vi.mock('./kill-gate.js', () => ({
   isKillEpisodeLive: () => false,
 }));
 
-const { resultMissCandidateQuery } = await import('./loop-monitor.js');
+const { resultMissCandidateQuery, reapResultMisses, RESULT_QUIET_MINUTES } = await import(
+  './loop-monitor.js'
+);
 const { staleAlarmQuery } = await import('./stale-detector.js');
 const { quietJobCandidateQuery } = await import('./progress-signal.js');
 
@@ -101,6 +106,27 @@ describe('the result hop and the stale alarm share one candidate predicate', () 
   it('gives the alarm the kill-gate term and the hop none', () => {
     expect(sqlText(staleAlarmQuery(new Date()))).toContain('j.kill_requested_at IS NULL');
     expect(sqlText(resultMissCandidateQuery())).not.toContain('j.kill_requested_at IS NULL');
+  });
+
+  // cm:guard asserted on the text the HOP EXECUTED and not on what the builder returned, because
+  // a correct builder says nothing about `reapResultMisses` running it: an inlined copy left
+  // behind passes every assertion above and is still the query that ticks every 60 seconds.
+  // cm:guard BOTH halves of the result guard, because either alone passes a query that guards
+  // nothing — the lateral without the guard reads `job_events` and ignores it, and
+  // `lr.job_id IS NULL` without the lateral is an unbound alias the type checker cannot see.
+  it('is the text the result hop actually executes', async () => {
+    expect(RESULT_QUIET_MINUTES).toBe(60);
+    dbExecute.mockResolvedValueOnce([]);
+    await reapResultMisses(new Date('2026-06-12T00:00:00Z'));
+    const text = sqlText(dbExecute.mock.calls[0]?.[0]);
+    expect(text).toMatch(/j\.status\s+IN\s*\(\s*'dispatched'\s*,\s*'running'\s*\)/);
+    expect(text).toMatch(/interval\s+'\s*60\s*minutes'/);
+    expect(text).toMatch(/COALESCE\(le\.max_ts,\s*j\.dispatched_at\)/);
+    expect(text).toMatch(
+      /LEFT\s+JOIN\s+LATERAL[\s\S]*job_events\s+e\s+WHERE\s+e\.job_id\s*=\s*j\.id\s+AND\s+e\.kind\s*=\s*'result'[\s\S]*\)\s*lr\s+ON\s+true/,
+    );
+    expect(text).toMatch(/s\.runtime_state\s+IS\s+NOT\s+NULL\s+OR\s+lr\.job_id\s+IS\s+NULL/);
+    expect(text).toMatch(/kill_requested_at/);
   });
 
   it('scopes to a project only when asked', () => {
