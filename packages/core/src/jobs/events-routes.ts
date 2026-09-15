@@ -281,13 +281,10 @@ jobEventsRoutes.post(
       }
     }
 
-    // ISS-283 — derive the canonical agent_sessions transcript from the stdout
-    // lines the runner streams (CLI-run jobs never PATCH the session row
-    // themselves). Throttled + fire-and-forget so it never blocks event ingest;
-    // the final authoritative derive runs on job /complete | /fail.
+    // cm:why derived here rather than written by the runner (ISS-283): a CLI-run job holds only a device token and the session PATCH is user-JWT-gated, so the stdout lines it streams are the only record core can build the transcript from. The result is voided on purpose — the derive is throttled and best-effort so it can never block event ingest, and the authoritative rebuild runs on job /complete | /fail.
     if (job.agentSessionId) {
       const stdoutCount = events.reduce((n, e) => (e.kind === 'stdout' ? n + 1 : n), 0);
-      maybeDeriveIncremental(jobId, job.agentSessionId, stdoutCount);
+      void maybeDeriveIncremental(jobId, job.agentSessionId, stdoutCount);
     }
 
     const first = inserted[0];
