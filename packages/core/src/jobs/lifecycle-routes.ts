@@ -280,7 +280,6 @@ jobLifecycleDeviceRoutes.post(
             issueId: reclaimed.issueId,
             type: reclaimed.type,
           });
-          // A successful completion clears any rate/usage/auth limit on the runner.
           void clearRunnerLimit(reclaimed.runnerId, reclaimed.projectId);
           void clearRunnerQuarantine(reclaimed.runnerId, reclaimed.projectId);
           if (reclaimed.issueId) {
@@ -384,7 +383,6 @@ jobLifecycleDeviceRoutes.post(
         issueId: updated.issueId,
         type: updated.type,
       });
-      // A successful completion clears any rate/usage/auth limit on the runner.
       void clearRunnerLimit(updated.runnerId, updated.projectId);
       void clearRunnerQuarantine(updated.runnerId, updated.projectId);
     }
@@ -557,7 +555,7 @@ jobLifecycleUserRoutes.post(
     const access = await loadProjectAccess(job.projectId, userId);
     // cm:edge contract -> packages/web-v2/src/features/operator/components/alert-feed.tsx — the A2 reap button posts here for a job in ANY tenant, so a platform admin who is a member of nothing still has to pass; a second `/api/admin/jobs/:id/reap` would be a duplicate cancel path, and `cancelJob` is the one that writes the audited `job_events` row
     // cm:guard the fallback belongs on THIS route and not on `/:id/resume` — reap is the only action the Operator Ops Console ships, and a widening nothing calls is one nobody notices going wrong
-    if (!projectRoleAtLeast(access.role, 'member')) await assertPlatformAdmin(userId);
+    if (!projectRoleAtLeast(access.role, 'member')) await assertPlatformAdmin(c);
 
     // Optional `{ reason }` body; tolerate an empty/absent body (the cancel
     // button sends none) by defaulting to {} before schema-validating.

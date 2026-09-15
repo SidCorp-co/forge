@@ -41,7 +41,7 @@ skillActivityRoutes.get('/', async (c) => {
   const { projectId, skillId, deviceId, packetId } = parsed.data;
 
   if (packetId) {
-    await assertPlatformAdmin(c.get('userId'));
+    await assertPlatformAdmin(c);
     const events = await listByPacket(packetId);
     return c.json({ view: 'by-packet', packetId, events, summary: summarizeByEventType(events) });
   }
@@ -63,7 +63,7 @@ skillActivityRoutes.get('/', async (c) => {
 
 // cm:why the §7 self-check (activity-chain-integrity.ts) had no operational surface before this — only an integration test called it, so a broken chain in production went undetected (ISS-798 fix review).
 skillActivityRoutes.get('/chain-integrity', async (c) => {
-  await assertPlatformAdmin(c.get('userId'));
+  await assertPlatformAdmin(c);
   const report = await checkSkillActivityChainIntegrity();
   return c.json(report);
 });
