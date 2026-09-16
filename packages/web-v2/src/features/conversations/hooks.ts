@@ -25,20 +25,24 @@ export function useConversations(projectId: string | undefined, archived = false
 }
 
 /**
- * Every project's rooms, in one list, newest first.
+ * Every project's rooms, in one list, newest first — the live set, or the archived one.
  */
 // cm:guard the fan-out is N reads and not one, because `/api/conversations` takes a project and the store has no cross-project list: a room's readability is a per-project role question, so a single endpoint would have to authorize every row before it knew what a page held — which is the unbounded read `store.ts:listConversationsInProject` already prices, once per project rather than once for the fleet. The set is the caller's own org projects and each read is cached by project.
-export function useConversationsAcrossProjects(projectIds: string[]) {
+export function useConversationsAcrossProjects(projectIds: string[], archived = false) {
   const results = useQueries({
-    // cm:guard the key is the SAME one `useConversations` builds for the live side, down to the
-    // trailing segment: the dock and this screen read the same rooms, and two keys over one read
-    // would fetch every project twice and leave one copy stale after an archive.
+    // cm:guard the key and the request are the SAME ones `useConversations` builds for whichever
+    // side is asked for, down to the trailing segment and the page size: the dock's per-project list
+    // and this screen read the same rooms, and two keys over one read would fetch every project
+    // twice and leave one copy stale after an archive. That is why the segment is the same
+    // `archived ? "archived" : "live"` expression rather than a second vocabulary for the same two
+    // sets — a screen that spelled its archived key differently would share the live set with the
+    // dock and silently not share the archived one (ISS-1040).
     queries: projectIds.map((projectId) => ({
-      queryKey: ["conversations", "list", projectId, "live"],
-      queryFn: () => conversationsApi.list(projectId),
+      queryKey: ["conversations", "list", projectId, archived ? "archived" : "live"],
+      queryFn: () => conversationsApi.list(projectId, 50, archived),
     })),
   });
-  // cm:guard ONE row per room, not one per project it is about: a room is listed by every project in its scope, and since ISS-1011 a room can be about more than one — so the same room came back from two of these reads and the list printed it twice, same title, same time, differing only by the project line under it. Two rows that open the same room read as two rooms. The kept row is the first by the sorted project order, which is stable across reads, and a room's projects are named inside the room rather than by repeating it in the list.
+  // cm:guard ONE row per room, not one per project it is about, on BOTH sides: a room is listed by every project in its scope, and since ISS-1011 a room can be about more than one — so the same room came back from two of these reads and the list printed it twice, same title, same time, differing only by the project line under it. Two rows that open the same room read as two rooms. The kept row is the first by the sorted project order, which is stable across reads, and a room's projects are named inside the room rather than by repeating it in the list. An archived room is about exactly the same projects it was about before it was filed away, so the archived set needs this every bit as much as the live one (ISS-1040).
   const rows: ListedConversation[] = [];
   const listed = new Set<string>();
   for (const [i, r] of results.entries()) {

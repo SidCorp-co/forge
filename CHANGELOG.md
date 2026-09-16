@@ -2695,6 +2695,17 @@
 
 ### Fixed
 
+- **A conversation you archive from the all-projects Conversations page can now be found and
+  brought back there.** Every room in that page's sidebar offered to archive it, and archiving
+  worked — the room left the list. Nothing on the page then showed the archived ones, so the only
+  way back to something you had just filed away was the per-project Ask agent list, if you knew it
+  was there. The sidebar now carries the same Archived button that list has: press it and it shows
+  what you have archived, across every project you can see, each with the control that brings it
+  back; press it again for your live conversations. The rail says which of the two you are looking
+  at, and an archived side with nothing in it says so rather than inviting you to start a
+  conversation it would not go on to show you. Bringing a room back leaves you where you were,
+  looking at the rest of what you archived, rather than throwing you across to the other list.
+
 - **A release that finished no longer locks the project out of the next one.** Finishing a batch
   closed every issue it had shipped and then left the release itself reading as still in progress,
   so no further batch could be cut — for hours, until somebody aborted a release that had already
