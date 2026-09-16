@@ -316,9 +316,10 @@ pub(crate) fn decide(
             }
         }
         // cm:guard the CLEAR carries its own, tighter bound, and the report does not. See `CLEAR_WITHIN`: this box cannot see when core's stamp was written, so the only thing standing between a stale success and a limit another lane wrote seconds ago is how near to now the success itself sits.
-        // cm:why the bound is a DISTANCE from now, not an age, in the same way the scan's is. A success dated ahead of this box reads as a negative age, which is inside every upper bound written as `<=` — so read as an age it would be the one verdict that always clears.
+        // cm:why the age must be NON-NEGATIVE as well as small, and the scan's wider bound is a symmetric distance while this one is not. Read as a bare age, a success dated ahead of this box is negative and so inside every upper bound written as `<=` — it would be the one verdict that always clears. The forward half is refused outright rather than merely bounded because nothing legitimate needs it: `now_unix` truncates to whole seconds, so a turn that succeeded this instant reads as EQUAL, and a record claiming to be later than that is a clock this box will not lift a limit on.
         Verdict::Worked => {
-            let fresh = now_unix.saturating_sub(newest.at).unsigned_abs() <= CLEAR_WITHIN.as_secs();
+            let age = now_unix.saturating_sub(newest.at);
+            let fresh = (0..=CLEAR_WITHIN.as_secs() as i64).contains(&age);
             if core_limited && fresh {
                 Action::Clear
             } else {
@@ -1065,5 +1066,18 @@ mod tests {
         let t = tail(&["successful_turn"]);
         let behind = at("successful_turn") - FRESH_WITHIN.as_secs() as i64 - 1;
         assert_eq!(newest_decisive(&t, behind), None);
+    }
+
+    // cm:guard the CLEAR takes no forward tolerance at all, not even the one the scan takes. A whole-second `now` admits a record written in the same second as EQUAL, so nothing legitimate needs the future half — and anything that does need it is a clock this box should not be lifting a limit on.
+    #[test]
+    fn a_success_one_second_ahead_of_now_does_not_clear() {
+        let ahead = seen("successful_turn", 101, "u-ahead-1s");
+        assert_eq!(decide(&[ahead], true, None, 100), Action::Nothing);
+        let same = seen("successful_turn", 100, "u-same-second");
+        assert_eq!(
+            decide(&[same], true, None, 100),
+            Action::Clear,
+            "the same second is not the future: `now_unix` truncates, so a success written this second reads as equal"
+        );
     }
 }
