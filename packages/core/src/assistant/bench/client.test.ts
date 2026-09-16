@@ -230,7 +230,7 @@ describe('a fetch that threw (ISS-1065)', () => {
 
   it('roomGone: 404 is gone, 200 and 403 are a room still standing, anything else is thrown', async () => {
     const { fetch } = fake({
-      refuse: (method, path) =>
+      refuse: (_method, path) =>
         path.endsWith('/room-forbidden') ? 403 : path.endsWith('/room-broken') ? 500 : null,
     });
     const client = createClient({ api: 'https://api.test', fetch });

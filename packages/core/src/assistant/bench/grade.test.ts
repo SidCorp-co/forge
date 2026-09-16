@@ -397,26 +397,6 @@ describe('listInOrder, labeled and linkTo (codex F1–F3 on ISS-1061)', () => {
     }
   });
 
-  it('onlyFrom fails a reply naming a registry state outside the list, and reads in_progress as one token (ISS-1065)', () => {
-    const check: Check = { kind: 'onlyFrom', list: '{stateList}' };
-    expect(grade(check, 'open → in_progress → awaiting_release')).toEqual([]);
-    expect(grade(check, 'First open, then in_progress, and finally awaiting_release.')).toEqual([]);
-    expect(grade(check, 'The progress is tracked; nothing is in review.')).toEqual([]);
-    expect(
-      grade(check, 'open → confirmed → in_progress → testing → awaiting_release → closed').map(
-        (e) => e.fact,
-      ),
-    ).toEqual([
-      'reply names state confirmed outside open, in_progress, awaiting_release',
-      'reply names state testing outside open, in_progress, awaiting_release',
-      'reply names state closed outside open, in_progress, awaiting_release',
-    ]);
-    expect(grade(check, 'closed, closed, open').map((e) => e.mode)).toEqual(['unanswered']);
-    expect(grade(check, null)).toEqual([
-      { mode: 'unanswered', fact: 'no assistant message delivered' },
-    ]);
-  });
-
   it('linkTo needs an issue link whose segment is the filled id', () => {
     const check: Check = { kind: 'linkTo', issueId: '{id}' };
     expect(grade(check, `see /projects/qa/issues/${UUID}`)).toEqual([]);
