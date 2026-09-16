@@ -471,8 +471,12 @@ export interface ConnectionUpdateInput {
 export interface BindExistingConnectionRequest {
   projectId: string;
   role: BindingRole;
-  /** Empty for `service`; one or both stages for `deploy`. */
-  stages: DeployStage[];
+  /**
+   * One or both stages for `deploy`; ABSENT for `service`. Not an empty array —
+   * the server refuses a `stages` key on a service binding by name rather than
+   * ignoring it, so a caller cannot believe it declared a stage that was dropped.
+   */
+  stages?: DeployStage[];
   /** Optional binding-tier overrides (coolify `targets[]`) so the shared
    *  connection deploys different apps in this project. Connection-tier keys
    *  (baseUrl) are dropped server-side. */

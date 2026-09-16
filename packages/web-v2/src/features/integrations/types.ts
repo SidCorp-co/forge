@@ -1,16 +1,18 @@
 // web-v2 feature module: integrations hub.
 //
 // Cutover-agnostic shapes (status cards, delivery rows, health result, provider
-// config/secret inputs, confirm-prod result, environment enum) now live in
+// config/secret inputs, confirm-live result, the role and stage enums) now live in
 // @forge/contracts (ISS-400) so web + dev share ONE contract instead of local
 // duplicates. They are re-exported here under the existing local names (aliased
 // where the contract name differs) so import sites in api.ts / hooks.ts /
 // components stay unchanged.
 
 import type {
+  BindingRole,
   CoolifyConfigInput,
   CoolifySecretsInput,
   CoolifyTargetInput,
+  DeployStage,
   EpodsystemConfigInput,
   EpodsystemSecretsInput,
   GoogleConfigInput,
@@ -32,7 +34,8 @@ export type {
   IntegrationsStatus,
   IntegrationDeliveryRow as IntegrationDelivery,
   ConfirmProdDeployResult,
-  IntegrationEnvironment,
+  BindingRole,
+  DeployStage,
   CoolifyConfigInput,
   CoolifyTargetInput,
   CoolifySecretsInput,
@@ -205,7 +208,10 @@ export interface ProviderConfig {
   host?: string;
   organizationSlug?: string;
   projectSlug?: string;
-  environment?: "staging" | "prod";
+  /** Sentry's OWN environment tag, free text — never the binding axis. It was
+   *  typed with the binding enum here, a private copy applied to a provider
+   *  field, which `SentryConfig` has always carried as a plain string. */
+  environment?: string;
   // rocketchat
   serverUrl?: string;
   rids?: string[];
@@ -226,7 +232,8 @@ export interface RocketchatRoom {
 export type CreateIntegrationInput =
   | {
       provider: "coolify";
-      environment: "staging" | "prod";
+      role: BindingRole;
+      stages?: DeployStage[];
       config: CoolifyConfigInput;
       secrets: CoolifySecretsInput;
       /** Present = org-owned credential (project's own org, org admin only). */
@@ -234,7 +241,8 @@ export type CreateIntegrationInput =
     }
   | {
       provider: "epodsystem";
-      environment?: "staging" | "prod";
+      role: BindingRole;
+      stages?: DeployStage[];
       config: EpodsystemConfigInput;
       secrets: EpodsystemSecretsInput;
       orgId?: string;
@@ -243,28 +251,32 @@ export type CreateIntegrationInput =
     }
   | {
       provider: "postman";
-      environment?: "staging" | "prod";
+      role: BindingRole;
+      stages?: DeployStage[];
       config: PostmanConfigInput;
       secrets: PostmanSecretsInput;
       orgId?: string;
     }
   | {
       provider: "sentry";
-      environment?: "staging" | "prod";
+      role: BindingRole;
+      stages?: DeployStage[];
       config: SentryConfigInput;
       secrets: SentrySecretsInput;
       orgId?: string;
     }
   | {
       provider: "rocketchat";
-      environment?: "staging" | "prod";
+      role: BindingRole;
+      stages?: DeployStage[];
       config: RocketchatConfigInput;
       secrets: RocketchatSecretsInput;
       orgId?: string;
     }
   | {
       provider: "google";
-      environment?: "staging" | "prod";
+      role: BindingRole;
+      stages?: DeployStage[];
       config: GoogleConfigInput;
       secrets: GoogleSecretsInput;
       orgId?: string;

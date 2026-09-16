@@ -50,7 +50,8 @@ function binding(healthUrl?: string): IntegrationSummary {
   return {
     id: "b1",
     provider: "coolify",
-    environment: "staging",
+    role: "deploy",
+    stages: ["preview"],
     active: true,
     connectionId: "c1",
     config: { baseUrl: "https://coolify.example", targets: [target] },

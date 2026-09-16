@@ -23,7 +23,7 @@ vi.mock("./hooks", async () => {
 const BASE: ReleaseReadiness = {
   hasProduction: false,
   baseBranch: "main",
-  productionBranch: "main",
+  liveBranch: "main",
   provider: null,
   releaseRunnerLabel: null,
   rollback: null,
@@ -75,7 +75,7 @@ describe("ReleaseSection", () => {
   it("shows the promotion when the project does declare production", () => {
     renderWith({
       hasProduction: true,
-      productionBranch: "production",
+      liveBranch: "production",
       provider: "coolify",
       releaseRunnerLabel: "prod-box",
       rollback: null,
@@ -92,7 +92,7 @@ describe("ReleaseSection", () => {
   it("names every gap separately, with the consequence of leaving it", () => {
     renderWith({
       hasProduction: true,
-      productionBranch: "production",
+      liveBranch: "production",
       gaps: ["build-commands", "test-commands", "release-procedure", "release-runner", "rollback"],
     });
 
@@ -107,7 +107,7 @@ describe("ReleaseSection", () => {
   it("sends each gap to the screen that fixes it", () => {
     renderWith({
       hasProduction: true,
-      productionBranch: "production",
+      liveBranch: "production",
       gaps: ["release-procedure", "release-runner"],
     });
 
@@ -122,7 +122,7 @@ describe("ReleaseSection", () => {
   });
 
   it("shows no banner at all when nothing is missing", () => {
-    renderWith({ hasProduction: true, productionBranch: "production", gaps: [] });
+    renderWith({ hasProduction: true, liveBranch: "production", gaps: [] });
 
     expect(screen.queryByText(/nothing to build with/i)).toBeNull();
     expect(screen.queryByRole("link")).toBeNull();
@@ -130,7 +130,7 @@ describe("ReleaseSection", () => {
 
   // cm:guard an undeclared rollback is a DEFAULT the operator is running under, not an absence — the release aborts and comments rather than rolling back blind, and a dash here would read as "unknown".
   it("states the abort-and-comment default rather than a dash", () => {
-    renderWith({ hasProduction: true, productionBranch: "production", rollbackMode: null });
+    renderWith({ hasProduction: true, liveBranch: "production", rollbackMode: null });
 
     expect(screen.getByText("abort and comment")).toBeInTheDocument();
   });
@@ -139,7 +139,7 @@ describe("ReleaseSection", () => {
   it("says a coolify binding's free text is not executed", () => {
     renderWith({
       hasProduction: true,
-      productionBranch: "production",
+      liveBranch: "production",
       rollback: "ssh in and redeploy",
       rollbackMode: "unrepresentable",
       gaps: ["rollback-prose"],
@@ -152,7 +152,7 @@ describe("ReleaseSection", () => {
   it("says Forge performs the rollback when the binding declares the action", () => {
     renderWith({
       hasProduction: true,
-      productionBranch: "production",
+      liveBranch: "production",
       rollbackMode: "coolify-image",
     });
 

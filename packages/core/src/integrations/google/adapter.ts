@@ -114,8 +114,8 @@ export const googleAdapter: IntegrationAdapter<GoogleConfig, GoogleSecrets> = {
     canDispatch: false,
     canReceiveWebhook: false,
     injectsMcp: false,
-    hasEnvironments: false,
-    prodConfirmGate: false,
+    canDeploy: false,
+    liveConfirmGate: false,
     hasDeliveryLog: false,
   },
 

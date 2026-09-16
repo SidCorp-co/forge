@@ -67,7 +67,9 @@ export interface ProjectUpdateInput {
 	 *  the runner's setup agent; blank means it derives the procedure per job. */
 	workspaceSetup?: string | null;
 	baseBranch?: string | null;
-	productionBranch?: string | null;
+	liveBranch?: string | null;
+	releaseModel?: "none" | "promote" | "publish";
+	releaseStrategy?: "merge-branch" | "cherry-pick" | "tag-mr" | null;
 	previewDeploy?: PreviewDeployConfig | null;
 	orgId?: string;
 	/** ISS-609 — chat/RC-bot reply-style knob; scoped server-side write into
@@ -210,7 +212,7 @@ export interface PluginDesignation {
 export interface ReleaseReadiness {
 	hasProduction: boolean;
 	baseBranch: string;
-	productionBranch: string;
+	liveBranch: string;
 	provider: string | null;
 	releaseRunnerLabel: string | null;
 	rollback: string | null;

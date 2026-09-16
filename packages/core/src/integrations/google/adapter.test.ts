@@ -273,8 +273,8 @@ describe('the surfaces this provider does not have', () => {
       canDispatch: false,
       canReceiveWebhook: false,
       injectsMcp: false,
-      hasEnvironments: false,
-      prodConfirmGate: false,
+      canDeploy: false,
+      liveConfirmGate: false,
       hasDeliveryLog: false,
     });
   });

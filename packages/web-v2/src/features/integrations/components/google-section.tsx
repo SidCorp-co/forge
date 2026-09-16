@@ -303,6 +303,7 @@ function AddGoogleForm({ projectId }: { projectId: string }) {
     try {
       await create.mutateAsync({
         provider: "google",
+        role: "service",
         config: spreadsheetId.trim() ? { defaultSpreadsheetId: spreadsheetId.trim() } : {},
         secrets: { serviceAccountJson: keyJson.trim() },
         ...(ownerOrgId ? { orgId: ownerOrgId } : {}),

@@ -78,8 +78,8 @@ export const epodsystemAdapter: IntegrationAdapter<EpodsystemConfig, EpodsystemS
     canDispatch: false,
     canReceiveWebhook: false,
     injectsMcp: true,
-    hasEnvironments: false,
-    prodConfirmGate: false,
+    canDeploy: true,
+    liveConfirmGate: false,
     hasDeliveryLog: false,
   },
 

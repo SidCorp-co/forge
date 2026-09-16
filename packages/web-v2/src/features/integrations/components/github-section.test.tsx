@@ -72,7 +72,8 @@ function binding(over: Partial<IntegrationSummary> = {}): IntegrationSummary {
     connectionId: "conn-1",
     projectId: "proj-1",
     provider: "github",
-    environment: "prod",
+    role: "service",
+    stages: [],
     config: { owner: "SidCorp-co", repo: "forge" },
     bindingConfig: {},
     label: "",
@@ -129,18 +130,23 @@ describe("GitHubSection", () => {
       id: "conn-1",
       body: {
         projectId: "proj-1",
-        environment: "prod",
+        role: "service",
         config: { owner: "other-org", repo: "codemap", installationId: 222 },
       },
     });
     expect(connectMutate).not.toHaveBeenCalled();
   });
 
-  it("offers no environment choice, because github declares hasEnvironments false", () => {
+  // cm:guard github binds as `service` and offers no stage choice, because
+  // `providerCanDeploy('github')` is false. A screen that offered one would be
+  // an affordance defect: the create schema refuses `role: 'deploy'` on github
+  // by name, so the operator would fill in a field the server then rejects.
+  it("offers no stage choice, because github declares canDeploy false", () => {
     connectionItems.mockReturnValue([{ id: "conn-1", provider: "github", active: true }]);
     render(<GitHubSection projectId="proj-1" />);
 
     expect(screen.queryByLabelText("Environment")).toBeNull();
+    expect(screen.queryByLabelText("Stage")).toBeNull();
   });
 
   it("refuses to bind until a repository is chosen", () => {

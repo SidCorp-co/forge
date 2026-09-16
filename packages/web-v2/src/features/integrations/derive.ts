@@ -37,8 +37,8 @@ export const DEFAULT_CAPABILITIES: IntegrationCapabilities = {
   canDispatch: false,
   canReceiveWebhook: false,
   injectsMcp: false,
-  hasEnvironments: false,
-  prodConfirmGate: false,
+  canDeploy: false,
+  liveConfirmGate: false,
   hasDeliveryLog: false,
 };
 

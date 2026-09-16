@@ -32,8 +32,8 @@ export const postmanAdapter: IntegrationAdapter<PostmanConfig, PostmanSecrets> =
     canDispatch: false,
     canReceiveWebhook: false,
     injectsMcp: true,
-    hasEnvironments: false,
-    prodConfirmGate: false,
+    canDeploy: false,
+    liveConfirmGate: false,
     hasDeliveryLog: false,
   },
 

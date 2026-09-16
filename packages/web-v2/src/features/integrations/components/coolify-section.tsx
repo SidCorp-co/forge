@@ -23,7 +23,7 @@ import { formatApiError } from "@/lib/api/error";
 import { useMemo, useState } from "react";
 import { ConnectionOwnerField } from "./connection-owner-field";
 import { CoolifyTargetsField } from "./coolify-targets-field";
-import { ENV_OPTIONS } from "./status-pill";
+import { STAGE_OPTIONS } from "./status-pill";
 import {
   useConfirmProdDeploy,
   useCreateProviderIntegration,
@@ -35,7 +35,7 @@ import {
 } from "../hooks";
 import type {
   CoolifyTargetInput,
-  IntegrationEnvironment,
+  DeployStage,
   IntegrationSummary,
   IntegrationTestResult,
   ProviderConfig,
@@ -64,16 +64,16 @@ function badgeFor(existing: IntegrationSummary | undefined): BadgeView {
  * ISS-922 replaced the callback with a poll of the deployment's own status.
  */
 export function CoolifySection({ projectId }: { projectId: string }) {
-  const [env, setEnv] = useState<IntegrationEnvironment>("staging");
+  const [stage, setStage] = useState<DeployStage>("preview");
   const list = useIntegrationsList(projectId);
   const rows = useMemo(
     () => (list.data?.items ?? []).filter((i) => i.provider === "coolify"),
     [list.data],
   );
-  const existing = useMemo(
-    () => rows.find((i) => i.environment === env),
-    [rows, env],
-  );
+  // Every coolify binding serving this stage — a stage may hold more than one
+  // and core never picks among them (ISS-1046 rule 3). This panel edits the
+  // first; the connection drawer lists them all.
+  const existing = useMemo(() => rows.find((i) => i.stages.includes(stage)), [rows, stage]);
 
   return (
     <Card>
@@ -87,16 +87,16 @@ export function CoolifySection({ projectId }: { projectId: string }) {
       </CardHeader>
       <CardContent>
         <div className="flex flex-col gap-4">
-          <SegmentedControl<IntegrationEnvironment>
-            value={env}
-            onChange={setEnv}
-            options={ENV_OPTIONS}
+          <SegmentedControl<DeployStage>
+            value={stage}
+            onChange={setStage}
+            options={STAGE_OPTIONS}
           />
-          {/* Remount the panel per environment so its form state re-seeds. */}
-          <EnvironmentPanel
-            key={env}
+          {/* Remount the panel per stage so its form state re-seeds. */}
+          <StagePanel
+            key={stage}
             projectId={projectId}
-            environment={env}
+            stage={stage}
             existing={existing}
             onRefetch={() => list.refetch()}
           />
@@ -108,14 +108,14 @@ export function CoolifySection({ projectId }: { projectId: string }) {
 
 interface EnvPanelProps {
   projectId: string;
-  environment: IntegrationEnvironment;
+  stage: DeployStage;
   existing: IntegrationSummary | undefined;
   onRefetch: () => void;
 }
 
-function EnvironmentPanel({
+function StagePanel({
   projectId,
-  environment,
+  stage,
   existing,
   onRefetch,
 }: EnvPanelProps) {
@@ -154,7 +154,7 @@ function EnvironmentPanel({
   );
   const [error, setError] = useState<string | null>(null);
 
-  const isProd = environment === "prod";
+  const isLive = stage === "live";
   const saving = create.isPending || update.isPending;
   // Org-shared credential: only an org owner/admin may change the CONNECTION
   // tier (base URL + token). The deploy target (resourceUuid/branch) is
@@ -204,7 +204,8 @@ function EnvironmentPanel({
         }
         await create.mutateAsync({
           provider: "coolify",
-          environment,
+          role: "deploy",
+          stages: [stage],
           config: { baseUrl, targets: cleanTargets },
           secrets: { apiToken: apiToken.trim() },
           ...(ownerOrgId ? { orgId: ownerOrgId } : {}),
@@ -230,17 +231,17 @@ function EnvironmentPanel({
 
   function handleDelete() {
     if (!existing) return;
-    if (!window.confirm(`Delete the ${environment} Coolify integration?`))
+    if (!window.confirm(`Delete the ${stage} Coolify integration?`))
       return;
     remove.mutate(existing.id);
   }
 
   return (
     <div
-      className={`flex flex-col gap-4 rounded-lg border p-4 ${isProd ? "border-red" : "border-subtle"}`}
+      className={`flex flex-col gap-4 rounded-lg border p-4 ${isLive ? "border-red" : "border-subtle"}`}
     >
       <p className="fg-body-sm text-muted">
-        {isProd
+        {isLive
           ? "⚠ Production — manual confirmation gate before every deploy."
           : "Staging — auto-dispatch on release."}
       </p>
@@ -298,7 +299,7 @@ function EnvironmentPanel({
 
       <CoolifyTargetsField
         projectId={projectId}
-        environment={environment}
+        stage={stage}
         integrationId={existing?.id}
         baseUrl={baseUrl}
         apiToken={apiToken}
@@ -348,7 +349,7 @@ function EnvironmentPanel({
 
       {existing && <DeployConfirmationHint />}
 
-      {isProd && existing && (
+      {isLive && existing && (
         <ProdGateSection
           projectId={projectId}
           integrationId={existing.id}

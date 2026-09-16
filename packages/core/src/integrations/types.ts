@@ -136,10 +136,17 @@ export interface IntegrationCapabilities {
   canReceiveWebhook: boolean;
   /** Injects an `mcpServers.<provider>` entry into the runner at dispatch time. */
   injectsMcp: boolean;
-  /** A staging/prod environment split is meaningful for this provider. */
-  hasEnvironments: boolean;
-  /** A prod-environment action requires an explicit human confirm gate. */
-  prodConfirmGate: boolean;
+  /**
+   * Forge can DEPLOY to this provider, so a binding of it may be `role: 'deploy'`
+   * and carry stages. Must equal `providerCanDeploy(provider)` — `capabilities.test.ts`
+   * asserts the two agree, because a screen that offers a deploy role the create
+   * schema then refuses is an affordance defect, not a copy error. The field this
+   * replaced was `hasEnvironments`, which asked whether a staging/prod split was
+   * meaningful; the split is gone and the question it was standing in for is this one.
+   */
+  canDeploy: boolean;
+  /** An action on a LIVE stage requires an explicit human confirm gate. */
+  liveConfirmGate: boolean;
   /** A delivery audit log is meaningful (false for MCP-injection providers). */
   hasDeliveryLog: boolean;
 }
@@ -149,8 +156,8 @@ export const DEFAULT_CAPABILITIES: IntegrationCapabilities = {
   canDispatch: false,
   canReceiveWebhook: false,
   injectsMcp: false,
-  hasEnvironments: false,
-  prodConfirmGate: false,
+  canDeploy: false,
+  liveConfirmGate: false,
   hasDeliveryLog: false,
 };
 

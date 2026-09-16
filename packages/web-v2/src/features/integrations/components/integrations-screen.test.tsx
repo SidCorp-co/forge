@@ -70,15 +70,19 @@ function conn(over: Partial<ConnectionDirectoryItem> = {}): ConnectionDirectoryI
   };
 }
 
-// Typed rather than inferred: `environment` is a two-member union on
-// ConnectionUsage, and an untyped object literal widens it to `string`, which
+// Typed rather than inferred: `role` and `stages` are closed unions on
+// ConnectionUsage, and an untyped object literal widens them to `string`, which
 // vitest's transpile-only run never sees and `next build` fails on.
 const BOUND: ConnectionDirectoryItem["usage"] = {
-  bindings: [{ id: "b1", projectId: "proj-a", environment: "prod", label: "", active: true }],
+  bindings: [
+    { id: "b1", projectId: "proj-a", role: "deploy", stages: ["live"], label: "", active: true },
+  ],
 };
 
 const OTHER_BOUND: ConnectionDirectoryItem["usage"] = {
-  bindings: [{ id: "b2", projectId: "proj-b", environment: "prod", label: "", active: true }],
+  bindings: [
+    { id: "b2", projectId: "proj-b", role: "deploy", stages: ["live"], label: "", active: true },
+  ],
 };
 
 const PERSONAL = { id: "org-personal", name: "Personal", isPersonal: true };
@@ -148,7 +152,7 @@ describe("IntegrationsScreen", () => {
     render(<IntegrationsScreen />);
     openApp("Coolify deploy");
     expect(screen.getByText("forge-dev")).toBeInTheDocument();
-    expect(screen.getByText("Production")).toBeInTheDocument();
+    expect(screen.getByText("Live")).toBeInTheDocument();
   });
 
   it("offers no control that manages a binding, only the credential's own", () => {
@@ -171,7 +175,7 @@ describe("IntegrationsScreen", () => {
   });
 
   it("tells two unnamed credentials of one app apart in the accessible name", () => {
-    // The motivating case: a deploy token per environment, neither named. An
+    // The motivating case: a deploy token per stage, neither named. An
     // aria-label of "Manage connection Coolify deploy" on both rebuilds the
     // wall this issue removes, inside the accessibility tree.
     connectionItems.mockReturnValue([
@@ -202,7 +206,7 @@ describe("IntegrationsScreen", () => {
       .getAllByRole("button", { name: /^Manage connection Coolify deploy/ })
       .map((b) => b.getAttribute("aria-label"));
     expect(names).toEqual([
-      "Manage connection Coolify deploy — used by forge-dev Production",
+      "Manage connection Coolify deploy — used by forge-dev Live",
       "Manage connection Coolify deploy",
     ]);
   });
@@ -221,21 +225,33 @@ describe("IntegrationsScreen", () => {
       .getAllByRole("button", { name: /^Manage connection Coolify deploy/ })
       .map((b) => b.getAttribute("aria-label"));
     expect(names).toEqual([
-      "Manage connection Coolify deploy — deploy.example.com — used by forge-dev Production",
-      "Manage connection Coolify deploy — deploy.example.com — used by forge-plugin Production",
+      "Manage connection Coolify deploy — deploy.example.com — used by forge-dev Live",
+      "Manage connection Coolify deploy — deploy.example.com — used by forge-plugin Live",
     ]);
   });
 
-  it("carries a binding's environment and its off marker into the name", () => {
-    // One project, one endpoint, two tokens: the chips read "forge-dev
-    // Production" and "forge-dev Staging · off", and that word is the whole of
-    // what tells the two rows apart.
-    const sameProject = (environment: "prod" | "staging", active: boolean) => ({
-      bindings: [{ id: `b-${environment}`, projectId: "proj-a", environment, label: "", active }],
+  it("carries a binding's scope and its off marker into the name", () => {
+    // One project, one endpoint, two tokens: the chips read "forge-dev Live"
+    // and "forge-dev Preview · off", and that word is the whole of what tells
+    // the two rows apart.
+    const sameProject = (
+      stage: "live" | "preview",
+      active: boolean,
+    ): ConnectionDirectoryItem["usage"] => ({
+      bindings: [
+        {
+          id: `b-${stage}`,
+          projectId: "proj-a",
+          role: "deploy",
+          stages: [stage],
+          label: "",
+          active,
+        },
+      ],
     });
     connectionItems.mockReturnValue([
-      conn({ id: "c1", config: { baseUrl: "https://deploy.example.com" }, usage: sameProject("prod", true) }),
-      conn({ id: "c2", config: { baseUrl: "https://deploy.example.com" }, usage: sameProject("staging", false) }),
+      conn({ id: "c1", config: { baseUrl: "https://deploy.example.com" }, usage: sameProject("live", true) }),
+      conn({ id: "c2", config: { baseUrl: "https://deploy.example.com" }, usage: sameProject("preview", false) }),
     ]);
     render(<IntegrationsScreen />);
     openApp("Coolify deploy");
@@ -243,8 +259,8 @@ describe("IntegrationsScreen", () => {
       .getAllByRole("button", { name: /^Manage connection Coolify deploy/ })
       .map((b) => b.getAttribute("aria-label"));
     expect(names).toEqual([
-      "Manage connection Coolify deploy — deploy.example.com — used by forge-dev Production",
-      "Manage connection Coolify deploy — deploy.example.com — used by forge-dev Staging (off)",
+      "Manage connection Coolify deploy — deploy.example.com — used by forge-dev Live",
+      "Manage connection Coolify deploy — deploy.example.com — used by forge-dev Preview (off)",
     ]);
   });
 
@@ -279,7 +295,7 @@ describe("IntegrationsScreen", () => {
     openApp("Coolify deploy");
     const manage = manageButton("Coolify deploy");
     expect(manage).toHaveAccessibleName(
-      "Manage connection Coolify deploy — deploy.example.com — used by forge-dev Production",
+      "Manage connection Coolify deploy — deploy.example.com — used by forge-dev Live",
     );
     const description = manage.getAttribute("aria-describedby")
       ?.split(" ")

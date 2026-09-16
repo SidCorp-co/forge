@@ -346,6 +346,7 @@ function AddEpodsystemForm({
     try {
       await create.mutateAsync({
         provider: "epodsystem",
+        role: "service",
         config: {},
         secrets: { apiKey: apiKey.trim() },
         ...(label.trim() ? { label: label.trim() } : {}),

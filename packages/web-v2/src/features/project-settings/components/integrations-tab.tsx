@@ -18,11 +18,13 @@ import {
 import { ProjectIntegrationsPanel } from "@/features/integrations/components/project-integrations-panel";
 import { PROVIDER_LABEL } from "@/features/integrations/components/status-pill";
 import { useBindExistingConnection, useConnections } from "@/features/integrations/hooks";
-import type { ConnectionSummary, IntegrationEnvironment } from "@/features/integrations/types";
+import type { BindingRole, ConnectionSummary, DeployStage } from "@/features/integrations/types";
 
-const ENVIRONMENT_OPTIONS: SelectOption[] = [
-  { value: "staging", label: "Staging" },
-  { value: "prod", label: "Production" },
+// What the binding is FOR. Stages are declared on the provider's own card,
+// where the deploy targets are; this door only says which kind of binding it is.
+const ROLE_SELECT_OPTIONS: SelectOption[] = [
+  { value: "service", label: "Service — a project-wide facility" },
+  { value: "deploy", label: "Deploy target — somewhere Forge deploys to" },
 ];
 
 function connectionLabel(c: ConnectionSummary): string {
@@ -34,7 +36,7 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
   const connectionsQ = useConnections();
   const bind = useBindExistingConnection();
   const [connectionId, setConnectionId] = useState<string>("");
-  const [environment, setEnvironment] = useState<IntegrationEnvironment>("staging");
+  const [role, setRole] = useState<BindingRole>("service");
 
   // Only active connections with a stored credential are eligible to share —
   // a soft-deleted or secret-less row would fail server-side (loadOwnedConnection
@@ -54,11 +56,21 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
   function submit() {
     if (!connectionId) return;
     bind.mutate(
-      { id: connectionId, body: { projectId, environment } },
+      {
+        id: connectionId,
+        body: {
+          projectId,
+          role,
+          // A deploy binding must declare at least one stage; `preview` is the
+          // one that cannot reach anybody's production, so it is what this door
+          // opens with. The provider card is where it gets widened to `live`.
+          ...(role === "deploy" ? { stages: ["preview" as DeployStage] } : {}),
+        },
+      },
       {
         onSuccess: () => {
           setConnectionId("");
-          setEnvironment("staging");
+          setRole("service");
         },
       },
     );
@@ -92,11 +104,11 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
                 disabled={connectionsQ.isLoading || bind.isPending}
               />
             </Field>
-            <Field label="Environment" required>
+            <Field label="What is it for" required>
               <Select
-                options={ENVIRONMENT_OPTIONS}
-                value={environment}
-                onChange={(v) => setEnvironment(v as IntegrationEnvironment)}
+                options={ROLE_SELECT_OPTIONS}
+                value={role}
+                onChange={(v) => setRole(v as BindingRole)}
                 disabled={!connectionId || bind.isPending}
               />
             </Field>

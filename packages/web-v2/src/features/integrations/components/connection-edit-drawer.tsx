@@ -44,7 +44,7 @@ import type {
   PostmanRegion,
   ProviderConfig,
 } from "../types";
-import { DirectoryStatusPill, ENV_LABEL, PROVIDER_ICON, PROVIDER_LABEL } from "./status-pill";
+import { DirectoryStatusPill, PROVIDER_ICON, PROVIDER_LABEL, scopeLabel } from "./status-pill";
 
 /** Provider → name of the secrets field carrying the primary credential
  *  (mirrors core `rotation.ts` PRIMARY_FIELD). */
@@ -445,7 +445,7 @@ function ProjectsSection({
               <>
                 <span className="truncate text-fg">{project?.name ?? b.projectId}</span>
                 <span className="fg-body-sm text-muted">
-                  {ENV_LABEL[b.environment] ?? b.environment}
+                  {scopeLabel(b.role, b.stages)}
                 </span>
                 {archived && (
                   <span className="fg-body-sm rounded-pill bg-sunken px-2 py-0.5 text-subtle">

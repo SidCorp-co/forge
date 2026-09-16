@@ -95,7 +95,7 @@ export function ReleaseSection({
           <dt className="fg-caption text-subtle">Branches</dt>
           <dd className="fg-body-sm font-mono text-fg">
             {r.baseBranch}
-            {r.productionBranch !== r.baseBranch ? ` → ${r.productionBranch}` : " (trunk)"}
+            {r.liveBranch !== r.baseBranch ? ` → ${r.liveBranch}` : " (trunk)"}
           </dd>
         </div>
         <div>

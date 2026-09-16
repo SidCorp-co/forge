@@ -18,7 +18,7 @@ import { formatRelativeTime } from "@/lib/utils/format";
 import { useCanManageConnection, useRemoveConnection, useUpdateConnection } from "../hooks";
 import { connectionTarget, connectionTitle } from "../connection-identity";
 import { deriveConnectionStatus } from "../derive";
-import { DirectoryStatusPill, ENV_LABEL, PROVIDER_ICON, PROVIDER_LABEL } from "./status-pill";
+import { DirectoryStatusPill, PROVIDER_ICON, PROVIDER_LABEL, scopeLabel } from "./status-pill";
 
 /** Projects a connection is bound to, named — the line that tells two credentials apart. */
 function UsageLine({
@@ -48,7 +48,7 @@ function UsageLine({
           title={b.active ? undefined : "this project has the integration switched off"}
         >
           <span className="max-w-[14ch] truncate">{projectName(b.projectId)}</span>
-          <span className="text-subtle">{ENV_LABEL[b.environment] ?? b.environment}</span>
+          <span className="text-subtle">{scopeLabel(b.role, b.stages)}</span>
           {!b.active && <span className="text-subtle">· off</span>}
         </span>
       ))}
@@ -103,8 +103,8 @@ export function connectionRowLabel(
   // a target.
   if (connection.usage.bindings.length > 0) {
     const used = connection.usage.bindings.map((b) => {
-      const env = ENV_LABEL[b.environment] ?? b.environment;
-      return `${projectName(b.projectId)} ${env}${b.active ? "" : " (off)"}`;
+      const scope = scopeLabel(b.role, b.stages);
+      return `${projectName(b.projectId)} ${scope}${b.active ? "" : " (off)"}`;
     });
     parts.push(`used by ${used.join(", ")}`);
   }

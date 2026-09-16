@@ -151,10 +151,10 @@ describe("getCapabilities", () => {
 
   it("overlays the card's capabilities onto the default", () => {
     const caps = getCapabilities(
-      card({ meta: { capabilities: { hasDeliveryLog: true, hasEnvironments: true } } }),
+      card({ meta: { capabilities: { hasDeliveryLog: true, canDeploy: true } } }),
     );
     expect(caps.hasDeliveryLog).toBe(true);
-    expect(caps.hasEnvironments).toBe(true);
+    expect(caps.canDeploy).toBe(true);
     expect(caps.canDispatch).toBe(false);
   });
 });

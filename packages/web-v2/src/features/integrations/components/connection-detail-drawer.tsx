@@ -7,7 +7,7 @@ import { useProjectsIncludingArchived } from "@/features/projects/hooks";
 import { useConnectionBindings, useConnections, useIntegrationsList } from "../hooks";
 import { cardProvider, getCapabilities } from "../derive";
 import type { DrillableProvider } from "../derive";
-import type { BindingSummary, IntegrationEnvironment, StatusCard } from "../types";
+import type { BindingSummary, DeployStage, StatusCard } from "../types";
 import { CoolifySection } from "./coolify-section";
 import { DeliveryLogViewer } from "./delivery-log-viewer";
 import { EpodsystemSection } from "./epodsystem-section";
@@ -16,17 +16,17 @@ import { GoogleSection } from "./google-section";
 import { PostmanSection } from "./postman-section";
 import { RocketchatSection } from "./rocketchat-section";
 import { SentrySection } from "./sentry-section";
-import { ENV_LABEL, ENV_OPTIONS, PROVIDER_LABEL, StatusPill } from "./status-pill";
+import { PROVIDER_LABEL, STAGE_OPTIONS, StatusPill, scopeLabel } from "./status-pill";
 
 /** Adaptive connection detail (ISS-402). Opened from a directory provider card;
  *  renders the provider's existing config+actions section (Test / Rotate /
  *  Disconnect) and — ONLY when the adapter declares `hasDeliveryLog` — a
- *  read-only delivery-log tab. The env split (staging/prod) shows only when
- *  `hasEnvironments`. MCP-injection providers therefore get a single config
- *  pane with no empty delivery-log box.
+ *  read-only delivery-log tab. The stage split (preview/live) shows only when
+ *  the adapter declares `canDeploy`. MCP-injection providers therefore get a
+ *  single config pane with no empty delivery-log box.
  *
  *  ISS-408/F3: the Configuration tab now also renders a `BindingsSection`
- *  listing every project + environment the underlying connection is bound to
+ *  listing every project + scope the underlying connection is bound to
  *  (the "Projects using this connection" payoff of the connection-sharing
  *  cutover). */
 
@@ -41,30 +41,30 @@ function ProviderSection({ provider, projectId }: { provider: DrillableProvider;
 }
 
 /** Resolve the binding (and therefore the owning connection) the drawer is
- *  currently scoped to. For `hasEnvironments` providers (Coolify) the card key
+ *  currently scoped to. For `canDeploy` providers (Coolify) the card key
  *  carries the env suffix (`coolify:staging`); for the others a single binding
  *  per project covers the provider. */
 function useBindingForCard(
   projectId: string,
   provider: DrillableProvider,
-  envHint: IntegrationEnvironment | null,
+  stageHint: DeployStage | null,
 ): BindingSummary | undefined {
   const list = useIntegrationsList(projectId);
   return useMemo(() => {
     const rows = (list.data?.items ?? []).filter((i) => i.provider === provider);
-    if (envHint) return rows.find((r) => r.environment === envHint);
+    if (stageHint) return rows.find((r) => r.stages.includes(stageHint));
     return rows[0];
-  }, [list.data, provider, envHint]);
+  }, [list.data, provider, stageHint]);
 }
 
 function BindingsSection({
   connectionId,
   currentProjectId,
-  currentEnv,
+  currentStage,
 }: {
   connectionId: string;
   currentProjectId: string;
-  currentEnv: IntegrationEnvironment | null;
+  currentStage: DeployStage | null;
 }) {
   const bindingsQ = useConnectionBindings(connectionId);
   const projectsQ = useProjectsIncludingArchived();
@@ -107,7 +107,7 @@ function BindingsSection({
           items={bindingsQ.data?.items ?? []}
           projectNames={projectNames}
           currentProjectId={currentProjectId}
-          currentEnv={currentEnv}
+          currentStage={currentStage}
         />
       )}
     </section>
@@ -118,12 +118,12 @@ function BindingsList({
   items,
   projectNames,
   currentProjectId,
-  currentEnv,
+  currentStage,
 }: {
   items: BindingSummary[];
   projectNames: Map<string, string>;
   currentProjectId: string;
-  currentEnv: IntegrationEnvironment | null;
+  currentStage: DeployStage | null;
 }) {
   if (items.length === 0) {
     return (
@@ -136,7 +136,8 @@ function BindingsList({
     <ul className="flex flex-col gap-1.5">
       {items.map((b) => {
         const isCurrent =
-          b.projectId === currentProjectId && (currentEnv === null || b.environment === currentEnv);
+          b.projectId === currentProjectId &&
+          (currentStage === null || b.stages.includes(currentStage));
         const name = projectNames.get(b.projectId) ?? b.projectId;
         return (
           <li
@@ -144,7 +145,7 @@ function BindingsList({
             className="flex items-center gap-3 rounded-md border border-line bg-surface px-3 py-2"
           >
             <span className="truncate text-fg">{name}</span>
-            <span className="fg-body-sm text-muted">{ENV_LABEL[b.environment]}</span>
+            <span className="fg-body-sm text-muted">{scopeLabel(b.role, b.stages)}</span>
             {isCurrent && (
               <span className="fg-body-sm ml-auto rounded-pill bg-sunken px-2 py-0.5 text-subtle">
                 this project
@@ -160,24 +161,24 @@ function BindingsList({
 function DeliveryLogPane({
   provider,
   projectId,
-  hasEnvironments,
+  canDeploy,
 }: {
   provider: DrillableProvider;
   projectId: string;
-  hasEnvironments: boolean;
+  canDeploy: boolean;
 }) {
-  const [env, setEnv] = useState<IntegrationEnvironment>("staging");
+  const [stage, setStage] = useState<DeployStage>("preview");
   const list = useIntegrationsList(projectId);
   const rows = useMemo(
     () => (list.data?.items ?? []).filter((i) => i.provider === provider),
     [list.data, provider],
   );
-  const binding = hasEnvironments ? rows.find((r) => r.environment === env) : rows[0];
+  const binding = canDeploy ? rows.find((r) => r.stages.includes(stage)) : rows[0];
 
   return (
     <div className="flex flex-col gap-3">
-      {hasEnvironments && (
-        <SegmentedControl<IntegrationEnvironment> value={env} onChange={setEnv} options={ENV_OPTIONS} />
+      {canDeploy && (
+        <SegmentedControl<DeployStage> value={stage} onChange={setStage} options={STAGE_OPTIONS} />
       )}
       <DeliveryLogViewer projectId={projectId} bindingId={binding?.id ?? null} />
     </div>
@@ -187,13 +188,13 @@ function DeliveryLogPane({
 function ConfigPane({
   provider,
   projectId,
-  envFromCardKey,
+  stageFromCardKey,
 }: {
   provider: DrillableProvider;
   projectId: string;
-  envFromCardKey: IntegrationEnvironment | null;
+  stageFromCardKey: DeployStage | null;
 }) {
-  const binding = useBindingForCard(projectId, provider, envFromCardKey);
+  const binding = useBindingForCard(projectId, provider, stageFromCardKey);
   return (
     <>
       <ProviderSection provider={provider} projectId={projectId} />
@@ -201,7 +202,7 @@ function ConfigPane({
         <BindingsSection
           connectionId={binding.connectionId}
           currentProjectId={projectId}
-          currentEnv={envFromCardKey}
+          currentStage={stageFromCardKey}
         />
       )}
     </>
@@ -223,12 +224,13 @@ export function ConnectionDetailDrawer({
 
   if (!card || !provider) return null;
 
-  // env suffix on the card key (`coolify:staging`) → IntegrationEnvironment;
-  // non-env providers (postman/epodsystem) collapse to `null`.
-  const envSuffix = card.key.includes(":")
-    ? (card.key.split(":")[1] as IntegrationEnvironment | undefined) ?? null
-    : null;
-  const envFromCardKey: IntegrationEnvironment | null = caps.hasEnvironments ? envSuffix : null;
+  // Scope suffix on the card key (`coolify:live`, `coolify:preview+live`,
+  // `sentry:service`) → the stage to scope the drawer to. A card whose suffix
+  // names no single stage — a service binding, or one serving both — collapses
+  // to `null`, which reads as "every binding of this provider".
+  const scopeSuffix = card.key.includes(":") ? card.key.split(":")[1] : undefined;
+  const stageFromCardKey: DeployStage | null =
+    caps.canDeploy && (scopeSuffix === "preview" || scopeSuffix === "live") ? scopeSuffix : null;
 
   const title = (
     <span className="flex items-center gap-2.5">
@@ -254,18 +256,18 @@ export function ConnectionDetailDrawer({
               <ConfigPane
                 provider={provider}
                 projectId={projectId}
-                envFromCardKey={envFromCardKey}
+                stageFromCardKey={stageFromCardKey}
               />
             ) : (
               <DeliveryLogPane
                 provider={provider}
                 projectId={projectId}
-                hasEnvironments={caps.hasEnvironments}
+                canDeploy={caps.canDeploy}
               />
             )}
           </>
         ) : (
-          <ConfigPane provider={provider} projectId={projectId} envFromCardKey={envFromCardKey} />
+          <ConfigPane provider={provider} projectId={projectId} stageFromCardKey={stageFromCardKey} />
         )}
       </div>
     </SlideOver>

@@ -14,7 +14,7 @@ vi.mock('../config/env.js', () => ({
 const { coolifyAdapter } = await import('./coolify/adapter.js');
 const { epodsystemAdapter } = await import('./epodsystem/adapter.js');
 const { postmanAdapter } = await import('./postman/adapter.js');
-const { DEFAULT_CAPABILITIES, capabilitiesFor } = await import('./types.js');
+const { DEFAULT_CAPABILITIES, capabilitiesFor, providerCanDeploy } = await import('./types.js');
 type IntegrationAdapter = import('./types.js').IntegrationAdapter;
 type IntegrationCapabilities = import('./types.js').IntegrationCapabilities;
 
@@ -30,8 +30,8 @@ const ARCHETYPES: Record<string, { adapter: IntegrationAdapter; caps: Integratio
       canDispatch: true,
       canReceiveWebhook: false,
       injectsMcp: false,
-      hasEnvironments: true,
-      prodConfirmGate: true,
+      canDeploy: true,
+      liveConfirmGate: true,
       hasDeliveryLog: true,
     },
   },
@@ -41,8 +41,8 @@ const ARCHETYPES: Record<string, { adapter: IntegrationAdapter; caps: Integratio
       canDispatch: false,
       canReceiveWebhook: false,
       injectsMcp: true,
-      hasEnvironments: false,
-      prodConfirmGate: false,
+      canDeploy: false,
+      liveConfirmGate: false,
       hasDeliveryLog: false,
     },
   },
@@ -52,8 +52,12 @@ const ARCHETYPES: Record<string, { adapter: IntegrationAdapter; caps: Integratio
       canDispatch: false,
       canReceiveWebhook: false,
       injectsMcp: true,
-      hasEnvironments: false,
-      prodConfirmGate: false,
+      // A storefront IS somewhere Forge deploys to: its preview is the draft
+      // theme and its live is the published one, which is why three fleet
+      // storefronts carry one binding on both stages. The old `hasEnvironments`
+      // said `false` here for the different question of a staging/prod split.
+      canDeploy: true,
+      liveConfirmGate: false,
       hasDeliveryLog: false,
     },
   },
@@ -78,10 +82,15 @@ describe('integration adapter capabilities', () => {
       if (c.hasDeliveryLog) {
         expect(c.canDispatch || c.canReceiveWebhook).toBe(true);
       }
-      // A prod confirm gate only makes sense with an environment split.
-      if (c.prodConfirmGate) {
-        expect(c.hasEnvironments).toBe(true);
+      // A live confirm gate only makes sense where Forge can deploy at all.
+      if (c.liveConfirmGate) {
+        expect(c.canDeploy).toBe(true);
       }
+      // cm:guard the capability and the create schema must agree. The UI offers
+      // `role: 'deploy'` on the strength of `canDeploy`; `createSchema` refuses it
+      // on the strength of `providerCanDeploy`. Two answers to one question is an
+      // affordance defect — the operator fills in a form the server then rejects.
+      expect(c.canDeploy).toBe(providerCanDeploy(provider));
     });
   }
 

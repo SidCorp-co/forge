@@ -447,6 +447,7 @@ function AddRocketchatForm({ projectId }: { projectId: string }) {
     try {
       await create.mutateAsync({
         provider: "rocketchat",
+        role: "service",
         config: { serverUrl: serverUrl.trim().replace(/\/+$/, ""), rids: [rid.trim()] },
         secrets: { authToken: authToken.trim(), userId: botUserId.trim() },
         ...(ownerOrgId ? { orgId: ownerOrgId } : {}),

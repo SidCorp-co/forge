@@ -79,8 +79,8 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
     canDispatch: true,
     canReceiveWebhook: false,
     injectsMcp: false,
-    hasEnvironments: true,
-    prodConfirmGate: true,
+    canDeploy: true,
+    liveConfirmGate: true,
     hasDeliveryLog: true,
   },
 
