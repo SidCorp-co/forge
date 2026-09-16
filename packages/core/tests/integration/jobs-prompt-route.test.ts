@@ -294,17 +294,21 @@ describe('GET /api/jobs/:id/prompt (W2.1.2)', () => {
     expect(body.actualUsage).toBeNull();
   });
 
-  it('actualUsage sums usage_records rows joined by session_id::uuid = job.id', async () => {
+  // cm:guard the rows are keyed on the AGENT SESSION and a decoy is keyed on the job id, because
+  // until ISS-1015 this route filtered `session_id::uuid = job.id` and this case asserted it: the
+  // old fixture tagged its rows with the job id, so it was green here and null on every live job —
+  // 0 of beta's 24,085 usage rows match any job id, 24,085 match an agent session.
+  it('actualUsage sums the usage_records rows of the job AGENT SESSION, not of the job id', async () => {
     const { user, project } = await seedUserProject('admin');
     const systemHash = await seedPromptBlob('preamble');
+    const agentSessionId = randomUUID();
     const jobId = await seedJob({
       projectId: project.id,
       ownerId: user.id,
       systemPromptHash: systemHash,
       userPromptSnapshot: 'body',
-      agentSessionId: randomUUID(),
+      agentSessionId,
     });
-    // Two usage_records rows tagged with session_id = job.id.
     for (const row of [
       { input: 100, output: 50, cacheRead: 10, cacheCreate: 5, cost: 0.001, count: 1 },
       { input: 200, output: 75, cacheRead: 20, cacheCreate: 7, cost: 0.002, count: 1 },
@@ -318,10 +322,24 @@ describe('GET /api/jobs/:id/prompt (W2.1.2)', () => {
         VALUES (
           ${randomUUID()}, ${project.id}, 'cli', 'claude-opus-4-7',
           ${row.input}, ${row.output}, ${row.cacheRead}, ${row.cacheCreate},
-          ${row.cost}, ${row.count}, ${jobId}, now()
+          ${row.cost}, ${row.count}, ${agentSessionId}, now()
         )
       `);
     }
+
+    // The decoy: keyed on the job id, the column the old filter read. It must
+    // contribute nothing, or every assertion below passes against either one.
+    await harness.db.execute(sql`
+      INSERT INTO usage_records (
+        id, project_id, source, model, input_tokens, output_tokens,
+        cache_read_tokens, cache_creation_tokens, estimated_cost,
+        request_count, session_id, recorded_at
+      )
+      VALUES (
+        ${randomUUID()}, ${project.id}, 'cli', 'claude-opus-4-7',
+        9999, 9999, 9999, 9999, 9.99, 9, ${jobId}, now()
+      )
+    `);
 
     const token = await signUserToken(user.id);
     const res = await getPrompt(jobId, token);

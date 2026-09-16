@@ -103,17 +103,29 @@ describe('GET /api/issues/:id/job-history (W2.1.4)', () => {
     return { issueId, runId };
   }
 
-  async function seedJob(opts: SeedJobOpts & { runId: string }): Promise<string> {
+  // cm:guard the job gets a REAL `agent_session_id` and the usage row below is keyed on THAT, never
+  // on the job id: `usage_records.session_id` is an `agent_sessions.id`. Until ISS-1015 this fixture
+  // wrote `session_id = jobId`, which made the route's `session_id::uuid = jobs.id` join green here
+  // and zero on every live job — 0 of beta's 24,085 usage rows match any job id. A fixture keyed the
+  // wrong way does not merely miss the defect, it asserts it.
+  async function seedJob(
+    opts: SeedJobOpts & { runId: string },
+  ): Promise<{ jobId: string; sessionId: string }> {
     const jobId = randomUUID();
+    const sessionId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status)
+      VALUES (${sessionId}, ${opts.projectId}, ${opts.runId}, 'idle')
+    `);
     const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
     await harness.db.execute(sql`
       INSERT INTO jobs (
         id, project_id, issue_id, pipeline_run_id, created_by, type, payload, status,
-        queued_at, dispatched_at, finished_at, model_used, prompt_input_token_est
+        agent_session_id, queued_at, dispatched_at, finished_at, model_used, prompt_input_token_est
       )
       VALUES (
         ${jobId}, ${opts.projectId}, ${opts.issueId}, ${opts.runId}, ${opts.ownerId},
-        ${opts.type}, '{}'::jsonb, ${opts.status ?? 'succeeded'},
+        ${opts.type}, '{}'::jsonb, ${opts.status ?? 'succeeded'}, ${sessionId},
         ${iso(opts.queuedAt ?? new Date())},
         ${iso(opts.dispatchedAt ?? null)},
         ${iso(opts.finishedAt ?? null)},
@@ -121,10 +133,10 @@ describe('GET /api/issues/:id/job-history (W2.1.4)', () => {
         ${opts.promptInputTokenEst ?? null}
       )
     `);
-    return jobId;
+    return { jobId, sessionId };
   }
 
-  async function seedUsage(projectId: string, jobId: string, input: number, cost: number) {
+  async function seedUsage(projectId: string, sessionId: string, input: number, cost: number) {
     await harness.db.execute(sql`
       INSERT INTO usage_records (
         id, project_id, source, model, input_tokens, output_tokens,
@@ -133,7 +145,7 @@ describe('GET /api/issues/:id/job-history (W2.1.4)', () => {
       )
       VALUES (
         ${randomUUID()}, ${projectId}, 'cli', 'claude-opus-4-7',
-        ${input}, 0, 0, 0, ${cost}, 1, ${jobId}, now()
+        ${input}, 0, 0, 0, ${cost}, 1, ${sessionId}, now()
       )
     `);
   }
@@ -152,7 +164,7 @@ describe('GET /api/issues/:id/job-history (W2.1.4)', () => {
     const tNewer = new Date(Date.now() - 10_000);
     const tQueued = new Date(Date.now() - 1_000);
 
-    const olderJob = await seedJob({
+    const older = await seedJob({
       projectId: project.id,
       ownerId: user.id,
       issueId,
@@ -164,10 +176,10 @@ describe('GET /api/issues/:id/job-history (W2.1.4)', () => {
       finishedAt: new Date(tOlder.getTime() + 5_000),
       promptInputTokenEst: 100,
     });
-    await seedUsage(project.id, olderJob, 150, 0.001);
-    await seedUsage(project.id, olderJob, 50, 0.0005);
+    await seedUsage(project.id, older.sessionId, 150, 0.001);
+    await seedUsage(project.id, older.sessionId, 50, 0.0005);
 
-    const newerJob = await seedJob({
+    const newer = await seedJob({
       projectId: project.id,
       ownerId: user.id,
       issueId,
@@ -179,10 +191,13 @@ describe('GET /api/issues/:id/job-history (W2.1.4)', () => {
       finishedAt: new Date(tNewer.getTime() + 8_000),
       promptInputTokenEst: 220,
     });
-    await seedUsage(project.id, newerJob, 300, 0.005);
+    await seedUsage(project.id, newer.sessionId, 300, 0.005);
+    // cm:guard the negative control for the join this route used to spell: a row keyed on the JOB
+    // id must contribute NOTHING. Drop it and the assertions below pass against either column.
+    await seedUsage(project.id, newer.jobId, 999, 9.99);
 
     // Queued (never dispatched) plan job — must still surface, tokens=0.
-    const queuedJob = await seedJob({
+    const queued = await seedJob({
       projectId: project.id,
       ownerId: user.id,
       issueId,
@@ -225,9 +240,9 @@ describe('GET /api/issues/:id/job-history (W2.1.4)', () => {
     expect(rows).toHaveLength(3);
     // Newest first: queued (queued_at most recent, dispatched_at null →
     // coalesce uses queued_at), then newerJob, then olderJob.
-    expect(rows[0]!.jobId).toBe(queuedJob);
-    expect(rows[1]!.jobId).toBe(newerJob);
-    expect(rows[2]!.jobId).toBe(olderJob);
+    expect(rows[0]!.jobId).toBe(queued.jobId);
+    expect(rows[1]!.jobId).toBe(newer.jobId);
+    expect(rows[2]!.jobId).toBe(older.jobId);
 
     expect(rows[0]!.tokens).toBe(0);
     expect(rows[0]!.cost).toBe(0);
