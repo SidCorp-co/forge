@@ -72,7 +72,11 @@ export function connectionRowLabel(
   const parts = [`Manage connection ${connectionTitle(connection)}`];
   const target = connectionTarget(connection);
   if (target) parts.push(target);
-  else if (connection.usage.bindings.length > 0)
+  // Independent of the target rather than a fallback for it: two deploy tokens
+  // against ONE endpoint, told apart on screen by the projects bound to them,
+  // would otherwise reach the same name through the branch that already found
+  // a target.
+  if (connection.usage.bindings.length > 0)
     parts.push(`used by ${connection.usage.bindings.map((b) => projectName(b.projectId)).join(", ")}`);
   return parts.join(" — ");
 }

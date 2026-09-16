@@ -35,7 +35,12 @@ vi.mock("../hooks", () => ({
 vi.mock("@/features/orgs/active-org", () => ({ useActiveOrg: () => ({ activeOrg: activeOrg() }) }));
 vi.mock("@/features/orgs/hooks", () => ({ useOrgs: () => ({ data: orgs() }) }));
 vi.mock("@/features/projects/hooks", () => ({
-  useProjectsIncludingArchived: () => ({ data: [{ id: "proj-a", name: "forge-dev" }] }),
+  useProjectsIncludingArchived: () => ({
+    data: [
+      { id: "proj-a", name: "forge-dev" },
+      { id: "proj-b", name: "forge-plugin" },
+    ],
+  }),
 }));
 // Renders its subject's id rather than nothing, so "the row hands this
 // connection to the drawer" is an assertion and not an absence.
@@ -70,6 +75,10 @@ function conn(over: Partial<ConnectionDirectoryItem> = {}): ConnectionDirectoryI
 // vitest's transpile-only run never sees and `next build` fails on.
 const BOUND: ConnectionDirectoryItem["usage"] = {
   bindings: [{ id: "b1", projectId: "proj-a", environment: "prod", label: "", active: true }],
+};
+
+const OTHER_BOUND: ConnectionDirectoryItem["usage"] = {
+  bindings: [{ id: "b2", projectId: "proj-b", environment: "prod", label: "", active: true }],
 };
 
 const PERSONAL = { id: "org-personal", name: "Personal", isPersonal: true };
@@ -195,6 +204,25 @@ describe("IntegrationsScreen", () => {
     expect(names).toEqual([
       "Manage connection Coolify deploy — used by forge-dev",
       "Manage connection Coolify deploy",
+    ]);
+  });
+
+  it("names the bound projects even when two credentials share one endpoint", () => {
+    // Same app, same endpoint, neither named: the project chips are the only
+    // thing that tells them apart on screen, so they are the only thing that
+    // can tell them apart in the name.
+    connectionItems.mockReturnValue([
+      conn({ id: "c1", config: { baseUrl: "https://deploy.example.com" }, usage: BOUND }),
+      conn({ id: "c2", config: { baseUrl: "https://deploy.example.com" }, usage: OTHER_BOUND }),
+    ]);
+    render(<IntegrationsScreen />);
+    openApp("Coolify deploy");
+    const names = screen
+      .getAllByRole("button", { name: /^Manage connection Coolify deploy/ })
+      .map((b) => b.getAttribute("aria-label"));
+    expect(names).toEqual([
+      "Manage connection Coolify deploy — deploy.example.com — used by forge-dev",
+      "Manage connection Coolify deploy — deploy.example.com — used by forge-plugin",
     ]);
   });
 
