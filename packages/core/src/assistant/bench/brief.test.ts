@@ -339,6 +339,36 @@ describe('a knowledge index the deployment capped (ISS-1066, codex F1)', () => {
     expect(projectBrief(src)).toContain('1 further entry is not listed');
   });
 
+  // cm:why recovering the row is only half of it: the knowledge section gets a share of the author
+  // budget and is cut at its END, so a capped prefix of title-only entries long enough to fill that
+  // share would slice away the very body the filtered read paid a request for (codex F1, round 2)
+  it('renders the recovered body ahead of the title-only entries the prefix listed', () => {
+    const titleOnly = Array.from({ length: 60 }, (_, i) => ({
+      slug: `d${i}`,
+      title: `On-demand entry ${i} ${'t'.repeat(100)}`,
+      kind: 'reference',
+      injection: 'on_demand',
+      body: null,
+    }));
+    const text = projectBrief(
+      source({
+        knowledge: [
+          ...titleOnly,
+          {
+            slug: 'rule',
+            title: 'The house rule',
+            kind: 'rule',
+            injection: 'always',
+            body: 'Never deploy on a Friday.',
+          },
+        ],
+      }),
+    );
+    expect(titleOnly.map((e) => e.title).join('\n').length).toBeGreaterThan(BRIEF_MAX_CHARS);
+    expect(text).toContain('Never deploy on a Friday.');
+    expect(text.length).toBeLessThanOrEqual(BRIEF_MAX_CHARS);
+  });
+
   it('asks the deployment for the always-injected entries rather than filtering the prefix', async () => {
     const { deployment } = await read();
     const reads = deployment.state.requests.filter((r) => r.path.endsWith('/knowledge'));

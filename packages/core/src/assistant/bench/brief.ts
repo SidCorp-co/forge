@@ -114,10 +114,17 @@ interface AuthorSection {
 
 const authorSections = (src: ProjectBriefSource): AuthorSection[] => {
   const facts = Object.entries(src.facts);
-  const knowledge = src.knowledge.map((e) => {
-    const head = `- **${e.title}** [${e.kind}, injection ${e.injection}]`;
-    return e.body ? `${head}\n${e.body.trim()}` : head;
-  });
+  // cm:guard the entries whose bodies the brief actually fetched render FIRST. This section gets a
+  // share of the author budget and is cut at its end, so a capped index prefix of title-only
+  // entries long enough to fill that share would slice away the always-injected prose the filtered
+  // read went and paid a request for — recovering the row is ingestion, and this is delivery
+  // (ISS-1066, codex F1). `sort` is stable, so within each half the index's own order stands.
+  const knowledge = [...src.knowledge]
+    .sort((a, b) => Number(b.body !== null) - Number(a.body !== null))
+    .map((e) => {
+      const head = `- **${e.title}** [${e.kind}, injection ${e.injection}]`;
+      return e.body ? `${head}\n${e.body.trim()}` : head;
+    });
   if (src.knowledgeOmitted > 0)
     knowledge.push(
       `(${src.knowledgeOmitted} further entr${src.knowledgeOmitted === 1 ? 'y is' : 'ies are'} not listed: the deployment capped the index response.)`,

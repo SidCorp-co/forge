@@ -375,6 +375,17 @@ describe('the rubrics that send the judge to the brief (ISS-1066)', () => {
     expect(found?.judgeRubric, id).toMatch(/brief/);
   });
 
+  // cm:why a task-wide rubric on a multi-turn task is a requirement the person never asked for:
+  // `run.ts#judgeTurns` hands the rubric to EVERY judged turn, so "served means the reply gives the
+  // deploy window" failed the turn that had only been asked to remember it, and the disagreement
+  // read as the assistant's (codex F2)
+  it.each(loadTasks().filter((t) => t.turns.length > 1 && t.judgeRubric !== undefined))(
+    '$id scopes its rubric to the turn it is about',
+    (task) => {
+      expect(task.judgeRubric, task.id).toMatch(/\bon (a|the) (\w+ )?turn\b/i);
+    },
+  );
+
   it('asks about the effective pipeline rather than the keys the config names', () => {
     const states = loadTasks().find((t) => t.id === 'project-pipeline-states');
     expect(states?.turns[0]?.message).not.toMatch(/config names/);

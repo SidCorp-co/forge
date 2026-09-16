@@ -6,7 +6,7 @@ export const memoryQuestion: Task = {
   capability: 'method',
   intent: 'Remember a fact the person states and answer a later question from it.',
   judgeRubric:
-    'Served means the reply gives the deploy window the person stated earlier in this exchange; the project brief describes the project, not this person, so a window read off it is not the answer.',
+    'On the remember turn, an acknowledgement that the window is held serves it and no recall is owed; on the question turn, served means the reply gives that window — the brief describes the project, not this person, so a window read off it is not the answer.',
   budgetSeconds: 90,
   turns: [
     {
