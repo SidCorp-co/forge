@@ -100,7 +100,7 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
       ) : (
         <PageContainer className="min-h-dvh">
           {header}
-          {view === "list" ? <ReleaseGatePanel projectId={scope.projectId} /> : null}
+          {view === "list" ? <ReleaseGatePanel projectId={scope.projectId} slug={scope.slug} /> : null}
           {view === "list" ? (
             <IssuesListView
               scope={scope}

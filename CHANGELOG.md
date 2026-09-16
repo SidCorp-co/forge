@@ -184,6 +184,19 @@
   nobody has read the rest. One page assembles the whole run from those records plus a fresh look at
   the site, so a different person or a different machine can carry on from where it stopped.
 
+- **You can now watch a release happen, act by act, instead of asking whoever is running it.** A
+  release that is shipping shows up on the issues screen as it always did, but the words "shipping
+  now" beside an issue are now a link, and behind it is the run itself: every act it made, oldest
+  first, with the agent's own account of that act as the entry and, underneath, the build it was
+  about, the deployment it came from, and what Forge read off the site while it happened. The two
+  are never merged into one sentence, so you can always see where the agent's version and the
+  machine's reading disagree. An act that was written down and never reported back is shown and
+  labelled incomplete rather than quietly left out — that is what a release killed halfway through
+  looks like, and it is the entry worth reading. Where the machine had to cut a log short, the page
+  says so and says nobody has read past the cut. The health of the site at the top of the page is
+  read while the page is being served, not remembered, so coming back to a tab you left open during
+  an outage does not show you the reading from before it.
+
 - **A release that cannot be checked is refused rather than believed.** A project that had never
   said where its running site can be reached still got to close its whole batch of issues, because
   the step that verifies a release simply skipped itself when there was nothing to check with — and
