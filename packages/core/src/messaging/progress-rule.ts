@@ -37,7 +37,7 @@ function stripNonFigureTokens(reply: string): string {
 // (ISS-1057, codex F4).
 const DENIAL_RE =
   // cm:ignore CM001 — i18n-allow: regex literal must contain the Vietnamese denial phrasing being matched
-  /chưa\s+(có\s+gì|làm\s+gì|bắt\s+đầu|triển\s+khai)|chưa\s+có\s+tiến\s+độ|chưa\s+hoàn\s+thành\s+(việc|issue)\s+nào|\b(?:the\s+|any\s+|no\s+)?(?:work|project|implementation|development|delivery|build|rollout)\s+(?:has\s+|is\s+|have\s+|are\s+)?(?:been\s+)?not\s+(?:yet\s+)?(?:started|begun)\b|\bno\s+work\s+(?:has\s+)?(?:been\s+)?(?:started|begun)\b|\bnothing\s+(?:has\s+)?(?:been\s+)?started\b|\bnot\s+started\s+(?:at\s+all|on\s+anything)\b|\bnothing\s+(has\s+been\s+)?(done|completed)\b|\bno\s+(work|progress)\s+(has\s+been\s+)?(done|made)\b/i; // i18n-allow: matches the Vietnamese/English "nothing done" phrasing under test
+  /chưa\s+(có\s+gì|làm\s+gì|triển\s+khai)|chưa\s+có\s+tiến\s+độ|(?:dự\s+án|công\s+việc|toàn\s+bộ|tất\s+cả)\s+(?:này\s+)?(?:vẫn\s+)?chưa\s+bắt\s+đầu|chưa\s+bắt\s+đầu\s+(?:gì|việc\s+gì)|chưa\s+hoàn\s+thành\s+(việc|issue)\s+nào|\b(?:the\s+|any\s+|no\s+)?(?:work|project|implementation|development|delivery|build|rollout)\s+(?:has\s+|is\s+|have\s+|are\s+)?(?:been\s+)?not\s+(?:yet\s+)?(?:started|begun)\b|\bno\s+work\s+(?:has\s+)?(?:been\s+)?(?:started|begun)\b|\bnothing\s+(?:has\s+)?(?:been\s+)?started\b|\bnot\s+started\s+(?:at\s+all|on\s+anything)\b|\bnothing\s+(has\s+been\s+)?(done|completed)\b|\bno\s+(work|progress)\s+(has\s+been\s+)?(done|made)\b/i; // i18n-allow: matches the Vietnamese/English "nothing done" phrasing under test
 
 // cm:guard a plain string, NOT a regex: this is only ever interpolated via the four RegExp constructors below, and a `g`-flagged RegExp object carries mutable `lastIndex` — so anyone who reached for `.test()` on it directly would get position-dependent results
 // cm:guard `not started` and its Vietnamese pair are KEYWORDS here, the other half of the same
@@ -52,16 +52,34 @@ const PROGRESS_KEYWORDS =
   // cm:ignore CM001 — i18n-allow: the literal must contain the Vietnamese progress-keyword vocabulary being scanned
   'hoàn thành|hoàn tất|đã xong|đã đóng|còn lại|đang làm|chưa bắt đầu|tổng|done|completed|closed|finished|remaining|in progress|not started|total'; // i18n-allow: the Vietnamese progress-keyword vocabulary being scanned
 
-// cm:why a number must be DIRECTLY adjacent to a keyword (only whitespace/colon between) — a wide character window flagged ordinary unrelated numbers several words away as if they were claimed counts (AC#6)
-const NUMBER_AFTER_KEYWORD_RE = new RegExp(`(${PROGRESS_KEYWORDS})\\s*:?\\s*(\\d+)`, 'gi');
-const NUMBER_BEFORE_KEYWORD_RE = new RegExp(`(\\d+)\\s+(${PROGRESS_KEYWORDS})`, 'gi');
+// cm:why a figure and its keyword may be separated by markdown emphasis and nothing else: the door
+// renders to chat, the model writes `**4** not started`, and until this class existed the `**`
+// defeated the adjacency strip below — so a CORRECT summary had its label read as a bare denial and
+// was refused. Caught by the benchmark rather than by a test: `vietnamese-count` went pass^3 100% ->
+// 0% on the after run at e5184fe8, where the refused reply carried every figure right (ISS-1057).
+// The class holds emphasis markers only — a wide one would re-open the AC#6 defect the next comment
+// names, which is why a run of whitespace is still required on the before-keyword side.
+const EMPHASIS = '[*_`~]*';
+
+// cm:why a number must be DIRECTLY adjacent to a keyword (only whitespace/colon/emphasis between) — a wide character window flagged ordinary unrelated numbers several words away as if they were claimed counts (AC#6)
+const NUMBER_AFTER_KEYWORD_RE = new RegExp(
+  `(${PROGRESS_KEYWORDS})${EMPHASIS}\\s*:?\\s*${EMPHASIS}(\\d+)`,
+  'gi',
+);
+const NUMBER_BEFORE_KEYWORD_RE = new RegExp(
+  `(\\d+)${EMPHASIS}\\s+${EMPHASIS}(${PROGRESS_KEYWORDS})`,
+  'gi',
+);
 
 // cm:why same adjacency requirement as the count rule — an unrelated percentage ("nhanh hơn 20%") must never be read as a progress claim (B1) // i18n-allow: quotes the Vietnamese example phrase being guarded against
 const PERCENT_AFTER_KEYWORD_RE = new RegExp(
-  `(${PROGRESS_KEYWORDS})\\s*:?\\s*(\\d{1,3})\\s*%`,
+  `(${PROGRESS_KEYWORDS})${EMPHASIS}\\s*:?\\s*${EMPHASIS}(\\d{1,3})\\s*%`,
   'gi',
 );
-const PERCENT_BEFORE_KEYWORD_RE = new RegExp(`(\\d{1,3})\\s*%\\s+(${PROGRESS_KEYWORDS})`, 'gi');
+const PERCENT_BEFORE_KEYWORD_RE = new RegExp(
+  `(\\d{1,3})\\s*%${EMPHASIS}\\s+${EMPHASIS}(${PROGRESS_KEYWORDS})`,
+  'gi',
+);
 
 function authoritativeSummary(f: ProgressFacts): string {
   return `shipped=${f.shipped}, closed without shipping=${f.closedUnshipped}, in progress=${f.inFlight}, not started=${f.remaining}, total=${f.total}`;

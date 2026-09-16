@@ -258,4 +258,52 @@ describe('progress-figures-match reads `not started` as a label (ISS-1057)', () 
     const preChange = /\bnot\s+started\b/i;
     expect(preChange.test('and **4 not started** — **17 total**.')).toBe(true);
   });
+  // cm:guard the reply below is the one beta sent on the AFTER benchmark run at e5184fe8, and it is
+  // CORRECT in both languages: 4 shipped, 5 closed unshipped, 4 in progress, 4 not started, 17
+  // total. It was refused, repaired into a WRONG answer (8 open), refused again, and the door sent
+  // its fallback — `vietnamese-count` went pass^3 100% -> 0% and that drop is what found this. Two
+  // halves, both this change's own: the markdown `**` between the figure and its label defeated the
+  // adjacency strip, and the bare Vietnamese label was still a denial alternative — the same shape the
+  // English narrowing removed, left standing in the other language this door serves (ISS-1057).
+  it('passes the emphasised Vietnamese summary beta refused on the after run', () => {
+    const text =
+      'Hiện dự án có **4 issue đang mở**.\n\nTổng quan tiến độ: **4** đã phát hành, **5** đã đóng không có bản phát hành được ghi nhận, **4** đang thực hiện và **4** chưa bắt đầu (tổng **17**).'; // i18n-allow: the Vietnamese reply under test, quoted verbatim from the benchmark run
+    expect(PROGRESS_FIGURES_MATCH.check(text, withProgress)).toEqual([]);
+  });
+
+  it('passes the same figure and label in English with markdown emphasis', () => {
+    expect(
+      PROGRESS_FIGURES_MATCH.check('Progress: **4** shipped and **4** not started.', withProgress),
+    ).toEqual([]);
+  });
+
+  // cm:guard emphasis widens what counts as adjacent and must not widen what counts as correct:
+  // a wrong figure beside the label is still refused through the markdown.
+  it('refuses a wrong emphasised figure beside the label', () => {
+    const wrongFigure = '**9** chưa bắt đầu.'; // i18n-allow: the Vietnamese figure label under test
+    expect(why(PROGRESS_FIGURES_MATCH.check(wrongFigure, withProgress))).toContain(
+      'does not match authoritative progress',
+    );
+  });
+
+  it('still refuses a totalizing Vietnamese denial that names its subject', () => {
+    const subjectNamed = 'Dự án này chưa bắt đầu.'; // i18n-allow: the Vietnamese denial under test
+    const anythingAtAll = 'Chưa bắt đầu gì cả.'; // i18n-allow: the Vietnamese denial under test
+    for (const denial of [subjectNamed, anythingAtAll]) {
+      expect(why(PROGRESS_FIGURES_MATCH.check(denial, withProgress))).toContain(
+        'claims no work has been done',
+      );
+    }
+  });
+
+  // cm:guard the plant for the pair above: the adjacency regex as it stood required a bare run of
+  // whitespace between the figure and the keyword, so the emphasised figure was invisible to it and
+  // the bare Vietnamese alternative then matched the label it had left standing.
+  it('pre-change: the emphasised figure is invisible to the adjacency strip', () => {
+    const emphasised = '**4** chưa bắt đầu'; // i18n-allow: the Vietnamese figure label under test
+    const preChange = /(\d+)\s+(chưa bắt đầu|not started)/gi; // i18n-allow: the pre-change adjacency regex, quoted to plant its own failure
+    expect(preChange.test(emphasised)).toBe(false);
+    const preChangeDenial = /chưa\s+(có\s+gì|làm\s+gì|bắt\s+đầu|triển\s+khai)/i; // i18n-allow: the pre-change denial alternative, quoted to plant its own failure
+    expect(preChangeDenial.test(emphasised)).toBe(true);
+  });
 });
