@@ -150,6 +150,84 @@ describe('a declaration retried after a lost answer', () => {
 
     expect(second.sessionId).not.toBe(first.sessionId);
   });
+
+  // cm:guard every test above sends its retry AFTER the first call returned, so the first row is
+  // always committed by the time the second one looks: a plain read-then-create passes all three.
+  // The duplicate arrives when two declarations for one box run are in flight at once — a sweep
+  // that overlapped its predecessor, a route the box's HTTP client retried while the first request
+  // is still open — and BOTH read before either commits. This is the case that tells the atomic
+  // claim apart from the check that preceded it (ISS-1050).
+  //
+  // cm:guard the race is CONSTRUCTED, not raced for. Firing N calls at once and hoping they
+  // interleave is not evidence: measured on this box, eight simultaneous declarations against the
+  // unlocked code produced eight sessions when the test ran alone and exactly one when it ran after
+  // its neighbours, because a warm `postgres.js` pool serialises transactions once its connections
+  // are all reserved. That green was indistinguishable from a strong one. So the test takes the
+  // claim's own advisory lock first, and what it asserts is that both callers BLOCK on it — which
+  // an unlocked `openRunSession` cannot do, whatever the pool is doing.
+  it('makes two declarations of one box run wait on each other and answer alike', async () => {
+    const user = await createTestUser(harness.db);
+    const project = await createTestProject(harness.db, user.id);
+    const device = await createTestDevice(harness.db, user.id);
+    const boxRunId = '44444444-4444-4444-8444-444444444444';
+    const declaration = {
+      deviceId: device.id,
+      projectId: project.id,
+      issueKeys: ['ISS-1', 'ISS-2'],
+      name: 'run-a',
+      boxRunId,
+    };
+
+    let releaseTheLock = () => {};
+    const lockHeld = new Promise<void>((resolve) => {
+      releaseTheLock = resolve;
+    });
+    const holder = harness.db.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtextextended(${`run-session:${device.id}:${boxRunId}`}, 0))`,
+      );
+      await lockHeld;
+    });
+
+    const settled: string[] = [];
+    const first = mods.openRunSession({ ...declaration }).then((r) => {
+      settled.push('first');
+      return r;
+    });
+    const second = mods.openRunSession({ ...declaration }).then((r) => {
+      settled.push('second');
+      return r;
+    });
+    await new Promise((r) => setTimeout(r, 500));
+
+    expect(
+      settled,
+      'a declaration that answers while another holds the box run key has not claimed it — it has read around it',
+    ).toEqual([]);
+
+    releaseTheLock();
+    await holder;
+    const [a, b] = await Promise.all([first, second]);
+
+    expect(
+      b.sessionId,
+      'the loser of the race must be answered with the winner session, not one of its own',
+    ).toBe(a.sessionId);
+
+    const sessions = (await harness.db.execute(
+      sql`SELECT count(*)::int AS n FROM agent_sessions WHERE device_id = ${device.id}`,
+    )) as unknown as { n: number }[];
+    expect(
+      sessions[0]?.n,
+      'a second session has nothing beating it, so core reaps it and returns issues from under the live run',
+    ).toBe(1);
+
+    const runs = (await harness.db.execute(
+      sql`SELECT count(*)::int AS n FROM pipeline_runs
+           WHERE kind = 'system' AND metadata->>'boxRunId' = ${boxRunId}`,
+    )) as unknown as { n: number }[];
+    expect(runs[0]?.n, 'one box run is one run row, however many requests carried it').toBe(1);
+  });
 });
 
 describe('the session-terminal read-back', () => {

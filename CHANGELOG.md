@@ -2854,7 +2854,10 @@
   the conversation its dispatcher is having — kept now so that a dispatcher rebuilt later can be
   handed it, which is a separate change and is not yet in. Registries that were written before this
   change are read and added to as they are, so a machine that has been running for weeks loses
-  nothing, and nothing about its existing notes is rewritten or invented.
+  nothing, and nothing about its existing notes is rewritten or invented. If the machine announces
+  the same piece of work twice — because the first answer never got back to it — it is told about
+  the one record that already exists rather than a second being made, even when both announcements
+  are in the air at once.
 
 - **A conversation you archive from the all-projects Conversations page can now be found and
   brought back there.** Every room in that page's sidebar offered to archive it, and archiving

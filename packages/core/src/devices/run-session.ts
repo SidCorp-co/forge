@@ -7,14 +7,19 @@
  * so a jsonb array serves the access pattern and no migration ships for it.
  */
 
-import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { and, eq, inArray, notInArray, type SQL, sql } from 'drizzle-orm';
+import { db, type Tx } from '../db/client.js';
 import { agentSessions, issues, pipelineRuns, terminalAgentSessionStatuses } from '../db/schema.js';
 import { heldIssuePrefixes } from '../issues/issue-prefix-read.js';
 import { canonicalIssueKey, issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
-import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
+import {
+  announceOneShotRun,
+  closeRunIfOneShot,
+  insertOneShotRun,
+  type OneShotRunSpec,
+} from '../pipeline/runs.js';
 import { returnIssuesForRun } from './run-issue-return.js';
 
 /** What `metadata.type` a run session carries. */
@@ -82,11 +87,14 @@ async function canonicaliseIssueKeys(
  */
 // cm:guard scoped by DEVICE as well as by the box run id. A run id is minted on the box, so two boxes could in principle answer with the same one; unscoped, one box's retry would be handed the other box's session and would then beat, close and release issues it never held.
 // cm:guard non-terminal ONLY. A retry of a declaration whose session has already been closed or reaped is a genuinely new run of the same work, and handing it the dead session would give it one nothing beats — reaped again ten minutes later, returning issues from under a run that is working.
-async function openSessionForBoxRun(args: {
-  deviceId: string;
-  boxRunId: string;
-}): Promise<RunSession | null> {
-  const [row] = await db
+async function openSessionForBoxRun(
+  executor: Tx,
+  args: {
+    deviceId: string;
+    boxRunId: string;
+  },
+): Promise<RunSession | null> {
+  const [row] = await executor
     .select({ sessionId: agentSessions.id, runId: pipelineRuns.id })
     .from(agentSessions)
     .innerJoin(pipelineRuns, eq(pipelineRuns.id, agentSessions.pipelineRunId))
@@ -100,6 +108,15 @@ async function openSessionForBoxRun(args: {
     )
     .limit(1);
   return row ? { sessionId: row.sessionId, runId: row.runId } : null;
+}
+
+/**
+ * The advisory-lock key two requests for one box run both compute.
+ */
+// cm:guard the lock is TRANSACTION-scoped and its key is derived, not stored, so nothing has to be cleaned up and no row has to exist first: `pg_advisory_xact_lock` is released by the commit or the rollback, including the rollback a crashed backend does for us. Advisory keys share one namespace database-wide, which is why the text carries the `run-session:` prefix — a collision with another feature's key would serialize two unrelated calls, never mix their answers up.
+// cm:guard keyed on device AND box run id, the same pair `openSessionForBoxRun` reads on. Locking on the box run id alone would make two boxes that minted the same id wait for each other for no reason; locking on the device alone would serialize every declaration a busy box makes.
+function boxRunLockKey(args: { deviceId: string; boxRunId?: string }): SQL<number> {
+  return sql<number>`hashtextextended(${`run-session:${args.deviceId}:${args.boxRunId}`}, 0)`;
 }
 
 export async function openRunSession(args: {
@@ -119,8 +136,15 @@ export async function openRunSession(args: {
   // nothing beating it, so core reaps it after ten minutes and `returnIssuesForRun` pulls those
   // issues back from under the live duplicate: the exact failure this issue exists to end, arriving
   // from inside the fix (ISS-1050).
+  // cm:guard this read is the FAST PATH and is not what makes the key hold. On its own it is a
+  // check followed by a create, and two requests that both arrive before either commits both see
+  // nothing and each open a session — the duplicate above, reached by a different road. The read
+  // that decides is the one inside the transaction below, taken after
+  // `pg_advisory_xact_lock(boxRunLockKey(...))`, where the loser of the race blocks until the
+  // winner commits and then finds the winner's row. Deleting this read costs a lock acquisition on
+  // every retry and changes no answer; deleting the locked one loses the guarantee.
   if (args.boxRunId) {
-    const existing = await openSessionForBoxRun({
+    const existing = await openSessionForBoxRun(db, {
       deviceId: args.deviceId,
       boxRunId: args.boxRunId,
     });
@@ -135,7 +159,7 @@ export async function openRunSession(args: {
   const canonical = await canonicaliseIssueKeys(args.projectId, args.issueKeys);
   // cm:guard read the statuses BEFORE the run exists, because the agent this run is about to spawn starts moving them immediately — a read taken afterwards records `in_progress` as the status to return to, and returning an issue to `in_progress` gives it back to nobody.
   const openingStatuses = await readIssueStatuses(args.projectId, canonical.seqs);
-  const run = await openOneShotRun({
+  const spec: OneShotRunSpec = {
     projectId: args.projectId,
     kind: 'system',
     metadata: {
@@ -145,32 +169,55 @@ export async function openRunSession(args: {
       [RUN_ISSUE_STATUSES_METADATA_KEY]: openingStatuses,
       ...(args.boxRunId ? { [BOX_RUN_ID_METADATA_KEY]: args.boxRunId } : {}),
     },
+  };
+  const claimed = await db.transaction(async (tx) => {
+    if (args.boxRunId) {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(${boxRunLockKey(args)})`);
+      const winner = await openSessionForBoxRun(tx, {
+        deviceId: args.deviceId,
+        boxRunId: args.boxRunId,
+      });
+      if (winner) return { existing: winner };
+    }
+    const run = await insertOneShotRun(tx, spec);
+    const [row] = await tx
+      .insert(agentSessions)
+      .values({
+        projectId: args.projectId,
+        deviceId: args.deviceId,
+        pipelineRunId: run.id,
+        title: `run: ${args.name}`,
+        status: 'running',
+        startedAt: new Date(),
+        lastHeartbeatAt: new Date(),
+        metadata: { type: RUN_SESSION_TYPE, terminalName: args.name, deviceId: args.deviceId },
+      })
+      .returning({ id: agentSessions.id });
+    if (!row) throw new Error('openRunSession: insert returned no row');
+    return { opened: { sessionId: row.id, runId: run.id } };
   });
-  const [row] = await db
-    .insert(agentSessions)
-    .values({
-      projectId: args.projectId,
-      deviceId: args.deviceId,
-      pipelineRunId: run.id,
-      title: `run: ${args.name}`,
-      status: 'running',
-      startedAt: new Date(),
-      lastHeartbeatAt: new Date(),
-      metadata: { type: RUN_SESSION_TYPE, terminalName: args.name, deviceId: args.deviceId },
-    })
-    .returning({ id: agentSessions.id });
-  if (!row) throw new Error('openRunSession: insert returned no row');
+  if (claimed.existing) {
+    logger.info(
+      { ...claimed.existing, boxRunId: args.boxRunId, deviceId: args.deviceId },
+      'run-session: another request opened this box run while we were opening it, answering with theirs',
+    );
+    return claimed.existing;
+  }
+  const opened = claimed.opened;
+  if (!opened)
+    throw new Error('openRunSession: the claim returned neither a session nor an answer');
+  await announceOneShotRun(opened.runId, spec);
   logger.info(
     {
-      runSessionId: row.id,
-      runId: run.id,
+      runSessionId: opened.sessionId,
+      runId: opened.runId,
       boxRunId: args.boxRunId ?? null,
       deviceId: args.deviceId,
       issues: canonical.keys,
     },
     'run-session: opened',
   );
-  return { sessionId: row.id, runId: run.id };
+  return opened;
 }
 
 /** The issues one live run session carries, read back from its run. */
