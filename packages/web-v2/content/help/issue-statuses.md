@@ -36,18 +36,18 @@ flowchart LR
   prog --> dev[Developed]:::bot
   dev --> test[Testing]:::bot
   test --> gate[Awaiting release]:::you
-  gate --> closed[Closed]:::end
+  gate --> closed[Closed]:::over
   prog -.-> info[Needs info]:::you
   info -.answer.-> prog
   prog -.-> hold[On hold]:::you
   hold -.resume.-> prog
   closed -.-> re[Reopened]:::you
   re --> prog
-  open -.-> drop[Dropped]:::end
+  open -.-> drop[Dropped]:::over
 
   classDef you fill:#fdf0d5,stroke:#a9822c,color:#5c4410
   classDef bot fill:#eef3fb,stroke:#5a7fb8,color:#24405f
-  classDef end fill:#ececea,stroke:#9b9791,color:#4a4741
+  classDef over fill:#ececea,stroke:#9b9791,color:#4a4741
 ```
 
 Amber is yours. Blue is the agent's. Grey is over.
