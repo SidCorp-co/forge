@@ -130,7 +130,11 @@ export function ReleaseSection({
 
   const r = q.data;
   if (!r) return null;
-  const factsHref = slug ? `/projects/${slug}/settings?tab=facts` : undefined;
+  // cm:guard this used to point at `settings?tab=facts`, a tab ISS-1048 deleted. A remediation
+  // link whose destination no longer exists is worse than no link: the operator follows the one
+  // affordance the gap offers and lands on a fallback pane. `sub=rules` opens the editor that
+  // now holds this text — the Knowledge screen's Rules tab.
+  const knowledgeHref = slug ? `/projects/${slug}/library?tab=knowledge&sub=rules` : undefined;
   const integrationsHref = slug ? `/projects/${slug}/settings?tab=integrations` : undefined;
 
   return (
@@ -196,9 +200,9 @@ export function ReleaseSection({
           {r.gaps.map((g) => (
             <Banner key={g} tone="attention">
               {GAP_TEXT[g]}{" "}
-              {FACT_GAPS.has(g) && factsHref ? (
-                <Link href={factsHref} className="underline">
-                  Write it in Project Facts
+              {FACT_GAPS.has(g) && knowledgeHref ? (
+                <Link href={knowledgeHref} className="underline">
+                  Write it in Knowledge rules
                 </Link>
               ) : integrationsHref ? (
                 <Link href={integrationsHref} className="underline">

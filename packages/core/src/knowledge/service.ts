@@ -385,13 +385,30 @@ export async function selectKnowledgeBodies(projectId: string): Promise<Record<s
   return Object.fromEntries(rows.map((r) => [r.slug, r.body.slice(0, SNAPSHOT_BODY_MAX_CHARS)]));
 }
 
-/** Every non-archived slug this project holds, whatever its injection setting —
- *  what `missingProjectKnowledge` measures the contract against. */
+/** Every non-archived slug this project holds whose body is more than whitespace, whatever its
+ *  injection setting — what `missingProjectKnowledge` measures the contract against. */
+// cm:guard the `~ '[^[:space:]]'` fence — the body holds at least one non-whitespace character —
+// is the whole reason this is not a plain slug select. It is a character class and not `btrim(body)
+// <> ''` because one-argument `btrim` strips spaces and nothing else: a body of newlines and tabs
+// passed that test, which is how
+// `tests/integration/knowledge-slug-obligation-body-e2e.test.ts` caught it.
+// Answering the contract from the PRESENCE of a slug is only sound while a present slug means real
+// text. `bodySchema` refuses a whitespace body at the door, but that guards FUTURE writes only:
+// migration 0254 copies every `agentConfig.projectFacts` value across unchanged, and the map it
+// copies from had no such rule. So a project that held `test-commands: "   "` would arrive holding
+// a row that answers its obligation with three spaces — where the contract this replaces read the
+// text and trimmed it, and reported the gap. A validator cannot repair rows that predate it.
 export async function selectAllSlugsFromKnowledge(projectId: string): Promise<string[]> {
   const rows = await db
     .select({ slug: knowledgeEntries.slug })
     .from(knowledgeEntries)
-    .where(and(eq(knowledgeEntries.projectId, projectId), isNull(knowledgeEntries.archivedAt)))
+    .where(
+      and(
+        eq(knowledgeEntries.projectId, projectId),
+        isNull(knowledgeEntries.archivedAt),
+        sql`${knowledgeEntries.body} ~ '[^[:space:]]'`,
+      ),
+    )
     .orderBy(asc(knowledgeEntries.slug));
   return rows.map((r) => r.slug);
 }

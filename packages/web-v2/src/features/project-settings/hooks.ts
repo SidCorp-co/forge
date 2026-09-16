@@ -153,7 +153,9 @@ export function useReleaseReadiness(id: string | undefined) {
 }
 
 /** GET one knowledge entry by slug — the compiled UX contract, today. A 404 is
- *  "no such entry" and not a failure, so this does not retry. */
+ *  "no such entry" and not a failure, so this does not retry. It is NOT normalized
+ *  to a success here: the query still reports `isError`, and the caller decides,
+ *  because a 500 and a 404 must not render the same. `UxContractTab` reads it. */
 export function useKnowledgeEntry(id: string | undefined, slug: string) {
 	return useQuery({
 		queryKey: ["project", id, "knowledge", slug],
