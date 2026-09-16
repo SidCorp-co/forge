@@ -44,6 +44,20 @@ vi.mock('./runs-concluded.js', () => ({
   reapJoblessRuns: (now?: Date) => reapJoblessRunsMock(now),
 }));
 
+// cm:why the same reason the alertSweep mock below carries: this pass issues its own real
+// `db.execute` against the suite's single shared mock queue, so unmocked it consumes a row queued
+// for another pass, reads a row with none of its fields, and throws — which `runPass` isolates and
+// `runPipelineSweep` then re-throws at the end of the tick, failing every assertion in the file
+// that calls it. That is the ISS-449 contract working; the fix is to mock the pass, not to soften
+// it (ISS-1050).
+const detectOrphanedRunAssertionsMock = vi.fn(async (_now?: Date) => ({
+  detected: 0,
+  reported: 0,
+}));
+vi.mock('./issue-run-invariant.js', () => ({
+  detectOrphanedRunAssertions: (now?: Date) => detectOrphanedRunAssertionsMock(now),
+}));
+
 const detectRetryRescueThresholdsMock = vi.fn(async (_now?: Date) => ({
   detected: 0,
   notified: 0,
@@ -567,6 +581,41 @@ describe('reapConcludedRuns wiring (ISS-923 — the inverse orphan direction)', 
 
     expect(order.indexOf('orphanedIssueRuns')).toBeGreaterThanOrEqual(0);
     expect(order.indexOf('concludedRuns')).toBeGreaterThan(order.indexOf('orphanedIssueRuns'));
+  });
+});
+
+describe('detectOrphanedRunAssertions wiring (ISS-1050 — the inverse of the run-to-issue edge)', () => {
+  it('runs as part of runPipelineSweep and reports what it named', async () => {
+    detectOrphanedRunAssertionsMock.mockResolvedValueOnce({ detected: 4, reported: 1 });
+
+    const result = await runPipelineSweep();
+
+    expect(detectOrphanedRunAssertionsMock).toHaveBeenCalledTimes(1);
+    expect(result.orphanedRunAssertions).toEqual({ detected: 4, reported: 1 });
+  });
+
+  // cm:guard the ordering is the assertion. A run session this tick is about to reap is not an
+  // orphaned assertion yet, so a pass that ran before the reapers would name a disagreement that
+  // resolves itself within the same tick — a warning about work that was never wrong.
+  it('runs AFTER the reaping passes, not before them', async () => {
+    const order: string[] = [];
+    reapConcludedRunsMock.mockImplementation(async () => {
+      order.push('concludedRuns');
+      return { reaped: 0 };
+    });
+    reapJoblessRunsMock.mockImplementation(async () => {
+      order.push('joblessRuns');
+      return { reaped: 0 };
+    });
+    detectOrphanedRunAssertionsMock.mockImplementation(async () => {
+      order.push('orphanedRunAssertions');
+      return { detected: 0, reported: 0 };
+    });
+
+    await runPipelineSweep();
+
+    expect(order.indexOf('orphanedRunAssertions')).toBeGreaterThan(order.indexOf('concludedRuns'));
+    expect(order.indexOf('orphanedRunAssertions')).toBeGreaterThan(order.indexOf('joblessRuns'));
   });
 });
 

@@ -2843,6 +2843,18 @@
   organisation, the store, the theme, the domain — and leaves every project's own settings where
   they belong.
 
+- **An issue that says work is in progress with nothing actually working it is now named, and
+  nothing about it is moved.** Two records have to agree for the product to be telling you the
+  truth: the issue's status, which says somebody is on it, and the machine's own record of what it
+  handed out. When those disagreed there was nothing anywhere that said so, and the issue went on
+  claiming to be worked for as long as anybody left it there. Project admins are now told which
+  issue is making the claim and how long it has been making it — once per episode rather than once
+  a minute, because a warning that arrives every minute is one nobody reads. It stops at telling
+  you, deliberately: an issue reaches "in progress" because a person put it there as readily as
+  because a machine did, so quietly putting it back would pull the work out from under whoever is
+  actually doing it. Which of the two records is the wrong one is not a question the product can
+  answer, so it asks instead of guessing.
+
 - **A box now keeps a record of the work it hands out, so that work can be found again if the
   machine handing it out stops.** Every piece of work a box takes on is handed to a helper, and
   since 13 September the box had been keeping no note of which helper had been given what. Nothing
