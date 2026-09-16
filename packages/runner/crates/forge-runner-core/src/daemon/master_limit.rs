@@ -254,7 +254,7 @@ pub(crate) fn newest_decisive(tail: &str, now_unix: i64) -> Option<Decisive> {
             .get("timestamp")
             .and_then(Value::as_str)
             .and_then(unix_seconds)?;
-        if now_unix.saturating_sub(at) > FRESH_WITHIN.as_secs() as i64 {
+        if now_unix.saturating_sub(at).unsigned_abs() > FRESH_WITHIN.as_secs() {
             return None;
         }
         let uuid = record
@@ -316,7 +316,7 @@ pub(crate) fn decide(
         }
         // cm:guard the CLEAR carries its own, tighter age bound, and the report does not. See `CLEAR_WITHIN`: this box cannot see when core's stamp was written, so the only thing standing between a stale success and a limit another lane wrote seconds ago is how recent the success itself is.
         Verdict::Worked => {
-            let fresh = now_unix.saturating_sub(newest.at) <= CLEAR_WITHIN.as_secs() as i64;
+            let fresh = now_unix.saturating_sub(newest.at).unsigned_abs() <= CLEAR_WITHIN.as_secs();
             if core_limited && fresh {
                 Action::Clear
             } else {
@@ -332,16 +332,37 @@ pub(crate) fn decide(
 // cm:guard hand-parsed rather than by a datetime crate, and that is a standing position rather than an oversight: `me-runners.ts` sends the runner REMAINING SECONDS instead of an instant precisely so this binary needs neither a parser nor a skew correction on the pacing path. This one parser exists because the freshness bound and the across-project ordering both need the record's own clock, and it is total — anything that is not that shape answers `None` and the record is skipped.
 fn unix_seconds(ts: &str) -> Option<i64> {
     let bytes = ts.as_bytes();
-    if bytes.len() < 20 || bytes[4] != b'-' || bytes[7] != b'-' || bytes[10] != b'T' {
+    if bytes.len() < 20
+        || bytes[4] != b'-'
+        || bytes[7] != b'-'
+        || bytes[10] != b'T'
+        || bytes[13] != b':'
+        || bytes[16] != b':'
+    {
         return None;
     }
     let num = |a: usize, b: usize| ts.get(a..b)?.parse::<i64>().ok();
     let (y, m, d) = (num(0, 4)?, num(5, 7)?, num(8, 10)?);
     let (hh, mm, ss) = (num(11, 13)?, num(14, 16)?, num(17, 19)?);
-    if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
+    if !(1..=12).contains(&m) || d < 1 || d > days_in_month(y, m) {
+        return None;
+    }
+    if hh > 23 || mm > 59 || ss > 59 {
         return None;
     }
     Some(days_from_civil(y, m, d) * 86_400 + hh * 3_600 + mm * 60 + ss)
+}
+
+/// Length of one month, so a day past the end of it is refused not absorbed.
+// cm:why spelled out rather than taken from a crate for the same reason `days_from_civil` is: this file's whole datetime surface is these two functions, and both are exact for every year a conversation record can carry.
+fn days_in_month(y: i64, m: i64) -> i64 {
+    match m {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) => 29,
+        2 => 28,
+        _ => 0,
+    }
 }
 
 /// Days between 1970-01-01 and a proleptic-Gregorian date.
@@ -364,13 +385,6 @@ pub(crate) fn now_unix() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or_default()
-}
-
-/// A refusal in the shape `classify` builds, for the wiring tests in
-/// `daemon::master` that need one without reaching into this module's fixtures.
-#[cfg(test)]
-pub(crate) fn refusal_for_tests() -> Refusal {
-    Refusal::new(Reason::UsageLimit, Some(900), "capped".into())
 }
 
 #[cfg(test)]
@@ -605,7 +619,12 @@ mod tests {
     #[test]
     fn an_unreadable_record_stops_the_scan_over_an_older_refusal() {
         let t = tail(&["429_five_hour", "unrecognised_protocol"]);
-        match newest_decisive(&t, at("429_five_hour")).unwrap().verdict {
+        let now = at("unrecognised_protocol");
+        assert!(
+            now.saturating_sub(at("429_five_hour")).unsigned_abs() <= FRESH_WITHIN.as_secs(),
+            "the refusal underneath is itself in window, so walking past would REPORT it rather than answer nothing — which is what makes this assertion distinguish the two"
+        );
+        match newest_decisive(&t, now).unwrap().verdict {
             Verdict::Unreadable(slug) => assert_eq!(slug, "a_slug_no_release_has_shipped"),
             other => panic!("expected the scan to stop unreadable, got {other:?}"),
         }
@@ -728,7 +747,7 @@ mod tests {
         let Action::Report(a, uuid) = decide(&[first], false, None, t1) else {
             panic!("the first sweep reports it")
         };
-        let Action::Report(b, _) = decide(&[second.clone()], false, None, t2) else {
+        let Action::Report(b, _) = decide(std::slice::from_ref(&second), false, None, t2) else {
             panic!("and it would report it again if nothing were remembered")
         };
         assert_ne!(
@@ -1000,5 +1019,49 @@ mod tests {
         for bad in ["", "yesterday", "2026-09-16", "16/09/2026 12:00:00Z"] {
             assert_eq!(unix_seconds(bad), None, "parsed {bad:?}");
         }
+    }
+
+    // cm:guard a date or clock reading that cannot exist is REFUSED, never normalised into the neighbouring one. Arithmetic on `2026-02-31T25:61:61Z` lands days and an hour past where the string reads, which is how a record dates itself AHEAD of this box — and a verdict dated in the future outranks every real refusal on the box and passes both freshness bounds, because the age it computes is negative.
+    #[test]
+    fn an_impossible_date_or_clock_reading_is_refused_rather_than_normalised() {
+        for bad in [
+            "2026-02-31T00:00:00.000Z",
+            "2025-02-29T00:00:00.000Z",
+            "2026-04-31T00:00:00.000Z",
+            "2026-09-16T24:00:00.000Z",
+            "2026-09-16T12:60:00.000Z",
+            "2026-09-16T12:00:60.000Z",
+            "2026-09-16T12-00-00.000Z",
+        ] {
+            assert_eq!(unix_seconds(bad), None, "parsed {bad:?}");
+        }
+    }
+
+    #[test]
+    fn the_last_day_of_every_month_still_parses() {
+        for good in [
+            "2026-01-31T23:59:59.000Z",
+            "2026-02-28T00:00:00.000Z",
+            "2024-02-29T00:00:00.000Z",
+            "2026-04-30T00:00:00.000Z",
+            "2000-02-29T00:00:00.000Z",
+            "2026-12-31T00:00:00.000Z",
+        ] {
+            assert!(unix_seconds(good).is_some(), "refused {good:?}");
+        }
+    }
+
+    // cm:guard a record dated AHEAD of this box is out of the window exactly as an old one is, in both the scan and the decision. Read as a signed age it is not merely fresh but fresher than anything real, so a success from a clock that ran forward would lift a limit another lane had stamped seconds earlier.
+    #[test]
+    fn a_record_dated_ahead_of_this_box_cannot_lift_a_limit() {
+        let ahead = seen("successful_turn", 10_000, "u-ahead");
+        assert_eq!(
+            decide(&[ahead], true, None, 100),
+            Action::Nothing,
+            "a success dated an age ahead of now is not a success this box just watched happen"
+        );
+        let t = tail(&["successful_turn"]);
+        let behind = at("successful_turn") - FRESH_WITHIN.as_secs() as i64 - 1;
+        assert_eq!(newest_decisive(&t, behind), None);
     }
 }
