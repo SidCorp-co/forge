@@ -119,6 +119,9 @@ pub(crate) enum Verdict {
 pub(crate) struct Decisive {
     /// Unix seconds, off the record's own `timestamp`.
     pub at: i64,
+    /// The `.fff` of that same timestamp, 0 where the record carries none.
+    // cm:guard ordering needs this and the freshness bounds do not, which is why it is a field beside `at` rather than a finer `at`. Two masters on one box refuse within the same second routinely — the whole failure this issue was filed for is five of six panes hitting one account at once — and without the fraction the tie-break falls to the `uuid`, which is arbitrary. A success at `.100` whose uuid sorts high would then beat a refusal at `.900` whose uuid sorts low, and the box would lift a limit off evidence it had just read something newer than.
+    pub millis: u32,
     /// The record's own `uuid` — what a report is memoised against, so one
     /// refusal is sent once however many sweeps read it.
     pub uuid: String,
@@ -263,7 +266,18 @@ pub(crate) fn newest_decisive(tail: &str, now_unix: i64) -> Option<Decisive> {
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_string();
-        return Some(Decisive { at, uuid, verdict });
+        let millis = subsecond_millis(
+            record
+                .get("timestamp")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+        );
+        return Some(Decisive {
+            at,
+            millis,
+            uuid,
+            verdict,
+        });
     }
     None
 }
@@ -303,7 +317,10 @@ pub(crate) fn decide(
     already_sent: Option<&str>,
     now_unix: i64,
 ) -> Action {
-    let Some(newest) = seen.iter().max_by_key(|d| (d.at, d.uuid.as_str())) else {
+    let Some(newest) = seen
+        .iter()
+        .max_by_key(|d| (d.at, d.millis, d.uuid.as_str()))
+    else {
         return Action::Nothing;
     };
     match &newest.verdict {
@@ -361,6 +378,28 @@ fn unix_seconds(ts: &str) -> Option<i64> {
         return None;
     }
     Some(days_from_civil(y, m, d) * 86_400 + hh * 3_600 + mm * 60 + ss)
+}
+
+/// The `.fff` of one instant, in milliseconds, or 0 where there is none.
+///
+/// Separate from [`unix_seconds`] because the two answer different questions:
+/// that one decides whether a record may be read at all, this one only orders
+/// two that both may.
+// cm:guard a fraction this cannot read answers 0 rather than refusing the record, and that asymmetry is deliberate. A record whose SECOND is unreadable cannot be dated at all and ends the scan; a record whose fraction is unreadable is still dated to the second, and dropping it would lose a real refusal over a cosmetic field. Ordering degrades to the uuid tie-break for that one record, which is exactly where this started.
+fn subsecond_millis(ts: &str) -> u32 {
+    let Some(frac) = ts.get(19..).and_then(|rest| rest.strip_prefix('.')) else {
+        return 0;
+    };
+    let digits: String = frac
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .take(3)
+        .collect();
+    if digits.is_empty() {
+        return 0;
+    }
+    let scale = 10u32.pow(3 - digits.len() as u32);
+    digits.parse::<u32>().unwrap_or(0) * scale
 }
 
 /// Length of one month, so a day past the end of it is refused not absorbed.
@@ -727,6 +766,7 @@ mod tests {
     fn seen(label: &str, at_unix: i64, uuid: &str) -> Decisive {
         Decisive {
             at: at_unix,
+            millis: 0,
             uuid: uuid.to_string(),
             verdict: classify(&record(label), at_unix).unwrap(),
         }
@@ -870,6 +910,7 @@ mod tests {
     fn an_unreadable_verdict_sends_nothing_and_hands_its_slug_to_the_log() {
         let d = vec![Decisive {
             at: 100,
+            millis: 0,
             uuid: "u3".into(),
             verdict: Verdict::Unreadable("moved".into()),
         }];
@@ -1025,6 +1066,24 @@ mod tests {
     }
 
     #[test]
+    fn the_fraction_is_read_at_whatever_width_the_record_writes_it() {
+        assert_eq!(subsecond_millis("2026-09-16T12:27:43.357Z"), 357);
+        assert_eq!(subsecond_millis("2026-09-16T12:27:43.35Z"), 350);
+        assert_eq!(subsecond_millis("2026-09-16T12:27:43.3Z"), 300);
+        assert_eq!(subsecond_millis("2026-09-16T12:27:43.357999Z"), 357);
+        assert_eq!(subsecond_millis("2026-09-16T12:27:43Z"), 0);
+        assert_eq!(subsecond_millis("2026-09-16T12:27:43.Z"), 0);
+        assert_eq!(subsecond_millis(""), 0);
+    }
+
+    // cm:guard the scan carries the record's OWN fraction through, rather than leaving every verdict at 0 and quietly restoring the uuid tie-break this exists to replace.
+    #[test]
+    fn the_scan_carries_the_records_own_fraction() {
+        let d = newest_decisive(&tail(&["successful_turn"]), at("successful_turn")).unwrap();
+        assert_eq!(d.millis, 357, "the captured record's timestamp ends .357Z");
+    }
+
+    #[test]
     fn a_timestamp_in_any_other_shape_is_refused_rather_than_guessed() {
         for bad in ["", "yesterday", "2026-09-16", "16/09/2026 12:00:00Z"] {
             assert_eq!(unix_seconds(bad), None, "parsed {bad:?}");
@@ -1079,6 +1138,32 @@ mod tests {
     }
 
     // cm:guard the CLEAR takes no forward tolerance at all, not even the one the scan takes. A whole-second `now` admits a record written in the same second as EQUAL, so nothing legitimate needs the future half — and anything that does need it is a clock this box should not be lifting a limit on.
+    // cm:guard the ordering must survive two records in the SAME SECOND, because the uuid tie-break is arbitrary by design and a second is an eternity when five masters hit one account at once. A success at `.100` whose uuid sorts high would otherwise beat a refusal at `.900` whose uuid sorts low, and the box would DELETE a limit off evidence it had just read a newer refusal than.
+    #[test]
+    fn a_refusal_later_in_the_same_second_beats_a_success_whose_uuid_sorts_higher() {
+        let worked = Decisive {
+            at: 100,
+            millis: 100,
+            uuid: "fffffff0-0000-4000-8000-000000000000".into(),
+            verdict: classify(&record("successful_turn"), 100).unwrap(),
+        };
+        let refused = Decisive {
+            at: 100,
+            millis: 900,
+            uuid: "00000000-0000-4000-8000-000000000000".into(),
+            verdict: classify(&record("429_five_hour"), 100).unwrap(),
+        };
+        for order in [
+            vec![worked.clone(), refused.clone()],
+            vec![refused.clone(), worked.clone()],
+        ] {
+            match decide(&order, true, None, 100) {
+                Action::Report(_, uuid) => assert_eq!(uuid, refused.uuid),
+                other => panic!("the later refusal in the same second must win, got {other:?}"),
+            }
+        }
+    }
+
     #[test]
     fn a_success_one_second_ahead_of_now_does_not_clear() {
         let ahead = seen("successful_turn", 101, "u-ahead-1s");

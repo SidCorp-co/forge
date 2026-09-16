@@ -624,6 +624,29 @@ fn account_verdict(
     master_limit::newest_decisive(&tail, now_unix)
 }
 
+/// Longest either half of a limit report may hold the sweep.
+///
+/// Derived rather than chosen: it has to be comfortably under [`POLL_INTERVAL`],
+/// because a report that outlasts the sweep spacing has stopped being a report
+/// and started being the thing that decides how often this box sweeps at all.
+// cm:guard `CoreClient` wraps a bare `reqwest::Client::new()`, which sets NO request timeout, so a core that accepts the connection and never answers holds this await forever. That is not a report failing, it is the sweep stopping: everything after this call — `reconcile`, `give_back_lost_runs`, the next sweep, the cancel branch — is behind it. The guard one line below promises a failed report costs only a report, and without this bound that promise is false.
+const REPORT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// One limit call, with the deadline the client itself does not impose.
+// cm:why the elapsed case is folded into the SAME `Err` the transport already returns, rather than given an arm of its own: every caller's answer to both is identical — say so in the log, leave the memo alone, try again next sweep — and a third state would be a distinction no reader could act on.
+async fn bounded<F>(call: F) -> crate::error::Result<()>
+where
+    F: std::future::Future<Output = crate::error::Result<()>>,
+{
+    match tokio::time::timeout(REPORT_TIMEOUT, call).await {
+        Ok(result) => result,
+        Err(_) => Err(crate::error::Error::Other(format!(
+            "core did not answer within {}s",
+            REPORT_TIMEOUT.as_secs()
+        ))),
+    }
+}
+
 /// Tell core what this box's Claude account said, once for the whole device.
 // cm:guard this path reports and does NOTHING else. A cap is not a fault: it must not change a runner's status, must not end a master, must not touch an issue, and must not stop the sweep — work already running finishes and only the STARTING of new turns backs off, which the existing `next_poll_delay` does on its own once the row is stamped.
 // cm:guard `core_limited` is read off core's own rows rather than off a memo, and the clear is authorised by nothing finer. One Claude account serves every pane, every job and every chat on this box — one `~/.claude`, one credential — so a master's successful turn is proof the account works whoever stamped the row, exactly as a successful JOB already clears a stamp the master lane wrote. Making the clear conditional on who stamped it would strand a box whose account an operator had just fixed, which is the one failure `LIMITED_POLL_INTERVAL` is a backoff rather than a blackout to avoid. The condition that ends this: per-project Claude credentials on one box, which would make "the account" ambiguous and this read wrong.
@@ -642,14 +665,14 @@ async fn report_account_limit(
             "[master] this box's Claude account refused a turn with `{slug}`, which this binary has not been taught to read — nothing was reported, so core will go on calling this box healthy until it is taught that name"
         ),
         master_limit::Action::Report(r, uuid) => {
-            match master_api::report_limit(
+            let sent = bounded(master_api::report_limit(
                 client,
                 r.reason.wire(),
                 r.resets_in_seconds,
                 &r.detail,
-            )
-            .await
-            {
+            ))
+            .await;
+            match sent {
                 Ok(()) => {
                     tracing::warn!(
                         "[master] this box's Claude account is capped ({}{}) — reported to core: {}",
@@ -668,7 +691,7 @@ async fn report_account_limit(
                 ),
             }
         }
-        master_limit::Action::Clear => match master_api::clear_limit(client).await {
+        master_limit::Action::Clear => match bounded(master_api::clear_limit(client)).await {
             Ok(()) => {
                 tracing::info!(
                     "[master] this box's Claude account answered a turn — the limit core was holding is lifted"
@@ -2994,6 +3017,49 @@ mod give_back_tests {
             reporting_path().contains("now_unix: i64"),
             "and it takes that instant as a parameter, so there is exactly one place the sweep's clock is read"
         );
+    }
+
+    // cm:guard BOTH calls, named separately, because the two arms are written apart and a later edit adds one back unbounded without touching the other. `CoreClient` has no request timeout of its own, so an unbounded call here is the sweep's deadline, not the report's.
+    #[test]
+    fn every_limit_call_on_the_reporting_path_carries_a_deadline() {
+        let path: String = reporting_path()
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect();
+        for call in ["master_api::report_limit(", "master_api::clear_limit("] {
+            assert!(
+                path.contains(&format!("bounded({call}")),
+                "`{call}` must go through `bounded`, or a core that accepts and never answers stops this box sweeping at all"
+            );
+        }
+    }
+
+    // cm:guard a core that ACCEPTS and then says nothing, which is the case no `Err` arm covers: the transport only returns once the request resolves, and without a deadline it never does. Measured as a hang rather than a failure, everything behind this await — `reconcile`, `give_back_lost_runs`, the next sweep, the cancel branch — is stopped with it.
+    #[tokio::test(start_paused = true)]
+    async fn a_core_that_accepts_and_never_answers_does_not_hold_the_sweep() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let _held = listener.accept().await;
+            std::future::pending::<()>().await;
+        });
+        let client = CoreClient::new(format!("http://{addr}"), String::from("tok"));
+
+        match tokio::time::timeout(
+            REPORT_TIMEOUT * 3,
+            bounded(master_api::clear_limit(&client)),
+        )
+        .await
+        {
+            Ok(Err(e)) => assert!(
+                e.to_string().contains("did not answer"),
+                "the deadline must say what happened, got {e}"
+            ),
+            Ok(Ok(())) => panic!("core never answered, so this cannot have succeeded"),
+            Err(_) => panic!(
+                "the call outlived three times its own deadline — this box is stopped, not slowed"
+            ),
+        }
     }
 
     #[test]
