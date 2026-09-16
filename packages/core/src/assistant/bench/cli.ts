@@ -7,7 +7,7 @@
 import { adviceInputsOfHistory, adviceInputsOfRun, adviceLines, advise } from './advice.js';
 import { fixtureNotApplicable, projectBrief, readProjectBrief } from './brief.js';
 import { capabilityLines } from './capability.js';
-import { createClient, type FetchLike } from './client.js';
+import { type BenchClient, createClient, DeploymentRefusal, type FetchLike } from './client.js';
 import { capabilitiesOf, compare, compareLines, sideOf } from './compare.js';
 import { HISTORY_USAGE, historyMain } from './history/cli.js';
 import { readHistoryResult } from './history/result.js';
@@ -99,6 +99,25 @@ function positiveInt(name: string, raw: string | undefined, fallback: number): n
   return n;
 }
 
+/**
+ * Every trial reads the person's preferences to restore them, and a personal access token cannot
+ * reach that route at all — it resolves no project, so the deployment refuses it by name. Read it
+ * once before the first room: a run that finds this out per trial burns every trial's assistant
+ * calls first and reports 0/n as if the assistant had failed them (ISS-1066, found running the
+ * landed change against `forge-plugin`).
+ */
+async function credentialCanRunTrials(client: BenchClient): Promise<void> {
+  try {
+    await client.readPreferences();
+  } catch (err) {
+    if (err instanceof DeploymentRefusal && err.status === 403)
+      throw new Refusal(
+        `this credential cannot run the benchmark: ${err.message}\nEvery trial reads and restores the person's preferences, so the run would fail each one after paying for its turns. Use FORGE_BENCH_EMAIL and FORGE_BENCH_PASSWORD for an account that holds this project, rather than FORGE_BENCH_TOKEN.`,
+      );
+    throw err;
+  }
+}
+
 async function run(argv: string[], env: Env, deps: CliDeps): Promise<number> {
   const f = flags(argv);
   for (const need of ['api', 'project', 'out']) {
@@ -110,6 +129,7 @@ async function run(argv: string[], env: Env, deps: CliDeps): Promise<number> {
   const judge: Judge | undefined = f.judge ? judgeFromEnv(env, f.judge, deps.fetch) : undefined;
   const client = createClient({ api: f.api ?? '', fetch: deps.fetch, timeoutMs: 10 * 60_000 });
   await signIn(client, env);
+  await credentialCanRunTrials(client);
   const version = await client.version();
   const project = await client.projectBySlug(f.project ?? '');
   const runId = deps.randomId();

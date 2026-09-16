@@ -80,7 +80,11 @@ reads; that route serves no body, so the brief pulls the bodies of the `injectio
 only (`brief.ts:BRIEF_KNOWLEDGE_BODIES`) — the ones the product itself injects into a prompt. A
 project holding no knowledge gets a section saying so rather than no section. A credential that
 cannot read that route refuses the whole run by name before the first turn, rather than leaving the
-judge to grade project answers against a silently empty brief.
+judge to grade project answers against a silently empty brief. A personal access token is refused
+there too, before any room: every trial reads and restores the person's preferences and
+`/api/auth/preferences` resolves no project, so a PAT run would fail all of a run's trials after
+paying for each one's turns and report them as the assistant's failures. The benchmark needs
+`FORGE_BENCH_EMAIL` and `FORGE_BENCH_PASSWORD` for an account that holds the project.
 
 Two details of that read are load-bearing on a large project. The always-injected entries are asked
 for with the route's own `injection` filter rather than found by filtering the index, because the

@@ -110,6 +110,25 @@ describe('the project brief a run is judged against (ISS-1066)', () => {
     ]);
   });
 
+  // cm:why before the first room and not at the first trial: every trial reads the preferences to
+  // restore them, so a token that cannot reach that route fails all 51 trials of a full run AFTER
+  // paying for each one's turns, and reports 0/n as if the assistant had failed them. Found running
+  // the landed change against `forge-plugin` with a personal access token (ISS-1066).
+  it('refuses a credential that cannot reach the preferences, before any room, naming the way out', async () => {
+    const deployment = createFakeDeployment({
+      script: () => ({ attempts: [{ reply: 'x' }] }),
+      refuse: (method, path) => (method === 'GET' && path === '/api/auth/preferences' ? 403 : null),
+    });
+    const { d, err } = deps(deployment.fetch);
+    expect(
+      await main([...RUN, '--tasks', 'out-of-reach-tests'], { FORGE_BENCH_TOKEN: FAKE_TOKEN }, d),
+    ).toBe(1);
+    expect(err[0]).toContain('cannot run the benchmark');
+    expect(err[0]).toContain('/api/auth/preferences');
+    expect(err[0]).toContain('FORGE_BENCH_EMAIL');
+    expect(deployment.state.rooms.size).toBe(0);
+  });
+
   it('refuses the whole run by name, before any room, where the knowledge cannot be read', async () => {
     const deployment = createFakeDeployment({
       script: () => ({ attempts: [{ reply: 'x' }] }),
