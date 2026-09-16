@@ -211,6 +211,58 @@ notificationRoutes.patch(
   },
 );
 
+/**
+ * The records behind one delivery.
+ *
+ * ISS-1063 — grouping turns fifteen bell rows into one, and without this route that is a
+ * loss: the reader would be told fifteen issues are parked and given no way to reach any
+ * of them. The list route answers the counts; this answers the members, newest first,
+ * still-open ones first.
+ */
+notificationRoutes.get(
+  '/:id/members',
+  zValidator('param', idParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const [delivery] = await db
+      .select({ id: notificationDeliveries.id })
+      .from(notificationDeliveries)
+      .where(and(eq(notificationDeliveries.id, id), eq(notificationDeliveries.userId, userId)))
+      .limit(1);
+    if (!delivery) throw notFound('notification not found');
+
+    const rows = await db
+      .select({
+        id: notifications.id,
+        type: notifications.type,
+        kind: notifications.kind,
+        state: notifications.state,
+        title: notifications.title,
+        body: notifications.body,
+        severity: notifications.severity,
+        projectId: notifications.projectId,
+        issueId: notifications.issueId,
+        secondaryIssueId: notifications.secondaryIssueId,
+        resolvedAt: notifications.resolvedAt,
+        createdAt: notifications.createdAt,
+        open: sql<boolean>`(${notifications.resolvedAt} IS NULL AND ${stillTrue})`,
+      })
+      .from(notificationDeliveryMembers)
+      .innerJoin(notifications, eq(notifications.id, notificationDeliveryMembers.notificationId))
+      .where(eq(notificationDeliveryMembers.deliveryId, id))
+      .orderBy(
+        desc(sql`(${notifications.resolvedAt} IS NULL AND ${stillTrue})`),
+        desc(notifications.createdAt),
+      );
+
+    return c.json(rows);
+  },
+);
+
 /** Close the tasks this delivery carries. A condition is not reachable from here. */
 async function closeTasks(deliveryId: string, userId: string, to: 'done' | 'dismissed') {
   const [delivery] = await db

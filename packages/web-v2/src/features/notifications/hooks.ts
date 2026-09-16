@@ -1,10 +1,10 @@
 "use client";
 
-// cm:guard the keys MUST be exactly ["notifications"] and ["notifications-unread"]: lib/ws/event-router.ts invalidates those on `notification.created` and `notification.read`, so keying them this way makes realtime free — and drift silently no-ops the realtime path with nothing red anywhere.
+// cm:guard the keys MUST be exactly ["notifications"] and ["notifications-open"]: lib/ws/event-router.ts invalidates those on `notification.created` and `notification.read`, so keying them this way makes realtime free — and drift silently no-ops the realtime path with nothing red anywhere.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { invitationsApi, notificationsApi } from "./api";
 
-// cm:guard `enabled` gates the LIST, never `useUnreadCount` below: the favicon and document-title indicator reads the count while the bell is closed, and the toast bridge reads the socket directly, so gating those two would take a surface away rather than a request (ISS-1019).
+// cm:guard `enabled` gates the LIST, never `useOpenCount` below: the favicon and document-title indicator reads the count while the bell is closed, and the toast bridge reads the socket directly, so gating those two would take a surface away rather than a request (ISS-1019).
 export function useNotifications(enabled = true) {
   return useQuery({
     queryKey: ["notifications"],
@@ -13,10 +13,20 @@ export function useNotifications(enabled = true) {
   });
 }
 
-export function useUnreadCount() {
+// cm:why ISS-1063 — this is a count of RECORDS still true, not of unread deliveries: opening the bell does not change it, and resolving one member of a grouped delivery lowers it by one. The old `useUnreadCount` is gone rather than renamed in place, so any caller still asking the old question fails to compile instead of quietly getting the new answer.
+export function useOpenCount() {
   return useQuery({
-    queryKey: ["notifications-unread"],
-    queryFn: () => notificationsApi.unreadCount(),
+    queryKey: ["notifications-open"],
+    queryFn: () => notificationsApi.openCount(),
+  });
+}
+
+/** The records behind one delivery — fetched only when the reader expands it. */
+export function useNotificationMembers(deliveryId: string | null) {
+  return useQuery({
+    queryKey: ["notifications", "members", deliveryId],
+    queryFn: () => notificationsApi.members(deliveryId as string),
+    enabled: deliveryId !== null,
   });
 }
 
@@ -24,7 +34,7 @@ function useInvalidateNotifications() {
   const qc = useQueryClient();
   return () => {
     qc.invalidateQueries({ queryKey: ["notifications"] });
-    qc.invalidateQueries({ queryKey: ["notifications-unread"] });
+    qc.invalidateQueries({ queryKey: ["notifications-open"] });
   };
 }
 
@@ -59,7 +69,7 @@ function useInvalidateInvitations() {
   return () => {
     qc.invalidateQueries({ queryKey: ["invitations-pending"] });
     qc.invalidateQueries({ queryKey: ["notifications"] });
-    qc.invalidateQueries({ queryKey: ["notifications-unread"] });
+    qc.invalidateQueries({ queryKey: ["notifications-open"] });
   };
 }
 
