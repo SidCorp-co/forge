@@ -396,6 +396,39 @@ Modes: `--all` (CI, in the always-on `conformance` job; also `pnpm --filter web-
 `--staged` exists for a pre-commit hook but **no hook runs it today**: `.githooks/pre-commit` runs
 `check-source-language` and `check-test-signal` and nothing else. The gate is the `conformance` job.
 
+## check-lockfile-transport.mjs — no dependency that only SSH can fetch
+
+Not a gate and not an axis: it adds no job to `ci-passed` and nothing in `.forge/conformance.json`
+names it. It is the one checker that runs **before** `pnpm install`, from
+`.github/actions/setup-workspace`, because the thing it refuses is the thing that kills the install.
+
+On 2026-09-14 a Dependabot pull request regenerated `pnpm-lock.yaml` and rewrote `forge-plugin`'s
+resolution from `https://codeload.github.com/SidCorp-co/forge-plugin/tar.gz/<sha>` to
+`git+https://git@github.com:SidCorp-co/forge-plugin.git#<sha>`. pnpm's git fetcher then ran
+`git clone git@github.com:…`, which needs an SSH key no workflow here holds and which a
+Dependabot-triggered workflow — denied every repository secret — could not be given. All six jobs
+that reach the install through the composite died there with exit 128 before running a line of
+their own work, `ci-passed` blocked the merge, and four dependency updates sat unmergeable for two
+days because six unexplained reds read as a broken lockfile (ISS-1045).
+
+pnpm is not the party that reaches for SSH: measured under 9.15.0 and 12.4.2, with SSH disabled,
+the `github:owner/repo#sha` shorthand, a plain codeload tarball URL and a `git+https://` URL all
+resolve to the same codeload tarball. The shorthand is gone from `packages/core/package.json` for
+that reason — a URL is a string a second resolver cannot reinterpret, and the exact-commit pin now
+lives in that URL's last path segment. **Bumping the pin means editing the sha at the end of the
+URL**, not looking for a shorthand that is no longer there.
+
+The rule is repository-wide rather than scoped to `forge-plugin`, and the price is stated rather
+than discovered: CI here is never given an SSH key, so a dependency only SSH can fetch is one no job
+here can install, and adding one has to be argued rather than merged. The refusal prints the https
+form for a public repository pinned to a commit and does not claim every SSH dependency has a
+credential-free equivalent — a genuinely private one does not.
+
+`scripts/lib/lockfile-transport.mjs` holds the classification, so the verdict has a test
+(`lockfile-transport.test.mjs`, collected by `packages/core/vitest.config.ts`); the CLI reads the
+tree and exits. Exit `0` clean · `1` an entry resolves over SSH · `2` no lockfile, or a lockfile
+holding no `resolution:` at all — an empty scope is refused rather than forwarded as a pass.
+
 ## check-branch-name.sh
 
 ## check-release-record.mjs — the record of what shipped may not lose entries

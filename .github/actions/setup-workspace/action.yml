@@ -1,9 +1,10 @@
 name: Setup workspace
 description: |
   Checkout-aware composite for forge's pnpm workspace. Handles pnpm + Node
-  setup, frozen-lockfile install, and the @forge/observability prebuild that
-  every consumer needs (Node 22 won't load .ts under node_modules so dist/
-  must exist before vitest/tsc/build commands resolve it).
+  setup, the pre-install lockfile-transport refusal, frozen-lockfile install,
+  and the @forge/observability prebuild that every consumer needs (Node 22
+  won't load .ts under node_modules so dist/ must exist before vitest/tsc/build
+  commands resolve it).
 
   Use this in every job that touches a workspace package. Do NOT add per-job
   pnpm/setup-node/install steps — drift between jobs is exactly what this
@@ -28,6 +29,15 @@ runs:
         node-version: "22"
         cache: pnpm
         cache-dependency-path: pnpm-lock.yaml
+
+    # Before the install, not after it: the lockfile entry this refuses is the one that kills
+    # `pnpm install`, so a check that runs afterwards never runs at all. It lives here rather than
+    # in one ci.yml job because six jobs reach the install through this composite -- on 2026-09-14
+    # a Dependabot pull request rewrote forge-plugin's resolution to `git@github.com:` and all six
+    # died inside the install with exit 128, saying nothing a reader could act on (ISS-1045).
+    - name: Refuse a lockfile entry that can only be fetched over SSH
+      shell: bash
+      run: node scripts/check-lockfile-transport.mjs
 
     - name: Install workspace dependencies
       shell: bash

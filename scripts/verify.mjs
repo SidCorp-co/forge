@@ -168,6 +168,19 @@ const CHECKS = [
     scopeMayBeEmpty: true,
     skipIf: /skipped — cargo not available/,
   },
+  // cm:why a Dependabot pull request rewrote `forge-plugin`'s resolution to `git@github.com:` and
+  // took all six installing jobs down inside `pnpm install` with exit 128, unnamed for two days (ISS-1045)
+  // cm:guard this one also runs where NO other check can — `.github/actions/setup-workspace` calls
+  // it before `pnpm install`, because the entry it refuses is the one that kills that install
+  // cm:guard it declares no conformance axis and adds no job to `ci-passed`, so nothing in `.forge/conformance.json` or `conformance-status.mjs` moves with it
+  {
+    axis: 'meta',
+    label: 'lockfile-transport',
+    cmd: ['node', 'scripts/check-lockfile-transport.mjs'],
+    // cm:edge naming -> scripts/check-lockfile-transport.mjs — parses that script's success line
+    scanned: /^lockfile-transport: (\d+) resolution\(s\), none over SSH/m,
+    unit: 'resolutions',
+  },
   {
     axis: 'meta',
     label: 'conformance levels',
