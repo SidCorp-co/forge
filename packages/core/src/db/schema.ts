@@ -20,6 +20,7 @@ import {
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
+import * as axes from './release-axes.js';
 import { identSearchColumn, MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './schema-types.js';
 
 export { MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './schema-types.js';
@@ -327,21 +328,9 @@ export const issuePrefixAliases = pgTable(
   }),
 );
 
-/**
- * What a release MEANS on this project — declared on the project, never derived.
- *
- * `none` — there is no release step and `closed` means what it says. True of 25 of the 32 active
- * projects, and the state the four "release strategies" an earlier issue listed had no way to say.
- * `promote` — the release moves CODE from `baseBranch` to `liveBranch`, by `releaseStrategy`.
- * `publish` — the ref does not change; the release is an ACT on a live binding (publish a theme,
- * deploy a build).
- */
-export const releaseModels = ['none', 'promote', 'publish'] as const;
-export type ReleaseModel = (typeof releaseModels)[number];
-
-/** How a `promote` release moves the code. Meaningless, and refused, under any other model. */
-export const releaseStrategies = ['merge-branch', 'cherry-pick', 'tag-mr'] as const;
-export type ReleaseStrategy = (typeof releaseStrategies)[number];
+// The release vocabulary lives in `release-axes.ts` and is re-exported here, so every existing
+// `from './db/schema.js'` importer still resolves it.
+export * from './release-axes.js';
 
 export const projects = pgTable(
   'projects',
@@ -361,27 +350,19 @@ export const projects = pgTable(
     kind: text('kind').notNull().default('standard'),
     repoPath: text('repo_path'),
     baseBranch: text('base_branch'),
-    // cm:guard the ref a `promote` release lands ON, and NULL everywhere else. It is read ONLY through
-    // `releaseModel` — a project at `none` or `publish` may still carry a value here (25 of 32 do, from
-    // the era when the column had a `'main'` default, six of them a real distinct branch), and reading it
-    // without the model is how the old gate came to answer "this project promotes" for a project that
-    // promotes nothing. `projects_live_branch_chk` makes the half that matters unrepresentable: a
-    // `promote` project with no live branch.
-    // cm:edge contract -> packages/core/src/release-batch/gate.ts — `resolveReleaseDeclaration` is the one
-    // reader that decides whether this column means anything, and every other reader asks it first
+    // cm:guard read ONLY through `releaseModel`: 25 of 32 projects carry a value here that nothing
+    // promotes to, from the era when the column defaulted to 'main', and reading it without the model
+    // is how the old gate answered "this project promotes" for a project that promotes nothing.
+    // cm:edge contract -> packages/core/src/release-batch/gate.ts — `resolveReleaseDeclaration` is the one reader that decides whether this column means anything
     liveBranch: text('live_branch'),
     // cm:guard DECLARED, never derived. butlocs, mowment, getcontent and forge-dev are identical on every
-    // other stored column — same base branch, one unlabelled epodsystem binding, no release runner label —
-    // and three of them ship a storefront while the fourth only borrows the binding for MCP. No function
-    // can separate them, so nothing may try: a migration or a resolver that guesses this is worse than one
-    // that refuses. It is a column and NOT a `pipelineConfig` key because the release gate decides whether
-    // an issue may reach `closed`, which makes it kernel, and `pipelineConfig` is a nested JSON map whose
-    // own red flag is `wholesale-config-clobber`.
-    releaseModel: text('release_model', { enum: releaseModels }).notNull().default('none'),
-    // cm:guard set exactly when `releaseModel` is `promote`, which `projects_release_strategy_chk` holds in
-    // Postgres rather than in a validator — the four `promote` projects all carry `merge-branch`, which is
-    // what the default procedure already did for them, and a project wanting another declares it.
-    releaseStrategy: text('release_strategy', { enum: releaseStrategies }),
+    // other stored column, and three of them ship a storefront while the fourth only borrows the binding
+    // for MCP — no function can separate them, so nothing may try. A column and not a `pipelineConfig`
+    // key because the release gate decides whether an issue may reach `closed`, which makes it kernel.
+    releaseModel: text('release_model', { enum: axes.releaseModels }).notNull().default('none'),
+    // cm:guard set exactly when `releaseModel` is `promote`, held by `projects_release_strategy_chk` in
+    // Postgres rather than in a validator. All four promote projects carry `merge-branch`.
+    releaseStrategy: text('release_strategy', { enum: axes.releaseStrategies }),
     // cm:guard SSH form, and set together with a project git credential or not at all: provision auto-clones from this and a URL with no credential fails on a box nobody is watching.
     repoUrl: text('repo_url'),
     // cm:guard prose ON PURPOSE, and never executed as a command list: any project admin can write this, and the runner would be running it unreviewed on every box. NULL is not an error — it means the setup agent derives the procedure from the repo itself, at a paid model's rates, on every job that needs it.
@@ -412,27 +393,8 @@ export const projects = pgTable(
       columns: [t.id, t.issuePrefix],
       foreignColumns: [issuePrefixAliases.projectId, issuePrefixAliases.prefix],
     }),
-    // cm:guard the domain lives in POSTGRES and not only in drizzle's `{ enum }`, which is a TypeScript
-    // annotation the database never sees — this repo writes `projects` and `integration_bindings` from raw
-    // SQL in several places (`devices/release-label.ts`, ten integration e2e fixtures, every data
-    // migration), and every one of them goes straight past a type.
-    releaseModelChk: check(
-      'projects_release_model_chk',
-      sql`release_model IN ('none', 'promote', 'publish')`,
-    ),
-    // cm:guard the ONE half of the branch model that must be unrepresentable: a project that promotes with
-    // nowhere to promote to. The converse is deliberately NOT constrained — a `none` project may still hold
-    // the branch it was created with, because nulling those discards a real declared value on six fleet
-    // projects and no reader looks at it.
-    liveBranchChk: check(
-      'projects_live_branch_chk',
-      sql`release_model <> 'promote' OR live_branch IS NOT NULL`,
-    ),
-    releaseStrategyChk: check(
-      'projects_release_strategy_chk',
-      sql`(release_model = 'promote') = (release_strategy IS NOT NULL)
-          AND (release_strategy IS NULL OR release_strategy IN ('merge-branch', 'cherry-pick', 'tag-mr'))`,
-    ),
+    // the three predicates, and why each is shaped the way it is, live in `./release-axes.ts`
+    ...axes.releaseProjectChecks,
   }),
 );
 
@@ -2719,36 +2681,6 @@ export const projectGitCredentialsRelations = relations(projectGitCredentials, (
   }),
 }));
 
-/**
- * What a binding is FOR — on the binding, never on the provider.
- *
- * `deploy` — Forge can push code or content to it, so it serves one or both stages.
- * `service` — a project-wide facility with no stage at all: an error tracker, a chat room, a repo
- * host, a collection runner. A `service` binding carries NO stage, which is what deletes the seven
- * `default('prod')` fillers rather than renaming them.
- */
-// cm:guard the same provider wears both roles: epodsystem is `deploy` on butlocs, mowment, pixelight
-// and anhome and `service` on forge-dev and getcontent, where the binding exists only to hand agents
-// the storefront MCP. Code that reads a provider name to decide this reintroduces exactly what
-// `release-batch/gate.ts` forbids — "Provider identity is NOT the discriminator and must not become
-// one" — and would have gated this very repo's closes on a storefront it does not ship.
-export const bindingRoles = ['deploy', 'service'] as const;
-export type BindingRole = (typeof bindingRoles)[number];
-
-/**
- * The two environments, named for who is looking at them rather than for a branch.
- *
- * `preview` — deployed so people can see it before it counts. `live` — real users are on it.
- *
- * Chosen against the fleet: `staging`, `stg` and `release/stg` are BRANCH names on eight projects and
- * sidpeak carried `baseBranch: staging` beside `environment: staging`, one word with two meanings in
- * one project; and `prod` lied where it mattered most, since a `prod` binding sat on a project whose
- * production branch was called `release/stg`. No project in the fleet names a branch `preview` or
- * `live`, and neither word presumes a git repository, so a storefront can wear them.
- */
-export const deployStages = ['preview', 'live'] as const;
-export type DeployStage = (typeof deployStages)[number];
-
 export const integrationDeliveryDirections = ['outbound', 'inbound'] as const;
 export type IntegrationDeliveryDirection = (typeof integrationDeliveryDirections)[number];
 
@@ -2855,17 +2787,15 @@ export const integrationBindings = pgTable(
     // Denormalized from the connection so the inbound router + unique index work
     // without a join. Always equals the parent connection's provider.
     provider: text('provider').notNull(),
-    // cm:guard `role` and `stages` replaced a single `environment` column that was answering three
-    // different questions at once (ISS-1046): which stage a deploy target serves, whether this binding
-    // is the thing that ships the project, and — for 12 of 34 fleet bindings — nothing at all, because
-    // the column and its unique index demanded a value seven of eight providers had no meaning for.
-    // The filler was then read as an answer to the second question, which handed the release agent a
-    // Sentry project on one project and a Rocket.Chat room on another.
-    role: text('role', { enum: bindingRoles }).notNull(),
-    // cm:guard a SET and not a single value, because one epodsystem store IS both stages — its preview
-    // is the draft theme and its live is the published one — while Coolify is two applications and so
-    // two bindings with one stage each. Empty exactly when `role = 'service'`;
-    // `integration_bindings_role_stages_chk` holds both halves in Postgres.
+    // cm:guard `role` and `stages` replaced one `environment` column answering three questions at once
+    // (ISS-1046): which stage a deploy target serves, whether this binding ships the project, and — for
+    // 12 of 34 fleet bindings — nothing, because the column demanded a value seven of eight providers
+    // had no meaning for. That filler was then read as the answer to the second question, which handed
+    // the release agent a Sentry project on one project and a Rocket.Chat room on another.
+    role: text('role', { enum: axes.bindingRoles }).notNull(),
+    // cm:guard a SET, not a single value: one epodsystem store IS both stages (preview = draft theme,
+    // live = published), while Coolify is two applications and so two bindings of one stage each. Empty
+    // exactly when `role = 'service'`, held by `integration_bindings_role_stages_chk`.
     stages: text('stages').array().notNull().default(sql`'{}'::text[]`),
     // Per-binding overrides (e.g. coolify `targets[]` deploy apps). Overlaid on
     // top of connection.config at dispatch time.
@@ -2891,26 +2821,15 @@ export const integrationBindings = pgTable(
       t.projectId,
       t.provider,
     ),
-    // cm:guard uniqueness survives for `service` bindings ONLY, and its absence on `deploy` rows is the
-    // fix rather than an oversight: a stage may hold more than one deploy binding and core never picks
-    // among them (ISS-1046 rule 3), so a unique index over deploy rows would re-encode "core chooses"
-    // in Postgres — which is the defect `bindings[0]` was. Eight fleet projects already carry two
-    // coolify bindings at `label = ''`, so any (project, provider, label) uniqueness over deploy rows is
-    // unsatisfiable without inventing labels ISS-558 owns for the multi-store slug.
-    // cm:edge contract -> packages/core/src/integrations/route-helpers.ts — `assertNoActiveBindingClash`
-    // is this index read in application code, and the two must admit the same rows
+    // cm:guard uniqueness survives for `service` rows ONLY, and its absence on `deploy` rows is the fix
+    // rather than an oversight: a stage may hold more than one deploy binding and core never picks among
+    // them (ISS-1046 rule 3), so uniqueness there would re-encode "core chooses" — the defect
+    // `bindings[0]` was. Eight fleet projects already carry two coolify bindings at `label = ''`.
+    // cm:edge contract -> packages/core/src/integrations/route-helpers.ts — `assertNoActiveBindingClash` is this index read in application code, and the two must admit the same rows
     serviceUq: uniqueIndex('integration_bindings_service_uq')
       .on(t.projectId, t.provider, t.label)
-      .where(sql`role = 'service'`),
-    roleChk: check('integration_bindings_role_chk', sql`role IN ('deploy', 'service')`),
-    // cm:guard `cardinality`, NEVER `array_length` — `array_length('{}', 1)` is NULL, so the same rule
-    // written that way evaluates to NULL on the empty array and PASSES the deploy row it exists to
-    // refuse, which is the one value this constraint is for.
-    roleStagesChk: check(
-      'integration_bindings_role_stages_chk',
-      sql`(role = 'service' AND cardinality(stages) = 0)
-          OR (role = 'deploy' AND cardinality(stages) >= 1 AND stages <@ ARRAY['preview', 'live'])`,
-    ),
+      .where(axes.SERVICE_ROLE_PRED),
+    ...axes.bindingShapeChecks,
   }),
 );
 

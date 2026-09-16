@@ -2892,7 +2892,7 @@
         },
         "integration_bindings_role_stages_chk": {
           "name": "integration_bindings_role_stages_chk",
-          "value": "(role = 'service' AND cardinality(stages) = 0)\n          OR (role = 'deploy' AND cardinality(stages) >= 1 AND stages <@ ARRAY['preview', 'live'])"
+          "value": "(role = 'service' AND cardinality(stages) = 0) OR (role = 'deploy' AND cardinality(stages) >= 1 AND stages <@ ARRAY['preview', 'live'])"
         }
       },
       "isRLSEnabled": false
@@ -9095,7 +9095,7 @@
         },
         "projects_release_strategy_chk": {
           "name": "projects_release_strategy_chk",
-          "value": "(release_model = 'promote') = (release_strategy IS NOT NULL)\n          AND (release_strategy IS NULL OR release_strategy IN ('merge-branch', 'cherry-pick', 'tag-mr'))"
+          "value": "(release_model = 'promote') = (release_strategy IS NOT NULL) AND (release_strategy IS NULL OR release_strategy IN ('merge-branch', 'cherry-pick', 'tag-mr'))"
         }
       },
       "isRLSEnabled": false
