@@ -15,6 +15,8 @@ export const projectPipelineStates: Task = {
         'List this project’s pipeline states in order, from the first an issue enters to the last, using the exact state keys the pipeline config names.',
       checks: [
         { kind: 'listInOrder', list: '{stateList}' },
+        // cm:why onlyFrom beside listInOrder: on 2026-09-16 the assistant listed the product's whole lifecycle and passed, since the three configured states stood in order among ten (ISS-1065)
+        { kind: 'onlyFrom', list: '{stateList}' },
         { kind: 'notFallback' },
         { kind: 'noHelp' },
         { kind: 'noPlaceholder' },

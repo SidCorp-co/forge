@@ -4,6 +4,7 @@
  * a verdict with named failure modes and the fact behind each comes out. Nothing here fetches.
  */
 
+import type { REGISTRY_ISSUE_STATUSES } from '@forge/contracts';
 import {
   emptyFallbackReply,
   errorFallbackReply,
@@ -134,6 +135,39 @@ const isHelp = (call: ToolCall): boolean =>
 
 const unanswered = (fact: string): Evidence[] => [{ mode: 'unanswered', fact }];
 
+type RegistryStatus = (typeof REGISTRY_ISSUE_STATUSES)[number];
+
+/**
+ * The registry's status names, inlined rather than imported.
+ * cm:guard core value-imports nothing from `@forge/contracts` (the production image ships no
+ * contracts package; `contracts-runtime-boundary.test.ts`), so the list is a copy typed against the
+ * contract, and `grade-only-from.test.ts` holds it equal to `REGISTRY_ISSUE_STATUSES` member for member.
+ */
+export const ONLY_FROM_STATUSES = [
+  'open',
+  'confirmed',
+  'clarified',
+  'waiting',
+  'approved',
+  'in_progress',
+  'developed',
+  'testing',
+  'tested',
+  'awaiting_release',
+  'releasing',
+  'closed',
+  'reopen',
+  'on_hold',
+  'needs_info',
+  'draft',
+  'dropped',
+] as const satisfies readonly RegistryStatus[];
+
+/** Every registry status name the text carries as a whole word (`_` is part of the word, so `in_progress` is one token and `progress` none). */
+function stateTokens(text: string): string[] {
+  return ONLY_FROM_STATUSES.filter((s) => new RegExp(`(?<![\\w])${s}(?![\\w])`).test(text));
+}
+
 /** A clause ends at a line break, a full stop, a semicolon, a comma, a slash or the word "and"; a pipe is not a break, so a table cell pairs with its row's label. */
 const CLAUSE_BREAK = /[\n.;,/]|\band\b/i;
 
@@ -225,6 +259,18 @@ const checkers: Record<Check['kind'], Checker> = {
     return labelPairs(f.delivered, c.label).some((n) => n === value)
       ? []
       : unanswered(`reply does not pair ${String(c.label)} with ${value}`);
+  },
+  onlyFrom: (c, f) => {
+    if (c.kind !== 'onlyFrom') return [];
+    if (f.delivered === null) return unanswered('no assistant message delivered');
+    const list = fill(c.list, f.values);
+    const allowed = new Set(list.split(', '));
+    return [...new Set(stateTokens(f.delivered))]
+      .filter((s) => !allowed.has(s))
+      .map((s) => ({
+        mode: 'unanswered' as const,
+        fact: `reply names state ${s} outside ${list}`,
+      }));
   },
   linkTo: (c, f) => {
     if (c.kind !== 'linkTo') return [];

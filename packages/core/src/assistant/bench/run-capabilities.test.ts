@@ -118,7 +118,7 @@ describe('fixtures', () => {
     expect((await counts()).result.pass).toBe(true);
   });
 
-  it('pipeline states fill the joined list; every state must appear, in the config order', async () => {
+  it('pipeline states fill the joined list; every state must appear, in the config order, and none outside it', async () => {
     const states = ['triage', 'building', 'review', 'shipped'];
     const on = (reply: string) =>
       trialOn(task('project-pipeline-states'), { states, script: () => say(reply) }).run();
@@ -130,6 +130,13 @@ describe('fixtures', () => {
     const late = await on('triage, building, shipped, review');
     expect(late.result.turns[0]?.evidence.map((e) => e.fact)).toEqual([
       'reply names shipped before review',
+    ]);
+    // cm:why the product's whole lifecycle with the three configured states in order passed before ISS-1065; the states outside the config are what the task is meant to catch
+    const lifecycle = await on('triage → building → review → testing → shipped → closed');
+    expect(lifecycle.result.pass).toBe(false);
+    expect(lifecycle.result.turns[0]?.evidence.map((e) => e.fact)).toEqual([
+      'reply names state testing outside triage, building, review, shipped',
+      'reply names state closed outside triage, building, review, shipped',
     ]);
     const { run: empty } = trialOn(task('project-pipeline-states'), { states: [] });
     expect((await empty()).result.error).toContain('the pipeline config names no state');
@@ -385,8 +392,9 @@ describe('what the judge is handed', () => {
   });
 
   it('a method task without a rubric or fixtures sends the judge the same messages as before', async () => {
+    // cm:why filing-guidance, not out-of-reach-tests: the latter carries a rubric since ISS-1065
     const fake = createFakeDeployment({
-      script: () => say('I cannot run the test suite from here; CI runs it on every push.'),
+      script: () => say('File it as an issue on the project.'),
       judge: () => verdict,
     });
     const client = createClient({ api: 'https://api.test', fetch: fake.fetch });
@@ -400,7 +408,7 @@ describe('what the judge is handed', () => {
     });
     await runTrial({
       client,
-      task: task('out-of-reach-tests'),
+      task: task('filing-guidance'),
       project: FAKE_PROJECT,
       runId: 'r1',
       judge,
