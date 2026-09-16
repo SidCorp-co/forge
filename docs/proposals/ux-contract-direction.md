@@ -32,7 +32,7 @@ There is a natural experiment already in the data.
 
 | Project | Contract lives in | Rows in `ux_contract_rules` | Findings |
 |---|---|---|---|
-| anhome | hand-written prose, 4,060 chars, `agent_config.projectFacts['ux-contract']` | **0** | **42** |
+| anhome | hand-written prose, 4,060 chars, then in `agent_config.projectFacts['ux-contract']` | **0** | **42** |
 | forge-dev | prose compiled from 22 preset rules | 22 | 26 |
 | qa-project | prose compiled from 22 preset rules, generic | 22 | 0 |
 
@@ -58,7 +58,8 @@ wiring — has never been instantiated on any project.
 
 ## The gap that was actually costing something — now closed
 
-`forge-code` and `forge-clarify` carry the instruction to read `projectFacts['ux-contract']`;
+`forge-code` and `forge-clarify` carry the instruction to read the `ux-contract` entry (they named
+`projectFacts['ux-contract']` when this was written; ISS-1048 moved the text and rewrote them);
 `forge-review` and `forge-test` carry `forge_ux_findings`. That wiring reaches 45 registered skill
 bodies across 24 projects. Only 3 projects had a contract for it to read.
 
@@ -73,7 +74,8 @@ bind to.
 ### A delivery defect found while writing them
 
 `recompileAndPersistUxContract` **read** `projectFactsConfig['ux-contract'].alwaysInject` and never
-**set** it. An absent key means fetch-on-demand, while `forge-code` and `forge-clarify` both tell the
+**set** it. (Both maps are gone since ISS-1048; the setting is the entry's own `injection` field, and
+a newly created entry now defaults to `always` for exactly the reason below.) An absent key means fetch-on-demand, while `forge-code` and `forge-clarify` both tell the
 agent the contract arrives "injected in your preamble" — so a contract created by the Settings
 apply-preset button reached no agent at all unless somebody separately knew to flip that flag.
 
