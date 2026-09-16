@@ -1010,6 +1010,111 @@ mod tests {
         assert!(!pane_argv(None, None)[2].contains("--mcp-config"));
     }
 
+    /// ISS-1050 step 19, run by hand: `cargo test -p forge-runner-core --lib
+    /// a_killed_pane_is_rebuilt_on_the_conversation_it_had -- --ignored --exact --nocapture`.
+    ///
+    /// Composes the three production pieces on a REAL tmux — `resume_for`'s decision, `pane_argv`'s
+    /// argv, and `ensure`'s spawn — which the unit tests above each cover alone and none covers
+    /// together.
+    // cm:guard `#[ignore]` and the price of it: this needs tmux and a writable PATH shim, so it is
+    // not a gate, and the four unit tests above are what actually hold criteria 17 and 18. It ends
+    // when the composition is shown by hand; it is not a permanent exemption. CI running it would
+    // add a tmux dependency to a suite that has none.
+    // cm:guard runs against a tmux server of its OWN, via `TMUX_TMPDIR`. Masters for live projects
+    // run on this box's default socket, and a test that addressed those could kill real work; with
+    // its own socket directory there is no name it could reach even by accident.
+    // cm:guard `claude` is a SHIM that records its argv rather than the real binary. The subject is
+    // which arguments the box builds, and spawning the real one would burn an account's quota to
+    // learn nothing this cannot answer.
+    #[tokio::test]
+    #[ignore]
+    async fn a_killed_pane_is_rebuilt_on_the_conversation_it_had() {
+        let root =
+            std::env::temp_dir().join(format!("forge-iss1050-step19-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let sock = root.join("tmux");
+        let bin = root.join("bin");
+        let repo = root.join("repo");
+        let argv_log = root.join("argv.log");
+        for d in [&sock, &bin, &repo] {
+            std::fs::create_dir_all(d).expect("mkdir");
+        }
+        std::fs::write(
+            bin.join("claude"),
+            format!(
+                "#!/bin/sh\nprintf '%s\\n' \"$*\" >> {}\nsleep 300\n",
+                argv_log.display()
+            ),
+        )
+        .expect("shim");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(bin.join("claude"), std::fs::Permissions::from_mode(0o755))
+                .expect("mode");
+        }
+        // Before anything resolves the binary: `resolve_claude_bin` caches in a `OnceLock`.
+        std::env::set_var(
+            "PATH",
+            format!(
+                "{}:{}",
+                bin.display(),
+                std::env::var("PATH").unwrap_or_default()
+            ),
+        );
+        std::env::set_var("TMUX_TMPDIR", &sock);
+
+        let conv = format!("conv-step19-{}", std::process::id());
+        let transcript =
+            crate::daemon::master::conversation_transcript(&repo, &conv).expect("a home directory");
+        std::fs::create_dir_all(transcript.parent().expect("parent")).expect("mkdir");
+        std::fs::write(&transcript, "{}\n").expect("transcript");
+
+        let name = format!("forge-step19-{}", std::process::id());
+        let spawn = |resume: Option<String>| {
+            let name = name.clone();
+            let repo = repo.clone();
+            async move {
+                ensure(&name, &repo, &pane_argv(None, resume.as_deref()), &[], None)
+                    .await
+                    .expect("spawn")
+            }
+        };
+
+        // 1. a pane, resumed from the conversation this box has a transcript for
+        spawn(Some(conv.clone())).await;
+        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+        assert!(alive(&name).await, "the pane should be up");
+
+        // 2. kill it and rebuild: the rebuilt pane carries the SAME conversation (criterion 17)
+        kill(&name).await.expect("kill");
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        assert!(!alive(&name).await, "the pane should be gone");
+        spawn(Some(conv.clone())).await;
+        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+
+        // 3. delete the transcript: the decision flips to cold (criterion 18)
+        std::fs::remove_file(&transcript).expect("remove");
+        let after = crate::daemon::master::resume_for("step19", &repo, Some(&conv));
+
+        let log = std::fs::read_to_string(&argv_log).unwrap_or_default();
+        let _ = kill(&name).await;
+        let _ = std::fs::remove_dir_all(&root);
+
+        let lines: Vec<&str> = log.lines().collect();
+        assert_eq!(lines.len(), 2, "two spawns, two recorded argvs: {log}");
+        for (i, line) in lines.iter().enumerate() {
+            assert!(
+                line.contains(&format!("--resume {conv}")),
+                "spawn {i} should carry the conversation: {line}"
+            );
+        }
+        assert_eq!(
+            after, None,
+            "with the transcript gone the next spawn must be cold, not a --resume this box cannot reach"
+        );
+    }
+
     // cm:guard the flag is ABSENT, not empty. `--resume ''` is not the same command as no
     // `--resume`, and a cold start must be the command it was before this parameter existed.
     #[test]

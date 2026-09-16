@@ -815,7 +815,7 @@ fn install_hooks_logged(repo: &std::path::Path, slug: &str) {
 // would pass `--resume` for a conversation that is not there, which kills the pane on spawn and
 // leaves the next sweep to rebuild and kill it again, with no line naming anything (ISS-1050
 // criterion 18).
-fn conversation_transcript(
+pub(crate) fn conversation_transcript(
     cwd: &std::path::Path,
     conversation_id: &str,
 ) -> Option<std::path::PathBuf> {
@@ -840,7 +840,11 @@ fn conversation_transcript(
 // cm:guard takes the id OWNED and does no ledger read of its own, because `Ledger` is not `Sync`:
 // a `&Ledger` held across the `.await` in `ensure_master` makes the master future non-`Send` and
 // `tokio::spawn` refuses it. The caller reads the row into a `String` before any await.
-fn resume_for(slug: &str, repo: &std::path::Path, stored: Option<&str>) -> Option<String> {
+pub(crate) fn resume_for(
+    slug: &str,
+    repo: &std::path::Path,
+    stored: Option<&str>,
+) -> Option<String> {
     let id = stored.filter(|s| !s.is_empty())?;
     let path = conversation_transcript(repo, id)?;
     if path.is_file() {
