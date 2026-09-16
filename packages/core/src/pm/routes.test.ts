@@ -239,13 +239,16 @@ describe('POST /api/projects/:projectId/pm/escalations/:decisionId/respond', () 
     expect(r.status).toBe(404);
   });
 
-  it('happy path: comments inserted, notifications marked read, follow-up spawn fired', async () => {
+  // cm:why ISS-1063 — answering an escalation CLOSES the task (`state='done'`, `resolvedAt`) and marks the answerer's deliveries read, which is two updates rather than one: the record stops being open, and the person is recorded as having seen it. Marking it read alone left it in the open count for ever, which is the confusion this issue exists to end.
+  it('happy path: comment inserted, the escalation closed AND its deliveries read, follow-up spawn fired', async () => {
     selectLimit
       .mockResolvedValueOnce([verifiedUser]) // assertEmailVerified
       .mockResolvedValueOnce([{ id: decisionId, eventRef: { issueIds: [issueId] } }])
       .mockResolvedValueOnce([{ id: issueId, projectId: validProjectId }]);
     insertReturning.mockResolvedValueOnce([{ id: 'cmt-1', body: 'reply', parentId: null }]);
-    updateReturning.mockResolvedValueOnce([{ id: 'notif-1', userId: 'u-1' }]);
+    updateReturning
+      .mockResolvedValueOnce([{ id: 'notif-1' }]) // the task record closes
+      .mockResolvedValueOnce([{ userId: 'u-1' }]); // its delivery is marked read
     spawnMock.mockResolvedValueOnce({ ok: true, jobId: 'pm-2' });
 
     const token = await signUserToken('u-1');

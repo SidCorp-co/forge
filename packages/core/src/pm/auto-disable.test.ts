@@ -23,6 +23,11 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
+const deliverExisting = vi.fn(async () => 1);
+vi.mock('../notifications/deliver.js', () => ({
+  deliverExisting: (...a: unknown[]) => deliverExisting(...(a as [])),
+}));
+
 const { handlePmJobFailedAutoDisable } = await import('./auto-disable.js');
 
 function queueCount(rows: Array<{ count: number }>): void {
@@ -54,7 +59,7 @@ function setupTxUpdateChain(): {
 }
 
 function setupTxInsertChain(): { valuesSpy: ReturnType<typeof vi.fn> } {
-  const valuesSpy = vi.fn(async () => undefined);
+  const valuesSpy = vi.fn(() => ({ returning: async () => [{ id: 'n-1' }] }));
   txInsertMock.mockImplementation(() => ({ values: valuesSpy }));
   return { valuesSpy };
 }
@@ -66,6 +71,7 @@ beforeEach(() => {
   txSelectMock.mockReset();
   txUpdateMock.mockReset();
   txInsertMock.mockReset();
+  deliverExisting.mockClear();
   transactionMock.mockClear();
 });
 
@@ -96,13 +102,11 @@ describe('handlePmJobFailedAutoDisable', () => {
     expect(transactionMock).not.toHaveBeenCalled();
   });
 
-  // cm:why ISS-1063 — the insert this used to assert is suppressed by the emission
-  // switch while the old notification surface is off, so the case now asserts the
-  // half that still has to happen (the cadence disable, inside its transaction) and
-  // that no row is written. The pairing is the point: the disable must land whether
-  // or not anyone is told about it, and a switch that also skipped the disable would
-  // be a silence that stopped the product working.
-  it('disables config and writes no notification on the 3rd failure while the surface is off', async () => {
+  // cm:guard ISS-1063 — the record goes INSIDE the transaction and the delivery outside
+  // it, and this case holds both halves: the row and the cadence disable land together or
+  // neither, while who is told is written after the commit. A delivery failure must not
+  // roll back the disable it was announcing.
+  it('disables config, records the escalation in the transaction and delivers after it', async () => {
     queueCount([{ count: 3 }]);
     const { setSpy, whereSpy } = setupTxUpdateChain();
     queueTxOwner([{ createdBy: 'owner-1' }]);
@@ -122,7 +126,10 @@ describe('handlePmJobFailedAutoDisable', () => {
       expect.objectContaining({ enabled: false, cadenceCron: null }),
     );
     expect(whereSpy).toHaveBeenCalled();
-    expect(valuesSpy).not.toHaveBeenCalled();
+    expect(valuesSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'pm_escalation', kind: 'task', state: 'open' }),
+    );
+    expect(deliverExisting).toHaveBeenCalledWith('n-1', ['owner-1']);
   });
 
   it('skips notification insert when project row is missing (race with delete)', async () => {
@@ -141,5 +148,6 @@ describe('handlePmJobFailedAutoDisable', () => {
     });
 
     expect(valuesSpy).not.toHaveBeenCalled();
+    expect(deliverExisting).not.toHaveBeenCalled();
   });
 });

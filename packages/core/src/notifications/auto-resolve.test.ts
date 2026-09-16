@@ -2,7 +2,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const dbExecute = vi.fn();
 
-vi.mock('../db/client.js', () => ({ db: { execute: (...a: unknown[]) => dbExecute(...a) } }));
+// `sendResolvedNotice` is exercised against a real database in
+// `tests/integration/notification-record-kinds-e2e.test.ts`; here it is stubbed so these
+// tests stay about the UPDATE and its lock, which is what this unit owns.
+vi.mock('./deliver.js', () => ({ deliverExisting: vi.fn() }));
+vi.mock('../db/client.js', () => ({
+  db: {
+    execute: (...a: unknown[]) => dbExecute(...a),
+    select: () => ({ from: () => ({ where: () => ({ limit: () => Promise.resolve([]) }) }) }),
+  },
+}));
 
 const { resolveNotifications } = await import('./auto-resolve.js');
 const hooksModule = await import('../pipeline/hooks.js');
@@ -19,46 +28,35 @@ function sqlTextOf(call = 0): string {
 }
 
 describe('resolveNotifications', () => {
-  it('marks matching unresolved rows read and emits notificationRead per row', async () => {
+  it('stamps every unresolved row carrying the key and reports how many', async () => {
     dbExecute.mockResolvedValueOnce([
-      { id: 'n1', user_id: 'u1', was_unread: true },
-      { id: 'n2', user_id: 'u2', was_unread: true },
+      { id: 'n1', state: 'resolved' },
+      { id: 'n2', state: 'resolved' },
     ]);
-    const seen: Array<{ id: string; user: string }> = [];
-    hooksModule.hooks.on('notificationRead', (p) => {
-      seen.push({ id: p.notificationId, user: p.userId });
-    });
 
     const count = await resolveNotifications('issue:abc:status');
 
     expect(count).toBe(2);
     const text = sqlTextOf();
-    expect(text).toMatch(/SET read = true, resolved_at = now\(\)/);
+    // cm:guard ISS-1063 — this statement must NOT touch `read`: the column is not on this table any more, and the whole issue is that resolving a record and a person reading it are different facts. A future edit that re-adds a read write here fails on this line.
+    expect(text).not.toMatch(/read/);
+    expect(text).toMatch(/SET resolved_at = now\(\)/);
     expect(text).toMatch(/resolved_at IS NULL/);
-    // cm:guard the lock is the whole fix — without FOR UPDATE two clearers of the same key both read the row unread and both emit, double-decrementing the operator's unread badge. `paused:<runId>` (ISS-879) is the first key with two clearers.
+    // cm:guard the lock is the whole fix — without FOR UPDATE two clearers of the same key can both claim the row and both announce it cleared. `paused:<runId>` (ISS-879) is the first key with two clearers.
     expect(text).toMatch(/FOR UPDATE/);
-    expect(seen).toEqual([
-      { id: 'n1', user: 'u1' },
-      { id: 'n2', user: 'u2' },
-    ]);
   });
 
-  // cm:guard this pair is the reason the filter moved off `read` — a row the operator had already opened still needs its `resolvedAt` stamp, because emitPipelineWedge's dedupe reads that column and would otherwise suppress the next wedge for the same entity forever
-  it('stamps an ALREADY-READ row and does not re-emit notificationRead for it', async () => {
-    dbExecute.mockResolvedValueOnce([{ id: 'n1', user_id: 'u1', was_unread: false }]);
-    const seen: string[] = [];
-    hooksModule.hooks.on('notificationRead', (p) => {
-      seen.push(p.notificationId);
-    });
-
+  // cm:guard the condition's own state moves with the stamp — a `firing` row left firing while `resolved_at` is set is the state lying in the one place ISS-1063 made the open count read from
+  it('moves a condition to `resolved` and leaves other kinds their state', async () => {
+    dbExecute.mockResolvedValueOnce([{ id: 'n1', state: 'resolved' }]);
     expect(await resolveNotifications('issue:abc:status')).toBe(1);
-    expect(seen).toEqual([]);
+    expect(sqlTextOf()).toMatch(/state = CASE WHEN n.kind = 'condition' THEN 'resolved'/);
   });
 
-  it('is idempotent — no unresolved rows clears nothing and emits nothing', async () => {
+  it('is idempotent — no unresolved rows clears nothing and announces nothing', async () => {
     dbExecute.mockResolvedValueOnce([]);
     const seen: string[] = [];
-    hooksModule.hooks.on('notificationRead', (p) => {
+    hooksModule.hooks.on('notificationCreated', (p) => {
       seen.push(p.notificationId);
     });
 

@@ -1,6 +1,10 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { notificationDeliveries, notificationDeliveryMembers } from '../db/schema.js';
+import {
+  notificationDeliveries,
+  notificationDeliveryMembers,
+  notifications,
+} from '../db/schema.js';
 import { logger } from '../logger.js';
 import { hooks } from '../pipeline/hooks.js';
 
@@ -68,6 +72,22 @@ export async function resolveNotifications(resolutionKey: string): Promise<numbe
  * inhibition would trade one burst of alarms for one burst of all-clears.
  */
 export async function sendResolvedNotice(notificationId: string): Promise<number> {
+  const [record] = await db
+    .select({
+      type: notifications.type,
+      title: notifications.title,
+      projectId: notifications.projectId,
+      issueId: notifications.issueId,
+      secondaryIssueId: notifications.secondaryIssueId,
+      agentSessionId: notifications.agentSessionId,
+      severity: notifications.severity,
+      resolutionKey: notifications.resolutionKey,
+    })
+    .from(notifications)
+    .where(eq(notifications.id, notificationId))
+    .limit(1);
+  if (!record) return 0;
+
   const told = await db
     .select({ userId: notificationDeliveries.userId })
     .from(notificationDeliveryMembers)
@@ -93,7 +113,24 @@ export async function sendResolvedNotice(notificationId: string): Promise<number
       .insert(notificationDeliveryMembers)
       .values({ deliveryId: delivery.id, notificationId })
       .onConflictDoNothing();
-    await hooks.emit('notificationRead', { notificationId, userId });
+    // cm:why the hook is `notificationCreated` and not `notificationRead`: a resolved
+    // notice is a NEW delivery somebody has not seen. Firing the read event would
+    // refresh the same query keys and look identical on the wire, which is exactly why
+    // it would be the wrong one — the client would be told a thing was opened when a
+    // thing was written.
+    await hooks.emit('notificationCreated', {
+      notificationId,
+      userId,
+      projectId: record.projectId,
+      type: record.type,
+      title: `Resolved — ${record.title}`,
+      body: null,
+      severity: 'success',
+      resolutionKey: record.resolutionKey,
+      issueId: record.issueId,
+      secondaryIssueId: record.secondaryIssueId,
+      agentSessionId: record.agentSessionId,
+    });
   }
   return recipients.length;
 }

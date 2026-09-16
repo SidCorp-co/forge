@@ -30,6 +30,14 @@ vi.mock('../../db/client.js', () => ({
   },
 }));
 
+// The escalation's notification: mocked at `emit.ts` so these cases stay about what
+// `writePmDecision` does with the answer, rather than about the delivery layer's own
+// queries. `null` is what the emission switch returns for a suppressed type.
+const emitNotificationSpy = vi.fn<(input: unknown) => Promise<{ id: string } | null>>();
+vi.mock('../../notifications/emit.js', () => ({
+  emitNotification: (input: unknown) => emitNotificationSpy(input),
+}));
+
 const indexMemorySpy = vi.fn().mockResolvedValue(undefined);
 vi.mock('../../memory/indexer.js', () => ({
   indexMemory: indexMemorySpy,
@@ -60,6 +68,7 @@ const fakePrincipal = makeFakePrincipal(DEVICE_ID, OWNER_ID);
 beforeEach(() => {
   queue.length = 0;
   vi.clearAllMocks();
+  emitNotificationSpy.mockResolvedValue({ id: '33333333-3333-4333-8333-333333333333' });
 });
 
 describe('forge_pm.write_decision', () => {
@@ -101,16 +110,43 @@ describe('forge_pm.write_decision', () => {
     );
   });
 
-  // cm:why ISS-1063 — while the emission switch has `pm_escalation` off there is nowhere
-  // for the escalation's question and options to live: they are the notification's body
-  // and nothing else persists them. So the call refuses BY NAME after the decision row
-  // is already committed, rather than returning a shape that reads as "escalated". The
-  // decision survives; the escalation does not, and the caller is told which.
-  it('with escalate while the surface is off: writes the decision, then refuses naming the switch', async () => {
+  it('with escalate: records the escalation against the project owner', async () => {
     const tool = forgePmWriteDecisionTool();
-    const decisionInsert = [{ id: DECISION_ID }];
-    const escalationProjectLookup = [{ createdBy: OWNER_ID }];
-    queue.push(decisionInsert, escalationProjectLookup);
+    queue.push([{ id: DECISION_ID }], [{ createdBy: OWNER_ID }]);
+
+    const result = (await tool.handler({
+      projectId: PROJECT_ID,
+      cause: 'needs-info',
+      summary: 'Need owner sign-off',
+      actions: [],
+      escalate: {
+        severity: 'high',
+        summary: 'Approve plan?',
+        question: 'Pick one',
+        options: [
+          { id: 'a', label: 'Approve' },
+          { id: 'b', label: 'Reject' },
+        ],
+        expiresAt: '2026-06-01T00:00:00.000Z',
+      },
+    })) as { escalation: { notificationId: string } };
+
+    expect(emitNotificationSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'pm_escalation', userId: OWNER_ID, decisionId: DECISION_ID }),
+    );
+    expect(result.escalation.notificationId).toBe('33333333-3333-4333-8333-333333333333');
+  });
+
+  // cm:guard ISS-1063 — the escalation's question, options, severity and expiry live ONLY
+  // in that notification's body: nothing else persists them. So when an operator has
+  // `pm_escalation` in the emission switch's set, the call refuses BY NAME after the
+  // decision row is already committed, rather than returning a shape that reads as
+  // "escalated, nobody told" when the truth is "the question is gone". Returning a null
+  // id here was tried and reverted in the same change.
+  it('with escalate refused by the switch: writes the decision, then refuses naming it', async () => {
+    const tool = forgePmWriteDecisionTool();
+    emitNotificationSpy.mockResolvedValue(null);
+    queue.push([{ id: DECISION_ID }], [{ createdBy: OWNER_ID }]);
 
     await expect(
       tool.handler({
