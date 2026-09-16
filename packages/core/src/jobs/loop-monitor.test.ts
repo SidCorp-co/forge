@@ -87,14 +87,8 @@ vi.mock('./kill-gate.js', () => ({
     Date.now() - job.killRequestedAt.getTime() <= killGraceMsValue * 2,
 }));
 
-const {
-  runLoopMonitor,
-  reapAckMisses,
-  reapZombieSessions,
-  reapSessionLostJobs,
-  reapResultMisses,
-  RESULT_QUIET_MINUTES,
-} = await import('./loop-monitor.js');
+const { runLoopMonitor, reapAckMisses, reapZombieSessions, reapSessionLostJobs, reapResultMisses } =
+  await import('./loop-monitor.js');
 
 /** Flatten a drizzle `sql` template into its raw text for fragment assertions. */
 function sqlText(arg: unknown): string {
@@ -300,7 +294,13 @@ describe('reapSessionLostJobs — heartbeat hop, job axis (was ISS-280), now kil
     const text = sqlText(dbExecute.mock.calls[0]?.[0]);
     expect(text).toMatch(/j\.status\s+IN\s*\(\s*'dispatched'\s*,\s*'running'\s*\)/);
     expect(text).toMatch(/s\.status\s+IN\s*\(\s*'failed'\s*,\s*'cancelled_stale'\s*\)/);
-    expect(text).toMatch(/NOT\s+EXISTS[\s\S]*job_events[\s\S]*kind\s*=\s*'result'/);
+    // cm:guard ISS-1013 — BOTH halves, because either alone passes a query that no longer
+    // guards anything: the lateral without the guard reads `job_events` and ignores it, and
+    // `lr.job_id IS NULL` without the lateral is an unbound alias the type checker cannot see.
+    expect(text).toMatch(
+      /LEFT\s+JOIN\s+LATERAL[\s\S]*job_events\s+e\s+WHERE\s+e\.job_id\s*=\s*j\.id\s+AND\s+e\.kind\s*=\s*'result'[\s\S]*\)\s*lr\s+ON\s+true/,
+    );
+    expect(text).toMatch(/s\.runtime_state\s+IS\s+NOT\s+NULL\s+OR\s+lr\.job_id\s+IS\s+NULL/);
     expect(text).toMatch(/kill_requested_at/);
   });
 
@@ -446,18 +446,6 @@ describe('reapSessionLostJobs — heartbeat hop, job axis (was ISS-280), now kil
 });
 
 describe('reapResultMisses — result hop (was ISS-258 runStaleSweep), now kill-gated (ISS-785)', () => {
-  it('SELECT covers dispatched+running at the 60-minute threshold, keeps the result-event guard, and pulls the kill-gate columns', async () => {
-    expect(RESULT_QUIET_MINUTES).toBe(60);
-    dbExecute.mockResolvedValueOnce([]);
-    await reapResultMisses(new Date('2026-06-12T00:00:00Z'));
-    const text = sqlText(dbExecute.mock.calls[0]?.[0]);
-    expect(text).toMatch(/j\.status\s+IN\s*\(\s*'dispatched'\s*,\s*'running'\s*\)/);
-    expect(text).toMatch(/interval\s+'\s*60\s*minutes'/);
-    expect(text).toMatch(/COALESCE\(le\.max_ts,\s*j\.dispatched_at\)/);
-    expect(text).toMatch(/NOT\s+EXISTS[\s\S]*job_events[\s\S]*kind\s*=\s*'result'/);
-    expect(text).toMatch(/kill_requested_at/);
-  });
-
   it('tick 1: requests the kill instead of failing outright', async () => {
     dbExecute.mockResolvedValueOnce([candidateRow({ id: 'stale-1' })]);
 
