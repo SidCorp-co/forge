@@ -60,8 +60,9 @@ export const longContextNeedle: Task = {
   id: 'long-context-needle',
   capability: 'long-context',
   intent: 'Find one planted fact in a long pasted document and answer from it without tools.',
+  // cm:why the rubric no longer forbids a tool: the rule allows two calls, and a rubric stricter than the rule made the judge mark a right answer no on the first beta run (2026-09-16)
   judgeRubric:
-    'Served means the reply says the rota turns over on Thursday, taken from the pasted notes, without asking for the document again or reaching for a tool.',
+    'Served means the reply says the rota turns over on Thursday, taken from the pasted notes, without asking for the document again.',
   budgetSeconds: 240,
   fixtures: ['nonce'],
   turns: [
