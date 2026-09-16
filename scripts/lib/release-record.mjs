@@ -18,6 +18,24 @@ const RELEASE_HEADING = /^##\s+\[([^\]]+)\]/;
 /** The heading every writer of the record appends under, and every cutter promotes. */
 export const UNRELEASED = 'Unreleased';
 
+/**
+ * Words an entry may spend. A release entry is read in a feed, beside others, by someone
+ * deciding whether this release touches them — so it says what changed and what it means
+ * for the reader, and the reasoning that produced it lives in the issue and the commit.
+ *
+ * Measured 2026-09-16, when nothing bounded it: 443 entries, 86,206 words, median 173 and
+ * one at 1,027. Three quarters were over 100. That is the failure mode the community names
+ * beside the raw-commit dump — prose long enough that the detail a reader came for is in it
+ * somewhere, which is not the same as being findable.
+ */
+export const ENTRY_WORD_BUDGET = 40;
+
+/** Words in a normalised entry. */
+export function wordCount(entry) {
+  const trimmed = normaliseEntry(entry);
+  return trimmed === '' ? 0 : trimmed.split(' ').length;
+}
+
 const BULLET = /^[-*+]\s+(.*)$/;
 const HEADING = /^#{1,6}\s/;
 // cm:edge contract -> packages/web-v2/src/lib/changelog.ts — `parseChangelog` pushes ONE rendered section per `###` heading, so a heading repeated inside one release is not cosmetic there: the feed lists the same category twice for one release. Nothing types that agreement, and this rule is the only thing holding it
@@ -160,6 +178,30 @@ export function judge({ head, base, amnesty }) {
         unpardoned.length === 1 ? 'is' : 'are'
       } gone from CHANGELOG.md`,
       removed: unpardoned,
+    });
+  }
+
+  // Only entries this change ADDS are measured. The record is edited one line at a time or
+  // not at all (the `record` axis carries no baseline for the same reason), so the entries
+  // already published are rewritten deliberately rather than frozen in bulk here — a
+  // baseline would make 333 of them permanent by declaring them once.
+  const overBudget = [];
+  for (const entry of now.entries) {
+    if (was.entries.has(entry)) continue;
+    const words = wordCount(entry);
+    if (words > ENTRY_WORD_BUDGET) overBudget.push({ entry, words });
+  }
+  if (overBudget.length > 0) {
+    overBudget.sort((a, b) => b.words - a.words);
+    violations.push({
+      rule: 'entry-budget',
+      detail:
+        `${overBudget.length} new release entr${overBudget.length === 1 ? 'y' : 'ies'} over ` +
+        `${ENTRY_WORD_BUDGET} words (longest ${overBudget[0].words}). An entry says what changed and ` +
+        `what it means for the reader; the reasoning belongs in the issue and the commit, which is ` +
+        `where a reader who wants it will look. Cut it down rather than splitting one change across ` +
+        `several bullets — that moves the words, it does not spend fewer.`,
+      removed: overBudget.map((o) => `[${o.words} words] ${o.entry}`),
     });
   }
 
