@@ -255,8 +255,9 @@ export function ladderLines(runs: RunRow[], windows: WindowRow[]): string[] {
   return lines;
 }
 
-const mdRow = (cells: string[]): string =>
-  `| ${cells.map((c) => c.replace(/\|/g, '\\|')).join(' | ')} |`;
+// cm:why a backslash is escaped before the pipe: escaping only the pipe leaves `\\|` readable as an escaped backslash followed by a live pipe, which splits the cell (CodeQL js/incomplete-sanitization)
+export const mdCell = (c: string): string => c.replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
+const mdRow = (cells: string[]): string => `| ${cells.map(mdCell).join(' | ')} |`;
 const mdTable = (head: string[], rows: string[][]): string[] => [
   mdRow(head),
   `|${head.map(() => '---').join('|')}|`,

@@ -12,6 +12,7 @@ import {
   deltaLine,
   ladderLines,
   ladderMarkdown,
+  mdCell,
   rankRuns,
   rankWindows,
   score,
@@ -261,6 +262,12 @@ describe('the printers', () => {
     for (const line of ladderLines(runs, [])) {
       if (/^\d+\s/.test(line)) expect(line).toMatch(/\d+\.\d\s+\S+ \d+%/);
     }
+  });
+
+  it('escapes a backslash before a pipe in a Markdown cell, so neither splits the row', () => {
+    expect(mdCell('a|b')).toBe('a\\|b');
+    expect(mdCell('a\\|b')).toBe('a\\\\\\|b');
+    expect(mdCell('plain')).toBe('plain');
   });
 
   it('renders the same rows as Markdown tables with the definition in italics', () => {
