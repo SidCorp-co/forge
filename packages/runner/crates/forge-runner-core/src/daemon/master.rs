@@ -2033,6 +2033,85 @@ mod give_back_tests {
     // naming the conversation. The temptation is to pass `--resume` anyway and let claude decide —
     // which kills the pane on spawn, and the next sweep rebuilds it and kills it again, a loop whose
     // only trace is a pane that keeps disappearing (ISS-1050).
+    /// What the daemon log SAYS when a recorded conversation cannot be resumed.
+    ///
+    /// cm:why captured through a real subscriber rather than asserted on a returned string:
+    /// criterion 18 is a claim about the operator-facing log, and `resume_for` returns `None` for
+    /// "nothing stored" and for "stored but unreachable" alike. The return value cannot tell those
+    /// two apart, so a test reading only the return value passes just as happily when the warning
+    /// is deleted — and the warning is the entire difference between a pane that silently forgot
+    /// what it was doing and one whose operator can see why.
+    fn logged_while(f: impl FnOnce()) -> String {
+        use std::sync::{Arc, Mutex};
+        #[derive(Clone)]
+        struct Buf(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for Buf {
+            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(b);
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let buf = Buf(Arc::new(Mutex::new(Vec::new())));
+        let made = buf.clone();
+        let sub = tracing_subscriber::fmt()
+            .with_writer(move || made.clone())
+            .with_ansi(false)
+            .finish();
+        tracing::subscriber::with_default(sub, f);
+        let out = buf.0.lock().unwrap().clone();
+        String::from_utf8_lossy(&out).into_owned()
+    }
+
+    #[test]
+    fn a_conversation_this_box_cannot_reach_is_named_in_the_log_it_starts_cold_from() {
+        let repo = std::env::temp_dir().join("forge-resume-log");
+        let out = logged_while(|| {
+            assert_eq!(
+                resume_for("some-slug", &repo, Some("conv-9f3a-unreachable")),
+                None
+            );
+        });
+
+        // cm:why the TRANSCRIPT PATH is what is asserted, not a bare mention of the id. The id
+        // appears in this line twice over — once as itself and once inside the path, which is
+        // `<conversation>.jsonl` — so an assertion on the id alone stays green when the explicit
+        // mention is deleted, and cannot tell the two apart. Planting exactly that proved it: the
+        // message was stripped of `{id}` and this test did not notice. The path is also the half
+        // that is actually worth naming, because it is the thing an operator goes and looks at.
+        assert!(
+            out.contains("conv-9f3a-unreachable.jsonl"),
+            "the transcript it could not reach must be named by PATH, so an operator can go and \
+             look for it rather than guess where it should have been; log was: {out}"
+        );
+        assert!(
+            out.contains("some-slug"),
+            "and which project's pane it was, since one box runs several; log was: {out}"
+        );
+        assert!(
+            out.contains("WARN"),
+            "at WARN: starting cold means the pane has lost its predecessor's memory, which is not \
+             routine information; log was: {out}"
+        );
+    }
+
+    #[test]
+    fn a_pane_with_nothing_recorded_starts_cold_quietly() {
+        // cm:guard the absence of a warning is asserted too. A box that has never resumed anything
+        // has no conversation to fail to reach, and warning there would put a line in every
+        // operator's log on every cold start, which is how the real one stops being read.
+        let repo = std::env::temp_dir().join("forge-resume-log-quiet");
+        let out = logged_while(|| {
+            assert_eq!(resume_for("some-slug", &repo, None), None);
+        });
+        assert!(
+            !out.contains("WARN"),
+            "nothing stored is not a fault; log was: {out}"
+        );
+    }
+
     #[test]
     fn a_conversation_with_no_transcript_on_this_box_starts_cold() {
         let repo = std::env::temp_dir().join("forge-resume-none");

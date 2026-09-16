@@ -37,3 +37,7 @@ keyring = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
+# Only the tests need a subscriber: the library emits tracing events and says nothing about where
+# they go, but ISS-1050 criterion 18 is a claim about what the daemon LOG says, and a claim about a
+# log that nothing reads back is carried by the code's good intentions rather than by a check.
+tracing-subscriber = { workspace = true }

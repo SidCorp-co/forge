@@ -21,6 +21,8 @@ import {
 let harness: TestDatabase;
 let mods: {
   openRunSession: typeof import('../../src/devices/run-session.js').openRunSession;
+  closeRunSession: typeof import('../../src/devices/run-session.js').closeRunSession;
+  readAdmissibleIssues: typeof import('../../src/devices/admissible.js').readAdmissibleIssues;
   readRunSessionTerminal: typeof import('../../src/devices/run-session.js').readRunSessionTerminal;
   isIssueLeaseHeld: typeof import('../../src/devices/run-session.js').isIssueLeaseHeld;
   releaseIssueLease: typeof import('../../src/devices/run-session.js').releaseIssueLease;
@@ -33,8 +35,11 @@ beforeAll(async () => {
   process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
   process.env.NODE_ENV ??= 'test';
   const runSession = await import('../../src/devices/run-session.js');
+  const admissible = await import('../../src/devices/admissible.js');
   mods = {
     openRunSession: runSession.openRunSession,
+    closeRunSession: runSession.closeRunSession,
+    readAdmissibleIssues: admissible.readAdmissibleIssues,
     readRunSessionTerminal: runSession.readRunSessionTerminal,
     isIssueLeaseHeld: runSession.isIssueLeaseHeld,
     releaseIssueLease: runSession.releaseIssueLease,
@@ -363,5 +368,131 @@ describe('the lease is held per issue, and returned per issue', () => {
     await mods.releaseIssueLease({ deviceId: other.id, issueKey: 'ISS-1' });
 
     expect(await mods.isIssueLeaseHeld({ deviceId: device.id, issueKey: 'ISS-1' })).toBe(true);
+  });
+});
+
+/**
+ * ISS-1050 criterion 12 — an issue whose run died is OFFERED AGAIN.
+ *
+ * The exclusion half is proved elsewhere (`issue-prefix-e2e`: a live run's issue is not
+ * admitted). Nothing proved the return half, which is the half this whole issue is named
+ * after: if a dead run's session never leaves `running`, the issue it held is excluded from
+ * the admissible set forever, and what an operator sees is an issue at `in_progress` that no
+ * box will ever pick up again. That failure is indistinguishable from an empty backlog.
+ */
+describe('an issue whose run died', () => {
+  async function aBacklogProject() {
+    const user = await createTestUser(harness.db);
+    const project = await createTestProject(harness.db, user.id);
+    const device = await createTestDevice(harness.db, user.id);
+    await harness.db.execute(sql`
+      UPDATE projects
+         SET agent_config = ${JSON.stringify({
+           pipelineConfig: { poolBacklog: { statuses: ['draft'], limit: 20 } },
+         })}::jsonb
+       WHERE id = ${project.id}
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO runners (id, project_id, device_id, name, type, status)
+      VALUES (gen_random_uuid(), ${project.id}, ${device.id}, 'r', 'claude-code', 'online')
+    `);
+    for (const seq of [880, 881]) {
+      await harness.db.execute(sql`
+        INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
+        VALUES (gen_random_uuid(), ${project.id}, ${seq}, ${`issue ${seq}`}, 'draft', ${user.id})
+      `);
+    }
+    return { user, project, device };
+  }
+
+  const keysFor = async (deviceId: string, projectId: string) =>
+    (await mods.readAdmissibleIssues({ deviceId, projectId })).map((a) => a.issueKey);
+
+  it('is offered again once the box reports the run died', async () => {
+    const { project, device } = await aBacklogProject();
+    const session = await mods.openRunSession({
+      deviceId: device.id,
+      projectId: project.id,
+      issueKeys: ['ISS-880'],
+      name: 'run-that-dies',
+    });
+
+    // While it lives, it is somebody's work and must not be offered.
+    expect(await keysFor(device.id, project.id)).toEqual(['ISS-881']);
+
+    await mods.closeRunSession({
+      deviceId: device.id,
+      sessionId: session.sessionId,
+      outcome: 'died',
+      detail: 'the master pane is gone from this box',
+    });
+
+    const after = await keysFor(device.id, project.id);
+    expect(after).toContain('ISS-880');
+    expect(after).toContain('ISS-881');
+  });
+
+  // cm:guard `died` and `ended` return the issue alike. The outcome records HOW the run stopped,
+  // for a human reading the record; it is not a second gate on whether the work comes back. A
+  // reading that returned only cleanly-ended runs' issues would strand exactly the crashed ones.
+  it('is offered again whether the run died or ended', async () => {
+    const { project, device } = await aBacklogProject();
+    const session = await mods.openRunSession({
+      deviceId: device.id,
+      projectId: project.id,
+      issueKeys: ['ISS-880'],
+      name: 'run-that-ends',
+    });
+    await mods.closeRunSession({
+      deviceId: device.id,
+      sessionId: session.sessionId,
+      outcome: 'ended',
+    });
+    expect(await keysFor(device.id, project.id)).toContain('ISS-880');
+  });
+
+  it('is offered to a DIFFERENT box on the project too, not only the one that lost it', async () => {
+    const { user, project, device } = await aBacklogProject();
+    const second = await createTestDevice(harness.db, user.id);
+    await harness.db.execute(sql`
+      INSERT INTO runners (id, project_id, device_id, name, type, status)
+      VALUES (gen_random_uuid(), ${project.id}, ${second.id}, 'r2', 'claude-code', 'online')
+    `);
+    const session = await mods.openRunSession({
+      deviceId: device.id,
+      projectId: project.id,
+      issueKeys: ['ISS-880'],
+      name: 'run-that-dies',
+    });
+    expect(await keysFor(second.id, project.id)).not.toContain('ISS-880');
+
+    await mods.closeRunSession({
+      deviceId: device.id,
+      sessionId: session.sessionId,
+      outcome: 'died',
+    });
+
+    expect(await keysFor(second.id, project.id)).toContain('ISS-880');
+  });
+
+  it('holds every issue of a group and offers every one of them back', async () => {
+    const { project, device } = await aBacklogProject();
+    const session = await mods.openRunSession({
+      deviceId: device.id,
+      projectId: project.id,
+      issueKeys: ['ISS-880', 'ISS-881'],
+      name: 'a-group',
+    });
+    expect(await keysFor(device.id, project.id)).toEqual([]);
+
+    await mods.closeRunSession({
+      deviceId: device.id,
+      sessionId: session.sessionId,
+      outcome: 'died',
+    });
+
+    const after = await keysFor(device.id, project.id);
+    expect(after).toContain('ISS-880');
+    expect(after).toContain('ISS-881');
   });
 });
