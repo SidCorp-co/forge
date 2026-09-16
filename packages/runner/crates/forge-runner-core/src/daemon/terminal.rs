@@ -154,6 +154,7 @@ pub async fn alive(name: &str) -> bool {
 /// Returns whether this call created it. Idempotent by construction: the
 /// liveness check and tmux's own refusal to duplicate a name are both in play,
 /// so a race between two sweeps costs a log line and not a second master.
+/// The unit the session server runs as, when this box can give it one.
 const SESSION_UNIT: &str = "forge-sessions";
 
 /// The unit name for the config dir in force, which is what every systemd call
@@ -163,6 +164,7 @@ const SESSION_UNIT: &str = "forge-sessions";
 /// real runner changes. Any OTHER config dir — a test's temp dir, a leaked
 /// `/tmp/forge-cred-*` inherited by a stray subprocess — gets a unit of its
 /// own, and can no longer reach the one this box's panes run under.
+/// The unit name one config dir resolves.
 fn unit_for(dir: &std::path::Path) -> String {
     let Some(own) = unoverridden_config_dir() else {
         return SESSION_UNIT.to_string();
@@ -1272,8 +1274,10 @@ mod tests {
         );
     }
 
-    /// `unoverridden_config_dir` and `dirs_next`'s own resolution must agree, or the
-    /// override test above is comparing against a rule nothing else follows.
+    /// `unoverridden_config_dir` duplicates `dirs_next`'s rule for the platform, and
+    /// this pins the two together: the day `dirs_next` moves a Linux config dir, this
+    /// goes red rather than `unit_for` silently classifying the box's own dir as an
+    /// override and renaming the live unit out from under the panes.
     #[test]
     fn the_unoverridden_dir_is_what_the_box_resolves_with_no_override() {
         let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());

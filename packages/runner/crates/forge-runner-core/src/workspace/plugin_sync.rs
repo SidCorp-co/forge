@@ -177,6 +177,8 @@ pub fn repo_url(repo: &str) -> String {
     }
 }
 
+/// Bring the clone at `dir` to `pin`, or to `origin/HEAD` when `follow_tip`, else leave it where it
+/// is. Clones (full depth) when absent. Returns the short HEAD.
 pub async fn sync_clone(
     dir: &Path,
     url: &str,

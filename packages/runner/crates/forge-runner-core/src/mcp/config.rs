@@ -210,6 +210,8 @@ fn write_session_in(
 /// a live master stops rewriting its own for as long as core is unreachable and
 /// an mtime therefore says nothing about whether a pane is using it. Which
 /// projects this box serves does say so, and it is the only thing that does.
+/// `Ok` carries the orphans it could NOT remove, as `(path, why)`. `Err` means
+/// the directory could not be read at all, so nothing was even attempted.
 pub fn sweep_orphaned_sessions(active_slugs: &[String]) -> Result<Vec<(PathBuf, String)>> {
     sweep_orphaned_sessions_in(&mcp_config_dir(), active_slugs)
 }
