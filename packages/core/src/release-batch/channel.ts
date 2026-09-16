@@ -14,11 +14,10 @@
 // prose into `knowledge_entries`), and the live deploy binding's `instructions`
 // for the channel-side one.
 
-import { eq, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { projects } from '../db/schema.js';
-import { getKnowledgeEntry } from '../knowledge/service.js';
 import { effectiveConfig, listActiveDeployBindingsForStage } from '../integrations/store.js';
+import { getKnowledgeEntry } from '../knowledge/service.js';
 import {
   RELEASE_PROCEDURE_FACT,
   type ReleaseChannel,

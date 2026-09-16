@@ -1771,14 +1771,7 @@ export const knowledgeEntriesRelations = relations(knowledgeEntries, ({ one }) =
   project: one(projects, { fields: [knowledgeEntries.projectId], references: [projects.id] }),
 }));
 
-/**
- * The rollback source for ISS-1048's move of project prose out of `projects.agent_config` into
- * `knowledge_entries`. Migration 0254 writes both original maps here verbatim BEFORE it strips
- * them, because the knowledge rows cannot serve as the way back: the inverse of the copy cannot
- * tell a migrated row from an entry that was always a knowledge entry, and cannot recover a body
- * edited after the cutover. Restoring is one statement over this table; prose written or edited in
- * `knowledge_entries` after the cutover stays there and is not copied back.
- */
+// cm:guard the rollback source for migration 0254, which writes both original maps here verbatim BEFORE it strips them. The knowledge rows cannot serve as the way back: the inverse of the copy cannot tell a migrated row from an entry that was always a knowledge entry, and cannot recover a body edited after the cutover. Restoring is one statement over this table; prose written or edited in `knowledge_entries` after the cutover stays there and is not copied back.
 export const projectFactsMigrationBackup = pgTable('project_facts_migration_backup', {
   projectId: uuid('project_id')
     .primaryKey()
@@ -3302,9 +3295,7 @@ export interface ReconcileBundleSnapshot {
   runningBody: string;
   runningHash: string;
   charter: unknown | null;
-  /** Slug → body of this project's knowledge entries, each cut at
-   *  `SNAPSHOT_BODY_MAX_CHARS`. Was `projectFacts` until ISS-1048 moved project
-   *  prose out of `agentConfig` and into `knowledge_entries`. */
+  /** Slug → body of this project's knowledge entries, each cut at `SNAPSHOT_BODY_MAX_CHARS`. Was `projectFacts` until ISS-1048 moved project prose out of `agentConfig`. */
   projectKnowledge: Record<string, unknown>;
   pipelineConfig: Record<string, unknown>;
   recentRunEvidence: unknown[];

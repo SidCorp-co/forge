@@ -156,7 +156,9 @@ export function validateC1C5(bundle: Partial<ReconcileBundleSnapshot>): string |
       return `C1: missing required bundle input: ${key}`;
     }
   }
-  const readAt = new Date(bundle.readAt!).getTime();
+  // `readAt` is in REQUIRED_BUNDLE_KEYS, so the loop above already refused a missing one by name;
+  // the `?? ''` is what lets the compiler see that rather than a non-null assertion asserting it.
+  const readAt = new Date(bundle.readAt ?? '').getTime();
   if (Number.isNaN(readAt)) return 'C2: bundle.readAt is not a valid ISO timestamp';
   const ageMs = Date.now() - readAt;
   if (ageMs > 10 * 60 * 1000) {

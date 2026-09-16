@@ -5,12 +5,12 @@ import { z } from 'zod';
 import { RULES } from '../config/rate-limits.js';
 import { EMBEDDING_UNAVAILABLE, EmbeddingUnavailableError } from '../embeddings/index.js';
 import { assertProjectAccess } from '../lib/authz.js';
+import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { rateLimit } from '../middleware/rate-limit.js';
 import {
   ALWAYS_INJECT_GUARANTEE_NOTE,
   ALWAYS_INJECT_MAX_CHARS,
 } from '../projects/project-facts.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { rateLimit } from '../middleware/rate-limit.js';
 import {
   deleteKnowledgeEntry,
   getKnowledgeEntry,

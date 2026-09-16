@@ -252,9 +252,7 @@ export function makeProjectResolver(src: {
     integrations: () => renderIntegrations(src.integrations),
   };
   return (key) =>
-    key in reserved
-      ? reserved[key as keyof typeof reserved]()
-      : unreservedProjectKeyRefusal(key);
+    key in reserved ? reserved[key as keyof typeof reserved]() : unreservedProjectKeyRefusal(key);
 }
 
 /**
@@ -485,7 +483,9 @@ export function renderStageFactsText(
       [
         '### Undeclared project knowledge',
         'This project owes the entries below and none of them exists yet. Nothing here blocks you — but a step that needs one has nothing to read, so say so rather than inventing the answer, and offer the text to whoever owns the project:',
-        ...inputs.missingObligations.map((o) => `- \`${o.slug}\` — ${o.role} (owed because ${o.because})`),
+        ...inputs.missingObligations.map(
+          (o) => `- \`${o.slug}\` — ${o.role} (owed because ${o.because})`,
+        ),
       ].join('\n'),
     );
   }

@@ -43,11 +43,11 @@ import { RETIRED_STATE_CONTEXT_MESSAGE, readAgentConfig } from './agent-config.j
 import { applyIssuePrefixPatch } from './issue-prefix-patch.js';
 import { projectOnboardRoutes } from './onboard-routes.js';
 import { pipelineConfigHttpError } from './pipeline-config-http.js';
-import { projectFactsRoutes } from './project-facts-routes.js';
 import {
   RETIRED_PROJECT_FACTS_CONFIG_MESSAGE,
   RETIRED_PROJECT_FACTS_MESSAGE,
 } from './project-facts.js';
+import { projectFactsRoutes } from './project-facts-routes.js';
 import { PATCHED_PROJECT, PROJECT_DETAIL } from './projections.js';
 import { readableLiveBranch, releaseModelGap, releaseModelPatchFields } from './release-model.js';
 import { projectRunnerRoutes } from './runners-routes.js';

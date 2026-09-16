@@ -357,9 +357,7 @@ export async function selectAlwaysInjectFromKnowledge(
  */
 export const SNAPSHOT_BODY_MAX_CHARS = 8000;
 
-export async function selectKnowledgeBodies(
-  projectId: string,
-): Promise<Record<string, string>> {
+export async function selectKnowledgeBodies(projectId: string): Promise<Record<string, string>> {
   const rows = await db
     .select({ slug: knowledgeEntries.slug, body: knowledgeEntries.body })
     .from(knowledgeEntries)
@@ -374,9 +372,7 @@ export async function selectAllSlugsFromKnowledge(projectId: string): Promise<st
   const rows = await db
     .select({ slug: knowledgeEntries.slug })
     .from(knowledgeEntries)
-    .where(
-      and(eq(knowledgeEntries.projectId, projectId), isNull(knowledgeEntries.archivedAt)),
-    )
+    .where(and(eq(knowledgeEntries.projectId, projectId), isNull(knowledgeEntries.archivedAt)))
     .orderBy(asc(knowledgeEntries.slug));
   return rows.map((r) => r.slug);
 }
