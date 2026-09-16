@@ -236,44 +236,44 @@ export interface CoolifyTargetInput {
  * is binding-tier (per project+stage) and may list several applications
  * (e.g. a split backend + frontend) that deploy together.
  */
-export interface CoolifyConfigInput {
+export type CoolifyConfigInput = {
   baseUrl: string;
   targets: CoolifyTargetInput[];
-}
-export interface CoolifySecretsInput {
+};
+export type CoolifySecretsInput = {
   apiToken: string;
-}
+};
 
 export type PostmanRegion = 'us' | 'eu';
 export type PostmanMode = 'minimal' | 'full';
 
 /** Postman non-secret write-target (`connection.config`). */
-export interface PostmanConfigInput {
+export type PostmanConfigInput = {
   workspaceId?: string;
   workspaceName: string;
   collectionId?: string;
   region: PostmanRegion;
   mode: PostmanMode;
-}
-export interface PostmanSecretsInput {
+};
+export type PostmanSecretsInput = {
   apiKey: string;
-}
+};
 
 /**
  * Epodsystem storefront config. The endpoint is fixed platform config (env),
  * NOT user input; store identity is filled by the healthcheck, so every field
  * is optional — the operator only supplies the `crmk_` key as the secret.
  */
-export interface EpodsystemConfigInput {
+export type EpodsystemConfigInput = {
   storeSlug?: string;
   storeName?: string;
   themeId?: string;
   draftThemeId?: string;
   commerceEnabled?: boolean;
-}
-export interface EpodsystemSecretsInput {
+};
+export type EpodsystemSecretsInput = {
   apiKey: string;
-}
+};
 
 /**
  * One labelled Sentry target under a connection (ISS-526). A Forge project that
@@ -299,17 +299,17 @@ export interface SentryTargetInput {
  * kept optional for back-compat reads of pre-ISS-526 connections. The `sntryu_`
  * auth token is the secret.
  */
-export interface SentryConfigInput {
+export type SentryConfigInput = {
   host: string;
   targets?: SentryTargetInput[];
   /** @deprecated ISS-526 — superseded by `targets[]`; read-only back-compat. */
   organizationSlug?: string;
   /** @deprecated ISS-526 — superseded by `targets[]`; read-only back-compat. */
   projectSlug?: string;
-}
-export interface SentrySecretsInput {
+};
+export type SentrySecretsInput = {
   authToken: string;
-}
+};
 
 /**
  * Rocket.Chat bot config (ISS-609). `serverUrl` is connection-tier (the org's
@@ -317,27 +317,27 @@ export interface SentrySecretsInput {
  * on (1..20) — is binding-tier, split server-side like Coolify's deploy targets.
  * The bot credential is a personal-access token + its user id (both secrets).
  */
-export interface RocketchatConfigInput {
+export type RocketchatConfigInput = {
   serverUrl: string;
   rids?: string[];
-}
-export interface RocketchatSecretsInput {
+};
+export type RocketchatSecretsInput = {
   authToken: string;
   userId: string;
-}
-export interface GithubConfigInput {
+};
+export type GithubConfigInput = {
   installationId?: number;
   owner?: string;
   repo?: string;
   /** GitHub Enterprise only; absent means api.github.com. */
   apiBaseUrl?: string;
-}
+};
 /** All three come back from the app-manifest conversion; none is typed by hand. */
-export interface GithubSecretsInput {
+export type GithubSecretsInput = {
   appId: string;
   privateKey: string;
   webhookSecret: string;
-}
+};
 
 /**
  * Google service-account config (ISS-1036). `clientEmail` and `projectId` are
@@ -346,16 +346,16 @@ export interface GithubSecretsInput {
  * project — and is the spreadsheet a `forge_google_sheets` call naming none
  * resolves to.
  */
-export interface GoogleConfigInput {
+export type GoogleConfigInput = {
   clientEmail?: string;
   projectId?: string;
   defaultSpreadsheetId?: string;
-}
+};
 
 /** The service-account key file Google issued, whole and unmodified. */
-export interface GoogleSecretsInput {
+export type GoogleSecretsInput = {
   serviceAccountJson: string;
-}
+};
 
 
 /**
