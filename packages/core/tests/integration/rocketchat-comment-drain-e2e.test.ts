@@ -254,9 +254,21 @@ describe('what the review found, and what now holds', () => {
       atPostTime = null;
       const [before] = await db.select().from(rcSchema.rocketchatThreadOpenings);
       leaseAtStart = before?.expiresAt;
+      // cm:why POLLED rather than read once. Renewal is a timer followed by a database write, and
+      // advancing the clock only guarantees the timer FIRED — the UPDATE may still be in flight when
+      // the next statement runs, which read the untouched row and asserted against it. That is a
+      // race, not a renewal that did not happen, and it presents as `expected <t> to be greater than
+      // <t>` on whichever CI run happens to lose it (seen on PR #437, 2026-09-16, in a file that
+      // change never touched). Waiting for the row to MOVE keeps the assertion strictly greater: a
+      // renewal that never lands still exhausts the loop and still fails.
+      const startedAt = (leaseAtStart as Date).getTime();
       await vi.advanceTimersByTimeAsync(25_000);
-      const [after] = await db.select().from(rcSchema.rocketchatThreadOpenings);
-      leaseAfterRenewal = after?.expiresAt;
+      for (let i = 0; i < 50; i += 1) {
+        const [after] = await db.select().from(rcSchema.rocketchatThreadOpenings);
+        leaseAfterRenewal = after?.expiresAt;
+        if (leaseAfterRenewal && leaseAfterRenewal.getTime() > startedAt) break;
+        await vi.advanceTimersByTimeAsync(100);
+      }
     };
 
     vi.useFakeTimers({ shouldAdvanceTime: true });
