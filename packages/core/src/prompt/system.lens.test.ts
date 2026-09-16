@@ -13,6 +13,13 @@ vi.mock('../db/client.js', () => {
 const { db } = await import('../db/client.js');
 const { buildChatRoleSection, buildChatPreamble } = await import('./system.js');
 
+// `renderIntegrations` reads each provider's hint, guide slug and extra line off its DECLARATION
+// (ISS-1071), so the registry has to hold one. Reading it empty throws rather than rendering the
+// generic line for every provider, which is the answer that would have made these assertions pass
+// while saying nothing true.
+const { registerAllIntegrations } = await import('../integrations/register-all.js');
+registerAllIntegrations();
+
 describe('buildChatRoleSection — role-aware chat lens', () => {
   it('no lens assigned → non-technical default voice (unchanged behaviour)', () => {
     const s = buildChatRoleSection([]);
@@ -131,7 +138,14 @@ describe('buildChatPreamble — integrations + MCP diagnostics', () => {
   const BRANCHES = [{ baseBranch: 'main', liveBranch: 'main' }];
   const ACTIVE_EPODSYSTEM = [
     {
-      binding: { provider: 'epodsystem', environment: 'prod', active: true },
+      binding: {
+        provider: 'epodsystem',
+        environment: 'prod',
+        active: true,
+        // ISS-1071 — the grant is a field on the binding, and it is what decides whether this
+        // preamble tells a session how to use the integration or why it cannot.
+        agentAccess: 'all',
+      },
       connection: { active: true, lastHealthStatus: 'ok', config: {} },
     },
   ];
@@ -145,6 +159,29 @@ describe('buildChatPreamble — integrations + MCP diagnostics', () => {
     expect(preamble).toContain('epodsystem');
     expect(preamble).toContain('forge_storefront_target');
     expect(preamble).toContain('DRAFT theme');
+  });
+
+  // ISS-1038 — the same connected, healthy, active binding with agent access OFF. Before this, the
+  // preamble printed the identical "reach for `forge_storefront_target`" line, so a session was sent
+  // after tools it would never be handed and read their absence as a credential fault.
+  it('tells a chat turn WHY an ungranted integration reaches it, instead of how to use it', async () => {
+    queueSelects(BRANCHES, [
+      {
+        binding: { provider: 'epodsystem', environment: 'prod', active: true, agentAccess: 'none' },
+        connection: { active: true, lastHealthStatus: 'ok', config: {} },
+      },
+    ]);
+
+    const preamble = await buildChatPreamble(PROJECT_ID, null, ['technical']);
+
+    // The provider is named INSIDE the reason. A preamble carries every connected integration, so
+    // "agent access is off for this binding" on its own would not say WHICH one was refused.
+    expect(preamble).toContain('agent access is off for this `epodsystem` binding');
+    expect(preamble).toContain('Settings → Integrations');
+    // The usage hint is REPLACED, not accompanied: a line saying how to use a tool the session will
+    // not be given is the thing being removed, not something to print beside the reason.
+    expect(preamble).not.toContain('forge_storefront_target');
+    expect(preamble).not.toContain('DRAFT theme');
   });
 
   // cm:guard mirrors the dispatch-side gate: a binding whose connection is inactive injects NOTHING, so advertising it here would promise tools the session cannot call

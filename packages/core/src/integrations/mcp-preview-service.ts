@@ -2,34 +2,35 @@
  * MCP injection preview (ISS-429) — service behind
  * `GET /:projectId/integrations/mcp-preview` (thin handler in routes.ts).
  *
- * Mirrors dispatch-time semantics with the same entry builders, active+
- * credential filters, oldest-first winning-binding pick, and ISS-581/ISS-623
- * sentinel gate, but cannot reuse the dispatch resolvers: they decrypt real
- * vault credentials (the preview must never mint secret bytes) and return only
- * the winning map, while this reports one row PER BINDING (disabled /
- * no_credential / shadowed / not_declared) against the project-wide declared
- * set rather than one dispatch's stage-resolved map.
+ * Mirrors dispatch-time semantics with the same entry builders, the same active+credential filters
+ * and the same oldest-first winning-binding pick, but cannot reuse the dispatch resolver: that one
+ * decrypts real vault credentials (the preview must never mint secret bytes) and returns only the
+ * winning map, while this reports one row PER BINDING against every declared binding rather than
+ * one dispatch's stage-resolved map.
  *
- * `resolveSessionMcpServers` runs the same chain minus the stage layer, so this
- * preview describes chat turns too.
+ * ISS-1071 changed both what this walks and what it measures. It walked a hardcoded
+ * `MCP_PROVIDERS = ['postman','epodsystem','sentry']` and called three per-provider builders
+ * through a two-branch ternary; it now walks `directMcpIntegrations()` and calls the builder the
+ * declaration carries, so a fourth provider adds no line here. And `willInject` was gated on a
+ * SENTINEL being declared somewhere in `pipelineConfig.mcpServers` — a map on a different settings
+ * tab, which is how a binding could read Connected and healthy and reach no agent (ISS-1038). It is
+ * now gated on the binding's own `agentAccess` grant, and the reason a binding does not inject is
+ * `not_granted`, naming a switch that sits on the same object the operator is looking at.
+ *
+ * `resolveSessionMcpServers` runs the same chain minus the stage layer, so this describes chat
+ * turns too.
  */
-// cm:edge lockstep -> packages/core/src/jobs/resolve-job-mcp-servers.ts — a new provider, gate or binding-pick order must land in both files or the preview lies about what a runner receives
+// cm:edge lockstep -> packages/core/src/integrations/mcp-resolver.ts — the gate order and the
+// binding-pick order live in both files, and the preview lies about what a runner receives if they
+// drift. The pair is deliberately NOT one shared function: that one decrypts, this one must not.
 
-import { eq } from 'drizzle-orm';
-import { db } from '../db/client.js';
-import { type BindingRole, type DeployStage, projects } from '../db/schema.js';
-import { collectDeclaredMcpNames } from '../pipeline/mcp-catalog.js';
-import { buildEpodsystemMcpEntry } from './epodsystem/resolver.js';
-import { buildPostmanMcpEntry } from './postman/resolver.js';
+import type { BindingRole, DeployStage } from '../db/schema.js';
+import { grantHolds } from './agent-access.js';
+import { listAgentGrantedBindings } from './agent-access-store.js';
+import { directMcpIntegrations, mcpServerNameFor } from './registry.js';
 import { toIso } from './route-helpers.js';
-import { buildSentryMcpEntry } from './sentry/resolver.js';
-import {
-  type BindingWithConnection,
-  effectiveConfig,
-  listActiveBindingsForProjectProvider,
-  listBindingsForProject,
-} from './store.js';
-import type { IntegrationProvider } from './types.js';
+import { type BindingWithConnection, effectiveConfig, listBindingsForProject } from './store.js';
+import type { IntegrationDeclaration, IntegrationProvider } from './types.js';
 
 /** One MCP-injection provider entry in the preview (mirrors contracts type). */
 export interface McpServerPreviewEntry {
@@ -42,74 +43,49 @@ export interface McpServerPreviewEntry {
   configured: boolean;
   active: boolean;
   willInject: boolean;
-  reason: 'ok' | 'not_configured' | 'disabled' | 'no_credential' | 'shadowed' | 'not_declared';
+  reason: 'ok' | 'not_configured' | 'disabled' | 'no_credential' | 'shadowed' | 'not_granted';
   url: string | null;
   headers: Record<string, string> | null;
   lastHealthStatus: string | null;
   lastHealthAt: string | null;
 }
 
-/** The providers whose adapters inject an mcpServers entry at dispatch time. */
-const MCP_PROVIDERS = ['postman', 'epodsystem', 'sentry'] as const;
-
-function buildMcpEntryFor(
-  provider: (typeof MCP_PROVIDERS)[number],
+/**
+ * The entry a runner would receive for one binding, built with an EMPTY secrets object.
+ *
+ * The same builder the dispatch resolver uses, so the URL cannot drift from what a runner actually
+ * gets. The credential passed is the declaration's own `previewSecrets` placeholder, never the
+ * stored one — that is the mechanism by which this response cannot carry secret bytes, and the
+ * projection below then reads only `url` and synthesizes its own redacted `Authorization`, so a
+ * builder that puts the placeholder in `env` never reaches the wire either.
+ */
+function previewEntryFor(
+  decl: IntegrationDeclaration,
   pair: BindingWithConnection,
-): Record<string, unknown> {
-  // Same builders the dispatch resolvers use — the URL can't drift from what a
-  // runner actually receives. The key argument is a placeholder; the headers
-  // are replaced wholesale below so secret bytes never reach the response.
-  // The token argument is an empty placeholder for ALL providers — the preview
-  // never carries secret bytes. For sentry (stdio) this means `env` holds an
-  // empty SENTRY_ACCESS_TOKEN; the preview projection below reads only `url`
-  // (null for stdio) and synthesizes its own redacted headers, so the env is
-  // never serialized into the response.
-  if (provider === 'sentry') return buildSentryMcpEntry(effectiveConfig(pair), '');
-  return provider === 'postman'
-    ? buildPostmanMcpEntry(effectiveConfig(pair), '')
-    : buildEpodsystemMcpEntry(effectiveConfig(pair), '');
+): Record<string, unknown> | null {
+  const path = decl.capabilities.agentPath;
+  if (path.kind !== 'direct-mcp') return null;
+  return path.buildEntry(effectiveConfig(pair), path.previewSecrets);
 }
 
 /**
- * Render exactly what the dispatch-time resolvers will inject into a runner's
- * `mcpServers` for this project — same builders, same active/secret filters,
- * same first-active-binding pick — so the UI can show a truthful "these MCP
- * servers reach your agents" panel without fabricating URLs client-side.
- * `Authorization` is redacted BY CONSTRUCTION (the real key is never built
- * into the preview entry).
+ * Render exactly what the dispatch-time resolver will inject into a runner's `mcpServers` for this
+ * project — same builders, same active/secret/grant filters, same first-binding pick — so the UI
+ * can show a truthful "these MCP servers reach your agents" panel without fabricating URLs
+ * client-side. `Authorization` is redacted BY CONSTRUCTION (the real key is never built into the
+ * preview entry).
  */
 export async function buildMcpPreview(projectId: string): Promise<McpServerPreviewEntry[]> {
   const pairs = await listBindingsForProject(projectId);
   const servers: McpServerPreviewEntry[] = [];
 
-  // ISS-623 W3 — a healthy, active, credentialed integration still does NOT
-  // inject unless some stage (project-default or per-state) declares its
-  // sentinel in `pipelineConfig.mcpServers`. Load the declared-name set once
-  // (project-wide — this preview isn't scoped to one stage) so `willInject`
-  // reflects the real ISS-581 opt-in gate instead of only active+credential.
-  const [projectRow] = await db
-    .select({ agentConfig: projects.agentConfig })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  const pipelineConfig = (projectRow?.agentConfig as { pipelineConfig?: unknown } | null)
-    ?.pipelineConfig as Parameters<typeof collectDeclaredMcpNames>[0] | undefined;
-  const declaredMcpNames = collectDeclaredMcpNames(pipelineConfig ?? {});
-
-  /** ISS-581 opt-in check for a preview row's serverName. */
-  const isSentinelDeclared = (provider: (typeof MCP_PROVIDERS)[number]): boolean => {
-    if (provider === 'epodsystem') {
-      return [...declaredMcpNames].some((n) => n === 'epodsystem' || n.startsWith('epodsystem_'));
-    }
-    return declaredMcpNames.has(provider);
-  };
-
-  for (const provider of MCP_PROVIDERS) {
+  for (const decl of directMcpIntegrations()) {
+    const provider = decl.provider;
     const rows = pairs.filter((p) => p.binding.provider === provider);
     if (rows.length === 0) {
       servers.push({
         provider,
-        serverName: provider,
+        serverName: mcpServerNameFor(decl, '') ?? provider,
         bindingId: null,
         role: null,
         stages: [],
@@ -125,49 +101,43 @@ export async function buildMcpPreview(projectId: string): Promise<McpServerPrevi
       continue;
     }
 
-    // ISS-558 — epodsystem injects N entries (one per active binding), each
-    // with its own serverName. Other providers still pick one winner.
-    const isEpodsystem = provider === 'epodsystem';
-    // For non-epodsystem: resolve the winning binding once outside the loop.
-    const resolverPick = isEpodsystem
-      ? null
-      : ((await listActiveBindingsForProjectProvider(projectId, provider))[0] ?? null);
+    // The same query the resolver runs, so "which binding wins" is answered once. A provider
+    // declaring `multiBinding` injects every granted binding under its own name (ISS-558); everyone
+    // else takes row zero, oldest first, which is what makes the pick stable across dispatches.
+    const granted = await listAgentGrantedBindings(projectId, provider);
+    const multi = decl.capabilities.multiBinding;
+    const winnerId = multi ? null : (granted[0]?.binding.id ?? null);
 
     for (const pair of rows) {
       const active = pair.binding.active && pair.connection.active;
       const hasSecrets = pair.connection.secretsEnc !== null;
-      const bindingLabel = ((pair.binding as Record<string, unknown>).label as string) ?? '';
-      const serverName = isEpodsystem
-        ? `epodsystem${bindingLabel ? `_${bindingLabel.replace(/-/g, '_')}` : ''}`
-        : provider;
-      // Epodsystem: every active+credentialed binding gets its own injected key.
-      // Others: only the resolver's winning pick is injected; rest are shadowed.
-      // ISS-623 W3 — none of that matters unless a stage actually declared the
-      // sentinel; a connected+healthy+winning integration still won't inject.
-      const wouldWinSlot =
-        active && hasSecrets && (isEpodsystem || resolverPick?.binding.id === pair.binding.id);
-      const sentinelDeclared = isSentinelDeclared(provider);
-      const willInject = wouldWinSlot && sentinelDeclared;
-      const entry = buildMcpEntryFor(provider, pair);
+      const held = grantHolds(decl, pair.binding);
+      const label = ((pair.binding as Record<string, unknown>).label as string) ?? '';
+      const wouldWinSlot = multi || winnerId === pair.binding.id;
+      const willInject = active && hasSecrets && held && wouldWinSlot;
+      const entry = previewEntryFor(decl, pair);
       servers.push({
         provider,
-        serverName,
+        serverName: mcpServerNameFor(decl, label) ?? provider,
         bindingId: pair.binding.id,
         role: pair.binding.role as BindingRole,
         stages: (pair.binding.stages ?? []) as DeployStage[],
         configured: true,
         active,
         willInject,
+        // Order matters: the FIRST unmet condition is the one the operator should act on, and
+        // `not_granted` sits above `shadowed` because an ungranted binding is never in the pick at
+        // all — calling it shadowed would name a competitor that is not competing.
         reason: willInject
           ? 'ok'
           : !active
             ? 'disabled'
             : !hasSecrets
               ? 'no_credential'
-              : !wouldWinSlot
-                ? 'shadowed'
-                : 'not_declared',
-        url: typeof entry.url === 'string' ? entry.url : null,
+              : !held
+                ? 'not_granted'
+                : 'shadowed',
+        url: typeof entry?.url === 'string' ? entry.url : null,
         headers: willInject ? { Authorization: 'Bearer [redacted]' } : null,
         lastHealthStatus: pair.connection.lastHealthStatus,
         lastHealthAt: toIso(pair.connection.lastHealthAt),

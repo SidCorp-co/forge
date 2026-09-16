@@ -311,56 +311,6 @@ describe('resume policy', () => {
   });
 });
 
-describe('mcpServers validation (ISS-623 W1)', () => {
-  it('accepts known catalog + integration true-sentinels at the project default', () => {
-    const parsed = pipelineConfigSchema.parse({
-      mcpServers: { epodsystem: true, playwright: true },
-    });
-    expect(parsed.mcpServers).toEqual({ epodsystem: true, playwright: true });
-  });
-
-  it('accepts a labeled epodsystem sentinel (epodsystem_<label>)', () => {
-    const parsed = pipelineConfigSchema.parse({
-      mcpServers: { epodsystem_store_a: true },
-    });
-    expect(parsed.mcpServers).toEqual({ epodsystem_store_a: true });
-  });
-
-  it('accepts object-valued custom specs and false/null opt-outs unchanged', () => {
-    const doc = {
-      mcpServers: {
-        custom: { type: 'stdio', command: 'foo', args: [], env: {} },
-        disabled: false,
-        cleared: null,
-      },
-    };
-    const parsed = pipelineConfigSchema.parse(doc);
-    expect(parsed.mcpServers).toEqual(doc.mcpServers);
-  });
-
-  it('rejects an unknown true-sentinel name at the project default', () => {
-    expect(() => pipelineConfigSchema.parse({ mcpServers: { shop: true } })).toThrow(
-      /mcpServers entry.*shop.*not a known catalog server/,
-    );
-  });
-
-  it('rejects an unknown true-sentinel name per-state', () => {
-    expect(() =>
-      pipelineConfigSchema.parse({ states: { awaiting_release: { mcpServers: { shp: true } } } }),
-    ).toThrow(/mcpServers entry.*shp.*not a known catalog server/);
-  });
-
-  it('accepts a known true-sentinel name per-state', () => {
-    const parsed = pipelineConfigSchema.parse({
-      states: { awaiting_release: { mcpServers: { playwright: true, epodsystem: true } } },
-    });
-    expect(parsed.states?.awaiting_release?.mcpServers).toEqual({
-      playwright: true,
-      epodsystem: true,
-    });
-  });
-});
-
 describe('defaultStatesConfig (ISS-581)', () => {
   it('ships disallowedTools for open/needs_info/released', () => {
     const config = defaultStatesConfig();

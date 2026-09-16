@@ -1,58 +1,21 @@
 /**
- * Dispatch-time MCP server resolution — the single place that turns
- * (project-default map, per-state overrides, integration sentinels) into the
- * final `mcpServers` map a runner receives.
+ * Dispatch-time MCP server resolution — the single place that turns (project-default map, per-state
+ * overrides, granted integrations) into the final `mcpServers` map a runner receives.
  *
- * Merge order: project-default < per-state < integration resolvers.
+ * Merge order: project-default < per-state < a stage's explicit opt-outs < granted integrations.
  *
- * Adding an integration MCP inject = one entry in
- * `INTEGRATION_MCP_RESOLVERS`; the dispatcher never changes. Every resolver
- * shares the same contract: active-only (an inactive/deleted integration
- * drops its entry on the next dispatch), non-mutating merge, credentials
- * rendered only into the dispatch payload (never persisted).
+ * Adding an integration MCP inject is a declaration in that provider's own directory now; the
+ * dispatcher never changes and holds no provider's name. What a granted binding gets is the same
+ * contract the three resolvers this replaced shared: active-only, so an inactive or deleted
+ * integration drops its entry on the next dispatch; a non-mutating merge; and credentials rendered
+ * only into the dispatch payload, never persisted.
  */
 
-import { applyEpodsystemMcpServers } from '../integrations/epodsystem/resolver.js';
-import { applyPostmanMcpServers } from '../integrations/postman/resolver.js';
-import { applySentryMcpServers } from '../integrations/sentry/resolver.js';
-import { expandMcpServers, isIntegrationSentinelName } from '../pipeline/mcp-catalog.js';
+import { applyGrantedMcpServers } from '../integrations/mcp-resolver.js';
+import { applyStageFalseOptOuts, expandMcpServers } from '../pipeline/mcp-catalog.js';
 import { resolveProjectDefaultMcpServers } from './stage-overrides.js';
 
 export type McpServersMap = Record<string, unknown> | null;
-
-type IntegrationMcpResolver = (projectId: string, current: McpServersMap) => Promise<McpServersMap>;
-
-/** ISS-336 (postman) · ISS-387 (epodsystem) · ISS-524 (sentry). Order is the
- *  historical chain order; resolvers are name-keyed so it rarely matters. */
-const INTEGRATION_MCP_RESOLVERS: ReadonlyArray<IntegrationMcpResolver> = [
-  applyPostmanMcpServers,
-  applyEpodsystemMcpServers,
-  applySentryMcpServers,
-];
-
-/**
- * ISS-581 — belt-and-suspenders sweep: after integration resolvers run, delete
- * any remaining `true` sentinel for a known integration name. The resolvers
- * already strip their own sentinels; this catches a declared-but-no-active-
- * integration case so a bogus `true` never reaches the runner payload.
- */
-export function sweepIntegrationSentinels(map: McpServersMap): McpServersMap {
-  if (!map) return map;
-  let dirty = false;
-  for (const [k, v] of Object.entries(map)) {
-    if (v === true && isIntegrationSentinelName(k)) {
-      dirty = true;
-      break;
-    }
-  }
-  if (!dirty) return map;
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(map)) {
-    if (v === true && isIntegrationSentinelName(k)) continue;
-    out[k] = v;
-  }
-  return Object.keys(out).length > 0 ? out : null;
-}
 
 /**
  * ISS-581 — when both playwright and chrome-devtools-mcp are present in the
@@ -118,14 +81,15 @@ export async function resolveJobMcpServers(args: {
     map = { ...projectDefault.servers, ...(map ?? {}) };
   }
 
-  for (const applyIntegration of INTEGRATION_MCP_RESOLVERS) {
-    map = await applyIntegration(args.projectId, map);
-  }
+  // A stage's explicit `false` is an opt-OUT and has to be applied AFTER the merge, from the RAW
+  // stage map: `expandMcpServers` omits a `false` rather than recording it, so before this a stage
+  // that set `playwright: false` lost to a project-default `playwright: true` and the server was
+  // injected anyway (ISS-1038).
+  if (map !== null) map = applyStageFalseOptOuts(map, args.stageMcpServers);
 
-  // (1) sentinel sweep: drop any leftover `true` for integration names
-  // (declared but no active integration); (2) browser dedupe: prefer
-  // chrome-devtools-mcp over playwright when both are present.
-  map = sweepIntegrationSentinels(map);
+  map = await applyGrantedMcpServers(args.projectId, map);
+
+  // Browser dedupe: prefer chrome-devtools-mcp over playwright when both are present.
   const beforeBrowserDedupe = new Set(Object.keys(map ?? {}));
   map = dedupeBrowserServers(map);
 
@@ -144,7 +108,7 @@ export async function resolveJobMcpServers(args: {
   return { mcpServers: map, resolvedNames: [...resolvedNames], droppedNames };
 }
 
-// cm:why stage-less callers must still run the integration resolvers — resolveProjectDefaultMcpServers alone stops at catalog expansion, leaking an `epodsystem` sentinel to the runner as bare `true`, which mcp/config.rs skips (connected integration, zero tools)
+// cm:why stage-less callers must still run the granted-integration resolver — resolveProjectDefaultMcpServers alone stops at catalog expansion, so a master's pane and a chat turn would receive the project's catalog servers and none of the integrations its bindings grant
 // cm:edge contract -> packages/core/src/prompt/system.ts — buildChatPreamble renders these diagnostics as the `mcp-servers` block; pass them or a dropped sentinel stays invisible to the agent
 export async function resolveSessionMcpServers(projectId: string): Promise<ResolvedJobMcpServers> {
   return resolveJobMcpServers({

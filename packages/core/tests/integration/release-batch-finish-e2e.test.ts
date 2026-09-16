@@ -21,6 +21,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   createTestProject,
   createTestUser,
+  registerIntegrationsForTest,
   setupTestDatabase,
   type TestDatabase,
   truncateAll,
@@ -38,6 +39,7 @@ describe('release batch finish E2E', () => {
     process.env.NODE_ENV ??= 'test';
     process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
     process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
+    await registerIntegrationsForTest();
   }, 60_000);
 
   afterAll(async () => {

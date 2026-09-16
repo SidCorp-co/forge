@@ -5,6 +5,7 @@ import {
   createTestDevice,
   createTestProject,
   createTestUser,
+  registerIntegrationsForTest,
   setupTestDatabase,
   type TestDatabase,
   truncateAll,
@@ -29,6 +30,7 @@ describe('device-pool picks run against the migrated schema', () => {
     process.env.APP_BASE_URL ??= 'http://localhost:3000';
     process.env.CORS_ORIGINS ??= 'http://localhost:3000';
     process.env.NODE_ENV ??= 'test';
+    await registerIntegrationsForTest();
 
     ({ findAvailableDeviceForProject, findChatCapableDeviceForProject } = await import(
       '../../src/lib/device-pool.js'

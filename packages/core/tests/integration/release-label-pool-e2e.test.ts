@@ -22,6 +22,7 @@ import {
   createTestDevice,
   createTestProject,
   createTestUser,
+  registerIntegrationsForTest,
   setupTestDatabase,
   type TestDatabase,
   truncateAll,
@@ -42,6 +43,7 @@ beforeAll(async () => {
   process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
   process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
   process.env.NODE_ENV ??= 'test';
+  await registerIntegrationsForTest();
   mods = {
     readPool: (await import('../../src/devices/pool.js')).readPool,
     prepareJobForMaster: (await import('../../src/devices/claim.js')).prepareJobForMaster,

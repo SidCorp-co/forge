@@ -8,7 +8,7 @@ vi.mock('../store.js', () => ({
   findConnectionById: (...a: unknown[]) => findConnectionByIdMock(...(a as [])),
 }));
 
-const { googleAdapter } = await import('./adapter.js');
+const { googleAdapter, googleIntegration } = await import('./adapter.js');
 const { __resetGoogleTokenCache, googleAccessToken } = await import('./auth.js');
 const { SHEETS_READONLY_SCOPE } = await import('./scopes.js');
 
@@ -273,13 +273,20 @@ describe('the surfaces this provider does not have', () => {
   });
 
   it('declares no delivery log, no webhook and no env split', () => {
-    expect(googleAdapter.capabilities).toEqual({
+    // ISS-1071 — read off the declaration, not the methods object, and `injectsMcp` is gone: what
+    // replaced it is `agentPath`, which says HOW the agent reaches the provider rather than only
+    // whether a server is injected. Google is core-mediated — core holds the service-account key and
+    // performs the call, so no credential of its is ever rendered into a runner's config.
+    const caps = googleIntegration.capabilities;
+    expect(caps).toMatchObject({
       canDispatch: false,
       canReceiveWebhook: false,
-      injectsMcp: false,
       canDeploy: false,
       liveConfirmGate: false,
       hasDeliveryLog: false,
+      multiBinding: false,
     });
+    expect(caps.agentPath.kind).toBe('core-mediated');
+    expect(caps.agentPath).toMatchObject({ tools: ['forge_google_sheets'] });
   });
 });

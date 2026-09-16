@@ -11,7 +11,7 @@
  */
 
 import { z } from 'zod';
-import { releaseChannelFields } from '../release-channel-schema.js';
+import { RELEASE_CHANNEL_KEYS, releaseChannelFields } from '../release-channel-schema.js';
 import { parseServiceAccountKey } from './auth.js';
 
 // ISS-1036 — Google service account. The credential is the account's JSON key
@@ -66,3 +66,9 @@ export const googleSecretsSchema = z.object({
       }
     }),
 });
+
+// cm:edge contract -> packages/core/src/integrations/provider-schemas.ts — `defaultSpreadsheetId` is binding-tier because ONE service account is shared org-wide while the sheet it reads is the project's own; dropping it from this list moves the key to the connection and silently strips it from every PATCH (ISS-1036)
+export const GOOGLE_BINDING_CONFIG_KEYS = [
+  'defaultSpreadsheetId',
+  ...RELEASE_CHANNEL_KEYS,
+] as const;

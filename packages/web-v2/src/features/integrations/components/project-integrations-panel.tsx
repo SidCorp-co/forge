@@ -12,29 +12,30 @@ import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useIntegrationsStatus } from "../hooks";
 import { groupCardsByProvider, isProviderCard } from "../derive";
+import { providerIcon as registryIcon } from "../providers/registry";
 import type { DeployStage, StatusCard } from "../types";
 import { ConnectionDetailDrawer } from "./connection-detail-drawer";
 import { McpServersPanel } from "./mcp-servers-panel";
 import { StatusPill, scopeLabel } from "./status-pill";
 
-const PROVIDER_ICON: Record<string, IconName> = {
-  github: "github",
-  coolify: "server",
+// The status read model carries telemetry cards beside the integration ones — a runner pool, the
+// database, the agent. They are not providers and have no module; their icons live here.
+const TELEMETRY_CARD_ICON: Record<string, IconName> = {
   runners: "cpu",
   postgres: "archive",
   mcp: "command",
-  sentry: "shield",
-  rocketchat: "inbox",
   claude: "agent",
-  google: "rows",
 };
 
-function providerIcon(key: string): IconName {
-  return PROVIDER_ICON[key.split(":")[0] ?? key] ?? "link";
+function cardIcon(key: string): IconName {
+  const base = key.split(":")[0] ?? key;
+  return TELEMETRY_CARD_ICON[base] ?? registryIcon(base);
 }
 
+// cm:why keyed on the card's own `meta` and not on which provider it is: a repo link is a fact the
+// card carries or does not, and the provider test this replaced meant a second provider that ever
+// reported a remote URL would have had its link silently dropped.
 function externalRepoUrl(card: StatusCard): string | null {
-  if (card.key !== "github") return null;
   const remote = card.meta?.remoteUrl;
   if (typeof remote === "string" && /^https?:\/\//.test(remote)) {
     return remote.replace(/\.git$/, "");
@@ -46,10 +47,7 @@ function externalRepoUrl(card: StatusCard): string | null {
 function IntegrationCard({ card, onOpen }: { card: StatusCard; onOpen?: () => void }) {
   const lastSync = formatRelativeTime(card.lastSyncAt);
   const repoUrl = externalRepoUrl(card);
-  const transport =
-    card.key === "github" && typeof card.meta?.transport === "string"
-      ? (card.meta.transport as string)
-      : null;
+  const transport = typeof card.meta?.transport === "string" ? card.meta.transport : null;
   const clickable = Boolean(onOpen);
 
   return (
@@ -74,7 +72,7 @@ function IntegrationCard({ card, onOpen }: { card: StatusCard; onOpen?: () => vo
         >
           <div className="flex items-center justify-between gap-2">
             <span className="inline-flex items-center gap-2">
-              <Icon name={providerIcon(card.key)} size={18} className="text-muted" />
+              <Icon name={cardIcon(card.key)} size={18} className="text-muted" />
               <span className="fg-h3">{card.label}</span>
             </span>
             <StatusPill card={card} />
@@ -161,7 +159,7 @@ function GroupedIntegrationCard({
       <CardContent>
         <div className="flex min-h-[120px] flex-col gap-3">
           <span className="inline-flex items-center gap-2">
-            <Icon name={providerIcon(provider)} size={18} className="text-muted" />
+            <Icon name={cardIcon(provider)} size={18} className="text-muted" />
             <span className="fg-h3">{baseProviderLabel(cards[0])}</span>
           </span>
 
@@ -222,7 +220,13 @@ function GroupedIntegrationCard({
  * provider card to configure/test/rotate/disconnect in the drawer) + the Agent
  * MCP servers preview. Used by project settings → Integrations.
  */
-export function ProjectIntegrationsPanel({ projectId }: { projectId: string }) {
+export function ProjectIntegrationsPanel({
+  projectId,
+  canEdit = true,
+}: {
+  projectId: string;
+  canEdit?: boolean;
+}) {
   const status = useIntegrationsStatus(projectId);
   const [selectedCard, setSelectedCard] = useState<StatusCard | null>(null);
 
@@ -270,12 +274,13 @@ export function ProjectIntegrationsPanel({ projectId }: { projectId: string }) {
             )}
           </div>
 
-          <McpServersPanel projectId={projectId} />
+          <McpServersPanel projectId={projectId} canEdit={canEdit} />
 
           <ConnectionDetailDrawer
             projectId={projectId}
             card={selectedCard}
             onClose={() => setSelectedCard(null)}
+            canEdit={canEdit}
           />
         </>
       )}

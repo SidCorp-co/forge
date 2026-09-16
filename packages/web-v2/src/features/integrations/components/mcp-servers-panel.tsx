@@ -11,8 +11,10 @@ import { useState } from "react";
 import { Button, Card, CardContent, ErrorState, Icon, Skeleton } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
-import { useMcpPreview, useTestIntegration } from "../hooks";
-import type { IntegrationTestResult, McpServerPreviewEntry } from "../types";
+import { useIntegrationsList, useMcpPreview, useTestIntegration } from "../hooks";
+import { providerLabel } from "../providers/registry";
+import type { IntegrationSummary, IntegrationTestResult, McpServerPreviewEntry } from "../types";
+import { AgentAccessControl, GRANT_LABEL } from "./agent-access-control";
 import { Pill, scopeLabel } from "./status-pill";
 
 const REASON_META: Record<
@@ -34,15 +36,17 @@ const REASON_META: Record<
     icon: "alert",
   },
   shadowed: { label: "Shadowed", fg: "var(--fg-subtle)", bg: "var(--bg-sunken)", icon: "dot" },
-  // ISS-623 W3 — distinct from `no_credential`/health: this integration is
-  // connected and healthy, but no stage's `mcpServers` declares its sentinel,
-  // so it is not injected. Connection status does not gate injection.
-  not_declared: {
-    label: "Not enabled",
+  // cm:guard the hint points at the switch ON THIS ROW and must never again send the operator to
+  // another tab: its predecessor read "Add `<serverName>: true` to a stage's MCP servers", naming a
+  // map no screen exposed and a form that refused `true` because it is not a JSON object. That
+  // sentence is the defect ISS-1038 was filed on, and 6 of 9 MCP-capable bindings on the fleet sat
+  // connected and healthy behind it.
+  not_granted: {
+    label: "Not granted",
     fg: "var(--amberw-600)",
     bg: "var(--amberw-50)",
     icon: "alert",
-    hint: "Add `<serverName>: true` to a stage's MCP servers to inject this — connection health does not gate injection.",
+    hint: `Connected and credentialed, but no agent on this project may use it — nobody has granted it. Switch on "${GRANT_LABEL}" below to grant it; health does not gate the grant.`,
   },
 };
 
@@ -66,9 +70,14 @@ function VerifyResult({ result }: { result: IntegrationTestResult | { errorMessa
 function McpServerRow({
   entry,
   projectId,
+  binding,
+  canEdit,
 }: {
   entry: McpServerPreviewEntry;
   projectId: string;
+  /** The binding this row previews, absent for the synthetic not-configured row. */
+  binding: IntegrationSummary | undefined;
+  canEdit: boolean;
 }) {
   const test = useTestIntegration(projectId);
   const [result, setResult] = useState<IntegrationTestResult | { errorMessage: string } | null>(
@@ -107,12 +116,16 @@ function McpServerRow({
         </p>
       ) : (
         <p className="fg-body-sm text-subtle">
-          Configure the {entry.provider} integration below to inject its MCP server.
+          Configure the {providerLabel(entry.provider)} integration below to inject its MCP server.
         </p>
       )}
 
       {REASON_META[entry.reason].hint && (
         <p className="fg-body-sm text-[var(--amberw-600)]">{REASON_META[entry.reason].hint}</p>
+      )}
+
+      {binding && (
+        <AgentAccessControl projectId={projectId} binding={binding} canEdit={canEdit} />
       )}
 
       {entry.configured && (
@@ -140,8 +153,16 @@ function McpServerRow({
  * be injected into the next dispatched agent, the exact URL, and a Verify
  * action that runs the provider's real credential healthcheck.
  */
-export function McpServersPanel({ projectId }: { projectId: string }) {
+export function McpServersPanel({
+  projectId,
+  canEdit = true,
+}: {
+  projectId: string;
+  canEdit?: boolean;
+}) {
   const preview = useMcpPreview(projectId);
+  const bindings = useIntegrationsList(projectId);
+  const byBindingId = new Map((bindings.data?.items ?? []).map((b) => [b.id, b]));
 
   return (
     <Card>
@@ -150,7 +171,8 @@ export function McpServersPanel({ projectId }: { projectId: string }) {
         <p className="fg-body-sm mb-3 text-muted">
           MCP servers injected into every Claude agent dispatched for this project. URLs come from
           the same resolver that performs the injection; credentials are attached at dispatch time
-          and never shown here.
+          and never shown here. A connected integration reaches an agent only once it is granted,
+          on the row below.
         </p>
         {preview.isLoading ? (
           <div className="flex flex-col gap-2">
@@ -166,6 +188,8 @@ export function McpServersPanel({ projectId }: { projectId: string }) {
                 key={`${entry.provider}:${entry.bindingId ?? "none"}`}
                 entry={entry}
                 projectId={projectId}
+                binding={entry.bindingId ? byBindingId.get(entry.bindingId) : undefined}
+                canEdit={canEdit}
               />
             ))}
           </ul>

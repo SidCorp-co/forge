@@ -35,6 +35,7 @@ const listBindingsForProject = vi.fn();
 const listBindingsForConnection = vi.fn();
 const listConnectionsForOwner = vi.fn();
 const listActiveBindingsForProjectProvider = vi.fn();
+const listAgentGrantedBindings = vi.fn();
 const findDeliveryById = vi.fn();
 const enqueueCoolifyDispatch = vi.fn();
 
@@ -46,6 +47,9 @@ vi.mock('./queue.js', () => ({
   enqueueCoolifyDispatch: (job: unknown) => enqueueCoolifyDispatch(job),
 }));
 
+vi.mock('./agent-access-store.js', () => ({
+  listAgentGrantedBindings: (...a: unknown[]) => listAgentGrantedBindings(...(a as [])),
+}));
 vi.mock('./store.js', () => ({
   createConnection: (a: unknown) => createConnection(a),
   createBinding: (a: unknown) => createBinding(a),
@@ -84,6 +88,13 @@ const { integrationsRoutes, integrationConnectionsRoutes } = await import('./rou
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
 const { requestId } = await import('../middleware/request-id.js');
+
+// The registry is process-global and empty until something fills it. Reading it empty THROWS
+// (registry.ts:assertPopulated), so a test reaching any registry-backed path registers here rather
+// than inheriting a vocabulary from whichever test file happened to run first.
+const { registerAllIntegrations } = await import('./register-all.js');
+registerAllIntegrations();
+
 const { encryptJson } = await import('./vault.js');
 
 function buildApp() {
@@ -111,13 +122,15 @@ function mockOwnerMembership() {
 }
 
 /**
- * ISS-623 W3 — the mcp-preview endpoint loads `pipelineConfig` once (to gate
- * `willInject` on the ISS-581 sentinel opt-in). Stacks the `selectLimit`
- * queue with the project row; call AFTER `mockOwnerMembership()` and before
- * hitting the preview endpoint. Pass `{}` for "nothing declared".
+ * ISS-1071 — the mcp-preview endpoint no longer reads `pipelineConfig` at all, so there is no
+ * project row to stack. What gates `willInject` is the binding's own `agentAccess` grant, which the
+ * store answers through `listAgentGrantedBindings`. Stack THAT instead, with the bindings an agent
+ * on this project may actually use.
  */
-function mockPipelineConfigMcpServers(mcpServers: Record<string, unknown>) {
-  selectLimit.mockResolvedValueOnce([{ agentConfig: { pipelineConfig: { mcpServers } } }]);
+function mockGrantedBindings(byProvider: Record<string, unknown[]>) {
+  listAgentGrantedBindings.mockImplementation((_pid: string, provider: string) =>
+    Promise.resolve(byProvider[provider] ?? []),
+  );
 }
 
 function post(token: string, body: unknown) {
@@ -893,7 +906,9 @@ describe('GET /api/projects/:projectId/integrations/mcp-preview', () => {
     });
   }
 
-  function postmanPair(over: { bindingActive?: boolean; secretsEnc?: string | null } = {}) {
+  function postmanPair(
+    over: { bindingActive?: boolean; secretsEnc?: string | null; agentAccess?: string } = {},
+  ) {
     return {
       binding: {
         id: 'bind-pm',
@@ -904,6 +919,7 @@ describe('GET /api/projects/:projectId/integrations/mcp-preview', () => {
         config: {},
         integrationSecret: null,
         active: over.bindingActive ?? true,
+        agentAccess: over.agentAccess ?? 'all',
         createdAt: new Date(),
         updatedAt: new Date(),
       },
@@ -918,13 +934,9 @@ describe('GET /api/projects/:projectId/integrations/mcp-preview', () => {
   it('200 — injectable postman binding renders the resolver URL with a redacted header', async () => {
     const token = await signUserToken(USER_ID);
     mockOwnerMembership();
-    mockPipelineConfigMcpServers({ postman: true });
     const pair = postmanPair();
     listBindingsForProject.mockResolvedValueOnce([pair]);
-    // The resolver pick query — called once per MCP provider.
-    listActiveBindingsForProjectProvider.mockImplementation((_pid: string, provider: string) =>
-      Promise.resolve(provider === 'postman' ? [pair] : []),
-    );
+    mockGrantedBindings({ postman: [pair] });
 
     const res = await previewReq(token);
     expect(res.status).toBe(200);
@@ -955,9 +967,8 @@ describe('GET /api/projects/:projectId/integrations/mcp-preview', () => {
   it('200 — disabled binding reads disabled and never willInject', async () => {
     const token = await signUserToken(USER_ID);
     mockOwnerMembership();
-    mockPipelineConfigMcpServers({ postman: true });
     listBindingsForProject.mockResolvedValueOnce([postmanPair({ bindingActive: false })]);
-    listActiveBindingsForProjectProvider.mockResolvedValue([]);
+    mockGrantedBindings({});
 
     const res = await previewReq(token);
     expect(res.status).toBe(200);
@@ -972,12 +983,9 @@ describe('GET /api/projects/:projectId/integrations/mcp-preview', () => {
   it('200 — active binding without a stored credential reads no_credential', async () => {
     const token = await signUserToken(USER_ID);
     mockOwnerMembership();
-    mockPipelineConfigMcpServers({ postman: true });
     const pair = postmanPair({ secretsEnc: null });
     listBindingsForProject.mockResolvedValueOnce([pair]);
-    listActiveBindingsForProjectProvider.mockImplementation((_pid: string, provider: string) =>
-      Promise.resolve(provider === 'postman' ? [pair] : []),
-    );
+    mockGrantedBindings({ postman: [pair] });
 
     const res = await previewReq(token);
     const body = (await res.json()) as {
@@ -989,35 +997,33 @@ describe('GET /api/projects/:projectId/integrations/mcp-preview', () => {
     expect(pm?.headers).toBeNull();
   });
 
-  it('200 — active+credentialed binding with no declared sentinel reads not_declared, not ok (ISS-623 W3)', async () => {
+  // ISS-1038 — THE defect, at the surface that reported it wrongly. A binding could be active,
+  // credentialed and winning, and the panel still said it would inject, because the thing actually
+  // gating it was a sentinel on a different settings tab that this preview read separately. The
+  // gate is now the binding's own grant, and an ungranted binding is named `not_granted` — a
+  // sentence that points at the switch on the object the operator is already looking at.
+  it('200 — active+credentialed binding nobody granted reads not_granted, not ok (ISS-1038)', async () => {
     const token = await signUserToken(USER_ID);
     mockOwnerMembership();
-    mockPipelineConfigMcpServers({}); // nothing declared
-    const pair = postmanPair();
+    const pair = postmanPair({ agentAccess: 'none' });
     listBindingsForProject.mockResolvedValueOnce([pair]);
-    listActiveBindingsForProjectProvider.mockImplementation((_pid: string, provider: string) =>
-      Promise.resolve(provider === 'postman' ? [pair] : []),
-    );
-
+    mockGrantedBindings({}); // the grant query returns nothing, because nothing is granted
     const res = await previewReq(token);
     const body = (await res.json()) as {
       servers: { provider: string; willInject: boolean; reason: string; headers: unknown }[];
     };
     const pm = body.servers.find((s) => s.provider === 'postman');
     expect(pm?.willInject).toBe(false);
-    expect(pm?.reason).toBe('not_declared');
+    expect(pm?.reason).toBe('not_granted');
     expect(pm?.headers).toBeNull();
   });
 
-  it('200 — declaring the sentinel flips an otherwise-winning binding back to ok (ISS-623 W3)', async () => {
+  it('200 — granting the binding flips that same binding to ok (ISS-1038)', async () => {
     const token = await signUserToken(USER_ID);
     mockOwnerMembership();
-    mockPipelineConfigMcpServers({ postman: true });
-    const pair = postmanPair();
+    const pair = postmanPair({ agentAccess: 'all' });
     listBindingsForProject.mockResolvedValueOnce([pair]);
-    listActiveBindingsForProjectProvider.mockImplementation((_pid: string, provider: string) =>
-      Promise.resolve(provider === 'postman' ? [pair] : []),
-    );
+    mockGrantedBindings({ postman: [pair] });
 
     const res = await previewReq(token);
     const body = (await res.json()) as {
@@ -1063,6 +1069,7 @@ function makeEpodsystemBinding(label: string, active = true) {
     integrationSecret: null,
     label,
     active,
+    agentAccess: 'all',
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -1175,8 +1182,8 @@ describe('GET /api/projects/:projectId/integrations/mcp-preview — epodsystem m
   async function previewEpod(pairs: unknown[]) {
     const token = await signUserToken(USER_ID);
     mockOwnerMembership();
-    mockPipelineConfigMcpServers({ epodsystem: true });
     listBindingsForProject.mockResolvedValueOnce(pairs);
+    mockGrantedBindings({ epodsystem: pairs });
     return buildApp().request(`/api/projects/${PROJECT_ID}/integrations/mcp-preview`, {
       method: 'GET',
       headers: { authorization: `Bearer ${token}` },

@@ -15,17 +15,22 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
-import { loadOrgRole, orgRoleAtLeast } from '../lib/authz.js';
+import { effectiveProjectRole, loadOrgRole, orgRoleAtLeast } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import {
+  AGENT_ACCESS_CLOSED,
+  AGENT_ACCESS_VALUES,
+  type AgentAccess,
+  agentAccessTier,
+  noAgentPathMessage,
+} from './agent-access.js';
 import {
   cannotDeployMessage,
   checkRoleStagesPairing,
   roleSchema,
   stagesSchema,
 } from './binding-shape.js';
-import { githubInboundSecret, syncRepoUrlFromGitHubBinding } from './github/bind-effects.js';
-import type { GitHubConfig } from './github/types.js';
 import { raceWithTimeout } from './probe.js';
 import {
   applySecretsPatch,
@@ -35,7 +40,7 @@ import {
   connectionUpdateSchema,
   splitProviderConfig,
 } from './provider-schemas.js';
-import { getAdapter } from './registry.js';
+import { getAdapter, getIntegration, providerCanDeploy } from './registry.js';
 import {
   alreadyExists,
   assertAdmin,
@@ -47,7 +52,7 @@ import {
   defaultConnectionDisplayName,
   forbidden,
   notFound,
-  reloadRocketChatIfNeeded,
+  notifyConnectionChanged,
   summarizeBinding,
   summarizeConnection,
   summarizeConnectionWithUsage,
@@ -65,7 +70,7 @@ import {
   softDeleteConnection,
   updateConnection,
 } from './store.js';
-import { type IntegrationProvider, providerCanDeploy } from './types.js';
+import type { IntegrationProvider } from './types.js';
 
 async function loadManageableConnection(
   id: string,
@@ -142,7 +147,7 @@ integrationConnectionsRoutes.post(
       config: body.config,
       secrets: body.secrets,
     });
-    reloadRocketChatIfNeeded(body.provider, connection.id);
+    notifyConnectionChanged(body.provider, connection.id);
     return c.json({ connection: summarizeConnection(connection) }, 201);
   },
 );
@@ -160,6 +165,10 @@ const bindExistingSchema = z
     // can target a different Coolify resource per project. Connection-tier keys
     // are validated then dropped — a bind must not shadow the shared baseUrl.
     config: z.record(z.string(), z.unknown()).optional(),
+    // ISS-1071 — the third door onto `integration_bindings`, so it takes the same field. Sharing an
+    // existing credential into a project is still a connect, and whether agents there may use it is
+    // still a property of the binding it creates rather than of a map somewhere else.
+    agentAccess: z.enum(AGENT_ACCESS_VALUES).optional(),
   })
   // cm:guard the SAME three refusals the create path makes, from the same function — this is the
   // second door onto `integration_bindings`, and a caller who reaches a wrong role/stages pair
@@ -215,9 +224,24 @@ integrationConnectionsRoutes.post(
       bindingConfig = splitProviderConfig(provider, parsed.data as Record<string, unknown>).binding;
     }
 
-    // cm:why minted per binding, except where the provider signs with a secret of its own — see `githubInboundSecret`
+    // Same tier rule as the two project-side doors (ISS-1071 rule 5): a `direct-mcp` grant puts the
+    // credential on a runner box, so it takes the org-admin escalation; a `core-mediated` grant does
+    // not; a provider with no agent path is refused by name rather than storing an inert value.
+    const bindingAgentAccess: AgentAccess = body.agentAccess ?? AGENT_ACCESS_CLOSED;
+    if (bindingAgentAccess !== AGENT_ACCESS_CLOSED) {
+      const tier = agentAccessTier(getIntegration(provider));
+      if (tier === 'refused') throw badRequest(noAgentPathMessage(provider));
+      if (tier === 'org-admin') {
+        const access = await effectiveProjectRole(userId, body.projectId);
+        if (!orgRoleAtLeast(access?.orgRole ?? null, 'admin')) throw forbidden();
+      }
+    }
+
+    // cm:why minted per binding, except where the provider DECLARES that it signs with a secret of its
+    // own (`adapter.inboundSecret`). GitHub does: it signs every delivery with the secret created with
+    // the App, so a binding minting its own fails every signature check while reading as configured.
     const integrationSecret =
-      (provider === 'github' ? githubInboundSecret(connection) : null) ??
+      getAdapter(provider)?.inboundSecret?.(connection) ??
       `whsec_${randomBytes(24).toString('hex')}`;
     let binding: Awaited<ReturnType<typeof createBinding>>;
     try {
@@ -229,6 +253,7 @@ integrationConnectionsRoutes.post(
         ...(body.role === 'deploy' && body.stages ? { stages: body.stages } : {}),
         config: bindingConfig,
         integrationSecret,
+        agentAccess: bindingAgentAccess,
       });
     } catch (err) {
       // No connection rollback here — we did not create one (contrast the create
@@ -236,21 +261,21 @@ integrationConnectionsRoutes.post(
       if (isUniqueViolation(err)) throw alreadyExists();
       throw err;
     }
-    const repoUrl =
-      provider === 'github'
-        ? await syncRepoUrlFromGitHubBinding({
-            projectId: body.projectId,
-            role: body.role,
-            config: bindingConfig as GitHubConfig,
-          })
-        : { kind: 'unchanged' as const };
-    reloadRocketChatIfNeeded(provider, id);
+    // Whatever this provider declares it does on bind, and whatever it says the response should
+    // carry about it. A provider declaring nothing adds nothing — there is no default to guess at.
+    const bindEffects =
+      (await getAdapter(provider)?.onBindingCreated?.({
+        projectId: body.projectId,
+        role: body.role,
+        config: bindingConfig as Record<string, unknown>,
+      })) ?? {};
+    notifyConnectionChanged(provider, id);
     // Re-probe on bind so the target project starts from current health rather
     // than whatever the connection last recorded (ISS-429).
     return c.json(
       {
         ...(await buildCreatedBindingResponse({ binding, connection }, integrationSecret)),
-        repoUrl,
+        ...bindEffects,
       },
       201,
     );
@@ -342,7 +367,7 @@ integrationConnectionsRoutes.patch(
 
     const updated = await updateConnection(id, connPatch);
     if (!updated) throw notFound('connection');
-    reloadRocketChatIfNeeded(existing.provider, id);
+    notifyConnectionChanged(existing.provider, id);
     return c.json({ connection: summarizeConnection(updated) });
   },
 );
@@ -355,6 +380,6 @@ integrationConnectionsRoutes.delete('/:id', async (c) => {
   // only soft-delete here (active=false) so existing bindings stop resolving via
   // findActiveBinding's `connection.active` filter without dropping audit rows.
   await softDeleteConnection(id);
-  reloadRocketChatIfNeeded(existing.provider, id);
+  notifyConnectionChanged(existing.provider, id);
   return c.json({ ok: true });
 });

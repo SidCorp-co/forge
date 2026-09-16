@@ -132,6 +132,21 @@ jobs:
       # never re-ran its own gate. Here it is always-on, and fetch-depth: 0 above
       # is what lets the drain half resolve a merge-base (ISS-833).
       - run: node scripts/check-lint-budget.mjs --all
+      # Provider literals (ISS-1071): an integration provider is named where a provider is
+      # described — its own directory, the registry, the union, the schema vocabulary, the
+      # contracts enums, the two login-identity surfaces — and nowhere else. No type can hold
+      # this: `IntegrationProvider` makes `'coolify'` legal everywhere the union is in scope,
+      # which is what a union is for, so the rule is about LOCATION and only a scan can measure
+      # it. Node and nothing else, but it lives here rather than in lang-check because the
+      # allowed locations are read out of .forge/conformance.json, which this job already gates.
+      - run: node scripts/check-provider-literals.mjs --all
+      # Integration declarations (ISS-1071): walks the LIVE registry and fails naming a provider
+      # whose declaration is missing a field the generic paths read. It spawns `tsx` on a probe,
+      # so it needs node_modules and belongs in this job rather than in lang-check. The rule with
+      # teeth is the `justification` on a `direct-mcp` arm: that arm renders a project's
+      # credential into a runner box's MCP config and puts Forge outside the call path, and the
+      # field is the only place that decision is written down.
+      - run: node scripts/check-integration-declarations.mjs --all
       # Conformance levels: runs each axis's checker and fails when what it
       # actually does disagrees with the level .forge/conformance.json claims
       # for it. Every gate this repo lost was lost by staying documented while

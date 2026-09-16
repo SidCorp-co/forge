@@ -154,6 +154,34 @@ const CHECKS = [
     scanned: /^size-budget: (\d+) file/m,
     needs: ['deps'],
   },
+  // cm:guard ISS-1071 — `IntegrationProvider` makes `'coolify'` legal EVERYWHERE the union is in
+  // scope, which is what a union is for, so no type can hold the rule that a provider is named only
+  // where a provider is described. The rule is about location, and a scan is the only thing that
+  // can measure it. What the scan matches and the two bounds it carries are stated at the top of
+  // scripts/lib/provider-literals.mjs; `agent` is out of the scanned set by a declared decision the
+  // checker prints on every run, because that word is also the actor vocabulary.
+  {
+    axis: 'form',
+    label: 'provider-literals',
+    // cm:edge naming -> scripts/check-provider-literals.mjs — parses that script's success line
+    cmd: ['node', 'scripts/check-provider-literals.mjs', '--all'],
+    scanned: /^provider-literals: (\d+) file\(s\) scanned/m,
+    unit: 'files',
+  },
+  // cm:guard this one RUNS the registry rather than reading its source, and that is the whole
+  // point: a declaration can be spread from a partial or widened on its way in, and `tsc` signs off
+  // on both. `needs: deps` because it spawns tsx, which is not on disk in a fresh worktree — and
+  // without the preflight the report would read `register-all.ts could not be imported`, a sentence
+  // about the registry produced entirely by an absent binary.
+  {
+    axis: 'form',
+    label: 'integration-declarations',
+    // cm:edge naming -> scripts/check-integration-declarations.mjs — parses that script's success line
+    cmd: ['node', 'scripts/check-integration-declarations.mjs', '--all'],
+    scanned: /^integration-declarations: (\d+) provider\(s\) declared/m,
+    needs: ['deps'],
+    unit: 'providers',
+  },
   // cm:guard the checkers in `scripts/` hold every other axis and were themselves held by nothing — no lint, no typecheck, because `turbo run lint` only fans out to workspace packages and this directory is in none. Measured 2026-08-25 the day it got a config: 21 diagnostics, one of them a real `useIterableCallbackReturn`. Fixed rather than frozen, so this check has no baseline and none is wanted.
   {
     axis: 'form',
@@ -226,6 +254,8 @@ const CI_COVERAGE = {
   'node scripts/check-test-signal.mjs --all': 'verify',
   'node scripts/check-size-budget.mjs --all': 'verify',
   'node scripts/check-lint-budget.mjs --all': 'verify',
+  'node scripts/check-provider-literals.mjs --all': 'verify',
+  'node scripts/check-integration-declarations.mjs --all': 'verify',
   'node scripts/conformance-status.mjs': 'verify',
   'node scripts/conformance-audit.mjs': 'verify',
   'node scripts/verify.mjs --ci-parity': 'verify, as its own final check',

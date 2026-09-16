@@ -12,33 +12,35 @@
  * until it does.
  */
 
+import type { BindingRole } from '../../db/schema.js';
 import { handleGitHubEvent } from '../../webhooks/github-adapter.js';
 import { verifyHmacSignature } from '../../webhooks/hmac.js';
 import { recordDelivery } from '../deliveries.js';
-import { registerAdapter } from '../registry.js';
-import { updateConnection } from '../store.js';
-import type {
-  AdapterContext,
-  HealthCheckResult,
-  InboundDispatchInput,
-  InboundDispatchResult,
-  IntegrationAdapter,
+import { type IntegrationConnectionRow, updateConnection } from '../store.js';
+import {
+  type AdapterContext,
+  declareIntegration,
+  type HealthCheckResult,
+  type InboundDispatchInput,
+  type InboundDispatchResult,
+  type IntegrationAdapterMethods,
 } from '../types.js';
 import { GitHubAuthError, installationToken } from './app-auth.js';
+import { githubInboundSecret, syncRepoUrlFromGitHubBinding } from './bind-effects.js';
+import { GITHUB_BINDING_CONFIG_KEYS, githubConfigBase, githubSecretsSchema } from './schemas.js';
 import { GITHUB_API_BASE, type GitHubConfig, type GitHubSecrets } from './types.js';
 
 const PROBE_TIMEOUT_MS = 8000;
 
-export const githubAdapter: IntegrationAdapter<GitHubConfig, GitHubSecrets> = {
-  provider: 'github',
-  capabilities: {
-    canDispatch: false,
-    canReceiveWebhook: true,
-    injectsMcp: false,
-    canDeploy: false,
-    liveConfirmGate: false,
-    hasDeliveryLog: true,
-  },
+const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecrets> = {
+  inboundSecret: (connection) => githubInboundSecret(connection as IntegrationConnectionRow),
+  onBindingCreated: async ({ projectId, role, config }) => ({
+    repoUrl: await syncRepoUrlFromGitHubBinding({
+      projectId,
+      role: role as BindingRole,
+      config: config as GitHubConfig,
+    }),
+  }),
 
   // cm:guard 403 is NOT `needs_reauth` — GitHub answers 401 for a credential it does not recognise and 403 for one it does recognise and refuses (permission not granted to the App, SSO not authorised). Collapsing them tells the operator to reconnect when what they must do is grant a permission, and reconnecting reproduces the state exactly. This is the mislabel ISS-924 files against the coolify adapter; do not reproduce it here.
   async healthcheck(ctx: AdapterContext<GitHubConfig, GitHubSecrets>): Promise<HealthCheckResult> {
@@ -159,6 +161,38 @@ export const githubAdapter: IntegrationAdapter<GitHubConfig, GitHubSecrets> = {
   },
 };
 
-export function registerGitHubAdapter(): void {
-  registerAdapter(githubAdapter as unknown as IntegrationAdapter);
-}
+/**
+ * GitHub's declaration. No agent path: the agent works the repository with the runner box's own git
+ * credentials, never through Forge, so there is nothing here a grant could open.
+ */
+export const githubIntegration = declareIntegration<GitHubConfig, GitHubSecrets>({
+  provider: 'github',
+  capabilities: {
+    canDispatch: false,
+    canReceiveWebhook: true,
+    canDeploy: false,
+    liveConfirmGate: false,
+    hasDeliveryLog: true,
+    multiBinding: false,
+    webhookHeader: 'x-github-event',
+    structuredRollback: false,
+    agentPath: { kind: 'none' },
+  },
+  schemas: {
+    connectionConfig: githubConfigBase,
+    bindingConfig: githubConfigBase,
+    patchConfig: githubConfigBase.partial(),
+    secrets: githubSecretsSchema,
+    patchSecrets: githubSecretsSchema.partial(),
+    primaryCredentialField: 'privateKey',
+    previousCredentialField: 'previousPrivateKey',
+    independentSecretFields: [],
+    bindingConfigKeys: GITHUB_BINDING_CONFIG_KEYS,
+  },
+  usage: null,
+  // cm:why null rather than a card of its own — the GitHub card `status-service.ts` builds comes from the PROJECT'S repository and its devices' push credentials, which is a different subject from a binding's health. A second github card keyed off a binding would collide with it by key.
+  presentation: null,
+  adapter: githubAdapterMethods,
+});
+
+export const githubAdapter = githubAdapterMethods;

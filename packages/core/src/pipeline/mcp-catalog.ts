@@ -10,15 +10,13 @@
  * `pipelineConfig.mcpServers` may use a SHORTHAND: `name: true` enables the
  * catalog default for `name`.
  *
- * Catalog entries MUST be secret-free — anything requiring a token/API key is
- * out of scope here (those flow through the integration resolvers, e.g.
- * `applyPostmanMcpServers`, which mint fresh credentials server-side per
- * dispatch). The catalog is just static, copy-pasteable specs.
+ * Catalog entries MUST be secret-free, and since ISS-1071 that is the whole of this file's scope.
+ * An integration reaches an agent because its BINDING grants it — `integration_bindings.agent_access`,
+ * resolved by `integrations/mcp-resolver.ts` — and no name in this map, and no name in a project's
+ * `pipelineConfig.mcpServers`, has anything to do with it. This file used to carry the sentinel
+ * vocabulary those resolvers read; the write path now refuses an integration name here by name.
  *
- * Extension point: add a new secret-free server by adding one row to
- * `MCP_CATALOG`. `playwright` is the only required entry today; `sentry` and
- * others can follow the same pattern (note: sentry's hosted MCP needs an auth
- * token, so it is intentionally NOT a catalog default).
+ * Extension point: add a new secret-free server by adding one row to `MCP_CATALOG`.
  */
 
 import { logger } from '../logger.js';
@@ -67,34 +65,19 @@ export const MCP_CATALOG: Record<string, Record<string, unknown>> = {
 export const MCP_CATALOG_NAMES = Object.keys(MCP_CATALOG);
 
 /**
- * Integration server names resolved to secret-bearing specs by the dispatcher
- * integration resolvers (not in the catalog — they require tokens/API keys).
- * A stage opts in by setting `name: true` in its `mcpServers` config; the
- * resolver replaces the sentinel with the real spec at dispatch time.
+ * True when `name: true` resolves to a catalog spec at dispatch time.
+ *
+ * Used to validate `mcpServers` entries on the WRITE path (ISS-623 W1): a `name: true` for a name
+ * that fails this check is a typo, not a project choice, and `expandMcpServers` drops it with only
+ * a `logger.warn`, so the write door refuses it up front instead.
  */
-export const INTEGRATION_SERVER_NAMES = ['postman', 'epodsystem', 'sentry'] as const;
-
-/**
- * Returns true when the server name is an integration that is resolved at
- * dispatch time (not a catalog shorthand). Covers the bare `epodsystem` name
- * AND labeled variants like `epodsystem_store_a` (ISS-558).
- */
-export function isIntegrationSentinelName(name: string): boolean {
-  if ((INTEGRATION_SERVER_NAMES as readonly string[]).includes(name)) return true;
-  if (name.startsWith('epodsystem_')) return true;
-  return false;
-}
-
-/**
- * True when `name` resolves to something at dispatch time — a catalog
- * shorthand or an integration sentinel (bare or `epodsystem_<label>`). Used
- * to validate `mcpServers` entries at config-save time (ISS-623 W1): a
- * `name: true` sentinel for a name that fails this check is a typo, not a
- * project choice, and is silently dropped by `expandMcpServers` with only a
- * `logger.warn` — this lets the schema reject it up front instead.
- */
+// cm:guard the check that reads this lives on the WRITE schema and must never move back onto
+// `pipelineConfigSchema` — four control-plane readers `safeParse` that schema and take a silent
+// branch on failure (`devices/admissible.ts`, `pipeline/autonomous-project.ts`,
+// `pipeline/orchestrator.ts`, `pipeline/pipeline-config-service.ts`), so a name check there stops a
+// project dispatching with nothing reporting it. That is the ISS-807 shape (ISS-1071 rule 7).
 export function isKnownMcpServerName(name: string): boolean {
-  return (MCP_CATALOG_NAMES as readonly string[]).includes(name) || isIntegrationSentinelName(name);
+  return (MCP_CATALOG_NAMES as readonly string[]).includes(name);
 }
 
 /**
@@ -131,18 +114,16 @@ export function collectDeclaredMcpNames(pipelineConfig: {
  * Expand a project's shorthand `mcpServers` map into full specs.
  *
  * Per-entry rules:
- *   - value `true` for integration name → preserved as `true` sentinel so the
- *                               dispatcher's integration resolver can opt-in.
- *   - value `true` for catalog name     → the catalog spec for that name.
- *   - value `true` for unknown name     → skip + warn (neither catalog nor integration).
- *   - value object (non-null) → used verbatim (a raw custom spec; stdio
- *                               command/args/env or http url/headers).
- *   - value `false` / `null`  → omitted (explicit opt-out).
+ *   - value `true` for catalog name → the catalog spec for that name.
+ *   - value `true` for unknown name → skip + warn.
+ *   - value object (non-null) → used verbatim (a raw custom spec; stdio command/args/env or
+ *                               http url/headers).
+ *   - value `false` / `null`  → omitted here, and recorded by `applyStageFalseOptOuts` where it
+ *                               came from a stage, because an omission cannot override.
  *   - anything else           → skipped + warned (malformed entry).
  *
- * Pure function — never mutates the input, returns a fresh object. Used as the
- * BASE of the dispatch mcpServers merge (per-state overrides, then integration
- * servers, layer on top).
+ * Pure function — never mutates the input, returns a fresh object. Used as the BASE of the dispatch
+ * mcpServers merge, which the granted integration servers then layer on top of.
  */
 export function expandMcpServers(
   map: Record<string, unknown> | null | undefined,
@@ -152,12 +133,6 @@ export function expandMcpServers(
 
   for (const [name, value] of Object.entries(map)) {
     if (value === true) {
-      // Integration sentinel: preserve `true` so the dispatcher resolver
-      // can opt-in this stage. Do NOT expand to a catalog spec (they have none).
-      if (isIntegrationSentinelName(name)) {
-        out[name] = true;
-        continue;
-      }
       const spec = MCP_CATALOG[name];
       if (!spec) {
         logger.warn(
@@ -187,5 +162,34 @@ export function expandMcpServers(
     );
   }
 
+  return out;
+}
+
+/**
+ * Remove from a merged map every name a STAGE set to `false`.
+ *
+ * ISS-1038's defect, carried into this change because it survives it. `expandMcpServers` omits a
+ * `false` entry rather than recording it, so the stage map that reaches the merge no longer holds
+ * the name at all — and a stage that set `playwright: false` lost to a project-default
+ * `playwright: true` and received the server anyway. A control an operator can set that changes
+ * nothing is a silent substitution, so the opt-out is applied AFTER the merge, from the RAW stage
+ * map, where the `false` is still visible.
+ *
+ * The price: a project relying on an ignored `false` stops receiving that server. That is the fix,
+ * and it is the reason this is stated rather than quietly landed.
+ */
+// cm:guard reads the RAW stage map, never the expanded one — expansion is what loses the `false`,
+// so calling this with `expandMcpServers(stage)` would make it a no-op that still type-checks.
+export function applyStageFalseOptOuts(
+  merged: Record<string, unknown>,
+  rawStageMap: Record<string, unknown> | null | undefined,
+): Record<string, unknown> {
+  if (!rawStageMap || typeof rawStageMap !== 'object') return merged;
+  const optedOut = Object.entries(rawStageMap)
+    .filter(([, value]) => value === false || value === null)
+    .map(([name]) => name);
+  if (optedOut.length === 0) return merged;
+  const out: Record<string, unknown> = { ...merged };
+  for (const name of optedOut) delete out[name];
   return out;
 }

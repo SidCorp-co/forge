@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
-import { getAdapter } from '../integrations/registry.js';
+import { getAdapter, listIntegrations } from '../integrations/registry.js';
 import {
   buildContextFromBinding,
   listActiveBindingsForProjectProvider,
@@ -22,11 +22,20 @@ const unauthorized = (code: string) =>
 const notFound = () =>
   new HTTPException(404, { message: 'project not found', cause: { code: 'NOT_FOUND' } });
 
-// Header → adapter provider lookup. Order matters only when a request
-// carries multiple provider headers — first match wins.
-const PROVIDER_HEADER_MAP: Array<{ header: string; provider: IntegrationProvider }> = [
-  { header: 'x-github-event', provider: 'github' },
-];
+/**
+ * Header → provider lookup, DERIVED from the declarations rather than listed here.
+ *
+ * Order matters only when a request carries several provider headers — first match wins, which is
+ * registry order. Until ISS-1071 this was a literal array in this file, and a provider that declared
+ * a webhook without also being added to it was routed nowhere: the delivery answered 404 with the
+ * integration reporting healthy, and nothing in the array's neighbourhood said a second edit was
+ * owed.
+ */
+function providerHeaderMap(): Array<{ header: string; provider: IntegrationProvider }> {
+  return listIntegrations()
+    .filter((d) => d.capabilities.canReceiveWebhook && d.capabilities.webhookHeader)
+    .map((d) => ({ header: d.capabilities.webhookHeader as string, provider: d.provider }));
+}
 
 export const webhookInboundRoutes = new Hono();
 
@@ -45,7 +54,7 @@ webhookInboundRoutes.post('/in/:slug', async (c) => {
   if (!project) throw notFound();
 
   // cm:guard a provider header claims the request for its adapter and the generic path below never sees it — so registering an adapter is what MOVES a provider off `projects.webhookSecret` onto the binding's own `integrationSecret`. Adding a header here without an adapter turns every one of that provider's deliveries into ADAPTER_NOT_REGISTERED rather than falling through.
-  for (const map of PROVIDER_HEADER_MAP) {
+  for (const map of providerHeaderMap()) {
     if (!c.req.header(map.header)) continue;
     const adapter = getAdapter(map.provider);
     if (!adapter) throw badRequest({ provider: map.provider }, 'ADAPTER_NOT_REGISTERED');

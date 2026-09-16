@@ -1,9 +1,23 @@
 import { describe, expect, it, vi } from 'vitest';
 
+vi.mock('../config/env.js', () => ({
+  env: {
+    JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef',
+    NODE_ENV: 'test',
+    DATABASE_URL: 'postgres://x/y',
+    DEVICE_TOKEN_PEPPER: 'pepper',
+  },
+}));
 vi.mock('../db/client.js', () => ({ db: {} }));
 vi.mock('../ws/server.js', () => ({ roomManager: { broadcast: vi.fn() } }));
 
 const { summarizeBinding } = await import('./route-helpers.js');
+
+// `summarizeBinding` now projects `agentPathKind` off the provider's declaration (ISS-1071), so the
+// registry has to hold one. Reading it empty throws rather than reporting every provider as having
+// no agent path, which is the answer that would have made these assertions pass while lying.
+const { registerAllIntegrations } = await import('./register-all.js');
+registerAllIntegrations();
 
 function pair(bindingActive: boolean, connectionActive: boolean) {
   return {

@@ -1,22 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, lazy, useMemo, useState } from "react";
 import { ErrorState, SegmentedControl, Skeleton, SlideOver, Tabs } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useProjectsIncludingArchived } from "@/features/projects/hooks";
 import { useConnectionBindings, useConnections, useIntegrationsList } from "../hooks";
 import { cardProvider, getCapabilities } from "../derive";
-import type { DrillableProvider } from "../derive";
+import { PROVIDER_MODULES, providerLabel } from "../providers/registry";
 import type { BindingSummary, DeployStage, StatusCard } from "../types";
-import { CoolifySection } from "./coolify-section";
+import { AgentAccessControl } from "./agent-access-control";
 import { DeliveryLogViewer } from "./delivery-log-viewer";
-import { EpodsystemSection } from "./epodsystem-section";
-import { GitHubSection } from "./github-section";
-import { GoogleSection } from "./google-section";
-import { PostmanSection } from "./postman-section";
-import { RocketchatSection } from "./rocketchat-section";
-import { SentrySection } from "./sentry-section";
-import { PROVIDER_LABEL, STAGE_OPTIONS, StatusPill, scopeLabel } from "./status-pill";
+import { STAGE_OPTIONS, StatusPill, scopeLabel } from "./status-pill";
 
 /** Adaptive connection detail (ISS-402). Opened from a directory provider card;
  *  renders the provider's existing config+actions section (Test / Rotate /
@@ -30,14 +24,28 @@ import { PROVIDER_LABEL, STAGE_OPTIONS, StatusPill, scopeLabel } from "./status-
  *  (the "Projects using this connection" payoff of the connection-sharing
  *  cutover). */
 
-function ProviderSection({ provider, projectId }: { provider: DrillableProvider; projectId: string }) {
-  if (provider === "coolify") return <CoolifySection projectId={projectId} />;
-  if (provider === "postman") return <PostmanSection projectId={projectId} />;
-  if (provider === "sentry") return <SentrySection projectId={projectId} />;
-  if (provider === "rocketchat") return <RocketchatSection projectId={projectId} />;
-  if (provider === "github") return <GitHubSection projectId={projectId} />;
-  if (provider === "google") return <GoogleSection projectId={projectId} />;
-  return <EpodsystemSection projectId={projectId} />;
+// cm:guard built ONCE at module scope: `lazy()` returns a new component type on every call, and
+// one rebuilt inside a render remounts the section — losing whatever the operator had typed into it.
+const SECTIONS = new Map(
+  PROVIDER_MODULES.flatMap((m) => (m.section ? [[m.provider, lazy(m.section)] as const] : [])),
+);
+
+// A provider with no section is not a provider whose section is empty — it is one this screen has
+// nothing to configure for, and saying so beats rendering a blank pane under its name.
+function ProviderSection({ provider, projectId }: { provider: string; projectId: string }) {
+  const Section = SECTIONS.get(provider);
+  if (!Section) {
+    return (
+      <p className="fg-body-sm rounded-md border border-line bg-surface px-3 py-2 text-muted">
+        {providerLabel(provider)} has nothing to configure here.
+      </p>
+    );
+  }
+  return (
+    <Suspense fallback={<Skeleton className="h-40 w-full" />}>
+      <Section projectId={projectId} />
+    </Suspense>
+  );
 }
 
 /** Resolve the binding (and therefore the owning connection) the drawer is
@@ -46,7 +54,7 @@ function ProviderSection({ provider, projectId }: { provider: DrillableProvider;
  *  per project covers the provider. */
 function useBindingForCard(
   projectId: string,
-  provider: DrillableProvider,
+  provider: string,
   stageHint: DeployStage | null,
 ): BindingSummary | undefined {
   const list = useIntegrationsList(projectId);
@@ -163,7 +171,7 @@ function DeliveryLogPane({
   projectId,
   canDeploy,
 }: {
-  provider: DrillableProvider;
+  provider: string;
   projectId: string;
   canDeploy: boolean;
 }) {
@@ -189,15 +197,22 @@ function ConfigPane({
   provider,
   projectId,
   stageFromCardKey,
+  canEdit,
 }: {
-  provider: DrillableProvider;
+  provider: string;
   projectId: string;
   stageFromCardKey: DeployStage | null;
+  canEdit: boolean;
 }) {
   const binding = useBindingForCard(projectId, provider, stageFromCardKey);
   return (
     <>
       <ProviderSection provider={provider} projectId={projectId} />
+      {binding && (
+        <section className="mt-4">
+          <AgentAccessControl projectId={projectId} binding={binding} canEdit={canEdit} />
+        </section>
+      )}
       {binding?.connectionId && (
         <BindingsSection
           connectionId={binding.connectionId}
@@ -213,12 +228,14 @@ export function ConnectionDetailDrawer({
   projectId,
   card,
   onClose,
+  canEdit = true,
 }: {
   projectId: string;
   card: StatusCard | null;
   onClose: () => void;
+  canEdit?: boolean;
 }) {
-  const provider = card ? (cardProvider(card.key) as DrillableProvider) : null;
+  const provider = card ? cardProvider(card.key) : null;
   const caps = getCapabilities(card);
   const [tab, setTab] = useState<"config" | "deliveries">("config");
 
@@ -234,7 +251,7 @@ export function ConnectionDetailDrawer({
 
   const title = (
     <span className="flex items-center gap-2.5">
-      <span>{PROVIDER_LABEL[provider] ?? card.label}</span>
+      <span>{providerLabel(provider)}</span>
       <StatusPill card={card} />
     </span>
   );
@@ -257,6 +274,7 @@ export function ConnectionDetailDrawer({
                 provider={provider}
                 projectId={projectId}
                 stageFromCardKey={stageFromCardKey}
+                canEdit={canEdit}
               />
             ) : (
               <DeliveryLogPane
@@ -267,7 +285,12 @@ export function ConnectionDetailDrawer({
             )}
           </>
         ) : (
-          <ConfigPane provider={provider} projectId={projectId} stageFromCardKey={stageFromCardKey} />
+          <ConfigPane
+            provider={provider}
+            projectId={projectId}
+            stageFromCardKey={stageFromCardKey}
+            canEdit={canEdit}
+          />
         )}
       </div>
     </SlideOver>

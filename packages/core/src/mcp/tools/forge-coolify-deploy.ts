@@ -20,6 +20,7 @@ import { z } from 'zod';
 import { CoolifyApiError } from '../../integrations/coolify/client.js';
 import {
   activeCoolifyIntegrations,
+  assertAgentMayDeployCoolify,
   CoolifyCommandError,
   coolifyDeliveryStatus,
   listCoolifyIntegrations,
@@ -198,6 +199,22 @@ async function dispatchAction(
   ctx: McpContext,
   principal: McpContext['principal'],
 ): Promise<unknown> {
+  // ISS-1071 — ONE gate for every action that touches Coolify, placed before the control dispatch so
+  // cancel and rollback cannot reach a binding a deploy could not. `list` is exempt: it reports what
+  // exists rather than acting on it, and an agent that cannot see its own project's integrations
+  // cannot be told why a deploy was refused.
+  //
+  // Membership is asserted FIRST, and that order is load-bearing: the refusal names a binding id, so
+  // running it before the membership check would confirm to a non-member that the binding exists.
+  if (input.action !== 'list') {
+    const gateProjectId = await resolveProjectId(input, ctx);
+    await assertPrincipalIsMember(principal, gateProjectId);
+    assertAgentMayDeployCoolify(
+      await activeCoolifyIntegrations(gateProjectId),
+      input.integrationId,
+    );
+  }
+
   const control = await dispatchControlAction(input, ctx, principal);
   if (control !== NOT_A_CONTROL_ACTION) return control;
   switch (input.action) {

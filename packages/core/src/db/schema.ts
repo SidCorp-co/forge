@@ -2810,6 +2810,7 @@ export const integrationBindings = pgTable(
     // (project, provider) for sentry/rocketchat/github/postman/google.
     label: text('label').notNull().default(''),
     active: boolean('active').notNull().default(true),
+    agentAccess: text('agent_access', { enum: axes.agentAccessValues }).notNull().default('none'), // cm:guard ISS-1071 — CLOSED by default, so a binding nobody decided about reaches no agent; integrations/agent-access.ts holds who may write it and `agentAccessTier` which tier that write takes.
     // cm:guard NEVER put a credential here — this text is rendered verbatim into every agent prompt for the project, so anything stored is effectively published to the model
     instructions: text('instructions'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

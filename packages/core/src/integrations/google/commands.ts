@@ -7,6 +7,8 @@
  * of the four ways a call can have nothing to act on.
  */
 
+import { grantHolds, notGrantedMessage } from '../agent-access.js';
+import { getIntegration } from '../registry.js';
 import { isPreviousCredentialValid } from '../rotation.js';
 import {
   type BindingWithConnection,
@@ -28,6 +30,8 @@ export type GoogleCommandCode =
   | 'NO_CONNECTION'
   | 'BINDING_DISABLED'
   | 'NO_SPREADSHEET'
+  /** The binding exists and works; nobody granted agents on this project the use of it. */
+  | 'NOT_GRANTED'
   | 'ACCOUNT_REJECTED'
   | 'SHEETS_REFUSED'
   | 'MISSING_ARGUMENT';
@@ -74,6 +78,16 @@ export async function resolveGoogleBinding(projectId: string): Promise<BindingWi
       'BINDING_DISABLED',
       `this project's Google connection exists but ${which} — re-enable it under Settings → Integrations → Google. Nothing was sent to Google.`,
     );
+  }
+  // ISS-1071 — the agent boundary. `google` is core-mediated: core holds the service-account key and
+  // makes the call, so the only question a grant answers here is whether an AGENT may ask core to
+  // make it. Until this issue there was no gate on a core-mediated provider at all, which is why the
+  // migration could not simply close everything: closing google would have taken away reachability
+  // that existed, so migration 0255 grants every binding a core-mediated provider already reached.
+  // The refusal names the binding and the switch, because "tool not available" sends an agent
+  // looking for a credential problem that does not exist.
+  if (!grantHolds(getIntegration('google'), usable[0].binding)) {
+    throw new GoogleCommandError('NOT_GRANTED', notGrantedMessage('google', usable[0].binding.id));
   }
   return usable[0];
 }

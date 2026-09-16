@@ -8,6 +8,7 @@
 
 import type { IntegrationCapabilities } from "@forge/contracts";
 import type { IconName } from "@/design";
+import { isDrillableProvider } from "./providers/registry";
 import type { StatusCard } from "./types";
 
 /** Honest directory states. ISS-408/F3 added `needs_reauth`, surfaced from
@@ -30,45 +31,39 @@ export type DirectoryStatus =
   | "disabled"
   | "unverified";
 
-/** Conservative capabilities default — mirrors core `DEFAULT_CAPABILITIES`
- *  (packages/core/src/integrations/types.ts) so an absent `meta.capabilities`
- *  renders the most restrictive archetype (no delivery log, no env split). */
-export const DEFAULT_CAPABILITIES: IntegrationCapabilities = {
+// cm:guard `agentPath` is the one declared capability this type drops, and it is dropped because it
+// CANNOT arrive: its `direct-mcp` arm carries a `buildEntry` function, so what reaches a card's
+// `meta.capabilities` over JSON is the scalar half and nothing else. A screen asking how an agent
+// reaches a provider reads `BindingSummary.agentPathKind`, which the server projects for exactly
+// this reason, or the provider's own module in the connect flow.
+/** The part of a declaration that survives the wire onto a status card. */
+export type CardCapabilities = Omit<IntegrationCapabilities, "agentPath">;
+
+/** Conservative default, so an absent `meta.capabilities` renders the most restrictive archetype
+ *  (no delivery log, no stage split) rather than a fabricated one. */
+export const DEFAULT_CAPABILITIES: CardCapabilities = {
   canDispatch: false,
   canReceiveWebhook: false,
-  injectsMcp: false,
   canDeploy: false,
   liveConfirmGate: false,
   hasDeliveryLog: false,
+  multiBinding: false,
+  structuredRollback: false,
 };
 
-/** The provider keys that resolve to a connection/binding the user can drill
- *  into (Test / Rotate / Disconnect + delivery log). Other status cards
- *  (runners, postgres, …) are read-only telemetry. */
-export const DRILLABLE_PROVIDERS = [
-  "coolify",
-  "postman",
-  "epodsystem",
-  "sentry",
-  "rocketchat",
-  "github",
-  "google",
-] as const;
-export type DrillableProvider = (typeof DRILLABLE_PROVIDERS)[number];
-
-/** Card key → provider; `coolify:live` and `coolify` both map to `coolify`. */
+/** Card key → provider; a stage-suffixed key and a bare one map to the same provider. */
 export function cardProvider(key: string): string {
   return key.split(":")[0] ?? key;
 }
 
 /** True when a status card represents a drillable connection provider. */
 export function isProviderCard(key: string): boolean {
-  return (DRILLABLE_PROVIDERS as readonly string[]).includes(cardProvider(key));
+  return isDrillableProvider(cardProvider(key));
 }
 
 /** A provider's status cards grouped under one entry. Single-card groups
- *  render as a normal card; multi-card groups (stage-split providers like
- *  Coolify, which the backend keys `coolify:live` / `coolify:preview`) render
+ *  render as a normal card; multi-card groups (a stage-split provider, whose
+ *  cards the backend keys `<provider>:live` / `<provider>:preview`) render
  *  as one consolidated card with per-stage sub-rows. */
 export interface ProviderCardGroup {
   provider: string;
@@ -228,10 +223,12 @@ export const DIRECTORY_STATUS_META: Record<
 
 /** Resolve the adapter capabilities a status card carries, falling back to the
  *  conservative default when `meta.capabilities` is absent or malformed. */
-export function getCapabilities(card: Pick<StatusCard, "meta"> | undefined | null): IntegrationCapabilities {
+export function getCapabilities(
+  card: Pick<StatusCard, "meta"> | undefined | null,
+): CardCapabilities {
   const raw = card?.meta?.capabilities;
   if (!raw || typeof raw !== "object") return { ...DEFAULT_CAPABILITIES };
-  return { ...DEFAULT_CAPABILITIES, ...(raw as Partial<IntegrationCapabilities>) };
+  return { ...DEFAULT_CAPABILITIES, ...(raw as Partial<CardCapabilities>) };
 }
 
 /** Keys whose values must never reach the DOM (ADR 0013). Matched

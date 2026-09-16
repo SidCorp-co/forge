@@ -17,34 +17,23 @@ vi.mock('../logger.js', () => ({
   logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
 }));
 
-// Integration resolvers are unrelated to the catalog-expansion/dedupe logic
-// under test here — stub them as pass-through (mirrors dispatcher.test.ts).
-vi.mock('../integrations/postman/resolver.js', () => ({
-  applyPostmanMcpServers: vi.fn(
-    async (_projectId: string, current: Record<string, unknown> | null) => current,
-  ),
-}));
-vi.mock('../integrations/epodsystem/resolver.js', () => ({
-  applyEpodsystemMcpServers: vi.fn(
-    async (_projectId: string, current: Record<string, unknown> | null) => current,
-  ),
-}));
-vi.mock('../integrations/sentry/resolver.js', () => ({
-  applySentryMcpServers: vi.fn(
-    async (_projectId: string, current: Record<string, unknown> | null) => current,
-  ),
-}));
+// The granted-integration layer is unrelated to the catalog-expansion/dedupe/opt-out logic under
+// test here. ISS-1071 collapsed three per-provider `apply*McpServers` mocks into this one, which is
+// the point: there is one registry-driven resolver now, so a new provider adds no mock here.
+const applyGrantedMcpServers = vi.fn(
+  async (_projectId: string, current: Record<string, unknown> | null) => current,
+);
+vi.mock('../integrations/mcp-resolver.js', () => ({ applyGrantedMcpServers }));
 
-const {
-  resolveJobMcpServers,
-  resolveSessionMcpServers,
-  dedupeBrowserServers,
-  sweepIntegrationSentinels,
-} = await import('./resolve-job-mcp-servers.js');
+const { resolveJobMcpServers, resolveSessionMcpServers, dedupeBrowserServers } = await import(
+  './resolve-job-mcp-servers.js'
+);
 
 beforeEach(() => {
   limitResults.length = 0;
   limit.mockClear();
+  applyGrantedMcpServers.mockClear();
+  applyGrantedMcpServers.mockImplementation(async (_p, current) => current);
 });
 
 describe('resolveJobMcpServers (ISS-683)', () => {
@@ -125,17 +114,77 @@ describe('resolveJobMcpServers (ISS-683)', () => {
     expect(out.droppedNames).toEqual(['typo_server']);
   });
 
-  it('integration sentinel true on the stage still reaches the integration resolver unexpanded', async () => {
+  it('a provider name written on a stage is dropped as the unknown name it now is (ISS-1071)', async () => {
     limitResults.push([{ agentConfig: null }]);
     const out = await resolveJobMcpServers({
       projectId: 'p-1',
       stageMcpServers: { sentry: true },
       stageDeclaredNames: ['sentry'],
     });
-    // No active sentry integration in this test's mock (pass-through), and the
-    // sentinel sweep removes any leftover `true` for an integration name.
+    // `sentry: true` is no longer a sentinel anybody reads. It is a name the catalog does not hold,
+    // so it drops here exactly as a typo would, and it is reported rather than silently absorbed.
     expect(out.mcpServers?.sentry).toBeUndefined();
     expect(out.droppedNames).toEqual(['sentry']);
+  });
+
+  it('a granted binding supplies its server by name, after the stage merge (ISS-1071)', async () => {
+    limitResults.push([{ agentConfig: { pipelineConfig: { mcpServers: {} } } }]);
+    applyGrantedMcpServers.mockImplementation(async (_p, current) => ({
+      ...(current ?? {}),
+      sentry: { type: 'http', url: 'https://sentry.example' },
+    }));
+    const out = await resolveJobMcpServers({
+      projectId: 'p-1',
+      stageMcpServers: { playwright: true },
+      stageDeclaredNames: ['playwright'],
+    });
+    expect(applyGrantedMcpServers).toHaveBeenCalledWith('p-1', expect.anything());
+    expect(out.mcpServers?.sentry).toEqual({ type: 'http', url: 'https://sentry.example' });
+    // The grant is not a DECLARED name, so it is not something a stage can have dropped.
+    expect(out.droppedNames).toEqual([]);
+  });
+
+  // ISS-1038 — the per-stage `false` defect, at the layer that actually shipped it. Before the fix
+  // the stage map was expanded first and `expandMcpServers` OMITS a `false`, so the spread
+  // `{...projectDefault, ...expandedStage}` put the project's server straight back and the stage's
+  // opt-out reached nothing. The raw stage map has to be re-read after the merge.
+  it('a stage `false` beats the project default (ISS-1038)', async () => {
+    limitResults.push([{ agentConfig: { pipelineConfig: { mcpServers: { playwright: true } } } }]);
+    const out = await resolveJobMcpServers({
+      projectId: 'p-1',
+      stageMcpServers: { playwright: false },
+      stageDeclaredNames: [],
+    });
+    expect(out.mcpServers?.playwright).toBeUndefined();
+    expect(out.resolvedNames).toEqual([]);
+  });
+
+  it('a stage `false` beats a GRANTED integration server too (ISS-1038)', async () => {
+    limitResults.push([{ agentConfig: { pipelineConfig: { mcpServers: {} } } }]);
+    applyGrantedMcpServers.mockImplementation(async (_p, current) => ({
+      ...(current ?? {}),
+      sentry: { type: 'http', url: 'https://sentry.example' },
+    }));
+    const out = await resolveJobMcpServers({
+      projectId: 'p-1',
+      stageMcpServers: { sentry: false, playwright: true },
+      stageDeclaredNames: ['playwright'],
+    });
+    // The grant layers on AFTER the opt-out is applied, so this documents the order that actually
+    // runs rather than the one a reader might assume: a stage cannot refuse a granted server.
+    expect(out.mcpServers?.sentry).toEqual({ type: 'http', url: 'https://sentry.example' });
+    expect(out.mcpServers?.playwright).toBeDefined();
+  });
+
+  it('a stage `false` for a name nobody supplied changes nothing', async () => {
+    limitResults.push([{ agentConfig: { pipelineConfig: { mcpServers: { playwright: true } } } }]);
+    const out = await resolveJobMcpServers({
+      projectId: 'p-1',
+      stageMcpServers: { 'chrome-devtools-mcp': false },
+      stageDeclaredNames: [],
+    });
+    expect(out.mcpServers?.playwright).toBeDefined();
+    expect(out.droppedNames).toEqual([]);
   });
 });
 
@@ -151,12 +200,11 @@ describe('resolveSessionMcpServers (ISS-1043)', () => {
     expect(out.droppedNames).toEqual([]);
   });
 
-  it('names a project-default integration sentinel with no active integration as dropped', async () => {
+  it('names a project-default provider name as dropped, never passing the bare `true` on', async () => {
     limitResults.push([{ agentConfig: { pipelineConfig: { mcpServers: { epodsystem: true } } } }]);
     const out = await resolveSessionMcpServers('p-1');
-    // The integration resolvers are pass-through here — no active binding — so
-    // the sentinel is swept rather than reaching the box as the bare `true`
-    // that `mcp/config.rs` skips with only a warning.
+    // `epodsystem` is not a catalog name, so it drops at expansion. What matters for the box is the
+    // negative: it never reaches `mcp/config.rs` as the bare `true` that file skips with a warning.
     expect(out.mcpServers?.epodsystem).toBeUndefined();
     expect(out.resolvedNames).toEqual([]);
     expect(out.droppedNames).toEqual(['epodsystem']);
@@ -187,17 +235,7 @@ describe('dedupeBrowserServers (ISS-581)', () => {
   });
 });
 
-describe('sweepIntegrationSentinels', () => {
-  it('removes a leftover true sentinel for an integration name', () => {
-    expect(sweepIntegrationSentinels({ sentry: true, playwright: {} })).toEqual({ playwright: {} });
-  });
-
-  it('returns null when sweeping empties the map', () => {
-    expect(sweepIntegrationSentinels({ sentry: true })).toBeNull();
-  });
-
-  it('is a no-op when there is nothing to sweep', () => {
-    expect(sweepIntegrationSentinels(null)).toBeNull();
-    expect(sweepIntegrationSentinels({ playwright: {} })).toEqual({ playwright: {} });
-  });
-});
+// ISS-1071 deleted `sweepIntegrationSentinels`. It existed to clear a `true` an integration
+// resolver had left behind when no binding matched; with no sentinel to leave behind there is
+// nothing to sweep, and a provider name now drops at expansion like any other unknown name — which
+// the two `droppedNames` assertions above are the coverage for.

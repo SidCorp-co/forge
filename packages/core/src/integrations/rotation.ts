@@ -1,60 +1,37 @@
 /**
  * ISS-405 — connection-level credential rotation helper.
  *
- * Generalizes the dual-token rotation window that previously lived inline only
- * for Coolify (`apiToken`) so every provider's primary credential keeps the
- * previous value valid for the same overlap window when rotated. Both
- * `integrations/routes.ts` PATCH paths and the adapter-side validity guards go
- * through here, so there's a single source of truth for the window length, the
- * field-name mapping per provider, and the expiry check.
+ * Generalizes the dual-token rotation window that once lived inline for Coolify (`apiToken`) so
+ * every provider's primary credential keeps the previous value valid for the same overlap window
+ * when rotated. Both PATCH paths and the adapter-side validity guards go through here, so there is
+ * a single source of truth for the window length and the expiry check.
+ *
+ * ISS-1071 took the two per-provider field tables out of this file. Which field holds a provider's
+ * rotating credential is a fact about that provider, so it is declared on the provider — this
+ * module is the mechanism and knows no provider's name.
  */
+
+import type { IntegrationDeclaration } from './types.js';
 
 export const ROTATION_WINDOW_MS = 24 * 60 * 60_000;
 
-/** Provider → name of the field that holds the primary (rotating) credential. */
-const PRIMARY_FIELD = {
-  coolify: 'apiToken',
-  postman: 'apiKey',
-  epodsystem: 'apiKey',
-  sentry: 'authToken',
-  rocketchat: 'authToken',
-  github: 'privateKey',
-  // cm:why the whole service-account JSON is the rotating unit, not the PEM inside it — Google reissues a key as a new file whose `private_key_id` and `client_email` travel with the PEM, and rotating the PEM alone would leave the connection signing with a key id Google no longer maps to it
-  google: 'serviceAccountJson',
-} as const;
-
-/** Provider → name of the field used to retain the previous credential. */
-const PREVIOUS_FIELD = {
-  coolify: 'previousApiToken',
-  postman: 'previousApiKey',
-  epodsystem: 'previousApiKey',
-  sentry: 'previousAuthToken',
-  rocketchat: 'previousAuthToken',
-  github: 'previousPrivateKey',
-  google: 'previousServiceAccountJson',
-} as const;
-
-export type RotatingProvider = keyof typeof PRIMARY_FIELD;
-
-export function isRotatingProvider(provider: string): provider is RotatingProvider {
-  return provider in PRIMARY_FIELD;
-}
-
 /**
- * Build the secrets blob to persist when an operator submits a new primary
- * credential. When both an incoming and an existing credential are present, the
- * old credential is retained as `previous<Cred>` with `previousTokenExpiresAt`
- * set to `now + ROTATION_WINDOW_MS` so adapters can fall back during the
- * overlap window. Returns `null` when the caller has no primary credential to
- * write (the route handler then skips the secrets update entirely).
+ * Build the secrets blob to persist when an operator submits a new primary credential.
+ *
+ * When both an incoming and an existing credential are present, the old one is retained under the
+ * provider's declared previous-credential field with `previousTokenExpiresAt` set to
+ * `now + ROTATION_WINDOW_MS`, so adapters can fall back during the overlap window. Returns `null`
+ * when the caller has no primary credential to write, or when the provider declares none — the
+ * route handler then skips the secrets update entirely.
  */
 export function mergeRotatedSecrets(
-  provider: RotatingProvider,
+  decl: Pick<IntegrationDeclaration, 'schemas'>,
   currentSecrets: Record<string, unknown> | null,
   incoming: Record<string, unknown>,
 ): Record<string, unknown> | null {
-  const primaryField = PRIMARY_FIELD[provider];
-  const previousField = PREVIOUS_FIELD[provider];
+  const primaryField = decl.schemas.primaryCredentialField;
+  const previousField = decl.schemas.previousCredentialField;
+  if (!primaryField || !previousField) return null;
   const incomingPrimary = incoming[primaryField];
   if (typeof incomingPrimary !== 'string' || incomingPrimary.length === 0) return null;
 

@@ -19,11 +19,17 @@
  */
 
 import { logger } from '../../logger.js';
-import { getAdapter, registerAdapter } from '../registry.js';
 import { isPreviousCredentialValid } from '../rotation.js';
 import { updateConnection } from '../store.js';
-import type { HealthCheckResult, IntegrationAdapter } from '../types.js';
+import {
+  declareIntegration,
+  type HealthCheckResult,
+  type IntegrationAdapterMethods,
+} from '../types.js';
 import { sentryRestBase } from './endpoints.js';
+import { buildSentryMcpEntry } from './resolver.js';
+import { SENTRY_BINDING_CONFIG_KEYS, sentryConfigBase, sentrySecretsSchema } from './schemas.js';
+import { renderSentryTargetsLine, resolveSentryTargets } from './targets.js';
 import type { SentryConfig, SentrySecrets } from './types.js';
 
 const PROBE_TIMEOUT_MS = 15_000;
@@ -40,19 +46,7 @@ const notSupported = (op: string): never => {
   throw new Error(`sentry: ${op} is not supported (MCP-injection-only provider)`);
 };
 
-export const sentryAdapter: IntegrationAdapter<SentryConfig, SentrySecrets> = {
-  provider: 'sentry',
-  // MCP-injection archetype: injects mcpServers.sentry into the runner; core
-  // never dispatches or receives webhooks, so no env split / delivery log.
-  capabilities: {
-    canDispatch: false,
-    canReceiveWebhook: false,
-    injectsMcp: true,
-    canDeploy: false,
-    liveConfirmGate: false,
-    hasDeliveryLog: false,
-  },
-
+const sentryAdapterMethods: IntegrationAdapterMethods<SentryConfig, SentrySecrets> = {
   async healthcheck(ctx): Promise<HealthCheckResult> {
     const authToken = ctx.secrets?.authToken;
     if (!authToken) {
@@ -175,8 +169,72 @@ export const sentryAdapter: IntegrationAdapter<SentryConfig, SentrySecrets> = {
   },
 };
 
-export function registerSentryAdapter(): void {
-  if (getAdapter('sentry')) return;
-  // biome-ignore lint/suspicious/noExplicitAny: registry accepts the adapter shape regardless of generic params
-  registerAdapter(sentryAdapter as any);
-}
+/**
+ * Sentry's declaration. `direct-mcp`, and the sharpest case for why the kind names a risk rather
+ * than a transport: the runner EXECUTES `npx @sentry/mcp-server` with the auth token in its
+ * environment, so the grant is a decision about a box running a third-party package with a
+ * project's credential, not about a URL.
+ */
+export const sentryIntegration = declareIntegration<SentryConfig, SentrySecrets>({
+  provider: 'sentry',
+  capabilities: {
+    canDispatch: false,
+    canReceiveWebhook: false,
+    canDeploy: false,
+    liveConfirmGate: false,
+    hasDeliveryLog: false,
+    multiBinding: false,
+    structuredRollback: false,
+    agentPath: {
+      kind: 'direct-mcp',
+      tools: [],
+      serverName: 'sentry',
+      previewSecrets: { authToken: '[redacted]' },
+      justification:
+        'Self-hosted Sentry is reached only through its own MCP server, which the runner executes with the token in its environment; the hosted https MCP is OAuth-only and unusable for a self-hosted instance. Forge has no issue-search API of its own to mediate, so the token reaches the box or the agent cannot read an error at all.',
+      buildEntry: (config, secrets) => {
+        const authToken = secrets.authToken;
+        if (typeof authToken !== 'string' || authToken.length === 0) return null;
+        return buildSentryMcpEntry(config as SentryConfig, authToken);
+      },
+    },
+  },
+  schemas: {
+    connectionConfig: sentryConfigBase,
+    bindingConfig: sentryConfigBase,
+    patchConfig: sentryConfigBase.partial(),
+    secrets: sentrySecretsSchema,
+    patchSecrets: sentrySecretsSchema.partial(),
+    primaryCredentialField: 'authToken',
+    previousCredentialField: 'previousAuthToken',
+    independentSecretFields: [],
+    bindingConfigKeys: SENTRY_BINDING_CONFIG_KEYS,
+  },
+  usage: {
+    // No `hint`: the generic line is what Sentry rendered before ISS-1071 and this change is about
+    // WHERE the knowledge lives, not about rewriting what an agent is told.
+    renderExtra: (config) => {
+      const targets = resolveSentryTargets(config as SentryConfig);
+      return targets.length > 0 ? renderSentryTargetsLine(targets) : null;
+    },
+  },
+  presentation: {
+    label: 'Sentry',
+    alwaysStageKeyed: false,
+    neverCheckedDetail: 'never test-connected',
+    // ISS-526 — the multi-target shape: count plus the first target's org for the card subtitle,
+    // with a back-compat read of the legacy single-slug connection.
+    cardMeta: (config) => {
+      const cfg = config as SentryConfig;
+      const targets = resolveSentryTargets(cfg);
+      return {
+        host: cfg.host ?? null,
+        organizationSlug: targets[0]?.organizationSlug ?? cfg.organizationSlug ?? null,
+        targetCount: targets.length,
+      };
+    },
+  },
+  adapter: sentryAdapterMethods,
+});
+
+export const sentryAdapter = sentryAdapterMethods;

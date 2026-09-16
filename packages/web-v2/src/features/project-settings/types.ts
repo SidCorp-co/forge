@@ -271,7 +271,8 @@ export interface PipelineConfig {
 	 * it wants). Shorthand: `name: true` enables a catalog default (see
 	 * `MCP_CATALOG`); an object value is a raw custom spec; `false`/absent omits.
 	 * The dispatcher merges this as the base, with per-state `states[x].mcpServers`
-	 * and integration servers (postman/epodsystem) layering on top.
+	 * layering on top. An integration is NOT reached from this map — the grant is
+	 * `agentAccess` on its binding.
 	 */
 	mcpServers?: Record<string, unknown>;
 	/**
@@ -335,8 +336,11 @@ export interface PipelineConfig {
  * Built-in catalog of known secret-free MCP servers, mirrored from core's
  * `pipeline/mcp-catalog.ts` for the settings UI. Cross-app parity: when a new
  * secret-free catalog entry is added in core, add the matching descriptor here
- * so the toggle list surfaces it. Anything needing a token/API key is NOT a
- * catalog default (those flow through the integrations resolvers).
+ * so the toggle list surfaces it.
+ *
+ * Anything needing a token or API key is NOT a catalog default and has no entry in this map at
+ * all. It is an integration, and whether an agent may use one is `agentAccess` on the binding —
+ * granted on the Integrations tab. Writing its name into `mcpServers` injects nothing.
  */
 export const MCP_CATALOG: Record<
 	string,

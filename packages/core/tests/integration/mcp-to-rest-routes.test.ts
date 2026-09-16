@@ -45,7 +45,7 @@ beforeAll(async () => {
   const [health, charter, targets, batch, ux, collab, pin, uxw, jwt, err] = await Promise.all([
     import('../../src/health/routes.js'),
     import('../../src/skills/divergence-charter-routes.js'),
-    import('../../src/integrations/target-routes.js'),
+    import('../../src/integrations/postman/target-routes.js'),
     import('../../src/release-batch/routes.js'),
     import('../../src/projects/ux-contract-routes.js'),
     import('../../src/projects/collaborators-routes.js'),

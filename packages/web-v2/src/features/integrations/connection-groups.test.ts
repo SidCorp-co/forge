@@ -82,11 +82,16 @@ describe("groupConnectionsByApp", () => {
   });
 
   it("labels a provider the UI has no name for with its own key", () => {
-    // `agent` is a real IntegrationProvider with no PROVIDER_LABEL entry — the
-    // fallback is reachable with a valid value, not only with a cast.
-    const groups = groupConnectionsByApp([conn({ provider: "agent" })]);
-    expect(groups[0].label).toBe("agent");
-    expect(appLabel("agent")).toBe("agent");
+    // Every declared provider now carries a label, so the fallback is only reachable with a name
+    // this build does not know — which is exactly what it exists for: a provider added to core and
+    // not to the web registry renders bare rather than blank.
+    const groups = groupConnectionsByApp([conn({ provider: "quasar" as never })]);
+    expect(groups[0].label).toBe("quasar");
+    expect(appLabel("quasar")).toBe("quasar");
+  });
+
+  it("names the agent release channel rather than showing its bare key", () => {
+    expect(appLabel("agent")).toBe("Agent release channel");
   });
 
   it("keeps the incoming order of connections inside a group", () => {

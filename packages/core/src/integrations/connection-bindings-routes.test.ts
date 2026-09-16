@@ -70,6 +70,12 @@ const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
 const { requestId } = await import('../middleware/request-id.js');
 
+// The registry is process-global and empty until something fills it. Reading it empty THROWS
+// (registry.ts:assertPopulated), so a test reaching any registry-backed path registers here rather
+// than inheriting a vocabulary from whichever test file happened to run first.
+const { registerAllIntegrations } = await import('./register-all.js');
+registerAllIntegrations();
+
 function buildApp() {
   const app = new Hono<{ Variables: import('../middleware/request-id.js').RequestIdVars }>();
   app.use('*', requestId());

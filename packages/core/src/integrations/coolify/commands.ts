@@ -21,7 +21,9 @@ import {
   tryDispatchCoolifyRelease,
 } from '../../pipeline/release-coolify.js';
 import { isOpenReleaseBatchRun } from '../../release-batch/service.js';
+import { grantHolds, notGrantedMessage } from '../agent-access.js';
 import { findLastOutbound, findLastOutboundForTarget } from '../deliveries.js';
+import { getIntegration } from '../registry.js';
 import type { CoolifyConfig } from './types.js';
 
 export class CoolifyCommandError extends Error {
@@ -55,6 +57,39 @@ export async function activeCoolifyIntegrations(projectId: string) {
 }
 
 export type CoolifyIntegrationRow = Awaited<ReturnType<typeof activeCoolifyIntegrations>>[number];
+
+/**
+ * The agent boundary for Coolify (ISS-1071). Refuses by name when no binding an agent may use backs
+ * the deploy it is about to run.
+ *
+ * Called from the MCP tool ONLY, never from `activeCoolifyIntegrations` itself — and that placement
+ * is the whole point. Coolify is core-mediated: core holds the API token and performs the deploy, so
+ * the same binding backs BOTH an agent asking for a deploy and the release pipeline running one on a
+ * human's behalf. The grant answers the first question and says nothing about the second, so putting
+ * this check inside the shared resolver would let an ungranted binding stop a release nobody asked an
+ * agent about.
+ */
+// cm:guard the empty and unknown-id cases return rather than refuse — each command shapes its own
+// "nothing configured" payload, and `resolveIntegrationRow` already names an unknown id better than
+// this could. Refusing here would replace two specific sentences with one vague one.
+export function assertAgentMayDeployCoolify(
+  rows: CoolifyIntegrationRow[],
+  integrationId: string | undefined,
+): void {
+  if (rows.length === 0) return;
+  const candidates = integrationId ? rows.filter((r) => r.id === integrationId) : rows;
+  if (candidates.length === 0) return;
+  const decl = getIntegration('coolify');
+  // EVERY candidate, not `some`. Without an id, `status`, `logs`, `cancel` and `rollback` read the
+  // project's whole Coolify set, so one granted binding letting the action through would hand the
+  // agent an ungranted binding's deliveries — a per-binding switch that only holds per project.
+  const ungranted = candidates.find((r) => !grantHolds(decl, r.pair.binding));
+  if (!ungranted) return;
+  if (integrationId) throw new CoolifyCommandError(notGrantedMessage('coolify', ungranted.id));
+  throw new CoolifyCommandError(
+    `${notGrantedMessage('coolify', ungranted.id)} This call named no integrationId, so it would have read every Coolify binding on the project, that one included. Name the binding you mean with integrationId and a granted one still answers.`,
+  );
+}
 
 /**
  * Pick the one integration the caller means: an explicit `integrationId`, else

@@ -8,6 +8,7 @@ import {
   integrationConnections,
   organizationMembers,
 } from '../db/schema.js';
+import { AGENT_ACCESS_CLOSED, type AgentAccess } from './agent-access.js';
 import type { AdapterContext, IntegrationProvider } from './types.js';
 import { decryptJson, encryptJson } from './vault.js';
 
@@ -360,6 +361,8 @@ export interface CreateBindingInput {
   /** ISS-558 — empty string (default) = unlabeled/default binding;
    *  non-empty kebab = a named extra epodsystem binding. */
   label?: string;
+  /** ISS-1071 — whether agents on this project may use the binding. Closed unless asked for. */
+  agentAccess?: AgentAccess;
 }
 
 export async function createBinding(input: CreateBindingInput): Promise<IntegrationBindingRow> {
@@ -375,6 +378,10 @@ export async function createBinding(input: CreateBindingInput): Promise<Integrat
       integrationSecret: input.integrationSecret ?? null,
       label: input.label ?? '',
       active: true,
+      // cm:guard the default is CLOSED, and it is written here rather than left to the column so
+      // the one place a binding comes into existence says what it grants. A connect that forgets to
+      // ask must not hand a project's credential to a runner (ISS-1071 rule 4).
+      agentAccess: input.agentAccess ?? AGENT_ACCESS_CLOSED,
     })
     .returning();
   if (!row) throw new Error('createBinding: insert returned no row');
@@ -401,6 +408,7 @@ export interface UpdateBindingPatch {
   active?: boolean;
   label?: string;
   instructions?: string | null;
+  agentAccess?: AgentAccess;
 }
 
 export async function updateBinding(
@@ -413,6 +421,7 @@ export async function updateBinding(
   if (patch.active !== undefined) set.active = patch.active;
   if (patch.label !== undefined) set.label = patch.label;
   if (patch.instructions !== undefined) set.instructions = patch.instructions;
+  if (patch.agentAccess !== undefined) set.agentAccess = patch.agentAccess;
   const [row] = await db
     .update(integrationBindings)
     .set(set)

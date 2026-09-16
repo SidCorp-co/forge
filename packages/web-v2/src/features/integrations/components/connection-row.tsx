@@ -18,7 +18,8 @@ import { formatRelativeTime } from "@/lib/utils/format";
 import { useCanManageConnection, useRemoveConnection, useUpdateConnection } from "../hooks";
 import { connectionTarget, connectionTitle } from "../connection-identity";
 import { deriveConnectionStatus } from "../derive";
-import { DirectoryStatusPill, PROVIDER_ICON, PROVIDER_LABEL, scopeLabel } from "./status-pill";
+import { providerIcon, providerLabel as labelFor } from "../providers/registry";
+import { DirectoryStatusPill, scopeLabel } from "./status-pill";
 
 /** Projects a connection is bound to, named — the line that tells two credentials apart. */
 function UsageLine({
@@ -93,7 +94,7 @@ export function connectionRowLabel(
   // The same condition the visible provider pill renders under: two credentials
   // an operator called "Production", one Coolify and one GitHub, are told apart
   // on screen by that pill and by nothing else.
-  const providerLabel = PROVIDER_LABEL[connection.provider] ?? connection.provider;
+  const providerLabel = labelFor(connection.provider);
   if (title !== providerLabel) parts.push(providerLabel);
   const target = connectionTarget(connection);
   if (target) parts.push(target);
@@ -186,7 +187,7 @@ export function ConnectionRow({
   const checked = formatRelativeTime(connection.lastHealthAt);
   const title = connectionTitle(connection);
   const target = connectionTarget(connection);
-  const providerLabel = PROVIDER_LABEL[connection.provider] ?? connection.provider;
+  const providerLabel = labelFor(connection.provider);
 
   return (
     // cm:guard the element that opens the drawer is a REAL <button> holding only what it describes, and the Disable/Enable/Remove buttons are its SIBLINGS — the card this row replaced wrapped them all in a role="button" div (ISS-429), which exposes one control containing four others: a nested-interactive structure that flattens the inner controls' semantics for assistive technology. What it costs is that the gap between the text and the status pill no longer opens the drawer; what it buys is a native keyboard path and no hand-written Enter/Space handler.
@@ -210,7 +211,7 @@ export function ConnectionRow({
       >
         <span className="inline-flex min-w-0 items-center gap-2">
           <Icon
-            name={PROVIDER_ICON[connection.provider] ?? "link"}
+            name={providerIcon(connection.provider)}
             size={16}
             className="shrink-0 text-muted"
           />

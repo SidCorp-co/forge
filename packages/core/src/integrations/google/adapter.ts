@@ -9,12 +9,21 @@
  */
 
 import { logger } from '../../logger.js';
-import { getAdapter, registerAdapter } from '../registry.js';
 import { isPreviousCredentialValid } from '../rotation.js';
 import { findConnectionById, updateConnection } from '../store.js';
-import type { HealthCheckResult, IntegrationAdapter } from '../types.js';
+import {
+  declareIntegration,
+  type HealthCheckResult,
+  type IntegrationAdapterMethods,
+} from '../types.js';
 import { googleAccessToken, parseServiceAccountKey } from './auth.js';
 import { getSpreadsheet } from './client.js';
+import {
+  GOOGLE_BINDING_CONFIG_KEYS,
+  googleConfigBase,
+  googleConnectionConfigSchema,
+  googleSecretsSchema,
+} from './schemas.js';
 import { SHEETS_READONLY_SCOPE } from './scopes.js';
 import { GoogleApiError, GoogleAuthError, type GoogleConfig, type GoogleSecrets } from './types.js';
 
@@ -107,18 +116,7 @@ async function failHealth(
   return { status, message, ...(diagnostics ? { diagnostics } : {}) };
 }
 
-export const googleAdapter: IntegrationAdapter<GoogleConfig, GoogleSecrets> = {
-  provider: 'google',
-  // cm:guard `hasDeliveryLog` is FALSE and wiring one is not the fix: a Sheets read is a tool call made for one agent, not a delivery this project can replay, and an `integration_deliveries` row per read would put spreadsheet contents in an audit table nothing redacts.
-  capabilities: {
-    canDispatch: false,
-    canReceiveWebhook: false,
-    injectsMcp: false,
-    canDeploy: false,
-    liveConfirmGate: false,
-    hasDeliveryLog: false,
-  },
-
+const googleAdapterMethods: IntegrationAdapterMethods<GoogleConfig, GoogleSecrets> = {
   async healthcheck(ctx): Promise<HealthCheckResult> {
     const serviceAccountJson = ctx.secrets?.serviceAccountJson;
     if (typeof serviceAccountJson !== 'string' || serviceAccountJson.length === 0) {
@@ -211,8 +209,52 @@ export const googleAdapter: IntegrationAdapter<GoogleConfig, GoogleSecrets> = {
   },
 };
 
-export function registerGoogleAdapter(): void {
-  if (getAdapter('google')) return;
-  // biome-ignore lint/suspicious/noExplicitAny: registry accepts the adapter shape regardless of generic params
-  registerAdapter(googleAdapter as any);
-}
+/**
+ * Google's declaration. `core-mediated`: core holds the service-account key and makes every Sheets
+ * call itself, so the grant widens who may ask core rather than who holds the credential — there is
+ * no key for an agent to fetch and none reaches a runner.
+ */
+export const googleIntegration = declareIntegration<GoogleConfig, GoogleSecrets>({
+  provider: 'google',
+  capabilities: {
+    canDispatch: false,
+    canReceiveWebhook: false,
+    canDeploy: false,
+    liveConfirmGate: false,
+    hasDeliveryLog: false,
+    multiBinding: false,
+    structuredRollback: false,
+    agentPath: { kind: 'core-mediated', tools: ['forge_google_sheets'] },
+  },
+  schemas: {
+    connectionConfig: googleConnectionConfigSchema,
+    bindingConfig: googleConfigBase,
+    patchConfig: googleConfigBase.partial(),
+    secrets: googleSecretsSchema,
+    patchSecrets: googleSecretsSchema.partial(),
+    primaryCredentialField: 'serviceAccountJson',
+    // cm:why the whole service-account JSON is the rotating unit, not the PEM inside it — Google reissues a key as a new file whose `private_key_id` and `client_email` travel with the PEM, and rotating the PEM alone would leave the connection signing with a key id Google no longer maps to it
+    previousCredentialField: 'previousServiceAccountJson',
+    independentSecretFields: [],
+    bindingConfigKeys: GOOGLE_BINDING_CONFIG_KEYS,
+  },
+  usage: {
+    hint: "Read and write the project's bound Google Sheets via the `forge_google_sheets` tool. Core holds the service-account key — there is none to fetch, and a sheet is reachable only once it is shared with the account.",
+    guideSlug: 'google-sheets',
+  },
+  presentation: {
+    label: 'Google Sheets',
+    alwaysStageKeyed: false,
+    neverCheckedDetail: 'never test-connected',
+    cardMeta: (config) => {
+      const cfg = config as { clientEmail?: string; defaultSpreadsheetId?: string };
+      return {
+        clientEmail: cfg.clientEmail ?? null,
+        defaultSpreadsheetId: cfg.defaultSpreadsheetId ?? null,
+      };
+    },
+  },
+  adapter: googleAdapterMethods,
+});
+
+export const googleAdapter = googleAdapterMethods;

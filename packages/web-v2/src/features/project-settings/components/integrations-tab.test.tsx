@@ -28,7 +28,9 @@ Element.prototype.scrollIntoView = vi.fn();
 const bindMutate = vi.fn();
 const connectionItems = vi.fn<() => Array<Record<string, unknown>>>();
 
+let orgAdmin = true;
 vi.mock("@/features/integrations/hooks", () => ({
+  useIsOrgAdmin: () => orgAdmin,
   useConnections: () => ({ data: { items: connectionItems() }, isLoading: false }),
   useBindExistingConnection: () => ({
     mutate: bindMutate,
@@ -84,6 +86,7 @@ function choose(connectionText: RegExp, role?: "service" | "deploy") {
 
 const COOLIFY_OPTION = /Deploy box/;
 const SENTRY_OPTION = /Errors/;
+const GRANT_SWITCH = /Agents on this project may use this/i;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -117,7 +120,10 @@ describe("ShareExistingCard — the role is declared, not derived", () => {
     expect(bindMutate).toHaveBeenCalledWith(
       expect.objectContaining({
         id: "conn-coolify",
-        body: { projectId: "proj-1", role: "deploy", stages: ["live"] },
+        // ISS-1071 — sharing a credential into a project IS a connect, so the body carries the
+        // grant the switch showed, closed unless the person opened it. Coolify is core-mediated, so
+        // the switch is rendered and its value is submitted.
+        body: { projectId: "proj-1", role: "deploy", stages: ["live"], agentAccess: "none" },
       }),
       expect.anything(),
     );
@@ -129,7 +135,7 @@ describe("ShareExistingCard — the role is declared, not derived", () => {
     fireEvent.click(screen.getByRole("button", { name: /Share with this project/i }));
 
     const body = bindMutate.mock.calls[0]?.[0]?.body as Record<string, unknown>;
-    expect(body).toEqual({ projectId: "proj-1", role: "service" });
+    expect(body).toEqual({ projectId: "proj-1", role: "service", agentAccess: "none" });
     expect(body).not.toHaveProperty("stages");
   });
 });
@@ -173,6 +179,7 @@ describe("ShareExistingCard — the stage control under `service`", () => {
     expect(bindMutate.mock.calls[0]?.[0]?.body).toEqual({
       projectId: "proj-1",
       role: "service",
+      agentAccess: "none",
     });
   });
 });
@@ -208,5 +215,34 @@ describe("ShareExistingCard — the two refusals, on the form", () => {
     expect(screen.queryByText(/Forge cannot deploy to/i)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Share with this project/i }));
     expect(bindMutate).toHaveBeenCalled();
+  });
+});
+
+// ISS-1071 / F3, found by review. The grant's tier is not the credential's: a `direct-mcp` grant
+// sends a project's credential to a runner box, so `authorizeAgentAccessWrite` takes org admin,
+// while a `core-mediated` one stays a project-admin field. The screen used general editability, so
+// a project admin who is not an org admin was offered a switch the server answers 403 to.
+describe("ShareExistingCard — who is offered the grant", () => {
+  afterEach(() => {
+    orgAdmin = true;
+  });
+
+  it("disables the switch for a direct-MCP provider below org admin, and says who can", () => {
+    orgAdmin = false;
+    renderTab();
+    choose(SENTRY_OPTION, "service");
+
+    // Disabled rather than ABSENT: a control that vanishes reads as "this integration cannot be
+    // granted at all", which is a different and wrong answer.
+    expect(screen.getByRole("switch", { name: GRANT_SWITCH })).toBeDisabled();
+    expect(screen.getByText(/only an organisation owner or admin/i)).toBeInTheDocument();
+  });
+
+  it("leaves it writable for a core-mediated provider at the same permission", () => {
+    orgAdmin = false;
+    renderTab();
+    choose(COOLIFY_OPTION, "service");
+
+    expect(screen.getByRole("switch", { name: GRANT_SWITCH })).toBeEnabled();
   });
 });

@@ -25,6 +25,7 @@ export {
 } from './factories.js';
 export type { MockDevice, MockDeviceEvent, PairMockDeviceOpts } from './mock-device.js';
 export { pairMockDevice } from './mock-device.js';
+export { registerIntegrationsForTest } from './register-integrations.js';
 export { truncateAll } from './truncate.js';
 export type { ObservedEvent, StartWebObserverOpts, WebObserver } from './web-observer.js';
 export { startWebObserver } from './web-observer.js';

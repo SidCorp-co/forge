@@ -16,6 +16,7 @@ import {
   createTestProject,
   createTestProjectMember,
   createTestUser,
+  registerIntegrationsForTest,
   setupTestDatabase,
   type TestDatabase,
   truncateAll,
@@ -61,6 +62,7 @@ beforeAll(async () => {
   process.env.APP_BASE_URL ??= 'http://localhost:3000';
   process.env.CORS_ORIGINS ??= 'http://localhost:3000';
   process.env.NODE_ENV ??= 'test';
+  await registerIntegrationsForTest();
 
   const effects = await import('../../src/integrations/github/bind-effects.js');
   const store = await import('../../src/integrations/store.js');

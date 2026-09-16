@@ -16,6 +16,7 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { getIntegration } from '../integrations/registry.js';
 import { effectiveConfig, listActiveDeployBindingsForStage } from '../integrations/store.js';
 import { getKnowledgeEntry } from '../knowledge/service.js';
 import {
@@ -41,7 +42,12 @@ export function classifyRollback(provider: string, raw: unknown): ReleaseRollbac
   if (typeof raw === 'string') {
     const text = raw.trim();
     if (text.length === 0) return null;
-    return provider === 'coolify' ? { kind: 'unrepresentable', text } : { kind: 'manual', text };
+    // ISS-1071 — a declared capability, not a name. Free text against a channel whose API CAN
+    // express a rollback is a rollback nobody will perform, so it is refused; against one that
+    // cannot, prose for a human is the only thing there is.
+    return getIntegration(provider)?.capabilities.structuredRollback
+      ? { kind: 'unrepresentable', text }
+      : { kind: 'manual', text };
   }
   if (
     typeof raw === 'object' &&

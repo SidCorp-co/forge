@@ -9,7 +9,7 @@
 import { Card, Icon } from "@/design";
 import type { ConnectionDirectoryItem } from "@forge/contracts";
 import { type ConnectionGroup, groupSummary } from "../connection-groups";
-import { PROVIDER_ICON } from "./status-pill";
+import { providerIcon } from "../providers/registry";
 import { ConnectionRow } from "./connection-row";
 
 export function ConnectionGroupSection({
@@ -50,7 +50,7 @@ export function ConnectionGroupSection({
             style={{ transform: open ? "rotate(90deg)" : "none" }}
           />
           <Icon
-            name={PROVIDER_ICON[group.provider] ?? "link"}
+            name={providerIcon(group.provider)}
             size={18}
             className="shrink-0 text-muted"
           />

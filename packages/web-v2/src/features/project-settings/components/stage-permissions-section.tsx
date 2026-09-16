@@ -13,6 +13,7 @@
 
 import { useState } from "react";
 import { Badge, Banner, Button, Checkbox, Collapsible, MonoTag } from "@/design";
+import { providerForMcpServerName } from "@/features/integrations/providers/registry";
 import { formatPipelineConfigError } from "@/lib/api/error";
 import { useUpdatePipelineConfig } from "../hooks";
 import {
@@ -53,6 +54,24 @@ function ToolChips({ tools }: { tools: string[] }) {
 
 function namesOf(names: string[]): string {
   return names.map((raw) => humanizeToolName(raw).label).join(", ");
+}
+
+// cm:guard a stored integration name in this map is a LEFTOVER, not a per-stage MCP server: nothing
+// reads it any more, and the grant that does reach an agent is `agentAccess` on the binding. Shown
+// as the bare `MonoTag` it used to be, it read as a working per-stage declaration, which is how a
+// stage could look configured while the integration reached nothing.
+function McpServerTag({ name }: { name: string }) {
+  const integration = providerForMcpServerName(name);
+  if (!integration) return <MonoTag>{name}</MonoTag>;
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      <MonoTag>{name}</MonoTag>
+      <Badge tone="amber">{integration.label} integration</Badge>
+      <span className="fg-caption text-muted">
+        injects nothing from here — granted on the Integrations tab
+      </span>
+    </span>
+  );
 }
 
 /** The stages an editor offers: every ladder status, so a stage with no
@@ -146,7 +165,7 @@ function StageEditor({
             .filter((n) => !MCP_CATALOG_NAMES.includes(n))
             .map((n) => (
               <div key={n} className="flex items-center justify-between gap-3">
-                <MonoTag>{n}</MonoTag>
+                <McpServerTag name={n} />
                 <Button variant="ghost" size="sm" onClick={() => setMcp((m) => {
                   const next = { ...m };
                   delete next[n];
@@ -279,7 +298,7 @@ export function StagePermissionsSection({
                       </p>
                       <div className="flex flex-wrap gap-1.5">
                         {mcpNames.map((n) => (
-                          <MonoTag key={n}>{n}</MonoTag>
+                          <McpServerTag key={n} name={n} />
                         ))}
                       </div>
                     </div>

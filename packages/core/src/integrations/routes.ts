@@ -19,7 +19,13 @@ import { integrationDeliveries } from '../db/schema.js';
 import { effectiveProjectRole, orgRoleAtLeast } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { registerCoolifyDeployRoutes } from './coolify-routes.js';
+import {
+  AGENT_ACCESS_CLOSED,
+  type AgentAccess,
+  agentAccessTier,
+  noAgentPathMessage,
+} from './agent-access.js';
+import { registerCoolifyDeployRoutes } from './coolify/routes.js';
 import { findDeliveryById } from './deliveries.js';
 import { buildMcpPreview } from './mcp-preview-service.js';
 import {
@@ -30,7 +36,8 @@ import {
   updateSchema,
 } from './provider-schemas.js';
 import { enqueueCoolifyDispatch } from './queue.js';
-import { getAdapter } from './registry.js';
+import { getAdapter, getIntegration } from './registry.js';
+import { rocketChatBindingOfProject } from './rocketchat/binding.js';
 import { fetchBotRooms } from './rocketchat/rest-client.js';
 import {
   alreadyExists,
@@ -44,7 +51,7 @@ import {
   defaultConnectionDisplayName,
   forbidden,
   notFound,
-  reloadRocketChatIfNeeded,
+  notifyConnectionChanged,
   summarizeBinding,
 } from './route-helpers.js';
 import { buildIntegrationsStatusCards } from './status-service.js';
@@ -63,6 +70,30 @@ import {
 // Owner-scoped connection CRUD lives in its own module; re-exported so
 // `src/index.ts` keeps importing both routers from `./integrations/routes.js`.
 export { integrationConnectionsRoutes } from './connection-routes.js';
+
+/**
+ * Authorize a write to a binding's agent-access grant, and refuse one that means nothing.
+ *
+ * ISS-1071 rule 5 — the tier is a property of the provider's declared agent path, not of the route:
+ * a `direct-mcp` grant hands the project's credential to a runner box, so it takes the same
+ * org-admin escalation that already guards `secrets`, `config` and `active` on an org-owned
+ * connection; a `core-mediated` grant only widens who may ask core to make a call core was already
+ * making, so it stays with the project-admin fields. A provider declaring no agent path is refused
+ * by name rather than storing a column value nothing will ever read.
+ */
+// cm:edge contract -> packages/core/src/integrations/agent-access.ts — `agentAccessTier` decides
+// which of the two this is; adding a third agent path changes the answer there and nowhere here.
+async function authorizeAgentAccessWrite(
+  userId: string,
+  projectId: string,
+  provider: string,
+): Promise<void> {
+  const tier = agentAccessTier(getIntegration(provider));
+  if (tier === 'refused') throw badRequest(noAgentPathMessage(provider));
+  if (tier !== 'org-admin') return;
+  const access = await effectiveProjectRole(userId, projectId);
+  if (!orgRoleAtLeast(access?.orgRole ?? null, 'admin')) throw forbidden();
+}
 
 export const integrationsRoutes = new Hono<{ Variables: AuthVars }>();
 integrationsRoutes.use('*', requireAuth(), assertEmailVerified());
@@ -121,6 +152,12 @@ integrationsRoutes.post(
       }
       if (!orgRoleAtLeast(access.orgRole, 'admin')) throw forbidden();
     }
+    // Connecting an integration and saying whether agents may use it is ONE act on ONE object
+    // (ISS-1071 rule 3). The default is closed, so a caller that does not ask grants nothing.
+    const bindingAgentAccess: AgentAccess = body.agentAccess ?? AGENT_ACCESS_CLOSED;
+    if (bindingAgentAccess !== AGENT_ACCESS_CLOSED) {
+      await authorizeAgentAccessWrite(userId, projectId, body.provider);
+    }
     const tiers = splitProviderConfig(body.provider, body.config);
     const connection = await createConnection({
       ownerType: body.orgId ? 'org' : 'user',
@@ -145,6 +182,7 @@ integrationsRoutes.post(
         config: tiers.binding,
         integrationSecret,
         label: bindingLabel,
+        agentAccess: bindingAgentAccess,
       });
     } catch (err) {
       // Roll the just-created connection back so a binding-unique collision
@@ -157,7 +195,7 @@ integrationsRoutes.post(
       }
       throw err;
     }
-    reloadRocketChatIfNeeded(body.provider, connection.id);
+    notifyConnectionChanged(body.provider, connection.id);
     // Probe immediately so the new integration starts with real health (and
     // epodsystem store identity) instead of an unverified card (ISS-429).
     return c.json(
@@ -222,6 +260,10 @@ integrationsRoutes.patch(
       if (!orgRoleAtLeast(access?.orgRole ?? null, 'admin')) throw forbidden();
     }
 
+    if (patch.agentAccess !== undefined) {
+      await authorizeAgentAccessWrite(userId, projectId, binding.provider);
+    }
+
     let mergedSecrets: Record<string, unknown> | undefined;
     if (patch.secrets) {
       mergedSecrets = await applySecretsPatch({
@@ -246,20 +288,22 @@ integrationsRoutes.patch(
     if (
       mergedBindingConfig !== undefined ||
       patch.active !== undefined ||
-      patch.instructions !== undefined
+      patch.instructions !== undefined ||
+      patch.agentAccess !== undefined
     ) {
       const bindingPatch: Parameters<typeof updateBinding>[1] = {};
       if (mergedBindingConfig !== undefined) bindingPatch.config = mergedBindingConfig;
       if (patch.active !== undefined) bindingPatch.active = patch.active;
       // cm:why project-admin editable without the org-owner escalation above — instructions are per-project prompt text, not a shared credential, so a project admin scoping their own store's guidance touches nothing another project can see
       if (patch.instructions !== undefined) bindingPatch.instructions = patch.instructions;
+      if (patch.agentAccess !== undefined) bindingPatch.agentAccess = patch.agentAccess;
       await updateBinding(binding.id, bindingPatch);
     }
 
     const refreshed = await findBindingWithConnectionById(id);
     if (!refreshed) throw notFound();
     broadcastIntegrationChanged(projectId, { bindingId: id, connectionId: connection.id });
-    reloadRocketChatIfNeeded(binding.provider, connection.id);
+    notifyConnectionChanged(binding.provider, connection.id);
     return c.json({ integration: summarizeBinding(refreshed) });
   },
 );
@@ -282,7 +326,7 @@ integrationsRoutes.delete('/:projectId/integrations/:id', async (c) => {
     bindingId: id,
     connectionId: existing.connection.id,
   });
-  reloadRocketChatIfNeeded(existing.binding.provider, existing.connection.id);
+  notifyConnectionChanged(existing.binding.provider, existing.connection.id);
   return c.json({ ok: true });
 });
 
@@ -337,14 +381,8 @@ integrationsRoutes.post(
 
     let auth: { serverUrl: string; authToken: string; userId: string };
     if (body.integrationId) {
-      const existing = await findBindingWithConnectionById(body.integrationId);
-      if (
-        !existing ||
-        existing.binding.projectId !== projectId ||
-        existing.binding.provider !== 'rocketchat'
-      ) {
-        throw notFound();
-      }
+      const existing = await rocketChatBindingOfProject(projectId, body.integrationId);
+      if (!existing) throw notFound();
       const ctx = buildContextFromBinding(existing);
       const cfg = ctx.config as { serverUrl?: string } | null;
       const secrets = ctx.secrets as { authToken?: string; userId?: string } | null;

@@ -69,6 +69,11 @@ vi.mock('../pipeline/runs.js', () => ({ openOneShotRun: vi.fn(async () => ({ id:
 
 const { dispatchChatTurn } = await import('./chat-turn.js');
 
+// ISS-1071 — the dispatch path reads the integration registry, which throws while empty rather than
+// answering "no integrations exist", so this file registers as the app does at boot.
+const { registerAllIntegrations } = await import('../integrations/register-all.js');
+registerAllIntegrations();
+
 const PROJECT = { id: 'proj-1', slug: 'apiflow', repoPath: '/repo' };
 const DEVICE = 'dev-1';
 

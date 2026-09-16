@@ -32,7 +32,7 @@ const CONFIG_PATH = join(ROOT, '.forge', 'conformance.json');
 // cm:guard this table holds COMMANDS only — every baseline path is read from the manifest, never repeated here. A second copy of a path is a second thing to keep true, and the manifest is the half a reader is entitled to trust.
 const PROBES = {
   form: {
-    gate: 'check-size-budget + check-lint-budget + biome',
+    gate: 'check-size-budget + check-lint-budget + biome + check-provider-literals + check-integration-declarations',
     probe: ['node', 'scripts/check-size-budget.mjs', '--all'],
     needs: ['deps'],
     also: [
@@ -41,6 +41,12 @@ const PROBES = {
         needs: ['deps'],
         probe: ['node', 'scripts/check-lint-budget.mjs', '--all'],
       },
+      // cm:why `from: 'none'` — neither ISS-1071 checker carries a baseline. Both are absolute: a
+      // provider literal outside the declared locations, or a declaration missing a field the
+      // generic paths read, is a violation at any count. Borrowing a baseline would report a checker
+      // at zero debt as debt-frozen.
+      { from: 'none', probe: ['node', 'scripts/check-provider-literals.mjs'] },
+      { from: 'none', probe: ['node', 'scripts/check-integration-declarations.mjs'] },
     ],
   },
   knowledge: {

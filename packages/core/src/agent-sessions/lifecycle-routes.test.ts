@@ -102,6 +102,8 @@ const { agentSessionRoutes } = await import('./routes.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
 const { requestId } = await import('../middleware/request-id.js');
+// ISS-1071 — the dispatch path reads the registry, which throws while empty.
+(await import('../integrations/register-all.js')).registerAllIntegrations();
 
 function buildApp() {
   const app = new Hono<{ Variables: import('../middleware/request-id.js').RequestIdVars }>();

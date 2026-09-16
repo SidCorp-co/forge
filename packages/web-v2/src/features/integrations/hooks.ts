@@ -287,6 +287,25 @@ export function useConnections() {
  * Save/Rotate buttons + secret inputs. Fails OPEN (false) while either query
  * is still loading — the server 403s regardless, this is purely affordance.
  */
+/**
+ * Is the caller an org owner/admin on this project? The UX half of the grant tier.
+ *
+ * cm:edge contract -> packages/core/src/integrations/agent-access.ts — `agentAccessTier` is the
+ * server's answer: a `direct-mcp` grant hands a project's credential to a runner box, so it takes
+ * org admin, while a `core-mediated` one stays a project-admin field. This is the ONLY thing the
+ * screen may use to decide whether to offer the switch. `useOrgConnectionLocked` answers a
+ * different question — who owns the CREDENTIAL — and using it here was wrong in both directions:
+ * it offered a direct-MCP grant to a project admin holding a personal credential, whose write the
+ * server answers 403, and it withheld a core-mediated one from a project admin on an org-owned
+ * connection, which the server accepts.
+ */
+export function useIsOrgAdmin(projectId: string | undefined): boolean {
+  const projectsQ = useProjects();
+  if (!projectId) return false;
+  const orgRole = projectsQ.data?.find((p) => p.id === projectId)?.orgRole ?? null;
+  return orgRole === "owner" || orgRole === "admin";
+}
+
 export function useOrgConnectionLocked(
   projectId: string | undefined,
   connectionId: string | null | undefined,

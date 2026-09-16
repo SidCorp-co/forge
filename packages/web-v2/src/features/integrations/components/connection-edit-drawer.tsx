@@ -11,7 +11,7 @@
 // org member gets a read-only drawer that can still drill into projects.
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { Suspense, lazy, useMemo, useState } from "react";
 import {
   Banner,
   Button,
@@ -20,7 +20,6 @@ import {
   Field,
   Icon,
   Input,
-  SegmentedControl,
   Skeleton,
   SlideOver,
 } from "@/design";
@@ -36,33 +35,17 @@ import {
   useUpdateConnection,
 } from "../hooks";
 import { deriveConnectionStatus } from "../derive";
-import type {
-  BindingSummary,
-  ConnectionSummary,
-  IntegrationTestResult,
-  PostmanMode,
-  PostmanRegion,
-  ProviderConfig,
-} from "../types";
-import { DirectoryStatusPill, PROVIDER_ICON, PROVIDER_LABEL, scopeLabel } from "./status-pill";
+import { PROVIDER_MODULES, providerIcon, providerLabel, providerModule } from "../providers/registry";
+import type { BindingSummary, ConnectionSummary, IntegrationTestResult } from "../types";
+import { DirectoryStatusPill, scopeLabel } from "./status-pill";
 
-/** Provider → name of the secrets field carrying the primary credential
- *  (mirrors core `rotation.ts` PRIMARY_FIELD). */
-const SECRET_FIELD: Record<string, string> = {
-  coolify: "apiToken",
-  postman: "apiKey",
-  epodsystem: "apiKey",
-  sentry: "authToken",
-  rocketchat: "authToken",
-};
-
-const SECRET_PLACEHOLDER: Record<string, string> = {
-  coolify: "Coolify API token",
-  postman: "PMAK-…",
-  epodsystem: "crmk_…",
-  sentry: "sntryu_…",
-  rocketchat: "bot personal-access token",
-};
+// cm:guard built ONCE at module scope — `lazy()` mints a new component type per call, and one
+// rebuilt during a render remounts the form and drops what the operator typed.
+const CONNECTION_SECTIONS = new Map(
+  PROVIDER_MODULES.flatMap((m) =>
+    m.connectionSection ? [[m.provider, lazy(m.connectionSection)] as const] : [],
+  ),
+);
 
 /** Inline rename in the drawer header (AC1). */
 function HeaderTitle({
@@ -75,8 +58,7 @@ function HeaderTitle({
   const update = useUpdateConnection();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
-  const label =
-    connection.displayName ?? PROVIDER_LABEL[connection.provider] ?? connection.provider;
+  const label = connection.displayName ?? providerLabel(connection.provider);
 
   const save = () => {
     const next = draft.trim();
@@ -88,11 +70,7 @@ function HeaderTitle({
 
   return (
     <span className="flex min-w-0 items-center gap-2.5">
-      <Icon
-        name={PROVIDER_ICON[connection.provider] ?? "link"}
-        size={18}
-        className="shrink-0 text-muted"
-      />
+      <Icon name={providerIcon(connection.provider)} size={18} className="shrink-0 text-muted" />
       {editing ? (
         <span className="flex items-center gap-1.5">
           <Input
@@ -156,11 +134,12 @@ function CredentialSection({
   const [testError, setTestError] = useState<string | null>(null);
 
   const checked = formatRelativeTime(connection.lastHealthAt);
-  const secretField = SECRET_FIELD[connection.provider] ?? "apiKey";
+  const module = providerModule(connection.provider);
+  const secretField = module?.secretField ?? null;
 
   const saveKey = () => {
     const next = key.trim();
-    if (next.length < 8) return;
+    if (next.length < 8 || secretField === null) return;
     // mutate (not mutateAsync) — the hook's onError toast handles failure; the
     // input clears only on success so a rejected key isn't silently dropped.
     update.mutate(
@@ -182,7 +161,16 @@ function CredentialSection({
   return (
     <section className="flex flex-col gap-3">
       <h3 className="fg-h4">Credential</h3>
-      {canManage && (
+      {/* cm:guard a provider with no `secretField` gets NO box: its credential is never typed, and
+          the fall-through this replaced offered one whose PATCH sent `{ apiKey }` to a provider
+          whose schema has no such field — a Save that could only ever 400. */}
+      {canManage && secretField === null && (
+        <p className="fg-body-sm rounded-md border border-line bg-surface px-3 py-2 text-muted">
+          {module?.connectionNote ??
+            `${providerLabel(connection.provider)}'s credential is not entered by hand and cannot be replaced here.`}
+        </p>
+      )}
+      {canManage && secretField !== null && (
         <Field
           label="Replace key"
           hint={
@@ -195,7 +183,7 @@ function CredentialSection({
             <Input
               type="password"
               autoComplete="off"
-              placeholder={SECRET_PLACEHOLDER[connection.provider] ?? "API key"}
+              placeholder={module?.secretPlaceholder ?? "API key"}
               value={key}
               onChange={(e) => setKey(e.target.value)}
             />
@@ -235,8 +223,10 @@ function CredentialSection({
   );
 }
 
-/** Per-provider config form. Coolify/Postman are editable; Epodsystem identity
- *  is read-only (the healthcheck fills it from the key). */
+// cm:guard the key here is the CONNECTION id, not the provider: `useState` initialisers do not
+// re-run, so a form seeded for one credential would keep showing that credential's values after the
+// drawer switched to another of the same provider.
+/** The provider's own connection-tier form, or a line saying where its config is edited instead. */
 function ConfigSection({
   connection,
   canManage,
@@ -244,158 +234,29 @@ function ConfigSection({
   connection: ConnectionSummary;
   canManage: boolean;
 }) {
-  const update = useUpdateConnection();
-  const cfg = (connection.config ?? {}) as ProviderConfig;
+  const module = providerModule(connection.provider);
+  const Section = CONNECTION_SECTIONS.get(connection.provider);
 
-  // Re-seed the form when the drawer switches to another connection.
-  const [form, setForm] = useState<ProviderConfig>(cfg);
-  const [seededFor, setSeededFor] = useState(connection.id);
-  if (connection.id !== seededFor) {
-    setForm(cfg);
-    setSeededFor(connection.id);
-  }
-
-  const set = <K extends keyof ProviderConfig>(k: K, v: ProviderConfig[K]) =>
-    setForm((f) => ({ ...f, [k]: v }));
-
-  if (connection.provider === "epodsystem") {
+  if (!Section) {
     return (
       <section className="flex flex-col gap-2">
-        <h3 className="fg-h4">Store</h3>
-        <p className="fg-body-sm rounded-md border border-line bg-surface px-3 py-2 text-muted">
-          {cfg.storeSlug || cfg.storeName
-            ? `${cfg.storeName ?? cfg.storeSlug}${cfg.storeSlug ? ` (${cfg.storeSlug})` : ""}`
-            : "Store identity is filled in automatically by a successful Test."}
-        </p>
-      </section>
-    );
-  }
-
-  if (connection.provider === "rocketchat") {
-    return (
-      <section className="flex flex-col gap-3">
         <h3 className="fg-h4">Configuration</h3>
-        <Field label="Server URL" hint="e.g. https://chat.example.com">
-          <Input
-            value={form.serverUrl ?? ""}
-            onChange={(e) => set("serverUrl", e.target.value)}
-            disabled={!canManage}
-          />
-        </Field>
-        <p className="fg-body-sm text-muted">
-          This is the shared bot credential (server URL + bot token). The room each
-          project listens on is configured per project under project settings →
-          Integrations.
+        <p className="fg-body-sm rounded-md border border-line bg-surface px-3 py-2 text-muted">
+          {module?.connectionNote ??
+            `${providerLabel(connection.provider)} has no configuration at the credential tier.`}
         </p>
-        {canManage && (
-          <div>
-            <Button
-              variant="secondary"
-              size="sm"
-              loading={update.isPending}
-              onClick={() =>
-                update.mutate({
-                  id: connection.id,
-                  body: { config: { serverUrl: (form.serverUrl ?? "").trim() } },
-                })
-              }
-            >
-              Save configuration
-            </Button>
-          </div>
-        )}
       </section>
     );
   }
-
-  const saveConfig = () => {
-    const config: Record<string, unknown> =
-      connection.provider === "coolify"
-        ? {
-            baseUrl: (form.baseUrl ?? "").trim(),
-          }
-        : {
-            workspaceName: (form.workspaceName ?? "").trim(),
-            region: form.region ?? "us",
-            mode: form.mode ?? "minimal",
-          };
-    update.mutate({ id: connection.id, body: { config } });
-  };
 
   return (
-    <section className="flex flex-col gap-3">
-      <h3 className="fg-h4">Configuration</h3>
-      {connection.provider === "coolify" ? (
-        <>
-          <Field label="Base URL">
-            <Input
-              value={form.baseUrl ?? ""}
-              onChange={(e) => set("baseUrl", e.target.value)}
-              disabled={!canManage}
-            />
-          </Field>
-          <p className="fg-body-sm text-muted">
-            This is the shared credential (server URL + API token only). Deploy
-            targets — the Coolify application(s) each project deploys, including a
-            split backend/frontend — are configured per project under project
-            settings → Integrations.
-          </p>
-        </>
-      ) : (
-        <>
-          <Field label="Workspace name" hint="The Postman workspace this connection writes into.">
-            <Input
-              value={form.workspaceName ?? ""}
-              onChange={(e) => setForm((p) => ({ ...p, workspaceName: e.target.value }))}
-              disabled={!canManage}
-            />
-          </Field>
-          <div className="flex flex-wrap items-center gap-6">
-            <div className="flex flex-col gap-1.5">
-              <span className="fg-label">Region</span>
-              {canManage ? (
-                <SegmentedControl<PostmanRegion>
-                  value={form.region ?? "us"}
-                  onChange={(v) => setForm((p) => ({ ...p, region: v }))}
-                  options={[
-                    { value: "us", label: "US" },
-                    { value: "eu", label: "EU" },
-                  ]}
-                />
-              ) : (
-                <span className="fg-body-sm text-muted">{(form.region ?? "us").toUpperCase()}</span>
-              )}
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <span className="fg-label">Mode</span>
-              {canManage ? (
-                <SegmentedControl<PostmanMode>
-                  value={form.mode ?? "minimal"}
-                  onChange={(v) => setForm((p) => ({ ...p, mode: v }))}
-                  options={[
-                    { value: "minimal", label: "Minimal" },
-                    { value: "full", label: "Full" },
-                  ]}
-                />
-              ) : (
-                <span className="fg-body-sm text-muted">{form.mode ?? "minimal"}</span>
-              )}
-            </div>
-          </div>
-        </>
-      )}
-      {canManage ? (
-        <div>
-          <Button variant="secondary" size="sm" loading={update.isPending} onClick={saveConfig}>
-            Save configuration
-          </Button>
-        </div>
-      ) : (
-        <p className="fg-body-sm text-muted">
-          Org-shared credential — only an org owner/admin can change it.
-        </p>
-      )}
-    </section>
+    <Suspense fallback={<Skeleton className="h-28 w-full" />}>
+      <Section
+        key={connection.id}
+        connection={{ id: connection.id, config: connection.config ?? {} }}
+        canManage={canManage}
+      />
+    </Suspense>
   );
 }
 

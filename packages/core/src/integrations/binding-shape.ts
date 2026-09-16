@@ -10,7 +10,7 @@
 
 import { z } from 'zod';
 import { type BindingRole, bindingRoles, type DeployStage, deployStages } from '../db/schema.js';
-import { DEPLOY_CAPABLE_PROVIDERS, providerCanDeploy } from './types.js';
+import { deployCapableProviders, providerCanDeploy } from './registry.js';
 
 export const roleSchema = z.enum(bindingRoles);
 export const stagesSchema = z.array(z.enum(deployStages)).min(1).max(2);
@@ -75,7 +75,7 @@ export function checkRoleStagesPairing(
 
 /** The sentence a caller gets for `role: 'deploy'` on a provider Forge cannot deploy to. */
 export function cannotDeployMessage(provider: string): string {
-  return `Forge cannot deploy to \`${provider}\` — it has no deploy adapter, so this binding can only be \`role: "service"\`. Deploy-capable providers: ${DEPLOY_CAPABLE_PROVIDERS.join(', ')}.`;
+  return `Forge cannot deploy to \`${provider}\` — it has no deploy adapter, so this binding can only be \`role: "service"\`. Deploy-capable providers: ${deployCapableProviders().join(', ')}.`;
 }
 
 /**

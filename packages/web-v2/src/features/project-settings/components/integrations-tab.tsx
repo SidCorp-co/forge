@@ -15,12 +15,20 @@ import {
   Select,
   type SelectOption,
 } from "@/design";
+import {
+  AGENT_ACCESS_CLOSED,
+  AgentAccessChoice, agentAccessBody, agentAccessDeniedReason, mayWriteAgentAccess} from "@/features/integrations/components/agent-access-control";
 import { ProjectIntegrationsPanel } from "@/features/integrations/components/project-integrations-panel";
-import { PROVIDER_LABEL } from "@/features/integrations/components/status-pill";
-import { useBindExistingConnection, useConnections } from "@/features/integrations/hooks";
+import { useBindExistingConnection, useConnections, useIsOrgAdmin } from "@/features/integrations/hooks";
+import { providerLabel, providerModule } from "@/features/integrations/providers/registry";
 import { formatApiError } from "@/lib/api/error";
 import { providerCanDeploy } from "@forge/contracts/deploy-capability";
-import type { BindingRole, ConnectionSummary, DeployStage } from "@/features/integrations/types";
+import type {
+  AgentAccess,
+  BindingRole,
+  ConnectionSummary,
+  DeployStage,
+} from "@/features/integrations/types";
 
 // What the binding is FOR — DECLARED by the person, never derived from the
 // provider: the same epodsystem connection is a deploy target on a storefront
@@ -39,7 +47,7 @@ const STAGE_CHOICES: { value: DeployStage; label: string; hint: string }[] = [
 ];
 
 function connectionLabel(c: ConnectionSummary): string {
-  const provider = PROVIDER_LABEL[c.provider] ?? c.provider;
+  const provider = providerLabel(c.provider);
   return c.displayName ? `${c.displayName} · ${provider}` : provider;
 }
 
@@ -49,6 +57,10 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
   const [connectionId, setConnectionId] = useState<string>("");
   const [role, setRole] = useState<BindingRole>("service");
   const [stages, setStages] = useState<DeployStage[]>([]);
+  // cm:guard the closed answer is the initial state and is re-seeded on every successful bind:
+  // a grant carried over from the previous connection in this same form would hand a credential to
+  // a runner box on the strength of an answer given about a different one.
+  const [agentAccess, setAgentAccess] = useState<AgentAccess>(AGENT_ACCESS_CLOSED);
   const [formError, setFormError] = useState<string | null>(null);
 
   // Only active connections with a stored credential are eligible to share —
@@ -69,7 +81,11 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
   const selected = eligible.find((c) => c.id === connectionId);
   const provider = selected?.provider;
   const canDeploy = provider === undefined ? true : providerCanDeploy(provider);
-  const providerName = provider ? (PROVIDER_LABEL[provider] ?? provider) : "this provider";
+  const providerName = provider ? providerLabel(provider) : "this provider";
+  // No binding exists yet, so the risk class comes off the provider's own module. `none` renders no
+  // control at all — that provider has no agent path for a grant to open.
+  const agentPathKind = provider ? (providerModule(provider)?.agentPathKind ?? "none") : "none";
+  const isOrgAdmin = useIsOrgAdmin(projectId);
 
   // cm:guard the role picker CLEARS the stages it hides rather than leaving them in
   // state: a hidden control whose value still submits is how a service binding
@@ -112,6 +128,7 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
           projectId,
           role,
           ...(role === "deploy" ? { stages } : {}),
+          ...agentAccessBody(agentPathKind, agentAccess),
         },
       },
       {
@@ -119,6 +136,7 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
           setConnectionId("");
           setRole("service");
           setStages([]);
+          setAgentAccess(AGENT_ACCESS_CLOSED);
         },
       },
     );
@@ -190,6 +208,13 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
                 </div>
               </Field>
             )}
+            <AgentAccessChoice
+              value={agentAccess}
+              onChange={setAgentAccess}
+              pathKind={agentPathKind}
+              canEdit={mayWriteAgentAccess(agentPathKind, { canEditProject: canEdit, isOrgAdmin }) && !bind.isPending}
+              disabledReason={agentAccessDeniedReason(agentPathKind)}
+            />
             {formError && <Banner tone="attention">{formError}</Banner>}
             {bind.isError && <Banner tone="danger">{formatApiError(bind.error)}</Banner>}
             <div>
@@ -218,7 +243,7 @@ export function IntegrationsTab({
 }) {
   return (
     <div className="flex flex-col gap-4">
-      <ProjectIntegrationsPanel projectId={projectId} />
+      <ProjectIntegrationsPanel projectId={projectId} canEdit={canEdit} />
       <ShareExistingCard projectId={projectId} canEdit={canEdit} />
     </div>
   );

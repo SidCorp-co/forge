@@ -19,6 +19,7 @@ import {
   createTestDevice,
   createTestProject,
   createTestUser,
+  registerIntegrationsForTest,
   setupTestDatabase,
   type TestDatabase,
   truncateAll,
@@ -65,6 +66,7 @@ describe('W2.3.2 monthly budget gate E2E', () => {
     process.env.APP_BASE_URL ??= 'http://localhost:3000';
     process.env.CORS_ORIGINS ??= 'http://localhost:3000';
     process.env.NODE_ENV ??= 'test';
+    await registerIntegrationsForTest();
 
     const claimMod = await import('../../src/devices/claim.js');
     const hooksMod = await import('../../src/pipeline/hooks.js');

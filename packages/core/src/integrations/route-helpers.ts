@@ -11,8 +11,9 @@ import type { BindingRole, DeployStage } from '../db/schema.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
+import type { AgentAccess } from './agent-access.js';
 import { raceWithTimeout } from './probe.js';
-import { getAdapter } from './registry.js';
+import { getAdapter, getIntegration } from './registry.js';
 import {
   type BindingWithConnection,
   buildContextFromBinding,
@@ -82,17 +83,15 @@ export async function assertNoActiveBindingClash(
     );
 }
 
-/** ISS-609 — apply rocketchat connection/binding CRUD to the live bot socket
- *  (dial / teardown / re-subscribe) without a core restart. Fire-and-forget;
- *  goes via pg NOTIFY so the instance owning the socket reloads even when it
- *  isn't the one that served this request. Lazily imported: the connection
- *  manager reads env at module scope, and this fire-and-forget hop is the
- *  routers' only dependency on it. */
-export function reloadRocketChatIfNeeded(provider: string, connectionId: string): void {
-  if (provider !== 'rocketchat') return;
-  void import('./rocketchat/connection-manager.js')
-    .then((m) => m.requestRocketChatReload(connectionId))
-    .catch(() => {});
+/**
+ * Tell a provider its connection changed, where the provider declares that it cares.
+ *
+ * Rocket.Chat is the only one today — it holds a realtime socket that must be rebuilt against the
+ * new credential — but this names no provider: the hook is an adapter method, so the next provider
+ * with a live process declares it in its own directory and this helper is not edited at all.
+ */
+export function notifyConnectionChanged(provider: string, connectionId: string): void {
+  getAdapter(provider)?.onConnectionChanged?.(connectionId);
 }
 
 export async function assertProjectMember(
@@ -137,6 +136,13 @@ export function summarizeBinding(pair: BindingWithConnection) {
     breakerOpenedAt: connection.breakerOpenedAt,
     hasSecrets: connection.secretsEnc !== null,
     integrationSecretSet: binding.integrationSecret !== null,
+    // ISS-1071 — the grant, and what it would MEAN for this provider, projected together. A screen
+    // that only got `agentAccess` would have to decide for itself whether the switch is offerable,
+    // which is how the old sentinel ended up rendered as a catalog toggle on a settings tab that
+    // refused its only legal value. `none` here means the switch is not a question for this
+    // provider at all, and a screen renders the reason rather than a dead control.
+    agentAccess: binding.agentAccess as AgentAccess,
+    agentPathKind: getIntegration(binding.provider)?.capabilities.agentPath.kind ?? 'none',
     createdAt: binding.createdAt,
     updatedAt: binding.updatedAt,
   };
