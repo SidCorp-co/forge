@@ -20,14 +20,21 @@
  *    would trade one burst of alarms for one burst of all-clears.
  * 3. A `pending` record whose producer stopped emitting is dropped undelivered. Its
  *    condition cleared inside its own `for` window, which is what the `for` is for.
+ *
+ * cm:why this lives in `pipeline/` rather than in `notifications/`, beside the two other
+ * detectors that write notifications (`stranded-issues.ts`, `issue-run-invariant.ts`): it
+ * is a sweeper pass, and `sweeper.ts` reaching into `core-notifications` directly put that
+ * file over the `no-coordinator-blob` fan-out limit — 7 modules against a limit of 6. The
+ * check named the design rather than an accident: the sweeper coordinates pipeline passes,
+ * and a pass that happens to write notifications is still a pipeline pass.
  */
 
 import { and, eq, isNotNull, isNull, lt, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { notifications } from '../db/schema.js';
 import { logger } from '../logger.js';
-import { resolveNotifications } from './auto-resolve.js';
-import { PENDING_STALE_MS } from './deliver.js';
+import { resolveNotifications } from '../notifications/auto-resolve.js';
+import { PENDING_STALE_MS } from '../notifications/deliver.js';
 
 export interface ReevaluateResult {
   /** Firing conditions whose subject is over. */

@@ -334,7 +334,7 @@ describe('notifications · inhibition', () => {
     });
     await mods.resolveNotifications('wedge:root');
 
-    const { reevaluateConditions } = await import('../../src/notifications/reevaluate.js');
+    const { reevaluateConditions } = await import('../../src/pipeline/reevaluate-conditions.js');
     // The child returns to `pending` rather than being delivered…
     await reevaluateConditions(new Date());
     const [{ state }] = (await harness.db.execute(

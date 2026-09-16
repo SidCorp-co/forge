@@ -24,7 +24,7 @@
  * is not computable from either side; saying they disagree is.
  */
 
-import { and, inArray, eq, gte, isNull, or, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { notifications } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';

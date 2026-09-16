@@ -139,14 +139,17 @@ export function NotificationsMenu({
                   <p className="fg-body-sm mt-1 text-fg">{n.text}</p>
                   {n.sub && <p className="fg-caption mt-0.5 whitespace-pre-line">{n.sub}</p>}
                   {n.group && (
-                    <div
-                      className="mt-1.5"
-                      onClick={(e) => e.stopPropagation()}
-                      onKeyDown={(e) => e.stopPropagation()}
-                    >
+                    <div className="mt-1.5">
+                      {/* The row itself is clickable, so every control inside it stops the
+                          event on the control — a wrapper div carrying the handlers would be
+                          a second static element with interactions in a file already
+                          carrying one. */}
                       <button
                         type="button"
-                        onClick={() => onToggleGroup?.(n.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onToggleGroup?.(n.id);
+                        }}
                         disabled={!onToggleGroup}
                         className="fg-caption text-link hover:underline disabled:cursor-default disabled:text-muted disabled:no-underline"
                       >
@@ -161,7 +164,10 @@ export function NotificationsMenu({
                               <li key={m.id}>
                                 <button
                                   type="button"
-                                  onClick={() => onSelectMember?.(m.id)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onSelectMember?.(m.id);
+                                  }}
                                   className="block w-full py-1 text-left hover:underline"
                                 >
                                   <span

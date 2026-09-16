@@ -36,7 +36,6 @@ import { recordPipelineSweeperTick } from '../jobs/pgboss-health.js';
 import { NON_CLIENT_METADATA_TYPES, PIPELINE_METADATA_TYPES } from '../jobs/session-kinds.js';
 import { applyKernelTransition, SWEEP_SESSION_COLUMNS } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
-import { type ReevaluateResult, reevaluateConditions } from '../notifications/reevaluate.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { boss } from '../queue/boss.js';
 import {
@@ -50,6 +49,7 @@ import {
   detectOrphanedRunAssertions,
   type IssueRunInvariantResult,
 } from './issue-run-invariant.js';
+import { type ReevaluateResult, reevaluateConditions } from './reevaluate-conditions.js';
 import { detectRetryRescueThresholds, type RetryRescueAlertResult } from './retry-rescue-alert.js';
 import { type OrphanedPauseResult, resumeOrphanedPauses } from './run-pause.js';
 import { closeOpenRunForIssue, closeRunIfOneShot } from './runs.js';
