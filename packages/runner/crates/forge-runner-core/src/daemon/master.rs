@@ -29,6 +29,7 @@ use crate::daemon::checkpoint;
 use crate::daemon::dispatch::resolve_repo;
 use crate::daemon::held_report;
 use crate::daemon::master_exit::{self, Verdict};
+use crate::daemon::master_limit;
 use crate::daemon::recovery;
 use crate::daemon::recovery_ports::{CoreBeat, CoreRunState, PaneMasters, SignalProbe};
 use crate::daemon::run_exit;
@@ -53,11 +54,11 @@ const WAKE_FLOOR: Duration = Duration::from_secs(5);
 /// The longest a master may go un-nudged while the work in front of it is unchanged.
 // cm:guard a CEILING ON SILENCE, never a gate: an unchanged pool still reaches the master on this period, so a pass lost to a wedged pane, an ignored line or a limit cleared out of band is retried without an operator. The same reason `LIMITED_POLL_INTERVAL` is a backoff and not a blackout — read it as permission to stop nudging and the fleet cannot self-heal.
 // cm:guard the pane costs REAL MONEY per nudge, which is why this exists at all: one nudge is one full agent pass, measured at ~$0.18 on forge-vm 2026-09-08, and 1,354 nudges over 95 minutes bought 0 claims and $245 while every runner sat rate-limited. An unconditional nudge on every sweep is a spend proportional to sweeps rather than to work.
-const NUDGE_REFRESH: Duration = Duration::from_secs(5 * 60);
+pub(crate) const NUDGE_REFRESH: Duration = Duration::from_secs(5 * 60);
 
 /// Sweep spacing once every project this box serves is rate-limited.
 // cm:guard this is a BACKOFF, never a blackout, and the distinction is the whole design. Core clears a limit only when a job SUCCEEDS (`clearRunnerLimit`), so a master that declines to sweep while limited removes the only thing that can clear the stamp, and an operator who fixes the account out of band is left watching an idle fleet forever. Slowing down costs a few minutes of latency; stopping costs the self-heal.
-const LIMITED_POLL_INTERVAL: Duration = Duration::from_secs(5 * 60);
+pub(crate) const LIMITED_POLL_INTERVAL: Duration = Duration::from_secs(5 * 60);
 
 /// The first thing a resident master is told, once, when its session starts.
 // cm:guard name the skill and STOP. Restating its RULES here creates a second copy of the master's process, and the copies drift in silence because nothing compares them — the skill file is where a reader looks and this string is what a master is actually told. The two ship together (see the include_str edge below), so there is no version where inlining the rules here is even the safer half. The owner policy block below is the one thing that is not a copy: the skill holds the defaults and defers to it by name, and it exists nowhere in the binary.
@@ -327,6 +328,8 @@ pub async fn run(
 ) {
     let mut delay = POLL_INTERVAL;
     let mut last_sweep = Instant::now();
+    // cm:guard ONE memo for the box rather than one per project, because core's limit route fans out to every runner binding of the device — there is one Claude account here and therefore one thing to remember about it. It is deliberately in-process: a restart re-reads the conversations and re-decides, and core's own `limitReason` is what a clear is gated on, so nothing is lost by starting empty.
+    let mut account_limit_said: Option<String> = None;
     // cm:guard a ledger that will not open is announced and the box keeps sweeping. It is the input to ONE decision — whether an idle master may leave — and a daemon that refused to dispatch over it would trade every project's work for a housekeeping question.
     let mut ledger = match Ledger::default_path().and_then(|p| Ledger::open(&p)) {
         Ok(l) => Some(l),
@@ -338,7 +341,8 @@ pub async fn run(
     loop {
         tokio::select! {
             _ = tokio::time::sleep(delay) => {
-                delay = sweep(&client, &cfg, &masters, &activity, &mut ledger).await;
+                delay = sweep(&client, &cfg, &masters, &activity, &mut ledger, &mut account_limit_said)
+                    .await;
                 last_sweep = Instant::now();
             }
             Some(w) = wake.recv() => {
@@ -347,7 +351,8 @@ pub async fn run(
                     tokio::time::sleep(WAKE_FLOOR - since).await;
                 }
                 tracing::info!("[master] wake ({}) — sweeping now", w.describe());
-                delay = sweep(&client, &cfg, &masters, &activity, &mut ledger).await;
+                delay = sweep(&client, &cfg, &masters, &activity, &mut ledger, &mut account_limit_said)
+                    .await;
                 last_sweep = Instant::now();
             }
             _ = cancel.changed() => { if *cancel.borrow() { break; } }
@@ -396,7 +401,10 @@ async fn sweep(
     masters: &Arc<Masters>,
     activity: &agent_activity::Activities,
     ledger: &mut Option<Ledger>,
+    account_limit_said: &mut Option<String>,
 ) -> Duration {
+    let now_unix = master_limit::now_unix();
+    let mut account_said: Vec<master_limit::Decisive> = Vec::new();
     let served = match runners::list_me(client).await {
         Ok(rs) => rs,
         Err(e) => {
@@ -507,6 +515,14 @@ async fn sweep(
         if pane == PaneState::Absent {
             continue;
         }
+        // cm:why collected here, on the path a project with a live pane takes, and NOT on the drained branch above. A drained runner starts no work, so a cap on it changes no dispatch decision — and reading it there would cost a `resolve_repo` and a ledger read on a path that exists to do less. The cost is stated rather than hidden: a box where EVERY project is drained reports no cap, and is also dispatching nothing.
+        if let Some(said) = account_verdict(
+            &resolved.repo_path,
+            stored_conversation.as_deref(),
+            now_unix,
+        ) {
+            account_said.push(said);
+        }
         // cm:guard the obligation is written by the RESUME, in the same pass that made it. A pane
         // resumed over runs its predecessor left is the one thing that makes a choice owed, and
         // marking anywhere else — on the declaration, on the sweep, on a timer — would either owe a
@@ -538,6 +554,9 @@ async fn sweep(
             nudge_master(masters, &runner.project_id, &resolved.slug).await;
         }
     }
+
+    // cm:guard AFTER the project loop and never inside it, and that placement IS the decision. One account serves every pane on this box and core's route fans out to every binding of the device, so a report sent per project would let an older success on one delete the stamp a newer refusal on another had just written — with the winner decided by the order `/me/runners` happened to return the rows in.
+    report_account_limit(client, &served, &account_said, account_limit_said).await;
 
     // cm:guard BEFORE `give_back_lost_runs` and at the same brace depth, both deliberately. A run
     // declared this sweep has no core session yet, and `reconcile` reads a row with none as a run
@@ -587,6 +606,78 @@ async fn sweep(
     )
     .await;
     delay
+}
+
+/// What this project's master's own conversation says about the account now.
+///
+/// `None` where the box has no conversation recorded for the pane yet, which is
+/// every sweep between a cold start and that pane's first hook event.
+// cm:guard the path comes from `conversation_transcript`, the SAME resolver `--resume` uses, and never from a second encoding of Claude Code's layout. Two copies of somebody else's on-disk convention drift apart in silence, and the half that rots is the one that runs less often.
+fn account_verdict(
+    repo: &std::path::Path,
+    conversation: Option<&str>,
+    now_unix: i64,
+) -> Option<master_limit::Decisive> {
+    let id = conversation.filter(|c| !c.is_empty())?;
+    let path = conversation_transcript(repo, id)?;
+    let tail = master_limit::read_tail(&path)?;
+    master_limit::newest_decisive(&tail, now_unix)
+}
+
+/// Tell core what this box's Claude account said, once for the whole device.
+// cm:guard this path reports and does NOTHING else. A cap is not a fault: it must not change a runner's status, must not end a master, must not touch an issue, and must not stop the sweep — work already running finishes and only the STARTING of new turns backs off, which the existing `next_poll_delay` does on its own once the row is stamped.
+// cm:guard `core_limited` is read off core's own rows rather than off a memo, and the clear is authorised by nothing finer. One Claude account serves every pane, every job and every chat on this box — one `~/.claude`, one credential — so a master's successful turn is proof the account works whoever stamped the row, exactly as a successful JOB already clears a stamp the master lane wrote. Making the clear conditional on who stamped it would strand a box whose account an operator had just fixed, which is the one failure `LIMITED_POLL_INTERVAL` is a backoff rather than a blackout to avoid. The condition that ends this: per-project Claude credentials on one box, which would make "the account" ambiguous and this read wrong.
+async fn report_account_limit(
+    client: &CoreClient,
+    served: &[runners::MeRunner],
+    said: &[master_limit::Decisive],
+    memo: &mut Option<String>,
+) {
+    let core_limited = served.iter().any(|r| r.limit_reason.is_some());
+    match master_limit::decide(said, core_limited, memo.as_deref(), master_limit::now_unix()) {
+        master_limit::Action::Nothing => {}
+        master_limit::Action::Unreadable(slug) => tracing::warn!(
+            "[master] this box's Claude account refused a turn with `{slug}`, which this binary has not been taught to read — nothing was reported, so core will go on calling this box healthy until it is taught that name"
+        ),
+        master_limit::Action::Report(r, uuid) => {
+            match master_api::report_limit(
+                client,
+                r.reason.wire(),
+                r.resets_in_seconds,
+                &r.detail,
+            )
+            .await
+            {
+                Ok(()) => {
+                    tracing::warn!(
+                        "[master] this box's Claude account is capped ({}{}) — reported to core: {}",
+                        r.reason.wire(),
+                        match r.resets_in_seconds {
+                            Some(secs) => format!(", {secs}s to go"),
+                            None => String::new(),
+                        },
+                        r.detail
+                    );
+                    *memo = Some(uuid);
+                }
+                // cm:guard the memo is written ONLY on the Ok, and that is what makes the next sweep send the same refusal again. Recording it here would leave a cap core never heard, under a box that had stopped trying to tell it.
+                Err(e) => tracing::warn!(
+                    "[master] could not tell core this box's account is capped: {e} — sending it again next sweep"
+                ),
+            }
+        }
+        master_limit::Action::Clear => match master_api::clear_limit(client).await {
+            Ok(()) => {
+                tracing::info!(
+                    "[master] this box's Claude account answered a turn — the limit core was holding is lifted"
+                );
+                *memo = None;
+            }
+            Err(e) => tracing::warn!(
+                "[master] could not lift this box's account limit at core: {e} — trying again next sweep"
+            ),
+        },
+    }
 }
 
 /// What a sweep needs to take a run back: who this box serves (so a project's
@@ -1567,6 +1658,29 @@ mod tests {
                 limit_reason: None,
             })
             .collect()
+    }
+
+    /// The body this box sends core for the captured refusal — the same file the
+    /// receiving suite reads.
+    const WIRE: &str = include_str!("../../assets/master-limit-wire.json");
+
+    // cm:guard the seconds are taken off the WIRE fixture rather than typed here, which is what makes this the far end of one chain: the captured refusal produced that number, core stores it as an instant, `/me/runners` hands it back as seconds, and this is where it becomes the backoff. A literal would assert `next_poll_delay`'s arithmetic and nothing about the report.
+    #[test]
+    fn the_stamp_a_master_reports_is_what_widens_this_boxs_own_sweep() {
+        let wire: serde_json::Value = serde_json::from_str(WIRE).unwrap();
+        let secs = wire["resetsInSeconds"]
+            .as_u64()
+            .expect("the wire carries a reset");
+        assert_eq!(
+            next_poll_delay(&served(&[("online", Some(secs))])),
+            LIMITED_POLL_INTERVAL,
+            "a row stamped from this report is what makes the sweep back off"
+        );
+        assert_eq!(
+            next_poll_delay(&served(&[("online", None)])),
+            POLL_INTERVAL,
+            "and a row the clear emptied is what brings it back"
+        );
     }
 
     // cm:guard the wake floor must stay BELOW the poll interval, or a wake is strictly worse than doing nothing: core publishes to cut the latency from an issue arriving to a box looking, and a floor at or above `POLL_INTERVAL` would make every wake wait longer than the timer it was meant to beat.
@@ -2796,6 +2910,250 @@ mod give_back_tests {
         assert!(
             opens < reconciles,
             "a run declared this sweep must reach core before the reconciler reads it as one that never started"
+        );
+    }
+
+    // cm:guard depth 1 and exactly one occurrence: the report is taken ONCE for the box, after every project has been read. Core's limit route fans out to every runner binding of the device, so a call moved inside the project loop would let an older success on one project delete the stamp a newer refusal on another had just written — decided by whatever order `/me/runners` returned the rows in.
+    #[test]
+    fn the_account_is_reported_once_for_the_box_and_never_per_project() {
+        assert_eq!(
+            depth_of_call_in_sweep("report_account_limit("),
+            Some(1),
+            "the report must sit at the top level of the sweep, outside the project loop and under no condition"
+        );
+        let production = THIS_SOURCE.split("#[cfg(test)]").next().unwrap();
+        let sweep = production
+            .split("async fn sweep(")
+            .nth(1)
+            .and_then(|r| r.split("\n/// ").next())
+            .expect("sweep is gone");
+        assert_eq!(
+            sweep.matches("report_account_limit(").count(),
+            1,
+            "one decision per sweep means one call site"
+        );
+    }
+
+    // cm:guard the collection is what feeds that one decision, and it sits INSIDE the loop by design — one verdict read per project, one decision taken for the device.
+    #[test]
+    fn a_verdict_is_read_for_every_project_whose_pane_is_up() {
+        assert!(
+            depth_of_call_in_sweep("account_verdict(").unwrap_or(0) > 1,
+            "the read belongs inside the project loop; only the decision is device-wide"
+        );
+    }
+
+    // cm:guard a cap is NOT a fault. This scans the reporting path's own text for the verbs that would make it one — retiring the master, closing its row, moving work — because every one of them is a call away and the issue this came from names all three as out of bounds. Work already running finishes; only the starting of new turns backs off, and that is `next_poll_delay`'s job on the row core stamps.
+    #[test]
+    fn reporting_a_cap_ends_no_master_and_moves_no_work() {
+        let body = THIS_SOURCE
+            .split("async fn report_account_limit(")
+            .nth(1)
+            .and_then(|r| r.split("\n/// ").next())
+            .expect("the reporting path is gone");
+        for banned in [
+            "end_master(",
+            "master_api::close(",
+            "terminal::kill(",
+            "retire_if_idle(",
+            "patch_runner(",
+            "masters.forget(",
+            "issue",
+        ] {
+            assert!(
+                !body.contains(banned),
+                "`{banned}` on the reporting path would make a cap a fault: it must not retire the box, end a master, or touch an issue"
+            );
+        }
+    }
+
+    // ---- the reporting path, against a core that answers -----------------------
+
+    /// One request, captured whole, answered 200. Nothing arrives if nothing is sent.
+    async fn listen() -> (String, tokio::sync::oneshot::Receiver<String>) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = l.local_addr().unwrap();
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        tokio::spawn(async move {
+            let (mut sock, _) = l.accept().await.unwrap();
+            let mut buf = vec![0u8; 8192];
+            let n = sock.read(&mut buf).await.unwrap_or(0);
+            let req = String::from_utf8_lossy(&buf[..n]).into_owned();
+            let _ = sock
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}")
+                .await;
+            let _ = sock.shutdown().await;
+            let _ = tx.send(req);
+        });
+        (format!("http://{addr}"), rx)
+    }
+
+    /// A row this box serves, with core's own answer about whether it is limited.
+    fn row(limit_reason: Option<&str>) -> runners::MeRunner {
+        runners::MeRunner {
+            project_id: "p".into(),
+            runner_id: "r".into(),
+            slug: "s".into(),
+            base_branch: None,
+            repo_path: None,
+            branch: None,
+            status: "online".into(),
+            workspace_setup: None,
+            master_policy: None,
+            rate_limited_for_seconds: None,
+            limit_reason: limit_reason.map(str::to_string),
+        }
+    }
+
+    fn said(verdict: master_limit::Verdict, at: i64, uuid: &str) -> master_limit::Decisive {
+        master_limit::Decisive {
+            at,
+            uuid: uuid.into(),
+            verdict,
+        }
+    }
+
+    fn refusal() -> master_limit::Verdict {
+        master_limit::Verdict::Refused(master_limit::refusal_for_tests())
+    }
+
+    // cm:guard THIS is where `core_limited` is derived, and the derivation is the half a test built
+    // straight on `decide` cannot see: a sweep that stopped reading `limit_reason` off the rows, or
+    // that dropped the clear arm, would leave every direct test green while no box on the fleet
+    // ever lifted a limit again.
+    #[tokio::test]
+    async fn a_capped_row_and_a_fresh_success_send_exactly_one_delete() {
+        let (url, rx) = listen().await;
+        let client = CoreClient::new(url, String::from("tok"));
+        let now = master_limit::now_unix();
+        let mut memo = Some("an-earlier-refusal".to_string());
+        report_account_limit(
+            &client,
+            &[row(Some("usage_limit"))],
+            &[said(master_limit::Verdict::Worked, now, "u-worked")],
+            &mut memo,
+        )
+        .await;
+        let req = rx.await.expect("the box sent something");
+        assert!(req.starts_with("DELETE /api/devices/me/limit "), "{req}");
+        assert_eq!(memo, None, "the memo is emptied once core has lifted it");
+    }
+
+    // cm:guard the companion, and it is not decoration: without it the test above is satisfied by a
+    // box that sends a DELETE on every successful turn, which would lift a limit the job lane had
+    // just written on a box that was never capped as far as the master lane knows.
+    #[tokio::test]
+    async fn a_row_core_reports_as_healthy_sends_nothing_at_all() {
+        let (url, mut rx) = listen().await;
+        let client = CoreClient::new(url, String::from("tok"));
+        let now = master_limit::now_unix();
+        let mut memo: Option<String> = None;
+        report_account_limit(
+            &client,
+            &[row(None)],
+            &[said(master_limit::Verdict::Worked, now, "u-worked")],
+            &mut memo,
+        )
+        .await;
+        assert!(
+            rx.try_recv().is_err(),
+            "a success against an unlimited row is not news and costs no request"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_fresh_refusal_is_posted_and_remembered_by_the_records_own_id() {
+        let (url, rx) = listen().await;
+        let client = CoreClient::new(url, String::from("tok"));
+        let now = master_limit::now_unix();
+        let mut memo: Option<String> = None;
+        report_account_limit(
+            &client,
+            &[row(None)],
+            &[said(refusal(), now, "u-refused")],
+            &mut memo,
+        )
+        .await;
+        let req = rx.await.expect("the box sent something");
+        assert!(req.starts_with("POST /api/devices/me/limit "), "{req}");
+        assert_eq!(memo.as_deref(), Some("u-refused"));
+    }
+
+    // cm:guard a core that would not take the report leaves the memo ALONE, which is the only thing
+    // that makes the next sweep try again. A memo written before the answer is a cap core never
+    // heard, under a box that had stopped saying so.
+    #[tokio::test]
+    async fn a_refusal_core_never_received_is_not_remembered() {
+        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = l.local_addr().unwrap();
+        drop(l);
+        let client = CoreClient::new(format!("http://{addr}"), String::from("tok"));
+        let now = master_limit::now_unix();
+        let mut memo: Option<String> = None;
+        report_account_limit(
+            &client,
+            &[row(None)],
+            &[said(refusal(), now, "u-refused")],
+            &mut memo,
+        )
+        .await;
+        assert_eq!(
+            memo, None,
+            "nothing was recorded, so the next sweep says it again"
+        );
+    }
+
+    // cm:guard the delay is CHOSEN before the report is sent and the report is sent before the box beats what it still holds, so a core that refuses the report or cannot be reached cannot change what this sweep returns and cannot cost the reconciler its pass. Moving the report above `next_poll_delay` would let one failed request pace the whole box; moving it below `give_back_lost_runs` would put a network call between a dead run and its close loop.
+    #[test]
+    fn a_failed_report_changes_neither_the_delay_nor_the_rest_of_the_sweep() {
+        let production = THIS_SOURCE.split("#[cfg(test)]").next().unwrap();
+        let sweep = production
+            .split("async fn sweep(")
+            .nth(1)
+            .and_then(|r| r.split("\n/// ").next())
+            .expect("sweep is gone");
+        let delay = sweep
+            .find("let delay = next_poll_delay(")
+            .expect("the delay choice is gone");
+        let report = sweep
+            .find("report_account_limit(")
+            .expect("the report is gone");
+        let beat = sweep
+            .find("give_back_lost_runs(")
+            .expect("the reconciler is gone");
+        assert!(delay < report && report < beat);
+    }
+
+    // cm:guard BOTH failure arms say so. A report core refused and a report core never received are
+    // the two states in which the box knows something the operator does not, and a silent `Err(_)`
+    // here is the shape of defect this whole issue was filed about.
+    #[test]
+    fn a_core_that_would_not_take_the_report_is_named_in_the_log() {
+        let body = THIS_SOURCE
+            .split("async fn report_account_limit(")
+            .nth(1)
+            .and_then(|r| r.split("\n/// ").next())
+            .expect("the reporting path is gone");
+        assert_eq!(
+            body.matches("Err(e) => tracing::warn!").count(),
+            2,
+            "one arm for the report core refused and one for the clear it refused"
+        );
+        assert!(
+            !body.contains('?'),
+            "nothing here propagates: a sweep must not end on a failed report"
+        );
+    }
+
+    // cm:guard the nudge stays INSIDE the loop and is not gated on anything the report decides. Backing off is not stopping: core clears a limit only on a turn that succeeds, so a box that stopped nudging while capped would remove the only thing that can end its own window.
+    #[test]
+    fn a_box_that_reported_a_cap_still_nudges_its_masters() {
+        let nudge = depth_of_call_in_sweep("nudge_master(").expect("the nudge is gone");
+        let report = depth_of_call_in_sweep("report_account_limit(").unwrap();
+        assert!(
+            nudge > report,
+            "the nudge is inside the project loop and the report is not, so a limited sweep still prompts every master"
         );
     }
 

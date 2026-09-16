@@ -17,6 +17,7 @@ pub mod hook_install;
 pub mod inbox;
 pub mod master;
 pub mod master_exit;
+pub mod master_limit;
 pub mod recovery;
 pub mod recovery_ports;
 pub mod run_exit;
