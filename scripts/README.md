@@ -444,11 +444,14 @@ stop every install in every job:
 
 A bracketed IPv6 literal is read as a host, since its own colons need their own branch.
 
-One shape is knowingly missed and the trade is priced in a `cm:hack` on the file: `@host:1234/path`
-is read as a URL port, so a remote whose first path segment is entirely numeric goes unreported. The
-alternative false-accuses `https://user@host:8080/path` and stops every install on a private
-registry. Both real lockfiles this was measured against agree: 948 resolutions on `main` clean, and
-the four offending lines on the Dependabot pull request that caused this named by package.
+`@host:1234/path` is a URL port to that general form, so a remote whose first path segment is
+entirely numeric is not read there — it is read by a third form scoped to a `repo:` field, which
+drops the port doubt because pnpm writes that field for a `type: git` resolution and nothing else:
+its value is always a bare remote, never a URL carrying userinfo. The two together report the
+numeric remote and still leave `https://user@host:8080/path/pkg.tgz` alone.
+
+Both real lockfiles this was measured against agree: 948 resolutions on `main` clean, and the four
+offending lines on the Dependabot pull request that caused this named by package.
 
 ## check-branch-name.sh
 

@@ -142,6 +142,23 @@ snapshots:
     expect(offenders.map((o) => o.line)).toEqual([6, 7]);
   });
 
+  it('reads a numeric first path segment in a `repo:` field, where no port can be meant', () => {
+    const numeric = DEPENDABOT.replace(
+      'hono@4.13.5:\n    resolution: {integrity: sha512-deadbeef}',
+      'private-pkg@1.0.0:\n    resolution: {repo: git@host:1234/team.git, type: git}',
+    );
+    expect(sshResolutions(numeric).offenders.map((o) => o.owner)).toContain('private-pkg@1.0.0');
+  });
+
+  it('reads a port as a port outside a `repo:` field, so a registry URL still installs', () => {
+    const registry = `packages:
+
+  private@1.0.0:
+    resolution: {tarball: https://user@host:8080/path/private-1.0.0.tgz}
+`;
+    expect(sshResolutions(registry)).toEqual({ scanned: 1, offenders: [] });
+  });
+
   it('reads no host and no path in a `name@version:` key line, which every lockfile is full of', () => {
     const versions = `packages:
 
