@@ -83,6 +83,106 @@ async function fleet() {
   return { db, g, projects, bindings };
 }
 
+describe('0253 — the service rows `environment` was keeping apart', () => {
+  // cm:why section 6b landed on `main` during the 36-minute outage this migration caused, in three
+  // commits that changed only SQL and added no assertion. These are that assertion. The rule itself
+  // is sound and it is the one piece of this migration that DERIVES rather than transcribes — on
+  // purpose, because the two hand-written rosters each missed rows created after they were measured
+  // and a rule reading the database at migration time cannot.
+
+  /**
+   * A `staging` service row beside a DECLARED `prod` one of the same project and provider —
+   * separated by nothing but `environment`, which step 7 is about to drop.
+   *
+   * The sibling is declared rather than planted on purpose: the way back reads the declared list,
+   * and a pair where BOTH rows are new is a pair the rollback refuses by name, which is its own
+   * stated position rather than the behaviour these cases are about.
+   */
+  async function stagingRowBesideADeclaredDefault() {
+    const { db, g, projects, bindings } = await fleet();
+    const sibling = bindings.find((b) => b.role === 'service');
+    if (!sibling) throw new Error('the declared table names no service binding');
+    const host = projects.find((p) => p.slug === sibling.slug);
+    if (!host) throw new Error(`no declared project for ${sibling.slug}`);
+    const stagingId = await plantBinding(db.sql, g, {
+      projectId: host.id,
+      provider: sibling.provider,
+      environment: 'staging',
+      label: '',
+    });
+    return { db, g, host, prodId: sibling.id, stagingId };
+  }
+
+  // cm:guard the row is KEPT, not deleted, and the DEFAULT binding is the one that keeps `''` —
+  // every lookup that asks for a project's postman binding without naming a label expects to find
+  // the prod one where it has always been. Deleting either row to make the index build is the
+  // failure this whole migration is written against.
+  it('keeps both rows by moving the non-prod one to a label of its own', async () => {
+    const { db, prodId, stagingId } = await stagingRowBesideADeclaredDefault();
+    try {
+      await runForward(db.sql);
+
+      const rows = await db.sql.unsafe(
+        `SELECT id, role, label FROM integration_bindings WHERE id IN ($1, $2) ORDER BY label`,
+        [prodId, stagingId],
+      );
+      expect(rows.map((r) => [r.id, r.role, r.label])).toEqual([
+        [prodId, 'service', ''],
+        [stagingId, 'service', 'staging'],
+      ]);
+    } finally {
+      await db.drop();
+    }
+  });
+
+  // cm:guard a pair 6b cannot separate must ABORT BY NAME. Without the assertion that follows it,
+  // `CREATE UNIQUE INDEX` refuses with a bare 23505 naming one key and no row — every other
+  // refusal in this file names the rows a person has to decide about, and this one owes the same.
+  it('aborts naming the pair when both already carry the same label', async () => {
+    const { db, g, projects } = await fleet();
+    try {
+      const host = anyProject(projects);
+      for (const environment of ['prod', 'staging']) {
+        await plantBinding(db.sql, g, {
+          projectId: host.id,
+          provider: 'postman',
+          environment,
+          label: 'shared',
+        });
+      }
+
+      await expect(runForward(db.sql)).rejects.toThrow(
+        new RegExp(`${host.slug}/postman/'shared' x2`),
+      );
+    } finally {
+      await db.drop();
+    }
+  });
+
+  // cm:guard the way back undoes 6b, or the label becomes a permanent scar of a migration that was
+  // rolled back: with `environment` restored the label states the same fact twice, and the pre-0253
+  // unique index — (project, provider, environment, label) — would no longer find the default
+  // binding where it left it.
+  it('gives the label back on the way down, once environment carries the distinction again', async () => {
+    const { db, prodId, stagingId } = await stagingRowBesideADeclaredDefault();
+    try {
+      await runForward(db.sql);
+      await runDown(db.sql);
+
+      const rows = await db.sql.unsafe(
+        `SELECT id, environment, label FROM integration_bindings WHERE id IN ($1, $2) ORDER BY environment`,
+        [prodId, stagingId],
+      );
+      expect(rows.map((r) => [r.id, r.environment, r.label])).toEqual([
+        [prodId, 'prod', ''],
+        [stagingId, 'staging', ''],
+      ]);
+    } finally {
+      await db.drop();
+    }
+  });
+});
+
 describe('0253 backward — the way back is a file that has been run', () => {
   // cm:guard the forward map is NOT injective, which is the whole reason the down migration reads
   // the declared table instead of deriving an inverse. Three epodsystem 'prod' rows became
