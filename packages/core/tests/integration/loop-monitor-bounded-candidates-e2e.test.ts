@@ -221,6 +221,12 @@ let ownerId: string;
 let resultMissCandidateQuery: (scope?: { projectId?: string }) => ReturnType<typeof sql>;
 let staleAlarmQuery: (now?: Date) => ReturnType<typeof sql>;
 let orphanedJobAlarmQuery: (now?: Date, scope?: { projectId?: string }) => ReturnType<typeof sql>;
+// cm:guard the guard fragments are IMPORTED and never retyped here. This file's whole reason for
+// exporting the sweeper's queries is that a test written against a copy measures the copy; the
+// same applies to the two fragments the test below exists to tell apart.
+let RESIDENT_SESSION_JOIN: ReturnType<typeof sql>;
+let RESULT_EVENT_LATERAL: ReturnType<typeof sql>;
+let RESULT_GUARD: ReturnType<typeof sql>;
 let neverClaimedAlarmQuery: (now?: Date, scope?: { projectId?: string }) => ReturnType<typeof sql>;
 
 function ownBuffers(node: PlanNode): number {
@@ -262,6 +268,9 @@ beforeAll(async () => {
   ({ staleAlarmQuery } = await import('../../src/jobs/stale-detector.js'));
   ({ orphanedJobAlarmQuery, neverClaimedAlarmQuery } = await import(
     '../../src/pipeline/sweeper.js'
+  ));
+  ({ RESIDENT_SESSION_JOIN, RESULT_EVENT_LATERAL, RESULT_GUARD } = await import(
+    '../../src/jobs/resident-session.js'
   ));
 
   await truncateAll(harness.db);
@@ -446,7 +455,13 @@ describe('ISS-1013 · the quiet-job candidate query is bounded by live jobs', ()
     expect(after.buffers).toBeGreaterThan(0);
     expect(after.buffers * 10).toBeLessThan(before.buffers);
   });
+});
 
+// cm:guard a SECOND describe, and the split is at the seam between the two questions this file
+// asks rather than wherever the line budget happened to bite. Above: what the plans cost, which is
+// a property of the fixture. Below: which rows come back, which is a property of the query. They
+// share the one fixture because building it twice costs a minute and proves nothing extra.
+describe('ISS-1013 · the rewritten query picks what the CTE picked, and the alarm agrees', () => {
   it('picks exactly the jobs the replaced query picked', async () => {
     const replaced = await harness.db.execute<{ id: string }>(REPLACED_CTE_QUERY(projectId, 60));
     const rewritten = await harness.db.execute<{ id: string }>(
@@ -572,6 +587,64 @@ describe('ISS-1013 · the quiet-job candidate query is bounded by live jobs', ()
           `${label}: this job_events node is not keyed on the driving job — ${JSON.stringify(node['Node Type'])} over ${JSON.stringify(node['Index Name'] ?? '(no index)')}, rows ${String(node['Actual Rows'] ?? '?')}`,
         ).toMatch(/job_id/);
       }
+    }
+  });
+
+  // cm:guard the ONLY assertion in this repository that goes red if `RESULT_EVENT_LATERAL` is
+  // reverted to the `NOT EXISTS` it replaced, and it exists because every other assertion here
+  // stays green through that revert — measured, not assumed. With `job_events_result_idx` present
+  // the planner gives BOTH forms an Index Only Scan keyed on the driving job (97 buffers against
+  // 102 on this fixture), so criterion 4 cannot tell them apart and a reader would reasonably
+  // conclude the lateral was redundant. It is not: the index is what makes the guard cheap, and
+  // the lateral is what makes it cheap WITHOUT the index. So the index is dropped here, which is
+  // the one condition under which the two forms diverge at all.
+  it('keeps the result guard bounded even with the partial index dropped', async () => {
+    const guardOnly = (extra: ReturnType<typeof sql>, guard: ReturnType<typeof sql>) => sql`
+      SELECT j.id FROM jobs j
+      ${RESIDENT_SESSION_JOIN}
+      ${extra}
+      WHERE j.status IN ('dispatched', 'running') AND j.project_id = ${projectId}
+        AND ${guard}`;
+    // The control is the text this change replaced, written out because a control has to be the
+    // OLD one. The subject is the shipped fragments themselves, so reverting them reddens this.
+    const notExists = guardOnly(
+      sql``,
+      sql`(s.runtime_state IS NOT NULL OR NOT EXISTS (SELECT 1 FROM job_events WHERE job_id = j.id AND kind = 'result'))`,
+    );
+    const lateral = guardOnly(RESULT_EVENT_LATERAL, RESULT_GUARD);
+
+    // cm:guard restored in `finally`: every later test in this file reads a plan, and one left
+    // running against a half-indexed fixture reports a regression that is this test's litter.
+    await harness.db.execute(sql.raw('DROP INDEX job_events_result_idx'));
+    try {
+      await harness.db.execute(sql.raw('ANALYZE job_events'));
+      const shipped = await planOf(lateral);
+      const replaced = await planOf(notExists);
+
+      // The two forms return the same rows — the divergence is entirely in the plan.
+      const ids = async (q: ReturnType<typeof sql>) =>
+        [...(await harness.db.execute<{ id: string }>(q))].map((r) => r.id).sort();
+      expect(await ids(lateral)).toEqual(await ids(notExists));
+
+      // Every `job_events` node the shipped form reads is still keyed on the driving job...
+      const shippedNodes = nodesOn(shipped.nodes, 'job_events');
+      expect(shippedNodes.length).toBeGreaterThan(0);
+      for (const node of shippedNodes) {
+        expect(
+          `${node['Node Type']} ${boundBy(node)}`,
+          `without the partial index the lateral fell back to ${JSON.stringify(node['Node Type'])}`,
+        ).toMatch(/job_id/);
+      }
+
+      // ...and the form it replaced is not, which is what makes the lateral load-bearing.
+      expect(shipped.buffers * 10).toBeLessThan(replaced.buffers);
+    } finally {
+      await harness.db.execute(
+        sql.raw(
+          "CREATE INDEX job_events_result_idx ON job_events USING btree (job_id) WHERE kind = 'result'",
+        ),
+      );
+      await harness.db.execute(sql.raw('ANALYZE job_events'));
     }
   });
 });

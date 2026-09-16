@@ -28,6 +28,15 @@
 -- history: the predicate keeps the index small and costs a non-result insert
 -- only the predicate evaluation, on a write-heavy table.
 --
+-- The 13,683-of-13,969 figure above was measured with NO partial index, which
+-- is the state this migration ends. Re-measured after it: both guard forms plan
+-- to an Index Only Scan keyed on the driving job (97 buffers for the `NOT
+-- EXISTS`, 102 for the lateral), so THIS INDEX is what makes the guard cheap
+-- and the lateral in `resident-session.ts` is what keeps it cheap if this index
+-- is ever dropped — without it the `NOT EXISTS` returns to the hashed subplan
+-- at 13,739 buffers while the lateral holds at 273. Neither is redundant; they
+-- defend different failures, and that guard comment says which.
+--
 -- cm:guard NEITHER is `CONCURRENTLY`, and neither can be: `src/db/migrate.ts`
 -- wraps the whole run in one transaction and a CONCURRENTLY build is refused
 -- inside one. Both statements therefore hold a write lock on `job_events` until
