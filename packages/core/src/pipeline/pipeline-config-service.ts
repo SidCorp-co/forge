@@ -194,3 +194,77 @@ export async function updatePipelineConfig(
 
   return { pipelineConfig, warnings };
 }
+
+/**
+ * ISS-1038 — set or clear ONE key of `pipelineConfig.mcpServers`, in one
+ * statement, without the caller re-sending a map it read earlier.
+ *
+ * `updatePipelineConfig` above merges at the top level, so `mcpServers` is
+ * replaced wholesale from whatever the client last fetched: two tabs, or one
+ * tab and one dispatch-time edit, and the later write silently drops the
+ * other's key. That is the `wholesale-config-clobber` affordance, and the
+ * Integrations panel's switch must not be a second instance of it — it knows
+ * one provider's answer and nothing about the rest of the map.
+ *
+ * The value written is the bare boolean sentinel and never a credential: the
+ * provider's key stays in the integration store and is rendered into a
+ * dispatch payload only.
+ *
+ * Authorization is the caller's, as it is for `updatePipelineConfig`.
+ */
+// cm:guard the UPDATE writes `mcpServers -> name` and nothing else. Re-sending the whole map from a read-modify-write here would reintroduce exactly the clobber this exists to avoid, because the read and the write would not be one statement.
+export async function setMcpServerSentinel(input: {
+  projectId: string;
+  name: string;
+  enabled: boolean;
+}): Promise<UpdatePipelineConfigResult> {
+  const { projectId, name, enabled } = input;
+
+  const [row] = await db
+    .select({ agentConfig: projects.agentConfig })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  if (!row) throw new PipelineConfigError('PROJECT_NOT_FOUND', 'project not found');
+
+  const currentAc = (row.agentConfig ?? {}) as Record<string, unknown>;
+  const currentPipeline = (currentAc.pipelineConfig ?? {}) as Record<string, unknown>;
+  const currentServers = (currentPipeline.mcpServers ?? {}) as Record<string, unknown>;
+
+  // Validate the document this write PROJECTS, on the same terms the patch
+  // path uses: a merge that fails while the stored document parses clean is
+  // this write's own doing and is refused; one that was already failing is
+  // not answered with a rule the caller did not break.
+  const nextServers = { ...currentServers };
+  if (enabled) nextServers[name] = true;
+  else delete nextServers[name];
+  assertMergedConfigValid(currentPipeline, { ...currentPipeline, mcpServers: nextServers });
+
+  // One statement, one key. `jsonb_set` needs the parent to exist, so seed
+  // `mcpServers` with `||` in the same expression when it does not.
+  const path = JSON.stringify(['pipelineConfig', 'mcpServers', name]);
+  await db.execute(
+    enabled
+      ? sql`UPDATE projects
+            SET agent_config = jsonb_set(
+              COALESCE(agent_config, '{}'::jsonb)
+                || jsonb_build_object(
+                     'pipelineConfig',
+                     COALESCE(agent_config -> 'pipelineConfig', '{}'::jsonb)
+                       || jsonb_build_object(
+                            'mcpServers',
+                            COALESCE(agent_config -> 'pipelineConfig' -> 'mcpServers', '{}'::jsonb)
+                          )
+                   ),
+              ${path}::text[],
+              'true'::jsonb,
+              true
+            )
+            WHERE id = ${projectId}`
+      : sql`UPDATE projects
+            SET agent_config = COALESCE(agent_config, '{}'::jsonb) #- ${path}::text[]
+            WHERE id = ${projectId}`,
+  );
+
+  return updatePipelineConfig({ projectId, patch: {} });
+}

@@ -31,7 +31,9 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-const { PipelineConfigError, updatePipelineConfig } = await import('./pipeline-config-service.js');
+const { PipelineConfigError, updatePipelineConfig, setMcpServerSentinel } = await import(
+  './pipeline-config-service.js'
+);
 
 beforeEach(() => {
   selectQueue.length = 0;
@@ -169,5 +171,101 @@ describe('updatePipelineConfig — CONFIG_CONFLICT (merged-document rules)', () 
     await expect(
       updatePipelineConfig({ projectId: PROJECT, patch: { enabled: true } as never }),
     ).resolves.toBeTruthy();
+  });
+});
+
+// ISS-1038 — the Integrations panel's switch knows one provider's answer and
+// nothing about the rest of `mcpServers`. `updatePipelineConfig` replaces that
+// map wholesale from whatever the caller last read, so a switch built on it
+// would drop any key another tab had added in between — the
+// `wholesale-config-clobber` affordance this repo already names. These pin the
+// property that makes the new write safe: ONE key, in ONE statement, and never
+// a re-sent map.
+describe('setMcpServerSentinel (ISS-1038)', () => {
+  const PROJECT = '00000000-0000-0000-0000-000000000009';
+
+  /** The SQL text the service issued, flattened out of drizzle's fragment. */
+  function lastSql(): string {
+    const frag = dbExecute.mock.calls.at(-1)?.[0] as { queryChunks?: unknown[] } | undefined;
+    return JSON.stringify(frag?.queryChunks ?? frag ?? '');
+  }
+
+  it('writes the one key and re-reads the stored config', async () => {
+    pushSelect([{ agentConfig: { pipelineConfig: { mcpServers: { playwright: true } } } }]);
+    pushSelect([
+      { agentConfig: { pipelineConfig: { mcpServers: { playwright: true, epodsystem: true } } } },
+    ]);
+
+    const out = await setMcpServerSentinel({
+      projectId: PROJECT,
+      name: 'epodsystem',
+      enabled: true,
+    });
+
+    expect(dbExecute).toHaveBeenCalledTimes(1);
+    expect(out.pipelineConfig.mcpServers).toEqual({ playwright: true, epodsystem: true });
+  });
+
+  it('never sends the sibling keys it read — the statement names only the one path', async () => {
+    // The sibling here is what a re-sent map would carry. If it appears in the
+    // SQL at all, the write is a read-modify-write of the whole map and a
+    // concurrent edit to `chrome-devtools-mcp` is lost.
+    pushSelect([
+      {
+        agentConfig: {
+          pipelineConfig: { mcpServers: { 'chrome-devtools-mcp': { type: 'stdio' } } },
+        },
+      },
+    ]);
+    pushSelect([{ agentConfig: { pipelineConfig: { mcpServers: {} } } }]);
+
+    await setMcpServerSentinel({ projectId: PROJECT, name: 'postman', enabled: true });
+
+    const sql = lastSql();
+    expect(sql).not.toContain('chrome-devtools-mcp');
+    expect(sql).toContain('pipelineConfig');
+    expect(sql).toContain('mcpServers');
+    expect(sql).toContain('postman');
+  });
+
+  it('writes the bare boolean and no credential shape', async () => {
+    pushSelect([{ agentConfig: { pipelineConfig: { mcpServers: {} } } }]);
+    pushSelect([{ agentConfig: { pipelineConfig: { mcpServers: { sentry: true } } } }]);
+
+    await setMcpServerSentinel({ projectId: PROJECT, name: 'sentry', enabled: true });
+
+    const sql = lastSql();
+    expect(sql).toContain("'true'::jsonb");
+    // Nothing that could carry a key: the credential stays in the integration
+    // store and is rendered into a dispatch payload only.
+    expect(sql).not.toContain('Authorization');
+    expect(sql).not.toContain('headers');
+    expect(sql).not.toContain('Bearer');
+  });
+
+  it('removes the one key when disabling, and removes nothing else', async () => {
+    pushSelect([
+      { agentConfig: { pipelineConfig: { mcpServers: { epodsystem: true, playwright: true } } } },
+    ]);
+    pushSelect([{ agentConfig: { pipelineConfig: { mcpServers: { playwright: true } } } }]);
+
+    const out = await setMcpServerSentinel({
+      projectId: PROJECT,
+      name: 'epodsystem',
+      enabled: false,
+    });
+
+    const sql = lastSql();
+    expect(sql).toContain('#-');
+    expect(sql).not.toContain('playwright');
+    expect(out.pipelineConfig.mcpServers).toEqual({ playwright: true });
+  });
+
+  it('refuses a project that does not exist', async () => {
+    pushSelect([]);
+    await expect(
+      setMcpServerSentinel({ projectId: PROJECT, name: 'sentry', enabled: true }),
+    ).rejects.toMatchObject({ code: 'PROJECT_NOT_FOUND' });
+    expect(dbExecute).not.toHaveBeenCalled();
   });
 });

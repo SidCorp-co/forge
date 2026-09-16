@@ -15,7 +15,11 @@
 import { applyEpodsystemMcpServers } from '../integrations/epodsystem/resolver.js';
 import { applyPostmanMcpServers } from '../integrations/postman/resolver.js';
 import { applySentryMcpServers } from '../integrations/sentry/resolver.js';
-import { expandMcpServers, isIntegrationSentinelName } from '../pipeline/mcp-catalog.js';
+import {
+  applyStageFalseOptOuts,
+  expandMcpServers,
+  isIntegrationSentinelName,
+} from '../pipeline/mcp-catalog.js';
 import { resolveProjectDefaultMcpServers } from './stage-overrides.js';
 
 export type McpServersMap = Record<string, unknown> | null;
@@ -117,6 +121,13 @@ export async function resolveJobMcpServers(args: {
   if (Object.keys(projectDefault.servers).length > 0 || map !== null) {
     map = { ...projectDefault.servers, ...(map ?? {}) };
   }
+
+  // ISS-1038 — a stage's explicit `false` is an opt-OUT and has to be applied
+  // AFTER the merge. `expandMcpServers` omits a `false` entry rather than
+  // recording it, so before this a stage that set `epodsystem: false` lost to
+  // a project-default `epodsystem: true` and the server was injected anyway —
+  // a control an operator can set that changes nothing.
+  if (map !== null) map = applyStageFalseOptOuts(map, args.stageMcpServers);
 
   for (const applyIntegration of INTEGRATION_MCP_RESOLVERS) {
     map = await applyIntegration(args.projectId, map);

@@ -18,6 +18,8 @@ import { useUpdatePipelineConfig } from "../hooks";
 import {
   denylistBaseline,
   groupByServer,
+  INTEGRATION_SERVER_LABELS,
+  isIntegrationServerName,
   humanizeToolName,
   knownToolIds,
   MCP_CATALOG,
@@ -146,7 +148,19 @@ function StageEditor({
             .filter((n) => !MCP_CATALOG_NAMES.includes(n))
             .map((n) => (
               <div key={n} className="flex items-center justify-between gap-3">
-                <MonoTag>{n}</MonoTag>
+                <span className="flex items-center gap-1.5">
+                  <MonoTag>{n}</MonoTag>
+                  {/* ISS-1038 — a sentinel used to render as a bare name with a
+                      Remove button beside it and nothing saying what it was.
+                      Remove stays: a stage-scoped sentinel has no control
+                      anywhere else, and taking it away would be this issue's own
+                      defect pointed the other way. */}
+                  {isIntegrationServerName(n) && (
+                    <span className="fg-caption rounded-pill bg-sunken px-2 py-0.5 text-subtle">
+                      {INTEGRATION_SERVER_LABELS[n] ?? "integration"} · this stage only
+                    </span>
+                  )}
+                </span>
                 <Button variant="ghost" size="sm" onClick={() => setMcp((m) => {
                   const next = { ...m };
                   delete next[n];
@@ -158,7 +172,9 @@ function StageEditor({
             ))}
         </div>
         <p className="fg-caption mt-1 text-subtle">
-          A custom server spec is written through the API — this list edits the catalog entries.
+          A custom server spec is written through the API — this list edits the catalog entries. A
+          connected integration is switched for the whole project on Settings → Integrations →
+          Agent MCP servers; an entry here narrows or widens it for this stage alone.
         </p>
       </div>
 

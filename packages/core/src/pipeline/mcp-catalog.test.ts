@@ -12,6 +12,9 @@ const {
   isKnownMcpServerName,
   collectDeclaredMcpNames,
   expandMcpServers,
+  projectDeclaredProviders,
+  applyStageFalseOptOuts,
+  matchesIntegrationProvider,
 } = await import('./mcp-catalog.js');
 
 describe('MCP_CATALOG', () => {
@@ -245,5 +248,124 @@ describe('dispatch mcpServers merge order', () => {
     // per-state inherits the sentinel
     const out = merge(projectDefault, null, {});
     expect(out.sentry).toBe(true);
+  });
+});
+
+// ISS-1038 — `projectDeclaredProviders` is the ONE decider for "is this
+// provider declared, and where". The Integrations tab's per-provider header,
+// `buildMcpPreview`'s `not_declared` gate and (by construction) the dispatcher
+// all read it. Three answers computed three ways is how a green panel comes to
+// sit over agents that get nothing, which is the defect this issue was filed
+// on — so these cases pin the semantics rather than the wording.
+describe('projectDeclaredProviders (ISS-1038)', () => {
+  it('reports a project-default sentinel as declared by the default and by no stage', () => {
+    const [epodsystem] = projectDeclaredProviders(
+      { mcpServers: { epodsystem: true } },
+      ['epodsystem'],
+    );
+    expect(epodsystem).toEqual({
+      provider: 'epodsystem',
+      declaredDefault: true,
+      declaredStates: [],
+      excludedStates: [],
+    });
+  });
+
+  it('reports a stage that declares it on its own, with no project default', () => {
+    const [sentry] = projectDeclaredProviders(
+      { mcpServers: {}, states: { testing: { mcpServers: { sentry: true } } } },
+      ['sentry'],
+    );
+    expect(sentry.declaredDefault).toBe(false);
+    expect(sentry.declaredStates).toEqual(['testing']);
+    expect(sentry.excludedStates).toEqual([]);
+  });
+
+  it('reports a stage that turns a project default back off as excluding it', () => {
+    const [postman] = projectDeclaredProviders(
+      { mcpServers: { postman: true }, states: { open: { mcpServers: { postman: false } } } },
+      ['postman'],
+    );
+    expect(postman.declaredDefault).toBe(true);
+    expect(postman.excludedStates).toEqual(['open']);
+  });
+
+  it('does not call a stage excluding when there is no project default to turn off', () => {
+    const [postman] = projectDeclaredProviders(
+      { mcpServers: {}, states: { open: { mcpServers: { postman: false } } } },
+      ['postman'],
+    );
+    expect(postman.declaredDefault).toBe(false);
+    expect(postman.excludedStates).toEqual([]);
+  });
+
+  it('matches an epodsystem_<label> sentinel as the epodsystem provider', () => {
+    const [epodsystem] = projectDeclaredProviders(
+      { mcpServers: { epodsystem_store_a: true } },
+      ['epodsystem'],
+    );
+    expect(epodsystem.declaredDefault).toBe(true);
+  });
+
+  // The two mixed-alias cases. The resolver injects whenever SOME matching key
+  // survives as `true`, so a stage that turns off one label while another
+  // matching key is still true has not excluded the provider — and a panel
+  // saying it had would be reporting a state no runner agrees with.
+  it('a label `false` beside an inherited bare sentinel does not exclude the provider', () => {
+    const [epodsystem] = projectDeclaredProviders(
+      {
+        mcpServers: { epodsystem: true },
+        states: { in_progress: { mcpServers: { epodsystem_store: false } } },
+      },
+      ['epodsystem'],
+    );
+    expect(epodsystem.excludedStates).toEqual([]);
+  });
+
+  it('a stage holding one matching true beside one matching false declares the provider', () => {
+    const [epodsystem] = projectDeclaredProviders(
+      {
+        mcpServers: {},
+        states: { in_progress: { mcpServers: { epodsystem_a: true, epodsystem_b: false } } },
+      },
+      ['epodsystem'],
+    );
+    expect(epodsystem.declaredStates).toEqual(['in_progress']);
+    expect(epodsystem.excludedStates).toEqual([]);
+  });
+
+  it('does not treat a raw object spec under an integration name as a sentinel', () => {
+    // `expandMcpServers` passes an object through verbatim as a custom spec and
+    // the resolvers test for `=== true`, so this would inject nothing. Reading
+    // it as declared is how the panel would promise a server no agent receives.
+    const [sentry] = projectDeclaredProviders(
+      { mcpServers: { sentry: { type: 'stdio', command: 'npx' } } },
+      ['sentry'],
+    );
+    expect(sentry.declaredDefault).toBe(false);
+  });
+
+  it('answers an empty config with every provider undeclared', () => {
+    expect(projectDeclaredProviders({})).toEqual([
+      { provider: 'postman', declaredDefault: false, declaredStates: [], excludedStates: [] },
+      { provider: 'epodsystem', declaredDefault: false, declaredStates: [], excludedStates: [] },
+      { provider: 'sentry', declaredDefault: false, declaredStates: [], excludedStates: [] },
+    ]);
+  });
+});
+
+describe('applyStageFalseOptOuts (ISS-1038)', () => {
+  it('removes the names the raw stage map set to false', () => {
+    expect(applyStageFalseOptOuts({ a: 1, b: 2 }, { b: false })).toEqual({ a: 1 });
+  });
+
+  it('treats null as an opt-out, as expandMcpServers does', () => {
+    expect(applyStageFalseOptOuts({ a: 1 }, { a: null })).toEqual({});
+  });
+
+  it('returns the same object when nothing is opted out', () => {
+    const merged = { a: 1 };
+    expect(applyStageFalseOptOuts(merged, { a: true })).toBe(merged);
+    expect(applyStageFalseOptOuts(merged, null)).toBe(merged);
   });
 });

@@ -7,6 +7,7 @@ export * from "./failure-causes.js";
 export * from "./integrations.js";
 export * from "./issue-vocabulary.js";
 export * from "./issues.js";
+export * from "./mcp-injection.js";
 export * from "./notifications.js";
 export * from "./pipeline-registry.js";
 export * from "./reconcile.js";

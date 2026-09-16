@@ -18,7 +18,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IntegrationEnvironment, projects } from '../db/schema.js';
-import { collectDeclaredMcpNames } from '../pipeline/mcp-catalog.js';
+import { type McpDeclarationSource, projectDeclaredProviders } from '../pipeline/mcp-catalog.js';
 import { buildEpodsystemMcpEntry } from './epodsystem/resolver.js';
 import { buildPostmanMcpEntry } from './postman/resolver.js';
 import { toIso } from './route-helpers.js';
@@ -82,26 +82,32 @@ export async function buildMcpPreview(projectId: string): Promise<McpServerPrevi
   const servers: McpServerPreviewEntry[] = [];
 
   // ISS-623 W3 — a healthy, active, credentialed integration still does NOT
-  // inject unless some stage (project-default or per-state) declares its
-  // sentinel in `pipelineConfig.mcpServers`. Load the declared-name set once
-  // (project-wide — this preview isn't scoped to one stage) so `willInject`
-  // reflects the real ISS-581 opt-in gate instead of only active+credential.
+  // inject unless some scope (project-default or per-state) declares its
+  // sentinel in `pipelineConfig.mcpServers`, so `willInject` has to reflect the
+  // real ISS-581 opt-in gate rather than only active+credential.
+  //
+  // ISS-1038 — that declaration is decided ONCE, by `projectDeclaredProviders`,
+  // which the Integrations tab's per-provider header reads too. Computing it
+  // here as well is how a row comes to say `not_declared` under a header that
+  // says declared. This preview is not scoped to a stage, so a provider counts
+  // as declared when the project default declares it OR any stage does.
   const [projectRow] = await db
     .select({ agentConfig: projects.agentConfig })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
   const pipelineConfig = (projectRow?.agentConfig as { pipelineConfig?: unknown } | null)
-    ?.pipelineConfig as Parameters<typeof collectDeclaredMcpNames>[0] | undefined;
-  const declaredMcpNames = collectDeclaredMcpNames(pipelineConfig ?? {});
+    ?.pipelineConfig as McpDeclarationSource | undefined;
+  const declarations = new Map(
+    projectDeclaredProviders(pipelineConfig ?? {}, MCP_PROVIDERS).map((d) => [
+      d.provider,
+      d.declaredDefault || d.declaredStates.length > 0,
+    ]),
+  );
 
-  /** ISS-581 opt-in check for a preview row's serverName. */
-  const isSentinelDeclared = (provider: (typeof MCP_PROVIDERS)[number]): boolean => {
-    if (provider === 'epodsystem') {
-      return [...declaredMcpNames].some((n) => n === 'epodsystem' || n.startsWith('epodsystem_'));
-    }
-    return declaredMcpNames.has(provider);
-  };
+  /** ISS-581 opt-in check for a preview row's provider. */
+  const isSentinelDeclared = (provider: (typeof MCP_PROVIDERS)[number]): boolean =>
+    declarations.get(provider) ?? false;
 
   for (const provider of MCP_PROVIDERS) {
     const rows = pairs.filter((p) => p.binding.provider === provider);

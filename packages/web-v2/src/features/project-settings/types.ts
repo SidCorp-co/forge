@@ -350,7 +350,8 @@ export interface PipelineConfig {
  * `pipeline/mcp-catalog.ts` for the settings UI. Cross-app parity: when a new
  * secret-free catalog entry is added in core, add the matching descriptor here
  * so the toggle list surfaces it. Anything needing a token/API key is NOT a
- * catalog default (those flow through the integrations resolvers).
+ * catalog default: those are the integration sentinels below, declared by name
+ * in the same map and switched on Settings → Integrations.
  */
 export const MCP_CATALOG: Record<
 	string,
@@ -379,6 +380,39 @@ export const MCP_CATALOG: Record<
 };
 
 export const MCP_CATALOG_NAMES = Object.keys(MCP_CATALOG);
+
+/**
+ * ISS-1038 — server names resolved from a CONNECTED INTEGRATION at dispatch
+ * time, not from the catalog above. A project declares one by storing a bare
+ * `true` under that name in `pipelineConfig.mcpServers`; the dispatcher's
+ * resolver swaps the sentinel for a real spec carrying a credential that never
+ * touches this map.
+ *
+ * They are listed here so the Pipeline tab can recognise a stored sentinel and
+ * say what it is, instead of rendering it as a custom server whose spec prints
+ * as `true` and offering an add-form that cannot produce one. The switch that
+ * turns them on lives on Settings → Integrations, beside the connection
+ * itself — which is the whole point of ISS-1038, so these are read-only here.
+ *
+ * Cross-app parity: mirrored from `INTEGRATION_SERVER_NAMES` in core's
+ * `pipeline/mcp-catalog.ts`. A provider added there needs a row here or the
+ * screen presents its sentinel as a custom server again.
+ */
+export const INTEGRATION_SERVER_NAMES = ["postman", "epodsystem", "sentry"] as const;
+
+/** Labels for the names above, for a screen that has to say which is which. */
+export const INTEGRATION_SERVER_LABELS: Record<string, string> = {
+	postman: "Postman",
+	epodsystem: "Epodsystem",
+	sentry: "Sentry",
+};
+
+/** True when `name` is an integration sentinel — the bare provider name, or an
+ *  `epodsystem_<label>` variant. Mirrors `isIntegrationSentinelName` in core. */
+export function isIntegrationServerName(name: string): boolean {
+	if ((INTEGRATION_SERVER_NAMES as readonly string[]).includes(name)) return true;
+	return name.startsWith("epodsystem_");
+}
 
 // cm:edge naming -> packages/core/src/pipeline/pipeline-config-schema.ts — the same four STAGE_NAMES keys, same order; a stage added there needs a row here or the screen renders its raw status
 export const PIPELINE_STATUS_ROWS: ReadonlyArray<{ status: string; label: string }> = [

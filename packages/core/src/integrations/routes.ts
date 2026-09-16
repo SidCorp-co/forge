@@ -21,6 +21,7 @@ import { isUniqueViolation } from '../lib/db-errors.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { registerCoolifyDeployRoutes } from './coolify-routes.js';
 import { findDeliveryById } from './deliveries.js';
+import { mcpInjectionRoutes } from './mcp-injection-routes.js';
 import { buildMcpPreview } from './mcp-preview-service.js';
 import {
   applySecretsPatch,
@@ -67,6 +68,11 @@ export { integrationConnectionsRoutes } from './connection-routes.js';
 
 export const integrationsRoutes = new Hono<{ Variables: AuthVars }>();
 integrationsRoutes.use('*', requireAuth(), assertEmailVerified());
+
+// ISS-1038 — the per-provider MCP injection switch. Its own module: the read is
+// member-wide and the write is org-admin, which is a different gate from every
+// other route on this router.
+integrationsRoutes.route('/', mcpInjectionRoutes);
 
 registerCoolifyDeployRoutes(integrationsRoutes);
 

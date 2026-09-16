@@ -52,6 +52,41 @@ export function useMcpPreview(projectId: string | undefined) {
   });
 }
 
+/** Per-provider MCP injection state for a project — whether each integration's
+ *  sentinel is declared, where, and whether this caller may change it.
+ *  Keyed `['integrations','mcp-injection',id]`. ISS-1038. */
+export function useMcpInjection(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ["integrations", "mcp-injection", projectId],
+    queryFn: () => integrationsApi.mcpInjection(projectId as string),
+    enabled: !!projectId,
+  });
+}
+
+/** Write one provider's injection sentinel. ISS-1038.
+ *
+ *  The response IS the fresh state, so it is written straight into the cache
+ *  rather than only invalidated: the control has to settle on what the server
+ *  stored, not on an optimistic value the write may not have achieved. The
+ *  preview is invalidated too, since declaring a sentinel changes whether its
+ *  bindings report `willInject`.
+ *
+ *  No toast: the panel renders the failure inline beside the control that
+ *  caused it, so a caller who looked away does not lose it. */
+export function useSetMcpInjection(projectId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { provider: string; enabled: boolean }) =>
+      integrationsApi.setMcpInjection(projectId as string, vars.provider, {
+        enabled: vars.enabled,
+      }),
+    onSuccess: (fresh) => {
+      qc.setQueryData(["integrations", "mcp-injection", projectId], fresh);
+      qc.invalidateQueries({ queryKey: ["integrations", "mcp-preview", projectId] });
+    },
+  });
+}
+
 /** Rooms the RC bot is a member of, via an existing binding's stored credential
  *  — feeds the room name picker. Keyed `['integrations','rc-rooms',project,id]`. */
 export function useRocketchatRooms(

@@ -1,4 +1,10 @@
 // cm:edge contract -> packages/core/src/integrations/routes.ts — every path below is spelled out as a string here and mounted there; nothing type-checks the pair, so a route renamed on one side 404s from the other with no compile error
+// ISS-1038 — these two come straight from the contracts package rather than
+// through `./types`, which is a re-export barrel another change holds.
+import type {
+	McpInjectionStateResponse,
+	McpInjectionUpdateInput,
+} from "@forge/contracts";
 import { apiClient } from "@/lib/api/client";
 import type {
   BindExistingConnectionRequest,
@@ -33,6 +39,21 @@ export const integrationsApi = {
    *  will inject into a runner's `mcpServers` (redacted by construction). ISS-429. */
   mcpPreview: (projectId: string) =>
     apiClient<McpPreviewResponse>(`/projects/${projectId}/integrations/mcp-preview`),
+
+  /** `GET .../integrations/mcp-injection` — per PROVIDER: is its sentinel
+   *  declared, by the project default or by which stages, which stages turn it
+   *  back off, and whether THIS caller may change it. ISS-1038. */
+  mcpInjection: (projectId: string) =>
+    apiClient<McpInjectionStateResponse>(`/projects/${projectId}/integrations/mcp-injection`),
+
+  /** `PUT .../integrations/mcp-injection/:provider` — write the bare sentinel
+   *  for one provider. Org owner/admin only; returns the fresh state. The body
+   *  carries no credential and the stored value is `true`. ISS-1038. */
+  setMcpInjection: (projectId: string, provider: string, body: McpInjectionUpdateInput) =>
+    apiClient<McpInjectionStateResponse>(
+      `/projects/${projectId}/integrations/mcp-injection/${provider}`,
+      { method: "PUT", body: JSON.stringify(body) },
+    ),
 
   /** `GET /api/projects/:projectId/integrations` — bindings for the project
    *  (project-facing `BindingSummary` rows, projected from binding + connection). */

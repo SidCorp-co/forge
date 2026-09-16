@@ -6,8 +6,18 @@
 // dispatcher seeds into EVERY job's temp `--mcp-config`. forge-runner's
 // `--strict-mcp-config` makes Claude ignore the runner box's own MCP config,
 // so a project must declare the secret-free servers it wants (playwright, …)
-// here. The dispatcher merges this as the BASE; per-state overrides and the
-// integration servers (postman/epodsystem) layer on top.
+// here. The dispatcher merges this as the BASE; per-state overrides layer on
+// top.
+//
+// ISS-1038 — this map ALSO stores the integration sentinels
+// (postman/epodsystem/sentry), and this section no longer pretends otherwise
+// and no longer edits them. It used to say connected integrations "layer on
+// top", which read as: connect one and it arrives. It does not — the sentinel
+// is what makes the dispatcher inject it, this screen could not write one
+// (`addCustom` takes a JSON object and the sentinel's only legal value is
+// `true`), and a stored one rendered here as a custom server whose spec
+// printed as `true`. So: they render as what they are, read-only, naming the
+// Integrations tab where their switch actually is.
 //
 // Shorthand persisted to `mcpServers`:
 //   - `name: true`            → enable a catalog default (MCP_CATALOG)
@@ -24,6 +34,8 @@ import { Banner, Button, Icon, Input, Textarea, Toggle } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useUpdatePipelineConfig } from "../hooks";
 import {
+  INTEGRATION_SERVER_LABELS,
+  isIntegrationServerName,
   MCP_CATALOG,
   MCP_CATALOG_NAMES,
   type PipelineConfig,
@@ -36,14 +48,24 @@ function isCatalogEnabled(value: unknown): boolean {
   return value === true;
 }
 
-/** Custom (non-catalog) entries: name → pretty-printed JSON spec. */
+/** Custom (non-catalog, non-integration) entries: name → raw JSON spec.
+ *  ISS-1038 — an integration sentinel used to fall through here and render as a
+ *  custom server. It is split out by `integrationEntries` below instead. */
 function customEntries(map: ServerMap): Array<{ name: string; value: unknown }> {
   return Object.entries(map)
     .filter(([name, value]) => {
+      if (isIntegrationServerName(name)) return false;
       if (MCP_CATALOG_NAMES.includes(name)) return value !== true && value != null && value !== false;
       return value != null && value !== false;
     })
     .map(([name, value]) => ({ name, value }));
+}
+
+/** Integration sentinels stored in this map. Read-only here. ISS-1038. */
+function integrationEntries(map: ServerMap): string[] {
+  return Object.entries(map)
+    .filter(([name, value]) => isIntegrationServerName(name) && value !== false && value != null)
+    .map(([name]) => name);
 }
 
 export function McpServersSection({
@@ -101,6 +123,16 @@ export function McpServersSection({
       setCustomError("Name is required.");
       return;
     }
+    // Refuse the NAME, not the value's shape. An operator typing `epodsystem`
+    // here is reaching for the switch this section used to hide; telling them
+    // "Spec must be a JSON object" sends them away to write a spec that would
+    // not inject anything. ISS-1038.
+    if (isIntegrationServerName(name)) {
+      setCustomError(
+        `“${name}” is a connected integration, not a custom server. Turn it on under Settings → Integrations → Agent MCP servers; its credential is attached at dispatch and never stored here.`,
+      );
+      return;
+    }
     let parsed: unknown;
     try {
       parsed = JSON.parse(customSpec);
@@ -125,6 +157,9 @@ export function McpServersSection({
   }
 
   const custom = customEntries(draft);
+  // Rendered, never edited here — but they stay in `draft`, so Save round-trips
+  // them exactly as stored. ISS-1038.
+  const integrations = integrationEntries(draft);
 
   return (
     <div className="mt-6 border-t border-line pt-5">
@@ -132,7 +167,8 @@ export function McpServersSection({
       <p className="fg-body-sm mb-3 text-muted">
         Servers seeded into every agent dispatched for this project. Required because the runner
         ignores its own MCP config — declare the secret-free servers your jobs need here. Per-stage
-        overrides and connected integrations (Postman, Epodsystem) layer on top.
+        overrides layer on top. Connected integrations are switched on Settings → Integrations, not
+        here.
       </p>
 
       <div className="divide-y divide-line">
@@ -153,6 +189,30 @@ export function McpServersSection({
             </div>
           );
         })}
+
+        {integrations.length > 0 && (
+          <div className="py-2.5">
+            <p className="fg-label text-fg">Connected integrations</p>
+            <p className="fg-caption mb-2 text-muted">
+              Declared here, switched on Settings → Integrations → Agent MCP servers. The
+              credential is attached at dispatch time and is never part of this map.
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {integrations.map((name) => (
+                <span
+                  key={name}
+                  className="fg-caption flex items-center gap-1.5 rounded-pill border border-line px-2 py-0.5 text-muted"
+                >
+                  <Icon name="command" size={12} />
+                  <span className="font-mono">{name}</span>
+                  <span className="text-subtle">
+                    {INTEGRATION_SERVER_LABELS[name] ?? "integration"}
+                  </span>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
 
         {custom.map(({ name, value }) => (
           <div key={name} className="flex items-start justify-between gap-3 py-2.5">
