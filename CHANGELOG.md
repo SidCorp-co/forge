@@ -2747,6 +2747,17 @@
   or one carrying a scheme a page should never follow — is shown as text saying so rather than
   quietly sent somewhere it was never going to work.
 
+- **Testing one project's Epodsystem connection no longer hands its release settings to every
+  other project sharing that account.** One API key can be connected once and used by several
+  projects, and each project sets its own release settings on top of it — which machine runs the
+  release, what proves the deploy worked, what to do when it did not. Pressing Test connection on
+  one of those projects wrote that project's answers back onto the shared account, so a second
+  project that had set none of its own silently inherited the first one's, and a project that had
+  deliberately left its release ungated found itself gated on somebody else's checks. Test
+  connection now writes back only what it actually discovered about the account itself — the
+  organisation, the store, the theme, the domain — and leaves every project's own settings where
+  they belong.
+
 - **A conversation you archive from the all-projects Conversations page can now be found and
   brought back there.** Every room in that page's sidebar offered to archive it, and archiving
   worked — the room left the list. Nothing on the page then showed the archived ones, so the only
