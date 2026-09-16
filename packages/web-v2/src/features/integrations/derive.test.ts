@@ -169,40 +169,97 @@ describe("isProviderCard / cardProvider", () => {
     expect(isProviderCard("runners")).toBe(false);
   });
 
-  it("extracts the provider from an env-suffixed key", () => {
-    expect(cardProvider("coolify:prod")).toBe("coolify");
+  it("extracts the provider from a stage-suffixed key", () => {
+    expect(cardProvider("coolify:live")).toBe("coolify");
+    expect(cardProvider("coolify:preview+live")).toBe("coolify");
     expect(cardProvider("postman")).toBe("postman");
   });
 });
 
 describe("groupCardsByProvider", () => {
-  it("consolidates env-split coolify cards into one group, prod before staging", () => {
+  it("consolidates stage-split coolify cards into one group, live before preview", () => {
     const groups = groupCardsByProvider([
-      card({ key: "coolify:staging", label: "Coolify (staging)", meta: { environment: "staging" } }),
+      card({
+        key: "coolify:preview",
+        label: "Coolify (Preview)",
+        meta: { role: "deploy", stages: ["preview"] },
+      }),
       card({ key: "github", label: "GitHub" }),
-      card({ key: "coolify:prod", label: "Coolify (prod)", meta: { environment: "prod" } }),
+      card({
+        key: "coolify:live",
+        label: "Coolify (Live)",
+        meta: { role: "deploy", stages: ["live"] },
+      }),
     ]);
     // First-seen provider order preserved: coolify before github.
     expect(groups.map((g) => g.provider)).toEqual(["coolify", "github"]);
     const coolify = groups[0];
     expect(coolify.cards).toHaveLength(2);
-    // Deterministic prod-then-staging order regardless of input order.
-    expect(coolify.cards.map((c) => c.key)).toEqual(["coolify:prod", "coolify:staging"]);
+    // Deterministic live-then-preview order regardless of input order.
+    expect(coolify.cards.map((c) => c.key)).toEqual(["coolify:live", "coolify:preview"]);
     expect(groups[1].cards).toHaveLength(1);
   });
 
+  // cm:guard a service row sorts LAST, under both deploy stages. Without this the
+  // rank could return the same number for every input and the two cases above would
+  // still pass, because a sort that ties leaves the input order — and the input
+  // order there already happens to be the answer for one of them.
+  it("sorts a service row below both deploy stages", () => {
+    const groups = groupCardsByProvider([
+      card({
+        key: "epodsystem:service",
+        label: "ePOD (service)",
+        meta: { role: "service", stages: [] },
+      }),
+      card({
+        key: "epodsystem:preview",
+        label: "ePOD (Preview)",
+        meta: { role: "deploy", stages: ["preview"] },
+      }),
+      card({
+        key: "epodsystem:live",
+        label: "ePOD (Live)",
+        meta: { role: "deploy", stages: ["live"] },
+      }),
+    ]);
+    expect(groups[0].cards.map((c) => c.key)).toEqual([
+      "epodsystem:live",
+      "epodsystem:preview",
+      "epodsystem:service",
+    ]);
+  });
+
+  it("ranks a binding serving both stages as live", () => {
+    const groups = groupCardsByProvider([
+      card({
+        key: "epodsystem:preview",
+        label: "ePOD (Preview)",
+        meta: { role: "deploy", stages: ["preview"] },
+      }),
+      card({
+        key: "epodsystem:preview+live",
+        label: "ePOD (Preview + Live)",
+        meta: { role: "deploy", stages: ["preview", "live"] },
+      }),
+    ]);
+    expect(groups[0].cards.map((c) => c.key)).toEqual([
+      "epodsystem:preview+live",
+      "epodsystem:preview",
+    ]);
+  });
+
   it("leaves a single coolify binding as a 1-card group (renders as today)", () => {
-    const groups = groupCardsByProvider([card({ key: "coolify:prod", label: "Coolify (prod)" })]);
+    const groups = groupCardsByProvider([card({ key: "coolify:live", label: "Coolify (Live)" })]);
     expect(groups).toHaveLength(1);
     expect(groups[0].cards).toHaveLength(1);
   });
 
-  it("falls back to the key suffix when meta.environment is absent", () => {
+  it("falls back to the key suffix when meta carries no role or stages", () => {
     const groups = groupCardsByProvider([
-      card({ key: "coolify:staging", label: "Coolify (staging)" }),
-      card({ key: "coolify:prod", label: "Coolify (prod)" }),
+      card({ key: "coolify:preview", label: "Coolify (Preview)" }),
+      card({ key: "coolify:live", label: "Coolify (Live)" }),
     ]);
-    expect(groups[0].cards.map((c) => c.key)).toEqual(["coolify:prod", "coolify:staging"]);
+    expect(groups[0].cards.map((c) => c.key)).toEqual(["coolify:live", "coolify:preview"]);
   });
 
   it("returns an empty array for no cards", () => {

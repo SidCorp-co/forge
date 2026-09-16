@@ -72,7 +72,77 @@ export async function findActiveBindingByLabel(
   return rows[0] ?? null;
 }
 
-/** Active binding (+ its connection) for a project + provider. */
+/**
+ * The active SERVICE binding (+ its connection) for a project + provider, or none.
+ *
+ * Service-only ON PURPOSE, and this is the pre-flight side of
+ * `integration_bindings_service_uq`, which is a PARTIAL index `WHERE role = 'service'`. Asking
+ * without the role filter refuses an operator adding a service binding to a project that already
+ * has a deploy binding on the same provider — a pair the index admits and ISS-1046 rule 3 requires,
+ * since a coolify deploy target and a coolify service facility are different declarations about
+ * the same credential. The two must admit exactly the same rows.
+ */
+// cm:edge contract -> packages/core/src/db/schema.ts — `integration_bindings_service_uq` is this
+// query in Postgres; a role filter added to one and not the other is a 409 with no constraint
+// behind it, or a constraint violation with no 409 in front of it.
+export async function findActiveServiceBinding(
+  projectId: string,
+  provider: IntegrationProvider,
+): Promise<BindingWithConnection | null> {
+  const rows = await db
+    .select({ binding: integrationBindings, connection: integrationConnections })
+    .from(integrationBindings)
+    .innerJoin(
+      integrationConnections,
+      eq(integrationBindings.connectionId, integrationConnections.id),
+    )
+    .where(
+      and(
+        eq(integrationBindings.projectId, projectId),
+        eq(integrationBindings.provider, provider),
+        eq(integrationBindings.role, 'service'),
+        eq(integrationBindings.active, true),
+        eq(integrationConnections.active, true),
+      ),
+    )
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/**
+ * Every active DEPLOY binding for a project + provider, oldest first.
+ *
+ * The deploy and control paths ask "which of this provider's bindings can Forge push to", which is
+ * a different question from "which of them exist". A `service` binding is a facility the project
+ * uses — an error tracker, a chat room, a storefront borrowed for its MCP — and enqueueing a
+ * deploy against one is the retired model reappearing under a new column name.
+ */
+export async function listActiveDeployBindingsForProvider(
+  projectId: string,
+  provider: IntegrationProvider,
+): Promise<BindingWithConnection[]> {
+  return (
+    db
+      .select({ binding: integrationBindings, connection: integrationConnections })
+      .from(integrationBindings)
+      .innerJoin(
+        integrationConnections,
+        eq(integrationBindings.connectionId, integrationConnections.id),
+      )
+      .where(
+        and(
+          eq(integrationBindings.projectId, projectId),
+          eq(integrationBindings.provider, provider),
+          eq(integrationBindings.role, 'deploy'),
+          eq(integrationBindings.active, true),
+          eq(integrationConnections.active, true),
+        ),
+      )
+      .orderBy(asc(integrationBindings.createdAt))
+  );
+}
+
+/** Active binding (+ its connection) for a project + provider, whatever its role. */
 export async function findActiveBinding(
   projectId: string,
   provider: IntegrationProvider,

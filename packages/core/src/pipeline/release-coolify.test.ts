@@ -61,7 +61,10 @@ vi.mock('../integrations/deliveries.js', () => ({
 // cm:guard Coolify integration resolution goes through the binding→connection store helper and is mocked there, while `pipeline_runs` reads and writes still go through the db stub above — mixing the two is how a case proves the stub instead of the resolver.
 const listBindingsSpy = vi.fn();
 vi.mock('../integrations/store.js', () => ({
-  listActiveBindingsForProjectProvider: (...a: unknown[]) => listBindingsSpy(...(a as [])),
+  // cm:guard the deploy path resolves through the DEPLOY-scoped helper. A coolify `service`
+  // binding is a facility the project uses, not somewhere Forge pushes to, and the mock is named
+  // for the query the code actually makes so a rename here cannot quietly restore the old one.
+  listActiveDeployBindingsForProvider: (...a: unknown[]) => listBindingsSpy(...(a as [])),
 }));
 
 vi.mock('./runs.js', () => ({

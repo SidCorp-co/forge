@@ -72,6 +72,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
           repoPath: '/repo',
           baseBranch: 'develop',
           liveBranch: 'release',
+          releaseModel: 'promote',
           agentConfig: { categories: ['bug', 'feature'] },
         },
       ]);
@@ -120,6 +121,39 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
     expect(result.config.liveBranch).toBeNull();
   });
 
+  // cm:guard the column is deliberately NOT nulled for non-`promote` projects — 25 of 32 in the
+  // fleet carry a branch nothing promotes to — so the ONLY thing stopping an agent acting on one is
+  // that every reader asks the model first. This tool's own description promises "non-null only
+  // under `promote`"; without this case that promise is prose and the code returned the value.
+  it('returns no live branch for a `publish` project that still carries one', async () => {
+    const tool = forgeConfigTool({
+      principal: fakePrincipal,
+      projectSlug: null,
+    });
+
+    selectLimit.mockResolvedValueOnce([memberAccessRow]).mockResolvedValueOnce([
+      {
+        id: PROJECT_ID,
+        slug: 'my-proj',
+        name: 'My Project',
+        repoPath: '/repo',
+        baseBranch: 'develop',
+        liveBranch: 'legacy-production',
+        releaseModel: 'publish',
+        agentConfig: null,
+      },
+    ]);
+
+    const result = (await tool.handler({ action: 'get', projectId: PROJECT_ID })) as {
+      config: { liveBranch: string | null; releaseModel: string; baseBranch: string | null };
+    };
+
+    expect(result.config.liveBranch).toBeNull();
+    // the model itself is still reported — a caller has to be able to tell `publish` from `none`
+    expect(result.config.releaseModel).toBe('publish');
+    expect(result.config.baseBranch).toBe('develop');
+  });
+
   it('includes resolved branchConfig (project defaults) when issueId is supplied and the issue has no override', async () => {
     const tool = forgeConfigTool({
       principal: fakePrincipal,
@@ -135,6 +169,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
           name: 'My Project',
           baseBranch: 'develop',
           liveBranch: 'release',
+          releaseModel: 'promote',
           agentConfig: null,
         },
       ])
@@ -170,6 +205,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
           name: 'My Project',
           baseBranch: 'develop',
           liveBranch: 'release',
+          releaseModel: 'promote',
           agentConfig: null,
         },
       ])
@@ -250,6 +286,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
           name: 'My Project',
           baseBranch: 'develop',
           liveBranch: 'release',
+          releaseModel: 'promote',
           agentConfig: { projectFacts: { 'build-commands': 'keep', 'done-means': 'new' } },
         },
       ]);
@@ -296,6 +333,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
           name: 'My Project',
           baseBranch: 'develop',
           liveBranch: 'release',
+          releaseModel: 'promote',
           agentConfig: null,
         },
       ])

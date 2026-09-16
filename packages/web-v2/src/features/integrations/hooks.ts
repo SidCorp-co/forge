@@ -207,7 +207,7 @@ export function useConfirmProdDeploy(projectId: string | undefined) {
       invalidate();
       toast({
         title: res.confirmed
-          ? "Production deploy confirmed"
+          ? "Live deploy confirmed"
           : "No pending deploy to confirm",
         tone: res.confirmed ? "success" : "info",
       });

@@ -19,6 +19,7 @@ import { type Db, db } from '../db/client.js';
 import { issueDependencies, issueStepContexts, issues, jobs, projects } from '../db/schema.js';
 import { WORK_EVIDENCE_WAIVER_KIND } from '../issues/dependency-effects.js';
 import { logger } from '../logger.js';
+import { readableLiveBranch } from '../projects/release-model.js';
 
 // cm:guard `drive` belongs in this list for the same reason `code` and `fix` do: it is a step that WRITES CODE, and its handoff schema carries `commitSha` — one of the two fields `hasCodeEvidence` reads (`drive` has no `filesModified`; `code` and `fix` carry both). It was absent until 2026-09-02, so an autonomous driver that merged its branch and wrote a correct handoff had no evidence at all: `applyMergeMarker` refused its own `POST /api/issues/:id/merge` with NO_WORK_EVIDENCE, and the close-stamp audit comment told every reader "no branch, commit or code handoff is recorded" on work that had all three. Measured the same day on forge-beta: 7 `drive` handoffs stored, 7 of them carrying a `commitSha`, 0 counted here.
 // cm:edge lockstep -> packages/core/src/prompt/facts/registry.ts#HANDOFF_KEYS — a step whose handoff schema gains `commitSha`/`filesModified` is evidence of code and belongs here; one that loses them stops being evidence and must leave.
@@ -62,6 +63,7 @@ export async function collectWorkEvidence(
         sessionContext: issues.sessionContext,
         baseBranch: projects.baseBranch,
         liveBranch: projects.liveBranch,
+        releaseModel: projects.releaseModel,
       })
       .from(issues)
       .innerJoin(projects, eq(projects.id, issues.projectId))
@@ -94,10 +96,14 @@ export async function collectWorkEvidence(
   );
   // cm:guard the project's OWN base or production branch is not evidence of work on THIS issue — it names where work lands, not that any happened, and it is the one string an agent can write truthfully while having done nothing. Measured on forge-dev 2026-09-02: 2 issues carried `branch: 'main'` (base AND production) with zero `code`/`fix`/`drive` jobs, satisfying the gate ISS-786 built to stop exactly that claim. 17 of the 112 issues holding a branch fleet-wide named their base or production branch.
   // cm:guard the base/production exclusion applies to whichever spelling won, unchanged: the point of ISS-786's rule is that naming where work LANDS is not evidence that work happened, and that holds identically for a branch read out of the worklog.
+  // cm:guard the live-branch exclusion applies ONLY under `promote`. A `none` or `publish` project
+  // may carry a stale live branch nothing promotes to (25 of 32 do), and excluding a name that
+  // matches it would discard real branch evidence and refuse the issue with NO_WORK_EVIDENCE for a
+  // string that names nothing on that project. Reading the column without the model is the defect.
+  const projectRow = issueRows[0];
+  const excludedLive = projectRow ? readableLiveBranch(projectRow) : null;
   const branch =
-    named && named !== issueRows[0]?.baseBranch && named !== issueRows[0]?.liveBranch
-      ? named
-      : null;
+    named && named !== issueRows[0]?.baseBranch && named !== excludedLive ? named : null;
 
   return {
     implementationJobCount: jobRows.length,

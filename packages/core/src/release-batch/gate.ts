@@ -24,6 +24,7 @@ import {
   type BindingWithConnection,
   listActiveDeployBindingsForStage,
 } from '../integrations/store.js';
+import { readableLiveBranch } from '../projects/release-model.js';
 
 /** The one status an issue waits at for release. */
 export const RELEASE_GATE_STATUS: IssueStatus = 'awaiting_release';
@@ -107,7 +108,12 @@ export async function resolveReleaseDeclaration(
     releaseModel: row.releaseModel,
     releaseStrategy: row.releaseStrategy,
     baseBranch,
-    liveBranch: row.liveBranch,
+    // cm:guard NULL outside `promote`, at the one place that reads the column. 25 of 32 fleet
+    // projects carry a live branch nothing promotes to — the migration keeps those values rather
+    // than discarding a real declaration — and handing one to a caller under `publish` is how a
+    // binding-based release comes to be presented, and acted on, as a branch-based one. This is
+    // the whole defect ISS-1046 removes, so the declaration must not carry it out of here.
+    liveBranch: row.releaseModel === 'promote' ? row.liveBranch : null,
     liveBindings,
   };
 }

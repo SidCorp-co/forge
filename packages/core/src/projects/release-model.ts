@@ -78,3 +78,27 @@ export async function releaseModelGap(
   if (model !== 'promote' && strategy) updates.releaseStrategy = null;
   return null;
 }
+
+/**
+ * The live branch AS A CALLER MAY READ IT: the stored value under `promote`, and `null` under every
+ * other model.
+ *
+ * One function because the rule was being re-decided at each reader, and four of them decided it
+ * wrong. The column is deliberately NOT nulled for non-`promote` projects — 25 of the 32 in the
+ * fleet carry a value from the era when it defaulted to `'main'`, six of those a real distinct
+ * branch, and discarding a declaration a person made is not a migration's call. The price of
+ * keeping it is that every reader must ask the model first, and "reading that column without the
+ * model" is the exact defect ISS-1046 exists to remove: it is how the retired gate came to answer
+ * "this project promotes" for a project that promotes nothing.
+ *
+ * So: never read `projects.liveBranch` directly outside this function and the row that feeds it.
+ * A caller handed a branch under `publish` will act on it — resolve an issue's branches against it,
+ * print it to an agent as where the release lands, exclude it from work evidence — and every one of
+ * those is the old inference wearing the new column's name.
+ */
+export function readableLiveBranch(row: {
+  releaseModel: string | null;
+  liveBranch: string | null;
+}): string | null {
+  return row.releaseModel === 'promote' ? row.liveBranch : null;
+}

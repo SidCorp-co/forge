@@ -58,7 +58,7 @@ function badgeFor(existing: IntegrationSummary | undefined): BadgeView {
 
 /**
  * ISS-395 — Coolify deploy integration config (ported from the v1
- * `coolify-section.tsx`). Separate staging/prod integrations toggled via a
+ * `coolify-section.tsx`). Separate preview/live bindings toggled via a
  * SegmentedControl. Prod requires a manual confirmation gate before every
  * deploy. There is no inbound webhook to configure: Coolify signs nothing, so
  * ISS-922 replaced the callback with a poll of the deployment's own status.
@@ -242,8 +242,8 @@ function StagePanel({
     >
       <p className="fg-body-sm text-muted">
         {isLive
-          ? "⚠ Production — manual confirmation gate before every deploy."
-          : "Staging — auto-dispatch on release."}
+          ? "⚠ Live — manual confirmation gate before every deploy."
+          : "Preview — auto-dispatch on release."}
       </p>
 
       <fieldset className="flex flex-col gap-3 rounded-md border border-subtle bg-sunken/40 p-3">
@@ -368,7 +368,7 @@ function StagePanel({
  * failed save auto-reverts (the mutation hook only writes the cache on success
  * and raises its own success/error toasts).
  *
- * - autoProd ON  → prod deploys dispatch automatically on release; the manual
+ * - autoProd ON  → live deploys dispatch automatically on release; the manual
  *   "Confirm production deploy" button is hidden (it would be a no-op) and an
  *   info banner reflects the auto-approve state.
  * - autoProd OFF (default) → the existing manual confirm gate is unchanged.
@@ -392,7 +392,7 @@ function ProdGateSection({
 
   const featureOff = cfgQ.isError && isFeatureOff(cfgQ.error);
   // Default OFF: only an explicit `=== true` enables auto-approve — a missing
-  // flag (or any read error) must never auto-deploy a project to prod.
+  // flag (or any read error) must never auto-deploy a project to its live stage.
   const autoProd = cfgQ.data?.pipelineConfig?.autoProdDeploy === true;
 
   function handleToggle(next: boolean) {
@@ -406,11 +406,11 @@ function ProdGateSection({
     <div className="flex flex-col gap-3">
       {featureOff ? (
         <div className="flex flex-col gap-1 rounded-lg border border-subtle bg-sunken p-3">
-          <span className="fg-label text-subtle">Production approval gate</span>
+          <span className="fg-label text-subtle">Live approval gate</span>
           <span className="fg-body-sm text-muted">
             Pipeline control is disabled for this project, so auto-approve
-            can&apos;t be configured here. Production deploys stay behind the
-            manual gate below.
+            can&apos;t be configured here. Live deploys stay behind the manual
+            gate below.
           </span>
         </div>
       ) : (
@@ -437,10 +437,10 @@ function ProdGateSection({
       {autoProd ? (
         <Banner tone="success">
           <div className="flex flex-col gap-1">
-            <span className="fg-label">Production approval gate · off</span>
+            <span className="fg-label">Live approval gate · off</span>
             <span className="fg-body-sm">
-              Auto-approve is enabled — production deploys dispatch automatically
-              on release, like staging. No manual confirmation required.
+              Auto-approve is enabled — live deploys dispatch automatically on
+              release, like preview. No manual confirmation required.
             </span>
             <span className="font-mono text-[10px] text-subtle">
               integration: {integrationId}
@@ -486,14 +486,14 @@ function ProdConfirmBanner({
   return (
     <Banner tone="attention">
       <div className="flex flex-col gap-2">
-        <span className="fg-label">Production approval gate</span>
+        <span className="fg-label">Live approval gate</span>
         <span className="fg-body-sm">
-          Production deploys never auto-dispatch. Click confirm when ready to
-          release the gate for an in-flight pipeline run.
+          Live deploys never auto-dispatch. Click confirm when ready to release
+          the gate for an in-flight pipeline run.
         </span>
         <div>
           <Button size="sm" loading={pending} onClick={onConfirm}>
-            Confirm production deploy
+            Confirm live deploy
           </Button>
         </div>
         <span className="font-mono text-[10px] text-subtle">

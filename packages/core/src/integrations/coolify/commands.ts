@@ -12,7 +12,10 @@
  */
 
 import type { DeployStage } from '../../db/schema.js';
-import { effectiveConfig, listActiveBindingsForProjectProvider } from '../../integrations/store.js';
+import {
+  effectiveConfig,
+  listActiveDeployBindingsForProvider,
+} from '../../integrations/store.js';
 import {
   type DispatchOutcome,
   dispatchCoolifyDeployDirect,
@@ -39,7 +42,11 @@ export class CoolifyCommandError extends Error {
  * connection⊕binding overlay. `pair` is retained for the log commands.
  */
 export async function activeCoolifyIntegrations(projectId: string) {
-  const pairs = await listActiveBindingsForProjectProvider(projectId, 'coolify');
+  // cm:guard DEPLOY bindings only. Deploy, cancel and rollback all resolve through here, and
+  // `resolveIntegrationRow` refuses an ambiguous set — so a project carrying a coolify service
+  // binding beside its deploy one would make every ordinary control ambiguous, and naming the
+  // service binding explicitly would run a control against a row declared not to deploy.
+  const pairs = await listActiveDeployBindingsForProvider(projectId, 'coolify');
   return pairs.map((pair) => ({
     id: pair.binding.id,
     stages: (pair.binding.stages ?? []) as DeployStage[],

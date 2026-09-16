@@ -15,6 +15,7 @@ import {
 } from './forge-issues.js';
 import type { ContextScopedMcpToolFactory } from './lib.js';
 import { assertPrincipalIsWriter, zodToMcpSchema } from './lib.js';
+import { readableLiveBranch } from '../../projects/release-model.js';
 
 /**
  * `forge_step_start` — the check-in an agent makes as its FIRST action on an
@@ -98,7 +99,7 @@ export const forgeStepStartTool: ContextScopedMcpToolFactory = (ctx) => ({
       { metadata: { branchConfig: branchOverride } },
       {
         baseBranch: projectRow?.baseBranch ?? null,
-        liveBranch: projectRow?.liveBranch ?? null,
+        liveBranch: projectRow ? readableLiveBranch(projectRow) : null,
       },
     );
 

@@ -4,7 +4,7 @@ import { db } from '../db/client.js';
 import { issues, pipelineRuns, projects } from '../db/schema.js';
 import { findDeliveryByRequestId } from '../integrations/deliveries.js';
 import { enqueueCoolifyDispatch } from '../integrations/queue.js';
-import { listActiveBindingsForProjectProvider } from '../integrations/store.js';
+import { listActiveDeployBindingsForProvider } from '../integrations/store.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { openDeployDispatchHold } from './deploy-confirmations.js';
@@ -121,7 +121,10 @@ export async function tryDispatchCoolifyRelease(args: {
 }): Promise<DispatchOutcome> {
   const { projectId, issueId, runId, integrationId, allowLive = true } = args;
   await warnIfRunAlreadyTerminal(runId, issueId);
-  let pairs = await listActiveBindingsForProjectProvider(projectId, 'coolify');
+  // cm:guard DEPLOY bindings only. A `service` coolify binding is a facility the project
+  // uses, not somewhere Forge pushes to, and enqueueing a release against one is the retired
+  // model reappearing under a new column name.
+  let pairs = await listActiveDeployBindingsForProvider(projectId, 'coolify');
   if (integrationId) pairs = pairs.filter((p) => p.binding.id === integrationId);
   if (!allowLive) pairs = pairs.filter((p) => !(p.binding.stages ?? []).includes('live'));
   if (pairs.length === 0) {
@@ -224,7 +227,8 @@ export async function dispatchCoolifyDeployDirect(args: {
 }): Promise<DispatchOutcome> {
   const { projectId, integrationId } = args;
   // cm:guard `integrationId` here is a BINDING id, not a connection id — the MCP tool passes binding ids and both id spaces are uuids, so a mix-up resolves to some other project's deploy target rather than failing.
-  const pairs = await listActiveBindingsForProjectProvider(projectId, 'coolify');
+  // cm:guard DEPLOY bindings only — same rule as the release path above.
+  const pairs = await listActiveDeployBindingsForProvider(projectId, 'coolify');
   const pair = pairs.find((p) => p.binding.id === integrationId);
   if (!pair) {
     return {

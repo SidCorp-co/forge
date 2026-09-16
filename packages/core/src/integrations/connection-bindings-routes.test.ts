@@ -27,6 +27,7 @@ vi.mock('../db/client.js', () => ({
 const createConnection = vi.fn();
 const createBinding = vi.fn();
 const findActiveBinding = vi.fn();
+const findActiveServiceBinding = vi.fn();
 const findActiveBindingByLabel = vi.fn();
 const findBindingWithConnectionById = vi.fn();
 const findConnectionById = vi.fn();
@@ -36,6 +37,7 @@ vi.mock('./store.js', () => ({
   createConnection: (a: unknown) => createConnection(a),
   createBinding: (a: unknown) => createBinding(a),
   findActiveBinding: (...a: unknown[]) => findActiveBinding(...(a as [])),
+  findActiveServiceBinding: (...a: unknown[]) => findActiveServiceBinding(...(a as [])),
   findActiveBindingByLabel: (...a: unknown[]) => findActiveBindingByLabel(...(a as [])),
   findBindingWithConnectionById: (id: string) => findBindingWithConnectionById(id),
   findConnectionById: (id: string) => findConnectionById(id),
@@ -140,6 +142,7 @@ beforeEach(() => {
   // queued by a deploy test would otherwise be answered to the NEXT service
   // test — which is how the service-clash case read 500 instead of 409.
   findActiveBinding.mockReset();
+  findActiveServiceBinding.mockReset();
 });
 
 describe('POST /api/integration-connections/:id/bindings — bind existing connection', () => {
@@ -229,7 +232,7 @@ describe('POST /api/integration-connections/:id/bindings — bind existing conne
     const token = await signUserToken(USER_ID);
     mockOwnerMembership();
     findConnectionById.mockResolvedValueOnce(ownedConnection());
-    findActiveBinding.mockResolvedValueOnce({ binding: { id: 'existing' }, connection: {} });
+    findActiveServiceBinding.mockResolvedValueOnce({ binding: { id: 'existing' }, connection: {} });
 
     const res = await bindReq(token, CONN_ID, { projectId: PROJECT_ID, role: 'service' });
     expect(res.status).toBe(409);
@@ -269,14 +272,14 @@ describe('POST /api/integration-connections/:id/bindings — bind existing conne
     expect(createBinding).toHaveBeenCalled();
     // The rule itself: the service pre-flight is never consulted for a deploy
     // binding, so a project already carrying one cannot be refused a second.
-    expect(findActiveBinding).not.toHaveBeenCalled();
+    expect(findActiveServiceBinding).not.toHaveBeenCalled();
   });
 
   it('409 — Drizzle-wrapped 23505 on createBinding returns ALREADY_EXISTS (inactive duplicate)', async () => {
     const token = await signUserToken(USER_ID);
     mockOwnerMembership();
     findConnectionById.mockResolvedValueOnce(ownedConnection());
-    findActiveBinding.mockResolvedValueOnce(null); // no active duplicate — inactive row not caught by pre-flight
+    findActiveServiceBinding.mockResolvedValueOnce(null); // no active duplicate — inactive row not caught by pre-flight
     const drizzleWrapped = Object.assign(
       new Error('Failed query: insert into integration_bindings'),
       {

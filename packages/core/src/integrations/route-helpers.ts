@@ -17,7 +17,7 @@ import {
   type BindingWithConnection,
   buildContextFromBinding,
   effectiveConfig,
-  findActiveBinding,
+  findActiveServiceBinding,
   findBindingWithConnectionById,
   type IntegrationBindingRow,
   type IntegrationConnectionRow,
@@ -67,7 +67,11 @@ export async function assertNoActiveBindingClash(
   role: BindingRole,
 ): Promise<void> {
   if (role !== 'service') return;
-  const clash = await findActiveBinding(projectId, provider);
+  // cm:guard the lookup is SERVICE-scoped, matching the partial index. Asking without the role
+  // filter refused an operator adding a coolify service binding to a project that already had a
+  // coolify deploy one — a pair the index admits and rule 3 requires, since the two are different
+  // declarations about the same credential.
+  const clash = await findActiveServiceBinding(projectId, provider);
   if (clash) throw alreadyExists();
 }
 

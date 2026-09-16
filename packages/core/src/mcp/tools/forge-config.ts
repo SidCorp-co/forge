@@ -35,6 +35,7 @@ import {
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
+import { readableLiveBranch } from '../../projects/release-model.js';
 
 const inputSchema = z
   .object({
@@ -65,7 +66,7 @@ function formatBaseResponse(row: Awaited<ReturnType<typeof readProjectConfig>>) 
     config: {
       repoPath: row.repoPath,
       baseBranch: row.baseBranch,
-      liveBranch: row.liveBranch,
+      liveBranch: readableLiveBranch(row),
       releaseModel: row.releaseModel,
       releaseStrategy: row.releaseStrategy,
       categories: (ac.categories as string[] | undefined) ?? [],
@@ -202,7 +203,7 @@ export const forgeConfigTool: ContextScopedMcpToolFactory = (ctx) => ({
 
     const branchConfig = resolveIssueBranches(
       { metadata: { branchConfig: branchConfigOverride } },
-      { baseBranch: row.baseBranch, liveBranch: row.liveBranch },
+      { baseBranch: row.baseBranch, liveBranch: readableLiveBranch(row) },
     );
 
     return {

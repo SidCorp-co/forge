@@ -210,10 +210,17 @@ export interface PluginDesignation {
 /** What a project still has to declare — mirrors `ReleaseReadiness` in core
  *  `release-batch/readiness.ts`. `gaps` is what settings says out loud. */
 export interface ReleaseReadiness {
-	hasProduction: boolean;
+	/** The project declares a release model AND has an active live deploy binding. */
+	hasReleaseGate: boolean;
+	releaseModel: "none" | "promote" | "publish";
+	releaseStrategy: "merge-branch" | "cherry-pick" | "tag-mr" | null;
 	baseBranch: string;
-	liveBranch: string;
-	provider: string | null;
+	/** Non-null only under `promote` — every other model reads no branch. */
+	liveBranch: string | null;
+	/** Declares a release model but has no live deploy binding to send it to. */
+	targetUndeclared: boolean;
+	/** Providers of EVERY live deploy binding; core never picks one. */
+	providers: string[];
 	releaseRunnerLabel: string | null;
 	rollback: string | null;
 	rollbackMode: "manual" | "coolify-image" | "unrepresentable" | null;
@@ -223,8 +230,11 @@ export interface ReleaseReadiness {
 		| "test-commands"
 		| "release-procedure"
 		| "release-runner"
+		| "release-runner-ambiguous"
+		| "release-target"
 		| "rollback"
 		| "rollback-prose"
+		| "verify-probes"
 	)[];
 }
 
