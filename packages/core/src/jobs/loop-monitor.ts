@@ -32,8 +32,8 @@ import {
   resolveKillConfirmation,
 } from './kill-gate.js';
 import { reapExpiredParks, reapUnansweredParks } from './park-deadline.js';
-import { LAST_PHASE_CTE, LAST_PROGRESS_AT } from './progress-signal.js';
-import { NOT_PARKED, RESIDENT_SESSION_JOIN, RESULT_GUARD } from './resident-session.js';
+import { quietJobCandidateQuery } from './progress-signal.js';
+import { RESULT_EVENT_LATERAL, RESULT_GUARD } from './resident-session.js';
 import { NON_CLIENT_METADATA_TYPES, PIPELINE_METADATA_TYPES } from './session-kinds.js';
 import { type SessionLostCause, sessionLostCause } from './session-lost-cause.js';
 
@@ -160,6 +160,10 @@ type KillGateCandidateRow = {
   kill_outcome: JobRow['killOutcome'];
   failure_reason: string | null;
 };
+
+// cm:guard the kill gate's own columns, and `j.` qualified because the candidate query joins `agent_sessions` — an unqualified `id` there is ambiguous at the DB, not at the type checker.
+const KILL_GATE_CANDIDATE_COLUMNS = sql`j.id, j.project_id, j.issue_id, j.device_id, j.runner_id,
+           j.kill_requested_at, j.kill_confirmed_at, j.kill_outcome`;
 
 function toKillableRef(row: KillGateCandidateRow): KillableJobRef {
   return {
@@ -594,6 +598,7 @@ export async function reapSessionLostJobs(
            j.kill_requested_at, j.kill_confirmed_at, j.kill_outcome, s.failure_reason
     FROM jobs j
     JOIN agent_sessions s ON s.id = j.agent_session_id
+    ${RESULT_EVENT_LATERAL}
     WHERE j.status IN ('dispatched', 'running')
       AND s.status IN ('failed', 'cancelled_stale')
       AND ${RESULT_GUARD}
@@ -634,30 +639,25 @@ export async function reapSessionLostJobs(
  * wedged. Moved from jobs/stale-detector.ts `runStaleSweep` (ISS-258
  * semantics preserved; its finalize-drop guard and the park exemption are
  * both in `resident-session.ts`), now ticking every minute.
+ *
+ * ISS-1013 — the query is exported rather than inlined so a plan can be read
+ * off the subject itself. A test that EXPLAINs a hand-written likeness of this
+ * query measures the likeness, and stays green while the shape the sweeper
+ * actually runs drifts away from it.
  */
+export function resultMissCandidateQuery(scope: LoopScope = {}): SQL {
+  return quietJobCandidateQuery({
+    columns: KILL_GATE_CANDIDATE_COLUMNS,
+    quietMinutes: RESULT_QUIET_MINUTES,
+    scope,
+  });
+}
+
 export async function reapResultMisses(
   _now: Date = new Date(),
   scope: LoopScope = {},
 ): Promise<JobAxisReapResult> {
-  const projectClause = scope.projectId ? sql`AND j.project_id = ${scope.projectId}` : sql``;
-  const candidates = await db.execute<KillGateCandidateRow>(sql`
-    WITH last_event AS (
-      SELECT job_id, MAX(ts) AS max_ts
-      FROM job_events
-      GROUP BY job_id
-    ), ${LAST_PHASE_CTE}
-    SELECT j.id, j.project_id, j.issue_id, j.device_id, j.runner_id,
-           j.kill_requested_at, j.kill_confirmed_at, j.kill_outcome
-    FROM jobs j
-    LEFT JOIN last_event le ON le.job_id = j.id
-    LEFT JOIN last_phase lp ON lp.run_id = j.pipeline_run_id
-    ${RESIDENT_SESSION_JOIN}
-    WHERE j.status IN ('dispatched', 'running')
-      AND ${RESULT_GUARD}
-      AND ${NOT_PARKED}
-      AND ${LAST_PROGRESS_AT} < now() - interval '${sql.raw(String(RESULT_QUIET_MINUTES))} minutes'
-      ${projectClause}
-  `);
+  const candidates = await db.execute<KillGateCandidateRow>(resultMissCandidateQuery(scope));
 
   const STALE_REASON = `runner stale (no progress / no started event for >${RESULT_QUIET_MINUTES}min)`;
   const result: JobAxisReapResult = { reaped: 0, killRequested: 0, awaitingKill: 0 };
