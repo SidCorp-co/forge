@@ -598,6 +598,42 @@ describe('ISS-1013 · the rewritten query picks what the CTE picked, and the ala
   // conclude the lateral was redundant. It is not: the index is what makes the guard cheap, and
   // the lateral is what makes it cheap WITHOUT the index. So the index is dropped here, which is
   // the one condition under which the two forms diverge at all.
+  // cm:guard criterion 19 says 0251 adds the two named indexes and changes NOTHING ELSE, and until
+  // this assertion nothing measured the second half. The plan proofs above show each index is USED;
+  // being used says nothing about what else the same file might do. The migration text is the
+  // subject here rather than a likeness of it, so it is read off disk.
+  it('adds exactly the two authorized indexes and no other schema change', async () => {
+    const fs = await import('node:fs/promises');
+    const url = await import('node:url');
+    const here = url.fileURLToPath(new URL('.', import.meta.url));
+    const text = await fs.readFile(
+      `${here}../../drizzle/migrations/0251_job_events_bounded_reaper_reads.sql`,
+      'utf8',
+    );
+    const statements = text
+      .split('\n')
+      .filter((l) => !l.trimStart().startsWith('--'))
+      .join('\n')
+      .split(/;|--> statement-breakpoint/)
+      .map((t) => t.trim())
+      .filter(Boolean);
+
+    expect(statements).toHaveLength(2);
+    expect(statements[0]).toMatch(
+      /^CREATE INDEX IF NOT EXISTS "job_events_job_id_ts_idx" ON "job_events" USING btree \("job_id","ts"\)$/,
+    );
+    expect(statements[1]).toMatch(
+      /^CREATE INDEX IF NOT EXISTS "job_events_result_idx" ON "job_events" USING btree \("job_id"\) WHERE kind = 'result'$/,
+    );
+    // cm:guard named rather than inferred from the two matches above: a third statement would be
+    // caught by the length, but a DROP or ALTER smuggled into either ONE of them would not.
+    for (const verb of ['DROP', 'ALTER', 'DELETE', 'UPDATE', 'INSERT', 'TRUNCATE']) {
+      expect(text.toUpperCase(), `0251 carries a ${verb}`).not.toMatch(
+        new RegExp(`^\\s*${verb}\\b`, 'm'),
+      );
+    }
+  });
+
   it('keeps the result guard bounded even with the partial index dropped', async () => {
     const guardOnly = (extra: ReturnType<typeof sql>, guard: ReturnType<typeof sql>) => sql`
       SELECT j.id FROM jobs j
