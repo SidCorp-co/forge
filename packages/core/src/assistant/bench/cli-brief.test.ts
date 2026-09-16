@@ -53,7 +53,7 @@ const fake = () =>
 describe('the project brief a run is judged against (ISS-1066)', () => {
   it('writes the project block, brief and read time into the result file', async () => {
     const { fetch } = fake();
-    const { d, written } = deps(fetch);
+    const { d, written, out } = deps(fetch);
     expect(
       await main(
         [...RUN, '--tasks', 'out-of-reach-tests', '--trials', '1'],
@@ -67,6 +67,9 @@ describe('the project brief a run is judged against (ISS-1066)', () => {
     expect(result.project?.readAt).toBe('2026-09-16T00:00:00.000Z');
     expect(result.project?.brief).toContain('QA Project (qa)');
     expect(result.project?.brief).toContain('open → confirmed → approved');
+    // the run says which project it was taken against and how much of it the judge was handed,
+    // on the first line, because a run judged against the wrong project is otherwise silent
+    expect(out[0]).toMatch(/project qa, brief \d+ characters read at 2026-09-16T00:00:00\.000Z/);
   });
 
   it('records a task the project cannot be asked, runs no trial for it, and charges it to nothing', async () => {
