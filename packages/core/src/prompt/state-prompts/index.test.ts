@@ -135,3 +135,36 @@ describe('state-prompts — a `needs_info` park names what would settle it', () 
     expect(prompt).toContain('`needs`');
   });
 });
+
+/**
+ * ISS-1042 criterion 39 — the English-only rule covers the CHANGELOG only.
+ *
+ * It read "English-only: all output, comments, changelog", which swept in every
+ * comment a release agent writes. On a project whose issues, thread and
+ * operators work in another language, that is a release run answering in a
+ * language nobody there reads — for a rule that only ever existed because a
+ * changelog is a published artefact.
+ */
+describe('state-prompts — the batch release language rule', () => {
+  const releaseBatch = getStatePrompt('release_batch') ?? '';
+
+  // cm:guard the negative half is what carries the claim. A prompt that names the changelog and
+  // keeps the old blanket line beside it satisfies any assertion that only looks for the new one.
+  it('binds the English requirement to the changelog and to nothing else', () => {
+    expect(releaseBatch).toContain('The CHANGELOG entry is written in English');
+    expect(releaseBatch).not.toContain('English-only');
+    expect(releaseBatch).not.toMatch(/English[^.\n]*comments/);
+  });
+
+  it('says the rest goes in the language the project works in', () => {
+    expect(releaseBatch).toMatch(/the language the project works in/);
+  });
+
+  // cm:guard the same repair-forward rule the task prompt carries, because the two are read in one
+  // context window: a state block still naming a rollback is the contradiction the driver preamble
+  // was measured resolving the wrong way in 2026-09-02.
+  it('tells the release agent to repair forward rather than roll back', () => {
+    expect(releaseBatch).toContain('REPAIR FORWARD');
+    expect(releaseBatch).toContain('Never roll back');
+  });
+});

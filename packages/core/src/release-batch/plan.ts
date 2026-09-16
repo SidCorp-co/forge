@@ -9,6 +9,18 @@
 export const RELEASE_PROCEDURE_FACT = 'release-procedure';
 
 /**
+ * The method a release run is expected to be working from.
+ *
+ * ONE constant, because `skillName` on the job and the invocation line in the
+ * prompt are the same claim about the same run. It stamped `release-flow` and
+ * the prompt said nothing about it, so the column selected nothing while
+ * reading like a designation, and `finish` had no way to ask whether the run
+ * had a method at all (ISS-1042).
+ */
+// cm:guard CROSS-REPO coupling, so no `cm:edge` can hold it: the skill itself is `plugin/skills/release-flow` in github.com/SidCorp-co/forge-plugin (ISS-1521). Renaming it here reaches an agent only when the plugin says the same word.
+export const RELEASE_BATCH_SKILL = 'release-flow';
+
+/**
  * What a project gets when it has not written its own procedure: the steps
  * that were hardcoded into the state prompt before this split.
  */

@@ -7,14 +7,12 @@ import {
   type CoolifyConfirmJob,
   runCoolifyConfirm,
 } from './coolify/confirm.js';
-import { listCoolifyRollbackImages, runCoolifyRollback } from './coolify/controls.js';
 import {
   type CoolifyHealthGateJob,
   probeHealth,
   runCoolifyHealthGate,
 } from './coolify/health-gate.js';
 import type { CoolifyConfig, CoolifySecrets } from './coolify/types.js';
-import { findDeliveryByRequestId } from './deliveries.js';
 import { buildContextFromBinding, findBindingById, findConnectionById } from './store.js';
 
 export interface CoolifyDispatchJob {
@@ -99,16 +97,6 @@ function healthGateDeps(data: CoolifyHealthGateJob) {
       if (!deliveryId) return;
       await applyDeploySettlement({ ...data, deliveryId }, verdict, detail);
     },
-    rollback: async (input: {
-      projectId: string;
-      integrationId: string;
-      resourceUuid: string;
-      commit: string;
-    }) => runCoolifyRollback(input),
-    listImages: async (input: { projectId: string; integrationId: string; resourceUuid: string }) =>
-      listCoolifyRollbackImages(input),
-    findRollbackMarker: async (bindingId: string, requestId: string) =>
-      (await findDeliveryByRequestId(bindingId, requestId)) !== null,
   };
 }
 

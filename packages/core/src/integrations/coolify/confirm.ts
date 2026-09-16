@@ -128,7 +128,6 @@ export async function runCoolifyConfirm(data: CoolifyConfirmJob): Promise<Confir
       deliveryId: data.deliveryId,
       deploymentUuid: data.deploymentUuid,
       targetLabel: data.targetLabel,
-      forRollback: false,
       notAfter: data.deadlineAt,
     });
     if (healthGate.kind === 'gate') {

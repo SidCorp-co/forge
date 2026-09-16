@@ -27,7 +27,7 @@ import { readProjectBranches } from '../projects/service.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import { resolveReleaseChannel, resolveReleaseDeviceIds, resolveReleasePlan } from './channel.js';
 import { RELEASE_GATE_STATUS, resolveReleaseGate } from './gate.js';
-import { ReleaseBranchesUndeclaredError, releaseBranches } from './plan.js';
+import { ReleaseBranchesUndeclaredError, RELEASE_BATCH_SKILL, releaseBranches } from './plan.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
 import { recoverStrandedReleasing } from './releasing-recovery.js';
 import { readLiveCommit, verifyDeployed } from './verify.js';
@@ -262,7 +262,8 @@ export async function createReleaseBatch(
       pipelineRunId: run.id,
       createdBy: userId,
       type: 'release_batch',
-      skillName: 'release-flow',
+      // cm:edge lockstep -> packages/core/src/release-batch/prompt.ts — the prompt emits the invocation line off this SAME constant. A literal here is how the job comes to name one skill while the prompt asks for another, which is the state ISS-1042 found: the column said `release-flow` and nothing in the prompt, the runner or the plugin ever read it.
+      skillName: RELEASE_BATCH_SKILL,
       promptString,
       payloadExtras: {
         releaseBatch: true,

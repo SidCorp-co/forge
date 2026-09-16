@@ -3,7 +3,7 @@
 // Untrusted issue text is wrapped via markUntrusted (same as every state prompt).
 
 import { markUntrusted } from '../prompt/sanitize.js';
-import { DEFAULT_RELEASE_PROCEDURE, type ReleasePlan } from './plan.js';
+import { DEFAULT_RELEASE_PROCEDURE, RELEASE_BATCH_SKILL, type ReleasePlan } from './plan.js';
 
 interface IssueSummary {
   id: string;
@@ -36,8 +36,28 @@ deploy channel: ${plan.provider ?? 'none — cut the version and stop; a human d
 
 ### Issues in this batch (${issues.length})
 ${roster}
-${renderProcedure(plan)}
+${renderMethod()}${renderProcedure(plan)}
 Start by reading the batch context: \`forge-runner api projects/${projectId}/release-batches/${runId}\`.
+`;
+}
+
+/**
+ * The one line that loads the method, off the SAME constant the job's
+ * `skillName` carries.
+ *
+ * `skillName` named `release-flow` and nothing invoked it: the runner reads no
+ * such column, and this prompt never mentioned it, so the field selected
+ * nothing while reading like a designation (ISS-1042). The name reaching the
+ * agent is what makes it true.
+ */
+// cm:edge lockstep -> packages/core/src/release-batch/service.ts — `insertAndEnqueueJob` stamps `skillName: RELEASE_BATCH_SKILL` from this same constant. Two literals is how the job comes to name one skill while the prompt asks for another, and nothing anywhere would say so.
+// cm:guard CROSS-REPO coupling, so no `cm:edge` can hold it: the skill itself is `plugin/skills/release-flow` in github.com/SidCorp-co/forge-plugin (ISS-1521) and reaches a box through its plugin designation. Until that lands the invocation finds nothing, which is why the line below says what to do when it does not load rather than assuming it did.
+function renderMethod(): string {
+  return `
+### Your method
+Load it before the first step: run the \`${RELEASE_BATCH_SKILL}\` skill, then announce what you loaded with \`POST projects/{projectId}/release-batches/{runId}/method\`. \`finish\` refuses a run that announced none.
+
+If the skill does not load, announce THAT — do not improvise a release out of this prompt. An announcement saying the method could not be loaded is a run a person can see; a release run with no method is not.
 `;
 }
 
@@ -63,23 +83,35 @@ function renderProcedure(plan: ReleasePlan): string {
       `### Proof (the server checks this, you do not)\nWhen you call \`finish\`, pass \`commit\` — the SHA you pushed to the production branch. The server then reads these probes itself:\n${urls}\nIt goes green only when the live build CHANGED from what was serving before this batch started AND matches your \`commit\`. A healthy site still serving the old build is a RED, and \`finish\` will refuse. That refusal is not something to retry or work around: it means the deploy did not land.`,
     );
   }
-  // cm:guard every branch must EMIT, the final else included. Silence is not an instruction: an agent told only that the deploy is dead will invent a way back, and from inside one session an outage that predates the release is indistinguishable from one it caused. ISS-897 rule 2 makes no-declaration mean ABORT; ISS-925 makes prose on a coolify binding mean ABORT too, and neither is discoverable by an agent the prompt does not tell.
-  if (plan.rollback?.kind === 'manual') {
-    blocks.push(
-      `### If the deploy comes up dead\n${plan.rollback.text}\n\nRoll back AT MOST ONCE, and only when the deploy replaced a working build with a broken one. If the deploy never came up at all, the previous build is still serving — do nothing and abort. A rollback always ends in \`abort\`, never \`finish\`: nothing shipped.`,
-    );
-  } else if (plan.rollback?.kind === 'coolify-image') {
-    blocks.push(
-      '### If the deploy comes up dead\nForge performs this rollback — do NOT improvise one and do NOT touch Coolify by hand. Read the images first with `forge_coolify_deploy action=rollback-images`, then call `forge_coolify_deploy action=rollback` with the `commit` (image tag) you picked. A tag Coolify no longer lists is refused by name; that refusal means the image is gone, not that you should pick the nearest one. Roll back AT MOST ONCE, and only when the deploy replaced a working build with a broken one. A rollback always ends in `abort`, never `finish`: nothing shipped.',
-    );
-  } else if (plan.rollback?.kind === 'unrepresentable') {
-    blocks.push(
-      `### If the deploy comes up dead\nThis project's Coolify binding declares its rollback as free text, which Forge no longer executes (ISS-925) — a paragraph is not a rollback, and nothing has verified this one is still true. ABORT, and comment on each issue with what failed, what state production is in, and that the binding still needs converting to \`{"mode":"coolify-image"}\`. Do NOT follow the text below yourself; it is quoted only so a human can convert it:\n\n> ${plan.rollback.text.replace(/\n/g, '\n> ')}`,
-    );
-  } else {
-    blocks.push(
-      '### If the deploy comes up dead\nThis project declares NO rollback, so there is no way back for you to take. ABORT, and comment on each issue with what failed and what state production is in. Do NOT improvise one — not a revert, not a reset, not a redeploy of an older build: you cannot tell an outage you caused from one that was already there, and undoing reviewed work does not end an outage that survives it. Reverting is a human decision. Every issue stays at `released`.',
-    );
-  }
+  blocks.push(renderRepairForward(plan));
   return `\n${blocks.join('\n\n')}\n`;
+}
+
+/**
+ * What to do when the deploy comes up dead — which is never a rollback.
+ *
+ * This block used to have four branches, one per rollback declaration, and
+ * three of them told the agent to perform one. From inside a single session an
+ * outage you caused and an outage that was already there read identically, and
+ * a rollback answers both by deleting reviewed work while the outage survives
+ * it — which is the rule `drive-rules.ts` has held the driver to since ISS-897
+ * and which the release agent was exempt from for no reason anybody wrote down.
+ *
+ * The declaration is still QUOTED where the project has one, because a human
+ * deciding to roll back wants to read it. It is quoted as a human's option and
+ * never as this agent's step.
+ */
+// cm:guard the declared text must never appear under an instruction to follow it. `classifyRollback` keeps `manual` / `coolify-image` / `unrepresentable` apart for the operator routes and the settings screen, and quoting any of them here as a step is the substitution this block removed.
+// cm:edge lockstep -> packages/core/src/integrations/coolify/health-gate.ts — the same rule on the other path. The gate stopped restoring the previous image in the same change, so an unhealthy deploy now pages on both routes rather than being answered automatically on one of them.
+function renderRepairForward(plan: ReleasePlan): string {
+  const declared =
+    plan.rollback && 'text' in plan.rollback
+      ? `\n\nThis project's declared way back, quoted for the human and NOT for you:\n\n> ${plan.rollback.text.replace(/\n/g, '\n> ')}`
+      : plan.rollback?.kind === 'coolify-image'
+        ? "\n\nThis project's declared way back is a Coolify image restore, which a person performs from the integration screen. It is not yours."
+        : '';
+  return `### If the deploy comes up dead
+REPAIR FORWARD, and never roll back. You may push a fix and deploy again. You may NOT \`git revert\`, \`reset --hard\` or force-push a shared branch, and you may NOT restore an earlier build — not by hand, not through Coolify, not by redeploying an older tag. From inside this session you cannot tell an outage you caused from one that was already there, and undoing reviewed work does not end an outage that survives it.
+
+Where you cannot repair forward inside this run: \`abort\` with the reason, and comment on each issue with what failed and what state production is in. Nothing closes. Rolling back is a human decision and this is how you hand it to one.${declared}`;
 }

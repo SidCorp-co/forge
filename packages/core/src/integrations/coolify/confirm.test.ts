@@ -286,7 +286,6 @@ describe('the post-deploy health gate handoff', () => {
       jobKind: 'coolify.health-gate',
       targetId: 't1',
       healthUrl: 'https://api/health',
-      forRollback: false,
     });
   });
 
