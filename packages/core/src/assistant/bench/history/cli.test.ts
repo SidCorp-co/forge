@@ -237,7 +237,13 @@ describe('compare-history', () => {
     expect(await main(['compare-history', '/a.json', '/b.json'], {}, d)).toBe(0);
     expect(out[0]).toBe('gpt-x / web-chat-reply');
     expect(out[2]).toBe('    unanswered 2/5 (40.0%), screen_repair 1/5 (20.0%)');
-    expect(out.at(-1)).toBe('no differences: same commit, window, budgets, judge and row count');
+    expect(out).toContain('no differences: same commit, window, budgets, judge and row count');
+    expect(out.indexOf('advice:')).toBeGreaterThan(
+      out.indexOf('no differences: same commit, window, budgets, judge and row count'),
+    );
+    expect(out.at(-1)).toContain(
+      'help_roundtrip 1/1 (100%) above 10% -> assistant/system-prompt.ts:buildSystemPrompt',
+    );
   });
 
   it('refuses one file with the usage', async () => {

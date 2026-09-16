@@ -113,6 +113,10 @@
 
 
 ### Added
+- Every `bench:assistant compare` and `compare-history` ends with an `advice:` block, and
+  `bench:assistant advise <file>` prints it for one file: one line per failure pattern over its
+  threshold, naming the count, the bar and the harness surface (`file.ts:symbol`) it points at;
+  derived from the counts and the judge column, no model, no write. (ISS-1058)
 - `bench:assistant ladder <run.json>... [--history h.json] [--out ladder.md]`: runs ranked on one
   printed score (mean pass^k over the tasks walked, 0–100) with the lowest task on the same row,
   the judge's served rate as a column, `partial` and `thin` marks, and history windows ranked by

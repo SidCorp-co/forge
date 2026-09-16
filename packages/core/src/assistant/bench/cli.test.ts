@@ -145,9 +145,8 @@ describe('compare', () => {
     expect(await main(['compare', '/a.json', '/b.json'], {}, d)).toBe(0);
     expect(out[0]).toBe('out-of-reach-tests');
     expect(out[1]).toBe('  before: pass^3 100% · pass@3 100% · 3/3 trials passed');
-    expect(out.at(-1)).toBe(
-      'differences: none (same commit, api, model, judge, k and trial count)',
-    );
+    expect(out).toContain('differences: none (same commit, api, model, judge, k and trial count)');
+    expect(out.at(-1)).toBe('advice: none - every pattern is under its threshold');
   });
 
   it('refuses one file and prints the usage', async () => {
@@ -242,6 +241,74 @@ describe('run --judge', () => {
     expect(trial?.cleanup.room.id).not.toBe('');
     expect(trial?.cleanup.room.observed).toBe('404');
     expect(state.rooms.size).toBe(0);
+  });
+});
+
+describe('advise', () => {
+  it('prints the block for a run file and for a history file, and exits 0', async () => {
+    const failing = createFakeDeployment({
+      script: () => ({ attempts: [{ reply: null }], deliver: null }),
+    });
+    const b = deps(failing.fetch);
+    await main([...RUN, ...TASK, '--trials', '2'], { FORGE_BENCH_TOKEN: FAKE_TOKEN }, b.d);
+    const history = JSON.stringify({
+      at: 'x',
+      api: 'a',
+      commit: 'c',
+      version: 'v',
+      window: { projectSlug: 'qa', from: '2026-09-01', to: '2026-09-02', source: null },
+      budgetSeconds: 60,
+      maxIterations: 8,
+      resolved: false,
+      excludedSessions: [],
+      excludedRows: 0,
+      groups: [
+        {
+          model: 'm',
+          source: 'web-chat-reply',
+          rows: 40,
+          sessions: 20,
+          thin: false,
+          modes: { help_roundtrip: { count: 12, rate: 0.3 } },
+          medians: { ms: 1, calls: 1, iterations: 1 },
+        },
+      ],
+      flagged: Array.from({ length: 12 }, (_, i) => ({
+        chatLogId: `l${i}`,
+        sessionId: null,
+        createdAt: 'x',
+        model: 'm',
+        source: 'web-chat-reply',
+        modes: ['help_roundtrip'],
+        evidence: [],
+      })),
+    });
+    const { d, out, err } = deps(fake().fetch, {
+      '/run.json': b.written['/tmp/out.json'] ?? '',
+      '/h.json': history,
+    });
+    expect(await main(['advise', '/run.json'], {}, d)).toBe(0);
+    expect(out[0]).toBe('advice:');
+    expect(out[1]).toContain(': unanswered 2/2 (100%) above 0 -> conversations/turn-runner.ts:');
+    expect(out).toHaveLength(2);
+    expect(await main(['advise', '/h.json'], {}, d)).toBe(0);
+    expect(out[2]).toBe('advice:');
+    expect(out[3]).toBe(
+      "  m / web-chat-reply: help_roundtrip 12/40 (30%) above 10% -> assistant/system-prompt.ts:buildSystemPrompt: the tool layer lacks the verbs' usage; carry it so no -h call is needed",
+    );
+    expect(err).toEqual([]);
+  });
+
+  it('refuses with the usage when no file is given, and refuses a file that is neither shape by name', async () => {
+    const { d, err } = deps(fake().fetch, { '/x.json': '{"not":"a file"}' });
+    expect(await main(['advise'], {}, d)).toBe(1);
+    expect(err[0]).toContain('advise needs exactly one run or history file');
+    expect(await main(['advise', '/x.json'], {}, d)).toBe(1);
+    expect(err[1]).toBe(
+      '/x.json is neither a run file (/x.json lacks at) nor a history file (/x.json lacks at)',
+    );
+    expect(await main(['advise', '/x.json', '/x.json'], {}, d)).toBe(1);
+    expect(err[2]).toContain('advise needs exactly one run or history file');
   });
 });
 

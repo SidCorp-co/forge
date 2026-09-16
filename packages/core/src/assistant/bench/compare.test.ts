@@ -97,6 +97,10 @@ describe('the estimators', () => {
   });
 });
 
+/** The differences line, the last one before the advice block. */
+const differencesLine = (lines: string[]): string | undefined =>
+  lines.find((l) => l.startsWith('differences:'));
+
 describe('compare', () => {
   const before = file(
     { commit: 'aaa', model: 'm1' },
@@ -106,6 +110,20 @@ describe('compare', () => {
     { commit: 'bbb', model: 'm2', api: 'https://other' },
     { a: [trial(true), trial(true), trial(true)], c: [trial(true)] },
   );
+
+  it("ends with the after side's advice, per task, and the lines before it are the comparison unchanged", () => {
+    const c = compare(after, before);
+    const lines = compareLines(c);
+    const at = lines.indexOf('advice:');
+    expect(at).toBeGreaterThan(0);
+    expect(lines[at - 1]).toContain('differences: commit: bbb → aaa');
+    expect(lines.slice(at + 1).every((l) => l.startsWith('  '))).toBe(true);
+    expect(c.advice.map((a) => a.label)).toEqual(before.tasks.map((t) => t.id));
+    expect(lines.slice(0, at)).toEqual(compareLines({ ...c, advice: [] }).slice(0, -1));
+    expect(compareLines(compare(before, after)).at(-1)).toBe(
+      'advice: none - every pattern is under its threshold',
+    );
+  });
 
   it('names what separates the two files', () => {
     expect(compare(before, after).differences).toEqual(
@@ -129,7 +147,7 @@ describe('compare', () => {
 
   it('holds no composite key and prints no total line', () => {
     const c = compare(before, after);
-    expect(Object.keys(c).sort()).toEqual(['agreement', 'differences', 'k', 'tasks']);
+    expect(Object.keys(c).sort()).toEqual(['advice', 'agreement', 'differences', 'k', 'tasks']);
     for (const task of c.tasks) {
       expect(Object.keys(task).sort()).toEqual(['after', 'before', 'id']);
       for (const side of [task.before, task.after]) {
@@ -142,11 +160,11 @@ describe('compare', () => {
     expect(lines[1]).toBe('  before: pass^3 0% · pass@3 100% · 2/3 trials passed');
     expect(lines[3]).toBe('  after: pass^3 100% · pass@3 100% · 3/3 trials passed');
     expect(lines.find((l) => l.includes('thin'))).toContain('(thin: 1 < 3)');
-    expect(lines.at(-1)).toContain('differences: commit: aaa → bbb');
+    expect(differencesLine(lines)).toContain('differences: commit: aaa → bbb');
   });
 
   it('reports no differences for the same build', () => {
-    expect(compareLines(compare(before, before)).at(-1)).toBe(
+    expect(differencesLine(compareLines(compare(before, before)))).toBe(
       'differences: none (same commit, api, model, judge, k and trial count)',
     );
   });
@@ -188,7 +206,7 @@ describe('the judge beside the estimators', () => {
       'after agreement: rule-failed rows judged no 1/1, clean rows judged yes 1/2',
     );
     expect(lines.some((l) => /weighted|total|overall|score/i.test(l))).toBe(false);
-    expect(lines.at(-1)).toBe('differences: judge: null → j');
+    expect(differencesLine(lines)).toBe('differences: judge: null → j');
   });
 
   it('a file with every judge key stripped reads to the same estimators', () => {
