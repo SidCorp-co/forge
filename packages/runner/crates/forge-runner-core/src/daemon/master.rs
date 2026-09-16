@@ -477,7 +477,22 @@ async fn sweep(
             }
         };
 
-        if !ensure_master(client, masters, &runner.project_id, &resolved).await {
+        // cm:guard read into an OWNED `Option<String>` before the await below. `Ledger` wraps
+        // `rusqlite` behind a `RefCell` and is not `Sync`, so a borrow held across `ensure_master`
+        // makes this future non-`Send` and the `tokio::spawn` in `daemon/mod.rs` refuses it.
+        let stored_conversation = ledger
+            .as_ref()
+            .and_then(|led| led.master_for_project(&runner.project_id).ok().flatten())
+            .and_then(|row| row.conversation_id);
+        if !ensure_master(
+            client,
+            masters,
+            &runner.project_id,
+            &resolved,
+            stored_conversation.as_deref(),
+        )
+        .await
+        {
             continue;
         }
 
@@ -787,6 +802,58 @@ fn install_hooks_logged(repo: &std::path::Path, slug: &str) {
     }
 }
 
+/// Where Claude Code keeps the conversation for a directory, if it keeps one.
+///
+/// Answers the path it would be at, which may not exist.
+// cm:guard this encodes Claude Code's OWN on-disk layout, which is not ours and carries no promise.
+// Verified against claude 2.1.273 on forge-vm 2026-09-16: conversations live at
+// `~/.claude/projects/<cwd with every `/` and `.` replaced by `-`>/<conversation-id>.jsonl`, e.g.
+// `/home/forge/projects/apiflow/.worktrees/ISS-16` -> `-home-forge-projects-apiflow--worktrees-ISS-16`.
+// cm:guard every failure direction here is COLD START, never a resume. If this layout changes, the
+// file stops being found, `resume_for` answers `None`, and every master cold-starts while saying
+// which conversation and which path it could not reach — noisy and recoverable. The other direction
+// would pass `--resume` for a conversation that is not there, which kills the pane on spawn and
+// leaves the next sweep to rebuild and kill it again, with no line naming anything (ISS-1050
+// criterion 18).
+fn conversation_transcript(
+    cwd: &std::path::Path,
+    conversation_id: &str,
+) -> Option<std::path::PathBuf> {
+    let encoded: String = cwd
+        .to_string_lossy()
+        .chars()
+        .map(|c| if c == '/' || c == '.' { '-' } else { c })
+        .collect();
+    Some(
+        dirs_next::home_dir()?
+            .join(".claude")
+            .join("projects")
+            .join(encoded)
+            .join(format!("{conversation_id}.jsonl")),
+    )
+}
+
+/// The conversation this project's pane should be resumed from, if this box can
+/// actually reach it.
+///
+/// Says so in the log when it cannot, naming the conversation and the path.
+// cm:guard takes the id OWNED and does no ledger read of its own, because `Ledger` is not `Sync`:
+// a `&Ledger` held across the `.await` in `ensure_master` makes the master future non-`Send` and
+// `tokio::spawn` refuses it. The caller reads the row into a `String` before any await.
+fn resume_for(slug: &str, repo: &std::path::Path, stored: Option<&str>) -> Option<String> {
+    let id = stored.filter(|s| !s.is_empty())?;
+    let path = conversation_transcript(repo, id)?;
+    if path.is_file() {
+        tracing::info!("[master] {slug}: resuming conversation {id}");
+        return Some(id.to_string());
+    }
+    tracing::warn!(
+        "[master] {slug}: conversation {id} is recorded for this project but this box has no transcript for it at {} — starting cold, so this pane begins with no memory of what its predecessor was doing",
+        path.display()
+    );
+    None
+}
+
 /// Where a project's master keeps what only it can say.
 // cm:guard per PROJECT, never one file for the box. Masters on two projects run at the same time by design, and a single log would interleave two sessions into a transcript that reads as one confused master.
 // cm:guard APPEND, and the filename says so. This used to be `last-pass.log`, truncated on every spawn — measured 2026-09-05, the master's account of why it claimed ISS-917 was gone three minutes later, overwritten by the ISS-918 pass. B5 is that fix: a pane piped with `>>` into one file per project, so the judgement layer this design calls its entire value outlives the pass that produced it.
@@ -916,6 +983,7 @@ async fn ensure_master(
     masters: &Arc<Masters>,
     project_id: &str,
     resolved: &crate::daemon::dispatch::Resolved,
+    stored_conversation: Option<&str>,
 ) -> bool {
     let name = terminal::session_name(terminal::MASTER_PREFIX, &resolved.slug);
     // cm:guard refuse by name when tmux is missing rather than falling back to the per-pass `claude -p` this replaced. A box that quietly reverted would look identical in the log to one that is working, while none of the liveness, the transcript or the addressable pane exist on it.
@@ -1033,10 +1101,14 @@ async fn ensure_master(
             path.display()
         );
     }
+    // cm:guard resolved on the SPAWN path only. A pane this daemon adopted is already running its
+    // own conversation and returned above; deciding a resume for it would be deciding for a pane
+    // that cannot be told anything (ISS-1050 criterion 17).
+    let resume = resume_for(&resolved.slug, &resolved.repo_path, stored_conversation);
     match terminal::ensure(
         &name,
         &resolved.repo_path,
-        &terminal::pane_argv(mcp_config.as_deref()),
+        &terminal::pane_argv(mcp_config.as_deref(), resume.as_deref()),
         &env,
         transcript.as_deref(),
     )
@@ -1049,8 +1121,12 @@ async fn ensure_master(
         }
     }
     tracing::info!(
-        "[master] {}: resident session {name} started in {} — `tmux attach -t {name}` to watch it",
+        "[master] {}: resident session {name} {} in {} — `tmux attach -t {name}` to watch it",
         resolved.slug,
+        match resume.as_deref() {
+            Some(id) => format!("resumed from conversation {id}"),
+            None => "cold-started".to_string(),
+        },
         resolved.repo_path.display()
     );
     remember(masters, project_id, &session);
@@ -1543,6 +1619,62 @@ mod give_back_tests {
     const THIS_SOURCE: &str = include_str!("master.rs");
 
     type R<T> = crate::error::Result<T>;
+
+    // cm:guard criterion 18: a stored conversation this box cannot reach must COLD START and say so
+    // naming the conversation. The temptation is to pass `--resume` anyway and let claude decide —
+    // which kills the pane on spawn, and the next sweep rebuilds it and kills it again, a loop whose
+    // only trace is a pane that keeps disappearing (ISS-1050).
+    #[test]
+    fn a_conversation_with_no_transcript_on_this_box_starts_cold() {
+        let repo = std::env::temp_dir().join("forge-resume-none");
+        assert_eq!(
+            resume_for("slug", &repo, Some("conv-that-was-never-here")),
+            None,
+            "a conversation with no transcript may not be handed to --resume"
+        );
+    }
+
+    #[test]
+    fn a_conversation_whose_transcript_is_here_is_resumed() {
+        let repo = std::env::temp_dir().join(format!("forge-resume-{}", std::process::id()));
+        let id = format!("conv-{}", std::process::id());
+        let path = conversation_transcript(&repo, &id).expect("a home directory");
+        std::fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
+        std::fs::write(&path, "{}\n").expect("write");
+
+        let got = resume_for("slug", &repo, Some(&id));
+
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(got.as_deref(), Some(id.as_str()));
+    }
+
+    // cm:guard nothing stored and an empty string are both cold, and the empty string matters: the
+    // ledger column is nullable and a hook that carried a blank conversation would write one.
+    #[test]
+    fn nothing_stored_is_a_cold_start_and_so_is_an_empty_string() {
+        let repo = std::env::temp_dir().join("forge-resume-empty");
+        assert_eq!(resume_for("slug", &repo, None), None);
+        assert_eq!(resume_for("slug", &repo, Some("")), None);
+    }
+
+    // cm:guard the encoding is Claude Code's, verified on this box, and this is the test that fails
+    // if it drifts rather than every master silently cold-starting forever.
+    #[test]
+    fn the_transcript_path_is_the_one_claude_code_actually_uses() {
+        let home = dirs_next::home_dir().expect("a home directory");
+        let got = conversation_transcript(
+            std::path::Path::new("/home/forge/projects/apiflow/.worktrees/ISS-16"),
+            "conv-1",
+        )
+        .expect("a path");
+        assert_eq!(
+            got,
+            home.join(".claude")
+                .join("projects")
+                .join("-home-forge-projects-apiflow--worktrees-ISS-16")
+                .join("conv-1.jsonl")
+        );
+    }
 
     struct Alive(bool);
     #[async_trait::async_trait]

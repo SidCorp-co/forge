@@ -602,7 +602,7 @@ pub async fn kill(name: &str) -> Result<()> {
 // cm:guard no `-p`. The whole change is that this process reads from a terminal instead of taking one prompt and exiting, so `-p` here would restore the per-pass process with a tmux session wrapped uselessly around it.
 // cm:guard `--strict-mcp-config` is NOT passed and adding it is a behaviour change, not a tightening: it would make this file the ONLY MCP configuration the pane has, dropping the checkout's `.mcp.json` — which is where the `forge` server itself comes from — and every server the operator configured on the box. The file this flag names carries the project's declared servers and nothing else, on purpose (ISS-1043).
 // cm:guard a pane reads `--mcp-config` at STARTUP and never again, so this argument is the whole of what a master will ever have. A project whose declaration changes mid-session needs a new pane; nothing here can retrofit one.
-pub fn pane_argv(mcp_config: Option<&std::path::Path>) -> Vec<String> {
+pub fn pane_argv(mcp_config: Option<&std::path::Path>, resume: Option<&str>) -> Vec<String> {
     let bin = shell_quote(crate::runner::process::resolve_claude_bin());
     let mut line = format!("unset CLAUDECODE; exec {bin} --permission-mode bypassPermissions");
     if let Some(path) = mcp_config {
@@ -610,6 +610,16 @@ pub fn pane_argv(mcp_config: Option<&std::path::Path>) -> Vec<String> {
             " --mcp-config {}",
             shell_quote(&path.to_string_lossy())
         ));
+    }
+    // cm:guard the conversation id is SHELL-QUOTED like every other interpolation here. This string
+    // reaches the box from a hook event and is stored in the ledger, so it is not this module's to
+    // trust: an unquoted one would let whatever wrote it run a command in the master's pane.
+    // cm:guard the caller decides whether a resume is possible, not this function — `ensure_master`
+    // is the half that can see the transcript and say so in the log. Deciding here would put the
+    // "starts cold and names the conversation" half somewhere with nothing to name it to
+    // (ISS-1050 criterion 18).
+    if let Some(id) = resume.filter(|s| !s.is_empty()) {
+        line.push_str(&format!(" --resume {}", shell_quote(id)));
     }
     vec!["sh".into(), "-c".into(), line]
 }
@@ -979,7 +989,7 @@ mod tests {
     // cm:guard `-p` must never come back, and neither may `CLAUDECODE`. The first would restore the per-pass process ISS-919 removed, with a tmux session wrapped uselessly around it; the second makes the master believe it is nested inside another Claude session, which changes its behaviour with nothing in any log naming why.
     #[test]
     fn a_pane_runs_interactively_with_no_inherited_claudecode() {
-        let argv = pane_argv(None);
+        let argv = pane_argv(None, None);
         assert_eq!(argv[0], "sh");
         let line = &argv[2];
         assert!(line.contains("unset CLAUDECODE"), "{line}");
@@ -996,8 +1006,50 @@ mod tests {
     // cm:guard a project that declares no MCP servers must get NO flag rather than an empty file. An empty `--mcp-config` document is a second thing to write, sweep and compare for every project on the box that never wanted one, and the absent flag is the shape every pane had before ISS-1043.
     #[test]
     fn a_project_with_no_servers_leaves_the_pane_argv_exactly_as_it_was() {
-        assert_eq!(pane_argv(None), pane_argv(None));
-        assert!(!pane_argv(None)[2].contains("--mcp-config"));
+        assert_eq!(pane_argv(None, None), pane_argv(None, None));
+        assert!(!pane_argv(None, None)[2].contains("--mcp-config"));
+    }
+
+    // cm:guard the flag is ABSENT, not empty. `--resume ''` is not the same command as no
+    // `--resume`, and a cold start must be the command it was before this parameter existed.
+    #[test]
+    fn a_pane_with_nothing_to_resume_carries_no_resume_flag() {
+        for none in [None, Some("")] {
+            let line = pane_argv(None, none)[2].clone();
+            assert!(
+                !line.contains("--resume"),
+                "a cold start must be the command it was before this parameter existed: {line}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_pane_given_a_conversation_resumes_it() {
+        let line = pane_argv(None, Some("conv-abc"))[2].clone();
+        assert!(
+            line.contains("--resume 'conv-abc'") || line.contains("--resume conv-abc"),
+            "the conversation must reach claude: {line}"
+        );
+    }
+
+    // cm:guard the conversation id reaches this box from a hook event and is stored in the ledger,
+    // so it is not this module's to trust. Unquoted it would run in the master's pane.
+    #[test]
+    fn a_conversation_id_carrying_shell_metacharacters_cannot_run_a_command() {
+        let hostile = "a'; touch /tmp/forge-pwned; echo '";
+        let line = pane_argv(None, Some(hostile))[2].clone();
+
+        // The whole id, however it is spelled, must sit inside one quoted word.
+        assert!(
+            line.ends_with(&format!("--resume {}", shell_quote(hostile))),
+            "the id must reach the shell as one quoted word: {line}"
+        );
+        // And the payload must never appear at the top level, where a shell would run it.
+        let after = line.split("--resume ").nth(1).expect("a resume flag");
+        assert!(
+            !after.starts_with("a'; touch"),
+            "the id is interpolated raw and would run a command: {line}"
+        );
     }
 
     // cm:guard the path is SHELL-QUOTED. tmux hands this line to a shell, and `mcp_config_dir()` sits under `$XDG_CONFIG_HOME`, which is operator-set — dev1 runs several runners that differ only by it. An unquoted space is a pane that starts without its servers and a shell error nobody reads.
@@ -1005,7 +1057,7 @@ mod tests {
     fn the_mcp_config_path_reaches_the_pane_quoted_and_without_strict() {
         let path =
             std::path::PathBuf::from("/home/o p/config/forge-runner/mcp/forge-master-mcp-x.json");
-        let line = pane_argv(Some(&path))[2].clone();
+        let line = pane_argv(Some(&path), None)[2].clone();
         assert!(
             line.contains(
                 "--mcp-config '/home/o p/config/forge-runner/mcp/forge-master-mcp-x.json'"
