@@ -13,9 +13,9 @@
 import { HTTPException } from 'hono/http-exception';
 import { ReleaseRunnerAmbiguousError } from './channel.js';
 import { ReleaseTargetUndeclaredError } from './gate.js';
-import { ReleaseMultiChannelUnsupportedError } from './service.js';
 import { MethodMismatchError, MethodNotAnnouncedError } from './method.js';
 import { RELEASE_BATCH_SKILL } from './plan.js';
+import { ReleaseMultiChannelUnsupportedError } from './service.js';
 import type { ReleaseRunHoldingError } from './state.js';
 
 export const badRequest = (details: unknown) =>

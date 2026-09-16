@@ -44,6 +44,7 @@ import { applyIssuePrefixPatch } from './issue-prefix-patch.js';
 import { projectOnboardRoutes } from './onboard-routes.js';
 import { pipelineConfigHttpError } from './pipeline-config-http.js';
 import { projectFactsRoutes } from './project-facts-routes.js';
+import { PATCHED_PROJECT, PROJECT_DETAIL } from './projections.js';
 import { readableLiveBranch, releaseModelGap, releaseModelPatchFields } from './release-model.js';
 import { projectRunnerRoutes } from './runners-routes.js';
 import { createProject, generateApiKey, ProjectSlugTakenError } from './service.js';
@@ -156,29 +157,6 @@ export type UpdateProjectInput = z.infer<typeof updateProjectSchema>;
 const idParamSchema = z.object({
   id: z.uuid(),
 });
-
-const PATCHED_PROJECT = {
-  id: projects.id,
-  slug: projects.slug,
-  name: projects.name,
-  orgId: projects.orgId,
-  createdBy: projects.createdBy,
-  description: projects.description,
-  kind: projects.kind,
-  repoPath: projects.repoPath,
-  repoUrl: projects.repoUrl,
-  workspaceSetup: projects.workspaceSetup,
-  baseBranch: projects.baseBranch,
-  liveBranch: projects.liveBranch,
-  releaseModel: projects.releaseModel,
-  releaseStrategy: projects.releaseStrategy,
-  defaultDeviceId: projects.defaultDeviceId,
-  agentConfig: projects.agentConfig,
-  previewDeploy: projects.previewDeploy,
-  webhookSecret: projects.webhookSecret,
-  issuePrefix: projects.issuePrefix,
-  createdAt: projects.createdAt,
-};
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, {
@@ -323,29 +301,7 @@ projectRoutes.get(
     if (!access.role) throw forbidden('not a project member');
 
     const [project] = await db
-      .select({
-        id: projects.id,
-        slug: projects.slug,
-        name: projects.name,
-        orgId: projects.orgId,
-        createdBy: projects.createdBy,
-        description: projects.description,
-        repoPath: projects.repoPath,
-        repoUrl: projects.repoUrl,
-        workspaceSetup: projects.workspaceSetup,
-        baseBranch: projects.baseBranch,
-        liveBranch: projects.liveBranch,
-        releaseModel: projects.releaseModel,
-        releaseStrategy: projects.releaseStrategy,
-        defaultDeviceId: projects.defaultDeviceId,
-        agentConfig: projects.agentConfig,
-        previewDeploy: projects.previewDeploy,
-        webhookSecret: projects.webhookSecret,
-        apiKey: projects.apiKey,
-        issuePrefix: projects.issuePrefix,
-        archivedAt: projects.archivedAt,
-        createdAt: projects.createdAt,
-      })
+      .select(PROJECT_DETAIL)
       .from(projects)
       .where(eq(projects.id, id))
       .limit(1);

@@ -298,7 +298,14 @@ describe('POST /api/integration-connections/:id/bindings — bind existing conne
     expect(body.code).toBe('ALREADY_EXISTS');
     expect(createConnection).not.toHaveBeenCalled();
   });
+});
 
+/**
+ * The same door, judged on WHO is asking and on WHAT they declared. Its own describe because
+ * the block above had grown past the 150-line function budget, and this is the seam it already
+ * had: everything above is about the binding that gets written, everything here is a refusal.
+ */
+describe('POST /api/integration-connections/:id/bindings — who may, and what they may declare', () => {
   it('404 — non-owner of the connection (no existence leak)', async () => {
     const token = await signUserToken(USER_ID);
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);

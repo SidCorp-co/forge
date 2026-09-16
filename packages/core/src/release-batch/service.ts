@@ -32,6 +32,19 @@ import { cancelConcludedRun, closeRunIfOneShot, openOneShotRun } from '../pipeli
 import { readProjectBranches } from '../projects/service.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import { resolveReleaseChannels, resolveReleaseDeviceIds, resolveReleasePlan } from './channel.js';
+import {
+  BatchInFlightError,
+  ClaimConflictError,
+  NoReleaseGateError,
+  NoRunnerOnlineError,
+  ReleaseBatchAbortedError,
+  ReleaseMultiChannelUnsupportedError,
+  ReleaseNotVerifiedError,
+  ReleasePoolEmptyError,
+  ReleaseProbesUndeclaredError,
+  ReleaseRecordMissingError,
+  ReleaseRunnerUndeclaredError,
+} from './errors.js';
 import { resolveReleaseGate } from './gate.js';
 import { assertMethodFor, readMethod } from './method.js';
 import { RELEASE_BATCH_SKILL, ReleaseBranchesUndeclaredError, releaseBranches } from './plan.js';
@@ -39,134 +52,10 @@ import { buildReleaseBatchPrompt } from './prompt.js';
 import { recoverStrandedReleasing } from './releasing-recovery.js';
 import { readLiveCommit, verifyDeployed } from './verify.js';
 
+// cm:why re-exported rather than moved-and-forgotten: `routes.ts`, `refusals.ts` and three test
+// suites import these from `service.js`, which is the module the release API is written against.
+export * from './errors.js';
 export { ReleaseBranchesUndeclaredError };
-
-export class NoReleaseGateError extends Error {
-  constructor() {
-    super('NO_RELEASE_GATE');
-    this.name = 'NoReleaseGateError';
-  }
-}
-
-/**
- * The project named a release pool and no runner is in it. Distinct from
- * `NoRunnerOnlineError` on purpose: "nobody is online" and "the box that holds
- * the deploy credential lost its label" need different remedies.
- */
-export class ReleasePoolEmptyError extends Error {
-  constructor(public readonly label: string) {
-    super('RELEASE_POOL_EMPTY');
-    this.name = 'ReleasePoolEmptyError';
-  }
-}
-
-/**
- * The project declares a release model but no live deploy binding names a release runner. Rule
- * 3 of ISS-897: a gate without a designated box is a refusal, never a fallback.
- */
-export class ReleaseRunnerUndeclaredError extends Error {
-  constructor() {
-    super('RELEASE_RUNNER_UNDECLARED');
-    this.name = 'ReleaseRunnerUndeclaredError';
-  }
-}
-
-/**
- * The project has more than one live deploy channel, and a run can prove only one.
- *
- * ISS-1046 widened what core RETURNS from one live binding to the whole live SET, which is the
- * right answer to "where does this project release to". It did NOT widen the attempt ledger:
- * `commitBefore` is one string on the run, `readLiveState` reads one channel's probes, and
- * `finishReleaseBatch` closes the whole roster on that single reading. So a two-endpoint release
- * would be verified at one endpoint and closed for both — the quietest possible way to claim a
- * ship nobody checked.
- *
- * It refuses instead. Measured over the fleet at the 0253 cutover: of the 12 projects carrying a
- * live deploy binding, zero carry two, so this refuses nothing anyone does today and stands
- * between the first operator who adds a second one and a silently half-verified release. The way
- * out is per-binding verification, which is its own piece of work:
- * `docs/proposals/release-verifies-one-endpoint.md`.
- */
-export class ReleaseMultiChannelUnsupportedError extends Error {
-  readonly code = 'RELEASE_MULTI_CHANNEL_UNSUPPORTED';
-  constructor(readonly count: number) {
-    super(
-      `RELEASE_MULTI_CHANNEL_UNSUPPORTED: this project declares ${count} live deploy bindings, and a release run records ONE reading — one \`commitBefore\`, one set of probes, one verdict — which would be taken at one of them and used to close the whole roster. Core will not claim a release it verified at one endpoint of two. Leave exactly one binding carrying the \`live\` stage active, or release them as separate projects.`,
-    );
-    this.name = 'ReleaseMultiChannelUnsupportedError';
-  }
-}
-
-/**
- * The project declares a release gate and no verification probes, so nothing
- * but the agent's own word could say the release happened.
- */
-// cm:guard the gate and the probes are ONE declaration, refused together. `finish` is the only thing in Forge that writes `closed`, and with no probes its whole verification block was skipped — sid-desk ISS-191 is 42 issues closed on a release that was not running. Refusing at creation is what makes the operator declare probes instead of discovering at close time that nothing checked. `finish` refuses too, and must: a run created before this rule existed reaches it with no probes and would close its roster on the agent's word.
-export class ReleaseProbesUndeclaredError extends Error {
-  constructor() {
-    super('RELEASE_PROBES_UNDECLARED');
-    this.name = 'ReleaseProbesUndeclaredError';
-  }
-}
-
-export class NoRunnerOnlineError extends Error {
-  constructor() {
-    super('NO_RUNNER_ONLINE');
-    this.name = 'NoRunnerOnlineError';
-  }
-}
-
-/**
- * The probes did not agree that the release is live. `finish` refuses, so the
- * agent's only remaining move is `abort` — which is the point.
- */
-export class ReleaseNotVerifiedError extends Error {
-  constructor(
-    public readonly reason: string,
-    public readonly live: string | null,
-  ) {
-    super('RELEASE_NOT_VERIFIED');
-    this.name = 'ReleaseNotVerifiedError';
-  }
-}
-
-/**
- * `finish` was called on a run somebody aborted.
- */
-// cm:guard refused BY NAME and never answered with an empty success. ISS-1032's own guard states the rule this completes: `completed` and never "terminal", because a silent empty success on a `cancelled` run makes finish and abort report the same thing. Before ISS-1042's abort cancelled a concluded run, this case fell through to the probes and came back RELEASE_NOT_VERIFIED — a sentence about the deploy for a condition that is about the batch having been called off, which sends an agent to production over a decision a person already took.
-export class ReleaseBatchAbortedError extends Error {
-  constructor() {
-    super('RELEASE_BATCH_ABORTED');
-    this.name = 'ReleaseBatchAbortedError';
-  }
-}
-
-export class ClaimConflictError extends Error {
-  constructor(public readonly issueIds: string[]) {
-    super('CLAIM_CONFLICT');
-    this.name = 'ClaimConflictError';
-  }
-}
-
-/**
- * One or more issues in the batch have no release note, so the batch would
- * close them claiming a ship nobody wrote anything about.
- */
-// cm:guard distinct from ClaimConflictError ON PURPOSE — "wrong status or already claimed" and "nothing written about what shipped" need different remedies, and folding the second into the first is how a caller retries forever against an error that will never clear on its own
-export class ReleaseRecordMissingError extends Error {
-  constructor(public readonly issueIds: string[]) {
-    super(`RELEASE_RECORD_MISSING: ${issueIds.length} issue(s) have no release note`);
-    this.name = 'ReleaseRecordMissingError';
-  }
-}
-
-export class BatchInFlightError extends Error {
-  constructor(public readonly existingJobId: string | null) {
-    super('BATCH_IN_FLIGHT');
-    this.name = 'BatchInFlightError';
-  }
-}
-
 export interface CreateReleaseBatchArgs {
   projectId: string;
   issueIds: string[];

@@ -62,6 +62,12 @@ const ALLOW = [
   /^packages\/core\/tests\/integration\/release-axes-migration-ground\.ts$/,
   /^packages\/core\/tests\/integration\/release-axes-migration-e2e\.test\.ts$/,
   /^packages\/core\/tests\/integration\/release-axes-constraints-e2e\.test\.ts$/,
+  // cm:guard the one unit test that asserts the retired spelling is NOT rendered. It has to write
+  // `productionBranch` to say so — an assertion that the name is absent cannot be made without
+  // naming it — and the alternative, composing the token from halves at runtime, would be a source
+  // scan evaded on purpose, which is worse than an exemption that says what it is. Named one by
+  // one, for the same reason as the three above.
+  /^packages\/core\/src\/prompt\/system\.release-model\.test\.ts$/,
   // CHANGELOG records what shipped, including the names that stopped existing.
   /^CHANGELOG\.md$/,
   // This checker names what it hunts.

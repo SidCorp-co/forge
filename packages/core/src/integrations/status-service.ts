@@ -140,16 +140,15 @@ export function buildProviderCards(opts: {
     ];
   }
   const envKeyed = opts.alwaysEnvKeyed || opts.rows.length > 1;
-  const base = (row: ProviderRow) => (envKeyed ? `${opts.provider}:${stageKey(row)}` : opts.provider);
+  const base = (row: ProviderRow) =>
+    envKeyed ? `${opts.provider}:${stageKey(row)}` : opts.provider;
   // cm:guard two bindings that serve the SAME stages produce the same base key, and a duplicate
   // key is a card the screen cannot address: React renders one of them, and every drill-in, test
   // and delete reaches whichever the list happened to hold first. The old model made that shape
   // unreachable — one binding per environment — and ISS-1046 made it legal, so the id has to break
   // the tie. It is appended ONLY where a tie exists, because the stage-keyed spelling is what
   // existing drill-ins are bookmarked on (ISS-429) and renaming every card would break them all.
-  const collides = new Set(
-    opts.rows.map(base).filter((k, i, all) => all.indexOf(k) !== i),
-  );
+  const collides = new Set(opts.rows.map(base).filter((k, i, all) => all.indexOf(k) !== i));
   return opts.rows.map((row) => ({
     key: collides.has(base(row)) ? `${base(row)}:${row.id}` : base(row),
     label: envKeyed ? `${opts.label} (${stageLabel(row)})` : opts.label,

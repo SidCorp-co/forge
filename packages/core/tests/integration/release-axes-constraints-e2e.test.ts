@@ -172,34 +172,34 @@ describe('0253 backward — the way back is a file that has been run', () => {
  * foreign key would also throw, and a test that only asserts "it threw" passes
  * when the rule it names has been dropped and something else refused the row.
  */
+async function migrated() {
+  const f = await fleet();
+  await runForward(f.db.sql);
+  return f;
+}
+
+async function insertBinding(
+  sql: Awaited<ReturnType<typeof fleet>>['db']['sql'],
+  g: Ground,
+  projectId: string,
+  role: string,
+  stages: string[],
+  label = `probe-${randomUUID().slice(0, 8)}`,
+) {
+  const connectionId = randomUUID();
+  await sql.unsafe(
+    `INSERT INTO integration_connections (id, owner_type, owner_id, provider)
+     VALUES ($1, 'user', $2, 'coolify')`,
+    [connectionId, g.ownerId],
+  );
+  return sql.unsafe(
+    `INSERT INTO integration_bindings (id, connection_id, project_id, provider, role, stages, label)
+     VALUES ($1, $2, $3, 'coolify', $4, $5::text[], $6)`,
+    [randomUUID(), connectionId, projectId, role, stages, label],
+  );
+}
+
 describe('0253 forward — the rules live in Postgres, and say no', () => {
-  async function migrated() {
-    const f = await fleet();
-    await runForward(f.db.sql);
-    return f;
-  }
-
-  async function insertBinding(
-    sql: Awaited<ReturnType<typeof fleet>>['db']['sql'],
-    g: Ground,
-    projectId: string,
-    role: string,
-    stages: string[],
-    label = `probe-${randomUUID().slice(0, 8)}`,
-  ) {
-    const connectionId = randomUUID();
-    await sql.unsafe(
-      `INSERT INTO integration_connections (id, owner_type, owner_id, provider)
-       VALUES ($1, 'user', $2, 'coolify')`,
-      [connectionId, g.ownerId],
-    );
-    return sql.unsafe(
-      `INSERT INTO integration_bindings (id, connection_id, project_id, provider, role, stages, label)
-       VALUES ($1, $2, $3, 'coolify', $4, $5::text[], $6)`,
-      [randomUUID(), connectionId, projectId, role, stages, label],
-    );
-  }
-
   it('refuses a binding role that is neither deploy nor service', async () => {
     const { db, g, projects } = await migrated();
     try {
@@ -304,7 +304,17 @@ describe('0253 forward — the rules live in Postgres, and say no', () => {
       await db.drop();
     }
   });
+});
 
+/**
+ * The project half of the same declaration, in its own describe: the binding block above had
+ * grown past the 150-line function budget, and a binding's shape and a project's release model
+ * are two rules, not one.
+ *
+ * Every case asserts on the CONSTRAINT NAME rather than on the failure — a different constraint
+ * refusing the same row would otherwise read as this one holding.
+ */
+describe('0253 forward — a project declares its release model, and Postgres holds it to it', () => {
   it('refuses a release model that is none of none, promote and publish', async () => {
     const { db, projects } = await migrated();
     try {
