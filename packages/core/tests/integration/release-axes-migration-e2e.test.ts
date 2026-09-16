@@ -131,6 +131,54 @@ describe('0253 forward — a row it cannot map stops the deploy', () => {
     }
   });
 
+  // cm:guard THE defect this pair exists for, found against the real fleet the hour before the
+  // deploy. The first measurement read `/api/projects`, whose default listing hides archived rows;
+  // the coverage assertion reads `projects` with no such filter, because `release_model` is about
+  // to be NOT NULL on every row in the table. Four archived projects and two bindings on one of
+  // them went undeclared, and the deploy would have aborted on them. The fix is the declaration,
+  // never a filter here: filtered, those four rows would take `DEFAULT 'none'` in silence, which
+  // is the filler this whole migration deletes.
+  it('aborts naming an ARCHIVED project it does not cover, not only a live one', async () => {
+    const { db, g } = await fleet();
+    try {
+      const strayId = randomUUID();
+      await plantProject(db.sql, g, {
+        id: strayId,
+        slug: 'archived-after-the-snapshot',
+        archived: true,
+      });
+
+      await expect(runForward(db.sql)).rejects.toThrow(
+        new RegExp(`${strayId}.*archived-after-the-snapshot`, 's'),
+      );
+    } finally {
+      await db.drop();
+    }
+  });
+
+  // cm:guard and the binding half of it: dodgeprint-api is archived and still carries two binding
+  // rows, one of them the active sentry binding this issue's description cites as the evidence.
+  // The project being archived hides neither row from `SET NOT NULL`.
+  it('aborts on a binding of an ARCHIVED project, which is still a row', async () => {
+    const { db, g, projects } = await fleet();
+    try {
+      const host = anyProject(projects);
+      await db.sql.unsafe(`UPDATE projects SET archived_at = now() WHERE id = $1`, [host.id]);
+      const strayId = randomUUID();
+      await plantBinding(db.sql, g, {
+        id: strayId,
+        projectId: host.id,
+        provider: 'sentry',
+        environment: 'prod',
+        label: 'the-evidence-row',
+      });
+
+      await expect(runForward(db.sql)).rejects.toThrow(new RegExp(strayId));
+    } finally {
+      await db.drop();
+    }
+  });
+
   it('aborts on an INACTIVE binding it does not cover, not only an active one', async () => {
     const { db, g, projects } = await fleet();
     try {

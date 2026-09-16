@@ -73,7 +73,9 @@ INSERT INTO iss1046_bindings (binding_id, slug, provider, old_environment, role,
   ('faa50da2-df75-4331-84e3-13f00865b3ed', 'sidboss', 'coolify', 'staging', 'deploy', ARRAY['preview']::text[]),
   ('a14a8cdb-ee78-4b00-812a-9a4bb376168a', 'sidpeak', 'coolify', 'prod', 'deploy', ARRAY['live']::text[]),
   ('153efbf7-632b-430e-bef7-ca7bdc0a7757', 'sidpeak', 'coolify', 'staging', 'deploy', ARRAY['preview']::text[]),
-  ('e1767a04-228d-469a-b239-18112cfd678c', 'traceos', 'github', 'prod', 'service', '{}'::text[]);
+  ('e1767a04-228d-469a-b239-18112cfd678c', 'traceos', 'github', 'prod', 'service', '{}'::text[]),
+  ('4866a074-e511-4543-b778-ce55b12e9227', 'dodgeprint-api', 'sentry', 'prod', 'service', '{}'::text[]),
+  ('4e11a87b-e739-4a26-8fc0-cd1a33dab313', 'dodgeprint-api', 'rocketchat', 'prod', 'service', '{}'::text[]);
 
 -- A binding created while 0253 was live has no declared `environment` to go back
 -- to, and guessing one is how a rollback loses a row's meaning silently. Name it

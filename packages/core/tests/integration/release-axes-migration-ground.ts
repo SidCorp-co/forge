@@ -193,13 +193,24 @@ export async function ground(sql: Sql): Promise<Ground> {
 export async function plantProject(
   sql: Sql,
   g: Ground,
-  row: { id?: string; slug: string; productionBranch?: string | null },
+  row: { id?: string; slug: string; productionBranch?: string | null; archived?: boolean },
 ): Promise<string> {
   const id = row.id ?? randomUUID();
+  // cm:guard `archived_at` is plantable because the coverage assertion reads `projects` with no
+  // filter on it, and the first fleet measurement read the API's default listing, which hides
+  // archived rows. Four of them went undeclared and would have aborted the deploy.
   await sql.unsafe(
-    `INSERT INTO projects (id, slug, name, created_by, org_id, production_branch)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
-    [id, row.slug, row.slug, g.ownerId, g.orgId, row.productionBranch ?? null],
+    `INSERT INTO projects (id, slug, name, created_by, org_id, production_branch, archived_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [
+      id,
+      row.slug,
+      row.slug,
+      g.ownerId,
+      g.orgId,
+      row.productionBranch ?? null,
+      row.archived ? new Date() : null,
+    ],
   );
   return id;
 }

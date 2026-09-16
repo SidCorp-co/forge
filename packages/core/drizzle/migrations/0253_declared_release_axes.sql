@@ -15,7 +15,17 @@
 --   projects.live_branch         renamed from production_branch, read iff 'promote'
 --
 -- DECLARED, NEVER DERIVED. Every value below is transcribed from the fleet
--- measured on 2026-09-16 (32 projects, 34 bindings), not computed from the row.
+-- measured on 2026-09-16 (36 projects, 36 bindings), not computed from the row.
+--
+-- ARCHIVED ROWS ARE ROWS. The first measurement read the 32 projects the API
+-- returns by default, which excludes the archived; the coverage assertion below
+-- reads `projects` with no such filter, because `release_model` is about to be
+-- NOT NULL on every row in the table. The four archived projects and the two
+-- bindings one of them still carries are therefore declared here too, and the
+-- measurement now reads `/api/projects?archived=true`. Caught before the deploy
+-- by the assertion itself, which is what it is for; a filter added to the
+-- assertion instead would have left four rows taking `DEFAULT 'none'` in silence,
+-- and that default is the filler this migration exists to delete.
 -- A project or a binding this file does not name ABORTS the migration by name
 -- rather than being defaulted: a default here would be the same inference the
 -- change exists to remove, and it would arrive silently. The way out of such an
@@ -92,7 +102,15 @@ INSERT INTO iss1046_projects (project_id, slug, release_model, release_strategy)
   ('125f3b8d-614c-44c4-af59-eabd2583c712', 'sidcorp-mail', 'none', NULL),
   ('c1e40b9b-7e8d-43e9-ac54-380c7e966abc', 'sidpeak', 'promote', 'merge-branch'),
   ('a3c78a5b-4751-4a57-b829-c42c276eea49', 'traceos', 'none', NULL),
-  ('1f02624a-e3f7-422e-92b1-ec256fd7002a', 'trai-heo', 'none', NULL);--> statement-breakpoint
+  ('1f02624a-e3f7-422e-92b1-ec256fd7002a', 'trai-heo', 'none', NULL),
+  -- The four archived projects. `none` is a declaration rather than a default: archiving IS the
+  -- owner's act saying this project ships nothing more, and it is the only model that needs no
+  -- live target and reads no branch — so dodgeprint-api keeps `release/stg` in `live_branch`,
+  -- unread rather than misread, exactly as the six live projects below `promote` do.
+  ('7dca1ad6-ab90-443f-a188-98f3e770265b', 'dodgeprint-api', 'none', NULL),
+  ('dc99f7e0-498b-4eed-8397-2c18c1e624ab', 'dodgeprint-fe', 'none', NULL),
+  ('fc06ff89-3235-4f6b-a9c0-f8c519cf3913', 'dodgeprint-ui-v2', 'none', NULL),
+  ('e8660972-6283-4104-8dba-6aee4983840a', 'forge-redesign', 'none', NULL);--> statement-breakpoint
 
 -- === 3. the declared binding table ========================================
 -- `old_environment` is carried so 0253_down.sql restores the exact value rather
@@ -144,11 +162,18 @@ INSERT INTO iss1046_bindings (binding_id, slug, provider, old_environment, role,
   ('faa50da2-df75-4331-84e3-13f00865b3ed', 'sidboss', 'coolify', 'staging', 'deploy', ARRAY['preview']::text[]),
   ('a14a8cdb-ee78-4b00-812a-9a4bb376168a', 'sidpeak', 'coolify', 'prod', 'deploy', ARRAY['live']::text[]),
   ('153efbf7-632b-430e-bef7-ca7bdc0a7757', 'sidpeak', 'coolify', 'staging', 'deploy', ARRAY['preview']::text[]),
-  ('e1767a04-228d-469a-b239-18112cfd678c', 'traceos', 'github', 'prod', 'service', '{}'::text[]);--> statement-breakpoint
+  ('e1767a04-228d-469a-b239-18112cfd678c', 'traceos', 'github', 'prod', 'service', '{}'::text[]),
+  -- dodgeprint-api is archived and still carries the two bindings below. `service` for both
+  -- is the reading every other sentry and rocketchat binding in this list gets, and it is the
+  -- only one representable: neither provider has a deploy adapter, so `deploy` names a thing
+  -- Forge cannot do. The sentry row is the one this issue's description cites as the evidence —
+  -- the release channel that was an error tracker. It keeps its `environment` for the way back.
+  ('4866a074-e511-4543-b778-ce55b12e9227', 'dodgeprint-api', 'sentry', 'prod', 'service', '{}'::text[]),
+  ('4e11a87b-e739-4a26-8fc0-cd1a33dab313', 'dodgeprint-api', 'rocketchat', 'prod', 'service', '{}'::text[]);--> statement-breakpoint
 
 -- === 4. coverage, BEFORE anything is dropped ==============================
 -- Two assertions, not one: the binding table cannot see a project that has no
--- bindings, so 20 of the 32 projects are invisible to it.
+-- bindings, so 18 of the 36 projects are invisible to it.
 DO $$
 DECLARE missing text;
 BEGIN
