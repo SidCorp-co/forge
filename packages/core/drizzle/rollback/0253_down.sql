@@ -85,6 +85,45 @@ INSERT INTO iss1046_bindings (binding_id, slug, provider, old_environment, role,
   ('aac45791-3758-4178-b992-129f312df2c2', 'qa-project-available-for-testing', 'epodsystem', 'prod', 'deploy', ARRAY['preview', 'live']::text[]),
   ('e5544f43-d94f-4bb6-984e-c9f4d4954640', 'qa-project-available-for-testing', 'epodsystem', 'prod', 'deploy', ARRAY['preview', 'live']::text[]);
 
+-- The rows 6b moved carry their own way back, and it is not a guess.
+--
+-- Forward, section 6b took a service row whose only separation from the default binding was
+-- `environment` and wrote that environment into `label` — the value is sitting on the row. Without
+-- this block the abort below fires on exactly those rows, because they are not in the list above and
+-- never could be: every service row the list names is `prod`, and 6b only ever moves a non-`prod`
+-- one. That made the way back unusable for the rows the deploy had just moved, which is the one
+-- thing a rollback file may not be.
+--
+-- Narrow, and loud. `staging` is the only value 6b ever writes, so a label of anything else is a
+-- person's ISS-558 store name and is left for the abort to ask about. Every row taken here is named
+-- by NOTICE, because a rollback that repairs rows in silence is the forward defect run backwards.
+DO $$
+DECLARE taken text;
+BEGIN
+  WITH moved AS (
+    SELECT b.id, p.slug, b.provider, b.label
+      FROM integration_bindings b
+      JOIN projects p ON p.id = b.project_id
+      LEFT JOIN iss1046_bindings d ON d.binding_id = b.id
+     WHERE d.binding_id IS NULL
+       AND b.role = 'service' AND b.label = 'staging'
+       AND EXISTS (SELECT 1 FROM integration_bindings o
+                    WHERE o.project_id = b.project_id AND o.provider = b.provider
+                      AND o.label = '' AND o.role = 'service' AND o.id <> b.id)
+  ), ins AS (
+    INSERT INTO iss1046_bindings (binding_id, slug, provider, old_environment, role, stages)
+    SELECT m.id, m.slug, m.provider, m.label, 'service', '{}'::text[] FROM moved m
+    RETURNING binding_id, slug, provider, old_environment
+  )
+  SELECT string_agg(format('%s (project %s, provider %s) -> environment %L',
+                           i.binding_id, i.slug, i.provider, i.old_environment), ', ' ORDER BY i.binding_id)
+    INTO taken FROM ins i;
+  IF taken IS NOT NULL THEN
+    RAISE NOTICE 'ISS-1046 rollback: service binding(s) take their environment back from the label '
+      '0253 section 6b handed them, rather than from the list above: %', taken;
+  END IF;
+END $$;
+
 -- A binding created while 0253 was live has no declared `environment` to go back
 -- to, and guessing one is how a rollback loses a row's meaning silently. Name it
 -- and stop: decide its environment by hand, add it to the list above, re-run.
