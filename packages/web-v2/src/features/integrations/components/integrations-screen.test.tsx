@@ -248,6 +248,36 @@ describe("IntegrationsScreen", () => {
     ]);
   });
 
+  it("names the app when two credentials of different apps share one name", () => {
+    // Both called "Production", in two open sections: the provider pill is the
+    // only thing that tells them apart on screen, and `aria-label` replaces the
+    // descendants that hold it.
+    connectionItems.mockReturnValue([
+      conn({ id: "c1", displayName: "Production" }),
+      conn({ id: "c2", provider: "github", displayName: "Production" }),
+    ]);
+    render(<IntegrationsScreen />);
+    openApp("Coolify deploy");
+    openApp("GitHub");
+    const names = screen
+      .getAllByRole("button", { name: /^Manage connection Production/ })
+      .map((b) => b.getAttribute("aria-label"));
+    expect(names).toEqual([
+      "Manage connection Production — Coolify deploy",
+      "Manage connection Production — GitHub",
+    ]);
+  });
+
+  it("describes the drawer button with the owner the badge shows", () => {
+    connectionItems.mockReturnValue([conn({ ownerType: "org", ownerId: "org-1" })]);
+    activeOrg.mockReturnValue(TEAM);
+    render(<IntegrationsScreen />);
+    openApp("Coolify deploy");
+    expect(manageButton("Coolify deploy")).toHaveAccessibleDescription(
+      expect.stringContaining("SidCorp"),
+    );
+  });
+
   it("describes the drawer button with what the aria-label leaves out", () => {
     // `aria-label` replaces the button's descendants, so without a description
     // the row stops answering "who uses it" and "is it healthy" for exactly the

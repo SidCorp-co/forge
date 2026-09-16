@@ -60,18 +60,20 @@ function UsageLine({
  * org identically — the very wall this issue set out to remove, rebuilt in the
  * accessibility tree where nobody looks at it.
  *
- * What goes in is the row's IDENTITY, which is `connection-identity.ts`'s three
- * things in its order: the name its owner gave it, the target its config points
- * at, and the projects using it — each binding carried with the environment and
- * the off marker its chip shows, because two tokens for one project in two
- * environments are told apart on screen by that word alone. Each clause is
- * independent of the others: a name carries every discriminator the row shows,
- * never the first one it finds.
+ * What goes in is the row's IDENTITY, in the order the row shows it: the name
+ * its owner gave it, the app it belongs to on the same condition the visible
+ * pill uses, the target its config points at, and the projects using it — each
+ * binding carried with the environment and the off marker its chip shows,
+ * because two tokens for one project in two environments are told apart on
+ * screen by that word alone. Each clause is independent of the others: a name
+ * carries every discriminator the row shows, never the first one it finds.
  *
  * What stays out is the row's STATE — the health line and the status pill.
  * Those move under the credential rather than distinguishing it, they are read
  * from the row's own text and its pill, and putting them in the name would make
- * a control rename itself when a health check landed.
+ * a control rename itself when a health check landed. `aria-describedby`
+ * carries them, and the owner badge with them, so the name and the description
+ * between them hold every token the row renders.
  *
  * Where the row shows nothing that tells two apart, neither does this:
  * suffixing an id would name the rows by something no one can see, and two rows
@@ -81,7 +83,13 @@ export function connectionRowLabel(
   connection: ConnectionDirectoryItem,
   projectName: (id: string) => string,
 ): string {
-  const parts = [`Manage connection ${connectionTitle(connection)}`];
+  const title = connectionTitle(connection);
+  const parts = [`Manage connection ${title}`];
+  // The same condition the visible provider pill renders under: two credentials
+  // an operator called "Production", one Coolify and one GitHub, are told apart
+  // on screen by that pill and by nothing else.
+  const providerLabel = PROVIDER_LABEL[connection.provider] ?? connection.provider;
+  if (title !== providerLabel) parts.push(providerLabel);
   const target = connectionTarget(connection);
   if (target) parts.push(target);
   // Independent of the target rather than a fallback for it: two deploy tokens
@@ -166,6 +174,7 @@ export function ConnectionRow({
   // line and the status pill reach a screen reader only by being pointed at.
   // Without this the row stops answering "who uses it" and "is it healthy" for
   // exactly the people who cannot see the answer beside the control.
+  const ownerId = useId();
   const detailId = useId();
   const statusId = useId();
   const checked = formatRelativeTime(connection.lastHealthAt);
@@ -179,7 +188,7 @@ export function ConnectionRow({
       <button
         type="button"
         aria-label={connectionRowLabel(connection, projectName)}
-        aria-describedby={`${detailId} ${statusId}`}
+        aria-describedby={`${ownerId} ${detailId} ${statusId}`}
         onClick={onOpen}
         className="-mx-1 flex min-w-[220px] flex-1 cursor-pointer flex-col gap-0.5 rounded-md px-1 py-0.5 text-left hover:bg-sunken focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
       >
@@ -195,7 +204,9 @@ export function ConnectionRow({
               {providerLabel}
             </span>
           )}
-          <Badge tone={connection.ownerType === "org" ? "accent" : "neutral"}>{ownerLabel}</Badge>
+          <span id={ownerId}>
+            <Badge tone={connection.ownerType === "org" ? "accent" : "neutral"}>{ownerLabel}</Badge>
+          </span>
         </span>
         <span id={detailId} className="flex flex-wrap items-center gap-x-2 gap-y-1">
           {target && (
