@@ -35,6 +35,7 @@ import {
   loadReleaseRoster,
   NoReleaseGateError,
   NoRunnerOnlineError,
+  ReleaseBatchAbortedError,
   ReleaseBranchesUndeclaredError,
   ReleaseNotVerifiedError,
   ReleasePoolEmptyError,
@@ -261,6 +262,12 @@ releaseBatchRoutes.post(
         });
       }
       if (err instanceof ReleaseProbesUndeclaredError) throw undeclaredProbes();
+      if (err instanceof ReleaseBatchAbortedError) {
+        throw conflict(
+          'RELEASE_BATCH_ABORTED',
+          'This batch was aborted, so there is nothing left to finish: its claims were released and its roster is back where the abort put it. If the release did land after all, that is a person’s call to make on each issue.',
+        );
+      }
       const method = methodRefusal(err);
       if (method) throw method;
       throw err;
@@ -282,8 +289,9 @@ releaseBatchRoutes.post(
     const userId = c.get('userId');
     await loadRunForProject(runId, projectId, userId);
 
-    const releasedIds = await abortReleaseBatch(runId, reason ?? 'aborted by agent', userId);
-    return c.json({ aborted: true, releasedIds });
+    const result = await abortReleaseBatch(runId, reason ?? 'aborted by agent', userId);
+    // cm:guard `releasedIds` is kept under its old name because the release agent's protocol reads it; the rest is added beside it. What the abort did to the RUN has to reach the caller, or an abort on a run something already concluded goes on looking exactly like one that called off a live release.
+    return c.json({ aborted: true, releasedIds: result.claimsCleared, ...result });
   },
 );
 

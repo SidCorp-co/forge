@@ -129,7 +129,11 @@ const poolIds = async (w: World) =>
 
 describe('a release job is offered only to the release pool', () => {
   it('offers a release job to the box that carries the project label', async () => {
-    const w = await seed({ type: 'release_batch', labels: [LABEL], bindingConfig: { releaseRunnerLabel: LABEL } });
+    const w = await seed({
+      type: 'release_batch',
+      labels: [LABEL],
+      bindingConfig: { releaseRunnerLabel: LABEL },
+    });
 
     expect(await poolIds(w)).toEqual([w.jobId]);
   });
@@ -137,13 +141,21 @@ describe('a release job is offered only to the release pool', () => {
   // cm:guard this is the case the whole module exists for: before ISS-1042 the pool returned this
   // row, a master claimed it, and the production deploy ran on a box with no credential.
   it('does not offer a release job to a box that carries no label', async () => {
-    const w = await seed({ type: 'release_batch', labels: [], bindingConfig: { releaseRunnerLabel: LABEL } });
+    const w = await seed({
+      type: 'release_batch',
+      labels: [],
+      bindingConfig: { releaseRunnerLabel: LABEL },
+    });
 
     expect(await poolIds(w)).toEqual([]);
   });
 
   it('does not offer a release job to a box carrying some other label', async () => {
-    const w = await seed({ type: 'release_batch', labels: ['staging-box'], bindingConfig: { releaseRunnerLabel: LABEL } });
+    const w = await seed({
+      type: 'release_batch',
+      labels: ['staging-box'],
+      bindingConfig: { releaseRunnerLabel: LABEL },
+    });
 
     expect(await poolIds(w)).toEqual([]);
   });
@@ -151,7 +163,11 @@ describe('a release job is offered only to the release pool', () => {
   // cm:guard the narrowing is for `release_batch` and nothing else. A predicate that read every job
   // type would empty the pool of the whole fleet the moment one project declared a label.
   it('goes on offering every other job type to an unlabelled box', async () => {
-    const w = await seed({ type: 'code', labels: [], bindingConfig: { releaseRunnerLabel: LABEL } });
+    const w = await seed({
+      type: 'code',
+      labels: [],
+      bindingConfig: { releaseRunnerLabel: LABEL },
+    });
 
     expect(await poolIds(w)).toEqual([w.jobId]);
   });
@@ -177,7 +193,11 @@ describe('the claim answers the same question by name', () => {
   const session = () => randomUUID();
 
   it('refuses a release job on an unlabelled box, naming release_label_missing', async () => {
-    const w = await seed({ type: 'release_batch', labels: [], bindingConfig: { releaseRunnerLabel: LABEL } });
+    const w = await seed({
+      type: 'release_batch',
+      labels: [],
+      bindingConfig: { releaseRunnerLabel: LABEL },
+    });
 
     const res = await mods.prepareJobForMaster({
       jobId: w.jobId,
@@ -191,7 +211,11 @@ describe('the claim answers the same question by name', () => {
   // cm:guard the refusal must land BEFORE the hold — a refused claim that left `held_by` set would
   // park the release behind the three-minute reaper on every poll of every box in the fleet.
   it('leaves the refused job unheld and claimable', async () => {
-    const w = await seed({ type: 'release_batch', labels: [], bindingConfig: { releaseRunnerLabel: LABEL } });
+    const w = await seed({
+      type: 'release_batch',
+      labels: [],
+      bindingConfig: { releaseRunnerLabel: LABEL },
+    });
 
     await mods.prepareJobForMaster({ jobId: w.jobId, deviceId: w.deviceId, sessionId: session() });
 
@@ -206,7 +230,11 @@ describe('the claim answers the same question by name', () => {
   // master its box is wrong for a job that is simply gone, which is a box an operator then goes
   // and relabels for nothing.
   it('leaves a job that does not exist to not_found, never to the label', async () => {
-    const w = await seed({ type: 'release_batch', labels: [], bindingConfig: { releaseRunnerLabel: LABEL } });
+    const w = await seed({
+      type: 'release_batch',
+      labels: [],
+      bindingConfig: { releaseRunnerLabel: LABEL },
+    });
 
     const res = await mods.prepareJobForMaster({
       jobId: randomUUID(),
@@ -218,7 +246,11 @@ describe('the claim answers the same question by name', () => {
   });
 
   it('admits the release job on the labelled box', async () => {
-    const w = await seed({ type: 'release_batch', labels: [LABEL], bindingConfig: { releaseRunnerLabel: LABEL } });
+    const w = await seed({
+      type: 'release_batch',
+      labels: [LABEL],
+      bindingConfig: { releaseRunnerLabel: LABEL },
+    });
 
     const res = await mods.prepareJobForMaster({
       jobId: w.jobId,

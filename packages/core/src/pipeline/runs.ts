@@ -278,6 +278,66 @@ export async function closeRunIfOneShot(
   await emitCloseHook(rows, outcome, cascade?.cancelledJobIds ?? []);
 }
 
+export interface CancelConcludedResult {
+  /** True when this call flipped the run. */
+  cancelled: boolean;
+  /** What the run said before the flip, whether or not it moved. */
+  was: PipelineRunStatus | null;
+}
+
+/**
+ * Take an ALREADY-TERMINAL one-shot run to `cancelled`, keeping what it said
+ * before.
+ *
+ * `closeRunIfOneShot` matches `running|paused` only, so an abort arriving on a
+ * run something already concluded wrote nothing and said nothing: the row went
+ * on reading `completed` about a batch somebody had called off, and the caller
+ * was handed a success. That is a run row lying about its own outcome, which is
+ * the one thing a run row exists not to do.
+ */
+// cm:guard `status IN ('completed','failed')` and NEVER `cancelled` in the predicate: re-cancelling a cancelled run would rewrite `finished_at` and file a second audit row for a flip that already happened, and the caller cannot tell the two apart from the outside.
+// cm:guard the previous outcome goes into `metadata.cancelledFrom` and is the whole point of the call. A flip that only writes `cancelled` erases the fact that this run had ALREADY reported success — which is what an operator reading the abort needs to know, because whatever that success closed is still closed.
+// cm:edge lockstep -> packages/core/src/pipeline/runs-cascade.ts — the cascade runs here as it does in every other close, so a job still alive under a run being called off is cancelled by the same writer. A flip without it is the orphan half of the ISS-923 invariant.
+export async function cancelConcludedRun(runId: string): Promise<CancelConcludedResult> {
+  const [before] = await db
+    .select({ status: pipelineRuns.status })
+    .from(pipelineRuns)
+    .where(eq(pipelineRuns.id, runId))
+    .limit(1);
+  if (!before) return { cancelled: false, was: null };
+
+  const { rows, cascade } = await db.transaction(async (tx) => {
+    const updated = await applyKernelTransition(tx, {
+      entity: 'run',
+      to: 'cancelled',
+      set: {
+        finishedAt: new Date(),
+        updatedAt: new Date(),
+        metadata: sql`coalesce(${pipelineRuns.metadata}, '{}'::jsonb) || ${JSON.stringify({
+          cancelledFrom: before.status,
+        })}::jsonb`,
+      },
+      where: and(
+        eq(pipelineRuns.id, runId),
+        inArray(pipelineRuns.kind, ['pm', 'interactive', 'system']),
+        inArray(pipelineRuns.status, ['completed', 'failed']),
+      ),
+      fromStatus: before.status,
+      reason: reasonForOutcome('cancelled'),
+      actor: { type: 'system' },
+      source: 'runs',
+    });
+    const c =
+      updated.length > 0
+        ? await cascadeCancelChildJobs(tx, runId, reasonForOutcome('cancelled'))
+        : null;
+    return { rows: updated, cascade: c };
+  });
+  if (cascade) await requestKillsForCascade(cascade.killableJobs, reasonForOutcome('cancelled'));
+  await emitCloseHook(rows, 'cancelled', cascade?.cancelledJobIds ?? []);
+  return { cancelled: rows.length > 0, was: before.status };
+}
+
 /**
  * Close the open issue-run for an issue, if any. The partial unique index
  * guarantees at most one open issue-run per issue, so this is unambiguous.

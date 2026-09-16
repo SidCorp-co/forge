@@ -14,7 +14,13 @@
 
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, issues, jobs, pipelineRuns } from '../db/schema.js';
+import {
+  type IssueStatus,
+  issues,
+  jobs,
+  type PipelineRunStatus,
+  pipelineRuns,
+} from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
@@ -22,7 +28,7 @@ import { issuesMissingReleaseRecord } from '../issues/release-record-required.js
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { ActiveJobConflictError, insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
-import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
+import { cancelConcludedRun, closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
 import { readProjectBranches } from '../projects/service.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import { resolveReleaseChannel, resolveReleaseDeviceIds, resolveReleasePlan } from './channel.js';
@@ -95,6 +101,17 @@ export class ReleaseNotVerifiedError extends Error {
   ) {
     super('RELEASE_NOT_VERIFIED');
     this.name = 'ReleaseNotVerifiedError';
+  }
+}
+
+/**
+ * `finish` was called on a run somebody aborted.
+ */
+// cm:guard refused BY NAME and never answered with an empty success. ISS-1032's own guard states the rule this completes: `completed` and never "terminal", because a silent empty success on a `cancelled` run makes finish and abort report the same thing. Before ISS-1042's abort cancelled a concluded run, this case fell through to the probes and came back RELEASE_NOT_VERIFIED — a sentence about the deploy for a condition that is about the batch having been called off, which sends an agent to production over a decision a person already took.
+export class ReleaseBatchAbortedError extends Error {
+  constructor() {
+    super('RELEASE_BATCH_ABORTED');
+    this.name = 'ReleaseBatchAbortedError';
   }
 }
 
@@ -425,6 +442,13 @@ export async function finishReleaseBatch(
   // batch, and a silent empty success on one would make the two verbs report the same thing.
   if (run?.status === 'completed' && claimed.length === 0) return { closed: [], failed: [] };
 
+  // cm:guard a `cancelled` run is an ABORTED batch and the refusal has to say so. It cannot share
+  // the empty success above — that answer means "this finish already ran" — and it must not fall
+  // through to the probes, which would answer RELEASE_NOT_VERIFIED about a release nobody is
+  // attempting any more. The abort already returned the roster and released the claims; what is
+  // left to tell the caller is that its own abort stands.
+  if (run?.status === 'cancelled') throw new ReleaseBatchAbortedError();
+
   if (run) {
     // cm:guard the expected skill is read off the RUN'S OWN JOB and never off `RELEASE_BATCH_SKILL`
     // directly: a run cut before the constant last moved is still working from the skill its job
@@ -500,13 +524,27 @@ export async function finishReleaseBatch(
   return { closed, failed };
 }
 
+export interface AbortReleaseBatchResult {
+  claimsCleared: string[];
+  /** Where the roster went, or `null` when nothing moved. */
+  destination: IssueStatus | null;
+  /** True when the run had promoted, so the roster stayed at `releasing`. */
+  promoted: boolean;
+  /** What the abort did to the run row, in its own words. */
+  run: {
+    status: PipelineRunStatus | null;
+    wasAlreadyTerminal: boolean;
+    cancelledFrom: PipelineRunStatus | null;
+  };
+}
+
 export async function abortReleaseBatch(
   runId: string,
   reason: string,
   actorUserId: string,
-): Promise<string[]> {
-  // cm:guard an aborted release lands on `reopen` and does NOT self-heal, which is the trade this takes deliberately: a half-landed batch re-driven automatically becomes two half-landed batches. Before this the abort cleared the column and left the status untouched, so a failed release was indistinguishable from one never attempted. It goes through the shared recovery so an abort and a batch that merely died reach the same place by the same writer.
-  const { claimsCleared } = await recoverStrandedReleasing(runId, {
+): Promise<AbortReleaseBatchResult> {
+  // cm:guard an aborted release does NOT self-heal, which is the trade this takes deliberately: a half-landed batch re-driven automatically becomes two half-landed batches. Before this the abort cleared the column and left the status untouched, so a failed release was indistinguishable from one never attempted. It goes through the shared recovery so an abort and a batch that merely died reach the same place by the same writer — and since ISS-1042 that place is chosen by whether the run PROMOTED, not by which verb called.
+  const { claimsCleared, destination, promoted } = await recoverStrandedReleasing(runId, {
     reason: `batch release aborted: ${reason}`,
     actorUserId,
     comment: true,
@@ -515,7 +553,19 @@ export async function abortReleaseBatch(
   // cm:guard abort is "nothing under this run executes any further", not just "no claims" — batch ee39c4ae (2026-09-03) was aborted while its retry job kept running, shipped 20 commits to production, then `finish` found no claims and closed 0 of 12; the run must go terminal here so the cascade cancels queued retries and kills the live session
   await closeRunIfOneShot(runId, 'cancelled');
 
-  return claimsCleared;
+  // cm:guard `closeRunIfOneShot` matches `running|paused` ONLY, so an abort arriving after anything else concluded the run wrote nothing and SAID nothing: the row went on reading `completed` about a batch somebody had called off and the caller was handed a plain success. Routed here from ISS-1032 because this issue owns "a release run cannot lie" — the second call is what makes the row agree with the verb, and the result below is what makes the caller able to tell the two cases apart.
+  const after = await cancelConcludedRun(runId);
+
+  return {
+    claimsCleared,
+    destination,
+    promoted,
+    run: {
+      status: after.cancelled ? 'cancelled' : after.was,
+      wasAlreadyTerminal: after.cancelled,
+      cancelledFrom: after.cancelled ? after.was : null,
+    },
+  };
 }
 
 // cm:edge naming -> packages/core/src/release-batch/queries.ts — every caller imports the batch surface from this module; the read-only half lives next door for the size budget, and re-exporting keeps that a file layout rather than an API change
