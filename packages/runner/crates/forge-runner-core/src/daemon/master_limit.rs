@@ -344,7 +344,14 @@ fn unix_seconds(ts: &str) -> Option<i64> {
     {
         return None;
     }
-    let num = |a: usize, b: usize| ts.get(a..b)?.parse::<i64>().ok();
+    // cm:guard every field is read as DIGITS ONLY, because `parse::<i64>` accepts a leading sign and the shape does not: `-123-01-01T00:00:00Z` lines its separators up exactly where this expects them, and would otherwise answer a real instant for a year no conversation has.
+    let num = |a: usize, b: usize| {
+        let field = ts.get(a..b)?;
+        field
+            .bytes()
+            .all(|c| c.is_ascii_digit())
+            .then(|| field.parse::<i64>().ok())?
+    };
     let (y, m, d) = (num(0, 4)?, num(5, 7)?, num(8, 10)?);
     let (hh, mm, ss) = (num(11, 13)?, num(14, 16)?, num(17, 19)?);
     if !(1..=12).contains(&m) || d < 1 || d > days_in_month(y, m) {
@@ -1035,6 +1042,9 @@ mod tests {
             "2026-09-16T12:60:00.000Z",
             "2026-09-16T12:00:60.000Z",
             "2026-09-16T12-00-00.000Z",
+            "-123-01-01T00:00:00.000Z",
+            "+026-09-16T12:00:00.000Z",
+            "2026-09-16T+2:00:00.000Z",
         ] {
             assert_eq!(unix_seconds(bad), None, "parsed {bad:?}");
         }
