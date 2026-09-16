@@ -248,6 +248,37 @@ describe("IntegrationsScreen", () => {
     ]);
   });
 
+  it("describes the drawer button with what the aria-label leaves out", () => {
+    // `aria-label` replaces the button's descendants, so without a description
+    // the row stops answering "who uses it" and "is it healthy" for exactly the
+    // people who cannot read the answer beside the control.
+    connectionItems.mockReturnValue([
+      conn({ lastHealthStatus: null, lastHealthAt: null, hasSecrets: false }),
+    ]);
+    render(<IntegrationsScreen />);
+    openApp("Coolify deploy");
+    const manage = manageButton("Coolify deploy");
+    expect(manage).toHaveAccessibleDescription(
+      expect.stringContaining("Not used by any project"),
+    );
+    expect(manage).toHaveAccessibleDescription(expect.stringContaining("never health-checked"));
+    expect(manage).toHaveAccessibleDescription(
+      expect.stringContaining("no credential stored"),
+    );
+  });
+
+  it("describes the drawer button with the status its pill renders, not its raw health", () => {
+    // The pill is a SIBLING of the button, and it says "Disabled" where the
+    // health line still says "last health: ok" — the derived state is the one
+    // that answers "can I use this", so it has to reach the description too.
+    connectionItems.mockReturnValue([conn({ active: false, lastHealthStatus: "ok" })]);
+    render(<IntegrationsScreen />);
+    openApp("Coolify deploy");
+    expect(manageButton("Coolify deploy")).toHaveAccessibleDescription(
+      expect.stringContaining("Disabled"),
+    );
+  });
+
   it("shows the endpoint a credential points at", () => {
     connectionItems.mockReturnValue([conn({ config: { baseUrl: "https://deploy.example.com" } })]);
     render(<IntegrationsScreen />);

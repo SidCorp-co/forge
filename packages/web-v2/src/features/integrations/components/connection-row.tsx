@@ -11,7 +11,7 @@
 // deliberately absent here; the row names the bindings and manages none of
 // them. Opening it hands the rest to the edit drawer (ISS-435).
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Badge, Button, Icon } from "@/design";
 import type { ConnectionDirectoryItem } from "@forge/contracts";
 import { formatRelativeTime } from "@/lib/utils/format";
@@ -162,6 +162,12 @@ export function ConnectionRow({
 }) {
   const update = useUpdateConnection();
   const canManage = useCanManageConnection(connection);
+  // `aria-label` REPLACES the button's descendants as its name, so the second
+  // line and the status pill reach a screen reader only by being pointed at.
+  // Without this the row stops answering "who uses it" and "is it healthy" for
+  // exactly the people who cannot see the answer beside the control.
+  const detailId = useId();
+  const statusId = useId();
   const checked = formatRelativeTime(connection.lastHealthAt);
   const title = connectionTitle(connection);
   const target = connectionTarget(connection);
@@ -173,6 +179,7 @@ export function ConnectionRow({
       <button
         type="button"
         aria-label={connectionRowLabel(connection, projectName)}
+        aria-describedby={`${detailId} ${statusId}`}
         onClick={onOpen}
         className="-mx-1 flex min-w-[220px] flex-1 cursor-pointer flex-col gap-0.5 rounded-md px-1 py-0.5 text-left hover:bg-sunken focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
       >
@@ -190,7 +197,7 @@ export function ConnectionRow({
           )}
           <Badge tone={connection.ownerType === "org" ? "accent" : "neutral"}>{ownerLabel}</Badge>
         </span>
-        <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span id={detailId} className="flex flex-wrap items-center gap-x-2 gap-y-1">
           {target && (
             <span className="fg-body-sm truncate font-mono text-muted" title={target}>
               {target}
@@ -206,7 +213,9 @@ export function ConnectionRow({
         </span>
       </button>
 
-      <DirectoryStatusPill status={deriveConnectionStatus(connection)} />
+      <span id={statusId}>
+        <DirectoryStatusPill status={deriveConnectionStatus(connection)} />
+      </span>
 
       <span className="flex shrink-0 items-center gap-1">
         {canManage ? (
