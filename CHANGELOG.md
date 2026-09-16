@@ -2717,6 +2717,54 @@
   conversation it would not go on to show you. Bringing a room back leaves you where you were,
   looking at the rest of what you archived, rather than throwing you across to the other list.
 
+- **Automated dependency update pull requests can pass CI again.** Every one of them had been
+  failing every check for days, and the reason was invisible from outside: six jobs went red at
+  once, each before it ran a line of its own work, and what they printed was a repository clone
+  that could not authenticate. The six were one failure — the workspace install. When the update
+  bot proposes a bump it regenerates the lockfile, and doing so it rewrote how one dependency is
+  fetched: from a plain download over the public web to a clone that needs an SSH key. An
+  update raised by the bot deliberately runs without the repository's secrets, so no key could be
+  given to it, and nothing anywhere said that was the problem. Four updates, security ones among
+  them, sat unmergeable while the cause read as a broken lockfile. That dependency is now declared
+  as the download the install was already using anyway, pinned to the same exact commit, so there
+  is no clone left to authenticate. Alongside it, the install now stops up front and says so by
+  name when any dependency can only be fetched over SSH — which nothing in this project's checks
+  can fetch — rather than dying inside the install with nothing a reader can act on. (ISS-1045)
+- **A project with no code repository can now be set up on a machine without someone logging in to
+  create a folder by hand.** Some projects have no repository at all — a storefront whose real
+  content lives in the shop itself, reached through a connected tool rather than checked out. That
+  shape has always been supported once the project's folder existed on the machine, and refused
+  outright when it did not: setup stopped and asked an operator to either invent a repository the
+  project does not have, or create the empty folder themselves, after which the very same setup
+  succeeded unchanged. Whether a directory happened to be lying around was the only thing dividing
+  a project that could be set up from one that could not, and until somebody noticed, nothing
+  automatic could run on it at all. Setup now creates that folder itself and carries on. The
+  refusals that mean something are untouched: a folder holding files this machine did not put
+  there is still refused and still lists them, a project that does have a repository still fails
+  loudly when it cannot be fetched, and a machine with nowhere configured to put projects is still
+  refused as before. A folder that genuinely cannot be created now says which folder and why,
+  instead of offering advice about a repository the project was never going to have.
+
+- **A project that declares MCP servers now actually gives them to the agents working on it.** A
+  project can name the tools its work needs — a storefront's own API, a browser — and the settings
+  screen has shown those names as configured for as long as the feature has existed. Nothing put
+  them in front of an agent. The route that once delivered them belonged to a way of starting
+  agents that has since been replaced, and the replacement was never given one, so the names were
+  read, validated, shown as fine, and consumed by nobody. For a project whose entire deliverable
+  lives behind one of those tools, every piece of work on it was unbuildable, and nothing on the
+  box or on the screen said why. A box now asks for its project's servers when it starts that
+  project's session, and everything that session does inherits them. Two things that used to be
+  silent are now said out loud: a server the project declared that could not be supplied — a
+  connection that was never finished, say — is named to the session at the start of its work
+  instead of surfacing hours later as work that mysteriously could not be done, and the box's own
+  health check reports it as a problem rather than reporting the declaration back as if it were
+  the thing itself. A session that was already running when its project's list changed keeps what
+  it started with, because it cannot be told a new one mid-flight; that is now reported, naming
+  what to do about it, rather than left to be discovered. The file holding a project's tool
+  credentials on the machine is now private to the account running the box from the moment it
+  exists, and a machine that cannot make it private is told so instead of being handed a readable
+  copy.
+
 - **A release that finished no longer locks the project out of the next one.** Finishing a batch
   closed every issue it had shipped and then left the release itself reading as still in progress,
   so no further batch could be cut — for hours, until somebody aborted a release that had already

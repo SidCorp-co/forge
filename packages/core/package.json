@@ -55,7 +55,7 @@
     "argon2": "^0.45.1",
     "cron-parser": "^5.10.0",
     "drizzle-orm": "^0.45.2",
-    "forge-plugin": "github:SidCorp-co/forge-plugin#2f3f40e245dd79c416f1abdbdd52e6487c632b97",
+    "forge-plugin": "https://codeload.github.com/SidCorp-co/forge-plugin/tar.gz/2f3f40e245dd79c416f1abdbdd52e6487c632b97",
     "hono": "^4.13.5",
     "jose": "^6.2.9",
     "nodemailer": "^10.0.0",
