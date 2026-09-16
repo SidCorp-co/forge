@@ -98,6 +98,15 @@ export function judgeMessages(input: JudgeInput): ChatMessage[] {
     ...(input.rubric
       ? [`For this exchange, "served" is read by this rule as well: ${input.rubric}`]
       : []),
+    // cm:guard said only where BOTH are present, and it is not decoration: the brief is read ONCE at
+    // the top of the run, the fixtures per trial, and on a live project an issue changes status in
+    // between. Without this the judge holds a correct fresh answer against a stale snapshot and its
+    // disagreement measures timing rather than the assistant (codex F2 on ISS-1066).
+    ...(input.brief && input.reference
+      ? [
+          'The reference block carries two readings of the project: the filled fixtures, which the benchmark read for THIS exchange, and the project brief, read once at the top of the run. Where a figure or a name differs between them, the fixtures are the current one and the brief is background — do not mark a reply unserved for matching the fixtures.',
+        ]
+      : []),
   ].join('\n');
   const calls = input.calls.length > 0 ? input.calls.map((c) => `- ${c}`).join('\n') : '- none';
   const block = referenceBlock(input);

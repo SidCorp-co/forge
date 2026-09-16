@@ -12,7 +12,7 @@ export const projectPipelineStates: Task = {
   intent:
     'List this project’s effective pipeline states in order, from the first an issue enters to the last.',
   judgeRubric:
-    'Served means the states listed are the effective pipeline in the project brief, in that order and no others; the stored config’s override keys are not the answer.',
+    'Served means the states listed are stateList, in that order and no others; the brief’s effective-pipeline line is the same sequence read earlier in the run, and the stored config’s override keys are not the answer.',
   budgetSeconds: 180,
   fixtures: ['pipelineStates'],
   turns: [

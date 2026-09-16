@@ -55,6 +55,13 @@ export interface KnowledgeRow {
   injection: string;
 }
 
+/** The knowledge index with the route's own truncation metadata, which the brief discloses rather than drops. */
+export interface KnowledgeIndex {
+  rows: KnowledgeRow[];
+  total: number;
+  truncated: boolean;
+}
+
 export interface MemoryNote {
   id: string;
   sourceRef: string;
@@ -275,12 +282,14 @@ function briefReaders(json: JsonFn) {
      * that cannot read it refuses here, before the first turn, rather than leaving the judge to grade
      * project answers against a brief with a silently empty knowledge section.
      */
-    async knowledge(projectId: string): Promise<KnowledgeRow[]> {
-      const res = await json<{ rows?: KnowledgeRow[] }>(
+    async knowledge(projectId: string, injection?: string): Promise<KnowledgeIndex> {
+      const query = injection ? `?injection=${encodeURIComponent(injection)}` : '';
+      const res = await json<{ rows?: KnowledgeRow[]; total?: number; truncated?: boolean }>(
         'GET',
-        `/api/projects/${projectId}/knowledge`,
+        `/api/projects/${projectId}/knowledge${query}`,
       );
-      return res.rows ?? [];
+      const rows = res.rows ?? [];
+      return { rows, total: res.total ?? rows.length, truncated: res.truncated === true };
     },
     /** One entry's body; the index serves none. The brief pulls only the always-injected ones. */
     async knowledgeEntry(projectId: string, slug: string): Promise<string> {

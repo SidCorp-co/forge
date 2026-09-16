@@ -74,6 +74,8 @@ export interface FakeOptions {
   }>;
   /** Refuse the knowledge index with this status, as a credential without membership would. */
   knowledgeStatus?: number;
+  /** Cut the UNFILTERED knowledge index to this many rows, as the route's 38,000-character response cap does. */
+  knowledgeIndexCap?: number;
   /** Memory notes the project holds before any trial. */
   notes?: FakeNote[];
 }

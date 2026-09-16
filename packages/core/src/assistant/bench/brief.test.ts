@@ -55,6 +55,7 @@ const source = (over: Partial<ProjectBriefSource> = {}): ProjectBriefSource => (
       body: null,
     },
   ],
+  knowledgeOmitted: 0,
   newestIssues: [{ key: 'QA-9', title: 'The newest one', status: 'open' }],
   newestOpenIssues: [{ id: 'aaaa', key: 'QA-9', title: 'The newest one' }],
   waitingIssue: { id: 'bbbb', key: 'QA-4', title: 'Waiting on the customer' },
@@ -277,5 +278,70 @@ describe('the grounding block stays bounded (ISS-1066)', () => {
     );
     expect(text.length).toBeLessThanOrEqual(BRIEF_MAX_CHARS);
     expect(text).toContain('status_number_16 208');
+  });
+});
+
+// cm:why the index is read twice: the route caps its response, so a large project's unfiltered index
+// arrives as a prefix. Filtering that prefix for the always-injected entries finds none of the ones
+// past it, and the brief reads as complete while carrying none of the project's load-bearing prose.
+describe('a knowledge index the deployment capped (ISS-1066, codex F1)', () => {
+  const entries = [
+    { slug: 'a', title: 'A', kind: 'reference', injection: 'on_demand', body: 'filler a' },
+    { slug: 'b', title: 'B', kind: 'reference', injection: 'on_demand', body: 'filler b' },
+    {
+      slug: 'rule',
+      title: 'The house rule',
+      kind: 'rule',
+      injection: 'always',
+      body: 'Never deploy on a Friday.',
+    },
+  ];
+
+  const read = async () => {
+    const deployment = createFakeDeployment({
+      script: () => ({ attempts: [] }),
+      knowledge: entries,
+      knowledgeIndexCap: 2,
+    });
+    const client = createClient({ api: 'https://api.test', fetch: deployment.fetch });
+    client.useToken(FAKE_TOKEN);
+    return {
+      deployment,
+      src: await readProjectBrief(client, FAKE_PROJECT, () => new Date()),
+    };
+  };
+
+  it('still carries the always-injected body that fell past the index prefix', async () => {
+    const { src } = await read();
+    expect(src.knowledge.map((e) => e.slug)).toEqual(['a', 'b', 'rule']);
+    expect(projectBrief(src)).toContain('Never deploy on a Friday.');
+  });
+
+  it('reports nothing omitted once the recovered entry is the only one the cap had dropped', async () => {
+    const { src } = await read();
+    expect(src.knowledgeOmitted).toBe(0);
+    expect(projectBrief(src)).not.toContain('not listed');
+  });
+
+  it('discloses what the cap left out that the filtered read did not recover', async () => {
+    const deployment = createFakeDeployment({
+      script: () => ({ attempts: [] }),
+      knowledge: [
+        ...entries,
+        { slug: 'c', title: 'C', kind: 'reference', injection: 'on_demand', body: 'filler c' },
+      ],
+      knowledgeIndexCap: 2,
+    });
+    const client = createClient({ api: 'https://api.test', fetch: deployment.fetch });
+    client.useToken(FAKE_TOKEN);
+    const src = await readProjectBrief(client, FAKE_PROJECT, () => new Date());
+    expect(src.knowledgeOmitted).toBe(1);
+    expect(projectBrief(src)).toContain('1 further entry is not listed');
+  });
+
+  it('asks the deployment for the always-injected entries rather than filtering the prefix', async () => {
+    const { deployment } = await read();
+    const reads = deployment.state.requests.filter((r) => r.path.endsWith('/knowledge'));
+    expect(reads).toHaveLength(2);
   });
 });

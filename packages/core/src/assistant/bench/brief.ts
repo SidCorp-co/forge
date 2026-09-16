@@ -20,6 +20,7 @@ import {
   type IssueCounts,
   type IssueLine,
   type IssueRef,
+  type KnowledgeIndex,
   type KnowledgeRow,
   type Project,
   type ProjectDetail,
@@ -48,6 +49,8 @@ export interface ProjectBriefSource {
   intakeGate: boolean;
   facts: Record<string, string>;
   knowledge: BriefKnowledgeEntry[];
+  /** Entries the deployment's response cap left out of the index; disclosed rather than dropped. */
+  knowledgeOmitted: number;
   newestIssues: IssueLine[];
   newestOpenIssues: IssueRef[];
   waitingIssue: IssueRef | null;
@@ -115,6 +118,10 @@ const authorSections = (src: ProjectBriefSource): AuthorSection[] => {
     const head = `- **${e.title}** [${e.kind}, injection ${e.injection}]`;
     return e.body ? `${head}\n${e.body.trim()}` : head;
   });
+  if (src.knowledgeOmitted > 0)
+    knowledge.push(
+      `(${src.knowledgeOmitted} further entr${src.knowledgeOmitted === 1 ? 'y is' : 'ies are'} not listed: the deployment capped the index response.)`,
+    );
   return [
     {
       name: 'What this project is',
@@ -221,6 +228,25 @@ export function fixtureNotApplicable(task: Task, src: ProjectBriefSource): strin
   return null;
 }
 
+/**
+ * The index as the brief lists it: the rows the index returned, plus any always-injected entry the
+ * response cap left out of them. Fetching a body for an entry with no row to hang it on is how the
+ * first draft of this dropped the very prose it had just paid a request for.
+ */
+function mergeKnowledge(
+  rows: KnowledgeRow[],
+  always: KnowledgeRow[],
+  bodies: Map<string, string>,
+): BriefKnowledgeEntry[] {
+  const listed = new Set(rows.map((r) => r.slug));
+  return [
+    ...rows.map((e) => ({ ...e, body: bodies.get(e.slug) ?? null })),
+    ...always
+      .filter((e) => !listed.has(e.slug))
+      .map((e) => ({ ...e, body: bodies.get(e.slug) ?? null })),
+  ];
+}
+
 /** The first issue waiting on information, or null where the project has none; any other refusal stands. */
 async function waitingOrNone(client: BenchClient, projectId: string): Promise<IssueRef | null> {
   try {
@@ -238,7 +264,7 @@ export async function readProjectBrief(
   project: Project,
   now: () => Date,
 ): Promise<ProjectBriefSource> {
-  let index: KnowledgeRow[];
+  let index: KnowledgeIndex;
   try {
     index = await client.knowledge(project.id);
   } catch (err) {
@@ -246,7 +272,13 @@ export async function readProjectBrief(
       `cannot read this project's knowledge: ${errorText(err)}. The benchmark's project brief is assembled from it and handed to the judge on every turn, so a run without it would grade every project answer against nothing. Give the credential membership of ${project.slug}, or run against a project it already holds.`,
     );
   }
-  const wanted = index.filter((e) => e.injection === 'always').slice(0, BRIEF_KNOWLEDGE_BODIES);
+  // cm:guard the always-injected entries are read with the route's own filter, NOT by filtering the
+  // index: the index arrives as a prefix once it passes the deployment's 38,000-character response
+  // cap (`knowledge/service.ts:MAX_RESPONSE_CHARS`), so a project whose always-injected rules fall
+  // past that prefix would contribute none of its load-bearing prose while the brief read as
+  // complete (codex F1).
+  const always = await client.knowledge(project.id, 'always');
+  const wanted = always.rows.slice(0, BRIEF_KNOWLEDGE_BODIES);
   const bodies = new Map<string, string>();
   for (const entry of wanted)
     bodies.set(entry.slug, await client.knowledgeEntry(project.id, entry.slug));
@@ -267,7 +299,16 @@ export async function readProjectBrief(
     pipelineStates: await client.pipelineStates(project.id),
     intakeGate: config.intakeGate,
     facts,
-    knowledge: index.map((e) => ({ ...e, body: bodies.get(e.slug) ?? null })),
+    knowledge: mergeKnowledge(index.rows, wanted, bodies),
+    // cm:guard the omitted count is what the cap left out of the INDEX minus the always-injected
+    // entries recovered by the filtered read, so an entry the brief does carry is never also
+    // reported missing
+    knowledgeOmitted: Math.max(
+      0,
+      index.total -
+        index.rows.length -
+        wanted.filter((e) => !index.rows.some((row) => row.slug === e.slug)).length,
+    ),
     newestIssues,
     newestOpenIssues,
     waitingIssue,

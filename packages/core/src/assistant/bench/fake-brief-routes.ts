@@ -26,8 +26,20 @@ export function briefRoutes(
   if (path === `${base}/knowledge`) {
     if (ctx.opts.knowledgeStatus)
       return json(ctx.opts.knowledgeStatus, { error: 'not a project member' });
-    const rows = (ctx.opts.knowledge ?? []).map(({ body: _body, ...row }) => row);
-    return json(200, { rows, returned: rows.length, total: rows.length, truncated: false });
+    const injection = url.searchParams.get('injection');
+    const all = (ctx.opts.knowledge ?? []).filter((e) => !injection || e.injection === injection);
+    // cm:why the cap applies only to the UNFILTERED index, as the route's own does: `trimToResponseCap`
+    // runs over whatever the query matched, so a narrowed read of a large project comes back whole.
+    // That asymmetry is the whole of what `knowledgeIndexCap` plants (ISS-1066, codex F1).
+    const cap = injection ? undefined : ctx.opts.knowledgeIndexCap;
+    const kept = cap === undefined ? all : all.slice(0, cap);
+    const rows = kept.map(({ body: _body, ...row }) => row);
+    return json(200, {
+      rows,
+      returned: rows.length,
+      total: all.length,
+      truncated: rows.length < all.length,
+    });
   }
   const entry = new RegExp(`^${base}/knowledge/([^/]+)$`).exec(path);
   if (entry) {
