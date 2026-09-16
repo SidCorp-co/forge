@@ -4,7 +4,8 @@
  */
 
 import type { FailureMode } from '../grade.js';
-import type { HistoryResult } from './result.js';
+import { agreementLine, tallyLine } from '../judge.js';
+import type { HistoryJudge, HistoryResult, JudgeGroup } from './result.js';
 import type { Group, ModeTally } from './summarize.js';
 
 export interface GroupComparison {
@@ -12,10 +13,14 @@ export interface GroupComparison {
   source: string;
   before: Group | null;
   after: Group | null;
+  /** The judge's counts for this group on each side; null where that file had none. */
+  judge: { before: JudgeGroup | null; after: JudgeGroup | null };
 }
 
 export interface HistoryComparison {
   groups: GroupComparison[];
+  /** Each file's judge block, for the agreement lines; null where the file had none. */
+  judge: { before: HistoryJudge | null; after: HistoryJudge | null };
   differences: string[];
 }
 
@@ -31,6 +36,7 @@ function differences(before: HistoryResult, after: HistoryResult): string[] {
     ['budget seconds', before.budgetSeconds, after.budgetSeconds],
     ['max iterations', before.maxIterations, after.maxIterations],
     ['resolved', before.resolved, after.resolved],
+    ['judge', before.judge?.model ?? null, after.judge?.model ?? null],
     ['rows', rowsOf(before), rowsOf(after)],
   ];
   for (const [name, a, b] of pairs) {
@@ -47,15 +53,30 @@ export function compareHistory(before: HistoryResult, after: HistoryResult): His
     const b = before.groups.find((g) => key(g) === k) ?? null;
     const a = after.groups.find((g) => key(g) === k) ?? null;
     const any = b ?? a;
-    return any ? [{ model: any.model, source: any.source, before: b, after: a }] : [];
+    if (!any) return [];
+    const judgeOf = (r: HistoryResult): JudgeGroup | null =>
+      r.judge?.groups.find((jg) => `${jg.model} ${jg.source}` === k) ?? null;
+    return [
+      {
+        model: any.model,
+        source: any.source,
+        before: b,
+        after: a,
+        judge: { before: judgeOf(before), after: judgeOf(after) },
+      },
+    ];
   });
-  return { groups, differences: differences(before, after) };
+  return {
+    groups,
+    judge: { before: before.judge ?? null, after: after.judge ?? null },
+    differences: differences(before, after),
+  };
 }
 
 const pct = (v: number | null): string => (v === null ? '-' : `${(v * 100).toFixed(1)}%`);
 const num = (v: number | null): string => (v === null ? '-' : v.toFixed(1));
 
-function sideLines(label: string, g: Group | null): string[] {
+function sideLines(label: string, g: Group | null, judge: JudgeGroup | null): string[] {
   if (!g) return [`  ${label}: no rows`];
   const modes = (Object.entries(g.modes) as Array<[FailureMode, ModeTally]>)
     .filter(([, t]) => t.count > 0)
@@ -66,6 +87,7 @@ function sideLines(label: string, g: Group | null): string[] {
   return [
     `  ${label}: ${g.rows} rows in ${g.sessions} sessions${thin}; median ${num(g.medians.ms)}ms, ${num(g.medians.calls)} calls, ${num(g.medians.iterations)} iterations`,
     `    ${modes || 'no mode on any row'}`,
+    ...(judge ? [`    ${tallyLine(judge.tally)}`] : []),
   ];
 }
 
@@ -75,13 +97,20 @@ export function compareHistoryLines(c: HistoryComparison): string[] {
   for (const g of c.groups) {
     lines.push(
       `${g.model} / ${g.source}`,
-      ...sideLines('before', g.before),
-      ...sideLines('after', g.after),
+      ...sideLines('before', g.before, g.judge.before),
+      ...sideLines('after', g.after, g.judge.after),
     );
+  }
+  for (const side of ['before', 'after'] as const) {
+    const j = c.judge[side];
+    if (j)
+      lines.push(
+        `${side} judge ${j.model}, ${j.rows.length} of ${j.sample} asked: ${agreementLine(j.agreement)}`,
+      );
   }
   lines.push(
     c.differences.length === 0
-      ? 'no differences: same commit, window, budgets and row count'
+      ? 'no differences: same commit, window, budgets, judge and row count'
       : `differences: ${c.differences.join('; ')}`,
   );
   return lines;

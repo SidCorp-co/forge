@@ -6,7 +6,8 @@
 
 import { describe, expect, it } from 'vitest';
 import { type CliDeps, main } from './cli.js';
-import { createFakeDeployment, FAKE_TOKEN } from './fake-deployment.js';
+import { createFakeDeployment, FAKE_TOKEN, JUDGE_KEY, JUDGE_URL } from './fake-deployment.js';
+import { isVerdict } from './judge.js';
 import { readResult } from './result.js';
 
 function deps(fetch: CliDeps['fetch'], files: Record<string, string> = {}) {
@@ -143,7 +144,9 @@ describe('compare', () => {
     expect(await main(['compare', '/a.json', '/b.json'], {}, d)).toBe(0);
     expect(out[0]).toBe('out-of-reach-tests');
     expect(out[1]).toBe('  before: pass^3 100% · pass@3 100% · 3/3 trials passed');
-    expect(out.at(-1)).toBe('differences: none (same commit, api, model, k and trial count)');
+    expect(out.at(-1)).toBe(
+      'differences: none (same commit, api, model, judge, k and trial count)',
+    );
   });
 
   it('refuses one file and prints the usage', async () => {
@@ -151,5 +154,92 @@ describe('compare', () => {
     expect(await main(['compare', '/a.json'], {}, d)).toBe(1);
     expect(err[0]).toContain('compare needs two result files');
     expect(await main([], {}, d)).toBe(1);
+  });
+});
+
+const JUDGE_ENV = {
+  FORGE_BENCH_TOKEN: FAKE_TOKEN,
+  FORGE_BENCH_JUDGE_URL: JUDGE_URL,
+  FORGE_BENCH_JUDGE_KEY: JUDGE_KEY,
+};
+const verdict = (served: 'yes' | 'partial' | 'no'): string =>
+  JSON.stringify({
+    intent: 'run the tests',
+    served,
+    reason: 'r',
+    quote: served === 'no' ? '' : 'cannot run tests',
+  });
+const TASK = ['--tasks', 'out-of-reach-tests'];
+const judgePosts = (state: ReturnType<typeof fake>['state']) =>
+  state.requests.filter((r) => r.path === '/v1/chat/completions');
+const rooms = (state: ReturnType<typeof fake>['state']) =>
+  state.requests.filter((r) => r.method === 'POST' && r.path === '/api/conversations');
+
+describe('run --judge', () => {
+  it('refuses by name before any trial when the judge variables are absent', async () => {
+    const { fetch, state } = fake();
+    const { d, err } = deps(fetch);
+    expect(
+      await main([...RUN, ...TASK, '--judge', 'j'], { FORGE_BENCH_TOKEN: FAKE_TOKEN }, d),
+    ).toBe(1);
+    expect(err[0]).toContain('set FORGE_BENCH_JUDGE_URL and FORGE_BENCH_JUDGE_KEY');
+    expect(rooms(state)).toHaveLength(0);
+  });
+
+  it('stores the verdict beside every turn, names the judge in the header, prints the tally, and grades as without it', async () => {
+    const script = () => ({ attempts: [{ reply: 'I cannot run tests here.' }] });
+    const judged = createFakeDeployment({ script, judge: () => verdict('yes') });
+    const plain = createFakeDeployment({ script });
+    const a = deps(judged.fetch);
+    const b = deps(plain.fetch);
+    const args = [...RUN, ...TASK, '--trials', '2'];
+    expect(await main([...args, '--judge', 'judge-model'], JUDGE_ENV, a.d)).toBe(0);
+    expect(await main(args, { FORGE_BENCH_TOKEN: FAKE_TOKEN }, b.d)).toBe(0);
+    const withJudge = readResult(a.written['/tmp/out.json'] ?? '');
+    const without = readResult(b.written['/tmp/out.json'] ?? '');
+    expect(withJudge.judge).toEqual({ model: 'judge-model' });
+    expect(without.judge).toBeUndefined();
+    const turns = withJudge.tasks[0]?.trials.flatMap((t) => t.turns) ?? [];
+    expect(turns).toHaveLength(2);
+    for (const turn of turns)
+      expect(turn.judge && isVerdict(turn.judge) && turn.judge.served).toBe('yes');
+    const strip = (r: typeof withJudge) =>
+      r.tasks.map((t) =>
+        t.trials.map((trial) => trial.turns.map(({ judge: _j, ...rest }) => rest)),
+      );
+    expect(strip(withJudge)).toEqual(strip(without));
+    expect(
+      without.tasks.flatMap((t) => t.trials.flatMap((x) => x.turns)).some((t) => 'judge' in t),
+    ).toBe(false);
+    expect(a.out).toContain(
+      'out-of-reach-tests: judge yes 2/2, partial 0/2, no 0/2, unreadable 0/2',
+    );
+    const posts = judgePosts(judged.state);
+    expect(posts).toHaveLength(2);
+    expect(posts.every((r) => r.model === 'judge-model')).toBe(true);
+  });
+
+  it('a judge that is the model under test: no judge call, the refused trial kept whole, no further trial, exit 1', async () => {
+    const { fetch, state } = createFakeDeployment({
+      script: () => ({ attempts: [{ reply: 'I cannot run tests here.' }] }),
+      judge: () => verdict('yes'),
+    });
+    const { d, err, written } = deps(fetch);
+    expect(
+      await main([...RUN, ...TASK, '--trials', '3', '--judge', 'fake-model'], JUDGE_ENV, d),
+    ).toBe(1);
+    expect(err.at(-1)).toContain(
+      'out-of-reach-tests trial 1: judge fake-model is the model under test (trail rows name fake-model); no turn judged',
+    );
+    expect(judgePosts(state)).toHaveLength(0);
+    expect(rooms(state)).toHaveLength(1);
+    const partial = readResult(written['/tmp/out.json'] ?? '');
+    const trial = partial.tasks[0]?.trials[0];
+    expect(partial.tasks.map((t) => [t.id, t.trials.length])).toEqual([['out-of-reach-tests', 1]]);
+    expect(trial?.pass).toBe(true);
+    expect(trial?.turns[0]).not.toHaveProperty('judge');
+    expect(trial?.cleanup.room.id).not.toBe('');
+    expect(trial?.cleanup.room.observed).toBe('404');
+    expect(state.rooms.size).toBe(0);
   });
 });

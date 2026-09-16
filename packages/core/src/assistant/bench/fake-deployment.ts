@@ -5,6 +5,7 @@
  */
 
 import type { FetchLike, PreferenceChange, RoomMessage } from './client.js';
+import { ASKED_HEADER, CALLS_HEADER, NO_REPLY, REPLIED_HEADER } from './judge.js';
 import type { ChatLogRow } from './trail.js';
 
 export interface ScriptedAttempt {
@@ -44,6 +45,8 @@ export interface FakeOptions {
   pageSize?: number;
   /** Rows the window already holds before any room is opened, for the history verb's tests. */
   rows?: FakeState['chatLogs'];
+  /** The judge endpoint's answer: the text the model returns, or an HTTP status to refuse with. */
+  judge?: (input: { query: string; reply: string | null; model: string }) => string | number;
 }
 
 export interface FakeState {
@@ -54,7 +57,7 @@ export interface FakeState {
   >;
   rooms: Map<string, { title: string; projectId: string; messages: RoomMessage[]; seq: number }>;
   deleted: string[];
-  requests: Array<{ method: string; path: string; auth: string | null }>;
+  requests: Array<{ method: string; path: string; auth: string | null; model?: string }>;
 }
 
 export const FAKE_PROJECT = {
@@ -71,6 +74,8 @@ export const FAKE_ISSUE: FakeIssue = {
 export const DEAD_ISSUE_ID = '33333333-3333-4333-8333-333333333333';
 export const ERROR_ISSUE_ID = '44444444-4444-4444-8444-444444444444';
 export const FAKE_TOKEN = 'fake-bearer';
+export const JUDGE_URL = 'https://judge.test';
+export const JUDGE_KEY = 'judge-key';
 
 const json = (status: number, body: unknown): Response =>
   new Response(body === null ? null : JSON.stringify(body), {
@@ -262,6 +267,49 @@ function preferenceRoutes(
   return null;
 }
 
+/** The judge's user message read back into the query and the reply the test scripted. */
+function judgeInputOf(messages: Array<{ role: string; content: string }>): {
+  query: string;
+  reply: string | null;
+} {
+  const user = messages.find((m) => m.role === 'user')?.content ?? '';
+  const query = user
+    .slice(user.indexOf(ASKED_HEADER) + ASKED_HEADER.length, user.indexOf(CALLS_HEADER))
+    .trim();
+  const replied = user.slice(user.indexOf(REPLIED_HEADER) + REPLIED_HEADER.length).trim();
+  return { query, reply: replied === NO_REPLY ? null : replied };
+}
+
+const sse = (text: string): Response =>
+  new Response(
+    `data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\ndata: [DONE]\n\n`,
+    { status: 200, headers: { 'content-type': 'text/event-stream' } },
+  );
+
+function judgeRoute(
+  ctx: Ctx,
+  method: string,
+  path: string,
+  auth: string | null,
+  body: Record<string, unknown>,
+  state: FakeState,
+): Response {
+  if (method !== 'POST' || path !== '/v1/chat/completions')
+    return json(404, { error: `no judge route ${method} ${path}` });
+  if (auth !== `Bearer ${JUDGE_KEY}`) return json(401, { error: 'judge unauthorized' });
+  const model = String(body.model ?? '');
+  const last = state.requests.at(-1);
+  if (last) last.model = model;
+  if (!ctx.opts.judge) return json(404, { error: 'no judge scripted' });
+  const answer = ctx.opts.judge({
+    ...judgeInputOf((body.messages ?? []) as Array<{ role: string; content: string }>),
+    model,
+  });
+  return typeof answer === 'number'
+    ? json(answer, { error: `judge refused ${answer}` })
+    : sse(answer);
+}
+
 export function createFakeDeployment(opts: FakeOptions): { fetch: FetchLike; state: FakeState } {
   const state: FakeState = {
     prefs: { ...(opts.prefs ?? { answerStyle: 'default', assistantInstructions: null }) },
@@ -298,6 +346,7 @@ export function createFakeDeployment(opts: FakeOptions): { fetch: FetchLike; sta
         : json(401, { error: 'bad credentials' });
     if (method === 'GET' && path === '/version')
       return json(200, { version: '0.3.0', sourceCommit: 'abc1234' });
+    if (url.origin === JUDGE_URL) return judgeRoute(ctx, method, path, auth, body, state);
     if (auth !== `Bearer ${FAKE_TOKEN}`) return json(401, { error: 'unauthorized' });
     if (method === 'GET' && path === '/api/chat-logs') return chatLogs(ctx, url);
     return (

@@ -6,6 +6,7 @@
  */
 
 import type { Evidence, FailureMode } from './grade.js';
+import type { JudgeResult } from './judge.js';
 
 export interface AttemptRecord {
   chatLogId: string;
@@ -25,6 +26,8 @@ export interface TurnRecord {
   evidence: Evidence[];
   seconds: number;
   attempts: AttemptRecord[];
+  /** The sidecar judge's verdict, or its error; absent when the run had no judge. Never read into `pass`. */
+  judge?: JudgeResult;
 }
 
 export interface CleanupRecord {
@@ -61,6 +64,8 @@ export interface BenchResult {
   runId: string;
   k: number;
   tasks: TaskResult[];
+  /** The judge model, when the run had one. */
+  judge?: { model: string };
 }
 
 const RESULT_KEYS = ['at', 'api', 'commit', 'version', 'model', 'runId', 'k', 'tasks'] as const;

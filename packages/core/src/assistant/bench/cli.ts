@@ -7,6 +7,7 @@
 import { createClient, type FetchLike } from './client.js';
 import { compare, compareLines, sideOf } from './compare.js';
 import { HISTORY_USAGE, historyMain } from './history/cli.js';
+import { isVerdict, type Judge, judgeFromEnv, tally, tallyLine } from './judge.js';
 import { type BenchResult, readResult, serializeResult, type TaskResult } from './result.js';
 import { runTrial } from './run.js';
 import type { Task } from './task.js';
@@ -26,10 +27,11 @@ export interface CliDeps {
 export type Env = Record<string, string | undefined>;
 
 export const USAGE = [
-  'bench:assistant run --api <url> --project <slug> --out <file> [--tasks a,b] [--trials 3] [--k 3]',
+  'bench:assistant run --api <url> --project <slug> --out <file> [--tasks a,b] [--trials 3] [--k 3] [--judge <model>]',
   'bench:assistant compare <before.json> <after.json>',
   ...HISTORY_USAGE,
   'credentials: FORGE_BENCH_TOKEN, or FORGE_BENCH_EMAIL and FORGE_BENCH_PASSWORD',
+  'judge (--judge): FORGE_BENCH_JUDGE_URL and FORGE_BENCH_JUDGE_KEY; the verdict is stored beside the modes and never read into pass',
 ];
 
 class Refusal extends Error {}
@@ -88,6 +90,7 @@ async function run(argv: string[], env: Env, deps: CliDeps): Promise<number> {
   const trials = positiveInt('trials', f.trials, 3);
   const k = positiveInt('k', f.k, 3);
   const tasks = pickTasks(f.tasks);
+  const judge: Judge | undefined = f.judge ? judgeFromEnv(env, f.judge, deps.fetch) : undefined;
   const client = createClient({ api: f.api ?? '', fetch: deps.fetch, timeoutMs: 10 * 60_000 });
   await signIn(client, env);
   const version = await client.version();
@@ -109,13 +112,22 @@ async function run(argv: string[], env: Env, deps: CliDeps): Promise<number> {
         runId,
         now: deps.now,
         log: deps.stderr,
+        ...(judge ? { judge } : {}),
       });
       model ??= trial.model;
       row.trials.push(trial.result);
+      // cm:guard a judge that is the model under test grades its own habits kindly; the trial it was refused on is kept whole (grades, room id) so the partial file still excludes that room from a history reading
+      if (trial.judgeRefused) {
+        results.push(row);
+        await writeResult(deps, f, version, model, runId, k, results, judge);
+        throw new Refusal(
+          `${task.id} trial ${i + 1}: ${trial.judgeRefused}; no further trial started, partial results written to ${f.out}`,
+        );
+      }
       // cm:guard a restore that failed must not become the next trial's baseline: the next trial would read the moved value as the account's own and restore to it, and the run would end "clean" with the person's preference changed
       if (trial.result.cleanup.preferences.equal === false) {
         results.push(row);
-        await writeResult(deps, f, version, model, runId, k, results);
+        await writeResult(deps, f, version, model, runId, k, results, judge);
         const { observed, expected } = trial.result.cleanup.preferences;
         throw new Refusal(
           `${task.id} trial ${i + 1}: preference restore failed (${JSON.stringify(observed)} read back against ${JSON.stringify(expected)}); no further trial started, partial results written to ${f.out}`,
@@ -124,9 +136,19 @@ async function run(argv: string[], env: Env, deps: CliDeps): Promise<number> {
     }
     const side = sideOf(row.trials, k);
     deps.stdout(`${task.id}: ${side.s}/${side.n} trials passed`);
+    if (judge) {
+      const verdicts = row.trials.flatMap((t) =>
+        t.turns.flatMap((turn) => (turn.judge ? [turn.judge] : [])),
+      );
+      const t = tally(verdicts);
+      const rejected = verdicts.filter((v) => isVerdict(v) && v.served === 'no').length;
+      deps.stdout(
+        `${task.id}: ${tallyLine(t)}${rejected > 0 ? ' (read the judge.reason on each)' : ''}`,
+      );
+    }
     results.push(row);
   }
-  await writeResult(deps, f, version, model, runId, k, results);
+  await writeResult(deps, f, version, model, runId, k, results, judge);
   return 0;
 }
 
@@ -138,6 +160,7 @@ async function writeResult(
   runId: string,
   k: number,
   tasks: TaskResult[],
+  judge: Judge | undefined,
 ): Promise<void> {
   const result: BenchResult = {
     at: deps.now().toISOString(),
@@ -148,6 +171,7 @@ async function writeResult(
     runId,
     k,
     tasks,
+    ...(judge ? { judge: { model: judge.model } } : {}),
   };
   await deps.writeFile(f.out ?? '', serializeResult(result));
   deps.stdout(`wrote ${f.out}`);

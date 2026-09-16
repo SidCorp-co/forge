@@ -3,7 +3,35 @@
  * were taken at, what was excluded, and the summary. A file missing a key is refused by name.
  */
 
+import type { FailureMode } from '../grade.js';
+import type { Agreement, JudgeResult, Tally } from '../judge.js';
 import type { Summary } from './summarize.js';
+
+export interface JudgedRow {
+  chatLogId: string;
+  sessionId: string | null;
+  createdAt: string;
+  model: string;
+  source: string;
+  modes: FailureMode[];
+  judge: JudgeResult;
+}
+
+export interface JudgeGroup {
+  model: string;
+  source: string;
+  tally: Tally;
+}
+
+/** What the sidecar judge said about the sample; never read into a mode or a rate. */
+export interface HistoryJudge {
+  model: string;
+  /** The `--judge-sample` asked for; `rows.length` is what the window had to give. */
+  sample: number;
+  rows: JudgedRow[];
+  groups: JudgeGroup[];
+  agreement: Agreement;
+}
 
 export interface HistoryResult extends Summary {
   at: string;
@@ -16,6 +44,7 @@ export interface HistoryResult extends Summary {
   /** Whether UUID links were looked up (`--resolve`). */
   resolved: boolean;
   excludedSessions: string[];
+  judge?: HistoryJudge;
 }
 
 const KEYS = [

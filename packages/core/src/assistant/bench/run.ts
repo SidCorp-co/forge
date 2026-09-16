@@ -7,6 +7,7 @@
 
 import type { BenchClient, PreferenceChange, Preferences, Project, RoomMessage } from './client.js';
 import { extractIssueLinks, gradeTurn, type LinkOutcome, type PreferenceRow } from './grade.js';
+import { callLines, type Judge, type JudgeResult } from './judge.js';
 import type { CleanupRecord, TrialResult, TurnRecord } from './result.js';
 import { FIXTURE_KEYS, fill, type Task } from './task.js';
 import { type Attempt, type ChatLogRow, pairTrail } from './trail.js';
@@ -18,6 +19,8 @@ export interface TrialArgs {
   runId: string;
   now?: () => Date;
   log?: (line: string) => void;
+  /** The sidecar judge; its verdict is stored beside the grade and never read into it. */
+  judge?: Judge;
 }
 
 interface SentTurn {
@@ -131,6 +134,7 @@ function turnRecord(
   attempts: Attempt[],
   args: TrialArgs,
   values: Record<string, string>,
+  judge: JudgeResult | undefined,
 ): TurnRecord {
   const turn = args.task.turns[sent.index];
   if (!turn) throw new Error(`task ${args.task.id} has no turn ${sent.index + 1}`);
@@ -159,13 +163,47 @@ function turnRecord(
       reply: a.reply,
       error: a.error,
     })),
+    ...(judge ? { judge } : {}),
   };
 }
 
-/** One trial; the model the trail named travels beside the result for the file's header. */
+/**
+ * Every sent turn judged, after the rules have graded and the room is gone; or none, with the
+ * refusal, when the judge is one of the models the trail names — a model must not grade itself.
+ */
+async function judgeTurns(
+  args: TrialArgs,
+  sends: SentTurn[],
+  attempts: Attempt[][],
+  models: string[],
+): Promise<{ judged: Array<JudgeResult | undefined>; refused: string | null }> {
+  const judge = args.judge;
+  if (!judge) return { judged: [], refused: null };
+  if (models.includes(judge.model))
+    return {
+      judged: [],
+      refused: `judge ${judge.model} is the model under test (trail rows name ${models.join(', ')}); no turn judged`,
+    };
+  const judged: Array<JudgeResult | undefined> = [];
+  for (const [i, sent] of sends.entries()) {
+    const turnAttempts = attempts[i] ?? [];
+    judged[i] = await judge.judge({
+      query: sent.message,
+      reply: sent.delivered,
+      calls: callLines(turnAttempts.flatMap((a) => a.calls)),
+      error: turnAttempts.at(-1)?.error ?? null,
+    });
+  }
+  return { judged, refused: null };
+}
+
+/**
+ * One trial; the model the trail named travels beside the result for the file's header, and
+ * `judgeRefused` names both models when the judge was the one under test.
+ */
 export async function runTrial(
   args: TrialArgs,
-): Promise<{ result: TrialResult; model: string | null }> {
+): Promise<{ result: TrialResult; model: string | null; judgeRefused: string | null }> {
   const now = args.now ?? (() => new Date());
   const started = now();
   const dateFrom = new Date(started.getTime() - SKEW_MS).toISOString();
@@ -219,10 +257,15 @@ export async function runTrial(
 
   const record = await cleanup(args, roomId, baseline, changesBefore);
   const attempts = roomId ? pairTrail(roomId, rows, snapshots) : [];
-  const turns = sends.map((sent, i) => turnRecord(sent, attempts[i] ?? [], args, values));
-  const model = rows.find((r) => r.sessionId === roomId && r.model)?.model ?? null;
+  const roomRows = rows.filter((r) => r.sessionId === roomId);
+  const models = [...new Set(roomRows.flatMap((r) => (r.model ? [r.model] : [])))];
+  const { judged, refused } = await judgeTurns(args, sends, attempts, models);
+  const turns = sends.map((sent, i) =>
+    turnRecord(sent, attempts[i] ?? [], args, values, judged[i]),
+  );
   return {
-    model,
+    model: models[0] ?? null,
+    judgeRefused: refused,
     result: {
       at: started.toISOString(),
       pass: error === null && turns.length === args.task.turns.length && turns.every((t) => t.pass),
