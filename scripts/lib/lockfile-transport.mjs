@@ -10,8 +10,12 @@
 // The text is scanned rather than parsed: this runs before `pnpm install`, so
 // it has no YAML library and must not need one.
 
-// cm:guard the scp-style `git@host:path` form is the one that matters and the one a regex most easily misses — Dependabot writes `git+https://git@github.com:owner/repo.git`, which starts with an https scheme and is still an SSH clone. Matching on the scheme alone would call that line clean.
-const SSH_FORMS = [/\bgit@[\w.-]+:/, /\bssh:\/\//, /\bgit\+ssh:\/\//];
+// cm:guard the scp-style `user@host:path` form is the one that matters and the one a regex most
+// easily misses — Dependabot writes `git+https://git@github.com:owner/repo.git`, an https scheme wrapping an SSH clone
+// cm:guard the username is not `git` in general, so the form is read for any user; and the path must
+// carry a `/`, or every `pkg@1.2.3:` key line and every `resolution:` version in a lockfile reads as a host and a path
+// cm:hack ISS-1045 until:this parses a lockfile rather than scanning it — `@host:1234/path` is read as a URL port and skipped, so a remote whose first path segment is all digits is missed; the alternative false-accuses `https://user@host:8080/path` and blocks every install on a private registry
+const SSH_FORMS = [/\bssh:\/\//, /[\w.~-]+@[\w.-]*\.[\w-]+:(?!\d+\/)[^\s,}]*\/[^\s,}]*/];
 
 // cm:guard the `{}` tail is what makes a `snapshots:` row a key line too — drop it and an offending
 // `pkg@git+ssh://…: {}` row is named by its section heading, `snapshots`, rather than by its package.
@@ -38,6 +42,9 @@ export function sshResolutions(text) {
 
   text.split('\n').forEach((raw, index) => {
     if (raw.trim() === '') return;
+    // cm:guard a comment-only line is skipped BEFORE the forms run: a lockfile comment quoting an
+    // old `git@host:owner/repo.git` is not a dependency, and accusing it blocks every install here
+    if (raw.trimStart().startsWith('#')) return;
     const indent = raw.length - raw.trimStart().length;
     for (const held of [...keysByIndent.keys()]) {
       if (held >= indent) keysByIndent.delete(held);

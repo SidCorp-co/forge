@@ -429,6 +429,18 @@ credential-free equivalent — a genuinely private one does not.
 tree and exits. Exit `0` clean · `1` an entry resolves over SSH · `2` no lockfile, or a lockfile
 holding no `resolution:` at all — an empty scope is refused rather than forwarded as a pass.
 
+It reads the text line by line rather than parsing YAML, because it runs before anything is
+installed and so has no YAML library to reach for. Two shapes are read: an `ssh://` scheme
+anywhere, and the scp-style `user@host:path` — for any username, not only `git`, since the offender
+that started this was `git@github.com:` but a deploy account is the same clone. The path must carry
+a `/`, or every `pkg@1.2.3:` key line in a lockfile would read as a host and a path, and a
+comment-only line is skipped, or a comment quoting the old remote would block every install. One
+shape is knowingly missed and the trade is in a `cm:hack` on the file: `@host:1234/path` is read as
+a URL port and skipped, so a remote whose first path segment is entirely numeric goes unreported —
+the alternative false-accuses `https://user@host:8080/path` and stops every install on a private
+registry. Both real lockfiles this was measured against agree: 948 resolutions on `main` clean, and
+the four offending lines on the Dependabot pull request that caused this named by package.
+
 ## check-branch-name.sh
 
 ## check-release-record.mjs — the record of what shipped may not lose entries

@@ -91,6 +91,38 @@ snapshots:
     );
   });
 
+  it('reads the scp-style form for any username, not only `git`', () => {
+    const other = DEPENDABOT.replace(
+      'hono@4.13.5:\n    resolution: {integrity: sha512-deadbeef}',
+      'private-pkg@1.0.0:\n    resolution: {repo: deploy@git.example.com:team/private-pkg.git, type: git}',
+    );
+    const { offenders } = sshResolutions(other);
+    expect(offenders.map((o) => o.owner)).toContain('private-pkg@1.0.0');
+  });
+
+  it('reads no host and no path in a `name@version:` key line, which every lockfile is full of', () => {
+    const versions = `packages:
+
+  '@babel/core@7.28.0':
+    resolution: {integrity: sha512-deadbeef}
+
+  vitest@5.0.0(@types/node@22.19.1)(jsdom@28.0.1):
+    resolution: {integrity: sha512-cafebabe}
+
+  pkg@1.0.0-alpha.3:
+    resolution: {integrity: sha512-f00dface}
+`;
+    expect(sshResolutions(versions)).toEqual({ scanned: 3, offenders: [] });
+  });
+
+  it('accuses no comment, so a lockfile quoting the old SSH remote still installs', () => {
+    const commented = SHIPPED.replace(
+      'packages:',
+      `# replaced git@github.com:SidCorp-co/forge-plugin.git with the codeload tarball\npackages:`,
+    );
+    expect(sshResolutions(commented).offenders).toEqual([]);
+  });
+
   it('counts zero resolutions in a text that is not a lockfile, so the caller can refuse it', () => {
     expect(sshResolutions('# Changelog\n\nnothing here at all\n')).toEqual({
       scanned: 0,
