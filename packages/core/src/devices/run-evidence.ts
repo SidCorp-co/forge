@@ -177,10 +177,10 @@ export function buildResumeChoiceBody(args: { choice: ResumeChoice }): string {
   const said = {
     continue: 'carry this work on from where it stopped',
     restart: 'start this work again rather than carry it on',
-    leave: 'leave this work alone — it is somebody else\'s to settle',
+    leave: "leave this work alone — it is somebody else's to settle",
   }[choice.choice];
   return [
-    '## The master that picked this issue back up chose to ' + `**${choice.choice}**`,
+    `## The master that picked this issue back up chose to **${choice.choice}**`,
     '',
     `\`${resumeChoiceMarker(choice.runId)}\``,
     '',
@@ -197,11 +197,10 @@ export function buildResumeChoiceBody(args: { choice: ResumeChoice }): string {
     // cm:guard says the choice was the MASTER's. The box handed it the branch, the worktree and the
     // state raw and no recommendation; printing this without saying whose judgement it was would
     // read as the system having decided, which is the thing the design refuses to do.
-    'That judgement is the resumed machine\'s own. It was handed the run\'s branch, checkout and',
+    "That judgement is the resumed machine's own. It was handed the run's branch, checkout and",
     'state as plain facts with no recommendation attached, and this is what it made of them.',
   ].join('\n');
 }
-
 
 /** The line that makes a second report of the SAME held state a no-op. */
 // cm:guard keyed on the session AND the head commit, not the session alone. The hold is retried

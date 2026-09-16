@@ -23,7 +23,6 @@ let harness: TestDatabase;
 let mods: {
   writeRunEvidence: typeof import('../../src/devices/run-evidence.js').writeRunEvidence;
   writeHeldWorktreeReport: typeof import('../../src/devices/run-evidence.js').writeHeldWorktreeReport;
-  writeResumeChoice: typeof import('../../src/devices/run-evidence.js').writeResumeChoice;
   openRunSession: typeof import('../../src/devices/run-session.js').openRunSession;
 };
 
@@ -38,7 +37,6 @@ beforeAll(async () => {
   mods = {
     writeRunEvidence: evidence.writeRunEvidence,
     writeHeldWorktreeReport: evidence.writeHeldWorktreeReport,
-    writeResumeChoice: evidence.writeResumeChoice,
     openRunSession: runSession.openRunSession,
   };
 });
@@ -442,120 +440,6 @@ describe('a checkout this box is still holding, said on the issues it holds', ()
         deviceId: otherDevice.id,
         sessionId: session.sessionId,
         held: A_HELD,
-      }),
-    ).toBeNull();
-  });
-});
-
-describe("what a resumed master chose, on the issues its inherited run holds", () => {
-  const A_CHOICE = {
-    runId: 'run-abc',
-    choice: 'restart' as const,
-    why: 'the branch has nothing on it and the checkout is clean',
-  };
-
-  it('says the choice and the reason on every issue that run held', async () => {
-    const { device, issueIds, session } = await aRunOver([9, 10], 'x');
-
-    const result = await mods.writeResumeChoice({
-      deviceId: device.id,
-      sessionId: session.sessionId,
-      choice: A_CHOICE,
-    });
-
-    expect(result).toEqual({ issues: 2, written: 2 });
-    for (const id of issueIds) {
-      const body = (await bodiesOn(id)).join('\n');
-      expect(body).toContain('**restart**');
-      expect(body).toContain(A_CHOICE.why);
-    }
-  });
-
-  // cm:guard says WHOSE judgement it was. The box handed the master raw fields and no
-  // recommendation; printing the choice without saying it was the master's would read as the
-  // system having decided, which is the thing this design refuses to do.
-  it('attributes the judgement to the resumed master, not to the machine', async () => {
-    const { device, issueIds, session } = await aRunOver([9], 'x');
-
-    await mods.writeResumeChoice({
-      deviceId: device.id,
-      sessionId: session.sessionId,
-      choice: A_CHOICE,
-    });
-
-    const first = issueIds[0];
-    if (!first) throw new Error('no issue');
-    const body = (await bodiesOn(first)).join('\n');
-    expect(body).toContain('no recommendation attached');
-    expect(body).toMatch(/judgement is the resumed machine/i);
-  });
-
-  // cm:guard keyed on the RUN, so one resumed pane answering for several runs writes one comment
-  // per run, while a pane asked twice about one run says it once.
-  it('says one run once however many sweeps carry it', async () => {
-    const { device, issueIds, session } = await aRunOver([9], 'x');
-
-    for (let i = 0; i < 3; i += 1) {
-      await mods.writeResumeChoice({
-        deviceId: device.id,
-        sessionId: session.sessionId,
-        choice: A_CHOICE,
-      });
-    }
-
-    const first = issueIds[0];
-    if (!first) throw new Error('no issue');
-    expect(await bodiesOn(first)).toHaveLength(1);
-  });
-
-  it('says a second run on the same issue separately', async () => {
-    const { device, issueIds, session } = await aRunOver([9], 'x');
-
-    await mods.writeResumeChoice({
-      deviceId: device.id,
-      sessionId: session.sessionId,
-      choice: A_CHOICE,
-    });
-    await mods.writeResumeChoice({
-      deviceId: device.id,
-      sessionId: session.sessionId,
-      choice: { ...A_CHOICE, runId: 'run-def', choice: 'leave', why: 'not ours to settle' },
-    });
-
-    const first = issueIds[0];
-    if (!first) throw new Error('no issue');
-    const bodies = await bodiesOn(first);
-    expect(bodies).toHaveLength(2);
-    expect(bodies[1]).toContain('**leave**');
-  });
-
-  it('moves the issue nowhere', async () => {
-    const { device, issueIds, session } = await aRunOver([9], 'x');
-
-    await mods.writeResumeChoice({
-      deviceId: device.id,
-      sessionId: session.sessionId,
-      choice: A_CHOICE,
-    });
-
-    const first = issueIds[0];
-    if (!first) throw new Error('no issue');
-    const rows = (await harness.db.execute(
-      sql`SELECT status FROM issues WHERE id = ${first}`,
-    )) as unknown as { status: string }[];
-    expect(rows[0]?.status).toBe('in_progress');
-  });
-
-  it('answers nothing for a session belonging to another box', async () => {
-    const { session } = await aRunOver([9], 'x');
-    const other = await createTestUser(harness.db);
-    const otherDevice = await createTestDevice(harness.db, other.id);
-
-    expect(
-      await mods.writeResumeChoice({
-        deviceId: otherDevice.id,
-        sessionId: session.sessionId,
-        choice: A_CHOICE,
       }),
     ).toBeNull();
   });

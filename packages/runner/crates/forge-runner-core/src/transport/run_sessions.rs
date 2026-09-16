@@ -162,7 +162,9 @@ pub async fn report_resume_choice(
     if !resp.status().is_success() {
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(format!("resume-choice report: {status}: {text}")));
+        return Err(Error::Other(format!(
+            "resume-choice report: {status}: {text}"
+        )));
     }
     Ok(())
 }
