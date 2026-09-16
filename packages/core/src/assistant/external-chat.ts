@@ -88,6 +88,22 @@ export interface ExternalChatTurnArgs {
   db?: typeof defaultDb;
 }
 
+// cm:guard the reference set is bounded HERE and nowhere upstream: the turn keeps it whole so the
+// reply screen can answer "did this turn look that id up?" for every id the model actually saw, and
+// what has to stay small is the jsonb column this row writes. Truncation is recorded rather than
+// silent, so a reader of the audit row can tell a short list from a cut one (ISS-1057, codex F1).
+const AUDIT_ISSUE_REFS_CAP = 60;
+
+function cappedForAudit<T extends { resultIssueRefs?: readonly string[] }>(call: T): T {
+  const refs = call.resultIssueRefs ?? [];
+  if (refs.length <= AUDIT_ISSUE_REFS_CAP) return call;
+  return {
+    ...call,
+    resultIssueRefs: refs.slice(0, AUDIT_ISSUE_REFS_CAP),
+    resultIssueRefsTruncated: refs.length,
+  };
+}
+
 export interface ExternalChatTurnResult {
   /** The conversation this turn joined, or null when it belonged to none. */
   conversationId: string | null;
@@ -98,7 +114,16 @@ export interface ExternalChatTurnResult {
   error: string | null;
   iterations: number;
   /** Tool calls the model made this turn — callers verify reply claims (cited issue ids) against what was actually done. */
-  toolCalls: Array<{ name: string; arguments: string }>;
+  // cm:guard `resultIssueRefs` and `isError` ride along because the reply screen reads them: an
+  // issue id this turn's own tracker call RETURNED is an id the turn looked up, which is what
+  // `only-verified-citations` says it screens for, and narrowing this type to the name and the
+  // arguments is what hid that from it for so long (ISS-1057).
+  toolCalls: Array<{
+    name: string;
+    arguments: string;
+    resultIssueRefs?: readonly string[];
+    isError?: boolean;
+  }>;
   /** The progress snapshot injected into THIS turn's system prompt (ISS-671), or `null` on a computation failure; callers screen the reply against it rather than re-querying, so the guard never bounces a reply that matched what the model was shown. */
   progress: ProjectProgress | null;
 }
@@ -250,7 +275,7 @@ export async function runExternalChatTurn(
       query: args.message,
       reply: result.finalText.length > 0 ? result.finalText : null,
       model: resolved.model,
-      toolCalls: result.toolCalls as never,
+      toolCalls: result.toolCalls.map(cappedForAudit) as never,
       usage: usageForLog(result) as never,
       iterations: result.iterations,
       durationMs,

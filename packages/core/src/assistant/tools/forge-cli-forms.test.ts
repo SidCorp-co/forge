@@ -20,6 +20,16 @@ const usageOf = (verb: string): string =>
     .split('\n')
     .find((l) => l.startsWith('Usage:')) ?? '';
 
+// cm:guard the verbs are asserted PRESENT as well as each carried form being held to its Usage
+// line: the whole-form test only validates the forms that exist, so a set that quietly lost `new`
+// would stay green while the model went back to paying `forge new -h` (ISS-1057, codex F1).
+describe('the verbs the carried forms cover (ISS-1057 criterion 13)', () => {
+  it('carries a form for issue, new, comment and guide', () => {
+    const verbs = new Set(READ_FORMS.map((f) => f.argv[0]));
+    for (const verb of ['issue', 'new', 'comment', 'guide']) expect(verbs).toContain(verb);
+  });
+});
+
 describe('the carried read forms against the bundled CLI (criterion 14)', () => {
   for (const form of READ_FORMS) {
     it(`\`forge ${form.argv.join(' ')}\` fits \`forge ${form.argv[0]} -h\``, () => {

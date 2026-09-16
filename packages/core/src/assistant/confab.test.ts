@@ -17,6 +17,7 @@ function call(over: Partial<ToolCallRecord>): ToolCallRecord {
     isError: false,
     durationMs: 1,
     resultPreview: '',
+    resultIssueRefs: [],
     ...over,
   };
 }

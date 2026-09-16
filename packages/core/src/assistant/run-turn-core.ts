@@ -30,6 +30,21 @@ export const MAX_TOOL_ITERATIONS = 16;
 
 /** What `chat_logs.tool_calls` keeps of a result: enough to see what the model was shown, never the full 24k body. */
 const RESULT_PREVIEW_CHARS = 500;
+// cm:guard NO cap in memory, and the cap lives on the AUDIT WRITE instead (`external-chat.ts`):
+// the reply screen reads this to answer "did this turn look that id up?", so a set truncated here
+// refuses a citation the model genuinely saw — the same false refusal this whole change exists to
+// remove, arriving once a listing passes the cap. What must be bounded is the jsonb column, and
+// that is bounded where it is written (codex F1 of the whole-set read).
+// cm:guard deliberately wider than any one project's prefixes, exactly as `gather.ts` is: this
+// records what the result SAID, and the rule that reads it narrows to the project's own prefixes.
+const RESULT_ISSUE_REF_RE = /\b[A-Za-z][A-Za-z0-9]{1,5}-\d{1,6}\b/g;
+
+/** Every issue-shaped reference a tool result named, de-duplicated. */
+function issueRefsIn(text: string): string[] {
+  const seen = new Set<string>();
+  for (const m of text.matchAll(RESULT_ISSUE_REF_RE)) seen.add((m[0] as string).toUpperCase());
+  return [...seen];
+}
 
 export interface TurnCoreArgs {
   provider: ChatProvider;
@@ -60,6 +75,15 @@ export interface ToolCallRecord {
   durationMs: number;
   /** First {@link RESULT_PREVIEW_CHARS} of the text the model read. */
   resultPreview: string;
+  /**
+   * Every issue-shaped reference the WHOLE result named, bounded, taken before the preview is cut.
+   */
+  // cm:guard taken from the full text and NOT from `resultPreview`: the preview is 500 characters
+  // and 186 of 356 calls in beta's QA window hit that cap, so a listing that names an issue late
+  // would be invisible to the reply screen — which reads this to answer "did this turn look that
+  // id up?" and would otherwise refuse a reply quoting a row the model really was shown
+  // (ISS-1057, codex F1).
+  resultIssueRefs: string[];
 }
 
 export interface TurnCoreResult {
@@ -130,6 +154,7 @@ async function executeToolRound(
             isError: result.isError === true,
             durationMs: Date.now() - startedAt,
             resultPreview: text.slice(0, RESULT_PREVIEW_CHARS),
+            resultIssueRefs: issueRefsIn(text),
           },
         };
       }
