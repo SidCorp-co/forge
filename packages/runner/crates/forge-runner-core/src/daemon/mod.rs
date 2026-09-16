@@ -9,6 +9,7 @@
 
 pub mod agent_activity;
 pub mod chat;
+pub mod checkpoint;
 pub mod control;
 pub mod dispatch;
 pub mod hook_install;
