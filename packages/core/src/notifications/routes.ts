@@ -357,8 +357,8 @@ export async function createNotification(input: {
   decisionId?: string | null;
   groupKey?: string | null;
   groupTitle?: string | null;
-}): Promise<{ id: string } | null> {
+}): Promise<{ id: string; delivered: number } | null> {
   const recipients = input.recipients ?? (input.userId ? [input.userId] : []);
   const result = await recordAndDeliver({ ...input, recipients });
-  return result ? { id: result.id } : null;
+  return result;
 }

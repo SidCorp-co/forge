@@ -36,16 +36,58 @@ type Mods = {
 
 type NotifRow = { user_id: string; type: string; resolution_key: string; read: boolean };
 
+/**
+ * One row per (record, recipient) — what the single table used to hold directly.
+ *
+ * ISS-1063 — a strand is now ONE record with a delivery per admin, so `user_id` and `read`
+ * come off the join. The cases below read almost unchanged, which is the point: who was
+ * told, and whether they looked, are still answerable; they are just no longer the same
+ * row as "is this still true".
+ */
 async function readNotifs(harness: TestDatabase, issueId: string): Promise<NotifRow[]> {
   const r = await harness.db.execute(sql`
-    SELECT user_id, type, resolution_key, read FROM notifications WHERE issue_id = ${issueId}
+    SELECT d.user_id, n.type, n.resolution_key, (d.read_at IS NOT NULL) AS read
+      FROM notifications n
+      JOIN notification_delivery_members m ON m.notification_id = n.id
+      JOIN notification_deliveries d ON d.id = m.delivery_id AND d.resolved_notice = false
+     WHERE n.issue_id = ${issueId}
   `);
   return r as unknown as NotifRow[];
 }
 
-// cm:why the re-notify cases drive the dedupe by editing the alarm row rather than by waiting — `read`, `resolved_at` and `created_at` are the exact three columns that predicate reads, and one helper keeps the column a case is ABOUT on its own line
+// cm:why the re-notify cases drive the dedupe by editing the alarm rather than by waiting — `state`, `resolved_at` and `created_at` are the exact three the predicate reads, and one helper keeps the column a case is ABOUT on its own line
 async function patchAlarm(harness: TestDatabase, issueId: string, set: SQL): Promise<void> {
   await harness.db.execute(sql`UPDATE notifications SET ${set} WHERE issue_id = ${issueId}`);
+}
+
+/**
+ * Run the detector until it actually tells somebody.
+ *
+ * ISS-1063 — `issue_stranded` declares a pending duration of two evaluations, so the first
+ * pass that sees a strand writes a `pending` record and delivers to NOBODY: a park that
+ * clears inside two sweeps never reaches a human at all. Promotion is by elapsed time, so
+ * a test ages `pending_since` rather than waiting two minutes. What comes back is the pass
+ * that announced it, which is what every case below is about.
+ */
+async function announce(
+  harness: TestDatabase,
+  detect: Mods['detectStrandedIssues'],
+): Promise<{ detected: number; notified: number }> {
+  const first = await detect();
+  expect(first.notified).toBe(0);
+  await harness.db.execute(
+    sql`UPDATE notifications SET pending_since = now() - interval '10 minutes'`,
+  );
+  return detect();
+}
+
+/** What an admin opening the bell does — and, since ISS-1063, all it does. */
+async function markRead(harness: TestDatabase, issueId: string): Promise<void> {
+  await harness.db.execute(sql`
+    UPDATE notification_deliveries d SET read_at = now()
+    FROM notification_delivery_members m, notifications n
+    WHERE m.delivery_id = d.id AND n.id = m.notification_id AND n.issue_id = ${issueId}
+  `);
 }
 
 describe('detectStrandedIssues E2E (ISS-762)', () => {
@@ -120,7 +162,7 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
 
   it('surfaces an issue parked at waiting whose code already merged', async () => {
     const s = await seed();
-    const res = await mods.detectStrandedIssues();
+    const res = await announce(harness, mods.detectStrandedIssues);
     expect(res.detected).toBe(1);
 
     const rows = await readNotifs(harness, s.issueId);
@@ -130,7 +172,7 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
 
   it('reaches every admin who can act, and nobody who cannot', async () => {
     const s = await seed();
-    await mods.detectStrandedIssues();
+    await announce(harness, mods.detectStrandedIssues);
     const notified = new Set((await readNotifs(harness, s.issueId)).map((r) => r.user_id));
     expect(notified.has(s.owner.id)).toBe(true);
     expect(notified.has(s.projAdmin.id)).toBe(true);
@@ -140,7 +182,7 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
   // cm:guard this is the pass's load-bearing test — the sweep runs every tick, so a detector that re-notifies on each pass is worse than none: the bell fills with duplicates and stops being read at all
   it('notifies once and then stays quiet while the alarm is unread', async () => {
     const s = await seed();
-    const first = await mods.detectStrandedIssues();
+    const first = await announce(harness, mods.detectStrandedIssues);
     expect(first.notified).toBeGreaterThan(0);
 
     for (let i = 0; i < 3; i++) {
@@ -154,9 +196,9 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
   // cm:guard reading the alarm must NOT re-arm it on the next 60s tick — the predicate matches every `waiting` park past the grace window rather than the rare merged-and-parked contradiction the deleted staged arm needed, so an unread-only dedupe turns one read into a ping every minute for the life of the park.
   it('stays quiet after a read while the re-notify window is still open', async () => {
     const s = await seed();
-    const first = await mods.detectStrandedIssues();
+    const first = await announce(harness, mods.detectStrandedIssues);
     expect(first.notified).toBeGreaterThan(0);
-    await patchAlarm(harness, s.issueId, sql`read = true`);
+    await markRead(harness, s.issueId);
 
     const second = await mods.detectStrandedIssues();
     expect(second.detected).toBe(1);
@@ -167,23 +209,30 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
   // cm:guard the cooldown must suppress only while the alarm is UNRESOLVED. A resolved row is a strand that ENDED — the human moved the issue off `waiting` and auto-resolve stamped it — so a later re-strand is a NEW one and is owed its own alarm on time. Dedupe on `read`/`created_at` alone and it is muted for the rest of the window, which is silence a caller cannot tell from "nothing is wrong".
   it('re-notifies a RESOLVED strand that recurred, without waiting out the window', async () => {
     const s = await seed();
-    const first = await mods.detectStrandedIssues();
+    const first = await announce(harness, mods.detectStrandedIssues);
     expect(first.notified).toBeGreaterThan(0);
 
-    await patchAlarm(harness, s.issueId, sql`read = true, resolved_at = now()`);
+    await markRead(harness, s.issueId);
+    await patchAlarm(harness, s.issueId, sql`resolved_at = now(), state = 'resolved'`);
 
-    const second = await mods.detectStrandedIssues();
+    const second = await announce(harness, mods.detectStrandedIssues);
     expect(second.detected).toBe(1);
     expect(second.notified).toBe(first.notified);
   });
 
   it('re-notifies once the read alarm is older than the re-notify window', async () => {
     const s = await seed();
-    const first = await mods.detectStrandedIssues();
+    const first = await announce(harness, mods.detectStrandedIssues);
     const stale = new Date(Date.now() - mods.STRANDED_RENOTIFY_MS - HOUR).toISOString();
-    await patchAlarm(harness, s.issueId, sql`read = true, created_at = ${stale}`);
+    await markRead(harness, s.issueId);
+    // cm:why the state must move too (ISS-1063): the guard is `state IN ('firing','inhibited') OR created_at within the window`, so a stale-but-still-firing alarm is still ONE alarm and must not be named twice. A strand somebody dealt with is `resolved`; what this case is about is the window, not the state.
+    await patchAlarm(
+      harness,
+      s.issueId,
+      sql`created_at = ${stale}, state = 'resolved', resolved_at = now()`,
+    );
 
-    const second = await mods.detectStrandedIssues();
+    const second = await announce(harness, mods.detectStrandedIssues);
     expect(second.notified).toBe(first.notified);
   });
 
@@ -223,7 +272,7 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
       sql`UPDATE projects SET agent_config = ${JSON.stringify({ pipelineConfig: { mode: 'staged' } })}::jsonb WHERE id = ${legacy.projectId}`,
     );
 
-    const res = await mods.detectStrandedIssues();
+    const res = await announce(harness, mods.detectStrandedIssues);
 
     expect(res.detected).toBe(2);
     expect((await readNotifs(harness, stripped.issueId)).length).toBeGreaterThan(0);

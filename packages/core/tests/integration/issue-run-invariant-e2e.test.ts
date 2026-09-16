@@ -93,6 +93,11 @@ describe('an issue asserting work with no live run behind it', () => {
     const first = await mods.detectOrphanedRunAssertions();
 
     expect(first.detected, 'the predicate must match an assertion nothing is behind').toBe(1);
+    // cm:guard ISS-1063 — `reported` counts the LOG LINE, not the deliveries, and that is
+    // deliberate: the log is the deliverable and is written whether or not any human is
+    // reachable. `issue_stranded` now waits one evaluation before anybody is told, so a
+    // `reported` wired to the delivery count would read 0 here on a project with admins and
+    // 0 on a project with none — the two cases this pass exists to tell apart.
     expect(first.reported, 'the first sweep is the one that names the episode').toBe(1);
     expect(
       await statusOf(issueId),

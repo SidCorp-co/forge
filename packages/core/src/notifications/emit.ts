@@ -67,7 +67,7 @@ export interface EmitNotificationInput {
 
 export async function emitNotification(
   input: EmitNotificationInput,
-): Promise<{ id: string } | null> {
+): Promise<{ id: string; delivered: number } | null> {
   return createNotification({
     ...input,
     severity: input.severity ?? defaultSeverityForType(input.type),

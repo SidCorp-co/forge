@@ -12,7 +12,7 @@
 // decision, and a close is a claim about shipped work that a pass which
 // cannot read the repository must not make.
 
-import { and, eq, gte, inArray, isNotNull, isNull, lt, notInArray, or, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNotNull, isNull, lt, ne, notInArray, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueStatuses, issues, notifications, projects } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -97,8 +97,16 @@ async function surfaceOnce(args: {
         eq(notifications.type, 'issue_stranded'),
         eq(notifications.resolutionKey, args.resolutionKey),
         isNull(notifications.resolvedAt),
+        // cm:guard a `pending` record is ALWAYS re-emitted, whichever arm below would
+        // otherwise match. A type declaring a pending duration is promoted to `firing` by a
+        // LATER emission of the same identity — that re-emission IS its second evaluation.
+        // Short-circuit here and the record never promotes and nobody is ever told about a
+        // condition that is still true; the re-notify window would suppress the very pass
+        // that announces it. The delivery layer's own dedup (`activeRecord`) is what stops
+        // the re-emission writing a second record.
+        ne(notifications.state, 'pending'),
         or(
-          inArray(notifications.state, ['pending', 'firing', 'inhibited']),
+          inArray(notifications.state, ['firing', 'inhibited']),
           gte(notifications.createdAt, new Date(args.now.getTime() - STRANDED_RENOTIFY_MS)),
         ),
       ),
@@ -113,7 +121,10 @@ async function surfaceOnce(args: {
   // their recipients' names. The `groupKey` is the sweep tick, so every strand one
   // evaluation finds reaches each admin as one notification naming the cause — the 11:21
   // burst of 2026-09-16 was 15 conditions and the owner was told fifteen times.
-  await emitNotification({
+  // cm:guard what comes back is who was NEWLY told, and the caller reports that as
+  // `notified`. Returning `adminIds.length` here would count a pending record nobody was
+  // told about as two notifications, which is a detector reporting work it did not do.
+  const sent = await emitNotification({
     recipients: adminIds,
     projectId: args.projectId,
     issueId: args.issueId,
@@ -124,7 +135,7 @@ async function surfaceOnce(args: {
     groupKey: args.groupKey,
     groupTitle: args.groupTitle,
   });
-  return adminIds.length;
+  return sent?.delivered ?? 0;
 }
 
 /**

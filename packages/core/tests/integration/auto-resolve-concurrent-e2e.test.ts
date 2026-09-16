@@ -9,9 +9,17 @@
  * real interleaving and collapsed into one locked statement.
  *
  * The unit suite pins the SQL shape against a mocked db. A mock cannot execute
- * `UPDATE ... FROM (SELECT ... FOR UPDATE) ... RETURNING (NOT prev.read)` or
- * tell whether that statement parses; that is what this file is for. It does
- * NOT witness the interleaving itself — see the guard on the last case.
+ * `UPDATE ... FROM (SELECT ... FOR UPDATE) ...` or tell whether that statement parses;
+ * that is what this file is for. It does NOT witness the interleaving itself — see the
+ * guard on the last case.
+ *
+ * ISS-1063 changed WHAT one clear does, and this file moved with it rather than around it.
+ * Resolving no longer marks anything read — read state left the record table — so what is
+ * announced once instead of twice is the RESOLVED NOTICE (`notificationCreated` from
+ * `sendResolvedNotice`), and a row's read state is now its delivery's. The serialization
+ * this file exists to hold is unchanged: two clearers of one key still produce one clear
+ * and one announcement, and the `FOR UPDATE` on the sub-SELECT is still the only thing
+ * making that true.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -70,25 +78,43 @@ describe('resolveNotifications E2E (ISS-879)', () => {
     projectId = (await createTestProject(harness.db, owner.id)).id;
     mods.hooks.reset();
     emitted = [];
-    mods.hooks.on('notificationRead', (p) => {
+    mods.hooks.on('notificationCreated', (p) => {
       emitted.push(p.notificationId);
     });
   });
 
+  /** A firing condition, plus the one delivery that says the owner was told about it. */
   async function insertNotification(key: string, read: boolean): Promise<string> {
     const id = randomUUID();
+    const deliveryId = randomUUID();
     await harness.db.execute(sql`
-      INSERT INTO notifications (id, user_id, project_id, type, title, body, read, resolution_key)
-      VALUES (${id}, ${ownerId}, ${projectId}, 'pipeline_wedge', 'frozen', 'body', ${read}, ${key})
+      INSERT INTO notifications (id, project_id, type, kind, tier, state, title, body, resolution_key)
+      VALUES (${id}, ${projectId}, 'pipeline_wedge', 'condition', 'ticket', 'firing',
+              'frozen', 'body', ${key})
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO notification_deliveries (id, user_id, channel, title, read_at)
+      VALUES (${deliveryId}, ${ownerId}, 'bell', 'frozen', ${read ? sql`now()` : sql`NULL`})
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO notification_delivery_members (delivery_id, notification_id)
+      VALUES (${deliveryId}, ${id})
     `);
     return id;
   }
 
+  // cm:guard read comes off the DELIVERY and resolved off the RECORD, and the pairs below
+  // assert that resolving moves only the second. A helper reading both off one row is the
+  // conflation ISS-1063 removed, and would make every case here pass for the wrong reason.
   async function row(id: string): Promise<{ read: boolean; resolved: boolean }> {
-    const rows = await harness.db.execute<{ read: boolean; resolved_at: string | null }>(
-      sql`SELECT read, resolved_at FROM notifications WHERE id = ${id}`,
+    const rows = await harness.db.execute<{ read_at: string | null; resolved_at: string | null }>(
+      sql`SELECT d.read_at, n.resolved_at
+            FROM notifications n
+            JOIN notification_delivery_members m ON m.notification_id = n.id
+            JOIN notification_deliveries d ON d.id = m.delivery_id
+           WHERE n.id = ${id} AND d.resolved_notice = false`,
     );
-    return { read: rows[0]?.read === true, resolved: rows[0]?.resolved_at !== null };
+    return { read: rows[0]?.read_at !== null, resolved: rows[0]?.resolved_at !== null };
   }
 
   it('stamps an unread row and emits once', async () => {
@@ -97,16 +123,19 @@ describe('resolveNotifications E2E (ISS-879)', () => {
     expect(await mods.resolveNotifications('wedge:paused:run-1')).toBe(1);
 
     expect(emitted).toEqual([id]);
-    expect(await row(id)).toEqual({ read: true, resolved: true });
+    // ISS-1063 — the clear does NOT mark it read; it was unread before and it stays unread.
+    expect(await row(id)).toEqual({ read: false, resolved: true });
   });
 
   // cm:guard an already-read row must still be STAMPED — `emitPipelineWedge`'s dedupe reads `resolved_at`, so leaving it NULL on the notifications someone actually opened suppresses the next wedge for that entity forever
-  it('stamps an already-read row without re-emitting', async () => {
+  it('stamps an already-read row, and still tells the reader it cleared', async () => {
     const id = await insertNotification('wedge:paused:run-2', true);
 
     expect(await mods.resolveNotifications('wedge:paused:run-2')).toBe(1);
 
-    expect(emitted).toEqual([]);
+    // ISS-1063 — a resolved notice goes to whoever was delivered the start, opened or not:
+    // "you looked at it" and "it is over" are different facts and the second is news.
+    expect(emitted).toEqual([id]);
     expect(await row(id)).toEqual({ read: true, resolved: true });
   });
 
@@ -121,7 +150,7 @@ describe('resolveNotifications E2E (ISS-879)', () => {
 
     expect(a + b).toBe(1);
     expect(emitted).toEqual([id]);
-    expect(await row(id)).toEqual({ read: true, resolved: true });
+    expect(await row(id)).toEqual({ read: false, resolved: true });
   });
 
   // cm:why holding the row lock from a third connection is what opens the window a single pooled `Promise.all` never opens — both clearers reach their write while the row is held, so neither can see the other's outcome before starting

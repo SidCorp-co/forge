@@ -135,10 +135,23 @@ describe('ISS-940 shipped-but-never-closed (real Postgres)', () => {
   });
 
   describe('the sweep surfaces it instead', () => {
+    // cm:why every case here runs the detector TWICE before asserting `notified` (ISS-1063):
+    // `issue_stranded` declares a pending duration of two evaluations, so the pass that
+    // first sees a strand writes a `pending` record and tells nobody — an owed close that
+    // resolves itself inside two sweeps never reaches a human. `announce` ages
+    // `pending_since` and runs the second evaluation, which is the one that delivers.
+    async function announce(projectId: string): Promise<{ detected: number; notified: number }> {
+      expect((await detect(projectId)).notified).toBe(0);
+      await harness.db.execute(
+        sql`UPDATE notifications SET pending_since = now() - interval '10 minutes'`,
+      );
+      return detect(projectId);
+    }
+
     it('detects merged code under a live status with nothing running', async () => {
       const { projectId, issueId } = await seed({});
 
-      expect(await detect(projectId)).toEqual({ detected: 1, notified: 1 });
+      expect(await announce(projectId)).toEqual({ detected: 1, notified: 1 });
 
       const rows = await harness.db.execute<{ resolution_key: string; type: string }>(
         sql`SELECT resolution_key, type FROM notifications WHERE issue_id = ${issueId}`,
@@ -151,7 +164,7 @@ describe('ISS-940 shipped-but-never-closed (real Postgres)', () => {
     it('says nothing twice for one strand', async () => {
       const { projectId } = await seed({});
 
-      expect((await detect(projectId)).notified).toBe(1);
+      expect((await announce(projectId)).notified).toBe(1);
       expect((await detect(projectId)).notified).toBe(0);
     });
 

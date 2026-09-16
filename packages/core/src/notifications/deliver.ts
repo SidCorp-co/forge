@@ -139,6 +139,28 @@ async function activeRecord(input: DeliverInput) {
 async function deliverTo(recordId: string, input: DeliverInput, now: Date): Promise<number> {
   let told = 0;
   for (const userId of input.recipients) {
+    // cm:guard a record reaches one person ONCE. Every periodic detector re-emits the same
+    // condition on every tick, so without this the second sweep writes a second delivery
+    // and the bell grows a row a minute for a condition nobody's state changed. `told`
+    // counts people newly told about THIS record, which is why the check is over the
+    // member link and not over the delivery.
+    const [already] = await db
+      .select({ id: notificationDeliveries.id })
+      .from(notificationDeliveryMembers)
+      .innerJoin(
+        notificationDeliveries,
+        eq(notificationDeliveries.id, notificationDeliveryMembers.deliveryId),
+      )
+      .where(
+        and(
+          eq(notificationDeliveryMembers.notificationId, recordId),
+          eq(notificationDeliveries.userId, userId),
+          eq(notificationDeliveries.resolvedNotice, false),
+        ),
+      )
+      .limit(1);
+    if (already) continue;
+
     let deliveryId: string | undefined;
     if (input.groupKey) {
       const [existing] = await db
@@ -167,13 +189,13 @@ async function deliverTo(recordId: string, input: DeliverInput, now: Date): Prom
         })
         .returning({ id: notificationDeliveries.id });
       deliveryId = created?.id;
-      if (deliveryId) told += 1;
     }
     if (!deliveryId) continue;
     await db
       .insert(notificationDeliveryMembers)
       .values({ deliveryId, notificationId: recordId })
       .onConflictDoNothing();
+    told += 1;
 
     await hooks.emit('notificationCreated', {
       notificationId: recordId,
@@ -243,6 +265,20 @@ export async function recordAndDeliver(
 
   const kind = kindOf(input.type);
 
+  // cm:guard refuse by name rather than dropping it. A signal is an event: it cannot stop
+  // having happened, so a dedup/clear key on one is a caller saying something the model
+  // cannot mean. Silently writing NULL would leave the caller believing something clears
+  // it, and the row would sit unresolvable for ever — which is the 1771 rows ISS-1063 was
+  // filed about. The CHECK constraint refuses the same thing one layer down.
+  if (kind === 'signal' && input.resolutionKey) {
+    throw new Error(
+      `recordAndDeliver: type '${input.type}' is a signal, and a signal may not carry a ` +
+        `resolutionKey (got '${input.resolutionKey}'). An event cannot resolve. Either pass ` +
+        'no key, or declare the type a condition in notifications/kinds.ts and in ' +
+        'packages/contracts/src/notifications.ts.',
+    );
+  }
+
   // A condition already carrying this identity is the SAME condition. Stamp that it was
   // seen again, and promote it out of `pending` once it has held long enough.
   const existing = kind === 'condition' ? await activeRecord(input) : null;
@@ -275,7 +311,7 @@ export async function recordAndDeliver(
       body: input.body ?? null,
       severity: input.severity ?? null,
       // cm:guard a signal carries neither, and a CHECK constraint refuses the row if it does — an event cannot stop having happened, so a resolution key on one is the defect ISS-1063 was filed about
-      resolutionKey: kind === 'signal' ? null : (input.resolutionKey ?? null),
+      resolutionKey: input.resolutionKey ?? null,
       dedupeKey: input.dedupeKey ?? null,
       issueId: input.issueId ?? null,
       secondaryIssueId: input.secondaryIssueId ?? null,

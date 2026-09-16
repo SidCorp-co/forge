@@ -4,7 +4,7 @@
  * `alarmPausedRunsWithQueuedWork` stops matching the moment a run leaves
  * `paused`, and that alone would leave its notification unresolved forever: the
  * emitter's dedupe requires `resolvedAt IS NULL` AND an age under
- * `WEDGE_RENOTIFY_MS`, so a key nobody resolves stays in the owner's bell and
+ * a wedge is one record while it is unresolved, so a key nobody resolves stays in the owner's bell and
  * re-arms daily.
  *
  * This is the run half. The queue half — an operator cancelling the steps and

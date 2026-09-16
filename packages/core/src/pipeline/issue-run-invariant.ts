@@ -24,7 +24,7 @@
  * is not computable from either side; saying they disagree is.
  */
 
-import { and, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { notifications } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -156,8 +156,16 @@ async function nameOnce(args: { now: Date; row: OrphanRow; ref: string }): Promi
         eq(notifications.resolutionKey, resolutionKey),
         isNull(notifications.resolvedAt),
         // cm:guard ISS-1063 — `state <> 'resolved'` where this read `read = false`, for the reason the same guard in stranded-issues.ts carries: read state is a fact about a person and is not on this table any more, and an episode still firing is the thing that must not be named twice.
+        // cm:guard a `pending` record is ALWAYS re-emitted, whichever arm below would
+        // otherwise match. A type declaring a pending duration is promoted to `firing` by a
+        // LATER emission of the same identity — that re-emission IS its second evaluation.
+        // Short-circuit here and the record never promotes and nobody is ever told about a
+        // condition that is still true; the re-notify window would suppress the very pass
+        // that announces it. The delivery layer's own dedup (`activeRecord`) is what stops
+        // the re-emission writing a second record.
+        ne(notifications.state, 'pending'),
         or(
-          inArray(notifications.state, ['pending', 'firing', 'inhibited']),
+          inArray(notifications.state, ['firing', 'inhibited']),
           gte(notifications.createdAt, new Date(args.now.getTime() - ORPHAN_RENOTIFY_MS)),
         ),
       ),

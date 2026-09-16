@@ -134,7 +134,11 @@ describe('ISS-276 comment mentions', () => {
     expect(mentionedUserIds).toEqual([alice.id, bob.id].sort());
 
     const notifRows = await harness.db.execute<{ user_id: string; type: string }>(
-      sql`SELECT user_id, type FROM notifications WHERE issue_id = ${issueId} ORDER BY user_id`,
+      sql`SELECT d.user_id, n.type
+            FROM notification_deliveries d
+            JOIN notification_delivery_members m ON m.delivery_id = d.id
+            JOIN notifications n ON n.id = m.notification_id
+           WHERE n.issue_id = ${issueId} ORDER BY d.user_id`,
     );
     expect(notifRows.length).toBe(2);
     for (const r of notifRows) {
@@ -161,7 +165,11 @@ describe('ISS-276 comment mentions', () => {
     expect((mentionRows[0] as { user_id: string }).user_id).toBe(alice.id);
 
     const notifRows = await harness.db.execute<{ user_id: string }>(
-      sql`SELECT user_id FROM notifications WHERE issue_id = ${issueId}`,
+      sql`SELECT d.user_id
+            FROM notification_deliveries d
+            JOIN notification_delivery_members m ON m.delivery_id = d.id
+            JOIN notifications n ON n.id = m.notification_id
+           WHERE n.issue_id = ${issueId}`,
     );
     expect(notifRows.length).toBe(1);
     expect((notifRows[0] as { user_id: string }).user_id).toBe(alice.id);
