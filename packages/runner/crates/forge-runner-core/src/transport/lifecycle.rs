@@ -3,9 +3,15 @@
 use super::CoreClient;
 use crate::error::{Error, Result};
 
-/// Acknowledge a claimed job (ISS-449, Decision B). Sent right after preflight
-/// passes and before the runner starts. Best-effort on the caller side — the
-/// server falls back to treating the first job_event as the ack.
+/// Acknowledge a claimed job (ISS-449, Decision B). Best-effort on the caller
+/// side — the server falls back to treating the first job_event as the ack,
+/// which is the only thing keeping it correct: measured 2026-09-16, NOTHING in
+/// either crate calls this function, so every job core has acked was acked by
+/// that fallback. The line here used to say "sent right after preflight passes
+/// and before the runner starts", which described a call site that does not
+/// exist and a `daemon::preflight` ISS-1047 deleted for the same reason.
+/// Wiring a caller, or removing this, is that issue's own row — it is a
+/// question about what core wants to see, not a dead branch.
 ///
 /// ISS-798: `skills_ran_with` carries the on-disk `.hash` marker values for
 /// each seeded skill (keyed by skill name), read right before the job starts.

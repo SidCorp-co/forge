@@ -7,6 +7,7 @@ import {
 import { describe, expect, it } from 'vitest';
 import type { JobType } from '../../db/schema.js';
 import { stepHandoffSchema } from '../../memory/step-handoff-schema.js';
+import { RUNNER_CAPABILITIES } from '../../pipeline/registry.js';
 import {
   CANONICAL_LADDER,
   FORGE_FACTS,
@@ -106,30 +107,23 @@ describe('forge facts registry', () => {
     }
   });
 
-  it('issue-bound facts are scoped away from pm jobs via appliesTo', () => {
-    for (const id of ['status-ladder', 'comment-authoring', 'handoff']) {
-      const fact = getFact(id);
-      expect(fact?.appliesTo, id).toBeDefined();
-      expect(fact?.appliesTo, id).not.toContain('pm');
+  // cm:guard ISS-1047 — a fact whose `appliesTo` names no claimable job type renders for
+  // nobody, which is what nine of them did for nine days after the staged lane was removed.
+  // `RUNNER_CAPABILITIES` is derived here rather than listed, so retiring a job type there
+  // turns this red instead of leaving a fact behind it.
+  it('every contextual fact reaches at least one job type a runner can claim', () => {
+    const claimable = new Set(Object.values(RUNNER_CAPABILITIES).flat());
+    for (const fact of FORGE_FACTS) {
+      if (!fact.appliesTo) continue;
+      const reached = fact.appliesTo.filter((step) => claimable.has(step));
+      expect(reached.length, `${fact.id} reaches no claimable job type`).toBeGreaterThan(0);
     }
-    expect(getFact('handoff')?.appliesTo).not.toContain('release');
-    expect(getFact('handoff')?.appliesTo).toContain('fix');
   });
 
-  it('status-ladder is project-resolved from ctx.ladder', () => {
-    const resolved = renderFact('status-ladder', {
-      projectId: 'p',
-      ladder: ['open', 'confirmed', 'developed', 'testing', 'awaiting_release'],
-    });
-    expect(resolved).toContain('open → confirmed → developed → testing → awaiting_release');
-    // cm:guard the DEFAULT is read off `CANONICAL_LADDER` rather than spelled here, because a literal would let the two disagree and still pass. What a literal did buy is the reason the assertion exists at all: while the array named `clarified` and `tested` too, agents walked them — 153 hops over 4 projects in 3 hours, 45 issues left on a status no job dispatches at (2026-09-10) — and `confirmed` and `approved` are back on it by ISS-976 because a different party owes the next move at each.
-    const defaultChain = CANONICAL_LADDER.join(' → ');
-    expect(renderFact('status-ladder')).toContain(defaultChain);
-    // cm:why scoped to the LADDER line and not the whole body: the three still-retired statuses legitimately appear in the body's never-write warning, so a whole-body `not.toContain` would fail on the very text that stops them being written
-    const ladderLine = (renderFact('status-ladder') ?? '')
-      .split('\n')
-      .find((l) => l.startsWith('`open'));
-    expect(ladderLine).toBe(`\`${defaultChain}\``);
+  it('no fact is offered to a pm job', () => {
+    for (const fact of FORGE_FACTS) {
+      expect(fact.appliesTo ?? [], fact.id).not.toContain('pm');
+    }
   });
 
   // cm:guard the prose chain in PIPELINE_RULES and `CANONICAL_LADDER` are two copies of one sequence, and this is the only thing comparing them — the array's own guard used to say nothing did, which is how the prompt could state two ladders. It reads the array and searches the prose for it, so neither side is spelled twice here; a rung added to one alone leaves the other's chain unfindable and this goes red.
@@ -162,14 +156,6 @@ describe('forge facts registry', () => {
         expect(text, `${stage} handoff text must name \`${field}\``).toContain(field);
       }
     }
-  });
-
-  it('relations fact states the real kinds and warns off invented names', () => {
-    const text = renderFact('relations') ?? '';
-    expect(text).toContain('blocks');
-    expect(text).toContain('decomposes');
-    expect(text).toContain('blocked_by'); // mentioned only to warn it is NOT valid
-    expect(text).toContain('not valid kinds');
   });
 
   it('every fact conforms to the @forge/contracts enum tuples (parity)', () => {
@@ -291,52 +277,6 @@ describe('worktree-cleanup fact — the half of the lifecycle that deletes', () 
   it('states the cost, so the step does not read as tidiness', () => {
     expect(body).toMatch(/GB each|node_modules/);
     expect(body).toMatch(/Nothing else ever removes it/);
-  });
-});
-
-/**
- * `deploying` was retired platform-wide (db/schema.ts: removed from the
- * lifecycle, one-shot migrations re-parked every stranded row), but the
- * forked skill bodies still name it in their exit tables. Six reports across
- * four projects — portal-lighthuman x2, sid-desk x2, finance-automation,
- * pixelight — each burned a rejected `forge_issues.update` and then guessed a
- * fallback independently. The ladder is the only place that can correct all
- * fifteen forks at once.
- */
-describe('status-ladder fact — authoritative over a stale exit status in a forked skill', () => {
-  const body = renderFact('status-ladder', { projectId: 'p1', stage: 'code' }) ?? '';
-
-  it('declares itself the authoritative status set, not just the happy path', () => {
-    expect(body).toMatch(/authoritative set of statuses/);
-  });
-
-  // cm:guard naming the retired statuses explicitly is the point — a generic "check the enum" loses to a concrete numbered step the agent is already executing, which is how this failed six times. And the two SHAPES of stale must both be named: `deploying` is refused so the agent learns at once, while `tested` and its two remaining siblings are still in the enum and the write SUCCEEDS in silence, which is the one that strands an issue.
-  // cm:guard the still-retired three, and the two that came back must NOT be among them — a rung on `CANONICAL_LADDER` that the same body calls never-write is the two-ladders contradiction stated inside one fact (ISS-976)
-  it('names both shapes of retired status and says what to do instead', () => {
-    expect(body).toContain('deploying');
-    expect(body).toMatch(/REFUSES them/);
-    const silentLine = body.split('\n').find((l) => l.includes('still IN the enum')) ?? '';
-    const named = [...silentLine.matchAll(/`([a-z_]+)`/g)].map((m) => m[1]);
-    expect(named.slice(0, 3)).toEqual(['clarified', 'waiting', 'tested']);
-    for (const rung of CANONICAL_LADDER) {
-      expect(named, `${rung} must not be named retired`).not.toContain(rung);
-    }
-    expect(body).toMatch(/SUCCEEDS and nothing warns you/);
-    expect(body).toMatch(/advance to the ladder's next rung instead/);
-  });
-
-  it('explains why the skill is wrong, so the agent trusts the ladder over its steps', () => {
-    expect(body).toMatch(/do not receive template fixes/);
-  });
-
-  it('still renders the project ladder it is resolved with', () => {
-    const custom =
-      renderFact('status-ladder', {
-        projectId: 'p1',
-        stage: 'code',
-        ladder: ['open', 'approved', 'closed'],
-      }) ?? '';
-    expect(custom).toContain('open → approved → closed');
   });
 });
 
@@ -514,9 +454,10 @@ describe('module-attribution (ISS-595)', () => {
     expect(fact?.scope).toBe('project-resolved');
   });
 
-  it('applies to the driver as well as the staged issue stages', () => {
-    expect(fact?.appliesTo).toContain('drive');
-    expect(fact?.appliesTo).toContain('triage');
+  // cm:guard `drive` ALONE since ISS-1047 — it was `[...ISSUE_STAGES, 'drive']`, and the nine
+  // issue stages in that spread are job types no runner can claim.
+  it('applies to the driver and to nothing else', () => {
+    expect(fact?.appliesTo).toEqual(['drive']);
     expect(fact?.appliesTo).not.toContain('pm');
   });
 

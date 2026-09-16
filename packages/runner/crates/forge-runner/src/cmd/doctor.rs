@@ -423,7 +423,6 @@ mod tests {
             repo_path: None,
             branch: None,
             status: "assigned".into(),
-            kind: None,
             workspace_setup: None,
             master_policy: None,
             limit_reason: None,

@@ -43,23 +43,16 @@ function makeInputs(overrides?: Partial<Inputs>): Inputs {
 
 describe('renderStageFactsText', () => {
   it('demotes fact headers to ### so they nest under ## Forge context', () => {
-    const text = renderStageFactsText(makeInputs(), 'p-1', 'triage');
+    const text = renderStageFactsText(makeInputs(), 'p-1', 'drive');
     expect(text.startsWith('## Forge context')).toBe(true);
-    expect(text).toContain('### Status ladder');
-    expect(text).toContain('### Issue relation kinds');
+    expect(text).toContain('### Step handoff (best-effort)');
+    expect(text).toContain('### Worktree isolation');
     expect(text).toContain('### Project integrations');
     expect(text.match(/^## (?!Forge context)/gm)).toBeNull();
   });
 
-  it('renders the project-resolved ladder', () => {
-    const text = renderStageFactsText(makeInputs(), 'p-1', 'code');
-    expect(text).toContain(
-      'open → confirmed → approved → developed → testing → awaiting_release → closed',
-    );
-  });
-
   it('lists projectFacts as a fetch-on-demand index, never inlining guide bodies', () => {
-    const text = renderStageFactsText(makeInputs(), 'p-1', 'code');
+    const text = renderStageFactsText(makeInputs(), 'p-1', 'drive');
     expect(text).toContain('### Project guides (fetch on demand)');
     expect(text).toContain('- build-commands');
     expect(text).toContain('`forge_knowledge`');
@@ -67,49 +60,35 @@ describe('renderStageFactsText', () => {
   });
 
   it('omits the guides index when the project has no authored facts', () => {
-    const text = renderStageFactsText(makeInputs({ projectFactKeys: [] }), 'p-1', 'code');
+    const text = renderStageFactsText(makeInputs({ projectFactKeys: [] }), 'p-1', 'drive');
     expect(text).not.toContain('Project guides');
   });
 
   it('does not inline test URLs (covered by the forge_projects.get pointer)', () => {
-    const text = renderStageFactsText(makeInputs(), 'p-1', 'clarify');
+    const text = renderStageFactsText(makeInputs(), 'p-1', 'drive');
     expect(text).not.toContain('forge-beta.example.com');
   });
 
+  // cm:guard `appliesTo` is the whole of the scoping, so the claim needs a stage that GETS a
+  // fact and one that does not. Since ISS-1047 the only claimable stage with contextual facts is
+  // `drive`; `release_batch` is the live counter-case and gets none of them.
   it('scopes facts by stage', () => {
-    const triage = renderStageFactsText(makeInputs(), 'p-1', 'triage');
-    expect(triage).toContain('Complexity scale');
-    expect(triage).toContain('Step handoff');
+    const drive = renderStageFactsText(makeInputs(), 'p-1', 'drive');
+    expect(drive).toContain('Step handoff');
+    expect(drive).toContain('Worktree isolation');
+    expect(drive).toContain('Release-notes shape');
 
-    const code = renderStageFactsText(makeInputs(), 'p-1', 'code');
-    expect(code).toContain('Worktree isolation');
-    expect(code).not.toContain('Complexity scale');
-
-    const release = renderStageFactsText(makeInputs(), 'p-1', 'release');
-    expect(release).not.toContain('forge_step_handoff');
-    expect(release).toContain('Release-notes shape');
-  });
-
-  it('feedback-red-flag fact appears in code/fix, absent for plan/review (ISS-552)', () => {
-    const RED_FLAG_TRIGGER = 'report the friction';
-
-    const code = renderStageFactsText(makeInputs(), 'p-1', 'code');
-    expect(code).toContain(RED_FLAG_TRIGGER);
-
-    const fix = renderStageFactsText(makeInputs(), 'p-1', 'fix');
-    expect(fix).toContain(RED_FLAG_TRIGGER);
-
-    const plan = renderStageFactsText(makeInputs(), 'p-1', 'plan');
-    expect(plan).not.toContain(RED_FLAG_TRIGGER);
-
-    const review = renderStageFactsText(makeInputs(), 'p-1', 'review');
-    expect(review).not.toContain(RED_FLAG_TRIGGER);
+    const releaseBatch = renderStageFactsText(makeInputs(), 'p-1', 'release_batch');
+    expect(releaseBatch).not.toContain('Step handoff');
+    expect(releaseBatch).not.toContain('Worktree isolation');
+    expect(releaseBatch).not.toContain('Release-notes shape');
+    expect(releaseBatch).toContain('### Project integrations');
   });
 
   it('keeps issue-bound facts out of pm jobs', () => {
     const pm = renderStageFactsText(makeInputs(), 'p-1', 'pm');
-    expect(pm).not.toContain('Status ladder');
-    expect(pm).not.toContain('Comment + status ordering');
+    expect(pm).not.toContain('Release-notes shape');
+    expect(pm).not.toContain('Worktree isolation');
     expect(pm).not.toContain('forge_step_handoff');
     expect(pm).toContain('### Project integrations');
     expect(pm).toContain('Project guides (fetch on demand)');
@@ -362,27 +341,22 @@ describe('renderStageFactsText — module attribution is gated on the taxonomy (
   ];
 
   it('names every module of a project that has a taxonomy', () => {
-    const text = renderStageFactsText(makeInputs({ modules: MODULES }), 'p-1', 'triage');
+    const text = renderStageFactsText(makeInputs({ modules: MODULES }), 'p-1', 'drive');
     expect(text).toContain("### The issue's primary module");
     expect(text).toContain('- billing');
     expect(text).toContain('- invoices (under billing)');
   });
 
   it('names the isPrimary attach payload as the carrier, and refuses the comment line', () => {
-    const text = renderStageFactsText(makeInputs({ modules: MODULES }), 'p-1', 'clarify');
+    const text = renderStageFactsText(makeInputs({ modules: MODULES }), 'p-1', 'drive');
     expect(text).toContain('isPrimary: true');
     expect(text).toContain('forge_issues.update');
     expect(text).toContain('**Set it on the issue itself, never in a comment.**');
     expect(text).toContain('is NOT the attribution and nothing reads it');
   });
 
-  it('reaches the autonomous driver, which is the only lane that still runs triage', () => {
-    const text = renderStageFactsText(makeInputs({ modules: MODULES }), 'p-1', 'drive');
-    expect(text).toContain("### The issue's primary module");
-  });
-
   it('renders NOTHING for a project with no module labels', () => {
-    const text = renderStageFactsText(makeInputs({ modules: [] }), 'p-1', 'triage');
+    const text = renderStageFactsText(makeInputs({ modules: [] }), 'p-1', 'drive');
     expect(text).not.toContain('primary module');
     expect(text).not.toContain('isPrimary');
   });
@@ -390,20 +364,16 @@ describe('renderStageFactsText — module attribution is gated on the taxonomy (
   it('adds no section to a project with no module labels — the headings are pinned', () => {
     // cm:why the pinned list is the exact heading set a taxonomy-less project got before this change, so a section that leaks past the predicate lands here as an extra entry whatever its wording — asserting `not.toContain` of one phrase would pass on a reworded leak
     const headings = (text: string) => text.split('\n').filter((l) => l.startsWith('### '));
-    expect(headings(renderStageFactsText(makeInputs({ modules: [] }), 'p-1', 'triage'))).toEqual([
-      '### Complexity scale',
-      '### Priority scale',
-      '### Category convention',
-      '### Issue relation kinds',
-      '### Status ladder',
-      '### Comment + status ordering',
+    expect(headings(renderStageFactsText(makeInputs({ modules: [] }), 'p-1', 'drive'))).toEqual([
+      '### Release-notes shape',
       '### Step handoff (best-effort)',
-      '### The workspace you were handed',
+      '### Worktree isolation',
+      "### Remove this issue's worktree",
       '### Project integrations',
       '### Project guides (fetch on demand)',
     ]);
     expect(
-      headings(renderStageFactsText(makeInputs({ modules: MODULES }), 'p-1', 'triage')),
+      headings(renderStageFactsText(makeInputs({ modules: MODULES }), 'p-1', 'drive')),
     ).toContain("### The issue's primary module");
   });
 

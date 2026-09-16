@@ -91,7 +91,7 @@ describe('buildPipelinePreambleStructured', () => {
   it('inserts a state-block (after project-context) when a step is supplied', async () => {
     mockBranchSelect([{ baseBranch: 'main', productionBranch: 'main' }]);
 
-    const built = await buildPipelinePreambleStructured('p1', { step: 'review' });
+    const built = await buildPipelinePreambleStructured('p1', { step: 'release_batch' });
     expect(built.blocks.map((b) => b.id)).toEqual([
       'pipeline-rules',
       'tool-reference',
@@ -100,14 +100,20 @@ describe('buildPipelinePreambleStructured', () => {
       'forge-facts',
       'state-block',
     ]);
-    expect(built.content).toContain('## This State — Review');
+    expect(built.content).toContain('REPAIR FORWARD');
   });
 
-  it('omits the state-block for steps with no default (custom/pm) and when no step given', async () => {
+  // cm:guard `drive` is the case that matters since ISS-1047 — it is a CLAIMABLE step with no
+  // default block, where `custom` is merely a step no runner takes. A state block appearing for the
+  // driver would mean core had started writing the depth the `issue-flow` skill owns.
+  it('omits the state-block for a claimable step with no default, and when no step given', async () => {
     mockBranchSelect([{ baseBranch: 'main', productionBranch: 'main' }]);
 
     const noStep = await buildPipelinePreambleStructured('p1');
     expect(noStep.blocks.some((b) => b.id === 'state-block')).toBe(false);
+
+    const drive = await buildPipelinePreambleStructured('p1', { step: 'drive' });
+    expect(drive.blocks.some((b) => b.id === 'state-block')).toBe(false);
 
     const custom = await buildPipelinePreambleStructured('p1', { step: 'custom' });
     expect(custom.blocks.some((b) => b.id === 'state-block')).toBe(false);
@@ -117,7 +123,7 @@ describe('buildPipelinePreambleStructured', () => {
     mockBranchSelect([{ baseBranch: 'main', productionBranch: 'main' }]);
 
     const built = await buildPipelinePreambleStructured('p1', {
-      step: 'review',
+      step: 'release_batch',
       override: { mode: 'replace', extras: 'ONLY THIS.' },
     });
     expect(built.content).toBe('ONLY THIS.');
@@ -128,7 +134,7 @@ describe('buildPipelinePreambleStructured', () => {
     mockBranchSelect([{ baseBranch: 'main', productionBranch: 'main' }]);
 
     const built = await buildPipelinePreambleStructured('p1', {
-      step: 'review',
+      step: 'release_batch',
       override: { mode: 'append', extras: 'EXTRA RULE.' },
     });
     expect(built.blocks.map((b) => b.id)).toEqual([
@@ -140,7 +146,7 @@ describe('buildPipelinePreambleStructured', () => {
       'state-block',
       'state-extras',
     ]);
-    expect(built.content).toContain('## This State — Review');
+    expect(built.content).toContain('REPAIR FORWARD');
     expect(built.content.trimEnd().endsWith('EXTRA RULE.')).toBe(true);
   });
 

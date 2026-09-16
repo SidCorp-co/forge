@@ -12,6 +12,7 @@ import {
   systemPromptOverrideSchema,
   userPromptPolicySchema,
 } from '../pipeline/pipeline-config-schema.js';
+import { RUNNER_CAPABILITIES } from '../pipeline/registry.js';
 import { loadIssueSnapshot } from './issue-snapshot.js';
 import { buildPipelinePreambleStructured, type SystemPromptOverride } from './system.js';
 import { buildJobPromptString, type UserPromptPolicyOverride } from './user.js';
@@ -22,6 +23,13 @@ const forbidden = (m: string) =>
   new HTTPException(403, { message: m, cause: { code: 'FORBIDDEN' } });
 const notFound = (m: string) =>
   new HTTPException(404, { message: m, cause: { code: 'NOT_FOUND' } });
+
+// cm:guard the CLAIMABLE job types, derived from `RUNNER_CAPABILITIES` and never listed here: the
+// preview answers "what would the runner see for this state", and for a job type no runner can
+// claim there is no runner and no such job — this route used to build one anyway. `jobTypes` still
+// holds the eight retired staged types so ~30k historical `jobs` rows stay readable, which is why
+// the enum is not the right gate and this set is (ISS-1047).
+const PREVIEWABLE_STATES = [...new Set(Object.values(RUNNER_CAPABILITIES).flat())].sort();
 
 const previewBodySchema = z
   .object({
@@ -63,6 +71,20 @@ promptRoutes.post(
     const access = await loadProjectAccess(body.projectId, userId);
     if (!access.role) {
       throw forbidden('not a project member');
+    }
+
+    // cm:guard refuse by NAME and carry the valid set in the message, rather than rendering the
+    // shared prefix and calling it a preview: a 200 here is read as "this is what that job gets",
+    // and for a retired staged type the honest answer is that no job of that type can exist. It
+    // answered 200 for all eight of them until ISS-1047.
+    if (!PREVIEWABLE_STATES.includes(body.state)) {
+      throw new HTTPException(400, {
+        message: `no runner can claim a \`${body.state}\` job, so there is no prompt it would see: a job of that type is refused \`runner_unsupported_type\` before a prompt is built. It is still in the job-type enum only so historical \`jobs\` rows stay readable. Previewable states: ${PREVIEWABLE_STATES.join(', ')}.`,
+        cause: {
+          code: 'STATE_NOT_CLAIMABLE',
+          details: { state: body.state, previewableStates: PREVIEWABLE_STATES },
+        },
+      });
     }
 
     const systemPromptOverride: SystemPromptOverride | null = body.overrides?.systemPrompt ?? null;

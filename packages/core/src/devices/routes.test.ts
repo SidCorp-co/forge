@@ -290,7 +290,7 @@ describe('GET /api/devices/me/runners (ISS-271)', () => {
     expect(selectInnerJoin).toHaveBeenCalled();
   });
 
-  // cm:guard assert the PROJECTION, not the response body — the db is mocked here, so a body assertion only proves the mock echoed what the test handed it. The projection is the route's own code, and both of these fields break SILENTLY when dropped: the runner reads a missing field as `None`, so a lost `kind` sends every storefront job back to failing on `origin_remote`, and a lost `masterPolicy` drops the owner's standing instruction and leaves the master on the skill's defaults, which is the failure ISS-929 exists to end.
+  // cm:guard assert the PROJECTION, not the response body — the db is mocked here, so a body assertion only proves the mock echoed what the test handed it. The projection is the route's own code, and both of these fields break SILENTLY when dropped: the runner reads a missing field as `None`, so a lost `workspaceSetup` sends every setup agent back to deriving the procedure per job, and a lost `masterPolicy` drops the owner's standing instruction and leaves the master on the skill's defaults, which is the failure ISS-929 exists to end.
   it('projects the fields the runner reads and no type check covers', async () => {
     selectWhere.mockReturnValueOnce(Promise.resolve([]));
 
@@ -300,7 +300,11 @@ describe('GET /api/devices/me/runners (ISS-271)', () => {
     const lastCall = dbSelect.mock.calls.at(-1) as unknown[] | undefined;
     const projection = lastCall?.[0] as Record<string, unknown> | undefined;
     expect(projection).toBeDefined();
-    expect(Object.keys(projection ?? {})).toEqual(expect.arrayContaining(['kind', 'masterPolicy']));
+    expect(Object.keys(projection ?? {})).toEqual(
+      expect.arrayContaining(['masterPolicy', 'workspaceSetup']),
+    );
+    // cm:guard the NEGATIVE half is the same claim, not a second one: the projection is the fields a runner reads, so a field with no reader belongs out of it as much as a field with one belongs in. `kind` sat here for four months while `MeRunner.kind` was touched only by two of its own tests and one struct literal, and the comments describing the function that would read it described a function nobody wrote (ISS-1047). Putting it back belongs with the reader that needs it, in that change.
+    expect(Object.keys(projection ?? {})).not.toContain('kind');
   });
 });
 

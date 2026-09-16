@@ -138,14 +138,14 @@ describe('ISS-492 — cross-tenant IDOR isolation', () => {
 
     const leak = await req('/api/prompts/preview', userA.id, {
       method: 'POST',
-      body: JSON.stringify({ projectId: projA.id, state: 'code', issueId: foreignIssue }),
+      body: JSON.stringify({ projectId: projA.id, state: 'drive', issueId: foreignIssue }),
     });
     expect(leak.status).toBe(404);
     expect(await leak.text()).not.toContain('victim issue body');
 
     const ok = await req('/api/prompts/preview', userA.id, {
       method: 'POST',
-      body: JSON.stringify({ projectId: projA.id, state: 'code', issueId: ownIssue }),
+      body: JSON.stringify({ projectId: projA.id, state: 'drive', issueId: ownIssue }),
     });
     expect(ok.status).toBe(200);
     const okBody = (await ok.json()) as { userPrompt: string };

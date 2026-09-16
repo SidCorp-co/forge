@@ -40,9 +40,8 @@ export async function listDeviceAssignments(deviceId: string) {
       repoPath: runners.repoPath,
       branch: runners.branch,
       status: runners.status,
-      // cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/runners.rs — `MeRunner.kind` deserializes this field, and `requires_preflight` decides from it whether a job runs the git preflight at all. Dropping it here does not fail any type check: the runner defaults a missing field to None and then REQUIRES preflight, so a storefront project silently goes back to failing every job on `origin_remote`.
-      kind: projects.kind,
-      // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/setup_agent.rs — the setup agent's procedure comes from here and nowhere else. Same silent-failure shape as `kind` above: the runner defaults it to None and falls back to deriving the procedure per job, so dropping this field costs tokens on every repair instead of failing anything.
+      // cm:guard `projects.kind` is NOT here, and re-adding it needs a reader first. It was sent for a git-preflight switch on the runner that was never written, so no runner has ever decided anything from it: the field crossed the wire, landed in `MeRunner.kind`, and was read by two tests. ISS-1047 removed both halves in one change. The column survives and one project (`mowment`) holds `website` on it — see docs/proposals/website-lane-has-no-working-directory.md.
+      // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/setup_agent.rs — the setup agent's procedure comes from here and nowhere else. Dropping this field fails no type check: the runner defaults it to None and falls back to deriving the procedure per job, so it costs tokens on every repair instead of failing anything.
       workspaceSetup: projects.workspaceSetup,
       // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/master.rs — `standing_prompt` splices this into the brief a resident master is given once per session, and it is the ONLY delivery: the skill in the binary carries the defaults, this carries what the owner decided. Dropping it fails no type check — the runner reads a missing field as `None` and the master falls back to the skill's own defaults, which is the silent half of the bug ISS-929 fixed.
       masterPolicy: masterPolicySql(),

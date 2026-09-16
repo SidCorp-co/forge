@@ -95,7 +95,7 @@ export const updateProjectSchema = z
     name: z.string().trim().min(1).max(200).optional(),
     description: z.string().trim().max(2000).nullable().optional(),
     // cm:guard `kind` was create-only for two months, which made it unreachable for every project that already existed — including the one storefront it was added for (mowment stayed `standard` while ISS-808 was written about it being a storefront). A shape that can only be declared at birth is a shape nobody can correct.
-    // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs — `requires_preflight` reads this value out of `/me/runners`; flipping a project to `website` turns OFF its git preflight and workspace refresh, so this is a behaviour switch, not a label
+    // cm:guard NOTHING reads this value. It was meant to switch off a git preflight for a storefront project, and the function that would have read it was never written — it existed only as a name inside four comments until ISS-1047 removed them, and `/me/runners` stopped carrying the field in the same change. `mowment` is set to `website` and has been inert for as long as it has been set, so treat this as a label until something reads it, and read docs/proposals/website-lane-has-no-working-directory.md before wiring one.
     kind: z.enum(projectKinds).optional(),
     repoPath: z.string().trim().max(500).nullable().optional(),
     repoUrl: z.string().trim().max(500).nullable().optional(),
