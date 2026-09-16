@@ -469,7 +469,8 @@ mod tests {
                 return v;
             }
         }
-        panic!("fixture labels {label} as {uuid} and holds no such record")
+        // cm:why the record id is NOT printed here, though it is the obvious thing to reach for. CodeQL's `rust/cleartext-logging` reads a binding named `uuid` reaching a panic as a secret reaching a log sink and fails the build on it — high severity, and the only alert this change raised. It is wrong about the value: these are fixture record ids, sitting in plaintext in `master-limit-records.jsonl` two directories away. It is right about the shape, and the rule's own advice for a value that adds little is to omit it, so that is what this does rather than rename the binding to dodge a name-based query. The label is the key a reader needs; the id it maps to is one line away in the header.
+        panic!("fixture labels {label} as a record id that is not in the file below it")
     }
 
     fn line_of(label: &str) -> String {
