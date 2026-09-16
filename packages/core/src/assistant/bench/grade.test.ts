@@ -370,6 +370,41 @@ describe('listInOrder, labeled and linkTo (codex F1–F3 on ISS-1061)', () => {
     ]);
   });
 
+  // cm:why measured, not imagined: on the QA project `open-issues-linked` scored 0/3 against beta on
+  // 2026-09-16 with a reply that had listed all five in the deployment's own order — `ISS-2` matched
+  // inside `ISS-25`, and `ISS-10` inside an `ISS-1056` that the newest issue's title carried
+  // (ISS-1066)
+  it('holds an issue key to its whole self, so a key that prefixes another is not found inside it', () => {
+    const keys = 'ISS-25, ISS-11, ISS-10, ISS-9, ISS-2';
+    const check: Check = { kind: 'listInOrder', list: '{openIssueKeys}' };
+    const reply = [
+      '- [ISS-25 — Assistant weekly reading (pinned issue, ISS-1056)](/x/1)',
+      '- [ISS-11 — one](/x/2)',
+      '- [ISS-10 — two](/x/3)',
+      '- [ISS-9 — three](/x/4)',
+      '- [ISS-2 — four](/x/5)',
+    ].join('\n');
+    const evidence = gradeTurn(
+      { message: 'm', checks: [check] },
+      facts({ delivered: reply, values: { openIssueKeys: keys } }),
+    ).evidence;
+    expect(evidence).toEqual([]);
+    // and a reply that really is out of order still fails: the two middle lines swapped
+    const swapped = [
+      '- [ISS-25 — Assistant weekly reading (pinned issue, ISS-1056)](/x/1)',
+      '- [ISS-10 — two](/x/3)',
+      '- [ISS-11 — one](/x/2)',
+      '- [ISS-9 — three](/x/4)',
+      '- [ISS-2 — four](/x/5)',
+    ].join('\n');
+    expect(
+      gradeTurn(
+        { message: 'm', checks: [check] },
+        facts({ delivered: swapped, values: { openIssueKeys: keys } }),
+      ).evidence.map((e) => e.fact),
+    ).toEqual(['reply names ISS-10 before ISS-11']);
+  });
+
   it('labeled reads the number after the label in its clause, or before it only when none follows, so a borrowed neighbour never counts', () => {
     const check: Check = { kind: 'labeled', label: /open/i, value: '{n}' };
     for (const ok of [
