@@ -193,15 +193,26 @@ export async function ground(sql: Sql): Promise<Ground> {
 export async function plantProject(
   sql: Sql,
   g: Ground,
-  row: { id?: string; slug: string; productionBranch?: string | null; archived?: boolean },
+  row: {
+    id?: string;
+    slug: string;
+    productionBranch?: string | null;
+    archived?: boolean;
+    createdAt?: Date;
+  },
 ): Promise<string> {
   const id = row.id ?? randomUUID();
   // cm:guard `archived_at` is plantable because the coverage assertion reads `projects` with no
   // filter on it, and the first fleet measurement read the API's default listing, which hides
   // archived rows. Four of them went undeclared and would have aborted the deploy.
+  //
+  // cm:guard `created_at` is plantable because 0253's project coverage is narrowed by it: a project
+  // created INSIDE the deploy window and carrying no deploy-capable binding takes `none` by force.
+  // A test meaning to prove the ABORT must therefore plant a row older than that floor, or it
+  // proves the exemption instead and reads as a passing test of nothing.
   await sql.unsafe(
-    `INSERT INTO projects (id, slug, name, created_by, org_id, production_branch, archived_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    `INSERT INTO projects (id, slug, name, created_by, org_id, production_branch, archived_at, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, coalesce($8, now()))`,
     [
       id,
       row.slug,
@@ -210,6 +221,7 @@ export async function plantProject(
       g.orgId,
       row.productionBranch ?? null,
       row.archived ? new Date() : null,
+      row.createdAt ?? null,
     ],
   );
   return id;
@@ -248,4 +260,62 @@ export async function plantBinding(
     ],
   );
   return id;
+}
+
+/**
+ * Older than 0253's deploy-window floor (`2026-09-16 17:26:00+00`).
+ *
+ * A project planted at `now()` is INSIDE that window, where the migration forces `none` rather
+ * than aborting. A case meaning to prove the ABORT plants an older row on purpose, or it proves
+ * the exemption instead and reads as a passing test of nothing.
+ */
+export const BEFORE_THE_WINDOW = new Date('2026-09-01T00:00:00Z');
+
+/** The first declared project, as a value rather than an index read. */
+export function anyProject(projects: { id: string; slug: string }[]): { id: string; slug: string } {
+  const first = projects[0];
+  if (!first) throw new Error('the declared table names no projects');
+  return first;
+}
+
+/**
+ * A fresh database with the whole declared fleet planted at its pre-0253 shape.
+ *
+ * Shared rather than copied, because two test files now stand on it and a second copy would let
+ * them disagree about what "the fleet" is — which is how one of them goes green against a fleet
+ * the migration never sees.
+ */
+export async function declaredFleet(gd: PreMigrationGround): Promise<{
+  db: { sql: Sql; drop: () => Promise<void> };
+  g: Ground;
+  projects: DeclaredProject[];
+  bindings: DeclaredBinding[];
+}> {
+  const db = await gd.fresh();
+  const g = await ground(db.sql);
+  const projects = declaredProjects();
+  const bindings = declaredBindings();
+  const bySlug = new Map<string, string>();
+  for (const p of projects) {
+    // `promote` needs a branch to satisfy projects_live_branch_chk; the six real
+    // ones are asserted by name in the rename case.
+    await plantProject(db.sql, g, {
+      id: p.id,
+      slug: p.slug,
+      productionBranch: p.releaseModel === 'promote' ? 'production' : null,
+    });
+    bySlug.set(p.slug, p.id);
+  }
+  for (const b of bindings) {
+    const projectId = bySlug.get(b.slug);
+    if (!projectId) throw new Error(`declared binding ${b.id} names unknown project ${b.slug}`);
+    await plantBinding(db.sql, g, {
+      id: b.id,
+      projectId,
+      provider: b.provider,
+      environment: b.oldEnvironment,
+      label: '',
+    });
+  }
+  return { db, g, projects, bindings };
 }
