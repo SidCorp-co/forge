@@ -10,11 +10,14 @@
 // pick can't mass-409 (mirrors the per-row ISS-308 E1 guard). The control is
 // disabled, with the reason rendered beside it, both when that intersection is
 // empty and while the exits themselves are unread. Priority has no
-// state-machine constraint, so all five values are always offered.
+// state-machine constraint, so all five values are offered — except while a
+// drive job is live on any selected issue, which refuses both controls together
+// because the job writes both fields (ISS-1010).
 
 import { useId, useState } from "react";
 import { Button, Menu, type MenuItem } from "@/design";
 import { bulkAllowedStatuses, priorityLabel, transitionLabels } from "../derive";
+import { agentHoldsSelection, heldInSelection } from "../edit-lock";
 import { useStatusLabeller } from "../vocabulary";
 import { type BulkUpdate, useBulkUpdateIssues, useStatusExits } from "../hooks";
 import { ISSUE_PRIORITIES, type IssueRow } from "../types";
@@ -22,6 +25,34 @@ import { BatchReleaseDialog, type BatchReleaseIssue } from "./batch-release-dial
 
 // cm:edge naming -> packages/core/src/release-batch/gate.ts — must match RELEASE_GATE_STATUS, the one status resolveReleaseGate returns
 const BATCH_RELEASE_GATE = "awaiting_release" as const;
+
+/** A bulk action the bar will not run, with the reason rendered beside it. */
+// cm:guard the reason is RENDERED, never only a `title` — a disabled button takes no focus, so a tooltip is unreachable by keyboard and absent on touch, and the reasons this control refuses for are told apart by nothing else
+function RefusedAction({
+  labels,
+  reason,
+  reasonId,
+}: { labels: string[]; reason: string; reasonId: string }) {
+  return (
+    <span className="flex flex-wrap items-center gap-2">
+      {labels.map((label) => (
+        <Button
+          key={label}
+          variant="secondary"
+          size="sm"
+          icon="chevronDown"
+          disabled
+          aria-describedby={reasonId}
+        >
+          {label}
+        </Button>
+      ))}
+      <span id={reasonId} role="status" className="fg-body-sm text-subtle">
+        {reason}
+      </span>
+    </span>
+  );
+}
 
 function canBatchRelease(rows: IssueRow[]): { enabled: boolean; reason?: string } {
   if (rows.length === 0) return { enabled: false };
@@ -57,6 +88,9 @@ export function BulkActionBar({
 
   const ids = selectedRows.map((r) => r.id);
   const statusTargets = bulkAllowedStatuses(exits, selectedRows);
+  // cm:guard a live job outranks the registry states below and is read FIRST: it is the only one of the three the person can act on, and "loading the status moves" over a selection whose move would be overwritten anyway sends them off to wait for a menu they must not use (ISS-1010)
+  const heldCount = heldInSelection(selectedRows);
+  const heldReason = heldCount > 0 ? agentHoldsSelection(heldCount, count) : null;
   // cm:guard an unread registry and a genuinely empty intersection disable the SAME control and must not share a reason — one says come back in a moment, the other says re-pick the selection (ISS-982)
   const statusUnavailable = exitsPending
     ? "Loading the status moves…"
@@ -84,52 +118,53 @@ export function BulkActionBar({
       <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface px-3 py-2 shadow-sm">
         <span className="fg-body-sm font-medium text-fg">{count} selected</span>
         <span className="ml-auto flex flex-wrap items-center gap-2">
-          {statusUnavailable || noCommonStatus ? (
-            // cm:guard the reason is RENDERED, never only a `title` — a disabled button takes no focus, so a tooltip is unreachable by keyboard and absent on touch, and the three states this control refuses in are told apart by nothing else
-            <span className="flex items-center gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                icon="chevronDown"
-                disabled
-                aria-describedby={statusReasonId}
-              >
-                Set status
-              </Button>
-              <span id={statusReasonId} role="status" className="fg-body-sm text-subtle">
-                {statusUnavailable ?? "No status change is valid for every selected issue"}
-              </span>
-            </span>
-          ) : (
-            <Menu
-              align="right"
-              items={statusItems}
-              trigger={
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  icon="chevronDown"
-                  disabled={bulk.isPending}
-                >
-                  Set status
-                </Button>
-              }
+          {heldReason ? (
+            // cm:guard one reason for BOTH refusals, said once — the same sentence printed twice beside two adjacent buttons reads as two different problems
+            <RefusedAction
+              labels={["Set status", "Set priority"]}
+              reasonId={statusReasonId}
+              reason={heldReason}
             />
+          ) : (
+            <>
+              {statusUnavailable || noCommonStatus ? (
+                <RefusedAction
+                  labels={["Set status"]}
+                  reasonId={statusReasonId}
+                  reason={statusUnavailable ?? "No status change is valid for every selected issue"}
+                />
+              ) : (
+                <Menu
+                  align="right"
+                  items={statusItems}
+                  trigger={
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      icon="chevronDown"
+                      disabled={bulk.isPending}
+                    >
+                      Set status
+                    </Button>
+                  }
+                />
+              )}
+              <Menu
+                align="right"
+                items={priorityItems}
+                trigger={
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    icon="chevronDown"
+                    disabled={bulk.isPending}
+                  >
+                    Set priority
+                  </Button>
+                }
+              />
+            </>
           )}
-          <Menu
-            align="right"
-            items={priorityItems}
-            trigger={
-              <Button
-                variant="secondary"
-                size="sm"
-                icon="chevronDown"
-                disabled={bulk.isPending}
-              >
-                Set priority
-              </Button>
-            }
-          />
           <Button
             variant="secondary"
             size="sm"

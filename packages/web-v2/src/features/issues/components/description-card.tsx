@@ -18,6 +18,7 @@ import {
 import type { AttachmentRow, IssueDetail } from "../types";
 import { AttachmentList } from "./attachment-list";
 import { BodyEditor } from "./body-editor";
+import { AGENT_HOLDS_EDIT, heldByAgent } from "../edit-lock";
 import { useSaveDescription } from "../hooks";
 
 export interface DescriptionCardProps {
@@ -30,6 +31,8 @@ export function DescriptionCard({ issue, attachments, canWrite }: DescriptionCar
   const [draft, setDraft] = useState<string | null>(null);
   const save = useSaveDescription(issue.id);
   const editing = draft !== null;
+  // cm:guard only the way IN is locked. A draft already open keeps its Save, because a drive job that starts mid-edit would otherwise discard text the person has already typed — a worse loss than the overwrite this lock exists to stop, and one they cannot recover (ISS-1010).
+  const held = heldByAgent(issue.status, issue.agentStatus);
 
   // cm:guard the artifact resolves against the ISSUE's attachments here, in the feature, and never inside `<BodyView>` — the design layer holds no API client (arch `web-design-holds-no-api-client`), and a `forge-artifact` whose id is not in this list must fall through to the generic block rather than draw a broken link.
   const renderArtifact = (id: string) => {
@@ -42,15 +45,21 @@ export function DescriptionCard({ issue, attachments, canWrite }: DescriptionCar
       <CardHeader>
         <div className="flex items-center justify-between gap-2">
           <CardTitle>Description</CardTitle>
-          {canWrite && !editing && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setDraft(issue.description ?? "")}
-            >
-              Edit
-            </Button>
-          )}
+          {canWrite &&
+            !editing &&
+            (held ? (
+              <span role="status" className="fg-body-sm text-subtle">
+                {AGENT_HOLDS_EDIT}
+              </span>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setDraft(issue.description ?? "")}
+              >
+                Edit
+              </Button>
+            ))}
         </div>
       </CardHeader>
       <CardContent>

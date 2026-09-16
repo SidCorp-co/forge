@@ -11,6 +11,7 @@ import { IssueRefBadge } from "./issue-ref-badge";
 import { MergeMarkerControl } from "./merge-marker-control";
 import { InlineSelect, StatusEdit } from "./inline-edit-cell";
 import { creatorLabelOf, initials } from "../derive";
+import { AGENT_HOLDS_EDIT, heldByAgent } from "../edit-lock";
 import type {
   IssueComplexity,
   IssueCostSummary,
@@ -146,8 +147,15 @@ export function PropertiesRail({
   const subtasks = outgoing.filter(isDecompose);
   const duplicates = [...incoming, ...outgoing].filter((e) => e.kind === "duplicates");
   const related = [...incoming, ...outgoing].filter((e) => e.kind === "relates");
+  // cm:guard the reason is RENDERED above the rows, never left as a greyed-out control — a disabled Select takes no focus, so a `title` is unreachable by keyboard and absent on touch, and a rail that silently stops accepting a priority is indistinguishable from one that is broken (ISS-1010)
+  const held = heldByAgent(issue.status, issue.agentStatus);
   return (
     <div className="divide-y divide-line-subtle">
+      {held && (
+        <p role="status" className="fg-body-sm py-2 text-subtle">
+          {AGENT_HOLDS_EDIT}
+        </p>
+      )}
       <Row label="Status">
         <StatusEdit
           status={issue.status}
@@ -161,7 +169,7 @@ export function PropertiesRail({
           ariaLabel="Priority"
           value={issue.priority}
           options={PRIORITY_OPTIONS}
-          disabled={pending}
+          disabled={pending || held}
           onCommit={(p) => onPatch({ priority: p as IssuePriority })}
           className="w-36"
         />
@@ -171,7 +179,7 @@ export function PropertiesRail({
           ariaLabel="Complexity"
           value={issue.complexity ?? ""}
           options={COMPLEXITY_OPTIONS}
-          disabled={pending}
+          disabled={pending || held}
           onCommit={(c) => onPatch({ complexity: c === "" ? null : (c as IssueComplexity) })}
           className="w-36"
         />
