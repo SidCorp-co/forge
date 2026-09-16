@@ -1,6 +1,6 @@
 {
-  "id": "3505531a-863f-4585-8a8d-18eac64e65f5",
-  "prevId": "55c9b9eb-6268-43f1-b25c-ac8d1cc9c07b",
+  "id": "d0c34750-1cc6-4ac2-b288-733e77f67b0c",
+  "prevId": "36b93b88-b327-4aed-88f5-c5e37d073b34",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -15666,6 +15666,60 @@
             "id"
           ],
           "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.project_facts_migration_backup": {
+      "name": "project_facts_migration_backup",
+      "schema": "",
+      "columns": {
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "project_facts": {
+          "name": "project_facts",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "project_facts_config": {
+          "name": "project_facts_config",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "migrated_at": {
+          "name": "migrated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "project_facts_migration_backup_project_id_projects_id_fk": {
+          "name": "project_facts_migration_backup_project_id_projects_id_fk",
+          "tableFrom": "project_facts_migration_backup",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
