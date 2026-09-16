@@ -14,22 +14,29 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { RULES, stripComments } from '../../../../scripts/check-retired-model.mjs';
+import {
+  type RetiredModelRule,
+  RULES,
+  stripComments,
+} from '../../../../scripts/check-retired-model.mjs';
 
 function hits(source: string): string[] {
   const code = stripComments(source);
-  return RULES.filter((r: { id: string; re: RegExp }) => {
+  return RULES.filter((r: RetiredModelRule) => {
     r.re.lastIndex = 0;
     return code.split('\n').some((line) => {
       r.re.lastIndex = 0;
       return r.re.test(line);
     });
-  }).map((r: { id: string }) => r.id);
+  }).map((r) => r.id);
 }
 
 describe('the rules name the retired reader', () => {
   it.each([
-    ["sql`SELECT 1 FROM integration_bindings b WHERE b.environment = 'prod'`", 'binding-environment-sql'],
+    [
+      "sql`SELECT 1 FROM integration_bindings b WHERE b.environment = 'prod'`",
+      'binding-environment-sql',
+    ],
     ['sql`... WHERE integration_bindings.environment IS NOT NULL`', 'binding-environment-sql'],
     ['const env = pair.binding.environment;', 'binding-environment-ts'],
     ['if (ctx.environment === "prod") return;', 'binding-environment-ts'],
