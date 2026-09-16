@@ -37,9 +37,11 @@ still refusing.
 ## What ISS-1060 did instead
 
 It bounded the window rather than closing it. `daemon::master_limit::CLEAR_WITHIN` is
-`NUDGE_REFRESH` — one nudge period — and only a success newer than that may clear. Reporting keeps
-the wider `FRESH_WITHIN`, and the asymmetry is deliberate: a late report costs a few wasted turns,
-a late clear costs dispatch into a capped account.
+`NUDGE_REFRESH` — one nudge period — and only a success newer than that, and not dated later than
+the sweep itself, may clear. Reporting keeps the wider `FRESH_WITHIN` and takes it as a distance in
+either direction; the clear refuses the forward half outright. The asymmetry is deliberate twice
+over: a late report costs a few wasted turns, a late clear costs dispatch into a capped account, and
+a success dated *ahead* of the box is not a success the box watched happen at all.
 
 That reduces the race to at most one nudge period of wrong dispatch, after which either lane
 observes the refusal again and re-stamps. It is carried in the tree as
