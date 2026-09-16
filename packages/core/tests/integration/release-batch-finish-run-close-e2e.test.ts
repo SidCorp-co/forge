@@ -306,3 +306,69 @@ describe('a finish already run answers from the record', () => {
     }).toEqual(before);
   });
 });
+
+describe('a finish racing an abort', () => {
+  // cm:guard this is the case the pre-probe roster read made possible, and it asserts the abort
+  // WINS. ISS-1032 hoisted the claim select above `verifyDeployed` so the retry guard could be read
+  // before the probes, which means the roster is now snapshotted before a wait that can run tens of
+  // seconds. A reviewer called that a stale-snapshot defect; the answer is `transitionIssueStatus`'s
+  // UPDATE being conditional on the snapshot's own `fromStatus`, and this case is what proves it
+  // rather than reading it. Asserting only the finish's return value would pass against a close
+  // that had actually landed, so every field the abort owns is asserted here too.
+  it('lets a concurrent abort keep the issues it reopened', async () => {
+    const { abortReleaseBatch, finishReleaseBatch } = await import(
+      '../../src/release-batch/service.js'
+    );
+    let releaseProbe: () => void = () => {};
+    let probeArrived: () => void = () => {};
+    const arrived = new Promise<void>((done) => {
+      probeArrived = done;
+    });
+    const held = new Promise<void>((done) => {
+      releaseProbe = done;
+    });
+    // cm:guard the hold is ARMED only after the cut, never from the first request: `createReleaseBatch`
+    // probes too, to record `commitBefore`, and a server holding from the start wedges the claim
+    // instead of the finish — the case would then time out having proved nothing about either.
+    let holding = false;
+    const probe: Server = createServer((_req, res) => {
+      if (!holding) {
+        res.end('commit-before-the-release');
+        return;
+      }
+      probeArrived();
+      void held.then(() => res.end('commit-the-release-pushed'));
+    });
+    await new Promise<void>((done) => probe.listen(0, '127.0.0.1', done));
+    const { port } = probe.address() as AddressInfo;
+    await harness.db.execute(sql`
+      UPDATE integration_bindings
+      SET config = config || ${JSON.stringify({
+        verify: {
+          probes: [{ url: `http://127.0.0.1:${port}/version` }],
+          timeoutSeconds: 20,
+          stableReads: 1,
+        },
+      })}::jsonb
+      WHERE project_id = ${projectId} AND provider = 'coolify' AND environment = 'prod'
+    `);
+    const a = await insertIssue();
+    const { runId } = await claim([a]);
+
+    holding = true;
+    const finishing = finishReleaseBatch(runId, actor(), { commit: 'commit-the-release-pushed' });
+    await arrived;
+    await abortReleaseBatch(runId, 'the deploy never landed', ownerId);
+    releaseProbe();
+    const result = await finishing;
+    await new Promise<void>((done) => probe.close(() => done()));
+
+    expect(result.closed).toEqual([]);
+    expect(result.failed.map((f) => f.id)).toEqual([a]);
+    expect({
+      run: await runStatus(runId),
+      issue: (await stored(a)).status,
+      claim: (await stored(a)).claim,
+    }).toEqual({ run: 'cancelled', issue: 'reopen', claim: null });
+  }, 60_000);
+});

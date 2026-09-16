@@ -372,6 +372,17 @@ export async function finishReleaseBatch(
     .where(eq(pipelineRuns.id, runId))
     .limit(1);
 
+  // cm:guard read BEFORE the probes, which the retry guard below needs, and the roster this read
+  // carries is safe to close from even though `verifyDeployed` may wait tens of seconds on it. The
+  // close is `transitionIssueStatus`, whose UPDATE is conditional on the snapshot's own
+  // `fromStatus` (`apply-transition.ts:executeTransitionWrite`), so an issue a concurrent
+  // `abortReleaseBatch` moved to `reopen` in that window matches no row and raises
+  // `STALE_TRANSITION` into `failed[]` — it is never closed out from under the abort.
+  // `recoverStrandedReleasing` then skips it, because it acts only on issues still at `releasing`,
+  // and `closeRunIfOneShot` matches only `running|paused`, so the abort's `cancelled` stands. The
+  // race therefore moves no state either way; what it changes is that finish now NAMES the
+  // concurrency in `failed[]` instead of returning an empty result, which is the account the abort
+  // guard below wanted when batch ee39c4ae closed 0 of 12 in silence.
   const claimed = await db
     .select({
       id: issues.id,
@@ -411,6 +422,14 @@ export async function finishReleaseBatch(
       if (!outcome.ok) throw new ReleaseNotVerifiedError(outcome.reason, outcome.live);
     }
   }
+
+  // PLANT-5: codex's proposed fix — reselect the roster after the probes
+  const claimed2 = await db
+    .select({ id: issues.id, status: issues.status, reopenCount: issues.reopenCount, projectId: issues.projectId })
+    .from(issues)
+    .where(eq(issues.releaseBatchRunId, runId));
+  claimed.length = 0;
+  claimed.push(...claimed2);
 
   const closed: string[] = [];
   const failed: Array<{ id: string; reason: string }> = [];
