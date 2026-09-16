@@ -113,7 +113,7 @@ export async function resolveReleaseDeclaration(
     // than discarding a real declaration — and handing one to a caller under `publish` is how a
     // binding-based release comes to be presented, and acted on, as a branch-based one. This is
     // the whole defect ISS-1046 removes, so the declaration must not carry it out of here.
-    liveBranch: row.releaseModel === 'promote' ? row.liveBranch : null,
+    liveBranch: readableLiveBranch(row),
     liveBindings,
   };
 }

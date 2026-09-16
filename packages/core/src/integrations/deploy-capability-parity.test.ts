@@ -12,7 +12,7 @@
  * A test-time value import of contracts is explicitly fine — `*.test.ts` never reaches `dist`.
  */
 
-import { DEPLOY_CAPABLE_PROVIDERS as CONTRACT_LIST } from '@forge/contracts';
+import { DEPLOY_CAPABLE_PROVIDERS as CONTRACT_LIST } from '@forge/contracts/deploy-capability';
 import { describe, expect, it } from 'vitest';
 import { DEPLOY_CAPABLE_PROVIDERS, providerCanDeploy } from './types.js';
 

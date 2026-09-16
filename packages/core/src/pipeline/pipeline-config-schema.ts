@@ -303,8 +303,8 @@ export const pipelineConfigSchema = z
     lockedSkills: z.union([z.boolean(), z.array(z.string())]).optional(),
     // cm:guard the LAST survivor of ISS-873's two config keys — `sessionMode` was deleted by phase 6 and this one is not its replacement. `resolve_residency` (claude_code.rs) reads it and treats absent and `0` alike as the default, and core sends it only when a project set a positive number, so the knob's own default cannot silently disable the feature it configures. Raising it trades a held session slot for the park fast path, so it is a capacity decision, never a latency tweak.
     sessionResidencySeconds: z.number().int().min(0).max(3600).optional(),
-    // cm:guard the key name and both spellings come from ONE constant, and `qa-key.test.ts` holds
-    // every reader in this repository to it. Until ISS-1046 this key did not exist here at all and
+    // cm:guard the key name and both spellings come from ONE constant, and `qa-judgement.test.ts`
+    // holds every reader in this repository to it by scanning the source. Until ISS-1046 this key did not exist here at all and
     // this schema strips what it does not declare — so `PATCH /pipeline-config` carrying `qa` answered
     // 200 and wrote nothing, and the forge-plugin CLI's `independent judgement` row read `not stated`
     // on all 32 projects BY CONSTRUCTION, for four weeks, with nobody able to tell that from a project

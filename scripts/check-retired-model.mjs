@@ -50,14 +50,18 @@ const EXT = new Set(['.ts', '.tsx', '.mjs', '.js']);
 const ALLOW = [
   // Every drizzle migration and its snapshots describe the schema as it was at that point.
   /^packages\/core\/drizzle\//,
-  // cm:guard the two files that RUN 0253 against a real Postgres, and nothing else under `tests/`.
+  // cm:guard the three files that RUN 0253 (and its rollback) against a real Postgres, and nothing
+  // else under `tests/`.
   // They plant the pre-migration row the migration has to refuse or convert, so they must name the
   // column as it was — a test that could not write `production_branch` could not reach the state
-  // 0253 starts from, and the migration's refusals would go to a verdict unproven. Named one by one
-  // rather than by a `tests/` prefix: a prefix here would exempt every future integration test from
-  // the audit, which is most of the surface this rule exists to hold.
+  // 0253 starts from, and the migration's refusals would go to a verdict unproven. The constraints
+  // file additionally asserts that the ROLLBACK puts `production_branch` back, which it cannot do
+  // without naming it. Named one by one rather than by a `tests/` prefix: a prefix here would
+  // exempt every future integration test from the audit, which is most of the surface this rule
+  // exists to hold.
   /^packages\/core\/tests\/integration\/release-axes-migration-ground\.ts$/,
   /^packages\/core\/tests\/integration\/release-axes-migration-e2e\.test\.ts$/,
+  /^packages\/core\/tests\/integration\/release-axes-constraints-e2e\.test\.ts$/,
   // CHANGELOG records what shipped, including the names that stopped existing.
   /^CHANGELOG\.md$/,
   // This checker names what it hunts.

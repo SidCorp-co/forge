@@ -25,6 +25,10 @@
     "./notifications": {
       "types": "./src/notifications.ts",
       "default": "./src/notifications.ts"
+    },
+    "./deploy-capability": {
+      "types": "./src/deploy-capability.ts",
+      "default": "./src/deploy-capability.ts"
     }
   },
   "types": "./src/index.ts",

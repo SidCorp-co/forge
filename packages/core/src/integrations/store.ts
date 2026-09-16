@@ -121,25 +121,23 @@ export async function listActiveDeployBindingsForProvider(
   projectId: string,
   provider: IntegrationProvider,
 ): Promise<BindingWithConnection[]> {
-  return (
-    db
-      .select({ binding: integrationBindings, connection: integrationConnections })
-      .from(integrationBindings)
-      .innerJoin(
-        integrationConnections,
-        eq(integrationBindings.connectionId, integrationConnections.id),
-      )
-      .where(
-        and(
-          eq(integrationBindings.projectId, projectId),
-          eq(integrationBindings.provider, provider),
-          eq(integrationBindings.role, 'deploy'),
-          eq(integrationBindings.active, true),
-          eq(integrationConnections.active, true),
-        ),
-      )
-      .orderBy(asc(integrationBindings.createdAt))
-  );
+  return db
+    .select({ binding: integrationBindings, connection: integrationConnections })
+    .from(integrationBindings)
+    .innerJoin(
+      integrationConnections,
+      eq(integrationBindings.connectionId, integrationConnections.id),
+    )
+    .where(
+      and(
+        eq(integrationBindings.projectId, projectId),
+        eq(integrationBindings.provider, provider),
+        eq(integrationBindings.role, 'deploy'),
+        eq(integrationBindings.active, true),
+        eq(integrationConnections.active, true),
+      ),
+    )
+    .orderBy(asc(integrationBindings.createdAt));
 }
 
 /** Active binding (+ its connection) for a project + provider, whatever its role. */

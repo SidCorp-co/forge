@@ -11,6 +11,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { readMigrationFiles } from 'drizzle-orm/migrator';
 import postgres, { type Sql } from 'postgres';
@@ -151,6 +152,22 @@ export async function runForward(sql: Sql, statements: string[] = releaseAxes): 
   await sql.begin(async (tx) => {
     for (const stmt of statements) await tx.unsafe(stmt, []);
   });
+}
+
+/**
+ * The rollback, `drizzle/rollback/0253_down.sql`, run the way an operator runs it.
+ *
+ * Nothing else in this repository executes this file: `db/migrate.js` never reads the rollback
+ * folder, so until it is run here it is a plan rather than a way back — and it is the ONLY way back
+ * from a migration that drops a column, which is exactly the file nobody discovers is broken until
+ * the hour they need it.
+ *
+ * It opens its own `BEGIN`/`COMMIT`, matching the `psql -f` the file's own header prescribes, so
+ * it is sent whole rather than split at drizzle's statement breakpoints.
+ */
+export async function runDown(sql: Sql): Promise<void> {
+  const path = fileURLToPath(new URL('../../drizzle/rollback/0253_down.sql', import.meta.url));
+  await sql.unsafe(readFileSync(path, 'utf8'));
 }
 
 export interface Ground {

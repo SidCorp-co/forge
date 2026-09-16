@@ -5,6 +5,7 @@ import { listIssueComments } from '../../comments/service.js';
 import type { JobType } from '../../db/schema.js';
 import { jobTypes } from '../../db/schema.js';
 import { getIssueContexts } from '../../pipeline/issue-context-store.js';
+import { readableLiveBranch } from '../../projects/release-model.js';
 import { readProjectBranches } from '../../projects/service.js';
 import {
   heavyFieldChars,
@@ -15,7 +16,6 @@ import {
 } from './forge-issues.js';
 import type { ContextScopedMcpToolFactory } from './lib.js';
 import { assertPrincipalIsWriter, zodToMcpSchema } from './lib.js';
-import { readableLiveBranch } from '../../projects/release-model.js';
 
 /**
  * `forge_step_start` — the check-in an agent makes as its FIRST action on an

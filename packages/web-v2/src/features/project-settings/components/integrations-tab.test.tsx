@@ -61,7 +61,7 @@ const COOLIFY = {
 const SENTRY = { ...COOLIFY, id: "conn-sentry", provider: "sentry", displayName: "Errors" };
 
 function renderTab() {
-  render(<IntegrationsTab projectId="proj-1" slug="forge-dev" canEdit />);
+  render(<IntegrationsTab projectId="proj-1" canEdit />);
 }
 
 /**

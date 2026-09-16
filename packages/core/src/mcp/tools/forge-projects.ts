@@ -8,6 +8,7 @@ import {
   orgDerivedProjectRole,
   orgRoleAtLeast,
 } from '../../lib/authz.js';
+import { readableLiveBranch } from '../../projects/release-model.js';
 import {
   createProject,
   ProjectSlugTakenError,
@@ -21,7 +22,6 @@ import {
   principalUserId,
   zodToMcpSchema,
 } from './lib.js';
-import { readableLiveBranch } from '../../projects/release-model.js';
 
 /**
  * Enumerate projects visible to the principal — explicit membership (any

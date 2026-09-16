@@ -27,6 +27,7 @@ import {
   projectFactsPatchSchema,
   RESERVED_PROJECT_FACT_KEYS,
 } from '../../projects/project-facts.js';
+import { readableLiveBranch } from '../../projects/release-model.js';
 import { readIssueBranchInputs, readProjectWithConfig } from '../../projects/service.js';
 import {
   assertPrincipalIsAdmin,
@@ -35,7 +36,6 @@ import {
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
-import { readableLiveBranch } from '../../projects/release-model.js';
 
 const inputSchema = z
   .object({

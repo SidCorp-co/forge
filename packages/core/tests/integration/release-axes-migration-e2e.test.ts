@@ -1,15 +1,14 @@
 /**
- * ISS-1046 — `0253_declared_release_axes.sql` walked against a real Postgres.
+ * ISS-1046 — what `0253_declared_release_axes.sql` DOES, walked against a real Postgres.
  *
- * Three things are proved here and nowhere else. That the migration REFUSES a
- * project or a binding its declared table does not name, rather than defaulting
- * it — the whole change exists to stop a value being guessed, and a backfill
- * that quietly guesses one would reintroduce the defect in the act of removing
- * it. That the declaration actually reaches every row, which a join on the wrong
- * column would not. And that each CHECK is planted with the value it exists to
- * refuse and observed to refuse it, naming its own constraint: these live in
- * Postgres and not in drizzle's `{ enum }`, because raw SQL writes these two
- * tables in several places and goes straight past a TypeScript annotation.
+ * Two things are proved here. That the migration REFUSES a project or a binding its declared table
+ * does not name, rather than defaulting it — the whole change exists to stop a value being guessed,
+ * and a backfill that quietly guesses one would reintroduce the defect in the act of removing it.
+ * And that the declaration actually reaches every row, which a join on the wrong column would not.
+ *
+ * What the DATABASE refuses afterwards, and what the way back does, are in
+ * `release-axes-constraints-e2e.test.ts`: those are assertions about constraints and about a
+ * separate SQL file rather than about the forward run, and both files stand on the same ground.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -17,7 +16,6 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   declaredBindings,
   declaredProjects,
-  type Ground,
   ground,
   type PreMigrationGround,
   plantBinding,
@@ -255,12 +253,17 @@ describe('0253 forward — the declaration reaches every row', () => {
     try {
       // the six fleet projects that carry a real branch under a non-promote model
       const declared = declaredProjects();
-      const keep = ['adminhub-api', 'epodsystem-core', 'sidboss'];
+      // All SIX the decision record names, not a sample: a regression that cleared one of the
+      // three left out would have passed while the case claimed to cover them.
       const branches = new Map([
         ['adminhub-api', 'release/production'],
+        ['adminhub-ui', 'release/production'],
         ['epodsystem-core', 'master'],
+        ['sidcorp-mail', 'master'],
+        ['house-supabase', 'main'],
         ['sidboss', 'main'],
       ]);
+      const keep = [...branches.keys()];
       for (const slug of keep) {
         const p = declared.find((d) => d.slug === slug);
         if (!p) throw new Error(`${slug} is not in the declared table`);
@@ -315,191 +318,6 @@ describe('0253 forward — the declaration reaches every row', () => {
           WHERE table_name = 'projects' AND column_name = 'release_model'`,
       );
       expect(model?.is_nullable).toBe('NO');
-    } finally {
-      await db.drop();
-    }
-  });
-});
-
-/**
- * Each constraint met with the one value it exists to refuse. The assertion is on
- * the constraint NAME in the error, not merely on rejection: a NOT NULL or a
- * foreign key would also throw, and a test that only asserts "it threw" passes
- * when the rule it names has been dropped and something else refused the row.
- */
-describe('0253 forward — the rules live in Postgres, and say no', () => {
-  async function migrated() {
-    const f = await fleet();
-    await runForward(f.db.sql);
-    return f;
-  }
-
-  async function insertBinding(
-    sql: Awaited<ReturnType<typeof fleet>>['db']['sql'],
-    g: Ground,
-    projectId: string,
-    role: string,
-    stages: string[],
-    label = `probe-${randomUUID().slice(0, 8)}`,
-  ) {
-    const connectionId = randomUUID();
-    await sql.unsafe(
-      `INSERT INTO integration_connections (id, owner_type, owner_id, provider)
-       VALUES ($1, 'user', $2, 'coolify')`,
-      [connectionId, g.ownerId],
-    );
-    return sql.unsafe(
-      `INSERT INTO integration_bindings (id, connection_id, project_id, provider, role, stages, label)
-       VALUES ($1, $2, $3, 'coolify', $4, $5::text[], $6)`,
-      [randomUUID(), connectionId, projectId, role, stages, label],
-    );
-  }
-
-  it('refuses a binding role that is neither deploy nor service', async () => {
-    const { db, g, projects } = await migrated();
-    try {
-      await expect(
-        insertBinding(db.sql, g, anyProject(projects).id, 'publisher', []),
-      ).rejects.toThrow(/integration_bindings_role_chk/);
-    } finally {
-      await db.drop();
-    }
-  });
-
-  it('refuses a service binding that carries any stage', async () => {
-    const { db, g, projects } = await migrated();
-    try {
-      await expect(
-        insertBinding(db.sql, g, anyProject(projects).id, 'service', ['live']),
-      ).rejects.toThrow(/integration_bindings_role_stages_chk/);
-    } finally {
-      await db.drop();
-    }
-  });
-
-  // cm:guard THE counterexample for `cardinality` over `array_length`:
-  // `array_length('{}', 1)` is NULL, so the same rule written that way evaluates to
-  // NULL on the empty array and PASSES this row. This case is the only thing that
-  // separates the two spellings, and it goes green under the wrong one.
-  it('refuses a deploy binding whose stage array is empty', async () => {
-    const { db, g, projects } = await migrated();
-    try {
-      await expect(insertBinding(db.sql, g, anyProject(projects).id, 'deploy', [])).rejects.toThrow(
-        /integration_bindings_role_stages_chk/,
-      );
-    } finally {
-      await db.drop();
-    }
-  });
-
-  it('refuses a stage value that is neither preview nor live', async () => {
-    const { db, g, projects } = await migrated();
-    try {
-      await expect(
-        insertBinding(db.sql, g, anyProject(projects).id, 'deploy', ['staging']),
-      ).rejects.toThrow(/integration_bindings_role_stages_chk/);
-      await expect(
-        insertBinding(db.sql, g, anyProject(projects).id, 'deploy', ['live', 'prod']),
-      ).rejects.toThrow(/integration_bindings_role_stages_chk/);
-    } finally {
-      await db.drop();
-    }
-  });
-
-  it('refuses a release model that is none of none, promote and publish', async () => {
-    const { db, projects } = await migrated();
-    try {
-      await expect(
-        db.sql.unsafe(`UPDATE projects SET release_model = 'weekly' WHERE id = $1`, [
-          anyProject(projects).id,
-        ]),
-      ).rejects.toThrow(/projects_release_model_chk/);
-    } finally {
-      await db.drop();
-    }
-  });
-
-  it('refuses a promote project whose live branch is null', async () => {
-    const { db } = await migrated();
-    try {
-      const promoter = declaredProjects().find((p) => p.releaseModel === 'promote');
-      if (!promoter) throw new Error('no declared promote project');
-      await expect(
-        db.sql.unsafe(`UPDATE projects SET live_branch = NULL WHERE id = $1`, [promoter.id]),
-      ).rejects.toThrow(/projects_live_branch_chk/);
-    } finally {
-      await db.drop();
-    }
-  });
-
-  it('refuses a release strategy set while the release model is not promote', async () => {
-    const { db } = await migrated();
-    try {
-      const quiet = declaredProjects().find((p) => p.releaseModel === 'none');
-      if (!quiet) throw new Error('no declared none project');
-      await expect(
-        db.sql.unsafe(`UPDATE projects SET release_strategy = 'merge-branch' WHERE id = $1`, [
-          quiet.id,
-        ]),
-      ).rejects.toThrow(/projects_release_strategy_chk/);
-    } finally {
-      await db.drop();
-    }
-  });
-
-  it('refuses a release strategy that is null while the release model is promote', async () => {
-    const { db } = await migrated();
-    try {
-      const promoter = declaredProjects().find((p) => p.releaseModel === 'promote');
-      if (!promoter) throw new Error('no declared promote project');
-      await expect(
-        db.sql.unsafe(`UPDATE projects SET release_strategy = NULL WHERE id = $1`, [promoter.id]),
-      ).rejects.toThrow(/projects_release_strategy_chk/);
-    } finally {
-      await db.drop();
-    }
-  });
-
-  it('refuses a release strategy that is not one of the three spellings', async () => {
-    const { db } = await migrated();
-    try {
-      const promoter = declaredProjects().find((p) => p.releaseModel === 'promote');
-      if (!promoter) throw new Error('no declared promote project');
-      await expect(
-        db.sql.unsafe(`UPDATE projects SET release_strategy = 'rebase' WHERE id = $1`, [
-          promoter.id,
-        ]),
-      ).rejects.toThrow(/projects_release_strategy_chk/);
-    } finally {
-      await db.drop();
-    }
-  });
-
-  // cm:guard uniqueness survives for `service` rows ONLY. Both halves are asserted:
-  // dropping the index passes the first, and widening it to every row passes the
-  // second, so neither alone holds the rule the change actually made.
-  it('holds one active service binding per project, provider and label — and no ceiling on deploy', async () => {
-    const { db, g, projects } = await migrated();
-    try {
-      const connectionId = randomUUID();
-      await db.sql.unsafe(
-        `INSERT INTO integration_connections (id, owner_type, owner_id, provider)
-         VALUES ($1, 'user', $2, 'postman')`,
-        [connectionId, g.ownerId],
-      );
-      const service = (label: string) =>
-        db.sql.unsafe(
-          `INSERT INTO integration_bindings (id, connection_id, project_id, provider, role, stages, label)
-           VALUES ($1, $2, $3, 'postman', 'service', '{}'::text[], $4)`,
-          [randomUUID(), connectionId, anyProject(projects).id, label],
-        );
-      await service('one');
-      await expect(service('one')).rejects.toThrow(/integration_bindings_service_uq/);
-
-      // the SAME (project, provider, label) on a deploy binding is allowed, twice
-      // over — the tuple that just collided is the tuple that must not collide here
-      await insertBinding(db.sql, g, anyProject(projects).id, 'deploy', ['live'], 'one');
-      await insertBinding(db.sql, g, anyProject(projects).id, 'deploy', ['live'], 'one');
     } finally {
       await db.drop();
     }

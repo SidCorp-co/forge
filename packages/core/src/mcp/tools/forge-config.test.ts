@@ -121,39 +121,6 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
     expect(result.config.liveBranch).toBeNull();
   });
 
-  // cm:guard the column is deliberately NOT nulled for non-`promote` projects — 25 of 32 in the
-  // fleet carry a branch nothing promotes to — so the ONLY thing stopping an agent acting on one is
-  // that every reader asks the model first. This tool's own description promises "non-null only
-  // under `promote`"; without this case that promise is prose and the code returned the value.
-  it('returns no live branch for a `publish` project that still carries one', async () => {
-    const tool = forgeConfigTool({
-      principal: fakePrincipal,
-      projectSlug: null,
-    });
-
-    selectLimit.mockResolvedValueOnce([memberAccessRow]).mockResolvedValueOnce([
-      {
-        id: PROJECT_ID,
-        slug: 'my-proj',
-        name: 'My Project',
-        repoPath: '/repo',
-        baseBranch: 'develop',
-        liveBranch: 'legacy-production',
-        releaseModel: 'publish',
-        agentConfig: null,
-      },
-    ]);
-
-    const result = (await tool.handler({ action: 'get', projectId: PROJECT_ID })) as {
-      config: { liveBranch: string | null; releaseModel: string; baseBranch: string | null };
-    };
-
-    expect(result.config.liveBranch).toBeNull();
-    // the model itself is still reported — a caller has to be able to tell `publish` from `none`
-    expect(result.config.releaseModel).toBe('publish');
-    expect(result.config.baseBranch).toBe('develop');
-  });
-
   it('includes resolved branchConfig (project defaults) when issueId is supplied and the issue has no override', async () => {
     const tool = forgeConfigTool({
       principal: fakePrincipal,
@@ -346,5 +313,45 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
         issueId: ISSUE_ID,
       }),
     ).rejects.toThrow(/NOT_FOUND/);
+  });
+});
+
+/**
+ * ISS-1046 — the live branch is readable only under `promote`, and this tool's own description
+ * promises exactly that. Its own describe because it is a different rule from the ISS-135 branch
+ * layering above, and because the enclosing callback there is already at its frozen length.
+ */
+describe('forge_config tool — the live branch under the release model', () => {
+  // cm:guard the column is deliberately NOT nulled for non-`promote` projects — 25 of 32 in the
+  // fleet carry a branch nothing promotes to — so the ONLY thing stopping an agent acting on one is
+  // that every reader asks the model first. This tool's own description promises "non-null only
+  // under `promote`"; without this case that promise is prose and the code returned the value.
+  it('returns no live branch for a `publish` project that still carries one', async () => {
+    const tool = forgeConfigTool({
+      principal: fakePrincipal,
+      projectSlug: null,
+    });
+
+    selectLimit.mockResolvedValueOnce([memberAccessRow]).mockResolvedValueOnce([
+      {
+        id: PROJECT_ID,
+        slug: 'my-proj',
+        name: 'My Project',
+        repoPath: '/repo',
+        baseBranch: 'develop',
+        liveBranch: 'legacy-production',
+        releaseModel: 'publish',
+        agentConfig: null,
+      },
+    ]);
+
+    const result = (await tool.handler({ action: 'get', projectId: PROJECT_ID })) as {
+      config: { liveBranch: string | null; releaseModel: string; baseBranch: string | null };
+    };
+
+    expect(result.config.liveBranch).toBeNull();
+    // the model itself is still reported — a caller has to be able to tell `publish` from `none`
+    expect(result.config.releaseModel).toBe('publish');
+    expect(result.config.baseBranch).toBe('develop');
   });
 });

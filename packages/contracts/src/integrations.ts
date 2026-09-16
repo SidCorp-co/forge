@@ -22,29 +22,12 @@ import type { IntegrationProvider, schema } from '@forge/core/public';
 export type { IntegrationProvider, IntegrationCapabilities } from '@forge/core/public';
 
 /**
- * Which providers a binding may take `role: 'deploy'` on.
- *
- * A capability, NOT a release-gate discriminator: it refuses a binding that could never BE a
- * deploy target, and never makes one a release target. What it must never grow into is a rule
- * saying an epodsystem binding IS a deploy — that is the project owner's declaration, and
- * forge-dev carries one purely to hand agents the storefront MCP.
- *
- * It lives HERE and is mirrored in core rather than shared from there, because the two packages
- * cannot both hold it: core must not import a runtime value from contracts (its production image
- * has no such package — `contracts-runtime-boundary.test.ts`), and web-v2 must not import one from
- * core (the browser bundle would then run core's env validation, which throws at import). The
- * mirror is held in lockstep by `integrations/deploy-capability-parity.test.ts` in core, the same
- * arrangement `pipeline/failure-causes-parity.test.ts` already uses for that table.
- *
- * The server is the check (`integrations/connection-routes.ts`, `integrations/binding-shape.ts`);
- * a screen reading this only spares the operator a round trip and lets the refusal name the
- * provider.
+ * The deploy capability — which providers a binding may take `role: 'deploy'` on — lives in
+ * `./deploy-capability.js` and is reached as `@forge/contracts/deploy-capability`, NOT through this
+ * module or the barrel. This file imports `@forge/core/public` for its types, which a browser build
+ * cannot resolve, so a runtime value placed here is unreachable from web-v2 at build time however
+ * well it type-checks.
  */
-export const DEPLOY_CAPABLE_PROVIDERS = ['coolify', 'epodsystem', 'agent'] as const;
-
-export function providerCanDeploy(provider: string): boolean {
-  return (DEPLOY_CAPABLE_PROVIDERS as readonly string[]).includes(provider);
-}
 
 /** `'user' | 'org'` — the connection owner namespace. */
 export type IntegrationOwnerType = schema.IntegrationOwnerType;

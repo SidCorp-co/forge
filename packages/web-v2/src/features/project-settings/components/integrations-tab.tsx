@@ -19,7 +19,7 @@ import { ProjectIntegrationsPanel } from "@/features/integrations/components/pro
 import { PROVIDER_LABEL } from "@/features/integrations/components/status-pill";
 import { useBindExistingConnection, useConnections } from "@/features/integrations/hooks";
 import { formatApiError } from "@/lib/api/error";
-import { providerCanDeploy } from "@forge/contracts";
+import { providerCanDeploy } from "@forge/contracts/deploy-capability";
 import type { BindingRole, ConnectionSummary, DeployStage } from "@/features/integrations/types";
 
 // What the binding is FOR — DECLARED by the person, never derived from the
