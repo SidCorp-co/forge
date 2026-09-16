@@ -22,6 +22,7 @@ import {
   createTestDevice,
   createTestProject,
   createTestUser,
+  registerIntegrationsForTest,
   setupTestDatabase,
   type TestDatabase,
   truncateAll,
@@ -54,11 +55,8 @@ describe('ISS-194 per-state override end-to-end', () => {
     process.env.SMTP_FROM ??= 'test@example.com';
     process.env.APP_BASE_URL ??= 'http://localhost:3000';
     process.env.CORS_ORIGINS ??= 'http://localhost:3000';
-    // ISS-1071 — what src/index.ts does at boot. This file builds the app from its own
-    // modules rather than from that file, and a registry-backed path reads the registry
-    // EMPTY, which throws rather than answering "no providers are declared".
-    (await import('../../src/integrations/register-all.js')).registerAllIntegrations();
-  
+    await registerIntegrationsForTest();
+
     // `pipelineControl` defaults to true; assert explicitly so an env-level
     // override in CI cannot silently disable the PATCH route under test.
     process.env.FEATURE_PIPELINE_CONTROL = 'true';

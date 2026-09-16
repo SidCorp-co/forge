@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   createTestProject,
   createTestUser,
+  registerIntegrationsForTest,
   setupTestDatabase,
   type TestDatabase,
   truncateAll,
@@ -64,11 +65,8 @@ describe('the embedding backfill sweeps knowledge entries too (ISS-907, extra fi
     process.env.NODE_ENV ??= 'test';
     process.env.EMBEDDINGS_BASE_URL ??= 'https://stub.invalid';
     process.env.EMBEDDINGS_API_KEY ??= 'stub-key';
-    // ISS-1071 — what src/index.ts does at boot. This file builds the app from its own
-    // modules rather than from that file, and a registry-backed path reads the registry
-    // EMPTY, which throws rather than answering "no providers are declared".
-    (await import('../../src/integrations/register-all.js')).registerAllIntegrations();
-  
+    await registerIntegrationsForTest();
+
     embeddingsMod = await import('../../src/embeddings/index.js');
     backfill = await import('../../src/memory/embedding-backfill.js');
     await truncateAll(harness.db);
