@@ -12,10 +12,13 @@
 
 // cm:guard the scp-style `user@host:path` form is the one that matters and the one a regex most
 // easily misses — Dependabot writes `git+https://git@github.com:owner/repo.git`, an https scheme wrapping an SSH clone
-// cm:guard the username is not `git` in general, so the form is read for any user; and the path must
-// carry a `/`, or every `pkg@1.2.3:` key line and every `resolution:` version in a lockfile reads as a host and a path
-// cm:hack ISS-1045 until:this parses a lockfile rather than scanning it — `@host:1234/path` is read as a URL port and skipped, so a remote whose first path segment is all digits is missed; the alternative false-accuses `https://user@host:8080/path` and blocks every install on a private registry
-const SSH_FORMS = [/\bssh:\/\//, /[\w.~-]+@[\w.-]*\.[\w-]+:(?!\d+\/)[^\s,}]*\/[^\s,}]*/];
+// cm:guard the username is not `git` and the host is not always qualified — `deploy@gitlab:team/x.git`
+// is an internal remote and reads the same, so neither is narrowed to the shape this issue met
+// cm:guard the two lookaheads are what keep a lockfile's own rows out: `//` after the colon is a URL
+// scheme, so `forge-plugin@https://codeload…` is the shipped entry and not a host called `https`
+// cm:guard the path must carry a `/`, or every `pkg@1.2.3:` key line reads as a host and a path
+// cm:hack ISS-1045 until:this parses a lockfile rather than scanning it — `@host:1234/path` is read as a URL port and skipped, so a remote whose first path segment is entirely numeric is missed; the alternative false-accuses `https://user@host:8080/path` and blocks every install on a private registry
+const SSH_FORMS = [/\bssh:\/\//, /[\w.~-]+@[\w.-]+:(?!\/\/)(?!\d+\/)[^\s,}]*\/[^\s,}]*/];
 
 // cm:guard the `{}` tail is what makes a `snapshots:` row a key line too — drop it and an offending
 // `pkg@git+ssh://…: {}` row is named by its section heading, `snapshots`, rather than by its package.

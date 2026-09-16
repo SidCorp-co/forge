@@ -100,6 +100,26 @@ snapshots:
     expect(offenders.map((o) => o.owner)).toContain('private-pkg@1.0.0');
   });
 
+  it('reads the scp-style form on an unqualified internal host', () => {
+    const internal = DEPENDABOT.replace(
+      'hono@4.13.5:\n    resolution: {integrity: sha512-deadbeef}',
+      'private-pkg@1.0.0:\n    resolution: {repo: deploy@gitlab:team/private-pkg.git, type: git}',
+    );
+    expect(sshResolutions(internal).offenders.map((o) => o.owner)).toContain('private-pkg@1.0.0');
+  });
+
+  it('reads a `name@scheme://host/path` row as the URL it is, not as a host called `https`', () => {
+    const urlKeyed = `packages:
+
+  forge-plugin@https://codeload.github.com/SidCorp-co/forge-plugin/tar.gz/${SHA}:
+    resolution: {tarball: https://codeload.github.com/SidCorp-co/forge-plugin/tar.gz/${SHA}}
+
+  private@https://user@registry.example.com:8080/x/y.tgz:
+    resolution: {tarball: https://user@registry.example.com:8080/x/y.tgz}
+`;
+    expect(sshResolutions(urlKeyed)).toEqual({ scanned: 2, offenders: [] });
+  });
+
   it('reads no host and no path in a `name@version:` key line, which every lockfile is full of', () => {
     const versions = `packages:
 

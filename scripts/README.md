@@ -431,13 +431,19 @@ holding no `resolution:` at all — an empty scope is refused rather than forwar
 
 It reads the text line by line rather than parsing YAML, because it runs before anything is
 installed and so has no YAML library to reach for. Two shapes are read: an `ssh://` scheme
-anywhere, and the scp-style `user@host:path` — for any username, not only `git`, since the offender
-that started this was `git@github.com:` but a deploy account is the same clone. The path must carry
-a `/`, or every `pkg@1.2.3:` key line in a lockfile would read as a host and a path, and a
-comment-only line is skipped, or a comment quoting the old remote would block every install. One
-shape is knowingly missed and the trade is in a `cm:hack` on the file: `@host:1234/path` is read as
-a URL port and skipped, so a remote whose first path segment is entirely numeric goes unreported —
-the alternative false-accuses `https://user@host:8080/path` and stops every install on a private
+anywhere, and the scp-style `user@host:path` — for any username and any host, since the offender
+that started this was `git@github.com:` but `deploy@gitlab:team/x.git` is the same clone. Three
+things keep a lockfile's own ordinary rows out of it, and each one is a row that would otherwise
+stop every install in every job:
+
+- `//` after the colon is a URL scheme, so `forge-plugin@https://codeload…` — the entry this change
+  ships — reads as the URL it is and not as a host called `https`.
+- the path has to carry a `/`, or every `pkg@1.2.3:` key line would read as a host and a path.
+- a comment-only line is skipped, or a comment quoting the old remote is an offender.
+
+One shape is knowingly missed and the trade is priced in a `cm:hack` on the file: `@host:1234/path`
+is read as a URL port, so a remote whose first path segment is entirely numeric goes unreported. The
+alternative false-accuses `https://user@host:8080/path` and stops every install on a private
 registry. Both real lockfiles this was measured against agree: 948 resolutions on `main` clean, and
 the four offending lines on the Dependabot pull request that caused this named by package.
 
