@@ -13,7 +13,6 @@ import { THIN_ROWS } from './summarize.js';
 
 export interface ReportFile {
   name: string;
-  // cm:why text/plain for the JSON too: the comment door's allowed set (`lib/attachment-mime.ts`, comment target) carries no application/json, and text bytes under a declared text/plain pass whatever the extension; the `.json` name is what `weekly/previous.ts` matches on
   mime: 'text/plain';
   text: string;
 }

@@ -45,7 +45,6 @@ export async function postWeeklyComment(args: PostWeeklyArgs): Promise<{ comment
       written.push(a.id);
     }
   } catch (err) {
-    // cm:why a comment left with half its files reads as the week's report and is not: remove what was written, then the comment, and let the runner post the failure by name
     await discardCommentAttachments(written);
     await db.delete(comments).where(eq(comments.id, inserted.id));
     throw err;

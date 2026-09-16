@@ -1,8 +1,5 @@
 "use client";
 
-// cm:edge contract -> packages/core/src/assistant/weekly/config.ts — `readAssistantWeekly` is the only reader of what this writes, and it runs inside the daily 04:00 UTC `assistant-weekly-report` job (one report per ISO week); a field renamed on one side arrives as undefined on the other with no error anywhere
-// cm:guard round-trip the WHOLE fetched config and edit only this slice (`...config`) — PATCH /pipeline-config merges shallowly, so a partial object drops every sibling key the operator set elsewhere on this page
-
 import { useEffect, useState } from "react";
 import { Banner, Button, Toggle } from "@/design";
 import { formatPipelineConfigError } from "@/lib/api/error";

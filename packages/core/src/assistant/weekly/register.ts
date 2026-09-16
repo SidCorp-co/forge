@@ -11,14 +11,12 @@ import { boss } from '../../queue/boss.js';
 import { runAssistantWeeklyOnce } from './run.js';
 
 export const ASSISTANT_WEEKLY_QUEUE = 'assistant-weekly-report';
-// cm:why daily and not Monday only (codex F1 on the diff): a pg-boss cron carries no retry of its own, and a Monday-only entry would next fire when `weekBefore` names a different week — a Monday failure would never be tried again. Every day at 04:00 UTC derives the same window until Sunday, and the published check makes the six extra ticks one query each. A week that fails on all seven days stays failed, its failure comments on the issue.
 export const ASSISTANT_WEEKLY_CRON = '0 4 * * *';
 
 let registered = false;
 
 export async function registerAssistantWeekly(): Promise<void> {
   if (registered) return;
-  // cm:guard the queue is created HERE before the schedule names it — pg-boss v10 refuses a schedule against a queue that does not exist, and the failure is a pass that silently never fires rather than a startup error
   // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
   await (boss as any).createQueue(ASSISTANT_WEEKLY_QUEUE);
   // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
