@@ -9,6 +9,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { logger } from '../logger.js';
 import { resolveNotifications } from '../notifications/auto-resolve.js';
+import { emissionAllowed, noteSuppressed } from '../notifications/emission-switch.js';
 import { platformAdminUserIds } from '../notifications/platform-admins.js';
 import { hooks } from '../pipeline/hooks.js';
 import { computeAlerts, opsAlertResolutionKey } from './alert-queries.js';
@@ -61,6 +62,19 @@ async function claimOrEscalate(input: {
   resolutionKey: string;
 }): Promise<boolean> {
   const { userId, title, body, severity, resolutionKey } = input;
+
+  // cm:guard ISS-1063 — this INSERT bypasses `createNotification`, so it consults the
+  // emission switch here. It is NOT routed through that function: the `ON CONFLICT`
+  // against `notifications_ops_alert_active_uq` is what makes the claim atomic across
+  // replicas, and a helper that selects then inserts would put the check-then-insert
+  // race back. `ops_alert` is the one type the switch exempts, so today this returns
+  // true every time; the guard exists so that a future decision to silence ops alerts
+  // has one place to be made rather than two.
+  // cm:edge lockstep -> packages/core/src/notifications/emission-switch.ts — one of the two producers that write `notifications` directly; the other is pm/auto-disable.ts
+  if (!emissionAllowed('ops_alert')) {
+    noteSuppressed('ops_alert', title);
+    return false;
+  }
 
   const claimed = await db.execute<{ id: string }>(sql`
     INSERT INTO notifications (user_id, project_id, type, title, body, severity, resolution_key, read, created_at)
