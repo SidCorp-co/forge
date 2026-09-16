@@ -24,6 +24,7 @@ import {
   usageRecords,
 } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
+import { usageSessionMatch } from '../usage-records/rollup.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { listResponse } from '../lib/pagination.js';
 import { queryBadRequest } from '../lib/query-strict.js';
@@ -144,13 +145,17 @@ const forbidden = () =>
  * then `usage_records.estimated_cost` summed over those session ids per issue
  * — the DISTINCT keeps a session that backed several jobs of the same issue
  * from multiplying its cost (the fan-out the cost-summary route fixed in
- * ISS-308 B4). `usage_records.session_id` is a uuid-shaped TEXT column; the
- * regex guards the cast so a stray non-uuid value can't 500 the rollup.
+ * ISS-308 B4). `usage_records.session_id` is TEXT holding a canonical lowercase
+ * uuid, so the subquery renders `agent_session_id` as text and the join is
+ * plain equality on the indexed column (ISS-1015).
  */
 async function sumCostByIssue(issueIds: string[]): Promise<Map<string, number>> {
   if (issueIds.length === 0) return new Map();
   const pairs = db
-    .selectDistinct({ issueId: jobs.issueId, sessionId: jobs.agentSessionId })
+    .selectDistinct({
+      issueId: jobs.issueId,
+      sessionId: sql<string>`${jobs.agentSessionId}::text`.as('session_id'),
+    })
     .from(jobs)
     .where(and(inArray(jobs.issueId, issueIds), isNotNull(jobs.agentSessionId)))
     .as('issue_sessions');
@@ -160,10 +165,7 @@ async function sumCostByIssue(issueIds: string[]): Promise<Map<string, number>> 
       estimatedCost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
     })
     .from(pairs)
-    .innerJoin(
-      usageRecords,
-      sql`${usageRecords.sessionId} ~ '^[0-9a-fA-F-]{36}$' AND ${usageRecords.sessionId}::uuid = ${pairs.sessionId}`,
-    )
+    .innerJoin(usageRecords, usageSessionMatch(sql`= ${pairs.sessionId}`))
     .groupBy(pairs.issueId);
   return new Map(rows.map((r) => [r.issueId as string, r.estimatedCost]));
 }

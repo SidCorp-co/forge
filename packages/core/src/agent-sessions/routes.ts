@@ -26,6 +26,7 @@ import {
 } from '../middleware/auth.js';
 import { writeBackScheduleLastStatus } from '../schedules/service.js';
 import {
+  canonicalSessionId,
   EMPTY_USAGE_TOTALS,
   usageSessionMatch,
   usageTotalsSelection,
@@ -198,7 +199,7 @@ agentSessionRoutes.get(
 
     const { session } = await ensureSessionMember(id, userId);
 
-    const sessionMatch = usageSessionMatch(sql`= ${id}`);
+    const sessionMatch = usageSessionMatch(sql`= ${canonicalSessionId(id)}`);
 
     const [totals] = await db.select(usageTotalsSelection()).from(usageRecords).where(sessionMatch);
 
@@ -396,6 +397,10 @@ agentSessionRoutes.get(
         pageIds.map((id) => sql`${id}::uuid`),
         sql`, `,
       );
+      const sessionIdList = sql.join(
+        pageIds.map((id) => canonicalSessionId(id)),
+        sql`, `,
+      );
       const costRows = await db
         .select({
           sessionId: usageRecords.sessionId,
@@ -404,7 +409,7 @@ agentSessionRoutes.get(
           ),
         })
         .from(usageRecords)
-        .where(usageSessionMatch(sql`IN (${idList})`))
+        .where(usageSessionMatch(sql`IN (${sessionIdList})`))
         .groupBy(usageRecords.sessionId);
       for (const cr of costRows) {
         if (cr.sessionId) costById.set(cr.sessionId, cr.estimatedCost);

@@ -27,6 +27,7 @@ import {
 } from '../db/schema.js';
 import { RETRY_MAX_ROUNDS, readAutoRetryPayload } from '../jobs/retry.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { usageSessionMatch } from '../usage-records/rollup.js';
 
 export type PipelineStepStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
 
@@ -217,15 +218,10 @@ async function loadCostForRun(runId: string): Promise<PipelineRunCostSummary> {
       requests: sql<number>`coalesce(sum(${usageRecords.requestCount}), 0)`.mapWith(Number),
       sampleCount: sql<number>`count(${usageRecords.id})`.mapWith(Number),
     })
-    // cm:guard `usage_records.session_id` is an `agent_sessions.id` and NOT a job id (verified on beta, ISS-308), so the run is reached by joining that table rather than by reading a column named for a job; the `::uuid` cast is guarded because the column is text and one non-uuid row would fail the whole query.
+    // cm:guard `usage_records.session_id` is an `agent_sessions.id` and NOT a job id (verified on beta, ISS-308), so the run is reached by joining that table rather than by reading a column named for a job. The cast is on the `uuid` side and never on `session_id`: casting the column is what stopped this join using `usage_records_session_id_idx` (ISS-1015), and the column is constrained to null or a canonical lowercase uuid, so the regex that used to guard a cast here has nothing left to guard.
     .from(usageRecords)
-    .innerJoin(agentSessions, sql`${agentSessions.id} = ${usageRecords.sessionId}::uuid`)
-    .where(
-      and(
-        eq(agentSessions.pipelineRunId, runId),
-        sql`${usageRecords.sessionId} ~ '^[0-9a-fA-F-]{36}$'`,
-      ),
-    );
+    .innerJoin(agentSessions, usageSessionMatch(sql`= ${agentSessions.id}::text`))
+    .where(eq(agentSessions.pipelineRunId, runId));
 
   return row ?? EMPTY_COST;
 }
@@ -470,15 +466,11 @@ async function loadCostByRunIds(runIds: string[]): Promise<Map<string, PipelineR
       sampleCount: sql<number>`count(${usageRecords.id})`.mapWith(Number),
     })
     // ISS-460 — join through agent_sessions (usage_records.session_id is an
-    // agent_sessions.id, not a job id; verified beta ISS-308). Guard the cast.
+    // agent_sessions.id, not a job id; verified beta ISS-308). ISS-1015: the
+    // cast belongs on the uuid side so the text index serves the join.
     .from(usageRecords)
-    .innerJoin(agentSessions, sql`${agentSessions.id} = ${usageRecords.sessionId}::uuid`)
-    .where(
-      and(
-        inArray(agentSessions.pipelineRunId, runIds),
-        sql`${usageRecords.sessionId} ~ '^[0-9a-fA-F-]{36}$'`,
-      ),
-    )
+    .innerJoin(agentSessions, usageSessionMatch(sql`= ${agentSessions.id}::text`))
+    .where(inArray(agentSessions.pipelineRunId, runIds))
     .groupBy(agentSessions.pipelineRunId);
   for (const r of rows) {
     if (!r.runId) continue;

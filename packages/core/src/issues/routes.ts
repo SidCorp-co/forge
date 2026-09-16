@@ -24,6 +24,7 @@ import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { formatIssueRef, issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { queryBadRequest } from '../lib/query-strict.js';
+import { usageSessionMatch } from '../usage-records/rollup.js';
 import { logger } from '../logger.js';
 import { deleteMemory } from '../memory/indexer.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
@@ -467,7 +468,7 @@ issueRoutes.get(
   },
 );
 
-// cm:edge contract -> packages/core/src/jobs/routes.ts — the rollup joins `usage_records` on the same `session_id::uuid = jobs.id` cast `loadActualUsage` uses; let the two spellings drift and one surface prices a job the other reports at zero (ISS-202)
+// cm:edge contract -> packages/core/src/jobs/routes.ts — the rollup joins `usage_records` on `session_id = jobs.agent_session_id::text`, the same link `loadActualUsage` uses; let the two spellings drift and one surface prices a job the other reports at zero (ISS-202). Until ISS-1015 both spelled it `session_id::uuid = jobs.id`, which is a JOB id where the column holds an `agent_sessions.id`: measured on beta 2026-09-17, 0 of 24,085 usage rows matched any job id and 24,085 matched an agent session, so both surfaces priced every job at zero. The edge held the two in step and the step was wrong; it is the column this names, not merely that the two agree.
 // cm:guard the LEFT JOIN is what keeps queued and running jobs in the history at tokens=0/cost=0 — an inner join drops every job that has not produced a usage row yet, and a step in flight vanishes from its own history
 const jobHistoryQuerySchema = z.object({
   step: z.enum(jobTypes),
@@ -502,7 +503,7 @@ issueRoutes.get(
         cost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
       })
       .from(jobs)
-      .leftJoin(usageRecords, sql`${usageRecords.sessionId}::uuid = ${jobs.id}::uuid`)
+      .leftJoin(usageRecords, usageSessionMatch(sql`= ${jobs.agentSessionId}::text`))
       .where(and(eq(jobs.issueId, id), eq(jobs.type, step)))
       .groupBy(jobs.id)
       .orderBy(sql`coalesce(${jobs.dispatchedAt}, ${jobs.queuedAt}) desc`);

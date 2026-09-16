@@ -523,7 +523,7 @@ issueExtrasRoutes.get(
     if (!access.role) throw forbidden('not a project member');
 
     const sessionIdSubquery = sql`(
-      SELECT DISTINCT ${jobs.agentSessionId}
+      SELECT DISTINCT ${jobs.agentSessionId}::text
       FROM ${jobs}
       WHERE ${jobs.issueId} = ${issueId}
         AND ${jobs.agentSessionId} IS NOT NULL

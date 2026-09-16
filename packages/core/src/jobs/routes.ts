@@ -16,6 +16,7 @@ import {
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { listResponse, paginationSchema } from '../lib/pagination.js';
+import { canonicalSessionId, usageSessionMatch } from '../usage-records/rollup.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { openIssueRun, openOneShotRun } from '../pipeline/runs.js';
@@ -85,7 +86,14 @@ async function loadJob(jobId: string) {
 // `usage_records.session_id::uuid = jobs.id` — usage rows are tagged with the
 // job id, not the observability agent_sessions row id. Returns null when no
 // rows match.
-async function loadActualUsage(jobId: string): Promise<ActualUsage | null> {
+/**
+ * ISS-1015 — keyed on the AGENT SESSION and not the job. `usage_records.session_id`
+ * holds an `agent_sessions.id`; this read used to pass `job.id`, which matched
+ * nothing on beta (0 of 24,085 rows) and reported every job's actual usage as
+ * null. `null` still means no session or no rows, which is what the caller shows
+ * as "no actual usage yet".
+ */
+async function loadActualUsage(agentSessionId: string): Promise<ActualUsage | null> {
   const [row] = await db
     .select({
       input: sql<number>`coalesce(sum(${usageRecords.inputTokens}), 0)`.mapWith(Number),
@@ -99,7 +107,7 @@ async function loadActualUsage(jobId: string): Promise<ActualUsage | null> {
       samples: sql<number>`count(${usageRecords.id})`.mapWith(Number),
     })
     .from(usageRecords)
-    .where(sql`${usageRecords.sessionId}::uuid = ${jobId}::uuid`);
+    .where(usageSessionMatch(sql`= ${canonicalSessionId(agentSessionId)}`));
   if (!row || row.samples === 0) return null;
   return {
     input: row.input,
@@ -316,7 +324,7 @@ jobRoutes.get(
       throw notFound('prompt snapshot not stored (pre-v0.1.35 job)');
     }
 
-    const actualUsage = job.agentSessionId ? await loadActualUsage(job.id) : null;
+    const actualUsage = job.agentSessionId ? await loadActualUsage(job.agentSessionId) : null;
 
     const payload = (job.payload ?? {}) as Record<string, unknown>;
     const mcpServersRaw = payload.mcpServers ?? null;
