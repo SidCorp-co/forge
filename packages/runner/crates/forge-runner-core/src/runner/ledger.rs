@@ -396,7 +396,13 @@ impl Ledger {
     }
 
     fn from_conn(conn: Connection) -> Result<Self> {
-        conn.execute_batch("PRAGMA foreign_keys = ON;")
+        // cm:guard a busy timeout, because this process now opens the ledger TWICE: the sweep holds
+        // one connection for thirty seconds at a time and the control socket holds another for a
+        // declaration. rusqlite's default is to fail instantly on a locked database, so without
+        // this a master declaring a run while a sweep was mid-transaction would be refused
+        // `database is locked` — a refusal naming the sqlite rather than anything the master did,
+        // arriving at random (ISS-1050).
+        conn.execute_batch("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;")
             .map_err(sql_err)?;
         conn.execute_batch(SCHEMA).map_err(sql_err)?;
         Self::add_missing_columns(&conn)?;
@@ -656,6 +662,41 @@ impl Ledger {
             )
             .optional()
             .map_err(sql_err)
+    }
+
+    /// Every run this boot ended that core has not been told is over.
+    // cm:guard `session_terminal_at IS NULL` is the not-yet-told mark and the same one `close_loop` sets, so a row reported once is never reported twice. Boot-scoped for the same reason as its sibling: another boot's row names a master this box no longer has.
+    pub fn ended_with_open_session(&self, boot_id: &str) -> Result<Vec<Run>> {
+        let mut stmt = self
+            .conn
+            .prepare(&format!(
+                "{SELECT_RUN} WHERE boot_id = ?1 AND ended_by IS NOT NULL AND session_id IS NOT NULL
+                   AND session_terminal_at IS NULL ORDER BY created_at"
+            ))
+            .map_err(sql_err)?;
+        let rows = stmt.query_map(params![boot_id], map_run).map_err(sql_err)?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r.map_err(sql_err)?);
+        }
+        Ok(out)
+    }
+
+    /// Every run this boot declared that core has not been told about yet.
+    // cm:guard `session_id IS NULL AND ended_by IS NULL`, boot-scoped. A row from a previous boot names a master this box no longer has and opening a core session for it would publish a run nothing will ever beat; a row already ended is one the master cancelled before its subagent started, and telling core about it would create a session whose only future is to be reaped (ISS-1050 criteria 5, 13).
+    pub fn declared_without_session(&self, boot_id: &str) -> Result<Vec<Run>> {
+        let mut stmt = self
+            .conn
+            .prepare(&format!(
+                "{SELECT_RUN} WHERE boot_id = ?1 AND session_id IS NULL AND ended_by IS NULL ORDER BY created_at"
+            ))
+            .map_err(sql_err)?;
+        let rows = stmt.query_map(params![boot_id], map_run).map_err(sql_err)?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r.map_err(sql_err)?);
+        }
+        Ok(out)
     }
 
     /// The run bound to this subagent, if one is.

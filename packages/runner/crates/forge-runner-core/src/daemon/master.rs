@@ -30,6 +30,7 @@ use crate::daemon::master_exit::{self, Verdict};
 use crate::daemon::recovery;
 use crate::daemon::recovery_ports::{CoreBeat, CoreRunState, PaneMasters, SignalProbe};
 use crate::daemon::run_exit;
+use crate::daemon::run_record;
 use crate::daemon::session_tokens;
 use crate::daemon::terminal;
 use crate::runner::close_loop;
@@ -258,6 +259,18 @@ impl Masters {
         reg.live.remove(project_id).map(|m| m.session_id)
     }
 
+    /// Which project's master a session id is, for a declaration this box is
+    /// about to bound.
+    // cm:guard the REVERSE of `pane_for_session`, and it is a local read of a map already keyed by project — it does NOT ask core which project a session belongs to, which is the thing the guard below says core neither knows nor says on a frame. The two answer opposite questions and neither is the other's fallback (ISS-1050 criterion 7).
+    // cm:guard `None` is REFUSED by the caller and never guessed. This map is an optimisation rather than the bound, so a daemon restart empties it while every master is still running: a declaration arriving in that window has to be told this box does not yet know which project its pane serves, and that the next sweep re-adopts the pane and restores the answer. Deriving a project from the only entry present, or from the frame's own claim, is how a pane on one project opens a run over another's issue.
+    pub fn project_for_session(&self, session_id: &str) -> Option<String> {
+        let reg = self.0.lock().expect("masters poisoned");
+        reg.live
+            .iter()
+            .find(|(_, m)| m.session_id == session_id)
+            .map(|(project_id, _)| project_id.clone())
+    }
+
     /// The pane name for a master session id, for the inbox's terminal arm.
     // cm:guard keyed by SESSION id, not project id. Core addresses a master by the `agent_sessions` row it registered, which is the only identity a `session.send` frame carries — a lookup by project would need core to know which project a session belongs to and to say so on the frame, and it does neither.
     pub fn pane_for_session(&self, session_id: &str) -> Option<String> {
@@ -475,10 +488,21 @@ async fn sweep(
         }
     }
 
+    // cm:guard BEFORE `give_back_lost_runs` and at the same brace depth, both deliberately. A run
+    // declared this sweep has no core session yet, and `reconcile` reads a row with none as a run
+    // that never started and closes the loop over it — so the row has to reach core first or a
+    // master's freshly declared work is given back from under the subagent it was just handed to
+    // (ISS-1050 criteria 5, 8).
+    let boot = crate::runner::inflight::boot_identity().unwrap_or_default();
+    let sessions = run_record::CoreSessions(client);
+    let opened = run_record::open_declared_runs(&sessions, ledger, &boot).await;
+    let closed = run_record::close_ended_runs(&sessions, ledger, &boot).await;
+    if opened > 0 || closed > 0 {
+        tracing::info!("[run-record] {opened} run(s) opened at core, {closed} closed");
+    }
+
     give_back_lost_runs(
-        crate::runner::inflight::boot_identity()
-            .unwrap_or_default()
-            .as_str(),
+        boot.as_str(),
         &PaneMasters { masters },
         &Reclaim {
             served: &served,
@@ -2048,6 +2072,46 @@ mod give_back_tests {
         );
     }
 
+    // cm:guard the same source scan as its neighbour, and for the same reason a `contains` check
+    // would not do: a declaration reaches core only here, so behind a condition it reaches core on
+    // some sweeps and not others, and a master's run row would sit unpublished for as long as that
+    // condition held while the master dispatched against it (ISS-1050 criterion 5).
+    #[test]
+    fn the_sweep_tells_core_about_declared_runs_unconditionally() {
+        assert_eq!(
+            depth_of_call_in_sweep("run_record::open_declared_runs("),
+            Some(1),
+            "a declared run reaches core only from this call; behind a condition it reaches core on some sweeps and not others"
+        );
+        assert_eq!(
+            depth_of_call_in_sweep("run_record::close_ended_runs("),
+            Some(1),
+            "a finished run is released only from this call; behind a condition its issues wait out core's ten-minute reaper instead"
+        );
+    }
+
+    // cm:guard ORDER, not merely presence. `reconcile` reads a row with no core session as a run
+    // that never started and closes the loop over it, so a declaration made this sweep has to reach
+    // core BEFORE the reconciler sees it — otherwise a master's freshly declared work is given back
+    // from under the subagent it was just handed to (ISS-1050 criteria 5, 8).
+    #[test]
+    fn a_declaration_reaches_core_before_the_reconciler_reads_it() {
+        let body = THIS_SOURCE
+            .split("async fn sweep(")
+            .nth(1)
+            .expect("sweep must exist");
+        let opens = body
+            .find("run_record::open_declared_runs(")
+            .expect("the sweep must tell core about declared runs");
+        let reconciles = body
+            .find("give_back_lost_runs(")
+            .expect("the sweep must reconcile");
+        assert!(
+            opens < reconciles,
+            "a run declared this sweep must reach core before the reconciler reads it as one that never started"
+        );
+    }
+
     fn admiss(issue_id: &str) -> AdmissibleIssue {
         serde_json::from_value(serde_json::json!({ "issueId": issue_id }))
             .expect("admissible fixture")
@@ -2155,5 +2219,28 @@ mod give_back_tests {
                 "a nudge_master call must sit inside a claim_nudge gate — an ungated one spends a full agent pass on every sweep (~$0.18, measured 2026-09-08)"
             );
         }
+    }
+}
+
+// cm:guard this `#[cfg(test)]` block is at the END of the file and must stay there. Three tests in
+// this module read their subject by splitting the source on the FIRST `#[cfg(test)]` and scanning
+// what precedes it, so a test-only item placed above `sweep` or `nudge` truncates the half they
+// read — `the_sweep_reconciles_unconditionally` and its neighbours then answer about a body that is
+// not there. All three fail loudly when that happens, which is how this block ended up down here.
+#[cfg(test)]
+impl Masters {
+    /// Put a master in the registry without spawning one.
+    // cm:guard test-only, so no production path can register a pane nothing started: adoption goes through `ensure_master`, which asks tmux first.
+    pub fn remember_for_test(&self, project_id: &str, session_id: &str, name: &str) {
+        self.remember(
+            project_id,
+            MasterState {
+                session_id: session_id.to_string(),
+                name: name.to_string(),
+                last_work: Instant::now(),
+                last_nudge: None,
+                mcp_stale_reported: false,
+            },
+        );
     }
 }

@@ -18,6 +18,7 @@ pub mod master_exit;
 pub mod recovery;
 pub mod recovery_ports;
 pub mod run_exit;
+pub mod run_record;
 pub mod session_tokens;
 pub mod setup_agent;
 pub mod skill_pull;
@@ -605,9 +606,33 @@ pub async fn run(
                 "cannot resolve the control token map path".into(),
             ));
         };
+        // cm:guard the control socket opens its OWN ledger connection rather than sharing the
+        // sweep's, because `rusqlite::Connection` is not `Sync` and the sweep holds its own for the
+        // length of a sweep. Both carry `PRAGMA busy_timeout`, which is what keeps a declaration
+        // arriving mid-sweep from being refused `database is locked` (ISS-1050).
+        // cm:guard a ledger that will not open leaves this `None` and the socket REFUSES a
+        // declaration by name, rather than the daemon declining to start: turn boundaries are the
+        // other half of this socket and a box that reported none of them would go blind to every
+        // liveness reader on it.
+        let ctl_ledger = Arc::new(std::sync::Mutex::new(
+            match crate::runner::ledger::Ledger::default_path()
+                .and_then(|p| crate::runner::ledger::Ledger::open(&p))
+            {
+                Ok(l) => Some(l),
+                Err(e) => {
+                    tracing::error!(
+                        "[control] cannot open the run ledger: {e} — declarations will be refused"
+                    );
+                    None
+                }
+            },
+        ));
         let ctl = Arc::new(control::Control {
             tokens: session_tokens::SessionTokens::at(tokens_path),
             activity: activity.clone(),
+            masters: masters.clone(),
+            ledger: ctl_ledger,
+            boot_id: crate::runner::inflight::boot_identity().unwrap_or_default(),
         });
         let cancel_rx = cancel_rx.clone();
         tokio::spawn(async move {

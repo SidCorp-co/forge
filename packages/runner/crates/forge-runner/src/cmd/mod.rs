@@ -7,6 +7,7 @@ pub mod hook;
 pub mod login;
 pub mod logs;
 pub mod master;
+pub mod run;
 pub mod runners;
 pub mod service;
 pub mod start;
