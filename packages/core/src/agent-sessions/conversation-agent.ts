@@ -484,6 +484,10 @@ export async function redispatchConversationAgentTurn(
       },
       'conversation-agent failover: re-dispatched to another runner',
     );
+    // cm:guard the RETRY gets its own ack window too: the first attempt's timer fired against a
+    // session that is now terminal and posted nothing, so without this a venue whose turn failed
+    // over waits out both windows in silence — which is the one case the ack exists for.
+    scheduleAck(dispatched.id, next);
     return { ok: true, sessionId: dispatched.id, deviceId };
   } catch (err) {
     logger.error(

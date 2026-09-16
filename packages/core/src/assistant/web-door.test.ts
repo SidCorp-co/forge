@@ -31,9 +31,18 @@ import { webConversationPersona } from './door-persona.js';
 /** The door the code picks, not a door this file picked. */
 const webDoor = (): string =>
   webConversationTurn({
-    project: { id: 'p1', slug: 'forge-dev', name: 'Forge' },
+    project: { id: 'p1', slug: 'forge-dev', name: 'Forge', repoPath: null },
     handleName: 'Babo',
     askedBy: 'Alice',
+    window: {
+      venue: { adapter: 'web', externalId: 'v1', shape: 'direct', projectId: 'p1' },
+      conversationId: 'c1',
+      windowId: 'w1',
+      deliveryKey: 'k1',
+      mode: 'assistant',
+      question: 'hello',
+      reserve: async () => true,
+    },
   }).door;
 
 /**

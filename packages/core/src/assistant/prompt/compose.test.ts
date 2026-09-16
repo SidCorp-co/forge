@@ -65,13 +65,14 @@ describe('composeLayers', () => {
 });
 
 describe('the layers this repository ships', () => {
-  it('is exactly six modules with the declared ids (criterion 6)', () => {
+  it('is exactly seven modules with the declared ids (criterion 6)', () => {
     const files = readdirSync(HERE)
       .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'))
       .filter((f) => f !== 'layer.ts' && f !== 'layers.ts');
     expect(files.sort()).toEqual([
       'base.ts',
       'door-rocketchat.ts',
+      'door-web-agent.ts',
       'door-web.ts',
       'identity.ts',
       'linking.ts',
@@ -81,6 +82,7 @@ describe('the layers this repository ships', () => {
       'base',
       'door-rocketchat',
       'door-web',
+      'door-web-agent',
       'identity',
       'linking',
       'tools',

@@ -14,10 +14,6 @@
  */
 
 import { eq } from 'drizzle-orm';
-import {
-  conversationAgentTurnForWindow,
-  startConversationAgentTurn,
-} from '../agent-sessions/conversation-agent.js';
 import { collectInboundMessage } from '../conversations/collect-inbound.js';
 import { type ProjectHandle, resolveProjectHandle } from '../conversations/handles.js';
 import { startConversationHeartbeat } from '../conversations/heartbeat.js';
@@ -107,6 +103,14 @@ export function webConversationTurn(args: {
       setPhase('agent-turn');
       if (!(await args.window.reserve()))
         return { send: false, reason: 'superseded-before-agent-turn' };
+      // cm:guard imported HERE and not at the top of the file, for the reason `door-persona.ts`
+      // states about itself: `web-door.test.ts` and `conversation-send.test.ts` compose a persona
+      // with `db/client.js` mocked and no environment, and the runner-hosted lane's own import tree
+      // reaches `config/env.ts`. A static import would make both files fail to COLLECT rather than
+      // fail an assertion — a whole file's coverage gone for a symbol two branches never reach.
+      const { startConversationAgentTurn } = await import(
+        '../agent-sessions/conversation-agent.js'
+      );
       const started = await startConversationAgentTurn({
         venue: args.window.venue,
         conversationId: args.window.conversationId,
@@ -297,7 +301,11 @@ async function routeWebWindow(
     // delivered row, which `route-window.ts` alone reads as a delivery whose outcome was lost —
     // and the thread prints that reading as "a reply was sent and never confirmed" under a turn
     // still being written on a box (ISS-1039).
-    handoffFor: conversationAgentTurnForWindow,
+    // cm:guard the same lazy reach the divert makes, and for the same reason (see above).
+    handoffFor: async (windowId) =>
+      (await import('../agent-sessions/conversation-agent.js')).conversationAgentTurnForWindow(
+        windowId,
+      ),
     inputs: ({ venue, conversationId, windowId, deliveryKey, mode, messages, reserve }) =>
       webConversationTurn({
         project: subject.project,

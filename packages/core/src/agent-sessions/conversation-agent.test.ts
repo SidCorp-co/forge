@@ -1,23 +1,30 @@
-// ISS-727 `agent`-mode dispatcher: dedup, device resolution, dispatch-failure
-// safety net. Mirrors escalation.test.ts — same chat-turn machinery.
+// The runner-hosted conversation turn: dedup, device resolution, the
+// dispatch-failure safety net, the failover chain, the prompt and the interim
+// ack.
+//
+// Was `integrations/rocketchat/agent-chat.test.ts` until ISS-1039 moved the
+// lane off Rocket.Chat's vocabulary. Every case below is the same claim about
+// the same machinery, restated about a venue, a window and a delivery key —
+// which is the point: the behaviour a room relied on is asserted here, on the
+// one lane, rather than once per transport.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const selectLimit = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
-vi.mock('../../db/client.js', () => ({
+vi.mock('../db/client.js', () => ({
   db: { select: vi.fn(() => ({ from: selectFrom })) },
 }));
-vi.mock('../../ws/server.js', () => ({ roomManager: { publish: vi.fn() } }));
-vi.mock('../../pipeline/outbox-session.js', () => ({ withActorContext: vi.fn() }));
-vi.mock('../../pipeline/runs.js', () => ({
+vi.mock('../ws/server.js', () => ({ roomManager: { publish: vi.fn() } }));
+vi.mock('../pipeline/outbox-session.js', () => ({ withActorContext: vi.fn() }));
+vi.mock('../pipeline/runs.js', () => ({
   closeOpenRunForIssue: vi.fn(),
   setCurrentStepForOpenIssueRun: vi.fn(),
 }));
 
 const computeProjectProgress = vi.fn(async (..._args: unknown[]) => null);
-vi.mock('../../issues/progress.js', () => ({
+vi.mock('../issues/progress.js', () => ({
   computeProjectProgress: (...args: unknown[]) => computeProjectProgress(...args),
   buildProgressFactsBlock: () => 'PROGRESS FACTS BLOCK',
 }));
@@ -25,81 +32,110 @@ vi.mock('../../issues/progress.js', () => ({
 const createChatSessionRow = vi.fn();
 const dispatchChatTurn = vi.fn();
 const resolveChatDevice = vi.fn();
-vi.mock('../../agent-sessions/chat-turn.js', () => ({
+vi.mock('./chat-turn.js', () => ({
   createChatSessionRow: (...args: unknown[]) => createChatSessionRow(...args),
   dispatchChatTurn: (...args: unknown[]) => dispatchChatTurn(...args),
   resolveChatDevice: (...args: unknown[]) => resolveChatDevice(...args),
 }));
 
 const applyKernelTransition = vi.fn();
-vi.mock('../../lifecycle/transition.js', () => ({
+vi.mock('../lifecycle/transition.js', () => ({
   applyKernelTransition: (...args: unknown[]) => applyKernelTransition(...args),
 }));
 
 const findAvailableDeviceForProject = vi.fn();
-vi.mock('../../lib/device-pool.js', () => ({
+vi.mock('../lib/device-pool.js', () => ({
   findAvailableDeviceForProject: (...args: unknown[]) => findAvailableDeviceForProject(...args),
 }));
 
-const FIXED_REPLY_CONSTANT = Symbol('fixed-reply-constant');
-const sendFixedReply = vi.fn();
-vi.mock('./outbound.js', () => ({
-  FIXED_REPLY_CONSTANT,
-  sendFixedReply: (...args: unknown[]) => sendFixedReply(...args),
-}));
-
-const resolveRoomPostAuth = vi.fn();
-// cm:why spread the original so the real `hasInFlightRoomSession` runs against this file's `db` mock — that query IS what the dedup assertions below exercise, so stubbing it would make them vacuous
-vi.mock('./room-delivery.js', async (orig) => ({
-  ...(await orig<typeof import('./room-delivery.js')>()),
-  resolveRoomPostAuth: (...args: unknown[]) => resolveRoomPostAuth(...args),
+// cm:why the transport REGISTRY is mocked rather than a transport's client: the lane reaches a venue
+// through `conversationTransport(adapter).deliver` and knows nothing else about it, so this is the
+// whole of what the ack has to be asserted against.
+const deliver = vi.fn(async () => ({ messageId: 'm1' }));
+vi.mock('../conversations/ports.js', async (orig) => ({
+  ...(await orig<typeof import('../conversations/ports.js')>()),
+  conversationTransport: () => ({ adapter: 'web', deliver }),
 }));
 
 const loggerInfo = vi.fn();
-vi.mock('../../logger.js', () => ({
+vi.mock('../logger.js', () => ({
   logger: { info: (...args: unknown[]) => loggerInfo(...args), error: vi.fn(), warn: vi.fn() },
 }));
 
 const {
-  AGENT_CHAT_ACK,
-  AGENT_CHAT_ACK_DELAY_MS,
-  buildAgentChatPrompt,
-  hasInFlightAgentChat,
-  redispatchAgentChatSessionOnFailover,
-  scheduleDelayedAck,
-  startAgentChat,
-} = await import('./agent-chat.js');
+  buildConversationAgentPrompt,
+  hasInFlightConversationAgentTurn,
+  redispatchConversationAgentTurn,
+  startConversationAgentTurn,
+} = await import('./conversation-agent.js');
 
-const BASE_ARGS = {
+const VENUE = {
+  adapter: 'rocketchat' as const,
+  externalId: 'chat.example.com room-1',
+  shape: 'direct' as const,
   projectId: 'proj-1',
-  project: { id: 'proj-1', slug: 'proj', repoPath: '/repo' },
-  connectionId: 'conn-1',
-  rid: 'room-1',
-  tmid: undefined,
-  botName: 'Babo',
-  message: 'How does the pipeline dispatcher work?',
-  askedByUsername: 'alice',
-  persona: 'PERSONA',
-  conversationContext: 'earlier discussion…',
 };
 
-describe('hasInFlightAgentChat', () => {
+const ACK_DELAY_MS = 2 * 60 * 1000;
+const ACK = 'Babo is working on this.';
+
+const REPLIES = {
+  dedup: 'already running',
+  noDevice: 'no box free',
+  failed: 'nothing to show you',
+  ack: ACK,
+};
+
+/** The stored marker, as `readConversationAgentMeta` needs to be able to read it back. */
+const MARKER = {
+  venue: VENUE,
+  conversationId: 'conv-1',
+  windowId: 'win-1',
+  deliveryKey: 'key-1',
+  handleName: 'Babo',
+  question: 'How does X work?',
+  askedByLabel: '@alice',
+  door: 'agent-chat-completion',
+  replies: REPLIES,
+  ackAfterMs: ACK_DELAY_MS,
+  deliveredAt: null,
+  failure: null,
+};
+
+const BASE_ARGS = {
+  venue: VENUE,
+  conversationId: 'conv-1',
+  windowId: 'win-1',
+  deliveryKey: 'key-1',
+  project: { id: 'proj-1', slug: 'proj', repoPath: '/repo' },
+  handleName: 'Babo',
+  question: 'How does the pipeline dispatcher work?',
+  askedByLabel: '@alice',
+  persona: 'PERSONA',
+  conversationContext: 'earlier discussion…',
+  door: 'agent-chat-completion' as const,
+  replies: REPLIES,
+  ackAfterMs: ACK_DELAY_MS,
+  forceLenses: ['product'] as const,
+};
+
+describe('hasInFlightConversationAgentTurn', () => {
   beforeEach(() => {
     selectLimit.mockReset();
   });
 
   it('is true when a running agent-chat session exists for the room', async () => {
     selectLimit.mockResolvedValue([{ id: 'session-1' }]);
-    await expect(hasInFlightAgentChat('proj-1', 'room-1')).resolves.toBe(true);
+    await expect(hasInFlightConversationAgentTurn('proj-1', 'conv-1')).resolves.toBe(true);
   });
 
   it('is false when no row matches', async () => {
     selectLimit.mockResolvedValue([]);
-    await expect(hasInFlightAgentChat('proj-1', 'room-1')).resolves.toBe(false);
+    await expect(hasInFlightConversationAgentTurn('proj-1', 'conv-1')).resolves.toBe(false);
   });
 });
 
-describe('startAgentChat', () => {
+describe('startConversationAgentTurn', () => {
   beforeEach(() => {
     selectLimit.mockReset();
     createChatSessionRow.mockReset();
@@ -110,7 +146,7 @@ describe('startAgentChat', () => {
 
   it('dedupes against an in-flight agent-chat turn for the same room without creating a session', async () => {
     selectLimit.mockResolvedValue([{ id: 'existing-session' }]);
-    const result = await startAgentChat(BASE_ARGS);
+    const result = await startConversationAgentTurn(BASE_ARGS);
     expect(result).toEqual({ started: false, reason: 'deduped' });
     expect(resolveChatDevice).not.toHaveBeenCalled();
     expect(createChatSessionRow).not.toHaveBeenCalled();
@@ -119,18 +155,18 @@ describe('startAgentChat', () => {
   it('reports no-device without creating a session when no runner is available', async () => {
     selectLimit.mockResolvedValue([]);
     resolveChatDevice.mockResolvedValue({ deviceId: null, isLocal: false });
-    const result = await startAgentChat(BASE_ARGS);
+    const result = await startConversationAgentTurn(BASE_ARGS);
     expect(result).toEqual({ started: false, reason: 'no-device' });
     expect(createChatSessionRow).not.toHaveBeenCalled();
   });
 
-  it('creates a system session pinned to the product lens and dispatches the agent-chat prompt', async () => {
+  it('creates a system session carrying the venue, the window and the delivery key, pinned to the caller lens', async () => {
     selectLimit.mockResolvedValue([]);
     resolveChatDevice.mockResolvedValue({ deviceId: 'device-1', isLocal: false });
     createChatSessionRow.mockResolvedValue({ id: 'session-1', status: 'idle' });
     dispatchChatTurn.mockResolvedValue({ id: 'session-1' });
 
-    const result = await startAgentChat(BASE_ARGS);
+    const result = await startConversationAgentTurn(BASE_ARGS);
 
     expect(result).toEqual({ started: true, sessionId: 'session-1' });
     expect(createChatSessionRow).toHaveBeenCalledWith(
@@ -138,12 +174,16 @@ describe('startAgentChat', () => {
         projectId: 'proj-1',
         runKind: 'system',
         metadata: expect.objectContaining({
-          agentChat: expect.objectContaining({
-            connectionId: 'conn-1',
-            rid: 'room-1',
-            botName: 'Babo',
+          conversationAgent: expect.objectContaining({
+            venue: VENUE,
+            conversationId: 'conv-1',
+            windowId: 'win-1',
+            deliveryKey: 'key-1',
+            handleName: 'Babo',
             question: 'How does the pipeline dispatcher work?',
+            door: 'agent-chat-completion',
             deliveredAt: null,
+            failure: null,
           }),
           lensOverride: ['product'],
         }),
@@ -165,7 +205,7 @@ describe('startAgentChat', () => {
     dispatchChatTurn.mockRejectedValue(new Error('ws publish failed'));
     applyKernelTransition.mockResolvedValue([{ id: 'session-1', status: 'failed' }]);
 
-    const result = await startAgentChat(BASE_ARGS);
+    const result = await startConversationAgentTurn(BASE_ARGS);
 
     expect(result).toEqual({ started: false, reason: 'dispatch-failed' });
     expect(applyKernelTransition).toHaveBeenCalledWith(
@@ -179,7 +219,7 @@ describe('startAgentChat', () => {
   });
 });
 
-describe('redispatchAgentChatSessionOnFailover', () => {
+describe('redispatchConversationAgentTurn', () => {
   function makeSession(overrides: Record<string, unknown> = {}) {
     return {
       id: 'session-1',
@@ -190,14 +230,19 @@ describe('redispatchAgentChatSessionOnFailover', () => {
       failureReason: 'no_client_ack',
       messages: [{ role: 'user', content: 'the built agent-chat prompt' }],
       metadata: {
-        agentChat: {
-          connectionId: 'conn-1',
-          rid: 'room-1',
-          tmid: null,
-          botName: 'Babo',
-          askedByUsername: 'alice',
+        conversationAgent: {
+          venue: VENUE,
+          conversationId: 'conv-1',
+          windowId: 'win-1',
+          deliveryKey: 'key-1',
+          handleName: 'Babo',
+          askedByLabel: '@alice',
           question: 'How does X work?',
+          door: 'agent-chat-completion',
+          replies: REPLIES,
+          ackAfterMs: ACK_DELAY_MS,
           deliveredAt: '2026-01-01T00:00:00.000Z',
+          failure: null,
         },
       },
       ...overrides,
@@ -212,20 +257,22 @@ describe('redispatchAgentChatSessionOnFailover', () => {
     applyKernelTransition.mockReset();
   });
 
-  it('reports not-agent-chat for a session with no agentChat metadata', async () => {
-    const result = await redispatchAgentChatSessionOnFailover(makeSession({ metadata: {} }));
-    expect(result).toEqual({ ok: false, status: 'not-agent-chat' });
+  it('reports not-a-conversation-turn for a session carrying no conversation marker', async () => {
+    const result = await redispatchConversationAgentTurn(makeSession({ metadata: {} }));
+    expect(result).toEqual({ ok: false, status: 'not-a-conversation-turn' });
     expect(findAvailableDeviceForProject).not.toHaveBeenCalled();
   });
 
-  it('is exhausted past MAX_AGENT_CHAT_FAILOVERS (2)', async () => {
-    const result = await redispatchAgentChatSessionOnFailover(
+  it('is exhausted past the two-failover bound', async () => {
+    const result = await redispatchConversationAgentTurn(
       makeSession({
         metadata: {
-          agentChat: {
-            connectionId: 'conn-1',
-            rid: 'room-1',
-            botName: 'Babo',
+          conversationAgent: {
+            venue: VENUE,
+            conversationId: 'conv-1',
+            windowId: 'win-1',
+            deliveryKey: 'key-1',
+            handleName: 'Babo',
             deliveredAt: null,
             failover: { attempt: 2, triedDeviceIds: ['device-1', 'device-2'] },
           },
@@ -237,13 +284,13 @@ describe('redispatchAgentChatSessionOnFailover', () => {
   });
 
   it('reports no-prompt when the session carries no reusable user message', async () => {
-    const result = await redispatchAgentChatSessionOnFailover(makeSession({ messages: [] }));
+    const result = await redispatchConversationAgentTurn(makeSession({ messages: [] }));
     expect(result).toEqual({ ok: false, status: 'no-prompt' });
   });
 
   it('reports no-device when no healthy runner is available', async () => {
     findAvailableDeviceForProject.mockResolvedValue(null);
-    const result = await redispatchAgentChatSessionOnFailover(makeSession());
+    const result = await redispatchConversationAgentTurn(makeSession());
     expect(result).toEqual({ ok: false, status: 'no-device' });
     expect(findAvailableDeviceForProject).toHaveBeenCalledWith('proj-1', {
       excludeDeviceIds: ['device-1'],
@@ -252,14 +299,16 @@ describe('redispatchAgentChatSessionOnFailover', () => {
 
   it('excludes every device already tried across a bumped failover chain', async () => {
     findAvailableDeviceForProject.mockResolvedValue(null);
-    await redispatchAgentChatSessionOnFailover(
+    await redispatchConversationAgentTurn(
       makeSession({
         deviceId: 'device-2',
         metadata: {
-          agentChat: {
-            connectionId: 'conn-1',
-            rid: 'room-1',
-            botName: 'Babo',
+          conversationAgent: {
+            venue: VENUE,
+            conversationId: 'conv-1',
+            windowId: 'win-1',
+            deliveryKey: 'key-1',
+            handleName: 'Babo',
             deliveredAt: null,
             failover: { attempt: 1, triedDeviceIds: ['device-1'] },
           },
@@ -277,22 +326,19 @@ describe('redispatchAgentChatSessionOnFailover', () => {
     createChatSessionRow.mockResolvedValue({ id: 'session-2', status: 'idle' });
     dispatchChatTurn.mockResolvedValue({ id: 'session-2' });
 
-    const result = await redispatchAgentChatSessionOnFailover(makeSession());
+    const result = await redispatchConversationAgentTurn(makeSession());
 
-    expect(result).toEqual({
-      ok: true,
-      status: 'redispatched',
-      sessionId: 'session-2',
-      deviceId: 'device-3',
-    });
+    expect(result).toEqual({ ok: true, sessionId: 'session-2', deviceId: 'device-3' });
     expect(createChatSessionRow).toHaveBeenCalledWith(
       expect.objectContaining({
         projectId: 'proj-1',
         runKind: 'system',
         metadata: expect.objectContaining({
-          agentChat: expect.objectContaining({
-            rid: 'room-1',
+          conversationAgent: expect.objectContaining({
+            venue: VENUE,
+            windowId: 'win-1',
             deliveredAt: null,
+            failure: null,
             failover: { attempt: 1, triedDeviceIds: ['device-1'] },
           }),
         }),
@@ -311,38 +357,33 @@ describe('redispatchAgentChatSessionOnFailover', () => {
         toDeviceId: 'device-3',
         failureReason: 'no_client_ack',
       }),
-      'agent-chat failover: re-dispatched to another runner',
+      'conversation-agent failover: re-dispatched to another runner',
     );
   });
 
-  it('schedules a delayed ack for the retry session so the room gets an interim signal', async () => {
+  it('schedules the interim ack for the retry session, through the venue own transport', async () => {
     vi.useFakeTimers();
     selectLimit.mockResolvedValueOnce([{ id: 'proj-1', slug: 'proj', repoPath: '/repo' }]);
     selectLimit.mockResolvedValueOnce([
-      { status: 'running', metadata: { agentChat: { deliveredAt: null } } },
+      { status: 'running', metadata: { conversationAgent: { ...MARKER, deliveredAt: null } } },
     ]);
     findAvailableDeviceForProject.mockResolvedValue('device-3');
     createChatSessionRow.mockResolvedValue({ id: 'session-2', status: 'idle' });
     dispatchChatTurn.mockResolvedValue({ id: 'session-2' });
-    resolveRoomPostAuth.mockResolvedValue({
-      serverUrl: 'https://chat.example.co',
-      authToken: 'tok',
-      userId: 'bot',
-    });
-    sendFixedReply.mockResolvedValue(undefined);
+    deliver.mockClear();
 
-    await redispatchAgentChatSessionOnFailover(makeSession());
+    await redispatchConversationAgentTurn(makeSession());
 
     await vi.runAllTimersAsync();
 
-    expect(sendFixedReply).toHaveBeenCalled();
+    expect(deliver).toHaveBeenCalledWith(VENUE, expect.objectContaining({ text: ACK }));
     vi.useRealTimers();
   });
 
   it('reports error when the project row is missing', async () => {
     selectLimit.mockResolvedValue([]);
     findAvailableDeviceForProject.mockResolvedValue('device-3');
-    const result = await redispatchAgentChatSessionOnFailover(makeSession());
+    const result = await redispatchConversationAgentTurn(makeSession());
     expect(result).toEqual({ ok: false, status: 'error' });
     expect(createChatSessionRow).not.toHaveBeenCalled();
   });
@@ -353,14 +394,12 @@ describe('redispatchAgentChatSessionOnFailover', () => {
     createChatSessionRow.mockResolvedValue({
       id: 'session-2',
       status: 'idle',
-      metadata: {
-        agentChat: { connectionId: 'conn-1', rid: 'room-1', botName: 'Babo', deliveredAt: null },
-      },
+      metadata: { conversationAgent: { ...MARKER, deliveredAt: null } },
     });
     dispatchChatTurn.mockRejectedValue(new Error('ws publish failed'));
     applyKernelTransition.mockResolvedValue([{ id: 'session-2', status: 'failed' }]);
 
-    const result = await redispatchAgentChatSessionOnFailover(makeSession());
+    const result = await redispatchConversationAgentTurn(makeSession());
     expect(result).toEqual({ ok: false, status: 'error' });
     expect(applyKernelTransition).toHaveBeenCalledWith(
       expect.anything(),
@@ -370,7 +409,7 @@ describe('redispatchAgentChatSessionOnFailover', () => {
         reason: 'ws-publish-failed',
         set: expect.objectContaining({
           metadata: expect.objectContaining({
-            agentChat: expect.objectContaining({ deliveredAt: expect.any(String) }),
+            conversationAgent: expect.objectContaining({ deliveredAt: expect.any(String) }),
           }),
         }),
       }),
@@ -382,19 +421,19 @@ describe('redispatchAgentChatSessionOnFailover', () => {
     findAvailableDeviceForProject.mockResolvedValue('device-3');
     createChatSessionRow.mockRejectedValue(new Error('insert failed'));
 
-    const result = await redispatchAgentChatSessionOnFailover(makeSession());
+    const result = await redispatchConversationAgentTurn(makeSession());
     expect(result).toEqual({ ok: false, status: 'error' });
     expect(applyKernelTransition).not.toHaveBeenCalled();
   });
 });
 
-describe('buildAgentChatPrompt', () => {
+describe('buildConversationAgentPrompt', () => {
   it('includes the persona, conversation context, and the user message', () => {
-    const prompt = buildAgentChatPrompt({
+    const prompt = buildConversationAgentPrompt({
       persona: 'PERSONA-TEXT',
       conversationContext: 'earlier discussion…',
-      message: 'How does X work?',
-      askedByUsername: 'alice',
+      question: 'How does X work?',
+      askedByLabel: '@alice',
     });
     expect(prompt).toContain('PERSONA-TEXT');
     expect(prompt).toContain('earlier discussion…');
@@ -403,36 +442,39 @@ describe('buildAgentChatPrompt', () => {
   });
 
   it('instructs the model that this reply is delivered verbatim, no fenced JSON', () => {
-    const prompt = buildAgentChatPrompt({ persona: 'P', message: 'hi' });
+    const prompt = buildConversationAgentPrompt({ persona: 'P', question: 'hi' });
     expect(prompt).toMatch(/delivered to the room verbatim/);
     expect(prompt).toMatch(/No fenced JSON/);
   });
 
   it('omits the conversation-context section when none is seeded', () => {
-    const prompt = buildAgentChatPrompt({ persona: 'P', message: 'hi' });
+    const prompt = buildConversationAgentPrompt({ persona: 'P', question: 'hi' });
     expect(prompt).not.toContain('Conversation context');
   });
 });
 
-describe('scheduleDelayedAck', () => {
-  const ACK_ARGS = {
-    sessionId: 'session-1',
-    connectionId: 'conn-1',
-    rid: 'room-1',
-    tmid: null as string | null,
-    botName: 'Babo',
-  };
+/**
+ * The interim ack, driven through the one door that schedules it.
+ */
+// cm:guard exercised through `startConversationAgentTurn` and never through an exported scheduler:
+// the ack is now the lane's own, and a test that called a scheduler directly would keep passing
+// after the dispatch stopped scheduling one (ISS-1039).
+describe('the interim ack', () => {
+  async function start(overrides: Record<string, unknown> = {}) {
+    selectLimit.mockResolvedValue([]);
+    resolveChatDevice.mockResolvedValue({ deviceId: 'device-1', isLocal: false, migrated: false });
+    createChatSessionRow.mockResolvedValue({ id: 'session-1', status: 'idle' });
+    dispatchChatTurn.mockResolvedValue({ id: 'session-1' });
+    return startConversationAgentTurn({ ...BASE_ARGS, ...overrides });
+  }
 
   beforeEach(() => {
     vi.useFakeTimers();
     selectLimit.mockReset();
-    sendFixedReply.mockReset();
-    resolveRoomPostAuth.mockReset();
-    resolveRoomPostAuth.mockResolvedValue({
-      serverUrl: 'https://rc.example',
-      authToken: 'tok',
-      userId: 'u1',
-    });
+    resolveChatDevice.mockReset();
+    createChatSessionRow.mockReset();
+    dispatchChatTurn.mockReset();
+    deliver.mockClear();
   });
 
   afterEach(() => {
@@ -440,78 +482,64 @@ describe('scheduleDelayedAck', () => {
   });
 
   it('does not post before the delay elapses', async () => {
+    await start();
     selectLimit.mockResolvedValue([
-      { status: 'running', metadata: { agentChat: { deliveredAt: null } } },
+      { status: 'running', metadata: { conversationAgent: { ...MARKER, deliveredAt: null } } },
     ]);
-    scheduleDelayedAck(ACK_ARGS);
-    await vi.advanceTimersByTimeAsync(AGENT_CHAT_ACK_DELAY_MS - 1000);
-    expect(sendFixedReply).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(ACK_DELAY_MS - 1000);
+    expect(deliver).not.toHaveBeenCalled();
   });
 
-  it('posts the interim ack when the turn is still running and undelivered after the delay', async () => {
+  it('posts it through the venue’s transport when the turn is still running and undelivered', async () => {
+    await start();
     selectLimit.mockResolvedValue([
-      { status: 'running', metadata: { agentChat: { deliveredAt: null } } },
+      { status: 'running', metadata: { conversationAgent: { ...MARKER, deliveredAt: null } } },
     ]);
-    scheduleDelayedAck(ACK_ARGS);
-    await vi.advanceTimersByTimeAsync(AGENT_CHAT_ACK_DELAY_MS);
-    expect(sendFixedReply).toHaveBeenCalledWith(
-      expect.objectContaining({
-        kind: 'rest',
-        auth: expect.objectContaining({ serverUrl: 'https://rc.example' }),
-        rid: 'room-1',
-        tmid: undefined,
-      }),
-      AGENT_CHAT_ACK('Babo'),
-      FIXED_REPLY_CONSTANT,
-    );
+    await vi.advanceTimersByTimeAsync(ACK_DELAY_MS);
+    expect(deliver).toHaveBeenCalledWith(VENUE, expect.objectContaining({ text: ACK }));
   });
 
-  it('posts the interim ack to the thread when a tmid is set', async () => {
+  // cm:guard the common case: the answer usually lands first, and an ack posted after it reads as a
+  // second reply to a question already answered.
+  it('does NOT post when the turn already finished', async () => {
+    await start();
     selectLimit.mockResolvedValue([
-      { status: 'running', metadata: { agentChat: { deliveredAt: null } } },
+      { status: 'completed', metadata: { conversationAgent: { ...MARKER, deliveredAt: null } } },
     ]);
-    scheduleDelayedAck({ ...ACK_ARGS, tmid: 'thread-1' });
-    await vi.advanceTimersByTimeAsync(AGENT_CHAT_ACK_DELAY_MS);
-    expect(sendFixedReply).toHaveBeenCalledWith(
-      expect.objectContaining({ rid: 'room-1', tmid: 'thread-1' }),
-      AGENT_CHAT_ACK('Babo'),
-      FIXED_REPLY_CONSTANT,
-    );
+    await vi.advanceTimersByTimeAsync(ACK_DELAY_MS);
+    expect(deliver).not.toHaveBeenCalled();
   });
 
-  it('does NOT post when the turn already finished (fast case — answer landed first)', async () => {
+  it('does NOT post when the answer was already delivered', async () => {
+    await start();
     selectLimit.mockResolvedValue([
-      { status: 'completed', metadata: { agentChat: { deliveredAt: null } } },
+      {
+        status: 'running',
+        metadata: {
+          conversationAgent: { ...MARKER, deliveredAt: '2026-07-21T07:00:00.000Z' },
+        },
+      },
     ]);
-    scheduleDelayedAck(ACK_ARGS);
-    await vi.advanceTimersByTimeAsync(AGENT_CHAT_ACK_DELAY_MS);
-    expect(sendFixedReply).not.toHaveBeenCalled();
-    expect(resolveRoomPostAuth).not.toHaveBeenCalled();
-  });
-
-  it('does NOT post when the answer was already delivered (deliveredAt stamped)', async () => {
-    selectLimit.mockResolvedValue([
-      { status: 'running', metadata: { agentChat: { deliveredAt: '2026-07-21T07:00:00.000Z' } } },
-    ]);
-    scheduleDelayedAck(ACK_ARGS);
-    await vi.advanceTimersByTimeAsync(AGENT_CHAT_ACK_DELAY_MS);
-    expect(sendFixedReply).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(ACK_DELAY_MS);
+    expect(deliver).not.toHaveBeenCalled();
   });
 
   it('does NOT post when the session row is gone', async () => {
+    await start();
     selectLimit.mockResolvedValue([]);
-    scheduleDelayedAck(ACK_ARGS);
-    await vi.advanceTimersByTimeAsync(AGENT_CHAT_ACK_DELAY_MS);
-    expect(sendFixedReply).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(ACK_DELAY_MS);
+    expect(deliver).not.toHaveBeenCalled();
   });
 
-  it('swallows a missing-connection resolve (no throw, no post)', async () => {
+  // cm:guard criterion 19's other half: the Forge UI prints `dispatched` and `running` on the thread
+  // itself, so its caller passes no ack at all — and a lane that posted a default one would put the
+  // same fact in the room twice, the second copy indistinguishable from the answer (ISS-1039).
+  it('is not scheduled at all when the caller names no ack', async () => {
+    await start({ replies: { ...REPLIES, ack: null }, ackAfterMs: null });
     selectLimit.mockResolvedValue([
-      { status: 'running', metadata: { agentChat: { deliveredAt: null } } },
+      { status: 'running', metadata: { conversationAgent: { ...MARKER, deliveredAt: null } } },
     ]);
-    resolveRoomPostAuth.mockResolvedValue(null);
-    scheduleDelayedAck(ACK_ARGS);
-    await vi.advanceTimersByTimeAsync(AGENT_CHAT_ACK_DELAY_MS);
-    expect(sendFixedReply).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(ACK_DELAY_MS * 2);
+    expect(deliver).not.toHaveBeenCalled();
   });
 });

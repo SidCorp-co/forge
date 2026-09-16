@@ -8,7 +8,13 @@
  * test file may not export.
  */
 
-export type Owner = 'guide' | 'sharedOpening' | 'rocketchatOnly' | 'webOnly' | 'personaStyle';
+export type Owner =
+  | 'guide'
+  | 'sharedOpening'
+  | 'rocketchatOnly'
+  | 'webOnly'
+  | 'webAgentOnly'
+  | 'personaStyle';
 
 export interface Claim {
   /** What the claim is, for a reader of a failure message. */
@@ -375,6 +381,59 @@ export const LEDGER: readonly Claim[] = [
     clauses: [
       'Markdown renders here, and the person can reply',
       'a follow-up question is available to you when one is genuinely needed',
+    ],
+    origin: 'new',
+  },
+
+  // cm:guard the four rows below are ISS-1039's and `new`: Agent mode is a second door on the same
+  // surface, and every sentence it carries contradicts one `webOnly` carries — a checkout it has
+  // against one it does not, a fence it is outside against one it is inside. They are a separate
+  // owner rather than variants of the web rows precisely so the contradiction is visible in the
+  // ledger: a reader comparing `web-no-checkout` with `web-agent-has-checkout` can see that exactly
+  // one of them is true per conversation, which is the whole of what the mode decides (ISS-1039).
+  {
+    id: 'web-agent-asked-by',
+    owner: 'webAgentOnly',
+    clauses: ['- You are talking with ', 'in a conversation they opened in Agent mode'],
+    origin: 'new',
+  },
+  {
+    id: 'web-agent-has-checkout',
+    owner: 'webAgentOnly',
+    clauses: [
+      'running on a paired box with this project',
+      'repository checked out and a shell available',
+      'rather than answering from what you remember',
+    ],
+    origin: 'new',
+  },
+  {
+    id: 'web-agent-unfenced',
+    owner: 'webAgentOnly',
+    clauses: [
+      'you can edit a file, run a command and drive a pipeline',
+      'Nothing you write here is fenced to a draft',
+    ],
+    origin: 'new',
+  },
+  {
+    // cm:guard the rule is `web-multi-turn`'s and the WORDING is deliberately not, because the layer
+    // accounting refuses one sentence in two layers: this door owes the same permission in words a
+    // session on a checkout can act on — it can stop and ask mid-work, where an in-core turn cannot.
+    id: 'web-agent-multi-turn',
+    owner: 'webAgentOnly',
+    clauses: [
+      'Markdown renders where this lands and the person can reply',
+      'ask them a follow-up where the work genuinely needs one',
+    ],
+    origin: 'new',
+  },
+  {
+    id: 'web-agent-verbatim',
+    owner: 'webAgentOnly',
+    clauses: [
+      'What you write last is delivered to the conversation verbatim',
+      'no fenced JSON, no commentary about what you are about to do',
     ],
     origin: 'new',
   },

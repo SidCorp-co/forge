@@ -204,14 +204,17 @@ describe('deliverLegacyAgentChatReplyOnce', () => {
     expect(postedText).toBe('FALLBACK(Babo)');
   });
 
-  it('falls back on a failed/empty session without calling the guard, once failover is exhausted', async () => {
+  // cm:guard this shim does NOT fail over, and that is the priced half of the `cm:hack` on the
+  // bridge list: the redispatch was rebuilt around the venue shape these rows do not carry, so an
+  // in-flight legacy session whose runner dies gets the honest fallback rather than another box.
+  // The room is still answered, which is the property the shim exists for (ISS-1039).
+  it('falls back on a failed/empty session without calling the guard, and never fails over', async () => {
     claimRoomReplyDelivery.mockResolvedValue(true);
     resolveRoomPostAuth.mockResolvedValue(AUTH);
-    redispatchAgentChatSessionOnFailover.mockResolvedValue({ ok: false, status: 'exhausted' });
 
     await deliverLegacyAgentChatReplyOnce(makeSession({ status: 'failed', messages: [] }));
 
-    expect(redispatchAgentChatSessionOnFailover).toHaveBeenCalledTimes(1);
+    expect(redispatchAgentChatSessionOnFailover).not.toHaveBeenCalled();
     expect(screenRoomReply).not.toHaveBeenCalled();
     expect(sendFixedReply).toHaveBeenCalledWith(
       { kind: 'rest', auth: AUTH, rid: 'room-1', tmid: undefined },
@@ -245,12 +248,11 @@ describe('deliverLegacyAgentChatReplyOnce: the room is read again before the pos
   const postedTexts = () => sendFixedReply.mock.calls.map((c) => c[1] as string);
 
   // cm:guard the first read is before the claim, the second immediately before the post, and between them sit a failover redispatch and a screening turn — either of them minutes long, so without the second read the answer they produce is posted into a room that moved (ISS-1001).
-  it('shows the room nothing when it is rebound during a failover redispatch', async () => {
+  it('shows the room nothing when it is rebound while the fallback is prepared', async () => {
     roomBoundSequence = [true, false];
 
     await deliverLegacyAgentChatReplyOnce(makeSession({ status: 'failed', failureReason: null }));
 
-    expect(redispatchAgentChatSessionOnFailover.mock.calls).toHaveLength(1);
     expect(roomStillBoundToCalls.mock.calls).toHaveLength(2);
     expect(postedTexts()).toEqual([]);
   });
@@ -322,20 +324,21 @@ describe('deliverLegacyAgentChatReplyOnce: the repair budget this door declares'
 describe('deliverLegacyAgentChatReplyOnce: which failures earn a redispatch', () => {
   beforeEach(resetAgentChatMocks);
 
-  it('re-dispatches a failed/transient session to a healthy runner instead of posting the fallback', async () => {
+  // cm:guard the answer a room gets for a transient runner failure is the fallback and no longer a
+  // second box, which is what the `cm:hack` on the bridge list prices. A row this shape cannot be
+  // redispatched, because the dispatcher now addresses a venue and this row names a rid.
+  it('posts the fallback for a failed/transient session rather than re-dispatching it', async () => {
     claimRoomReplyDelivery.mockResolvedValue(true);
-    redispatchAgentChatSessionOnFailover.mockResolvedValue({
-      ok: true,
-      status: 'redispatched',
-      sessionId: 'session-2',
-      deviceId: 'device-2',
-    });
+    resolveRoomPostAuth.mockResolvedValue(AUTH);
 
     await deliverLegacyAgentChatReplyOnce(makeSession({ status: 'failed', messages: [] }));
 
-    expect(redispatchAgentChatSessionOnFailover).toHaveBeenCalledTimes(1);
-    expect(resolveRoomPostAuth).not.toHaveBeenCalled();
-    expect(sendFixedReply).not.toHaveBeenCalled();
+    expect(redispatchAgentChatSessionOnFailover).not.toHaveBeenCalled();
+    expect(sendFixedReply).toHaveBeenCalledWith(
+      { kind: 'rest', auth: AUTH, rid: 'room-1', tmid: undefined },
+      'FALLBACK(Babo)',
+      FIXED_REPLY_CONSTANT,
+    );
   });
 
   it('never retries a user_cancelled session — goes straight to fallback', async () => {

@@ -41,6 +41,10 @@ vi.mock('./store.js', () => ({
   readMessagesInRange: async (_id: string, r: { firstSeq: number; lastSeq: number }) =>
     messageRows.filter((m) => m.seq >= r.firstSeq && m.seq <= r.lastSeq),
   deliveredDecisionUnderKey: async () => (delivered ? 'answered' : null),
+  // cm:guard the REAL reading and not a stub: what a null mode means is the claim this module now
+  // forks on, so a mock returning a fixed answer would make every case below say nothing about it.
+  effectiveConversationMode: (row: { mode: 'assistant' | 'agent' | null }) =>
+    row.mode ?? 'assistant',
 }));
 
 const closeWindow = vi.fn(async () => null);
@@ -153,9 +157,45 @@ describe('every ending closes the window under a decision', () => {
 });
 
 describe('an outcome nobody knows yet', () => {
-  it('records a diverted turn as undetermined', async () => {
-    runConversationTurn.mockResolvedValue({ kind: 'diverted', reason: 'agent-chat-dispatched' });
-    await expect(route()).resolves.toMatchObject({ decision: 'undetermined' });
+  // cm:guard a DIVERTED turn is `handed-off` and not `undetermined`, and the difference is what is
+  // known: `undetermined` says a delivery was started and nobody recorded how it ended, while this
+  // says a session on a box is still writing the answer. The Forge UI prints the first as "a reply
+  // was sent and never confirmed", which was a false sentence under every live Agent turn until
+  // ISS-1039 split them.
+  it('records a diverted turn as handed-off', async () => {
+    runConversationTurn.mockResolvedValue({ kind: 'diverted', reason: 'agent-turn-dispatched' });
+    await expect(route()).resolves.toMatchObject({ decision: 'handed-off' });
+  });
+
+  // cm:guard the recovery half, and the case that reds if `handoffFor` is dropped: a core that died
+  // between the dispatch and the close leaves a reservation and no delivered row, which this module
+  // alone cannot tell from a lost delivery. Without the probe the window reopens `undetermined` and
+  // the thread says a reply was sent, about an answer nobody had written (ISS-1039, consult F5).
+  it('reads a reservation left by a handoff as handed-off, and dispatches nothing more', async () => {
+    const outcome = await routeWindow({
+      window: { ...WINDOW, deliveryReservedAt: new Date('2026-09-16T20:00:00.000Z') },
+      manySpeakersPrincipalUserId: 'principal-1',
+      handoffFor: async () => ({ sessionId: 'session-9' }),
+      inputs: () => ({ door: 'chat-sync', handleName: 'Babo' }),
+    });
+    expect(outcome).toMatchObject({
+      decision: 'handed-off',
+      detail: { sessionId: 'session-9' },
+    });
+    expect(runConversationTurn).not.toHaveBeenCalled();
+  });
+
+  // cm:guard the other side of the same read: with no handoff behind it, a reservation is exactly
+  // what it always was, and widening `handed-off` to cover it would tell a person a session is
+  // writing an answer that nothing is writing.
+  it('still records a reservation with no handoff behind it as undetermined', async () => {
+    const outcome = await routeWindow({
+      window: { ...WINDOW, deliveryReservedAt: new Date('2026-09-16T20:00:00.000Z') },
+      manySpeakersPrincipalUserId: 'principal-1',
+      handoffFor: async () => null,
+      inputs: () => ({ door: 'chat-sync', handleName: 'Babo' }),
+    });
+    expect(outcome).toMatchObject({ decision: 'undetermined' });
   });
 
   // cm:guard an `undeliverable` transport error is `undetermined` and NOT `unreachable`: a POST that timed out may have been accepted before the socket went, and calling that a failure is the misclassification rule 4 forbids (ISS-1004 review F3).

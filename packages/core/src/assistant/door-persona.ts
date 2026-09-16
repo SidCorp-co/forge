@@ -93,6 +93,12 @@ export function webAgentConversationPersona(
   });
 }
 
+/** Just Agent mode's own lines, for the ledger that accounts for each fragment separately. */
+export function webAgentDoorLines(askedBy: string | null): string[] {
+  const web = WEB_AGENT_DOOR_LAYERS.filter((l) => l.id === 'door-web-agent');
+  return composeLayers(web, { askedBy }).split('\n');
+}
+
 /**
  * The assistant's voice in a Rocket.Chat room.
  */
