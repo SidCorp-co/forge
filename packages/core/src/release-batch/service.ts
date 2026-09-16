@@ -1,6 +1,12 @@
 // create: opens a system run, atomically claims N gate-status issues, moves each
 // to `releasing`, enqueues one release_batch job. finish: closes every claimed
-// issue. abort: cancels the run and every job under it and closes no issue.
+// issue and completes the run. abort: cancels the run and every job under it
+// and closes no issue.
+//
+// Both outcomes take the run terminal, and by different outcomes: `completed`
+// for a finish, `cancelled` for an abort. That is what stops
+// `getActiveReleaseBatch` answering a batch whose work is over, and what
+// keeps a finish from reading like an abort.
 //
 // finish and abort are the only writers that leave `releasing`. Both hand the
 // claim release to `releasing-recovery.ts`, which is also what a batch that
@@ -357,10 +363,51 @@ export async function finishReleaseBatch(
   options: FinishReleaseBatchOptions = {},
 ): Promise<FinishReleaseBatchResult> {
   const [run] = await db
-    .select({ projectId: pipelineRuns.projectId, metadata: pipelineRuns.metadata })
+    .select({
+      projectId: pipelineRuns.projectId,
+      metadata: pipelineRuns.metadata,
+      status: pipelineRuns.status,
+    })
     .from(pipelineRuns)
     .where(eq(pipelineRuns.id, runId))
     .limit(1);
+
+  // cm:guard read BEFORE the probes, which the retry guard below needs, and the roster this read
+  // carries is safe to close from even though `verifyDeployed` may wait tens of seconds on it. The
+  // close is `transitionIssueStatus`, whose UPDATE is conditional on the snapshot's own
+  // `fromStatus` (`apply-transition.ts:executeTransitionWrite`), so an issue a concurrent
+  // `abortReleaseBatch` moved to `reopen` in that window matches no row and raises
+  // `STALE_TRANSITION` into `failed[]` — it is never closed out from under the abort.
+  // `recoverStrandedReleasing` then skips it, because it acts only on issues still at `releasing`,
+  // and `closeRunIfOneShot` matches only `running|paused`, so the abort's `cancelled` stands. The
+  // race therefore moves no state either way; what it changes is that finish now NAMES the
+  // concurrency in `failed[]` instead of returning an empty result, which is the account the abort
+  // guard below wanted when batch ee39c4ae closed 0 of 12 in silence.
+  const claimed = await db
+    .select({
+      id: issues.id,
+      status: issues.status,
+      reopenCount: issues.reopenCount,
+      projectId: issues.projectId,
+    })
+    .from(issues)
+    .where(eq(issues.releaseBatchRunId, runId));
+
+  // cm:guard BOTH halves, and neither alone. A finish this function already ran is a run at
+  // `completed` WITH no claim left on it — `recoverStrandedReleasing` clears
+  // `release_batch_run_id` for the whole run — and it must answer without probing again: the probes
+  // read the world now, not then, so a release verified an hour ago fails its second read the
+  // moment the site restarts, sits behind a cache, or moves past the window in which it still
+  // serves that commit, and the caller is handed `RELEASE_NOT_VERIFIED` about a release that
+  // demonstrably landed. That is the same false account of a succeeded batch that ISS-1032 exists
+  // to remove. On the status alone this would swallow a finish it never ran: `reapConcludedRuns`
+  // closes a `running` run `completed` once its last job is `done` and an hour has passed, so a
+  // batch whose release job ended without anyone calling `finish` reaches exactly that status with
+  // every issue still claimed at `releasing` — and an empty success there would strand the whole
+  // roster with nothing left to find it by. On the claim set alone it would skip the close that is
+  // this issue's entire fix. `completed` and never "terminal": a `cancelled` run is an ABORTED
+  // batch, and a silent empty success on one would make the two verbs report the same thing.
+  if (run?.status === 'completed' && claimed.length === 0) return { closed: [], failed: [] };
 
   if (run) {
     const channel = await resolveReleaseChannel(run.projectId);
@@ -375,16 +422,6 @@ export async function finishReleaseBatch(
       if (!outcome.ok) throw new ReleaseNotVerifiedError(outcome.reason, outcome.live);
     }
   }
-
-  const claimed = await db
-    .select({
-      id: issues.id,
-      status: issues.status,
-      reopenCount: issues.reopenCount,
-      projectId: issues.projectId,
-    })
-    .from(issues)
-    .where(eq(issues.releaseBatchRunId, runId));
 
   const closed: string[] = [];
   const failed: Array<{ id: string; reason: string }> = [];
@@ -420,6 +457,9 @@ export async function finishReleaseBatch(
     actorUserId: actor.type === 'user' ? actor.id : undefined,
     comment: true,
   });
+
+  // cm:guard `completed` and never `failed`, INCLUDING when `failed` is non-empty. `getActiveReleaseBatch` reads `running|paused`, so a finish that left the run non-terminal answered its own runId forever and refused the next cut 409 BATCH_IN_FLIGHT until a person aborted a batch that had already shipped (ISS-1032; SidPeak held 4h19m on 2026-09-15). `cancelled` would collapse finish into abort, and either non-success outcome makes the cascade cancel the still-active `release_batch` job — the job whose own session is what CALLED this — with `failureKind: 'infra'` and a kill broadcast at it, which is ISS-352's false-failed badge over a release that did land. The price of that, taken deliberately: `pipeline_runs.status` alone no longer separates a clean finish from a partial one — both read `completed`, and a reader wanting the difference must go to the response's `failed[]`, to each stranded issue sitting at `reopen`, or to the comment `recoverStrandedReleasing` writes above. The alternative was a run row that tells the truth about the roster by lying about the release, and it costs a live session its process. The trade ends when something needs the distinction FROM the run row; nothing reads it that way today.
+  await closeRunIfOneShot(runId, 'completed');
 
   return { closed, failed };
 }

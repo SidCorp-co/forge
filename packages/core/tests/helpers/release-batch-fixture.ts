@@ -18,12 +18,18 @@ export interface StoredIssue {
   claim: unknown;
 }
 
+export interface StoredJob {
+  status: string;
+  exitCode: number | null;
+}
+
 export interface ReleaseBatchFixture {
   declareProduction(config?: Record<string, unknown>): Promise<void>;
   seedReleaseRunner(): Promise<void>;
   insertIssue(status?: string, note?: unknown): Promise<string>;
   stored(id: string): Promise<StoredIssue>;
   runStatus(runId: string): Promise<string>;
+  storedJob(jobId: string): Promise<StoredJob>;
   commentCount(issueId: string): Promise<number>;
   claim(ids: string[]): Promise<{ runId: string; jobId: string; issueIds: string[] }>;
   waitFor(cond: () => Promise<boolean>): Promise<void>;
@@ -104,6 +110,18 @@ export function releaseBatchFixture(
     return String(rows[0]?.status);
   }
 
+  // cm:guard reads `exit_code` alongside `status`, because the two together are
+  // what separate the cascade's success sentinel from its cancel: a
+  // `pipeline_completed` close flips an active child job to `done` with
+  // `exitCode` 0, every other close cancels it.
+  async function storedJob(jobId: string): Promise<StoredJob> {
+    const rows = await harness().db.execute(sql`
+      SELECT status, exit_code FROM jobs WHERE id = ${jobId}
+    `);
+    const exit = rows[0]?.exit_code;
+    return { status: String(rows[0]?.status), exitCode: exit == null ? null : Number(exit) };
+  }
+
   async function commentCount(issueId: string): Promise<number> {
     const rows = await harness().db.execute(sql`
       SELECT count(*)::int AS n FROM comments WHERE issue_id = ${issueId}
@@ -133,6 +151,7 @@ export function releaseBatchFixture(
     insertIssue,
     stored,
     runStatus,
+    storedJob,
     commentCount,
     claim,
     waitFor,

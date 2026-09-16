@@ -2681,6 +2681,17 @@
 
 ### Fixed
 
+- **A release that finished no longer locks the project out of the next one.** Finishing a batch
+  closed every issue it had shipped and then left the release itself reading as still in progress,
+  so no further batch could be cut — for hours, until somebody aborted a release that had already
+  succeeded, which is the one action whose recorded meaning is that it did not. The issues waiting
+  behind it looked as though they were waiting on a release decision, when what they were waiting
+  on was a release that was already over. A finished batch now ends in the same moment its issues
+  close, with no background sweep needed in between, and it ends by saying it finished — which is
+  read differently from a release that was called off. A batch that could not close everything it
+  claimed ends as well, so one stuck issue no longer holds the whole project shut; the issues it
+  could not close still come back for a person to look at. (ISS-1032)
+
 - **Asking the assistant a question is quicker and cleaner.** A repeated or retried search no
   longer pays the embedding service twice, and a slow search now says where the time went; the
   assistant is told the tracker commands it uses every turn instead of re-reading the help each
