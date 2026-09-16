@@ -21,9 +21,16 @@ import {
 } from "@/features/project-settings/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { useMemo, useState } from "react";
-import { ConnectionOwnerField } from "./connection-owner-field";
-import { CoolifyTargetsField } from "./coolify-targets-field";
-import { STAGE_OPTIONS } from "./status-pill";
+import {
+  AGENT_ACCESS_CLOSED,
+  AgentAccessChoice,
+  AgentAccessControl,
+} from "../../components/agent-access-control";
+import type { AgentAccess } from "../../types";
+import { ConnectionOwnerField } from "../../components/connection-owner-field";
+import { coolify } from "./index";
+import { CoolifyTargetsField } from "./targets-field";
+import { STAGE_OPTIONS } from "../../components/status-pill";
 import {
   useConfirmProdDeploy,
   useCreateProviderIntegration,
@@ -32,14 +39,14 @@ import {
   useOrgConnectionLocked,
   useTestIntegration,
   useUpdateProviderIntegration,
-} from "../hooks";
+} from "../../hooks";
 import type {
   CoolifyTargetInput,
   DeployStage,
   IntegrationSummary,
   IntegrationTestResult,
-  ProviderConfig,
-} from "../types";
+} from "../../types";
+import type { CoolifyReadConfig } from "./config";
 
 interface BadgeView {
   label: string;
@@ -126,7 +133,7 @@ function StagePanel({
   const test = useTestIntegration(projectId);
   const confirmProd = useConfirmProdDeploy(projectId);
 
-  const cfg = (existing?.config ?? {}) as ProviderConfig;
+  const cfg = (existing?.config ?? {}) as CoolifyReadConfig;
   const seedTargets = (): CoolifyTargetInput[] =>
     cfg.targets && cfg.targets.length > 0
       ? cfg.targets.map((t) => ({
@@ -153,6 +160,7 @@ function StagePanel({
     null,
   );
   const [error, setError] = useState<string | null>(null);
+  const [agentAccess, setAgentAccess] = useState<AgentAccess>(AGENT_ACCESS_CLOSED);
 
   const isLive = stage === "live";
   const saving = create.isPending || update.isPending;
@@ -162,7 +170,7 @@ function StagePanel({
   const orgLocked = useOrgConnectionLocked(projectId, existing?.connectionId);
   // True when this project has no binding-level targets of its own and the
   // values shown are inherited off the shared connection's config.
-  const bindingCfg = (existing?.bindingConfig ?? {}) as ProviderConfig;
+  const bindingCfg = (existing?.bindingConfig ?? {}) as CoolifyReadConfig;
   const targetsInherited = Boolean(
     existing && !(bindingCfg.targets && bindingCfg.targets.length > 0) && cfg.targets?.length,
   );
@@ -208,6 +216,7 @@ function StagePanel({
           stages: [stage],
           config: { baseUrl, targets: cleanTargets },
           secrets: { apiToken: apiToken.trim() },
+          agentAccess,
           ...(ownerOrgId ? { orgId: ownerOrgId } : {}),
         });
       }
@@ -319,6 +328,23 @@ function StagePanel({
             {testResult.message ?? "Connection failed"}
           </Banner>
         ))}
+
+      {existing ? (
+        <AgentAccessControl
+          projectId={projectId}
+          binding={existing}
+          canEdit={!orgLocked}
+          disabledReason="Org-shared credential — only an org owner/admin can grant it."
+        />
+      ) : (
+        <AgentAccessChoice
+          value={agentAccess}
+          onChange={setAgentAccess}
+          pathKind={coolify.agentPathKind}
+          canEdit={!orgLocked}
+          disabledReason="Org-shared credential — only an org owner/admin can grant it."
+        />
+      )}
 
       <div className="flex flex-wrap items-center gap-3">
         {/* Save stays enabled under orgLocked — it then writes only the

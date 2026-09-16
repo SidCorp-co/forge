@@ -19,7 +19,21 @@ import type { IntegrationProvider, schema } from '@forge/core/public';
 
 
 /** Re-exported, never re-declared — `INTEGRATION_PROVIDERS` in core is the list. */
-export type { IntegrationProvider, IntegrationCapabilities } from '@forge/core/public';
+import type { AgentPathKind } from '@forge/core/public';
+
+export type {
+  AgentPathKind,
+  IntegrationCapabilities,
+  IntegrationProvider,
+} from '@forge/core/public';
+
+/**
+ * ISS-1071 — whether an agent working a project may use one of its integrations. Two values and
+ * no more: this is a binary grant, and per-tool scoping within a provider is a different question
+ * that this deliberately cannot express.
+ */
+export const AGENT_ACCESS_VALUES = ['none', 'all'] as const;
+export type AgentAccess = (typeof AGENT_ACCESS_VALUES)[number];
 
 /**
  * The deploy capability — which providers a binding may take `role: 'deploy'` on — lives in
@@ -103,6 +117,19 @@ export interface BindingSummary {
   hasSecrets: boolean;
   /** True when the binding carries an inbound-webhook HMAC secret. */
   integrationSecretSet: boolean;
+  /**
+   * ISS-1071 — whether an agent working this project may use this integration. `none` is the
+   * closed answer and the default; `all` grants every tool the provider's declared agent path
+   * offers. This is the ONLY switch: it replaced a sentinel key in `pipelineConfig.mcpServers`
+   * on a different settings tab that no connect surface could write.
+   */
+  agentAccess: AgentAccess;
+  /**
+   * The declared risk class of this provider's agent path, so a screen can say what the grant
+   * means without knowing the provider: `none` renders no control at all, `core-mediated` means
+   * Forge stays in the call path, `direct-mcp` means the credential is handed to the runner box.
+   */
+  agentPathKind: AgentPathKind;
   createdAt: string;
   updatedAt: string;
 }
@@ -354,91 +381,48 @@ export type BindingShapeInput =
  * arm and has NO default: the column it replaced defaulted on seven of eight providers precisely
  * because it demanded a value they had no meaning for.
  */
-export type IntegrationBindingCreateInput = BindingShapeInput &
-  (
-    | { provider: 'coolify'; config: CoolifyConfigInput; secrets: CoolifySecretsInput }
-    | { provider: 'postman'; config: PostmanConfigInput; secrets: PostmanSecretsInput }
-    | {
-        provider: 'epodsystem';
-        config: EpodsystemConfigInput;
-        secrets: EpodsystemSecretsInput;
-        /** ISS-558 — optional kebab label for a named storefront (e.g. 'partner-a').
-         *  Absent/empty = the default binding. */
-        label?: string;
-      }
-    | { provider: 'sentry'; config: SentryConfigInput; secrets: SentrySecretsInput }
-    | { provider: 'rocketchat'; config: RocketchatConfigInput; secrets: RocketchatSecretsInput }
-    | { provider: 'github'; config: GithubConfigInput; secrets: GithubSecretsInput }
-    | { provider: 'google'; config: GoogleConfigInput; secrets: GoogleSecretsInput }
-    | {
-        provider: 'agent';
-        config: Record<string, unknown>;
-        secrets?: Record<string, never>;
-      }
-  );
+export type IntegrationBindingCreateInput = BindingShapeInput & {
+  provider: IntegrationProvider;
+  /** Validated against the provider's OWN declared schema, resolved from the registry. */
+  config: Record<string, unknown>;
+  secrets?: Record<string, unknown>;
+  /** Present = mint the credential as ORG-owned; absent = personal. */
+  orgId?: string;
+  /** ISS-558 — kebab label for a named extra binding, where the provider declares multiBinding. */
+  label?: string;
+  /** ISS-1071 — omitted means the closed answer, which is what a binding gets for not choosing. */
+  agentAccess?: AgentAccess;
+};
 
 /** Body for `PATCH /:projectId/integrations/:id` — re-validated against the existing provider. */
 export interface IntegrationBindingUpdateInput {
   config?: Record<string, unknown>;
   secrets?: Record<string, unknown>;
   active?: boolean;
+  /**
+   * ISS-1071 — writing this on a `direct-mcp` provider takes the org-admin escalation that already
+   * guards `active`, `secrets` and `config` on an org-owned connection, because the grant hands a
+   * project's credential to a runner box. On a `core-mediated` provider it stays project-admin.
+   */
+  agentAccess?: AgentAccess;
 }
 
 /**
- * Body for `POST /integration-connections` — discriminated on `provider`. A
- * connection is the credential, owned by a principal; `displayName` is optional.
+ * Body for `POST /integration-connections` — one envelope, not a per-provider union.
+ *
+ * ISS-1071: `config` and `secrets` are validated against the schemas the provider's own
+ * declaration carries, resolved from the registry at request time. A union here repeated the
+ * provider list a third time and made adding a provider a breaking type change for every caller;
+ * the server names the rejected provider and the declared set instead.
  */
-export type ConnectionCreateInput =
-  | {
-      provider: 'coolify';
-      displayName?: string;
-      config: CoolifyConfigInput;
-      secrets: CoolifySecretsInput;
-      /** Present = org-owned connection (requires org admin); absent = personal. */
-      orgId?: string;
-    }
-  | {
-      provider: 'postman';
-      displayName?: string;
-      config: PostmanConfigInput;
-      secrets: PostmanSecretsInput;
-      orgId?: string;
-    }
-  | {
-      provider: 'sentry';
-      displayName?: string;
-      config: SentryConfigInput;
-      secrets: SentrySecretsInput;
-      orgId?: string;
-    }
-  | {
-      provider: 'epodsystem';
-      displayName?: string;
-      config: EpodsystemConfigInput;
-      secrets: EpodsystemSecretsInput;
-      orgId?: string;
-    }
-  | {
-      provider: 'rocketchat';
-      displayName?: string;
-      config: RocketchatConfigInput;
-      secrets: RocketchatSecretsInput;
-      orgId?: string;
-    }
-  | {
-      provider: 'github';
-      displayName?: string;
-      config: GithubConfigInput;
-      secrets: GithubSecretsInput;
-      orgId?: string;
-    }
-  | {
-      provider: 'google';
-      displayName?: string;
-      config: GoogleConfigInput;
-      secrets: GoogleSecretsInput;
-      orgId?: string;
-    };
+export interface ConnectionCreateInput {
+  provider: IntegrationProvider;
+  displayName?: string;
+  config: Record<string, unknown>;
+  secrets?: Record<string, unknown>;
+  /** Present = org-owned connection (requires org admin); absent = personal. */
+  orgId?: string;
+}
 
 /** Body for `PATCH /integration-connections/:id` — re-validated against the existing provider. */
 export interface ConnectionUpdateInput {
@@ -467,6 +451,8 @@ export interface BindExistingConnectionRequest {
    *  connection deploys different apps in this project. Connection-tier keys
    *  (baseUrl) are dropped server-side. */
   config?: Record<string, unknown>;
+  /** ISS-1071 — omitted means the closed answer. */
+  agentAccess?: AgentAccess;
 }
 
 
@@ -549,13 +535,12 @@ export interface ConnectionBindingsResponse {
  * - `no_credential`  — active but the connection stores no secret.
  * - `shadowed`       — active with credential, but another binding of the same
  *                      provider wins the single `mcpServers.<provider>` slot.
- * - `not_declared`   — ISS-623 W3: active with credential and would otherwise
- *                      win the slot, but no stage (project-default or
- *                      per-state `pipelineConfig.mcpServers`) declares this
- *                      provider's sentinel (e.g. `epodsystem: true`). A
- *                      connected, healthy integration does NOT inject unless
- *                      a stage opts in — `lastHealthStatus` does not gate
- *                      injection, so this is distinct from a credential
+ * - `not_granted`    — ISS-1071: active with credential and would otherwise
+ *                      win the slot, but the binding's `agentAccess` is the
+ *                      closed answer, so no agent on this project may use it.
+ *                      A connected, healthy integration does NOT reach an agent
+ *                      until somebody grants it — `lastHealthStatus` does not
+ *                      gate the grant, so this is distinct from a credential
  *                      problem (`no_credential`) or a health/reauth issue.
  */
 export interface McpServerPreviewEntry {
@@ -568,7 +553,7 @@ export interface McpServerPreviewEntry {
   configured: boolean;
   active: boolean;
   willInject: boolean;
-  reason: 'ok' | 'not_configured' | 'disabled' | 'no_credential' | 'shadowed' | 'not_declared';
+  reason: 'ok' | 'not_configured' | 'disabled' | 'no_credential' | 'shadowed' | 'not_granted';
   url: string | null;
   headers: Record<string, string> | null;
   lastHealthStatus: string | null;

@@ -6,26 +6,15 @@
 // duplicates. They are re-exported here under the existing local names (aliased
 // where the contract name differs) so import sites in api.ts / hooks.ts /
 // components stay unchanged.
+//
+// Nothing provider-SHAPED belongs here. A provider's own read-shape lives beside its module under
+// `providers/<provider>/config.ts`; the permissive union of every provider's config keys that used
+// to sit in this file is exactly the duplication ISS-1071 collapsed.
 
 import type {
-  BindingRole,
-  CoolifyConfigInput,
-  CoolifySecretsInput,
-  CoolifyTargetInput,
-  DeployStage,
-  EpodsystemConfigInput,
-  EpodsystemSecretsInput,
-  GoogleConfigInput,
-  GoogleSecretsInput,
   IntegrationHealthResult,
-  PostmanConfigInput,
   PostmanMode,
   PostmanRegion,
-  PostmanSecretsInput,
-  RocketchatConfigInput,
-  RocketchatSecretsInput,
-  SentryConfigInput,
-  SentrySecretsInput,
 } from "@forge/contracts";
 
 export type {
@@ -177,49 +166,6 @@ export interface CoolifyTargetIdentity extends CoolifyApplication {
 	found: boolean;
 }
 
-/**
- * Permissive read-shape for a provider-specific `config` jsonb. Consumers
- * narrow by the row's `provider`; every field is optional so both the Coolify
- * and Epodsystem sections read it without per-provider casts. UI-local helper,
- * not a wire contract.
- */
-export interface ProviderConfig {
-  // coolify
-  baseUrl?: string;
-  targets?: CoolifyTargetInput[];
-  // postman
-  workspaceId?: string;
-  workspaceName?: string;
-  collectionId?: string;
-  region?: PostmanRegion;
-  mode?: PostmanMode;
-  // epodsystem
-  orgId?: string;
-  scopes?: string[];
-  storeId?: string;
-  storeSlug?: string;
-  storeName?: string;
-  themeId?: string;
-  themeName?: string;
-  draftThemeId?: string;
-  commerceEnabled?: boolean;
-  domain?: string;
-  // sentry
-  host?: string;
-  organizationSlug?: string;
-  projectSlug?: string;
-  /** Sentry's OWN environment tag, free text — never the binding axis. It was
-   *  typed with the binding enum here, a private copy applied to a provider
-   *  field, which `SentryConfig` has always carried as a plain string. */
-  environment?: string;
-  // rocketchat
-  serverUrl?: string;
-  rids?: string[];
-  // google
-  clientEmail?: string;
-  defaultSpreadsheetId?: string;
-}
-
 /** One Rocket.Chat room the bot is a member of (room picker source). */
 export interface RocketchatRoom {
   rid: string;
@@ -228,81 +174,13 @@ export interface RocketchatRoom {
   type: "c" | "p";
 }
 
-/** Discriminated create body for the generic `POST .../integrations`. */
-export type CreateIntegrationInput =
-  | {
-      provider: "coolify";
-      role: BindingRole;
-      stages?: DeployStage[];
-      config: CoolifyConfigInput;
-      secrets: CoolifySecretsInput;
-      /** Present = org-owned credential (project's own org, org admin only). */
-      orgId?: string;
-    }
-  | {
-      provider: "epodsystem";
-      role: BindingRole;
-      stages?: DeployStage[];
-      config: EpodsystemConfigInput;
-      secrets: EpodsystemSecretsInput;
-      orgId?: string;
-      /** ISS-558 — optional kebab label for a named storefront. Absent = default. */
-      label?: string;
-    }
-  | {
-      provider: "postman";
-      role: BindingRole;
-      stages?: DeployStage[];
-      config: PostmanConfigInput;
-      secrets: PostmanSecretsInput;
-      orgId?: string;
-    }
-  | {
-      provider: "sentry";
-      role: BindingRole;
-      stages?: DeployStage[];
-      config: SentryConfigInput;
-      secrets: SentrySecretsInput;
-      orgId?: string;
-    }
-  | {
-      provider: "rocketchat";
-      role: BindingRole;
-      stages?: DeployStage[];
-      config: RocketchatConfigInput;
-      secrets: RocketchatSecretsInput;
-      orgId?: string;
-    }
-  | {
-      provider: "google";
-      role: BindingRole;
-      stages?: DeployStage[];
-      config: GoogleConfigInput;
-      secrets: GoogleSecretsInput;
-      orgId?: string;
-    };
-
-/**
- * Partial patch for `PATCH .../integrations/:id`. `config`/`secrets` are a UNION
- * over the providers (one patch targets ONE provider): an intersection would
- * require a value to satisfy every provider at once, which is impossible now
- * that both Coolify and Sentry carry their own incompatible `targets[]` shape
- * (ISS-526). The server re-validates against the binding's actual provider.
- */
-export interface UpdateIntegrationInput {
-  config?:
-    | Partial<CoolifyConfigInput>
-    | Partial<EpodsystemConfigInput>
-    | Partial<PostmanConfigInput>
-    | Partial<SentryConfigInput>
-    | Partial<RocketchatConfigInput>
-    | Partial<GoogleConfigInput>;
-  secrets?:
-    | Partial<CoolifySecretsInput>
-    | Partial<EpodsystemSecretsInput>
-    | Partial<PostmanSecretsInput>
-    | Partial<SentrySecretsInput>
-    | Partial<RocketchatSecretsInput>
-    | Partial<GoogleSecretsInput>;
-  active?: boolean;
-}
+// cm:why both request shapes are re-exports and not local unions: the eight-arm create union and
+// the six-arm patch union repeated the provider list a third and fourth time, so adding a provider
+// was a breaking type change for every caller. The server resolves each provider's own schemas from
+// its declaration and refuses an undeclared name by name.
+export type {
+  IntegrationBindingCreateInput as CreateIntegrationInput,
+  IntegrationBindingUpdateInput as UpdateIntegrationInput,
+  AgentAccess,
+  AgentPathKind,
+} from "@forge/contracts";

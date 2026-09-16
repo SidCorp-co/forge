@@ -24,16 +24,23 @@ import {
   useOrgConnectionLocked,
   useTestIntegration,
   useUpdateProviderIntegration,
-} from "../hooks";
+} from "../../hooks";
 import type {
   BindingRole,
   DeployStage,
   IntegrationSummary,
   IntegrationTestResult,
-  ProviderConfig,
-} from "../types";
-import { ConnectionOwnerField } from "./connection-owner-field";
-import { IntegrationEnabledControl } from "./integration-enabled-control";
+} from "../../types";
+import type { EpodsystemReadConfig } from "./config";
+import {
+  AGENT_ACCESS_CLOSED,
+  AgentAccessChoice,
+  AgentAccessControl,
+} from "../../components/agent-access-control";
+import type { AgentAccess } from "../../types";
+import { ConnectionOwnerField } from "../../components/connection-owner-field";
+import { epodsystem } from "./index";
+import { IntegrationEnabledControl } from "../../components/integration-enabled-control";
 
 // Scopes a website build needs to publish themes + toggle commerce/cache.
 const REQUIRED_SCOPES = ["products:write", "webstore:write", "settings:write"];
@@ -61,7 +68,7 @@ function badgeFor(existing: IntegrationSummary | undefined): BadgeView {
   if (!existing) return { label: "Not configured", tone: "amber" };
   if (!existing.active) return { label: "Disabled", tone: "neutral" };
   if (existing.lastHealthStatus === "ok") {
-    const name = (existing.config as ProviderConfig).storeName;
+    const name = (existing.config as EpodsystemReadConfig).storeName;
     return {
       label: name ? `Connected to ${name}` : "Connected",
       tone: "green",
@@ -319,7 +326,14 @@ function EpodsystemBindingRow({
         </Button>
       </div>
 
-      <ThemePanel config={binding.config as ProviderConfig} />
+      <AgentAccessControl
+        projectId={projectId}
+        binding={binding}
+        canEdit={!orgLocked}
+        disabledReason="Org-shared credential — only an org owner/admin can grant it."
+      />
+
+      <ThemePanel config={binding.config as EpodsystemReadConfig} />
     </div>
   );
 }
@@ -347,6 +361,7 @@ function AddEpodsystemForm({
   const [apiKey, setApiKey] = useState("");
   const [role, setRole] = useState<BindingRole>("service");
   const [stages, setStages] = useState<DeployStage[]>([]);
+  const [agentAccess, setAgentAccess] = useState<AgentAccess>(AGENT_ACCESS_CLOSED);
   const [error, setError] = useState<string | null>(null);
 
   const canDeploy = providerCanDeploy("epodsystem");
@@ -390,15 +405,23 @@ function AddEpodsystemForm({
       return;
     }
     try {
-      await create.mutateAsync({
+      // cm:guard the two arms are written out rather than spread onto one object: the create body is
+      // discriminated on `role`, a spread collapses to the union `BindingRole` that no arm admits,
+      // and the discriminant is what makes a service binding carrying a stage a compile error here
+      // instead of a 500 from the `integration_bindings_role_stages_chk` constraint.
+      const common = {
         provider: "epodsystem",
-        role,
-        ...(role === "deploy" ? { stages } : {}),
         config: {},
         secrets: { apiKey: apiKey.trim() },
+        agentAccess,
         ...(label.trim() ? { label: label.trim() } : {}),
         ...(ownerOrgId ? { orgId: ownerOrgId } : {}),
-      });
+      } as const;
+      await create.mutateAsync(
+        role === "deploy"
+          ? { ...common, role: "deploy", stages: stages as [DeployStage, ...DeployStage[]] }
+          : { ...common, role: "service" },
+      );
       onCreated();
     } catch (err) {
       setError(formatApiError(err));
@@ -488,6 +511,13 @@ function AddEpodsystemForm({
         </Banner>
       )}
 
+      <AgentAccessChoice
+        value={agentAccess}
+        onChange={setAgentAccess}
+        pathKind={epodsystem.agentPathKind}
+        canEdit={true}
+      />
+
       {error && <Banner tone="danger">{error}</Banner>}
 
       <div className="flex gap-2">
@@ -511,7 +541,7 @@ function AddEpodsystemForm({
 // Read-only theme panel
 // ─────────────────────────────────────────────────────────────
 
-function ThemePanel({ config }: { config: ProviderConfig }) {
+function ThemePanel({ config }: { config: EpodsystemReadConfig }) {
   const storefrontUrl = config.domain
     ? `https://${config.domain}`
     : config.storeSlug

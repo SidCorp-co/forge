@@ -9,8 +9,8 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { IntegrationSummary } from "../types";
-import { GitHubSection } from "./github-section";
+import type { IntegrationSummary } from "../../types";
+import { GitHubSection } from "./section";
 
 expect.extend(matchers);
 afterEach(cleanup);
@@ -21,7 +21,7 @@ const listItems = vi.fn<() => IntegrationSummary[]>();
 const connectionItems = vi.fn<() => Array<Record<string, unknown>>>();
 const repoData = vi.fn<() => Record<string, unknown> | undefined>();
 
-vi.mock("../hooks", () => ({
+vi.mock("../../hooks", () => ({
   useIntegrationsList: () => ({ data: { items: listItems() } }),
   useConnections: () => ({ data: { items: connectionItems() } }),
   useGitHubRepositories: () => ({ data: repoData(), isLoading: false, isError: false }),
@@ -38,7 +38,7 @@ vi.mock("../hooks", () => ({
   useOrgConnectionLocked: () => false,
 }));
 
-vi.mock("./connection-owner-field", () => ({ ConnectionOwnerField: () => null }));
+vi.mock("../../components/connection-owner-field", () => ({ ConnectionOwnerField: () => null }));
 
 const START = {
   postUrl: "https://github.com/organizations/SidCorp-co/settings/apps/new",

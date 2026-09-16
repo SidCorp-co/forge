@@ -21,16 +21,23 @@ import {
   useOrgConnectionLocked,
   useTestIntegration,
   useUpdateProviderIntegration,
-} from "../hooks";
+} from "../../hooks";
 import type {
   IntegrationSummary,
   IntegrationTestResult,
   PostmanConfig,
   PostmanMode,
   PostmanRegion,
-} from "../types";
-import { ConnectionOwnerField } from "./connection-owner-field";
-import { IntegrationEnabledControl } from "./integration-enabled-control";
+} from "../../types";
+import {
+  AGENT_ACCESS_CLOSED,
+  AgentAccessChoice,
+  AgentAccessControl,
+} from "../../components/agent-access-control";
+import type { AgentAccess } from "../../types";
+import { ConnectionOwnerField } from "../../components/connection-owner-field";
+import { postman } from "./index";
+import { IntegrationEnabledControl } from "../../components/integration-enabled-control";
 
 const DEFAULT_WORKSPACE = "Forge Integration";
 
@@ -100,6 +107,7 @@ export function PostmanSection({ projectId }: { projectId: string }) {
     null,
   );
   const [testError, setTestError] = useState<string | null>(null);
+  const [agentAccess, setAgentAccess] = useState<AgentAccess>(AGENT_ACCESS_CLOSED);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -121,7 +129,7 @@ export function PostmanSection({ projectId }: { projectId: string }) {
       await update.mutateAsync({
         id: existing.id,
         body: {
-          config: toConfig(form),
+          config: { ...toConfig(form) },
           ...(form.apiKey.trim()
             ? { secrets: { apiKey: form.apiKey.trim() } }
             : {}),
@@ -132,8 +140,9 @@ export function PostmanSection({ projectId }: { projectId: string }) {
       await create.mutateAsync({
         provider: "postman",
         role: "service",
-        config: toConfig(form),
+        config: { ...toConfig(form) },
         secrets: { apiKey: form.apiKey.trim() },
+        agentAccess,
         ...(ownerOrgId ? { orgId: ownerOrgId } : {}),
       });
       setForm((f) => ({ ...f, apiKey: "" }));
@@ -170,9 +179,9 @@ export function PostmanSection({ projectId }: { projectId: string }) {
       <CardContent>
         <div className="flex flex-col gap-4">
           <p className="fg-body-sm text-muted">
-            Store a Postman API key + write-target. When active, the official
-            Postman MCP tools are auto-injected into every agent/skill running
-            for this project.
+            Store a Postman API key + write-target. Being connected is not the same as being
+            usable: the official Postman MCP tools reach this project&apos;s agents only once the
+            grant below is on.
           </p>
 
           <Field
@@ -275,6 +284,23 @@ export function PostmanSection({ projectId }: { projectId: string }) {
                 {testResult.message ?? "Connection failed"}
               </Banner>
             ))}
+
+          {existing ? (
+            <AgentAccessControl
+              projectId={projectId}
+              binding={existing}
+              canEdit={!orgLocked}
+              disabledReason="Org-shared credential — only an org owner/admin can grant it."
+            />
+          ) : (
+            <AgentAccessChoice
+              value={agentAccess}
+              onChange={setAgentAccess}
+              pathKind={postman.agentPathKind}
+              canEdit={!orgLocked}
+              disabledReason="Org-shared credential — only an org owner/admin can grant it."
+            />
+          )}
 
           <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
             <div className="flex items-center gap-3">

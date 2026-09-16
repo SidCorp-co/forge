@@ -27,11 +27,18 @@ import {
   useGitHubConnect,
   useGitHubRepositories,
   useIntegrationsList,
-} from "../hooks";
-import type { GitHubConnectStart, IntegrationSummary } from "../types";
-import { ConnectionOwnerField } from "./connection-owner-field";
-import { IntegrationEnabledControl } from "./integration-enabled-control";
-import { scopeLabel } from "./status-pill";
+} from "../../hooks";
+import type { GitHubConnectStart, IntegrationSummary } from "../../types";
+import {
+  AGENT_ACCESS_CLOSED,
+  AgentAccessChoice,
+  AgentAccessControl,
+} from "../../components/agent-access-control";
+import type { AgentAccess } from "../../types";
+import { ConnectionOwnerField } from "../../components/connection-owner-field";
+import { github } from "./index";
+import { IntegrationEnabledControl } from "../../components/integration-enabled-control";
+import { scopeLabel } from "../../components/status-pill";
 
 // cm:guard POST this as a real FORM navigation, never `fetch` — GitHub's App-manifest flow reads `manifest` from a top-level form POST, and the redirect back to /api/integrations/github/manifest-callback authenticates on the `forge_auth` cookie (SameSite=Lax), which a background request would not carry
 function submitManifest(start: GitHubConnectStart): void {
@@ -91,6 +98,8 @@ function ConnectedState({
 
         <IntegrationEnabledControl projectId={projectId} binding={binding} />
 
+        <AgentAccessControl projectId={projectId} binding={binding} canEdit />
+
         <div>
           <Button
             variant="ghost"
@@ -126,6 +135,7 @@ function UseExistingApp({
   const repos = useGitHubRepositories(projectId, connectionId);
   const bind = useBindExistingConnection();
   const [fullName, setFullName] = useState("");
+  const [agentAccess, setAgentAccess] = useState<AgentAccess>(AGENT_ACCESS_CLOSED);
 
   const options = useMemo(
     () => (repos.data?.repositories ?? []).map((r) => ({ value: r.fullName, label: r.fullName })),
@@ -147,8 +157,8 @@ function UseExistingApp({
           owner: chosen.owner,
           repo: chosen.repo,
           installationId: chosen.installationId,
-
         },
+        agentAccess,
       },
     });
   };
@@ -188,6 +198,13 @@ function UseExistingApp({
             Showing the first pages of a large installation — not every repository is listed.
           </p>
         )}
+
+        <AgentAccessChoice
+          value={agentAccess}
+          onChange={setAgentAccess}
+          pathKind={github.agentPathKind}
+          canEdit={true}
+        />
 
         {bind.isError && <Banner tone="danger">{formatApiError(bind.error)}</Banner>}
 

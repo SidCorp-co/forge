@@ -11,7 +11,7 @@
 // rendering anything.
 
 import type { ConnectionDirectoryItem } from "@forge/contracts";
-import { PROVIDER_LABEL } from "./components/status-pill";
+import { providerLabel } from "./providers/registry";
 import { type DirectoryStatus, deriveConnectionStatus } from "./derive";
 
 /** Which of the header's two tallies a directory state counts toward, if either. */
@@ -44,7 +44,7 @@ export function tallyOf(status: DirectoryStatus): GroupTally {
 
 /** One app's connections, with what a closed header has to state about them. */
 export interface ConnectionGroup {
-  /** The raw provider key — `coolify`, `github` — which is also the group's id. */
+  /** The raw provider key, which is also the group's id. */
   provider: string;
   /** What the operator calls the app. */
   label: string;
@@ -57,7 +57,7 @@ export interface ConnectionGroup {
 
 /** What to call an app on the directory; never invented — the key is true. */
 export function appLabel(provider: string): string {
-  return PROVIDER_LABEL[provider] ?? provider;
+  return providerLabel(provider);
 }
 
 /**

@@ -10,8 +10,8 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { IntegrationSummary } from "../types";
-import { EpodsystemSection } from "./epodsystem-section";
+import type { IntegrationSummary } from "../../types";
+import { EpodsystemSection } from "./section";
 
 expect.extend(matchers);
 afterEach(cleanup);
@@ -19,7 +19,7 @@ afterEach(cleanup);
 const createMutate = vi.fn();
 const listItems = vi.fn<() => IntegrationSummary[]>();
 
-vi.mock("../hooks", () => ({
+vi.mock("../../hooks", () => ({
   useIntegrationsList: () => ({
     data: { items: listItems() },
     isLoading: false,
@@ -34,8 +34,8 @@ vi.mock("../hooks", () => ({
   useOrgConnectionLocked: () => false,
 }));
 
-vi.mock("./connection-owner-field", () => ({ ConnectionOwnerField: () => null }));
-vi.mock("./integration-enabled-control", () => ({ IntegrationEnabledControl: () => null }));
+vi.mock("../../components/connection-owner-field", () => ({ ConnectionOwnerField: () => null }));
+vi.mock("../../components/integration-enabled-control", () => ({ IntegrationEnabledControl: () => null }));
 
 // The design system's `Select` is a custom listbox, not a native <select>: the
 // trigger is a `combobox` and the choices are `option`s that appear once it is

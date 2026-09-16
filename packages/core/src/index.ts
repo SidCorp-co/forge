@@ -68,22 +68,16 @@ import { opsHealthMeRoutes, opsHealthProjectRoutes, publicHealthRoutes } from '.
 import { improvementMessageRoutes } from './improvement-messages/routes.js';
 import { registerRunnerReleaseRefetch } from './install/fetch-release.js';
 import { installRoutes } from './install/routes.js';
-import { registerCoolifyAdapter } from './integrations/coolify/adapter.js';
-import { registerEpodsystemAdapter } from './integrations/epodsystem/adapter.js';
-import { registerGitHubAdapter } from './integrations/github/adapter.js';
+import { registerAllIntegrations } from './integrations/register-all.js';
 import { githubCallbackRoutes, githubConnectRoutes } from './integrations/github/connect-routes.js';
-import { registerGoogleAdapter } from './integrations/google/adapter.js';
 import { registerIntegrationsHealthSweep } from './integrations/health-sweep.js';
-import { registerPostmanAdapter } from './integrations/postman/adapter.js';
 import { registerIntegrationsWorker } from './integrations/queue.js';
-import { registerRocketChatAdapter } from './integrations/rocketchat/adapter.js';
 import { registerCommentMirror } from './integrations/rocketchat/comment-mirror.js';
 import {
   startRocketChatManager,
   stopRocketChatManager,
 } from './integrations/rocketchat/connection-manager.js';
 import { integrationConnectionsRoutes, integrationsRoutes } from './integrations/routes.js';
-import { registerSentryAdapter } from './integrations/sentry/adapter.js';
 import { integrationTargetRoutes } from './integrations/target-routes.js';
 import { assertVaultBootSafety } from './integrations/vault.js';
 import { issueActivityRoutes, projectActivityRoutes } from './issues/activity-routes.js';
@@ -456,13 +450,7 @@ if (isMain) {
 
   await startBoss();
   await assertVaultBootSafety();
-  registerCoolifyAdapter();
-  registerGitHubAdapter();
-  registerGoogleAdapter();
-  registerPostmanAdapter();
-  registerEpodsystemAdapter();
-  registerSentryAdapter();
-  registerRocketChatAdapter();
+  registerAllIntegrations();
   await registerIntegrationsWorker();
   registerReleaseCompletedSubscriber(hooks);
   const skillSeed = await seedBuiltinSkills(db);

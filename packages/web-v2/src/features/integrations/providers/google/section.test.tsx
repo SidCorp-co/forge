@@ -8,10 +8,10 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { groupConnectionsByApp } from "../connection-groups";
-import { DIRECTORY_STATUS_META, deriveConnectionStatus, redactSensitive, REDACTED } from "../derive";
-import type { IntegrationSummary } from "../types";
-import { GoogleSection } from "./google-section";
+import { groupConnectionsByApp } from "../../connection-groups";
+import { DIRECTORY_STATUS_META, deriveConnectionStatus, redactSensitive, REDACTED } from "../../derive";
+import type { IntegrationSummary } from "../../types";
+import { GoogleSection } from "./section";
 
 expect.extend(matchers);
 afterEach(cleanup);
@@ -23,7 +23,7 @@ const listItems = vi.fn<() => IntegrationSummary[]>();
 const listIsError = vi.fn<() => boolean>();
 const listRefetch = vi.fn();
 
-vi.mock("../hooks", () => ({
+vi.mock("../../hooks", () => ({
   useIntegrationsList: () => ({
     data: listIsError() ? undefined : { items: listItems() },
     isLoading: false,
@@ -38,11 +38,11 @@ vi.mock("../hooks", () => ({
   useOrgConnectionLocked: () => false,
 }));
 
-vi.mock("./connection-owner-field", () => ({
+vi.mock("../../components/connection-owner-field", () => ({
   ConnectionOwnerField: () => null,
 }));
 
-vi.mock("./integration-enabled-control", () => ({
+vi.mock("../../components/integration-enabled-control", () => ({
   IntegrationEnabledControl: () => null,
 }));
 

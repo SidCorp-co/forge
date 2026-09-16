@@ -2810,6 +2810,12 @@ export const integrationBindings = pgTable(
     // (project, provider) for sentry/rocketchat/github/postman/google.
     label: text('label').notNull().default(''),
     active: boolean('active').notNull().default(true),
+    // cm:guard the CLOSED answer is the default, and that is the whole of what ISS-1071 changed about
+    // reachability: a binding created without anyone deciding reaches no agent. The switch this
+    // replaced defaulted the other way by omission — a sentinel absent from `pipelineConfig.mcpServers`
+    // also meant no injection, but nothing on the connect screen asked, so an operator who connected an
+    // integration and saw it report Connected had no way to learn it reached nothing.
+    agentAccess: text('agent_access', { enum: axes.agentAccessValues }).notNull().default('none'),
     // cm:guard NEVER put a credential here — this text is rendered verbatim into every agent prompt for the project, so anything stored is effectively published to the model
     instructions: text('instructions'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

@@ -97,8 +97,22 @@ export const releaseProjectChecks = {
   releaseStrategyChk: check('projects_release_strategy_chk', RELEASE_STRATEGY_CHK),
 } as const;
 
+/**
+ * ISS-1071 — whether an agent working this project may use this integration.
+ *
+ * Two values and no more: `none` is the closed answer and the column's default, `all` grants
+ * everything the provider's declared agent path offers. There is deliberately no third value for
+ * per-tool scoping — a value nothing reads is how the sentinel this replaced became a switch no
+ * screen could find.
+ */
+export const agentAccessValues = ['none', 'all'] as const;
+export type AgentAccess = (typeof agentAccessValues)[number];
+
+const AGENT_ACCESS_CHK = sql`agent_access IN ('none', 'all')`;
+
 /** Spread into `integrationBindings`' extras in `schema.ts`. */
 export const bindingShapeChecks = {
   roleChk: check('integration_bindings_role_chk', BINDING_ROLE_CHK),
   roleStagesChk: check('integration_bindings_role_stages_chk', ROLE_STAGES_CHK),
+  agentAccessChk: check('integration_bindings_agent_access_chk', AGENT_ACCESS_CHK),
 } as const;

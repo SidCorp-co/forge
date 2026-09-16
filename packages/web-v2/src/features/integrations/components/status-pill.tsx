@@ -1,8 +1,11 @@
 "use client";
 
-// Shared pill primitive + role/stage/provider labels for the integrations
-// feature (ISS-429) — one rendering of the icon + text + tinted pill (never
-// color-only — a11y) instead of per-component copies.
+// Shared pill primitive + role/stage labels for the integrations feature (ISS-429) — one rendering
+// of the icon + text + tinted pill (never color-only — a11y) instead of per-component copies.
+//
+// Provider labels and icons are NOT here: they live on each provider's own module and are read
+// through `providers/registry.ts`. The two maps this file used to carry were one of the seven
+// copies ISS-1071 collapsed.
 
 import { Icon, type IconName } from "@/design";
 import { DIRECTORY_STATUS_META, type DirectoryStatus, deriveDirectoryStatus } from "../derive";
@@ -34,27 +37,6 @@ export function scopeLabel(role: BindingRole, stages: DeployStage[]): string {
   if (role === "service") return "Service";
   return stages.length > 0 ? stages.map((s) => STAGE_LABEL[s] ?? s).join(" + ") : "Deploy";
 }
-
-export const PROVIDER_LABEL: Record<string, string> = {
-  coolify: "Coolify deploy",
-  postman: "Postman",
-  epodsystem: "Epodsystem",
-  sentry: "Sentry",
-  rocketchat: "Rocket.Chat",
-  github: "GitHub",
-  google: "Google Sheets",
-};
-
-/** One provider→icon map for every integrations surface (card, drawers, panel). */
-export const PROVIDER_ICON: Record<string, IconName> = {
-  coolify: "server",
-  postman: "command",
-  epodsystem: "command",
-  sentry: "shield",
-  rocketchat: "inbox",
-  github: "github",
-  google: "rows",
-};
 
 /** The bare icon + text + tinted pill; feed it any `{icon,label,fg,bg}` meta. */
 export function Pill({ icon, label, fg, bg }: { icon: IconName; label: string; fg: string; bg: string }) {

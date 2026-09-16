@@ -32,7 +32,7 @@ import { matchesQuery } from "../connection-identity";
 import { groupConnectionsByApp } from "../connection-groups";
 import { ConnectionEditDrawer } from "./connection-edit-drawer";
 import { ConnectionGroupSection } from "./connection-group";
-import { PROVIDER_LABEL } from "./status-pill";
+import { providerLabel } from "../providers/registry";
 
 /** Per-operator, shared across tabs: which apps this person leaves open. */
 const OPEN_APPS_KEY = "web-v2:integrations-open-apps";
@@ -217,7 +217,7 @@ export function IntegrationsScreen() {
               { value: "", label: "All providers" },
               ...providersPresent.map((p) => ({
                 value: p,
-                label: PROVIDER_LABEL[p] ?? p,
+                label: providerLabel(p),
               })),
             ]}
           />

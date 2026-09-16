@@ -1,134 +1,74 @@
 /**
- * Per-provider integration config + secrets schemas and dispatch tables.
+ * The generic create, bind and PATCH shapes — provider-agnostic, and the only file that turns a
+ * caller's `provider` string into the schemas that validate its body.
  *
- * Adding a provider = its config/secrets schemas, a branch in the two create
- * discriminated unions (project-scoped create + owner-scoped connection
- * create), and the per-provider dispatch functions (configSchemaForProvider /
- * connectionConfigSchemaForProvider / secretsSchemaForProvider /
- * primaryFieldForProvider — plus BINDING_CONFIG_KEYS when the provider has
- * binding-tier config). The route modules stay provider-agnostic.
+ * ISS-1071 reversed what this file's header used to say. It said adding a provider meant editing
+ * here: "a branch in the two create discriminated unions … The dispatch stays in THIS file either
+ * way, so one place still answers 'which providers exist'." Neither union exists any more, and the
+ * answer moved to the declaration each provider carries in its own directory. This file asks the
+ * registry a question; it holds no provider's name and no provider's shape.
  *
- * A provider that owns a directory may declare its shapes there and be imported
- * here — `google/schemas.ts` does. The dispatch stays in THIS file either way,
- * so one place still answers "which providers exist".
+ * A provider name no declaration holds is refused BY NAME, listing the declared set, rather than
+ * falling through to a default schema — the old dispatch ended every lookup with a bare `return
+ * coolifyConfigSchema.partial()`, so a typo'd provider was validated against Coolify's shape.
  */
 
-import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { bindingShapeFields, checkBindingShape } from './binding-shape.js';
-import {
-  googleConfigBase,
-  googleConnectionConfigSchema,
-  googleSecretsSchema,
-} from './google/schemas.js';
-import { RELEASE_CHANNEL_KEYS, releaseChannelFields } from './release-channel-schema.js';
-import { isRotatingProvider, mergeRotatedSecrets, type RotatingProvider } from './rotation.js';
+import { getIntegration, providerNames } from './registry.js';
+import { mergeRotatedSecrets } from './rotation.js';
 import { assertVaultConfigured, badRequest } from './route-helpers.js';
+import { AGENT_ACCESS_VALUES } from './agent-access.js';
+import type { IntegrationDeclaration } from './types.js';
 
-// cm:why `id` is server-assigned when omitted so it stays STABLE across config edits — it is the key mapping an outbound deploy to the target it was for, so regenerating it would orphan deliveries already recorded against the old one
-const coolifyTargetSchema = z
-  .object({
-    id: z.string().min(1).max(64).optional(),
-    label: z.string().min(1).max(100),
-    resourceUuid: z.string().min(1).max(200),
-    healthUrl: z.string().url().max(500).optional(),
-  })
-  // cm:guard never default `healthUrl` — an absent one is the operator declaring NO post-deploy health gate for this target, and a derived default would arm automatic rollback on every application whose health path Forge guessed wrong (ISS-971)
-  .transform((t) => ({
-    id: t.id ?? randomUUID(),
-    label: t.label,
-    resourceUuid: t.resourceUuid,
-    ...(t.healthUrl ? { healthUrl: t.healthUrl } : {}),
-  }));
-
-export const COOLIFY_ROLLBACK_MODE = 'coolify-image' as const;
-
-const COOLIFY_ROLLBACK_PROSE_REFUSAL =
-  'rollback on a Coolify binding is an action, not a paragraph: Coolify exposes `GET /applications/{uuid}/rollback-images` and `POST /applications/{uuid}/rollback`, and Forge performs them. Send {"mode":"coolify-image"}. Free text is kept only for channels whose API cannot express a rollback (ISS-925).';
+/** The sentence a caller gets for a provider this deployment does not declare. */
+export function undeclaredProviderMessage(provider: string): string {
+  return `\`${provider}\` is not an integration this deployment declares. Declared providers: ${providerNames().join(', ')}.`;
+}
 
 /**
- * The Coolify override of `releaseChannelFields.rollback`. Written as a hand
- * rolled refinement rather than a zod object so the refusal of the OLD prose
- * value is a sentence naming the replacement, not `expected object, received
- * string`.
+ * The declaration for a caller-supplied provider string, or a `ctx` issue naming what was rejected.
+ *
+ * Returns `null` on refusal so the caller can stop rather than validate against a guessed shape.
  */
-// cm:guard the union `releaseChannelFields` implies across providers is a shape, NOT a type: `rollback` alone differs, and this key must stay LAST in `coolifyConfigSchema` so it overrides the spread above it. `RELEASE_CHANNEL_KEYS` still lists it because splitProviderConfig routes by key name and is indifferent to the value's shape (ISS-925).
-const coolifyRollbackSchema = z
-  .unknown()
-  .superRefine((value, ctx) => {
-    if (value === undefined || value === null) return;
-    if (typeof value === 'string') {
-      ctx.addIssue({ code: 'custom', message: COOLIFY_ROLLBACK_PROSE_REFUSAL });
-      return;
-    }
-    const ok =
-      typeof value === 'object' &&
-      Object.keys(value).length === 1 &&
-      (value as { mode?: unknown }).mode === COOLIFY_ROLLBACK_MODE;
-    if (!ok) {
-      ctx.addIssue({
-        code: 'custom',
-        message: 'rollback must be exactly {"mode":"coolify-image"}',
-      });
-    }
-  })
-  .transform((value) => value as { mode: typeof COOLIFY_ROLLBACK_MODE } | undefined)
-  .optional();
+function declarationOrIssue(
+  provider: string,
+  ctx: z.RefinementCtx,
+): IntegrationDeclaration | null {
+  const decl = getIntegration(provider);
+  if (decl) return decl;
+  ctx.addIssue({ code: 'custom', path: ['provider'], message: undeclaredProviderMessage(provider) });
+  return null;
+}
 
-const coolifyConfigSchema = z.object({
-  baseUrl: z.string().url().max(500),
-  // cm:why several targets under one binding because a split BE/FE deploy is two separate Coolify applications sharing one project's credential and release gate
-  // cm:guard labels are UNIQUE within a binding, and the refusal is here because nothing downstream can recover from a duplicate: a `coolify.confirm` job carries only `targetLabel`, so two targets sharing one makes the post-deploy health gate read the first match's health URL and roll back that application instead of the one that failed (ISS-971)
-  targets: z
-    .array(coolifyTargetSchema)
-    .min(1)
-    .max(20)
-    .superRefine((targets, ctx) => {
-      const seen = new Set<string>();
-      for (const t of targets) {
-        if (seen.has(t.label)) {
-          ctx.addIssue({
-            code: 'custom',
-            message: `two deploy targets are both labelled "${t.label}" — a label names one application and must be unique within this binding`,
-          });
-          return;
-        }
-        seen.add(t.label);
-      }
-    }),
-  ...releaseChannelFields,
-  rollback: coolifyRollbackSchema,
-});
+/** Validate one half of a body against a provider-declared schema, reporting under its own key. */
+function parseInto(
+  schema: z.ZodTypeAny,
+  value: unknown,
+  key: 'config' | 'secrets',
+  ctx: z.RefinementCtx,
+): Record<string, unknown> | undefined {
+  const parsed = schema.safeParse(value ?? {});
+  if (parsed.success) return parsed.data as Record<string, unknown>;
+  for (const issue of parsed.error.issues) {
+    ctx.addIssue({ ...issue, path: [key, ...issue.path] });
+  }
+  return undefined;
+}
 
-// cm:why binding-tier = per project: two projects share one org connection (the credential + baseUrl) but each deploys its own targets and names its own release box, probes and rollback — a key left on the connection tier is also a key a project admin cannot write on an org-owned connection
-const COOLIFY_BINDING_CONFIG_KEYS = ['targets', ...RELEASE_CHANNEL_KEYS] as const;
+const agentAccessField = z.enum(AGENT_ACCESS_VALUES).optional();
 
-/** Provider → binding-tier config keys (everything else stays on the
- *  connection with the credential). Coolify: per-project deploy targets;
- *  Rocket.Chat: the per-project room ids; the three release-channel keys for
- *  every provider, because which box releases and how a deploy is proved are
- *  the project's answer even when the credential is shared org-wide. */
-const BINDING_CONFIG_KEYS: Record<string, readonly string[]> = {
-  coolify: COOLIFY_BINDING_CONFIG_KEYS,
-  rocketchat: ['rids', ...RELEASE_CHANNEL_KEYS],
-  postman: RELEASE_CHANNEL_KEYS,
-  epodsystem: RELEASE_CHANNEL_KEYS,
-  sentry: RELEASE_CHANNEL_KEYS,
-  // cm:guard `installationId` is binding-tier with owner/repo, not connection-tier — ONE App can hold several installations, and splitProviderConfig drops from the binding every key missing here, so leaving it out lets a bind succeed with the repository recorded and no way to mint a token for it (adapter.ts reads all three together)
-  github: ['installationId', 'owner', 'repo', ...RELEASE_CHANNEL_KEYS],
-  // cm:edge contract -> packages/core/src/integrations/provider-schemas.ts — `defaultSpreadsheetId` is binding-tier because ONE service account is shared org-wide while the sheet it reads is the project's own; deleting it from this list moves the key to the connection and silently strips it from every PATCH (ISS-1036)
-  google: ['defaultSpreadsheetId', ...RELEASE_CHANNEL_KEYS],
-  agent: RELEASE_CHANNEL_KEYS,
-};
-
-/** Split a validated provider config into its connection-tier and binding-tier
- *  halves. Providers without binding-tier keys pass through untouched. */
+/**
+ * Split a validated provider config into its connection-tier and binding-tier halves, reading the
+ * binding-tier key list off the provider's own declaration. A provider with no binding-tier keys
+ * passes through untouched.
+ */
 export function splitProviderConfig(
   provider: string,
   config: Record<string, unknown>,
 ): { connection: Record<string, unknown>; binding: Record<string, unknown> } {
-  const bindingKeys = BINDING_CONFIG_KEYS[provider];
-  if (!bindingKeys) return { connection: config, binding: {} };
+  const bindingKeys = getIntegration(provider)?.schemas.bindingConfigKeys;
+  if (!bindingKeys || bindingKeys.length === 0) return { connection: config, binding: {} };
   const connection: Record<string, unknown> = { ...config };
   const binding: Record<string, unknown> = {};
   for (const key of bindingKeys) {
@@ -140,240 +80,80 @@ export function splitProviderConfig(
   return { connection, binding };
 }
 
-const coolifySecretsSchema = z.object({
-  apiToken: z.string().min(8).max(2000),
-});
-
-// cm:guard keep this base free of `.default()` — zod's `.partial()` still EMITS a field's default when the key is absent, so a default here turns a PATCH that names one field into one that silently resets region, mode and workspaceName. Defaults belong on the create schema alone (ISS-336).
-const postmanConfigBase = z.object({
-  workspaceId: z.string().min(1).max(200).optional(),
-  workspaceName: z.string().min(1).max(200),
-  collectionId: z.string().min(1).max(200).optional(),
-  region: z.enum(['us', 'eu']),
-  mode: z.enum(['minimal', 'full']),
-  ...releaseChannelFields,
-});
-
-const postmanConfigSchema = postmanConfigBase.extend({
-  workspaceName: postmanConfigBase.shape.workspaceName.default('Forge Integration'),
-  region: postmanConfigBase.shape.region.default('us'),
-  mode: postmanConfigBase.shape.mode.default('minimal'),
-});
-
-const postmanSecretsSchema = z.object({
-  apiKey: z.string().min(8).max(2000),
-});
-
-// cm:guard the endpoint is NOT a config key here and must not become one — it is platform config read from `EPODSYSTEM_ENDPOINT`, so a field for it would let one project point the integration at another host (ISS-387)
-// cm:guard every field is optional on input BECAUSE the healthcheck fills the store identity (slug, name, theme ids) — requiring any of them would make the operator transcribe what Forge is about to discover, and staging binds the draft theme against prod's main
-const epodsystemConfigBase = z.object({
-  storeSlug: z.string().min(1).max(200).optional(),
-  storeName: z.string().min(1).max(200).optional(),
-  themeId: z.string().min(1).max(200).optional(),
-  draftThemeId: z.string().min(1).max(200).optional(),
-  commerceEnabled: z.boolean().optional(),
-  ...releaseChannelFields,
-});
-
-const epodsystemSecretsSchema = z.object({
-  apiKey: z.string().min(8).max(2000),
-});
-
-// ISS-524 / ISS-526 — Sentry provider. Config is the non-secret target set
-// (Sentry host + a labelled `targets[]` list of org/project bindings); the
-// `sntryu_` auth token is the only secret and is vault-encrypted like
-// coolify/postman. `sentryConfigBase` carries NO defaults so `.partial()` is a
-// true partial for PATCH. The host is required on create (the MCP server's
-// SENTRY_HOST). The legacy top-level slugs (ISS-524) stay optional for
-// back-compat reads; new writes use `targets[]`.
-const sentryTargetSchema = z.object({
-  label: z.string().min(1).max(120),
-  organizationSlug: z.string().min(1).max(200).optional(),
-  projectSlug: z.string().min(1).max(200).optional(),
-  environment: z.string().min(1).max(120).optional(),
-  notes: z.string().max(2000).optional(),
-});
-const sentryConfigBase = z.object({
-  host: z.string().min(1).max(255),
-  targets: z.array(sentryTargetSchema).max(50).optional(),
-  organizationSlug: z.string().min(1).max(200).optional(),
-  projectSlug: z.string().min(1).max(200).optional(),
-  ...releaseChannelFields,
-});
-
-const sentrySecretsSchema = z.object({
-  authToken: z.string().min(8).max(2000),
-});
-
-// ISS-609 — Rocket.Chat provider (connection-only archetype, bot credential).
-// Connection-tier config is the server URL; the room ids (`rids`) are
-// BINDING-tier (see splitProviderConfig) so one org bot credential serves N
-// project channels, and one project can listen on several rooms (mirrors the
-// coolify targets[] pattern; migration 0146 rewrote legacy single-`rid` rows).
-// Secrets are the bot PAT (X-Auth-Token / DDP resume) + its user id.
-const rocketchatConfigBase = z.object({
-  serverUrl: z.string().url().max(500),
-  rids: z.array(z.string().min(1).max(200)).min(1).max(20).optional(),
-  ...releaseChannelFields,
-});
-
-const rocketchatSecretsSchema = z.object({
-  authToken: z.string().min(8).max(2000),
-  userId: z.string().min(1).max(200),
-});
-
-const githubConfigBase = z.object({
-  installationId: z.number().int().positive().optional(),
-  owner: z.string().min(1).max(200).optional(),
-  repo: z.string().min(1).max(200).optional(),
-  apiBaseUrl: z.string().url().max(500).optional(),
-  ...releaseChannelFields,
-});
-
-// cm:guard every field here is WRITTEN BY GitHub, never typed by an operator — the app-manifest conversion returns `id`, `pem` and `webhook_secret` together, so a connection carrying some of them is a half-finished authorization, not a mis-typed form. `webhookSecret` belongs to the App and is copied onto each binding's `integrationSecret`; that is why the adapter must match the repository itself rather than letting the signature pick the binding.
-const githubSecretsSchema = z.object({
-  appId: z.string().min(1).max(50),
-  privateKey: z.string().min(100).max(20000),
-  webhookSecret: z.string().min(8).max(500),
-});
-
-// cm:why the release channel `agent` is declared here rather than left as free-text: the REST create path validates through the discriminated union below, so a provider absent from it cannot be created at all — `provider` being a `text` column only means no MIGRATION is needed. It carries no credential and has no adapter because nothing is integrated: the deploy is the project's own script, run by the release session on a box that already holds the key.
-const agentReleaseConfigSchema = z.object(releaseChannelFields);
-
-// cm:why `environment` defaults to 'prod' on postman because that provider has no staging/prod split, while the binding column and its unique index still require a value
-const createVariants = z.discriminatedUnion('provider', [
-  z.object({
-    provider: z.literal('coolify'),
+/**
+ * Body for `POST /:projectId/integrations` — one envelope over every provider.
+ *
+ * `config` and `secrets` arrive loose and are re-parsed inside the refinement against the schemas
+ * the provider's declaration carries, because zod cannot pick a branch on a value the registry
+ * resolves at request time. The transform then REPLACES them with the parsed values, so defaults
+ * (postman's `region`, coolify's generated target ids) still reach the handler.
+ */
+// cm:guard `label` is accepted only where the provider declares `multiBinding` — the column exists on
+// every binding but a second row of a single-binding provider collides on `integration_bindings_service_uq`,
+// and a label silently kept on a provider that cannot use it reads to an operator as a named binding
+// they can add more of.
+export const createSchema = z
+  .object({
+    provider: z.string().min(1).max(60),
     ...bindingShapeFields,
-    config: coolifyConfigSchema,
-    secrets: coolifySecretsSchema,
-    // Present = mint the credential as ORG-owned (shared across the org's
-    // projects); must equal the project's own org and the caller must be an
-    // org admin. Absent = personal (user-owned), the historical default.
+    config: z.record(z.string(), z.unknown()).default({}),
+    secrets: z.record(z.string(), z.unknown()).default({}),
     orgId: z.uuid().optional(),
-  }),
-  z.object({
-    provider: z.literal('postman'),
-    ...bindingShapeFields,
-    config: postmanConfigSchema,
-    secrets: postmanSecretsSchema,
-    orgId: z.uuid().optional(),
-  }),
-  z.object({
-    provider: z.literal('epodsystem'),
-    ...bindingShapeFields,
-    config: epodsystemConfigBase,
-    secrets: epodsystemSecretsSchema,
-    orgId: z.uuid().optional(),
-    // ISS-558 — optional label for the second+ storefront. Empty = default.
     label: z
       .string()
       .min(1)
       .max(60)
       .regex(/^[a-z0-9][a-z0-9-]*$/, 'label must be kebab-case (a-z0-9-)')
       .optional(),
-  }),
-  z.object({
-    provider: z.literal('sentry'),
-    ...bindingShapeFields,
-    config: sentryConfigBase,
-    secrets: sentrySecretsSchema,
-    orgId: z.uuid().optional(),
-  }),
-  z.object({
-    provider: z.literal('rocketchat'),
-    ...bindingShapeFields,
-    config: rocketchatConfigBase,
-    secrets: rocketchatSecretsSchema,
-    orgId: z.uuid().optional(),
-  }),
-  z.object({
-    provider: z.literal('github'),
-    ...bindingShapeFields,
-    config: githubConfigBase,
-    secrets: githubSecretsSchema,
-    orgId: z.uuid().optional(),
-  }),
-  z.object({
-    provider: z.literal('google'),
-    ...bindingShapeFields,
-    config: googleConfigBase,
-    secrets: googleSecretsSchema,
-    orgId: z.uuid().optional(),
-  }),
-  z.object({
-    provider: z.literal('agent'),
-    ...bindingShapeFields,
-    config: agentReleaseConfigSchema,
-    // cm:guard NO secrets, ever. The whole point of this channel is that the production credential stays on the runner box: a deploy key in Forge would put every project's production behind one decryption path, which is the blast radius the release gate was designed to refuse.
-    secrets: z.object({}).strict().default({}),
-    orgId: z.uuid().optional(),
-  }),
-]);
+    agentAccess: agentAccessField,
+  })
+  .superRefine(checkBindingShape)
+  .transform((value, ctx) => {
+    const decl = declarationOrIssue(value.provider, ctx);
+    if (!decl) return z.NEVER;
+    if (value.label !== undefined && !decl.capabilities.multiBinding) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['label'],
+        message: `\`${decl.provider}\` holds one binding per project, so it takes no \`label\`. A label names one of several bindings of the same provider, which only a provider declaring \`multiBinding\` has.`,
+      });
+      return z.NEVER;
+    }
+    const config = parseInto(decl.schemas.bindingConfig, value.config, 'config', ctx);
+    const secrets = parseInto(decl.schemas.secrets, value.secrets, 'secrets', ctx);
+    if (config === undefined || secrets === undefined) return z.NEVER;
+    return { ...value, provider: decl.provider, config, secrets };
+  });
 
-export const createSchema = createVariants.superRefine(checkBindingShape);
-
-// cm:guard this shape is loose ON PURPOSE — a PATCH carries no provider, so `config`/`secrets` are re-validated against the EXISTING binding's provider inside the handler; tightening it here would validate against a provider nobody named
+// cm:guard this shape is loose ON PURPOSE — a PATCH carries no provider, so `config`/`secrets` are
+// re-validated against the EXISTING binding's provider inside the handler; tightening it here would
+// validate against a provider nobody named
 export const updateSchema = z.object({
   config: z.record(z.string(), z.unknown()).optional(),
   secrets: z.record(z.string(), z.unknown()).optional(),
   active: z.boolean().optional(),
-  // cm:why deliberately NOT a provider-config key — this is Forge-side prompt text, so routing it through configSchemaForProvider would force all five provider schemas to carry a field none of them consume
+  // cm:why deliberately NOT a provider-config key — this is Forge-side prompt text, so routing it through the provider's own config schema would force every provider to carry a field none of them consume
   instructions: z.string().max(4000).nullable().optional(),
+  agentAccess: agentAccessField,
 });
 
-// Owner-scoped connection create (no environment — that's a binding concern).
-export const connectionCreateSchema = z.discriminatedUnion('provider', [
-  z.object({
-    provider: z.literal('coolify'),
+/** Body for `POST /integration-connections` — the owner-scoped half, with no binding shape. */
+export const connectionCreateSchema = z
+  .object({
+    provider: z.string().min(1).max(60),
     displayName: z.string().min(1).max(200).optional(),
-    config: coolifyConfigSchema,
-    secrets: coolifySecretsSchema,
+    config: z.record(z.string(), z.unknown()).default({}),
+    secrets: z.record(z.string(), z.unknown()).default({}),
     orgId: z.uuid().optional(),
-  }),
-  z.object({
-    provider: z.literal('postman'),
-    displayName: z.string().min(1).max(200).optional(),
-    config: postmanConfigSchema,
-    secrets: postmanSecretsSchema,
-    orgId: z.uuid().optional(),
-  }),
-  z.object({
-    provider: z.literal('epodsystem'),
-    displayName: z.string().min(1).max(200).optional(),
-    config: epodsystemConfigBase,
-    secrets: epodsystemSecretsSchema,
-    orgId: z.uuid().optional(),
-  }),
-  z.object({
-    provider: z.literal('sentry'),
-    displayName: z.string().min(1).max(200).optional(),
-    config: sentryConfigBase,
-    secrets: sentrySecretsSchema,
-    orgId: z.uuid().optional(),
-  }),
-  z.object({
-    provider: z.literal('rocketchat'),
-    displayName: z.string().min(1).max(200).optional(),
-    config: rocketchatConfigBase,
-    secrets: rocketchatSecretsSchema,
-    orgId: z.uuid().optional(),
-  }),
-  z.object({
-    provider: z.literal('github'),
-    displayName: z.string().min(1).max(200).optional(),
-    config: githubConfigBase,
-    secrets: githubSecretsSchema,
-    orgId: z.uuid().optional(),
-  }),
-  z.object({
-    provider: z.literal('google'),
-    displayName: z.string().min(1).max(200).optional(),
-    config: googleConnectionConfigSchema,
-    secrets: googleSecretsSchema,
-    orgId: z.uuid().optional(),
-  }),
-]);
+  })
+  .transform((value, ctx) => {
+    const decl = declarationOrIssue(value.provider, ctx);
+    if (!decl) return z.NEVER;
+    const config = parseInto(decl.schemas.connectionConfig, value.config, 'config', ctx);
+    const secrets = parseInto(decl.schemas.secrets, value.secrets, 'secrets', ctx);
+    if (config === undefined || secrets === undefined) return z.NEVER;
+    return { ...value, provider: decl.provider, config, secrets };
+  });
 
 export const connectionUpdateSchema = z.object({
   displayName: z.string().min(1).max(200).optional(),
@@ -382,92 +162,37 @@ export const connectionUpdateSchema = z.object({
   active: z.boolean().optional(),
 });
 
-/** Per-provider partial config schema for PATCH validation. Uses the
- *  no-default base for postman so a partial patch never re-emits defaults. */
+/**
+ * The partial config schema a binding PATCH validates against, read off the provider's declaration.
+ *
+ * Throws rather than falling back, and the sentence names the provider. The function this replaced
+ * ended in `return coolifyConfigSchema.partial()`, so every unknown provider — including a typo —
+ * was validated against Coolify's shape and told nothing.
+ */
 export function configSchemaForProvider(provider: string): z.ZodTypeAny {
-  if (provider === 'postman') return postmanConfigBase.partial();
-  if (provider === 'epodsystem') return epodsystemConfigBase.partial();
-  if (provider === 'sentry') return sentryConfigBase.partial();
-  if (provider === 'rocketchat') return rocketchatConfigBase.partial();
-  if (provider === 'github') return githubConfigBase.partial();
-  if (provider === 'google') return googleConfigBase.partial();
-  if (provider === 'agent') return agentReleaseConfigSchema.partial();
-  return coolifyConfigSchema.partial();
+  const decl = getIntegration(provider);
+  if (!decl) throw badRequest(undeclaredProviderMessage(provider));
+  return decl.schemas.patchConfig;
 }
 
-/**
- * The config schema for an OWNER-SCOPED connection PATCH, where a binding-tier
- * key does not belong.
- *
- * cm:guard only `google` is narrowed, and that is a statement about scope rather
- * than about the other providers: `coolify` carries `targets` and every provider
- * carries the three release-channel keys through this same door, so a connection
- * PATCH can put a binding-tier key on a shared credential for all of them. That
- * is a pre-existing hole ISS-1036 found and did not widen; narrowing the rest
- * changes what six live providers accept and is somebody's own change to make.
- */
+/** The config schema for an OWNER-SCOPED connection PATCH, where a binding-tier key does not belong. */
+// cm:guard only `google` narrows this today, and that is a statement about scope rather than about the other providers: `coolify` carries `targets` and every provider carries the three release-channel keys through this same door, so a connection PATCH can put a binding-tier key on a shared credential for all of them. That is a pre-existing hole ISS-1036 found and did not widen; narrowing the rest changes what six live providers accept and is somebody's own change to make. What ISS-1071 changed is only WHERE the narrowing is declared — on google's declaration rather than in a branch here.
 export function connectionConfigSchemaForProvider(provider: string): z.ZodTypeAny {
-  // Both of its fields are already optional, so there is no `.partial()` to take.
-  if (provider === 'google') return googleConnectionConfigSchema;
-  return configSchemaForProvider(provider);
-}
-
-/** Per-provider partial secrets schema for the two PATCH paths. */
-function secretsSchemaForProvider(provider: RotatingProvider): z.ZodTypeAny {
-  if (provider === 'coolify') return coolifySecretsSchema.partial();
-  if (provider === 'sentry') return sentrySecretsSchema.partial();
-  if (provider === 'rocketchat') return rocketchatSecretsSchema.partial();
-  if (provider === 'github') return githubSecretsSchema.partial();
-  if (provider === 'google') return googleSecretsSchema.partial();
-  return postmanSecretsSchema.partial();
-}
-
-/** Provider → primary (rotating) credential field, mirroring rotation.ts. */
-function primaryFieldForProvider(provider: RotatingProvider): string {
-  if (provider === 'coolify') return 'apiToken';
-  if (provider === 'sentry' || provider === 'rocketchat') return 'authToken';
-  if (provider === 'github') return 'privateKey';
-  if (provider === 'google') return 'serviceAccountJson';
-  return 'apiKey';
+  const decl = getIntegration(provider);
+  if (!decl) throw badRequest(undeclaredProviderMessage(provider));
+  return decl.schemas.connectionConfig;
 }
 
 /**
- * Rotate the primary credential via the shared dual-token helper, carrying
- * provider fields the rotation window doesn't know about (rocketchat's bot
- * `userId` must survive an authToken-only rotation). Also supports a
- * rocketchat userId-only update (no token change → plain merge, no rotation).
- */
-function mergeProviderSecretsPatch(
-  provider: RotatingProvider,
-  currentSecrets: Record<string, unknown> | null,
-  incoming: Record<string, unknown>,
-): Record<string, unknown> | null {
-  const merged = mergeRotatedSecrets(provider, currentSecrets, incoming);
-  if (provider !== 'rocketchat') return merged;
-  const userId = typeof incoming.userId === 'string' ? incoming.userId : currentSecrets?.userId;
-  if (merged) {
-    if (typeof userId === 'string') merged.userId = userId;
-    return merged;
-  }
-  // No new token — allow updating the bot userId alone.
-  if (typeof incoming.userId === 'string') {
-    return { ...(currentSecrets ?? {}), userId: incoming.userId };
-  }
-  return null;
-}
-
-/**
- * Shared secrets-rotation step of the two PATCH paths (binding PATCH in
- * routes.ts, connection PATCH in connection-routes.ts): per-provider zod
- * parse → secret-input detection → vault decrypt of the current blob →
- * dual-token merge (ISS-405). Non-rotating providers are a no-op. Returns the
- * merged secrets to persist, or `undefined` when nothing should be written
- * (no secret input, or the merge produced nothing).
+ * Shared secrets-rotation step of the two PATCH paths (binding PATCH in `routes.ts`, connection
+ * PATCH in `connection-routes.ts`): declared-schema parse → secret-input detection → vault decrypt
+ * of the current blob → dual-token merge (ISS-405). A provider declaring no primary credential
+ * field is a no-op. Returns the merged secrets to persist, or `undefined` when nothing should be
+ * written (no secret input, or the merge produced nothing).
  *
- * `vaultGuardTiming` preserves each caller's historical order of operations:
- * the connection PATCH asserts the vault BEFORE parsing; the binding PATCH
- * asserts it only once a real credential field is present (so a config-only
- * secrets object never 503s on a vault-less deploy).
+ * `vaultGuardTiming` preserves each caller's historical order of operations: the connection PATCH
+ * asserts the vault BEFORE parsing; the binding PATCH asserts it only once a real credential field
+ * is present, so a config-only secrets object never 503s on a vault-less deploy.
  */
 export async function applySecretsPatch(opts: {
   provider: string;
@@ -475,26 +200,36 @@ export async function applySecretsPatch(opts: {
   secretsEnc: Buffer | null;
   vaultGuardTiming: 'before-parse' | 'on-secret-input';
 }): Promise<Record<string, unknown> | undefined> {
-  // All providers route through the shared rotation helper so the dual-token
-  // overlap window applies uniformly (ISS-405). Per-provider zod parsing
-  // validates each provider's input shape before the merge.
-  if (!isRotatingProvider(opts.provider)) return undefined;
-  const provider: RotatingProvider = opts.provider;
+  const decl = getIntegration(opts.provider);
+  const primaryField = decl?.schemas.primaryCredentialField;
+  if (!decl || !primaryField) return undefined;
   if (opts.vaultGuardTiming === 'before-parse') assertVaultConfigured();
-  const parsedSecrets = secretsSchemaForProvider(provider).safeParse(opts.rawSecrets);
+  const parsedSecrets = decl.schemas.patchSecrets.safeParse(opts.rawSecrets);
   if (!parsedSecrets.success) throw badRequest(z.flattenError(parsedSecrets.error));
   const incoming = parsedSecrets.data as Record<string, unknown>;
-  // Skip the vault guard for a config-only PATCH (no credential fields).
-  // Rocketchat also accepts a userId-only update (non-rotating secondary
-  // field).
+  // A field a rotation does not touch is writable on its own only where the provider DECLARES it
+  // so. Rocket.Chat's bot `userId` is the only one today. Treating every non-primary field as
+  // independently writable would make a github PATCH naming `appId` alone look like a credential
+  // edit, which it is not: that App's three fields arrive together or not at all.
+  const independent = decl.schemas.independentSecretFields;
+  const secondaryFields = Object.keys(incoming).filter(
+    (k) => k !== primaryField && independent.includes(k),
+  );
   const hasSecretInput =
-    typeof incoming[primaryFieldForProvider(provider)] === 'string' ||
-    (provider === 'rocketchat' && typeof incoming.userId === 'string');
+    typeof incoming[primaryField] === 'string' || secondaryFields.length > 0;
   if (!hasSecretInput) return undefined;
   if (opts.vaultGuardTiming === 'on-secret-input') assertVaultConfigured();
   const currentSecrets = opts.secretsEnc
     ? (await import('./vault.js')).decryptJson<Record<string, unknown>>(opts.secretsEnc)
     : null;
-  const merged = mergeProviderSecretsPatch(provider, currentSecrets, incoming);
-  return merged ?? undefined;
+  const merged = mergeRotatedSecrets(decl, currentSecrets, incoming);
+  if (merged) {
+    for (const field of secondaryFields) merged[field] = incoming[field];
+    return merged;
+  }
+  // No new primary credential — allow updating a secondary field alone.
+  if (secondaryFields.length === 0) return undefined;
+  const next = { ...(currentSecrets ?? {}) };
+  for (const field of secondaryFields) next[field] = incoming[field];
+  return next;
 }

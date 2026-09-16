@@ -14,10 +14,19 @@
  */
 
 import { logger } from '../../logger.js';
-import { getAdapter, registerAdapter } from '../registry.js';
 import { isPreviousCredentialValid } from '../rotation.js';
 import { findConnectionById, updateConnection } from '../store.js';
-import type { HealthCheckResult, IntegrationAdapter } from '../types.js';
+import {
+  declareIntegration,
+  type HealthCheckResult,
+  type IntegrationAdapterMethods,
+} from '../types.js';
+import { buildEpodsystemMcpEntry } from './resolver.js';
+import {
+  EPODSYSTEM_BINDING_CONFIG_KEYS,
+  epodsystemConfigBase,
+  epodsystemSecretsSchema,
+} from './schemas.js';
 import { epodsystemGraphqlBase } from './endpoints.js';
 import type {
   ApiKeyContextResponse,
@@ -70,18 +79,7 @@ async function gqlPost(
   }
 }
 
-export const epodsystemAdapter: IntegrationAdapter<EpodsystemConfig, EpodsystemSecrets> = {
-  provider: 'epodsystem',
-  // MCP-injection archetype: injects mcpServers.epodsystem into the runner; core
-  // never dispatches or receives webhooks, so no env split / delivery log.
-  capabilities: {
-    canDispatch: false,
-    canReceiveWebhook: false,
-    injectsMcp: true,
-    canDeploy: true,
-    liveConfirmGate: false,
-    hasDeliveryLog: false,
-  },
+const epodsystemAdapterMethods: IntegrationAdapterMethods<EpodsystemConfig, EpodsystemSecrets> = {
 
   async healthcheck(ctx): Promise<HealthCheckResult> {
     const apiKey = ctx.secrets?.apiKey;
@@ -275,8 +273,63 @@ export const epodsystemAdapter: IntegrationAdapter<EpodsystemConfig, EpodsystemS
   },
 };
 
-export function registerEpodsystemAdapter(): void {
-  if (getAdapter('epodsystem')) return;
-  // biome-ignore lint/suspicious/noExplicitAny: registry accepts the adapter shape regardless of generic params
-  registerAdapter(epodsystemAdapter as any);
-}
+/**
+ * Epodsystem's declaration. `direct-mcp`: the `crmk_` key is rendered into the runner's MCP config.
+ *
+ * `tools` is empty although core answers `forge_storefront_target` from the same binding, and that
+ * is deliberate — the tool REPORTS the grant rather than being gated by it. Gating it would close a
+ * read of the store's own non-secret context that is open today, and the grant is binary, so there
+ * is no way to close the credential half and leave the context half open.
+ */
+export const epodsystemIntegration = declareIntegration<EpodsystemConfig, EpodsystemSecrets>({
+  provider: 'epodsystem',
+  capabilities: {
+    canDispatch: false,
+    canReceiveWebhook: false,
+    // A storefront IS somewhere Forge deploys to: its preview is the draft theme and its live is
+    // the published one, which is why three fleet storefronts carry one binding on both stages.
+    canDeploy: true,
+    liveConfirmGate: false,
+    hasDeliveryLog: false,
+    multiBinding: true,
+    agentPath: {
+      kind: 'direct-mcp',
+      tools: [],
+      serverName: 'epodsystem',
+      justification:
+        'The storefront shop tools are the Epodsystem MCP server itself, authenticated by the store key. Forge has no API of its own in front of the theme and product surface, so the key reaches the runner or the shop skill has nothing to call.',
+      buildEntry: (config, secrets) => {
+        const apiKey = secrets.apiKey;
+        if (typeof apiKey !== 'string' || apiKey.length === 0) return null;
+        return buildEpodsystemMcpEntry(config as EpodsystemConfig, apiKey);
+      },
+    },
+  },
+  schemas: {
+    connectionConfig: epodsystemConfigBase,
+    bindingConfig: epodsystemConfigBase,
+    patchConfig: epodsystemConfigBase.partial(),
+    secrets: epodsystemSecretsSchema,
+    patchSecrets: epodsystemSecretsSchema.partial(),
+    primaryCredentialField: 'apiKey',
+    previousCredentialField: 'previousApiKey',
+    independentSecretFields: [],
+    bindingConfigKeys: EPODSYSTEM_BINDING_CONFIG_KEYS,
+  },
+  usage: {
+    hint: 'Read store + theme context via `forge_storefront_target` and customize the storefront via the `mcp__epodsystem__*` shop tools. Always build on the DRAFT theme; publishing promotes draft to main.',
+  },
+  presentation: {
+    label: 'Epodsystem',
+    alwaysStageKeyed: false,
+    neverCheckedDetail: 'never test-connected',
+    // cm:guard non-secret store identity ONLY — the `crmk_` key must never reach a status card, which is an unauthenticated-to-the-provider read any project member can make
+    cardMeta: (config) => {
+      const cfg = config as { storeSlug?: string; storeName?: string };
+      return { storeSlug: cfg.storeSlug ?? null, storeName: cfg.storeName ?? null };
+    },
+  },
+  adapter: epodsystemAdapterMethods,
+});
+
+export const epodsystemAdapter = epodsystemAdapterMethods;

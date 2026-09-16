@@ -6,11 +6,7 @@ import {
   AUTONOMOUS_SKILL_NAME,
   BACKLOG_ADMISSIBLE_STATUSES,
 } from './autonomous-mode.js';
-import {
-  INTEGRATION_SERVER_NAMES,
-  isKnownMcpServerName,
-  MCP_CATALOG_NAMES,
-} from './mcp-catalog.js';
+import { isKnownMcpServerName, MCP_CATALOG_NAMES } from './mcp-catalog.js';
 import { QA_JUDGEMENT_KEY, QA_JUDGEMENT_MODES } from './qa-judgement.js';
 /**
  * Per-stage config under `pipelineConfig.states`, keyed by the kernel status
@@ -323,22 +319,6 @@ export const pipelineConfigSchema = z
       .optional(),
   })
   .superRefine((cfg, ctx) => {
-    // cm:guard a `name: true` shorthand whose name is neither a catalog server nor a known integration sentinel is REFUSED here: `expandMcpServers` drops an unknown one at dispatch with only a `logger.warn`, so the agent never sees the server and the operator has to read core source to find out why (ISS-623 W1). Object-valued raw specs and `false`/`null` opt-outs are untouched: they are not shorthand, so there is no known name to check.
-    const checkMcpServers = (
-      map: Record<string, unknown> | undefined,
-      path: (string | number)[],
-    ) => {
-      if (!map) return;
-      for (const [name, value] of Object.entries(map)) {
-        if (value !== true) continue;
-        if (isKnownMcpServerName(name)) continue;
-        ctx.addIssue({
-          code: 'custom',
-          path: [...path, name],
-          message: `mcpServers entry "${name}" is not a known catalog server (${MCP_CATALOG_NAMES.join(', ')}) or integration (${INTEGRATION_SERVER_NAMES.join(', ')}, epodsystem_<label>) — fix the name or use an object spec for a custom server`,
-        });
-      }
-    };
     // cm:guard ISS-917 B5 — `intakeGate` parks EVERY arriving issue at `draft` so a HUMAN approves it, and a master that may promote drafts is that human, so the pair is a contradiction and must be unrepresentable rather than discovered at dispatch time on a live project. It lives in the SCHEMA so REST `PATCH /pipeline-config` and MCP `forge_config` both hit it.
     // cm:edge lockstep -> packages/core/src/pipeline/pipeline-config-service.ts#assertMergedConfigValid — this rule sees ONE document, so the two-write ordering (`poolBacklog` then `intakeGate`) reaches it only through that merged-doc re-validation; a cross-field rule added here without one is enforceable on a single PATCH and bypassable by two
     if (cfg.intakeGate?.enabled === true && cfg.poolBacklog?.statuses?.includes('draft')) {
@@ -350,17 +330,6 @@ export const pipelineConfigSchema = z
       });
     }
 
-    checkMcpServers(cfg.mcpServers, ['mcpServers']);
-    if (cfg.states) {
-      for (const [stageName, stageCfg] of Object.entries(cfg.states)) {
-        if (!stageCfg || typeof stageCfg !== 'object') continue;
-        checkMcpServers((stageCfg as { mcpServers?: Record<string, unknown> }).mcpServers, [
-          'states',
-          stageName,
-          'mcpServers',
-        ]);
-      }
-    }
   });
 
 export type PipelineConfig = z.infer<typeof pipelineConfigSchema>;
@@ -403,11 +372,53 @@ export function refuseRetiredStageKeys(
   }
 }
 
+/**
+ * ISS-623 W1 — a `name: true` shorthand naming no catalog server is a typo, refused on the WRITE
+ * body. `expandMcpServers` drops an unknown one at dispatch with only a `logger.warn`, so the agent
+ * never sees the server and the operator has to read core source to find out why. Object-valued raw
+ * specs and `false`/`null` opt-outs are untouched: they are not shorthand, so there is no name to
+ * check.
+ */
+// cm:guard this MUST stay on the write path and off `pipelineConfigSchema`. Until ISS-1071 it sat in
+// that schema's `superRefine`, where four control-plane readers `safeParse` the STORED document and
+// take a silent branch on failure (`devices/admissible.ts`, `pipeline/autonomous-project.ts`,
+// `pipeline/orchestrator.ts`, `pipeline/pipeline-config-service.ts`). The same deploy that stops
+// `epodsystem` being a legal name also strips the stored keys, but any name check on the read schema
+// turns one stale document into a project that dispatches nothing and reports nothing — the ISS-807
+// shape. A read of a stored document must never be refused; a write is told what does not reach.
+// cm:edge contract -> packages/core/src/integrations/agent-access.ts — whether an agent may use an
+// integration is a column on the binding now, never a name in this map, so there is no integration
+// name for this check to admit.
+export function refuseUnknownMcpServerNames(raw: unknown, ctx: z.RefinementCtx): void {
+  const walk = (map: unknown, path: (string | number)[]) => {
+    if (!map || typeof map !== 'object') return;
+    for (const [name, value] of Object.entries(map as Record<string, unknown>)) {
+      if (value !== true) continue;
+      if (isKnownMcpServerName(name)) continue;
+      ctx.addIssue({
+        code: 'custom',
+        path: [...path, name],
+        message: `mcpServers entry "${name}" is not a known catalog server (${MCP_CATALOG_NAMES.join(', ')}) — fix the name, or use an object spec for a custom server. An integration is not named here: whether an agent may use one is the agent-access switch on that integration's binding, under Settings -> Integrations.`,
+      });
+    }
+  };
+  if (!raw || typeof raw !== 'object') return;
+  const cfg = raw as { mcpServers?: unknown; states?: unknown };
+  walk(cfg.mcpServers, ['mcpServers']);
+  if (cfg.states && typeof cfg.states === 'object') {
+    for (const [stageName, stageCfg] of Object.entries(cfg.states as Record<string, unknown>)) {
+      if (!stageCfg || typeof stageCfg !== 'object') continue;
+      walk((stageCfg as { mcpServers?: unknown }).mcpServers, ['states', stageName, 'mcpServers']);
+    }
+  }
+}
+
 export const pipelineConfigPatchSchema = z
   .unknown()
-  .superRefine((raw, ctx) =>
-    refuseRetiredStageKeys((raw as { states?: unknown } | null | undefined)?.states, ctx),
-  )
+  .superRefine((raw, ctx) => {
+    refuseRetiredStageKeys((raw as { states?: unknown } | null | undefined)?.states, ctx);
+    refuseUnknownMcpServerNames(raw, ctx);
+  })
   .pipe(pipelineConfigSchema);
 
 export type PipelineConfigPatchInput = z.infer<typeof pipelineConfigPatchSchema>;

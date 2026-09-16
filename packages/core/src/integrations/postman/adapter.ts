@@ -10,10 +10,20 @@
  */
 
 import { logger } from '../../logger.js';
-import { getAdapter, registerAdapter } from '../registry.js';
 import { isPreviousCredentialValid } from '../rotation.js';
 import { updateConnection } from '../store.js';
-import type { HealthCheckResult, IntegrationAdapter } from '../types.js';
+import {
+  declareIntegration,
+  type HealthCheckResult,
+  type IntegrationAdapterMethods,
+} from '../types.js';
+import { buildPostmanMcpEntry } from './resolver.js';
+import {
+  POSTMAN_BINDING_CONFIG_KEYS,
+  postmanConfigBase,
+  postmanConfigSchema,
+  postmanSecretsSchema,
+} from './schemas.js';
 import { postmanRestBase } from './endpoints.js';
 import type { PostmanConfig, PostmanMeResponse, PostmanSecrets } from './types.js';
 
@@ -24,18 +34,7 @@ const notSupported = (op: string): never => {
   throw new Error(`postman: ${op} is not supported (MCP-injection-only provider)`);
 };
 
-export const postmanAdapter: IntegrationAdapter<PostmanConfig, PostmanSecrets> = {
-  provider: 'postman',
-  // MCP-injection archetype: injects mcpServers.postman into the runner; core
-  // never dispatches or receives webhooks, so no env split / delivery log.
-  capabilities: {
-    canDispatch: false,
-    canReceiveWebhook: false,
-    injectsMcp: true,
-    canDeploy: false,
-    liveConfirmGate: false,
-    hasDeliveryLog: false,
-  },
+const postmanAdapterMethods: IntegrationAdapterMethods<PostmanConfig, PostmanSecrets> = {
 
   async healthcheck(ctx): Promise<HealthCheckResult> {
     const apiKey = ctx.secrets?.apiKey;
@@ -151,8 +150,58 @@ export const postmanAdapter: IntegrationAdapter<PostmanConfig, PostmanSecrets> =
   },
 };
 
-export function registerPostmanAdapter(): void {
-  if (getAdapter('postman')) return;
-  // biome-ignore lint/suspicious/noExplicitAny: registry accepts the adapter shape regardless of generic params
-  registerAdapter(postmanAdapter as any);
-}
+/**
+ * Postman's declaration. `direct-mcp`: the API key is rendered into the runner's MCP config and the
+ * agent calls Postman itself, with Forge outside the call path.
+ */
+export const postmanIntegration = declareIntegration<PostmanConfig, PostmanSecrets>({
+  provider: 'postman',
+  capabilities: {
+    canDispatch: false,
+    canReceiveWebhook: false,
+    canDeploy: false,
+    liveConfirmGate: false,
+    hasDeliveryLog: false,
+    multiBinding: false,
+    agentPath: {
+      kind: 'direct-mcp',
+      tools: [],
+      serverName: 'postman',
+      justification:
+        'Postman exposes its workspace only through its own hosted MCP server, authenticated by the same API key. There is no Forge-side API to put in front of it, so the key reaches the runner or the agent reaches nothing.',
+      buildEntry: (config, secrets) => {
+        const apiKey = secrets.apiKey;
+        if (typeof apiKey !== 'string' || apiKey.length === 0) return null;
+        return buildPostmanMcpEntry(config as PostmanConfig, apiKey);
+      },
+    },
+  },
+  schemas: {
+    connectionConfig: postmanConfigSchema,
+    bindingConfig: postmanConfigSchema,
+    patchConfig: postmanConfigBase.partial(),
+    secrets: postmanSecretsSchema,
+    patchSecrets: postmanSecretsSchema.partial(),
+    primaryCredentialField: 'apiKey',
+    previousCredentialField: 'previousApiKey',
+    independentSecretFields: [],
+    bindingConfigKeys: POSTMAN_BINDING_CONFIG_KEYS,
+  },
+  usage: {
+    hint:
+      'Run API collections / target requests: read the write-target from\n' +
+      '`GET /api/projects/:projectId/integrations/postman-target`, then use the `mcp__postman__*` tools.',
+  },
+  presentation: {
+    label: 'Postman',
+    alwaysStageKeyed: false,
+    neverCheckedDetail: 'never test-connected',
+    cardMeta: (config) => {
+      const cfg = config as { region?: string; mode?: string };
+      return { region: cfg.region ?? 'us', mode: cfg.mode ?? 'minimal' };
+    },
+  },
+  adapter: postmanAdapterMethods,
+});
+
+export const postmanAdapter = postmanAdapterMethods;

@@ -5,7 +5,7 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { IntegrationSummary } from "../types";
+import type { IntegrationSummary } from "../../types";
 
 expect.extend(matchers);
 afterEach(cleanup);
@@ -15,7 +15,7 @@ const updateMutate = vi.fn(async (_args: UpdateArgs) => ({}));
 const listRefetch = vi.fn();
 let existing: IntegrationSummary | undefined;
 
-vi.mock("../hooks", () => ({
+vi.mock("../../hooks", () => ({
   useIntegrationsList: () => ({
     data: { items: existing ? [existing] : [] },
     refetch: listRefetch,
@@ -36,9 +36,9 @@ vi.mock("@/features/project-settings/hooks", () => ({
   useUpdatePipelineConfig: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
-vi.mock("./connection-owner-field", () => ({ ConnectionOwnerField: () => null }));
+vi.mock("../../components/connection-owner-field", () => ({ ConnectionOwnerField: () => null }));
 
-const { CoolifySection } = await import("./coolify-section");
+const { CoolifySection } = await import("./section");
 
 function binding(healthUrl?: string): IntegrationSummary {
   const target = {

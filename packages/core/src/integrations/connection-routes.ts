@@ -65,7 +65,8 @@ import {
   softDeleteConnection,
   updateConnection,
 } from './store.js';
-import { type IntegrationProvider, providerCanDeploy } from './types.js';
+import { providerCanDeploy } from './registry.js';
+import type { IntegrationProvider } from './types.js';
 
 async function loadManageableConnection(
   id: string,

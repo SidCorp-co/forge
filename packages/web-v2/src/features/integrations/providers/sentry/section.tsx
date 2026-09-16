@@ -21,15 +21,22 @@ import {
   useOrgConnectionLocked,
   useTestIntegration,
   useUpdateProviderIntegration,
-} from "../hooks";
+} from "../../hooks";
 import type {
   IntegrationSummary,
   IntegrationTestResult,
   SentryConfig,
   SentryTarget,
-} from "../types";
-import { ConnectionOwnerField } from "./connection-owner-field";
-import { IntegrationEnabledControl } from "./integration-enabled-control";
+} from "../../types";
+import {
+  AGENT_ACCESS_CLOSED,
+  AgentAccessChoice,
+  AgentAccessControl,
+} from "../../components/agent-access-control";
+import type { AgentAccess } from "../../types";
+import { ConnectionOwnerField } from "../../components/connection-owner-field";
+import { sentry } from "./index";
+import { IntegrationEnabledControl } from "../../components/integration-enabled-control";
 
 /** Editable Sentry target row — strings only so inputs stay controlled. */
 interface TargetRow {
@@ -129,10 +136,9 @@ function toConfig(f: FormState): SentryConfig {
  * per-project `sentry` integration via the REST CRUD endpoints. One connection
  * (host + masked, write-only auth token) maps to a LIST of labelled targets
  * (backend / frontend / mobile …) — each with optional org/project slug,
- * environment label and notes. When active, the official `@sentry/mcp-server`
- * MCP tools are auto-injected into every agent/skill for this project and the
- * target list is surfaced in the agent's prompt so it queries the right
- * org/project. Test connection validates the token against Sentry
+ * environment label and notes. The official `@sentry/mcp-server` MCP tools reach this project's
+ * agents only where the binding's `agentAccess` grant is on; the target list is surfaced in the
+ * agent's prompt so it queries the right org/project. Test connection validates the token against Sentry
  * `GET /api/0/organizations/`.
  */
 export function SentrySection({ projectId }: { projectId: string }) {
@@ -158,6 +164,7 @@ export function SentrySection({ projectId }: { projectId: string }) {
 
   const [testResult, setTestResult] = useState<IntegrationTestResult | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
+  const [agentAccess, setAgentAccess] = useState<AgentAccess>(AGENT_ACCESS_CLOSED);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -193,7 +200,7 @@ export function SentrySection({ projectId }: { projectId: string }) {
       await update.mutateAsync({
         id: existing.id,
         body: {
-          config: toConfig(form),
+          config: { ...toConfig(form) },
           ...(form.authToken.trim()
             ? { secrets: { authToken: form.authToken.trim() } }
             : {}),
@@ -204,8 +211,9 @@ export function SentrySection({ projectId }: { projectId: string }) {
       await create.mutateAsync({
         provider: "sentry",
         role: "service",
-        config: toConfig(form),
+        config: { ...toConfig(form) },
         secrets: { authToken: form.authToken.trim() },
+        agentAccess,
         ...(ownerOrgId ? { orgId: ownerOrgId } : {}),
       });
       setForm((f) => ({ ...f, authToken: "" }));
@@ -240,11 +248,10 @@ export function SentrySection({ projectId }: { projectId: string }) {
       <CardContent>
         <div className="flex flex-col gap-4">
           <p className="fg-body-sm text-muted">
-            Store one Sentry host + auth token, then register every Sentry
-            project it can read (e.g. backend, frontend, mobile). When active,
-            the official Sentry MCP tools are auto-injected into every agent for
-            this project and the target list below is shared with them so they
-            query the right org/project.
+            Store one Sentry host + auth token, then register every Sentry project it can read
+            (e.g. backend, frontend, mobile). The official Sentry MCP tools reach this
+            project&apos;s agents only once the grant below is on; the target list is then shared
+            with them so they query the right org/project.
           </p>
 
           <Field
@@ -409,6 +416,23 @@ export function SentrySection({ projectId }: { projectId: string }) {
                 {testResult.message ?? "Connection failed"}
               </Banner>
             ))}
+
+          {existing ? (
+            <AgentAccessControl
+              projectId={projectId}
+              binding={existing}
+              canEdit={!orgLocked}
+              disabledReason="Org-shared credential — only an org owner/admin can grant it."
+            />
+          ) : (
+            <AgentAccessChoice
+              value={agentAccess}
+              onChange={setAgentAccess}
+              pathKind={sentry.agentPathKind}
+              canEdit={!orgLocked}
+              disabledReason="Org-shared credential — only an org owner/admin can grant it."
+            />
+          )}
 
           <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
             <div className="flex items-center gap-3">

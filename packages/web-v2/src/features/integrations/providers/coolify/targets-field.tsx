@@ -2,8 +2,8 @@
 
 import { Badge, Button, Input, NativeSelect } from "@/design";
 import { useMemo } from "react";
-import { useCoolifyApplications, useCoolifyTargets } from "../hooks";
-import type { CoolifyApplication, CoolifyTargetInput } from "../types";
+import { useCoolifyApplications, useCoolifyTargets } from "../../hooks";
+import type { CoolifyApplication, CoolifyTargetInput } from "../../types";
 
 /**
  * ISS-925 — the deploy targets of one Coolify binding, picked rather than

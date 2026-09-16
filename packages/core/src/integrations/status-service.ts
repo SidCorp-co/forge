@@ -16,12 +16,10 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { devices, projects, runners } from '../db/schema.js';
 import { classifyGitRemote } from '../git/provision-credential.js';
-import { getAdapter } from './registry.js';
+import { getIntegration, listIntegrations } from './registry.js';
 import { notFound, toIso } from './route-helpers.js';
-import { resolveSentryTargets } from './sentry/targets.js';
-import type { SentryConfig } from './sentry/types.js';
 import { effectiveConfig, listBindingsForProject } from './store.js';
-import { capabilitiesFor, type IntegrationProvider } from './types.js';
+import type { IntegrationCapabilities, IntegrationProvider } from './types.js';
 
 const pExecFile = promisify(execFile);
 
@@ -71,9 +69,9 @@ function healthToStatus(lastHealthStatus: string | null, active: boolean): CardS
   return 'error';
 }
 
-/** Adapter capabilities for a provider, for capability-aware card rendering. */
-function providerCapabilities(provider: IntegrationProvider) {
-  return capabilitiesFor(getAdapter(provider));
+/** Declared capabilities for a provider, for capability-aware card rendering. */
+function providerCapabilities(provider: IntegrationProvider): IntegrationCapabilities | null {
+  return getIntegration(provider)?.capabilities ?? null;
 }
 
 /**
@@ -232,96 +230,26 @@ export async function buildIntegrationsStatusCards(projectId: string): Promise<S
     meta: { transport, remoteUrl, baseBranch: project.baseBranch, deviceCreds },
   });
 
-  // --- Provider cards: one card PER BINDING (ISS-429 — a disabled binding
-  // must not shadow an active one), built by the shared builder (ISS-431).
-  // Epodsystem meta carries only non-secret store identity — never the crmk_
-  // key. ---
-  cards.push(
-    ...buildProviderCards({
-      rows: integrationRows.filter((r) => r.provider === 'coolify'),
-      provider: 'coolify',
-      label: 'Coolify',
-      alwaysEnvKeyed: true,
-      neverCheckedDetail: 'never health-checked',
-    }),
-    ...buildProviderCards({
-      rows: integrationRows.filter((r) => r.provider === 'postman'),
-      provider: 'postman',
-      label: 'Postman',
-      alwaysEnvKeyed: false,
-      neverCheckedDetail: 'never test-connected',
-      extraMeta: (row) => {
-        const cfg = (row.config ?? {}) as { region?: string; mode?: string };
-        return { region: cfg.region ?? 'us', mode: cfg.mode ?? 'minimal' };
-      },
-    }),
-    ...buildProviderCards({
-      rows: integrationRows.filter((r) => r.provider === 'epodsystem'),
-      provider: 'epodsystem',
-      label: 'Epodsystem',
-      alwaysEnvKeyed: false,
-      neverCheckedDetail: 'never test-connected',
-      extraMeta: (row) => {
-        const cfg = (row.config ?? {}) as { storeSlug?: string; storeName?: string };
-        return { storeSlug: cfg.storeSlug ?? null, storeName: cfg.storeName ?? null };
-      },
-    }),
-    // ISS-524 — Sentry is now a per-project MCP-injection provider (binding-
-    // derived), no longer a global env-DSN status tile. Drillable → opens the
-    // Sentry config section.
-    ...buildProviderCards({
-      rows: integrationRows.filter((r) => r.provider === 'sentry'),
-      provider: 'sentry',
-      label: 'Sentry',
-      alwaysEnvKeyed: false,
-      neverCheckedDetail: 'never test-connected',
-      extraMeta: (row) => {
-        const cfg = (row.config ?? {}) as SentryConfig;
-        // ISS-526 — surface the multi-target shape: count + the first target's
-        // org for the card subtitle. Defensive (no throw on missing config);
-        // back-compat read covers the legacy single-slug connection.
-        const targets = resolveSentryTargets(cfg);
-        return {
-          host: cfg.host ?? null,
-          organizationSlug: targets[0]?.organizationSlug ?? cfg.organizationSlug ?? null,
-          targetCount: targets.length,
-        };
-      },
-    }),
-    // ISS-1036 — Google service account: connection-only provider; the card
-    // surfaces the account identity and the project's default spreadsheet, so
-    // the settings tab shows which sheet this project would reach.
-    ...buildProviderCards({
-      rows: integrationRows.filter((r) => r.provider === 'google'),
-      provider: 'google',
-      label: 'Google Sheets',
-      alwaysEnvKeyed: false,
-      neverCheckedDetail: 'never test-connected',
-      extraMeta: (row) => {
-        const cfg = (row.config ?? {}) as {
-          clientEmail?: string;
-          defaultSpreadsheetId?: string;
-        };
-        return {
-          clientEmail: cfg.clientEmail ?? null,
-          defaultSpreadsheetId: cfg.defaultSpreadsheetId ?? null,
-        };
-      },
-    }),
-    // ISS-609 — Rocket.Chat bot: connection-only provider; card surfaces the
-    // server + bound room so the project settings tab shows the live wiring.
-    ...buildProviderCards({
-      rows: integrationRows.filter((r) => r.provider === 'rocketchat'),
-      provider: 'rocketchat',
-      label: 'Rocket.Chat',
-      alwaysEnvKeyed: false,
-      neverCheckedDetail: 'never test-connected',
-      extraMeta: (row) => {
-        const cfg = (row.config ?? {}) as { serverUrl?: string; rids?: string[] };
-        return { serverUrl: cfg.serverUrl ?? null, rids: cfg.rids ?? null };
-      },
-    }),
-  );
+  // One card PER BINDING (ISS-429 — a disabled binding must not shadow an active one), for every
+  // provider that declares a presentation, in registry order. Until ISS-1071 this was six
+  // hand-written blocks differing only in the four values a declaration now carries, so adding a
+  // provider meant editing a file with no other reason to know one existed.
+  for (const decl of listIntegrations()) {
+    const presentation = decl.presentation;
+    if (!presentation) continue;
+    cards.push(
+      ...buildProviderCards({
+        rows: integrationRows.filter((r) => r.provider === decl.provider),
+        provider: decl.provider,
+        label: presentation.label,
+        alwaysEnvKeyed: presentation.alwaysStageKeyed,
+        neverCheckedDetail: presentation.neverCheckedDetail,
+        ...(presentation.cardMeta
+          ? { extraMeta: (row: ProviderRow) => presentation.cardMeta?.(row.config ?? {}) ?? {} }
+          : {}),
+      }),
+    );
+  }
 
   // --- Runners / devices online ---
   const totalRunners = runnerRows.length;

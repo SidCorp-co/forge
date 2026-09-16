@@ -6,8 +6,11 @@
 // dispatcher seeds into EVERY job's temp `--mcp-config`. forge-runner's
 // `--strict-mcp-config` makes Claude ignore the runner box's own MCP config,
 // so a project must declare the secret-free servers it wants (playwright, …)
-// here. The dispatcher merges this as the BASE; per-state overrides and the
-// integration servers (postman/epodsystem) layer on top.
+// here. The dispatcher merges this as the BASE and per-state overrides layer on top.
+//
+// cm:guard this map is SECRET-FREE servers and nothing else. An integration does not appear here
+// and never did reach an agent from here — whether an agent may use one is `agentAccess` on the
+// binding, set on the Integrations tab.
 //
 // Shorthand persisted to `mcpServers`:
 //   - `name: true`            → enable a catalog default (MCP_CATALOG)
@@ -23,6 +26,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Banner, Button, Icon, Input, Textarea, Toggle } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useUpdatePipelineConfig } from "../hooks";
+import { providerForMcpServerName } from "@/features/integrations/providers/registry";
 import {
   MCP_CATALOG,
   MCP_CATALOG_NAMES,
@@ -94,11 +98,24 @@ export function McpServersSection({
     });
   }
 
+  // cm:guard the integration refusal comes BEFORE the JSON parse, and names the provider. Refusing
+  // by shape instead — which is what this did — told an operator typing `epodsystem` that the spec
+  // "must be a JSON object", so the way out it implied was to type `{}`: a custom server of that
+  // name, stored in the map, injecting nothing, and indistinguishable on this screen from one that
+  // works. `epodsystem_<label>` is caught by the same call, because the suffix rule lives once, on
+  // the registry.
   function addCustom() {
     setCustomError(null);
     const name = customName.trim();
     if (!name) {
       setCustomError("Name is required.");
+      return;
+    }
+    const integration = providerForMcpServerName(name);
+    if (integration) {
+      setCustomError(
+        `${name} is the ${integration.label} integration, not a custom server. Whether agents on this project may use it is set on the Integrations tab, on that integration's own row — adding the name here injects nothing.`,
+      );
       return;
     }
     let parsed: unknown;
@@ -157,12 +174,21 @@ export function McpServersSection({
         {custom.map(({ name, value }) => (
           <div key={name} className="flex items-start justify-between gap-3 py-2.5">
             <div className="min-w-0">
-              <p className="fg-label flex items-center gap-1.5 text-fg">
+              <p className="fg-label flex flex-wrap items-center gap-1.5 text-fg">
                 <Icon name="command" size={13} className="text-muted" />
                 <span className="font-mono text-[13px]">{name}</span>
-                <span className="fg-body-sm rounded-pill bg-sunken px-2 py-0.5 text-subtle">
-                  custom
-                </span>
+                {/* cm:guard a leftover integration sentinel is NOT a custom server, and the badge
+                    that called it one is what made a stored `epodsystem: true` read as a working
+                    declaration on the only screen that shows this map. */}
+                {providerForMcpServerName(name) ? (
+                  <span className="fg-body-sm rounded-pill bg-[var(--amberw-50)] px-2 py-0.5 text-[var(--amberw-700)]">
+                    {providerForMcpServerName(name)?.label} integration — injects nothing from here
+                  </span>
+                ) : (
+                  <span className="fg-body-sm rounded-pill bg-sunken px-2 py-0.5 text-subtle">
+                    custom
+                  </span>
+                )}
               </p>
               <pre className="fg-caption mt-1 max-w-full overflow-x-auto rounded-md bg-sunken px-2 py-1 font-mono text-muted">
                 {JSON.stringify(value)}

@@ -29,15 +29,22 @@ import {
   useRocketchatRooms,
   useTestIntegration,
   useUpdateProviderIntegration,
-} from "../hooks";
+} from "../../hooks";
 import type {
   IntegrationSummary,
   IntegrationTestResult,
-  ProviderConfig,
   RocketchatRoom,
-} from "../types";
-import { ConnectionOwnerField } from "./connection-owner-field";
-import { IntegrationEnabledControl } from "./integration-enabled-control";
+} from "../../types";
+import type { RocketchatReadConfig } from "./config";
+import {
+  AGENT_ACCESS_CLOSED,
+  AgentAccessChoice,
+  AgentAccessControl,
+} from "../../components/agent-access-control";
+import type { AgentAccess } from "../../types";
+import { ConnectionOwnerField } from "../../components/connection-owner-field";
+import { rocketchat } from "./index";
+import { IntegrationEnabledControl } from "../../components/integration-enabled-control";
 
 interface BadgeView {
   label: string;
@@ -195,7 +202,7 @@ function RocketchatBindingPanel({
   const list = useIntegrationsList(projectId);
   const orgLocked = useOrgConnectionLocked(projectId, binding.connectionId);
 
-  const cfg = binding.config as ProviderConfig;
+  const cfg = binding.config as RocketchatReadConfig;
   const savedRids = useMemo(() => cfg.rids ?? [], [cfg.rids]);
   const roomsQ = useRocketchatRooms(projectId, binding.id);
   const rooms = useMemo(() => roomsQ.data?.rooms ?? [], [roomsQ.data]);
@@ -397,6 +404,13 @@ function RocketchatBindingPanel({
           Disconnect
         </Button>
       </div>
+
+      <AgentAccessControl
+        projectId={projectId}
+        binding={binding}
+        canEdit={!orgLocked}
+        disabledReason="Org-shared credential — only an org owner/admin can grant it."
+      />
     </div>
   );
 }
@@ -414,6 +428,7 @@ function AddRocketchatForm({ projectId }: { projectId: string }) {
   const [botUserId, setBotUserId] = useState("");
   const [rid, setRid] = useState("");
   const [rooms, setRooms] = useState<RocketchatRoom[] | null>(null);
+  const [agentAccess, setAgentAccess] = useState<AgentAccess>(AGENT_ACCESS_CLOSED);
   const [error, setError] = useState<string | null>(null);
 
   const credsValid =
@@ -450,6 +465,7 @@ function AddRocketchatForm({ projectId }: { projectId: string }) {
         role: "service",
         config: { serverUrl: serverUrl.trim().replace(/\/+$/, ""), rids: [rid.trim()] },
         secrets: { authToken: authToken.trim(), userId: botUserId.trim() },
+        agentAccess,
         ...(ownerOrgId ? { orgId: ownerOrgId } : {}),
       });
     } catch (err) {
@@ -542,6 +558,13 @@ function AddRocketchatForm({ projectId }: { projectId: string }) {
           </Button>
         </div>
       </Field>
+
+      <AgentAccessChoice
+        value={agentAccess}
+        onChange={setAgentAccess}
+        pathKind={rocketchat.agentPathKind}
+        canEdit={true}
+      />
 
       {error && <Banner tone="danger">{error}</Banner>}
 

@@ -8,8 +8,8 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CoolifyTargetsField } from "./coolify-targets-field";
-import type { CoolifyApplication, CoolifyTargetIdentity } from "../types";
+import { CoolifyTargetsField } from "./targets-field";
+import type { CoolifyApplication, CoolifyTargetIdentity } from "../../types";
 
 expect.extend(matchers);
 afterEach(cleanup);
@@ -18,7 +18,7 @@ const applications = vi.fn<() => CoolifyApplication[]>(() => []);
 const identities = vi.fn<() => CoolifyTargetIdentity[]>(() => []);
 const appsError = vi.fn<() => boolean>(() => false);
 
-vi.mock("../hooks", () => ({
+vi.mock("../../hooks", () => ({
   useCoolifyApplications: () => ({
     data: { applications: applications() },
     isError: appsError(),

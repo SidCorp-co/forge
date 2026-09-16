@@ -16,10 +16,18 @@ import {
   useOrgConnectionLocked,
   useTestIntegration,
   useUpdateProviderIntegration,
-} from "../hooks";
-import type { IntegrationSummary, IntegrationTestResult, ProviderConfig } from "../types";
-import { ConnectionOwnerField } from "./connection-owner-field";
-import { IntegrationEnabledControl } from "./integration-enabled-control";
+} from "../../hooks";
+import type {IntegrationSummary, IntegrationTestResult} from "../../types";
+import type { GoogleReadConfig } from "./config";
+import {
+  AGENT_ACCESS_CLOSED,
+  AgentAccessChoice,
+  AgentAccessControl,
+} from "../../components/agent-access-control";
+import type { AgentAccess } from "../../types";
+import { ConnectionOwnerField } from "../../components/connection-owner-field";
+import { google } from "./index";
+import { IntegrationEnabledControl } from "../../components/integration-enabled-control";
 
 interface BadgeView {
   label: string;
@@ -101,7 +109,7 @@ function GoogleBindingPanel({
   const list = useIntegrationsList(projectId);
   const orgLocked = useOrgConnectionLocked(projectId, binding.connectionId);
 
-  const cfg = binding.config as ProviderConfig;
+  const cfg = binding.config as GoogleReadConfig;
   const savedSheet = cfg.defaultSpreadsheetId ?? "";
   const [sheetDraft, setSheetDraft] = useState<string | null>(null);
   const sheetValue = sheetDraft ?? savedSheet;
@@ -252,6 +260,13 @@ function GoogleBindingPanel({
           Disconnect
         </Button>
       </div>
+
+      <AgentAccessControl
+        projectId={projectId}
+        binding={binding}
+        canEdit={!orgLocked}
+        disabledReason="Org-shared credential — only an org owner/admin can grant it."
+      />
     </div>
   );
 }
@@ -293,6 +308,7 @@ function AddGoogleForm({ projectId }: { projectId: string }) {
   const [ownerOrgId, setOwnerOrgId] = useState<string | undefined>(undefined);
   const [keyJson, setKeyJson] = useState("");
   const [spreadsheetId, setSpreadsheetId] = useState("");
+  const [agentAccess, setAgentAccess] = useState<AgentAccess>(AGENT_ACCESS_CLOSED);
   const [error, setError] = useState<string | null>(null);
 
   const clientEmail = clientEmailOf(keyJson);
@@ -306,6 +322,7 @@ function AddGoogleForm({ projectId }: { projectId: string }) {
         role: "service",
         config: spreadsheetId.trim() ? { defaultSpreadsheetId: spreadsheetId.trim() } : {},
         secrets: { serviceAccountJson: keyJson.trim() },
+        agentAccess,
         ...(ownerOrgId ? { orgId: ownerOrgId } : {}),
       });
     } catch (err) {
@@ -359,6 +376,13 @@ function AddGoogleForm({ projectId }: { projectId: string }) {
       </Field>
 
       <ShareHint clientEmail={clientEmail} />
+
+      <AgentAccessChoice
+        value={agentAccess}
+        onChange={setAgentAccess}
+        pathKind={google.agentPathKind}
+        canEdit={true}
+      />
 
       {error && <Banner tone="danger">{error}</Banner>}
 

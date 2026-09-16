@@ -7,14 +7,19 @@ import {
   replaceDispatchHoldWithTargets,
 } from '../../pipeline/deploy-confirmations.js';
 import { recordDelivery, updateDelivery } from '../deliveries.js';
-import { getAdapter, registerAdapter } from '../registry.js';
 import { findConnectionById, updateConnection } from '../store.js';
-import type {
-  HealthCheckResult,
-  IntegrationAdapter,
-  OutboundDispatchInput,
-  OutboundDispatchResult,
+import {
+  declareIntegration,
+  type HealthCheckResult,
+  type IntegrationAdapterMethods,
+  type OutboundDispatchInput,
+  type OutboundDispatchResult,
 } from '../types.js';
+import {
+  COOLIFY_BINDING_CONFIG_KEYS,
+  coolifyConfigSchema,
+  coolifySecretsSchema,
+} from './schemas.js';
 import { breakerAllowsDispatch, maybeResetBreaker, maybeTripBreaker } from './circuit-breaker.js';
 import { CoolifyApiError, coolifyAbilityForRoute, describeCoolifyForbidden } from './client.js';
 import { enqueueCoolifyConfirm } from './confirm.js';
@@ -72,17 +77,7 @@ function describeCoolifyFailure(err: unknown): string {
   return err instanceof Error ? err.message : 'unknown error';
 }
 
-export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> = {
-  provider: 'coolify',
-  // cm:guard `canReceiveWebhook` is FALSE and repairing it is not the fix (ISS-922): Coolify's `SendWebhookJob` posts with no headers and no signature, so it can satisfy neither half of the `/in/:slug` contract. `confirm.ts` polls the deployment instead.
-  capabilities: {
-    canDispatch: true,
-    canReceiveWebhook: false,
-    injectsMcp: false,
-    canDeploy: true,
-    liveConfirmGate: true,
-    hasDeliveryLog: true,
-  },
+const coolifyAdapterMethods: IntegrationAdapterMethods<CoolifyConfig, CoolifySecrets> = {
 
   async healthcheck(ctx) {
     const started = Date.now();
@@ -359,8 +354,45 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
   },
 };
 
-export function registerCoolifyAdapter(): void {
-  if (getAdapter('coolify')) return;
-  // biome-ignore lint/suspicious/noExplicitAny: registry accepts the adapter shape regardless of generic params
-  registerAdapter(coolifyAdapter as any);
-}
+/**
+ * Coolify's declaration. An agent reaches it only through `forge_coolify_deploy`, which core
+ * performs: the API token never leaves core, so the grant on a coolify binding widens who may ask
+ * core to deploy rather than who holds the credential.
+ */
+export const coolifyIntegration = declareIntegration<CoolifyConfig, CoolifySecrets>({
+  provider: 'coolify',
+  capabilities: {
+    canDispatch: true,
+    canReceiveWebhook: false,
+    canDeploy: true,
+    liveConfirmGate: true,
+    hasDeliveryLog: true,
+    multiBinding: false,
+    agentPath: { kind: 'core-mediated', tools: ['forge_coolify_deploy'] },
+  },
+  schemas: {
+    connectionConfig: coolifyConfigSchema,
+    bindingConfig: coolifyConfigSchema,
+    patchConfig: coolifyConfigSchema.partial(),
+    secrets: coolifySecretsSchema,
+    patchSecrets: coolifySecretsSchema.partial(),
+    primaryCredentialField: 'apiToken',
+    previousCredentialField: 'previousApiToken',
+    independentSecretFields: [],
+    bindingConfigKeys: COOLIFY_BINDING_CONFIG_KEYS,
+  },
+  usage: {
+    hint: 'Deploy / redeploy and poll deployment status via the `forge_coolify_deploy` tool.',
+    guideSlug: 'deploy-safety',
+  },
+  presentation: {
+    label: 'Coolify',
+    // Coolify is stage-split by design, so even a single binding keys by stage.
+    alwaysStageKeyed: true,
+    neverCheckedDetail: 'never health-checked',
+  },
+  adapter: coolifyAdapterMethods,
+});
+
+/** The three methods alone, for the queue worker and the adapter's own tests. */
+export const coolifyAdapter = coolifyAdapterMethods;
