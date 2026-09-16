@@ -89,8 +89,8 @@ describe("classifyBodyHref", () => {
     });
   });
 
-  it("keeps an anchor on the page", () => {
-    expect(classifyBodyHref("#section")).toEqual({ kind: "anchor", href: "#section" });
+  it.each(["#section", "?tab=history"])("keeps %s on the page it is already on", (href) => {
+    expect(classifyBodyHref(href)).toEqual({ kind: "anchor", href });
   });
 
   it.each(["javascript:alert(1)", "data:text/html,<b>x", "vbscript:msgbox", "file:///etc/passwd"])(

@@ -32,7 +32,7 @@ function Refused({ noun, target, reason, children }: {
 
 /** Why a classification does not name an image. */
 function imageRefusal(target: BodyHref): string {
-  if (target.kind === "anchor") return "an anchor names a place on this page, not an image";
+  if (target.kind === "anchor") return "this names a place on the page, not an image";
   if (target.kind === "external") return `${target.scheme} names a person, not an image`;
   return target.kind === "unresolvable" ? target.reason : "";
 }

@@ -26,7 +26,7 @@ const SAFE_SCHEMES = new Set(["http:", "https:", "mailto:", "tel:"]);
 const SCHEME = /^[a-z][a-z0-9+.-]*:/i;
 
 export type BodyHref =
-  /** `#section` — the same page, same tab, no origin. */
+  /** `#section` or `?tab=history` — the same page, same tab, no origin. */
   | { kind: "anchor"; href: string }
   /** A path the web app serves. Same tab, same origin as the page. */
   | { kind: "in-app"; href: string }
@@ -67,7 +67,7 @@ function parsedPath(href: string): { path: string; rest: string } | null {
  */
 export function classifyBodyHref(href: string): BodyHref {
   if (!href) return { kind: "unresolvable", href, reason: "the link has no target" };
-  if (href.startsWith("#")) return { kind: "anchor", href };
+  if (href.startsWith("#") || href.startsWith("?")) return { kind: "anchor", href };
   if (href.startsWith("//")) return { kind: "external", href, scheme: "" };
 
   const scheme = SCHEME.exec(href)?.[0];

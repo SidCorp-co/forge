@@ -31,10 +31,14 @@ vi.mock("./mermaid", () => ({
 
 const CORE = "https://core.example";
 
+// Each helper returns one container PER RENDERER, never a merged query and
+// never `document.body`: a whole-document assertion passes on the text of
+// whichever renderer got it right, which is exactly the parity failure these
+// are here to catch.
+
 /** The same link, written both ways: `[text](href)` and `<a href>`. */
-function bothLinks(href: string): [HTMLAnchorElement | null, HTMLAnchorElement | null] {
+function bothLinks(href: string): HTMLElement[] {
   const md = render(<Markdown>{`[go](${href})`}</Markdown>);
-  const mdLink = md.container.querySelector("a");
   const html = render(
     <BodyView
       body=""
@@ -42,11 +46,11 @@ function bothLinks(href: string): [HTMLAnchorElement | null, HTMLAnchorElement |
       nodes={[{ type: "element", name: "a", attrs: { href }, children: [{ type: "text", value: "go" }] } as BodyNode]}
     />,
   );
-  return [mdLink, html.container.querySelector("a")];
+  return [md.container, html.container];
 }
 
 /** The same image, written both ways: `![alt](src)` and `<img src>`. */
-function bothImages(src: string): [HTMLImageElement | null, HTMLImageElement | null] {
+function bothImages(src: string): HTMLElement[] {
   const md = render(<Markdown>{`![shot](${src})`}</Markdown>);
   const html = render(
     <BodyView
@@ -55,19 +59,20 @@ function bothImages(src: string): [HTMLImageElement | null, HTMLImageElement | n
       nodes={[{ type: "element", name: "img", attrs: { src, alt: "shot" }, children: [] } as BodyNode]}
     />,
   );
-  return [md.container.querySelector("img"), html.container.querySelector("img")];
+  return [md.container, html.container];
 }
 
 describe("a link in a body", () => {
   it("opens an app route on the web host, in the same tab", () => {
-    for (const link of bothLinks("/projects/alpha/issues/e1c96ed2")) {
-      expect(link).toHaveAttribute("href", "/projects/alpha/issues/e1c96ed2");
-      expect(link).not.toHaveAttribute("target");
+    for (const at of bothLinks("/projects/alpha/issues/e1c96ed2")) {
+      expect(at.querySelector("a")).toHaveAttribute("href", "/projects/alpha/issues/e1c96ed2");
+      expect(at.querySelector("a")).not.toHaveAttribute("target");
     }
   });
 
   it("opens a core file against the core, in a new tab", () => {
-    for (const link of bothLinks("/api/attachments/a1/download")) {
+    for (const at of bothLinks("/api/attachments/a1/download")) {
+      const link = at.querySelector("a");
       expect(link).toHaveAttribute("href", `${CORE}/api/attachments/a1/download`);
       expect(link).toHaveAttribute("target", "_blank");
       expect(link).toHaveAttribute("rel", "noreferrer noopener");
@@ -75,100 +80,108 @@ describe("a link in a body", () => {
   });
 
   it("keeps a relative core spelling on the core", () => {
-    for (const link of bothLinks("./api/attachments/a1/download")) {
-      expect(link).toHaveAttribute("href", `${CORE}/api/attachments/a1/download`);
+    for (const at of bothLinks("./api/attachments/a1/download")) {
+      expect(at.querySelector("a")).toHaveAttribute("href", `${CORE}/api/attachments/a1/download`);
     }
   });
 
   it("leaves an absolute URL on its own host, in a new tab", () => {
-    for (const link of bothLinks("https://example.com/docs")) {
-      expect(link).toHaveAttribute("href", "https://example.com/docs");
-      expect(link).toHaveAttribute("target", "_blank");
+    for (const at of bothLinks("https://example.com/docs")) {
+      expect(at.querySelector("a")).toHaveAttribute("href", "https://example.com/docs");
+      expect(at.querySelector("a")).toHaveAttribute("target", "_blank");
     }
   });
 
   it("keeps an anchor on the page, in the same tab", () => {
-    for (const link of bothLinks("#section")) {
-      expect(link).toHaveAttribute("href", "#section");
-      expect(link).not.toHaveAttribute("target");
+    for (const at of bothLinks("#section")) {
+      expect(at.querySelector("a")).toHaveAttribute("href", "#section");
+      expect(at.querySelector("a")).not.toHaveAttribute("target");
     }
   });
 
   it("refuses a bare-relative path in words, and draws no link at all", () => {
-    const [mdLink, htmlLink] = bothLinks("docs/guide");
-    expect(mdLink).toBeNull();
-    expect(htmlLink).toBeNull();
-    for (const body of document.querySelectorAll("body > div")) {
-      expect(body.textContent).toContain("link not shown: docs/guide");
-      expect(body.textContent).toContain("belongs to neither the app nor the core");
+    for (const at of bothLinks("docs/guide")) {
+      expect(at.querySelector("a")).toBeNull();
+      expect(at.textContent).toContain("go");
+      expect(at.textContent).toContain("link not shown: docs/guide");
+      expect(at.textContent).toContain("belongs to neither the app nor the core");
     }
   });
 
   it("keeps a tel: link on both renderers — react-markdown's own sanitizer would drop it", () => {
-    for (const link of bothLinks("tel:+4412345")) {
-      expect(link).toHaveAttribute("href", "tel:+4412345");
-      expect(link).toHaveAttribute("target", "_blank");
+    for (const at of bothLinks("tel:+4412345")) {
+      expect(at.querySelector("a")).toHaveAttribute("href", "tel:+4412345");
+      expect(at.querySelector("a")).toHaveAttribute("target", "_blank");
+      expect(at.textContent).not.toContain("link not shown");
     }
-    expect(document.body.textContent).not.toContain("link not shown");
   });
 
   it("keeps a mailto: link on both renderers", () => {
-    for (const link of bothLinks("mailto:a@b.co")) {
-      expect(link).toHaveAttribute("href", "mailto:a@b.co");
+    for (const at of bothLinks("mailto:a@b.co")) {
+      expect(at.querySelector("a")).toHaveAttribute("href", "mailto:a@b.co");
     }
   });
 
   it("refuses a javascript: href rather than putting it on the page", () => {
-    const [mdLink, htmlLink] = bothLinks("javascript:alert(1)");
-    expect(mdLink).toBeNull();
-    expect(htmlLink).toBeNull();
-    expect(document.body.innerHTML).not.toContain("javascript:alert(1)\"");
+    for (const at of bothLinks("javascript:alert(1)")) {
+      expect(at.querySelector("a")).toBeNull();
+      expect(at.innerHTML).not.toContain('href="javascript:');
+      expect(at.textContent).toContain("link not shown: javascript:alert(1)");
+    }
+  });
+
+  it("keeps a query-only link on the page it is already on", () => {
+    for (const at of bothLinks("?tab=history")) {
+      expect(at.querySelector("a")).toHaveAttribute("href", "?tab=history");
+      expect(at.querySelector("a")).not.toHaveAttribute("target");
+    }
   });
 });
 
 describe("an image in a body", () => {
   it("loads a root-relative static image from the web host", () => {
-    for (const img of bothImages("/icon.png")) {
-      expect(img).toHaveAttribute("src", "/icon.png");
+    for (const at of bothImages("/icon.png")) {
+      expect(at.querySelector("img")).toHaveAttribute("src", "/icon.png");
     }
   });
 
   it("loads an absolute image from its own host", () => {
-    for (const img of bothImages("https://cdn.example/image.png")) {
-      expect(img).toHaveAttribute("src", "https://cdn.example/image.png");
+    for (const at of bothImages("https://cdn.example/image.png")) {
+      expect(at.querySelector("img")).toHaveAttribute("src", "https://cdn.example/image.png");
     }
   });
 
   it("loads a core attachment from the core", () => {
-    for (const img of bothImages("/api/attachments/a1/download")) {
-      expect(img).toHaveAttribute("src", `${CORE}/api/attachments/a1/download`);
+    for (const at of bothImages("/api/attachments/a1/download")) {
+      expect(at.querySelector("img")).toHaveAttribute("src", `${CORE}/api/attachments/a1/download`);
     }
   });
 
   it.each(["mailto:a@b.co", "tel:+4412345"])(
     "refuses %s as an image src — it navigates to a person, not a file",
     (src) => {
-      const [mdImg, htmlImg] = bothImages(src);
-      expect(mdImg).toBeNull();
-      expect(htmlImg).toBeNull();
-      expect(document.body.textContent).toContain(`image not shown: ${src}`);
-      expect(document.body.textContent).toContain("names a person, not an image");
+      for (const at of bothImages(src)) {
+        expect(at.querySelector("img")).toBeNull();
+        expect(at.textContent).toContain(`image not shown: ${src}`);
+        expect(at.textContent).toContain("names a person, not an image");
+      }
     },
   );
 
   it("refuses an anchor as an image src", () => {
-    const [mdImg, htmlImg] = bothImages("#section");
-    expect(mdImg).toBeNull();
-    expect(htmlImg).toBeNull();
-    expect(document.body.textContent).toContain("not an image");
+    for (const at of bothImages("#section")) {
+      expect(at.querySelector("img")).toBeNull();
+      expect(at.textContent).toContain("image not shown: #section");
+      expect(at.textContent).toContain("not an image");
+    }
   });
 
   it("refuses an unresolvable src in words, from the alt text", () => {
-    const [mdImg, htmlImg] = bothImages("shots/one.png");
-    expect(mdImg).toBeNull();
-    expect(htmlImg).toBeNull();
-    expect(document.body.textContent).toContain("image not shown: shots/one.png");
-    expect(document.body.textContent).toContain("shot");
+    for (const at of bothImages("shots/one.png")) {
+      expect(at.querySelector("img")).toBeNull();
+      expect(at.textContent).toContain("image not shown: shots/one.png");
+      expect(at.textContent).toContain("shot");
+    }
   });
 });
 
