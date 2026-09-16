@@ -2856,6 +2856,10 @@
 
 ### Fixed
 
+- **The assistant no longer files a memory note for every sentence you say.** Each note is read
+  against rules before it is written; one that fails is refused with the rule and an example
+  of what would pass.
+
 - **The assistant benchmark no longer passes a reply that recites the product's whole issue
   lifecycle when asked for this project's pipeline states, and no longer counts a dropped
   connection as the assistant's failure.** The pipeline-states task held every configured state to

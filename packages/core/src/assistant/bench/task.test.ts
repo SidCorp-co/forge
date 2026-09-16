@@ -169,7 +169,7 @@ const MATRIX: Record<
     kinds: [
       ...Array.from({ length: 8 }, () => ['notFallback', 'noHelp']),
       ['mustMatch', 'toolsRequired', 'notFallback', 'noHelp'],
-      ['inOrder', 'mustNotMatch', 'notFallback', 'noHelp'],
+      ['inOrder', 'maxNotesKept', 'mustNotMatch', 'notFallback', 'noHelp'],
     ],
   },
 };

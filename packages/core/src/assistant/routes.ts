@@ -138,6 +138,7 @@ chatRoutes.post(
     return runChatTurn({
       c,
       turn,
+      projectId,
       resolved,
       providerMessages,
       tools,

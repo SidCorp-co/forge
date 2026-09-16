@@ -16,6 +16,7 @@ const facts = (delivered: string | null): TurnFacts => ({
   values: { stateList: 'open, in_progress, awaiting_release' },
   lookups: {},
   preferenceRows: [],
+  notesKept: null,
 });
 const grade = (check: Check, delivered: string | null) =>
   gradeTurn({ message: 'm', checks: [check] }, facts(delivered)).evidence;

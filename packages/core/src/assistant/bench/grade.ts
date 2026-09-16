@@ -64,6 +64,8 @@ export interface TurnFacts {
   lookups: Record<string, LinkOutcome>;
   /** The `preference_changes` rows the trail gained during the send. */
   preferenceRows: PreferenceRow[];
+  /** Memory notes the trial kept, as the cleanup counted them; null where the listing was refused or no room was opened (ISS-1064). */
+  notesKept: number | null;
 }
 
 export class GradeError extends Error {
@@ -259,6 +261,21 @@ const checkers: Record<Check['kind'], Checker> = {
     return labelPairs(f.delivered, c.label).some((n) => n === value)
       ? []
       : unanswered(`reply does not pair ${String(c.label)} with ${value}`);
+  },
+  maxNotesKept: (c, f) => {
+    if (c.kind !== 'maxNotesKept') return [];
+    if (f.notesKept === null)
+      return [
+        { mode: 'repeated_call', fact: 'notes kept unknown: the memory listing was refused' },
+      ];
+    if (f.notesKept > c.max)
+      return [
+        {
+          mode: 'repeated_call',
+          fact: `kept ${f.notesKept} note(s), at most ${c.max} allowed`,
+        },
+      ];
+    return [];
   },
   onlyFrom: (c, f) => {
     if (c.kind !== 'onlyFrom') return [];

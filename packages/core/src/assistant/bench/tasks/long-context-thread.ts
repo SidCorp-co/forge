@@ -42,6 +42,8 @@ export const longContextThread: Task = {
         'Back to the release: who reviews it, and on which weekday do we deploy? Answer both, reviewer first.',
       checks: [
         { kind: 'inOrder', patterns: ['Priya Raman', /wednesday/i] },
+        // cm:why two, not one: the release code name and the deploy window are the two facts the person asks to keep; the ISS-1061 runs kept 8 to 9, one per sentence stated (ISS-1064)
+        { kind: 'maxNotesKept', max: 2 },
         {
           kind: 'mustNotMatch',
           patterns: [/which reviewer|what do you mean|remind me|you haven.t told me/i],

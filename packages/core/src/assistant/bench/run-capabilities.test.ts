@@ -143,6 +143,43 @@ describe('fixtures', () => {
   });
 });
 
+describe('what a thread may keep (ISS-1064)', () => {
+  const thread = task('long-context-thread');
+  const last = thread.turns.length - 1;
+  const script =
+    (notesOn: (turn: number) => boolean): FakeOptions['script'] =>
+    (m, _task, turn) => {
+      if (turn === last) return say('Priya Raman reviews the release, and we deploy on Wednesday.');
+      if (turn === last - 1)
+        return say('3 open issues.', [
+          { name: 'forge', arguments: '{"argv":["issue","--status","open"]}' },
+        ]);
+      return notesOn(turn) ? { ...say('Noted.', [note(m)]), notes: [m] } : say('Noted.');
+    };
+
+  it('a note per stated fact fails the last turn as repeated_call, naming the counts; two notes pass; a refused listing fails naming it', async () => {
+    const every = await trialOn(thread, { script: script(() => true) }).run();
+    expect(every.result.cleanup.memories?.found).toBe(8);
+    expect(every.result.pass).toBe(false);
+    const lastTurn = every.result.turns[last];
+    expect(lastTurn?.modes).toEqual(['repeated_call']);
+    expect(lastTurn?.evidence.map((e) => e.fact)).toEqual(['kept 8 note(s), at most 2 allowed']);
+    expect(every.result.turns.slice(0, last).every((t) => t.pass)).toBe(true);
+
+    const two = await trialOn(thread, { script: script((turn) => turn === 0 || turn === 3) }).run();
+    expect(two.result.cleanup.memories?.found).toBe(2);
+    expect(two.result.pass).toBe(true);
+
+    const refuse: FakeOptions['refuse'] = (method, path) =>
+      method === 'GET' && path === '/api/memory' ? 500 : null;
+    const unknown = await trialOn(thread, { script: script(() => false), refuse }).run();
+    expect(unknown.result.turns[last]?.evidence.map((e) => e.fact)).toEqual([
+      'notes kept unknown: the memory listing was refused',
+    ]);
+    expect(unknown.result.pass).toBe(false);
+  });
+});
+
 describe('what a project-understanding grade holds (codex F1–F3)', () => {
   it('issue counts must stand beside their status: a swap or an inflated figure fails', async () => {
     const forge = [{ name: 'forge', arguments: '{"argv":["issue"]}' }];

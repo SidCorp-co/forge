@@ -193,7 +193,9 @@ export interface IndexOptions {
  * predecessor's embedding model — re-validate against the configured model
  * before reading a hit as anything stronger than "look at this too".
  */
-export const NEAR_DUPLICATE_THRESHOLD = 0.85;
+import { NEAR_DUPLICATE_THRESHOLD } from './thresholds.js';
+
+export { NEAR_DUPLICATE_THRESHOLD };
 
 /**
  * Strict variant — throws on DB upsert failure or non-outage embedding
