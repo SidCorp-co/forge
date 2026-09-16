@@ -280,6 +280,49 @@ fn restrict_dir(_p: &std::path::Path) {}
 #[cfg(test)]
 pub(crate) static ENV_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+/// Puts one process-wide variable back however a test ends, panic included.
+///
+/// The lock above keeps two tests from trading a value while both run; this
+/// keeps one test from handing its value to every test that runs after it.
+// cm:guard RAII and never a line at the end of the body. `the_two_credentials_do_not_evict_each_other` used to set `XDG_CONFIG_HOME` to `/tmp/forge-cred-<pid>`, delete that directory and leave the variable set, so every later test in the process resolved `Config::path()` into a deleted temp dir and made it again — 90 such dirs on forge-vm holding `skills-cache`, `mcp` and `master/`, and `ensure_server` placing the box's LIVE session unit on a temp socket (ISS-1044).
+#[cfg(test)]
+pub(crate) struct ScopedVar {
+    key: &'static str,
+    before: Option<std::ffi::OsString>,
+}
+
+#[cfg(test)]
+impl ScopedVar {
+    /// Sets `key` for the lifetime of the guard.
+    pub(crate) fn set(key: &'static str, value: impl AsRef<std::ffi::OsStr>) -> Self {
+        let before = std::env::var_os(key);
+        std::env::set_var(key, value);
+        Self { key, before }
+    }
+
+    /// Unsets `key` for the lifetime of the guard.
+    pub(crate) fn unset(key: &'static str) -> Self {
+        let before = std::env::var_os(key);
+        std::env::remove_var(key);
+        Self { key, before }
+    }
+
+    /// Changes the value without changing what the guard puts back.
+    pub(crate) fn move_to(&self, value: impl AsRef<std::ffi::OsStr>) {
+        std::env::set_var(self.key, value);
+    }
+}
+
+#[cfg(test)]
+impl Drop for ScopedVar {
+    fn drop(&mut self) {
+        match self.before.take() {
+            Some(v) => std::env::set_var(self.key, v),
+            None => std::env::remove_var(self.key),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -292,9 +335,9 @@ mod tests {
         let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = std::env::temp_dir().join(format!("forge-cred-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", &dir);
-        std::env::set_var("FORGE_RUNNER_CRED_STORE", "file");
-        std::env::remove_var("FORGE_PAT");
+        let _xdg = ScopedVar::set("XDG_CONFIG_HOME", &dir);
+        let _store = ScopedVar::set("FORGE_RUNNER_CRED_STORE", "file");
+        let _pat = ScopedVar::unset("FORGE_PAT");
         let _ = clear_device_token();
         let _ = clear_pat();
 

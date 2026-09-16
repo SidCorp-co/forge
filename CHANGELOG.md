@@ -2692,6 +2692,16 @@
   claimed ends as well, so one stuck issue no longer holds the whole project shut; the issues it
   could not close still come back for a person to look at. (ISS-1032)
 
+- **Running the runner's own test suite no longer closes every Claude session on the box.** On a
+  machine hosting resident sessions, the test that proves a cold start could place a session server
+  reached past its own temporary sandbox and stopped the real one — taking every master and every
+  agent session on that machine with it, across every project, and leaving the service pointing at a
+  socket nothing was using. On one box that happened thirty-eight times in twelve hours, each time
+  losing whatever work was in flight. A test now runs entirely inside a sandbox of its own: the
+  socket and the service name are decided together from the same place, so a test can no longer move
+  one and leave the other pointing at the live machine. Nothing changes for a real runner, which
+  keeps the service name it has always had.
+
 - **Asking the assistant a question is quicker and cleaner.** A repeated or retried search no
   longer pays the embedding service twice, and a slow search now says where the time went; the
   assistant is told the tracker commands it uses every turn instead of re-reading the help each
