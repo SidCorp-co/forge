@@ -123,26 +123,14 @@ export function ConnectionRow({
   const providerLabel = PROVIDER_LABEL[connection.provider] ?? connection.provider;
 
   return (
-    // The row body opens the edit drawer (ISS-435); inner buttons keep their
-    // own actions via stopPropagation.
-    // biome-ignore lint/a11y/useSemanticElements: a <button> cannot contain the Disable/Enable/Remove buttons this row carries, and HTML forbids nesting them — the div takes role, tabIndex, an aria-label and its own Enter/Space handler so the keyboard path is the semantic element's
-    <div
-      role="button"
-      tabIndex={0}
-      aria-label={`Manage connection ${title}`}
-      className="flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 border-t border-line-subtle px-3 py-2 hover:bg-sunken focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-      onClick={onOpen}
-      onKeyDown={(e) => {
-        // Only when the row ITSELF is focused — Enter/Space on the inner
-        // buttons/links must keep their native activation.
-        if (e.target !== e.currentTarget) return;
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onOpen();
-        }
-      }}
-    >
-      <span className="flex min-w-[220px] flex-1 flex-col gap-0.5">
+    // cm:guard the element that opens the drawer is a REAL <button> holding only what it describes, and the Disable/Enable/Remove buttons are its SIBLINGS — the card this row replaced wrapped them all in a role="button" div (ISS-429), which exposes one control containing four others: a nested-interactive structure that flattens the inner controls' semantics for assistive technology. What it costs is that the gap between the text and the status pill no longer opens the drawer; what it buys is a native keyboard path and no hand-written Enter/Space handler.
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line-subtle px-3 py-2">
+      <button
+        type="button"
+        aria-label={`Manage connection ${title}`}
+        onClick={onOpen}
+        className="-mx-1 flex min-w-[220px] flex-1 cursor-pointer flex-col gap-0.5 rounded-md px-1 py-0.5 text-left hover:bg-sunken focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+      >
         <span className="inline-flex min-w-0 items-center gap-2">
           <Icon
             name={PROVIDER_ICON[connection.provider] ?? "link"}
@@ -171,7 +159,7 @@ export function ConnectionRow({
             {!connection.hasSecrets && " · no credential stored"}
           </span>
         </span>
-      </span>
+      </button>
 
       <DirectoryStatusPill status={deriveConnectionStatus(connection)} />
 

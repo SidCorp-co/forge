@@ -85,9 +85,22 @@ function openApp(label: string) {
   fireEvent.click(appHeader(label));
 }
 
-/** The row for one connection, by the label its drawer hand-off carries. */
-function row(title: string) {
+/** The control that opens one connection's drawer — a real button, not a div wearing the role. */
+function manageButton(title: string) {
   return screen.getByRole("button", { name: `Manage connection ${title}` });
+}
+
+/** The whole row: that button, the status pill and the management controls beside it. */
+function row(title: string) {
+  return manageButton(title).parentElement as HTMLElement;
+}
+
+/** What a row offers on the CREDENTIAL — the drawer button is not one of those. */
+function rowActionNames(title: string) {
+  return within(row(title))
+    .getAllByRole("button")
+    .filter((b) => b !== manageButton(title))
+    .map((b) => b.textContent?.trim());
 }
 
 describe("IntegrationsScreen", () => {
@@ -128,10 +141,19 @@ describe("IntegrationsScreen", () => {
     connectionItems.mockReturnValue([conn({ usage: BOUND })]);
     render(<IntegrationsScreen />);
     openApp("Coolify deploy");
-    const names = within(row("Coolify deploy"))
-      .getAllByRole("button")
-      .map((b) => b.textContent?.trim());
-    expect(names).toEqual(["Disable", "Remove"]);
+    expect(rowActionNames("Coolify deploy")).toEqual(["Disable", "Remove"]);
+  });
+
+  it("keeps the management buttons OUT of the button that opens the drawer", () => {
+    // A control containing four other controls is what the card this row
+    // replaced did, and it flattens the inner ones for assistive technology.
+    connectionItems.mockReturnValue([conn({ usage: BOUND })]);
+    render(<IntegrationsScreen />);
+    openApp("Coolify deploy");
+    const manage = manageButton("Coolify deploy");
+    expect(manage.tagName).toBe("BUTTON");
+    expect(within(manage).queryAllByRole("button")).toHaveLength(0);
+    expect(within(row("Coolify deploy")).getByRole("button", { name: "Remove" })).toBeInTheDocument();
   });
 
   it("shows the endpoint a credential points at", () => {
@@ -193,10 +215,7 @@ describe("IntegrationsScreen", () => {
     connectionItems.mockReturnValue([conn({ active: false })]);
     render(<IntegrationsScreen />);
     openApp("Coolify deploy");
-    const names = within(row("Coolify deploy"))
-      .getAllByRole("button")
-      .map((b) => b.textContent?.trim());
-    expect(names).toEqual(["Enable", "Remove"]);
+    expect(rowActionNames("Coolify deploy")).toEqual(["Enable", "Remove"]);
   });
 
   it("opens the edit drawer on THAT connection when its row is clicked", () => {
@@ -207,7 +226,7 @@ describe("IntegrationsScreen", () => {
     render(<IntegrationsScreen />);
     openApp("Coolify deploy");
     expect(screen.queryByTestId("connection-edit-drawer")).toBeNull();
-    fireEvent.click(row("Prod token"));
+    fireEvent.click(manageButton("Prod token"));
     expect(screen.getByTestId("connection-edit-drawer")).toHaveTextContent("c2");
   });
 
