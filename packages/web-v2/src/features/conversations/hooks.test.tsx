@@ -22,10 +22,18 @@ import { renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 const list = vi.fn();
-vi.mock("./api", () => ({ conversationsApi: { list: (...a: unknown[]) => list(...a) } }));
+const detail = vi.fn();
+vi.mock("./api", () => ({
+  conversationsApi: {
+    list: (...a: unknown[]) => list(...a),
+    detail: (...a: unknown[]) => detail(...a),
+  },
+}));
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 
-const { useConversations, useConversationsAcrossProjects } = await import("./hooks");
+const { useConversation, useConversations, useConversationsAcrossProjects } = await import(
+  "./hooks"
+);
 
 const room = (id: string, updatedAt: string, title: string, archivedAt: string | null = null) => ({
   id,
@@ -250,4 +258,82 @@ describe("the fan-out and the per-project reader are ONE read, per project per s
       );
     });
   }
+});
+
+// cm:guard ISS-1039 criterion 23 — an Agent turn moves between `dispatched`, `running` and
+// `delivered` with nothing sent to the browser, because what changes is a SESSION's state and no row
+// change publishes it. So the room re-reads itself while a turn is live and stops the moment none
+// is, which is the second half of the same rule: a room in Assistant mode must poll not at all.
+describe("useConversation \u00b7 watching an Agent turn move", () => {
+  const roomWith = (turns: Array<{ state: string }>) => ({
+    id: "c1",
+    adapter: "web",
+    externalId: "v1",
+    shape: "direct",
+    mode: "agent",
+    title: null,
+    updatedAt: "2026-09-14T00:00:00.000Z",
+    scope: ["p1"],
+    participants: [],
+    messages: [],
+    windows: [],
+    agentMode: { available: true, reason: null },
+    agentTurns: turns.map((t, i) => ({
+      windowId: `w${i}`,
+      sessionId: `s${i}`,
+      reason: null,
+      ...t,
+    })),
+  });
+
+  function mountRoom(qc: QueryClient) {
+    return renderHook(() => useConversation("c1"), {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+      ),
+    });
+  }
+
+  it("re-reads the room while a turn is dispatched or running, and shows what changed", async () => {
+    vi.useFakeTimers();
+    try {
+      detail.mockReset();
+      detail
+        .mockResolvedValueOnce(roomWith([{ state: "dispatched" }]))
+        .mockResolvedValueOnce(roomWith([{ state: "running" }]))
+        .mockResolvedValue(roomWith([{ state: "delivered" }]));
+
+      const { result } = mountRoom(newClient());
+      await vi.waitFor(() => expect(result.current.data?.agentTurns?.[0]?.state).toBe("dispatched"));
+
+      await vi.advanceTimersByTimeAsync(4000);
+      await vi.waitFor(() => expect(result.current.data?.agentTurns?.[0]?.state).toBe("running"));
+
+      await vi.advanceTimersByTimeAsync(4000);
+      await vi.waitFor(() => expect(result.current.data?.agentTurns?.[0]?.state).toBe("delivered"));
+
+      // cm:guard and then it STOPS: a settled room polling forever is this feature quietly costing
+      // every open tab a request every four seconds for as long as it is left open.
+      const settled = detail.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(detail.mock.calls.length).toBe(settled);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("never polls a room that holds no live turn", async () => {
+    vi.useFakeTimers();
+    try {
+      detail.mockReset();
+      detail.mockResolvedValue(roomWith([]));
+
+      const { result } = mountRoom(newClient());
+      await vi.waitFor(() => expect(result.current.data?.id).toBe("c1"));
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(detail).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

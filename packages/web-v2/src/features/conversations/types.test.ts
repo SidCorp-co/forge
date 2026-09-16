@@ -8,9 +8,12 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  AGENT_TURN_LABEL,
   SILENCE_REASON,
   conversationTitle,
   threadEntries,
+  type AgentTurn,
+  type AgentTurnState,
   type ConversationMessage,
   type ConversationWindow,
 } from "./types";
@@ -83,6 +86,58 @@ describe("threadEntries", () => {
     const entries = threadEntries([said(0)], [window({ decisionDetail: { consecutiveQuietWindows: 3 } })]);
     const silence = entries.find((e) => e.kind === "silence");
     expect(silence?.kind === "silence" && silence.detail).toEqual({ consecutiveQuietWindows: 3 });
+  });
+});
+
+// cm:guard ISS-1039 criteria 19, 20 and 27 — a window handed to a runner session is a WAIT and not
+// a silence, and the four states of that wait are four different things on screen. Before this, a
+// `handed-off` window fell through to the silence branch and rendered as "a reply was sent and
+// never confirmed", which is criterion 27's exact failure: the most alarming sentence the thread
+// owns, printed over a turn that is working normally.
+describe("threadEntries \u00b7 a window handed to a runner session", () => {
+  const turn = (over: Partial<AgentTurn> = {}): AgentTurn => ({
+    windowId: "w1",
+    sessionId: "s1",
+    state: "dispatched",
+    reason: null,
+    ...over,
+  });
+  const handed = window({ decision: "handed-off" });
+
+  it("never renders a live turn as a reply that was sent and never confirmed", () => {
+    for (const state of ["dispatched", "running", "failed"] as const) {
+      const entries = threadEntries([said(0)], [handed], [], [turn({ state })]);
+      expect(entries.map((e) => e.kind), state).toEqual(["said", "agent-turn"]);
+      expect(entries.some((e) => e.kind === "silence"), state).toBe(false);
+    }
+  });
+
+  it("tells a dispatched turn apart from a running one, in words and not in a colour", () => {
+    const at = (state: Exclude<AgentTurnState, "delivered">) => {
+      const entry = threadEntries([said(0)], [handed], [], [turn({ state })])[1];
+      return entry?.kind === "agent-turn" ? entry.turn.state : null;
+    };
+    expect(at("dispatched")).toBe("dispatched");
+    expect(at("running")).toBe("running");
+    expect(AGENT_TURN_LABEL.dispatched).not.toBe(AGENT_TURN_LABEL.running);
+  });
+
+  it("renders a delivered turn as nothing, because its reply is a message below it", () => {
+    const entries = threadEntries(
+      [said(0), said(1, { role: "assistant", content: "done", authorLabel: null })],
+      [handed],
+      [],
+      [turn({ state: "delivered" })],
+    );
+    expect(entries.map((e) => e.kind)).toEqual(["said", "said"]);
+  });
+
+  // cm:guard the pair can be split for as long as the read between them takes, and the gap is a
+  // WAIT rather than nothing at all: a handed-off window whose turn row has not arrived renders
+  // pending, which is what keeps the thread from going blank mid-handoff.
+  it("renders a handed-off window whose turn has not arrived yet as pending", () => {
+    const entries = threadEntries([said(0)], [handed], [], []);
+    expect(entries.map((e) => e.kind)).toEqual(["said", "pending"]);
   });
 });
 

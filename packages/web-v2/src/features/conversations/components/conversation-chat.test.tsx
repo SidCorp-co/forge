@@ -300,3 +300,98 @@ describe("ConversationChat · who may change who is in the room", () => {
     expect(screen.queryByRole("button", { name: /add agent/i })).not.toBeInTheDocument();
   });
 });
+
+// cm:guard ISS-1039 criteria 1, 2, 15 and 16 — the pick between Assistant and Agent is offered in
+// the COMPOSER of an empty room and nowhere else, and Agent is offered disabled-with-a-reason on a
+// project that has no box to run it. Each case here was watched going red: hiding the control
+// unconditionally kills the first, rendering it unconditionally kills the second, and dropping the
+// server's `agentMode` on the floor kills the last two.
+describe("ConversationChat · picking what the room talks to", () => {
+  const emptyRoom = (agentMode: { available: boolean; reason: string | null }) => ({
+    id: "c1",
+    adapter: "web",
+    externalId: "v1",
+    shape: "direct",
+    title: null,
+    mode: null,
+    updatedAt: "2026-09-14T00:00:00.000Z",
+    scope: ["p1"],
+    scopeProjects: [{ id: "p1", name: "Alpha", slug: "alpha" }],
+    participants: [],
+    messages: [],
+    windows: [],
+    agentMode,
+    agentTurns: [],
+  });
+
+  function mountRoom() {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(
+      <QueryClientProvider client={qc}>
+        <ConversationChat projectId="p1" conversationId="c1" />
+      </QueryClientProvider>,
+    );
+  }
+
+  it("offers both modes in an empty room", async () => {
+    detail.mockResolvedValue(emptyRoom({ available: true, reason: null }));
+    mountRoom();
+    await waitFor(() => expect(screen.getByTestId("conversation-mode-toggle")).toBeInTheDocument());
+    expect(screen.getByRole("radio", { name: "Assistant" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: "Agent" })).toBeEnabled();
+  });
+
+  it("offers nothing to pick once the room holds a message", async () => {
+    detail.mockResolvedValue({
+      ...emptyRoom({ available: true, reason: null }),
+      mode: "assistant",
+      messages: [
+        {
+          id: "m0",
+          seq: 0,
+          role: "user",
+          authorUserId: "u1",
+          authorLabel: "Ada",
+          content: "is the release ready?",
+          silenceReason: null,
+          createdAt: "2026-09-14T00:00:00.000Z",
+        },
+      ],
+    });
+    mountRoom();
+    // cm:why the title renders the first message's text too, so the wait is on ALL of them: a
+    // `getByText` here fails on the second copy rather than on the behaviour being asserted.
+    await waitFor(() =>
+      expect(screen.getAllByText("is the release ready?").length).toBeGreaterThan(0),
+    );
+    expect(screen.queryByTestId("conversation-mode-toggle")).not.toBeInTheDocument();
+  });
+
+  it("offers Agent disabled, with the server's own reason, where no box can take it", async () => {
+    detail.mockResolvedValue(
+      emptyRoom({ available: false, reason: "no device is paired with Alpha" }),
+    );
+    mountRoom();
+    await waitFor(() => expect(screen.getByTestId("conversation-mode-toggle")).toBeInTheDocument());
+    const agent = screen.getByRole("radio", { name: "Agent" });
+    expect(agent).toBeDisabled();
+    // cm:guard the reason is READ OFF the server's answer and never composed here: a screen that
+    // writes its own sentence tells a person to pair a box when the real refusal was something else.
+    expect(screen.getByText(/no device is paired with Alpha/)).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Assistant" })).toBeEnabled();
+  });
+
+  it("sends the mode the person picked", async () => {
+    detail.mockResolvedValue(emptyRoom({ available: true, reason: null }));
+    mountRoom();
+    await waitFor(() => expect(screen.getByTestId("conversation-mode-toggle")).toBeInTheDocument());
+    await act(async () => {
+      fireEvent.click(screen.getByRole("radio", { name: "Agent" }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "send" }));
+    });
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+    expect(send.mock.calls[0]?.[2]).toBe("agent");
+  });
+});
