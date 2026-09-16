@@ -86,7 +86,7 @@ function providerCapabilities(provider: IntegrationProvider) {
 // drawer both split this key on `:` and read the suffix back as a stage; a suffix invented here that
 // is not a stage name or `service` sorts to the end and renders as an unlabelled card
 function stageKey(row: { role: string; stages: string[] }): string {
-  return row.role === 'service' ? 'service' : (row.stages.join('+') || 'deploy');
+  return row.role === 'service' ? 'service' : row.stages.join('+') || 'deploy';
 }
 
 function stageLabel(row: { role: string; stages: string[] }): string {

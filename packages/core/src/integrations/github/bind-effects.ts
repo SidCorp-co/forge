@@ -7,9 +7,9 @@
  * cloning another.
  */
 
-import type { BindingRole } from '../../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
+import type { BindingRole } from '../../db/schema.js';
 import { projects } from '../../db/schema.js';
 import { logger } from '../../logger.js';
 import { decryptConnectionSecrets, type IntegrationConnectionRow } from '../store.js';

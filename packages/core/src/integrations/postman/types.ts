@@ -1,4 +1,3 @@
-
 /** Postman data-residency region. EU swaps both the REST and MCP hosts. */
 export type PostmanRegion = 'us' | 'eu';
 

@@ -102,6 +102,19 @@ const CHECKS = [
     unit: 'mode-specific claims',
   },
   // cm:guard scoped to docs/VISION.md + every .md under docs/proposals/, subdirectories included, and it must stay that narrow at the TOP: the rule is that a document ASKING to be adopted prices what adoption costs, and widened to every .md in the repo it would demand a price from a module doc that proposes nothing, which earns the checker an ignore list — where the next real violation hides.
+  // cm:guard this checker exists for what `tsc` cannot see: raw SQL naming `b.environment`, an
+  // untyped `productionBranch` read off a `Record<string, unknown>`, an inline `"staging" | "prod"`
+  // union that imports nothing, and the retired function names in prose. web-v2 held seven of those
+  // unions importing nothing from contracts, so the contracts change alone broke none of them and a
+  // green typecheck said the cutover was done when 49 readers were still live.
+  {
+    axis: 'knowledge',
+    label: 'retired-model',
+    // cm:edge naming -> scripts/check-retired-model.mjs — parses that script's success line
+    cmd: ['node', 'scripts/check-retired-model.mjs'],
+    scanned: /^check-retired-model: (\d+) files scanned/m,
+    unit: 'files',
+  },
   {
     axis: 'knowledge',
     label: 'honest-costs',
@@ -207,6 +220,7 @@ const CI_COVERAGE = {
   'node scripts/check-honest-costs.mjs': 'verify',
   'node scripts/check-release-record.mjs': 'verify',
   'node scripts/check-injected-doc-modes.mjs': 'verify',
+  'node scripts/check-retired-model.mjs': 'verify',
   'node scripts/check-pat-surface.mjs': 'verify',
   'node scripts/check-source-language.mjs --all': 'verify',
   'node scripts/check-test-signal.mjs --all': 'verify',

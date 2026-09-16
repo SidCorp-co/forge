@@ -1,4 +1,3 @@
-
 /**
  * One Coolify application this project+environment deploys. A single binding
  * fans out to many targets (e.g. a separate BE and FE resource), each its own

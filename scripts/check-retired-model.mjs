@@ -34,7 +34,8 @@ const JSON_OUT = process.argv.includes('--json');
 // checkout's own prefix and the walk silently returns nothing. It printed "scope matched no files"
 // once, which is the shape the `could not run` exit exists for — a green from a checker that scanned
 // zero files is indistinguishable from a green from one that scanned the tree.
-const SKIP = /(^|[/\\])(node_modules|\.next|dist|target|coverage|\.git|\.turbo|\.worktrees)([/\\]|$)/;
+const SKIP =
+  /(^|[/\\])(node_modules|\.next|dist|target|coverage|\.git|\.turbo|\.worktrees)([/\\]|$)/;
 const EXT = new Set(['.ts', '.tsx', '.mjs', '.js']);
 
 /**
@@ -138,7 +139,13 @@ function main() {
       lines.forEach((line, i) => {
         rule.re.lastIndex = 0;
         if (!rule.re.test(line)) return;
-        findings.push({ file: rel, line: i + 1, rule: rule.id, text: line.trim().slice(0, 160), why: rule.why });
+        findings.push({
+          file: rel,
+          line: i + 1,
+          rule: rule.id,
+          text: line.trim().slice(0, 160),
+          why: rule.why,
+        });
       });
     }
   }

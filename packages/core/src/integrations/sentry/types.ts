@@ -1,4 +1,3 @@
-
 /**
  * One labelled Sentry target (ISS-526). A Forge project that spans several
  * Sentry projects (backend / frontend / mobile) records one target per stack.

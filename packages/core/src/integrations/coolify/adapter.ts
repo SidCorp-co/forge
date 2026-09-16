@@ -1,3 +1,4 @@
+import type { DeployStage } from '../../db/schema.js';
 import { logger } from '../../logger.js';
 import { isSentryEnabled, Sentry } from '../../observability/sentry.js';
 import {
@@ -18,7 +19,6 @@ import { breakerAllowsDispatch, maybeResetBreaker, maybeTripBreaker } from './ci
 import { CoolifyApiError, coolifyAbilityForRoute, describeCoolifyForbidden } from './client.js';
 import { enqueueCoolifyConfirm } from './confirm.js';
 import { buildClient } from './log-fetch.js';
-import type { DeployStage } from '../../db/schema.js';
 import type { CoolifyConfig, CoolifySecrets } from './types.js';
 
 const BREADCRUMB_OUT = 'integration.coolify.dispatch';

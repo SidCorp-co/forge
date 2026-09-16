@@ -29,7 +29,11 @@ const PROJECT_ID = '33333333-3333-4333-8333-333333333333';
 
 const project = (
   releaseModel: 'none' | 'promote' | 'publish',
-  over: { baseBranch?: string | null; liveBranch?: string | null; releaseStrategy?: string | null } = {},
+  over: {
+    baseBranch?: string | null;
+    liveBranch?: string | null;
+    releaseStrategy?: string | null;
+  } = {},
 ) => [
   {
     baseBranch: over.baseBranch ?? 'main',
@@ -52,7 +56,11 @@ beforeEach(() => {
 describe('resolveReleaseGate', () => {
   it('gives the gate to a promote project with a live deploy binding', async () => {
     selectLimit.mockResolvedValue(
-      project('promote', { baseBranch: 'staging', liveBranch: 'master', releaseStrategy: 'merge-branch' }),
+      project('promote', {
+        baseBranch: 'staging',
+        liveBranch: 'master',
+        releaseStrategy: 'merge-branch',
+      }),
     );
     listBindings.mockResolvedValue(liveBinding());
     await expect(resolveReleaseGate(PROJECT_ID)).resolves.toBe('awaiting_release');
@@ -101,7 +109,9 @@ describe('a release model with nothing to release onto', () => {
   // the same answer — which is how dodgeprint-api parked every issue at `awaiting_release` behind a
   // Sentry binding for as long as it did.
   it('throws RELEASE_TARGET_UNDECLARED when the project has no live deploy binding at all', async () => {
-    selectLimit.mockResolvedValue(project('promote', { liveBranch: 'master', releaseStrategy: 'merge-branch' }));
+    selectLimit.mockResolvedValue(
+      project('promote', { liveBranch: 'master', releaseStrategy: 'merge-branch' }),
+    );
     listBindings.mockResolvedValue([]);
     await expect(resolveReleaseGate(PROJECT_ID)).rejects.toThrow(ReleaseTargetUndeclaredError);
     await expect(resolveReleaseGate(PROJECT_ID)).rejects.toThrow(/RELEASE_TARGET_UNDECLARED/);
@@ -127,10 +137,18 @@ describe('a release model with nothing to release onto', () => {
 
 describe('resolveReleaseDeclaration', () => {
   it('returns the whole live set, not its first member', async () => {
-    selectLimit.mockResolvedValue(project('promote', { liveBranch: 'master', releaseStrategy: 'merge-branch' }));
+    selectLimit.mockResolvedValue(
+      project('promote', { liveBranch: 'master', releaseStrategy: 'merge-branch' }),
+    );
     listBindings.mockResolvedValue([
-      { binding: { provider: 'coolify', config: {}, role: 'deploy', stages: ['live'] }, connection: {} },
-      { binding: { provider: 'epodsystem', config: {}, role: 'deploy', stages: ['live'] }, connection: {} },
+      {
+        binding: { provider: 'coolify', config: {}, role: 'deploy', stages: ['live'] },
+        connection: {},
+      },
+      {
+        binding: { provider: 'epodsystem', config: {}, role: 'deploy', stages: ['live'] },
+        connection: {},
+      },
     ]);
     const decl = await resolveReleaseDeclaration(PROJECT_ID);
     expect(decl?.kind).toBe('gated');

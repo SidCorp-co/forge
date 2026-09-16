@@ -18,6 +18,12 @@ import { projects } from '../db/schema.js';
 import { loadOrgRole, orgRoleAtLeast } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import {
+  cannotDeployMessage,
+  checkRoleStagesPairing,
+  roleSchema,
+  stagesSchema,
+} from './binding-shape.js';
 import { githubInboundSecret, syncRepoUrlFromGitHubBinding } from './github/bind-effects.js';
 import type { GitHubConfig } from './github/types.js';
 import { raceWithTimeout } from './probe.js';
@@ -27,10 +33,6 @@ import {
   connectionConfigSchemaForProvider,
   connectionCreateSchema,
   connectionUpdateSchema,
-  cannotDeployMessage,
-  checkRoleStagesPairing,
-  roleSchema,
-  stagesSchema,
   splitProviderConfig,
 } from './provider-schemas.js';
 import { getAdapter } from './registry.js';

@@ -207,11 +207,27 @@ describe('loadReleaseReadiness', () => {
     project({ releaseModel: 'publish' });
     listBindings.mockResolvedValue([
       {
-        binding: { id: 'b-1', provider: 'coolify', config: { releaseRunnerLabel: 'release' }, instructions: null, label: '', role: 'deploy', stages: ['live'] },
+        binding: {
+          id: 'b-1',
+          provider: 'coolify',
+          config: { releaseRunnerLabel: 'release' },
+          instructions: null,
+          label: '',
+          role: 'deploy',
+          stages: ['live'],
+        },
         connection: { config: {} },
       },
       {
-        binding: { id: 'b-2', provider: 'epodsystem', config: { releaseRunnerLabel: 'epod-prod' }, instructions: null, label: '', role: 'deploy', stages: ['live'] },
+        binding: {
+          id: 'b-2',
+          provider: 'epodsystem',
+          config: { releaseRunnerLabel: 'epod-prod' },
+          instructions: null,
+          label: '',
+          role: 'deploy',
+          stages: ['live'],
+        },
         connection: { config: {} },
       },
     ]);

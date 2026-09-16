@@ -46,7 +46,7 @@ async function bindRocketChat(
     rids: string[];
     bindingActive: boolean;
     connectionActive: boolean;
-    environment?: 'staging' | 'prod';
+    label?: string;
     /** The CONNECTION's provider, which nothing in the schema ties to the binding's. */
     connectionProvider?: string;
   },
@@ -57,9 +57,9 @@ async function bindRocketChat(
     VALUES (${connectionId}, 'user', ${args.ownerId}, ${args.connectionProvider ?? 'rocketchat'}, '{}'::jsonb, ${args.connectionActive})
   `);
   await harness.db.execute(sql`
-    INSERT INTO integration_bindings (id, connection_id, project_id, provider, environment, config, active)
+    INSERT INTO integration_bindings (id, connection_id, project_id, provider, role, label, config, active)
     VALUES (
-      ${randomUUID()}, ${connectionId}, ${args.projectId}, 'rocketchat', ${args.environment ?? 'staging'},
+      ${randomUUID()}, ${connectionId}, ${args.projectId}, 'rocketchat', 'service', ${args.label ?? ''},
       ${JSON.stringify({ rids: args.rids })}::jsonb, ${args.bindingActive}
     )
   `);
@@ -135,7 +135,7 @@ describe('migration 0246 moves the reply language onto the projects that were ge
       connectionActive: true,
     });
 
-    // cm:guard a project is judged by whether ANY binding routes it, not by whether every one does: reading it the other way would skip a project whose bot answers in a room every day because a second, roomless binding sits beside the live one. The two are seeded in DIFFERENT environments because `integration_bindings_project_provider_env_label_uq` permits a project only one rocketchat binding per environment, so same-environment is a shape the fleet cannot hold (ISS-1007).
+    // cm:guard a project is judged by whether ANY binding routes it, not by whether every one does: reading it the other way would skip a project whose bot answers in a room every day because a second, roomless binding sits beside the live one. The two are seeded under DIFFERENT LABELS because `integration_bindings_service_uq` permits a project only one active rocketchat SERVICE binding per label, so same-label is a shape the fleet cannot hold. Before ISS-1046 the same rule was keyed on `environment` and the two were seeded `staging` and `prod`; rocketchat is never a deploy target, so the label is what tells two of them apart now (ISS-1007).
     const mixed = await make('mixed', {});
     await bindRocketChat(harness, {
       projectId: mixed,
@@ -143,7 +143,7 @@ describe('migration 0246 moves the reply language onto the projects that were ge
       rids: [],
       bindingActive: true,
       connectionActive: true,
-      environment: 'staging',
+      label: 'roomless',
     });
     await bindRocketChat(harness, {
       projectId: mixed,
@@ -151,7 +151,7 @@ describe('migration 0246 moves the reply language onto the projects that were ge
       rids: ['GENERAL'],
       bindingActive: true,
       connectionActive: true,
-      environment: 'prod',
+      label: 'routing',
     });
 
     await make('noBinding', {});

@@ -62,7 +62,7 @@ export async function maybeTripBreaker(args: {
   if (!evaluation.tripped) return false;
 
   const connection = await findConnectionById(args.connectionId);
-  if (!connection || !connection.active) {
+  if (!connection?.active) {
     // Already tripped previously; nothing to do.
     return false;
   }
@@ -78,6 +78,7 @@ export async function maybeTripBreaker(args: {
       connectionId: args.connectionId,
       bindingId: args.bindingId,
       provider: connection.provider,
+      role: binding?.role ?? null,
       stages: binding?.stages ?? null,
       consecutiveFailures: evaluation.consecutiveFailures,
     },
@@ -89,6 +90,7 @@ export async function maybeTripBreaker(args: {
       level: 'error',
       tags: {
         provider: connection.provider,
+        role: binding?.role ?? 'unknown',
         stages: (binding?.stages ?? []).join(',') || 'none',
         projectId: binding?.projectId ?? 'unknown',
       },

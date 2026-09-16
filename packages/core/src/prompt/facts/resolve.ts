@@ -159,7 +159,7 @@ export function renderIntegrations(rows: IntegrationRow[]): string {
     // cm:why the bracket says `service` or the stages rather than an environment: it used to print
     // `[prod]` for every sentry, rocketchat, github and postman binding in the fleet, which was the
     // filler value the column forced them to carry and told the agent nothing.
-    const scope = r.role === 'service' ? 'service' : (r.stages.join('+') || 'deploy');
+    const scope = r.role === 'service' ? 'service' : r.stages.join('+') || 'deploy';
     const bullet = `- **${r.provider}** [${scope}]${health} — ${hint}${guidePointer}`;
     const extra: string[] = [];
     // ISS-526 — for Sentry, list the configured targets (label → org/project
@@ -216,7 +216,8 @@ function makeProjectResolver(src: {
     // line only there: 25 of 32 fleet projects carry a `live_branch` that nothing promotes to, and a
     // skill body splicing one in would state a branch as this project's release target when the
     // project declares it has no release step.
-    'live-branch': () => (src.releaseModel === 'promote' ? (src.liveBranch ?? undefined) : undefined),
+    'live-branch': () =>
+      src.releaseModel === 'promote' ? (src.liveBranch ?? undefined) : undefined,
     // cm:guard a REFUSAL and not `undefined`, which is the whole point: an unresolved
     // `{{project:<key>}}` renders as empty, so leaving this key out would silently delete a sentence
     // from the prompt of every project whose skill body still uses it — and no gate in this repo can

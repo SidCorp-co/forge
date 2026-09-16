@@ -1,4 +1,3 @@
-
 /**
  * ISS-387 — Epodsystem integration types.
  *

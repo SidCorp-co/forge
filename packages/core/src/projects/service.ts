@@ -215,8 +215,8 @@ export async function readProjectSummary(projectId: string) {
       workspaceSetup: projects.workspaceSetup,
       baseBranch: projects.baseBranch,
       liveBranch: projects.liveBranch,
-        releaseModel: projects.releaseModel,
-        releaseStrategy: projects.releaseStrategy,
+      releaseModel: projects.releaseModel,
+      releaseStrategy: projects.releaseStrategy,
       defaultDeviceId: projects.defaultDeviceId,
       previewDeploy: projects.previewDeploy,
       createdAt: projects.createdAt,
@@ -247,8 +247,8 @@ export async function updateProject(projectId: string, updates: Record<string, u
     workspaceSetup: projects.workspaceSetup,
     baseBranch: projects.baseBranch,
     liveBranch: projects.liveBranch,
-        releaseModel: projects.releaseModel,
-        releaseStrategy: projects.releaseStrategy,
+    releaseModel: projects.releaseModel,
+    releaseStrategy: projects.releaseStrategy,
     kind: projects.kind,
   });
   return row ?? null;
@@ -278,8 +278,8 @@ export async function readProjectWithConfig(projectId: string) {
       repoPath: projects.repoPath,
       baseBranch: projects.baseBranch,
       liveBranch: projects.liveBranch,
-        releaseModel: projects.releaseModel,
-        releaseStrategy: projects.releaseStrategy,
+      releaseModel: projects.releaseModel,
+      releaseStrategy: projects.releaseStrategy,
       agentConfig: projects.agentConfig,
     })
     .from(projects)

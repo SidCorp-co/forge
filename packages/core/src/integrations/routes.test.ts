@@ -819,7 +819,11 @@ describe('POST /api/integration-connections/:id/bindings — bind existing conne
     // clearAllMocks resets calls, not implementations.)
     findBindingWithConnectionById.mockResolvedValueOnce(undefined);
 
-    const res = await bindReq(token, CONN_ID, { projectId: PROJECT_ID, role: 'deploy', stages: ['preview'] });
+    const res = await bindReq(token, CONN_ID, {
+      projectId: PROJECT_ID,
+      role: 'deploy',
+      stages: ['preview'],
+    });
     expect(res.status).toBe(201);
     const body = (await res.json()) as {
       integration: { id: string; connectionId: string };
@@ -934,7 +938,11 @@ describe('POST /api/integration-connections/:id/bindings — bind existing conne
     );
     createBinding.mockRejectedValueOnce(drizzleWrapped);
 
-    const res = await bindReq(token, CONN_ID, { projectId: PROJECT_ID, role: 'deploy', stages: ['preview'] });
+    const res = await bindReq(token, CONN_ID, {
+      projectId: PROJECT_ID,
+      role: 'deploy',
+      stages: ['preview'],
+    });
     expect(res.status).toBe(409);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('ALREADY_EXISTS');
@@ -946,7 +954,11 @@ describe('POST /api/integration-connections/:id/bindings — bind existing conne
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
     findConnectionById.mockResolvedValueOnce(ownedConnection({ ownerId: OTHER_USER }));
 
-    const res = await bindReq(token, CONN_ID, { projectId: PROJECT_ID, role: 'deploy', stages: ['preview'] });
+    const res = await bindReq(token, CONN_ID, {
+      projectId: PROJECT_ID,
+      role: 'deploy',
+      stages: ['preview'],
+    });
     expect(res.status).toBe(404);
     expect(createBinding).not.toHaveBeenCalled();
   });
@@ -963,7 +975,11 @@ describe('POST /api/integration-connections/:id/bindings — bind existing conne
     });
     findConnectionById.mockResolvedValueOnce(ownedConnection());
 
-    const res = await bindReq(token, CONN_ID, { projectId: PROJECT_ID, role: 'deploy', stages: ['preview'] });
+    const res = await bindReq(token, CONN_ID, {
+      projectId: PROJECT_ID,
+      role: 'deploy',
+      stages: ['preview'],
+    });
     expect(res.status).toBe(403);
     expect(createBinding).not.toHaveBeenCalled();
   });

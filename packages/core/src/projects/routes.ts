@@ -15,8 +15,6 @@ import {
   projectKinds,
   projectMembers,
   projects,
-  releaseModels,
-  releaseStrategies,
   runners,
 } from '../db/schema.js';
 import {
@@ -45,8 +43,8 @@ import { RETIRED_STATE_CONTEXT_MESSAGE, readAgentConfig } from './agent-config.j
 import { applyIssuePrefixPatch } from './issue-prefix-patch.js';
 import { projectOnboardRoutes } from './onboard-routes.js';
 import { pipelineConfigHttpError } from './pipeline-config-http.js';
-
 import { projectFactsRoutes } from './project-facts-routes.js';
+import { releaseModelGap, releaseModelPatchFields } from './release-model.js';
 import { projectRunnerRoutes } from './runners-routes.js';
 import { createProject, generateApiKey, ProjectSlugTakenError } from './service.js';
 
@@ -104,13 +102,7 @@ export const updateProjectSchema = z
     // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/setup_agent.rs — this text IS the setup agent's instruction set; it reaches the box via `/me/runners`, so a rename here silently gives every setup agent an empty procedure and sends it back to deriving one per job
     workspaceSetup: z.string().trim().max(8000).nullable().optional(),
     baseBranch: z.string().trim().max(100).nullable().optional(),
-    // cm:guard `liveBranch` and `releaseModel` are checked TOGETHER in the handler, not here: the
-    // rule is `releaseModel = 'promote'` iff a live branch exists, and a PATCH may carry either half
-    // while the other sits in the row. `projects_live_branch_chk` holds it in Postgres, and this
-    // handler's refusal is what turns that constraint into a sentence rather than a 500.
-    liveBranch: z.string().trim().max(100).nullable().optional(),
-    releaseModel: z.enum(releaseModels).optional(),
-    releaseStrategy: z.enum(releaseStrategies).nullable().optional(),
+    ...releaseModelPatchFields,
     // cm:guard ISS-992 — the shape is checked in the handler, not here, because three of the four refusals need the database (the reserved name, the prefix another project holds, and whether the caller may be told which one). A zod regex here would answer the first and let the other three reach Postgres as a 500 on an ordinary conflict.
     issuePrefix: z.string().trim().max(16).nullable().optional(),
     defaultDeviceId: z.uuid().nullable().optional(),
@@ -200,55 +192,6 @@ const notFound = () =>
 
 const forbidden = (message: string) =>
   new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
-/**
- * The release model and its two dependent columns, checked as one.
- *
- * A PATCH may carry any subset, so the rule is applied to the ROW AS IT WILL BE rather than to the
- * body: `promote` iff a live branch, and a strategy iff `promote`.
- */
-// cm:edge contract -> packages/core/src/db/schema.ts — `projects_live_branch_chk` and
-// `projects_release_strategy_chk` are the same two rules in Postgres, and they are the authority.
-// This function exists so a caller gets a sentence naming what is missing instead of a 500 carrying a
-// constraint name, and the two must admit exactly the same rows.
-const RELEASE_MODEL_KEYS = ['releaseModel', 'liveBranch', 'releaseStrategy'] as const;
-
-async function assertReleaseModelCoherent(
-  projectId: string,
-  updates: Record<string, unknown>,
-): Promise<void> {
-  // A PATCH touching none of the three leaves the row exactly as the two CHECKs already admitted it,
-  // so there is nothing to re-judge — and reading the project for every unrelated settings PATCH
-  // would buy a query per request to answer a question the body never asked.
-  if (!RELEASE_MODEL_KEYS.some((k) => k in updates)) return;
-  const [row] = await db
-    .select({
-      releaseModel: projects.releaseModel,
-      liveBranch: projects.liveBranch,
-      releaseStrategy: projects.releaseStrategy,
-    })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  if (!row) return;
-  const model = (updates.releaseModel as string | undefined) ?? row.releaseModel;
-  const live = 'liveBranch' in updates ? (updates.liveBranch as string | null) : row.liveBranch;
-  const strategy =
-    'releaseStrategy' in updates ? (updates.releaseStrategy as string | null) : row.releaseStrategy;
-  if (model === 'promote' && !live) {
-    throw new HTTPException(400, {
-      message:
-        'releaseModel `promote` means the release moves code from baseBranch to liveBranch, so a liveBranch is required. Send one, or choose `publish` (the release is an act on a live binding, no ref moves) or `none` (there is no release step).',
-      cause: { code: 'LIVE_BRANCH_REQUIRED' },
-    });
-  }
-  // cm:why the strategy is DERIVED rather than refused when absent: `merge-branch` is what the
-  // default procedure already does for all four promote projects, so demanding it would refuse every
-  // PATCH that only sets the model. Clearing it off a non-promote model is the same rule read the
-  // other way, and `projects_release_strategy_chk` refuses the row either way if this is ever skipped.
-  if (model === 'promote' && !strategy) updates.releaseStrategy = 'merge-branch';
-  if (model !== 'promote' && strategy) updates.releaseStrategy = null;
-}
 
 export const projectRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -526,7 +469,8 @@ projectRoutes.patch(
     if (patch.liveBranch !== undefined) updates.liveBranch = patch.liveBranch;
     if (patch.releaseModel !== undefined) updates.releaseModel = patch.releaseModel;
     if (patch.releaseStrategy !== undefined) updates.releaseStrategy = patch.releaseStrategy;
-    await assertReleaseModelCoherent(id, updates);
+    const gap = await releaseModelGap(id, updates);
+    if (gap) throw new HTTPException(400, { message: gap.message, cause: { code: gap.code } });
     if (patch.defaultDeviceId !== undefined) updates.defaultDeviceId = patch.defaultDeviceId;
     if (patch.agentConfig !== undefined) {
       updates.agentConfig = patch.agentConfig;

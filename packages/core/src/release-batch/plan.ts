@@ -67,10 +67,7 @@ export interface ReleaseBranches {
 }
 
 // cm:guard the branches come from the `projects` columns through the same resolver every other surface uses, and an undeclared base is an ERROR, never `'main'`. The loader this replaced read `agentConfig.branchConfig` — a key nothing writes — and defaulted both sides to `main`; on 2026-09-03 sidpeak (staging → master) cut three release batches whose envelope said `main → main`, and every one aborted on a branch origin does not have.
-export function releaseBranches(
-  project: ProjectLike,
-  releaseModel: ReleaseModel,
-): ReleaseBranches {
+export function releaseBranches(project: ProjectLike, releaseModel: ReleaseModel): ReleaseBranches {
   const resolved = resolveIssueBranches({}, project);
   if (!resolved.baseBranch) throw new ReleaseBranchesUndeclaredError();
   // cm:guard `releaseModel` and NOT a branch comparison decides whether a promotion is planned. 25 of

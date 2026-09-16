@@ -213,7 +213,13 @@ describe('renderIntegrations — Sentry targets (ISS-526)', () => {
 
   it('renders just the bullet when a Sentry binding has no targets', () => {
     const text = renderIntegrations([
-      { provider: 'sentry', role: 'service', stages: [], lastHealthStatus: null, sentryTargets: [] },
+      {
+        provider: 'sentry',
+        role: 'service',
+        stages: [],
+        lastHealthStatus: null,
+        sentryTargets: [],
+      },
     ]);
     expect(text).toContain('- **sentry** [service]');
     expect(text).not.toContain('  - ');

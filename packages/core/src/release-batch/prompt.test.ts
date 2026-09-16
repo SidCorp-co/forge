@@ -69,7 +69,9 @@ describe('buildReleaseBatchPrompt', () => {
     const out = buildReleaseBatchPrompt({
       ...BASE,
       plan: plan({
-        channels: [channel({ rollback: { kind: 'manual', text: 'promote the previous theme revision' } })],
+        channels: [
+          channel({ rollback: { kind: 'manual', text: 'promote the previous theme revision' } }),
+        ],
       }),
     });
 

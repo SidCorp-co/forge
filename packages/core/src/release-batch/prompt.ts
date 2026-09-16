@@ -2,8 +2,8 @@
 // Pattern: buildSmokeCanaryPrompt (skills/smoke-verify.ts:429).
 // Untrusted issue text is wrapped via markUntrusted (same as every state prompt).
 
-import { markUntrusted } from '../prompt/sanitize.js';
 import type { ReleaseModel } from '../db/schema.js';
+import { markUntrusted } from '../prompt/sanitize.js';
 import { defaultReleaseProcedure, RELEASE_BATCH_SKILL, type ReleasePlan } from './plan.js';
 
 interface IssueSummary {

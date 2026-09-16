@@ -13,11 +13,11 @@
 
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import type { ReleaseModel, ReleaseStrategy } from '../db/schema.js';
 import { projects } from '../db/schema.js';
 import { missingAutonomousFacts } from '../projects/autonomous-contract.js';
 import { releaseRunnerLabelOf, resolveReleaseChannels } from './channel.js';
 import { resolveReleaseDeclaration } from './gate.js';
-import type { ReleaseModel, ReleaseStrategy } from '../db/schema.js';
 import { RELEASE_PROCEDURE_FACT, type ReleaseRollback } from './plan.js';
 
 export type ReleaseGapKey = string;
@@ -98,11 +98,13 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
   const first = channels[0] ?? null;
   if (decl.kind === 'gated') {
     if (!isDeclared(facts[RELEASE_PROCEDURE_FACT])) gaps.push('release-procedure');
-    if (!releaseRunnerLabel && !gaps.includes('release-runner-ambiguous')) gaps.push('release-runner');
+    if (!releaseRunnerLabel && !gaps.includes('release-runner-ambiguous'))
+      gaps.push('release-runner');
     // cm:edge lockstep -> packages/core/src/release-batch/service.ts — `createReleaseBatch` REFUSES on this, and reporting it here is what gives the operator the gap before a release discovers it. Drop this line and the refusal arrives with nothing in settings having said it was coming.
     if (channels.some((c) => !c.verify)) gaps.push('verify-probes');
     if (channels.some((c) => !c.rollback)) gaps.push('rollback');
-    else if (channels.some((c) => c.rollback?.kind === 'unrepresentable')) gaps.push('rollback-prose');
+    else if (channels.some((c) => c.rollback?.kind === 'unrepresentable'))
+      gaps.push('rollback-prose');
   }
 
   return {

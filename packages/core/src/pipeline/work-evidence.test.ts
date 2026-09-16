@@ -51,11 +51,7 @@ describe('collectWorkEvidence', () => {
   });
 
   it('the project base branch is NOT evidence — it names where work lands, not that any happened', async () => {
-    setup(
-      [],
-      [],
-      [{ sessionContext: { branch: 'main' }, baseBranch: 'main', liveBranch: 'main' }],
-    );
+    setup([], [], [{ sessionContext: { branch: 'main' }, baseBranch: 'main', liveBranch: 'main' }]);
     const evidence = await collectWorkEvidence('iss-1');
     expect(
       evidence.branch,

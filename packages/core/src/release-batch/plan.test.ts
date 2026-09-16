@@ -45,9 +45,9 @@ describe('releaseBranches', () => {
       liveBranch: 'main',
       promotePlanned: false,
     });
-    expect(
-      releaseBranches({ baseBranch: 'dev', liveBranch: '  ' }, 'promote').promotePlanned,
-    ).toBe(false);
+    expect(releaseBranches({ baseBranch: 'dev', liveBranch: '  ' }, 'promote').promotePlanned).toBe(
+      false,
+    );
   });
 
   it('an undeclared base branch is an error, never main', () => {

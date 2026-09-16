@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { issueStatuses } from '../db/schema.js';
-import { QA_JUDGEMENT_KEY, QA_JUDGEMENT_MODES } from './qa-judgement.js';
 import { ENTRY_CRITERION_KEYS } from '../issues/entry-criteria-keys.js';
 import {
   AUTONOMOUS_ENTRY_STATUS,
@@ -12,6 +11,7 @@ import {
   isKnownMcpServerName,
   MCP_CATALOG_NAMES,
 } from './mcp-catalog.js';
+import { QA_JUDGEMENT_KEY, QA_JUDGEMENT_MODES } from './qa-judgement.js';
 /**
  * Per-stage config under `pipelineConfig.states`, keyed by the kernel status
  * the config applies at.
