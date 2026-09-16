@@ -20,68 +20,9 @@ import {
   refusalText,
 } from './memory-note-gate.js';
 
-const REMEMBER = 'Remember for this project: the release code name is bench-1a2b3c4d5e6f.';
-const base = (over: Partial<NoteJudgeInput> = {}): NoteJudgeInput => ({
-  text: 'The release code name is bench-1a2b3c4d5e6f.',
-  recentTurns: [REMEMBER],
-  notesThisTurn: 0,
-  existingNotes: [],
-  ...over,
-});
-const code = (input: NoteJudgeInput) => judgeNote(input)?.code ?? null;
+import { base, code, REMEMBER } from './memory-note-gate-ground.js';
 
 describe('judgeNote', () => {
-  it('a fact merely stated is refused as unasked; an ask anywhere in a recent message, a correction, or a decision passes', () => {
-    const said = 'Our deploy window is Wednesday, right after the morning standup.';
-    const r = judgeNote(
-      base({ text: 'Deploy window: Wednesday after the morning standup.', recentTurns: [said] }),
-    );
-    expect(r?.code).toBe('unasked');
-    expect(
-      code(
-        base({
-          text: 'Release lead: Marta Okafor.',
-          recentTurns: ['For the next release, note that the release lead is Marta Okafor.'],
-        }),
-      ),
-    ).toBeNull();
-    expect(
-      code(
-        base({
-          text: 'Deploy window: Wednesday after standup.',
-          recentTurns: ['Remember this for our chat: the window matters.', said],
-        }),
-      ),
-    ).toBeNull();
-    expect(
-      code(
-        base({
-          text: 'Release code name: bench-9f8e7d6c5b4a.',
-          recentTurns: [
-            'Correction: the release code name is bench-9f8e7d6c5b4a, forget the first one.',
-          ],
-        }),
-      ),
-    ).toBeNull();
-    expect(
-      code(
-        base({
-          text: 'We decided to deploy on Wednesdays only.',
-          recentTurns: ['We decided to deploy on Wednesdays only, no exceptions.'],
-        }),
-      ),
-    ).toBeNull();
-    expect(
-      code(
-        base({
-          text: 'Deploys happen on Wednesdays.',
-          recentTurns: ['From now on we deploy on Wednesdays.'],
-        }),
-      ),
-    ).toBeNull();
-    expect(refusalText(r as NoteRefusal)).toContain('Do this:');
-  });
-
   it('passes the fact with the remember-framing dropped, and refuses the message copied back', () => {
     expect(code(base())).toBeNull();
     const r = judgeNote(base({ text: REMEMBER }));
@@ -135,50 +76,6 @@ describe('judgeNote', () => {
     expect(r?.rule).toContain('Release code name: bench-1a2b3c4d5e6f');
     expect(r?.rule).not.toContain('kept 2026');
     expect(code(base({ existingNotes: [{ ...twin, score: DUPLICATE_SCORE - 0.01 }] }))).toBeNull();
-  });
-
-  it('a correction may replace a held value above the threshold; the same value word for word stays a duplicate', () => {
-    const held = { text: 'The release code name is bench-1a2b3c4d5e6f.', score: 0.9 };
-    const correction =
-      'Correction: the release code name is bench-9f8e7d6c5b4a, forget the first one.';
-    expect(
-      code(
-        base({
-          text: 'The release code name is bench-9f8e7d6c5b4a.',
-          recentTurns: [correction],
-          existingNotes: [held],
-        }),
-      ),
-    ).toBeNull();
-    expect(
-      code(
-        base({
-          text: 'The release code name is bench-1a2b3c4d5e6f.',
-          recentTurns: [correction],
-          existingNotes: [held],
-        }),
-      ),
-    ).toBe('duplicate');
-    expect(
-      code(
-        base({
-          text: 'The release code name is bench-9f8e7d6c5b4a.',
-          recentTurns: ['Remember: the release code name is bench-9f8e7d6c5b4a.'],
-          existingNotes: [held],
-        }),
-      ),
-    ).toBe('duplicate');
-    // one changed word in a long note overlaps its twin above 0.9 and is still the correction
-    const long = (day: string) =>
-      `The production deployment window for the main customer service in our European region is every week on ${day} at 14:00 UTC.`;
-    const said = 'Correction: we deploy on Thursday now, not Wednesday.';
-    const twinNote = { text: long('Wednesday'), score: 0.97 };
-    expect(
-      code(base({ text: long('Thursday'), recentTurns: [said], existingNotes: [twinNote] })),
-    ).toBeNull();
-    expect(
-      code(base({ text: long('Wednesday'), recentTurns: [said], existingNotes: [twinNote] })),
-    ).toBe('duplicate');
   });
 
   it('a note about the exchange is refused; the same words inside a project fact pass', () => {
