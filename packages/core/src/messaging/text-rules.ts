@@ -12,6 +12,7 @@ import type { MessageRule, RuleBreak } from './contract.js';
 import type { MessageFacts } from './facts.js';
 import { issueTokenRe } from './issue-tokens.js';
 import { OPTION_LINE_RE } from './option-line.js';
+import { extractStatusAssertions } from './status-assertions.js';
 
 const one = (why: string, quote: string | null = null): RuleBreak[] => [{ why, quote }];
 const none: RuleBreak[] = [];
@@ -201,14 +202,26 @@ export const ONLY_VERIFIED_CITATIONS: MessageRule = {
   check: (text, f) => {
     if (f.issueLookupFailed) return none;
     const returned = refsTheTrackerReturned(f);
+    // cm:guard an id known ONLY from a result's prose may be MENTIONED and never ASSERTED ABOUT,
+    // and the two are separated here because only the second is a claim: a tracker result carries
+    // user-authored titles and descriptions, so the id in `ISS-538 TC2 exe reject` is a row this
+    // project does not hold appearing inside a row it does — quoting that title back is the answer,
+    // and `ISS-9999 is shipped` sourced from the same prose is a state claim nothing checked.
+    // `status-matches-the-row` cannot catch it: that rule abstains on a row this project has no
+    // entry for, which is correct for another project's key and is exactly the gap (codex F3 of the
+    // whole-set read, still open at its first recheck).
+    const asserted = new Set(extractStatusAssertions(text, f.prefixes).map((a) => a.seq));
     const breaks: RuleBreak[] = [];
     for (const m of text.matchAll(issueTokenRe(f.prefixes))) {
       const seq = Number(m[2]);
       if (f.knownIssueSeqs.has(seq)) continue;
-      if (returned.has((m[0] as string).toUpperCase())) continue;
+      if (returned.has((m[0] as string).toUpperCase()) && !asserted.has(seq)) continue;
+      const ref = formatIssueRef(f.prefix, seq);
       breaks.push({
         quote: m[0],
-        why: `reply cites "${formatIssueRef(f.prefix, seq)}" which was not verified this turn — ${REPHRASE}`,
+        why: asserted.has(seq)
+          ? `reply states what "${ref}" is, and this turn only saw that id inside another issue's text — say what you read it in, or look it up, rather than reporting its status — ${REPHRASE}`
+          : `reply cites "${ref}" which was not verified this turn — ${REPHRASE}`,
       });
     }
     return breaks;

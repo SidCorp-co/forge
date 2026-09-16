@@ -11,6 +11,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { ASSISTANT_METHOD_GUIDE } from '../../guides/assistant-method-guide.js';
 import { loadTasks } from '../bench/tasks/index.js';
 import { composeLayers, LayerComposeError, type LayerId, type PromptLayer } from './layer.js';
 import { ALL_LAYERS, METHOD_LAYERS, ROCKETCHAT_DOOR_LAYERS, WEB_DOOR_LAYERS } from './layers.js';
@@ -193,6 +194,13 @@ describe('the order each door composes', () => {
 
   it('gives the guide the base and tools layers, in that order (criterion 18)', () => {
     expect(METHOD_LAYERS.map((l) => l.id)).toEqual(['base', 'tools']);
+  });
+
+  // cm:guard the EQUALITY and not only the order, which is what criterion 18 actually says: the
+  // order test passes for a guide that composed the right layers and then appended a sentence of
+  // its own, which is exactly the second copy ISS-1007 removed and this split has to keep removed.
+  it('composes the guide body from those layers and adds nothing (criterion 18)', () => {
+    expect(ASSISTANT_METHOD_GUIDE.body).toBe(composeLayers(METHOD_LAYERS));
   });
 });
 

@@ -9,8 +9,10 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { NO_ROLE, ROLE_HOLDER } from './audiences.js';
 import { facts, type MessageFacts, type ProgressFacts } from './facts.js';
 import { PROGRESS_FIGURES_MATCH } from './progress-rule.js';
+import { screenMessage } from './screen.js';
 import { ONLY_VERIFIED_CITATIONS } from './text-rules.js';
 
 type Call = MessageFacts['toolCalls'][number];
@@ -118,6 +120,82 @@ describe('only-verified-citations reads what the turn looked up (ISS-1057)', () 
     expect(preChange('ISS-11 is an open issue titled "ISS-538 TC2 exe reject".', qa())).toEqual([
       'ISS-538',
     ]);
+  });
+});
+
+/**
+ * What the widened arm does NOT buy, asserted rather than assumed.
+ */
+// cm:guard codex F3 of the whole-set read: a tracker result carries user-authored TITLES and
+// DESCRIPTIONS, so an id sitting in that prose is evidence that SOME row named it and never
+// evidence that the row it names was looked up. The rule splits the two uses, because only the
+// second is a claim — quoting the title `ISS-538 TC2 exe reject` back is the measured fix (beta's
+// QA titles name other projects' keys), and `ISS-9999 is shipped` sourced from the same prose is a
+// state claim nothing checked. `status-matches-the-row` cannot cover it: that rule abstains where
+// this project holds no such row, which is right for another project's key and is exactly the gap.
+// The cell composition is the second bound and not the only one: the reader who cannot open the
+// tracker is ALSO screened by `issue-references-exist`, so removing that sibling from
+// `public:report` reds here rather than passing quietly.
+describe('a prose-sourced id may be mentioned and not asserted about (ISS-1057, codex F3)', () => {
+  const prose = qa({
+    progress: { shipped: 4, closedUnshipped: 0, inFlight: 0, remaining: 0, total: 4 },
+    toolCalls: [
+      call({ arguments: '{"argv":["issue","ISS-11"]}', resultIssueRefs: ['ISS-11', 'ISS-9999'] }),
+    ],
+  });
+  const claim = 'ISS-9999 is shipped.';
+
+  it('refuses a state claim about an id seen only inside another issue text', () => {
+    expect(why(ONLY_VERIFIED_CITATIONS.check(claim, prose))).toContain('only saw that id inside');
+  });
+
+  it('refuses the same claim written as closed', () => {
+    expect(why(ONLY_VERIFIED_CITATIONS.check('ISS-9999 is closed now.', prose))).toContain(
+      'only saw that id inside',
+    );
+  });
+
+  it('still admits the mention the fix was measured on', () => {
+    const measured = qa({
+      toolCalls: [
+        call({
+          arguments: '{"argv":["issue","ISS-11"]}',
+          resultIssueRefs: ['ISS-11', 'ISS-538'],
+        }),
+      ],
+    });
+    expect(
+      ONLY_VERIFIED_CITATIONS.check(
+        'ISS-11 is an open issue titled "ISS-538 TC2 exe reject".',
+        measured,
+      ),
+    ).toEqual([]);
+  });
+
+  it('still refuses the stakeholder cell, through the sibling this change did not touch', () => {
+    const verdict = screenMessage({
+      audience: NO_ROLE,
+      intent: 'report',
+      segments: [claim],
+      facts: prose,
+    });
+    expect(verdict.ok).toBe(false);
+    expect(verdict.ok === false && verdict.refusals.map((r) => r.rule)).toContain(
+      'issue-references-exist',
+    );
+  });
+
+  it('refuses it at the role-holder door too, which the cell composition alone did not', () => {
+    const verdict = screenMessage({
+      audience: ROLE_HOLDER,
+      intent: 'chat',
+      segments: [claim],
+      facts: prose,
+    });
+    expect(verdict.ok).toBe(false);
+    expect(verdict.ok === false && verdict.refusals.map((r) => r.rule)).toContain(
+      'only-verified-citations',
+    );
   });
 });
 

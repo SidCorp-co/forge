@@ -30,20 +30,19 @@ export const MAX_TOOL_ITERATIONS = 16;
 
 /** What `chat_logs.tool_calls` keeps of a result: enough to see what the model was shown, never the full 24k body. */
 const RESULT_PREVIEW_CHARS = 500;
-// cm:guard BOUNDED, because this rides on every audited tool call: a `forge issue --limit 200`
-// result would otherwise put two hundred references in a jsonb column read on every screen.
-const RESULT_ISSUE_REFS_CAP = 60;
+// cm:guard NO cap in memory, and the cap lives on the AUDIT WRITE instead (`external-chat.ts`):
+// the reply screen reads this to answer "did this turn look that id up?", so a set truncated here
+// refuses a citation the model genuinely saw — the same false refusal this whole change exists to
+// remove, arriving once a listing passes the cap. What must be bounded is the jsonb column, and
+// that is bounded where it is written (codex F1 of the whole-set read).
 // cm:guard deliberately wider than any one project's prefixes, exactly as `gather.ts` is: this
 // records what the result SAID, and the rule that reads it narrows to the project's own prefixes.
 const RESULT_ISSUE_REF_RE = /\b[A-Za-z][A-Za-z0-9]{1,5}-\d{1,6}\b/g;
 
-/** Every issue-shaped reference a tool result named, de-duplicated and capped. */
+/** Every issue-shaped reference a tool result named, de-duplicated. */
 function issueRefsIn(text: string): string[] {
   const seen = new Set<string>();
-  for (const m of text.matchAll(RESULT_ISSUE_REF_RE)) {
-    seen.add((m[0] as string).toUpperCase());
-    if (seen.size >= RESULT_ISSUE_REFS_CAP) break;
-  }
+  for (const m of text.matchAll(RESULT_ISSUE_REF_RE)) seen.add((m[0] as string).toUpperCase());
   return [...seen];
 }
 

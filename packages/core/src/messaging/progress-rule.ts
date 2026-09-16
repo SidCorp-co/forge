@@ -19,6 +19,12 @@ function stripNonFigureTokens(reply: string): string {
 }
 
 // cm:why matches the Vietnamese/English "nothing done" phrasing that produced the literal 54-issue incident
+// cm:guard the totalizing SUBJECTS are a list, and that list IS the recall this narrowing has to
+// keep: the bare arm caught "implementation has not started" and "development is not started" for
+// free, and a subject allowlist naming only `work` and `project` lets both through while the
+// snapshot shows shipped work — a false green where the old rule gave a false red (codex F4 of the
+// whole-set read). Adding a subject is cheap; `withoutFigureContexts` is what keeps "4 not started"
+// out of this scan whatever the list says.
 // cm:guard every English alternative is TOTALIZING — it needs a subject saying *none of it* — and
 // the bare `\bnot started\b` that used to stand among them is gone: `authoritativeSummary` below
 // renders `not started=N`, the corrective message hands the model that sentence, and a correct
@@ -31,7 +37,7 @@ function stripNonFigureTokens(reply: string): string {
 // (ISS-1057, codex F4).
 const DENIAL_RE =
   // cm:ignore CM001 — i18n-allow: regex literal must contain the Vietnamese denial phrasing being matched
-  /chưa\s+(có\s+gì|làm\s+gì|bắt\s+đầu|triển\s+khai)|chưa\s+có\s+tiến\s+độ|chưa\s+hoàn\s+thành\s+(việc|issue)\s+nào|\b(?:no\s+work|nothing|the\s+work|the\s+project|work)\s+(?:has\s+)?(?:been\s+)?not\s+started\b|\bnot\s+started\s+(?:at\s+all|on\s+anything)\b|\bnothing\s+(has\s+been\s+)?(done|completed)\b|\bno\s+(work|progress)\s+(has\s+been\s+)?(done|made)\b/i; // i18n-allow: matches the Vietnamese/English "nothing done" phrasing under test
+  /chưa\s+(có\s+gì|làm\s+gì|bắt\s+đầu|triển\s+khai)|chưa\s+có\s+tiến\s+độ|chưa\s+hoàn\s+thành\s+(việc|issue)\s+nào|\b(?:the\s+|any\s+|no\s+)?(?:work|project|implementation|development|delivery|build|rollout)\s+(?:has\s+|is\s+|have\s+|are\s+)?(?:been\s+)?not\s+(?:yet\s+)?(?:started|begun)\b|\bno\s+work\s+(?:has\s+)?(?:been\s+)?(?:started|begun)\b|\bnothing\s+(?:has\s+)?(?:been\s+)?started\b|\bnot\s+started\s+(?:at\s+all|on\s+anything)\b|\bnothing\s+(has\s+been\s+)?(done|completed)\b|\bno\s+(work|progress)\s+(has\s+been\s+)?(done|made)\b/i; // i18n-allow: matches the Vietnamese/English "nothing done" phrasing under test
 
 // cm:guard a plain string, NOT a regex: this is only ever interpolated via the four RegExp constructors below, and a `g`-flagged RegExp object carries mutable `lastIndex` — so anyone who reached for `.test()` on it directly would get position-dependent results
 // cm:guard `not started` and its Vietnamese pair are KEYWORDS here, the other half of the same

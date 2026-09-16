@@ -42,15 +42,39 @@ describe('the layers, sentence by sentence (ISS-1057)', () => {
   // cm:guard this is the assertion the split is FOR: one place per sentence. Without it, moving the
   // text into layers buys a directory and nothing else — a clause copied into `base` and `tools`
   // renders twice at every door and each copy drifts on its own (criterion 23).
+  // cm:guard the duplicate check runs over SENTENCES and the claimed check over blocks, and the two
+  // grains are deliberate rather than an oversight: a duplicated sentence hidden inside two
+  // otherwise-different bullets leaves both blocks distinct AND leaves both claimed by whichever
+  // ledger clause each already carried, so a block-grained duplicate check cannot see it (codex F2
+  // of the whole-set read). Going the other way — demanding a ledger row per sentence — would mean
+  // a row for every clause of every bullet, which is a ledger nobody maintains and therefore a
+  // check that gets deleted the first time it is inconvenient.
+  const sentencesIn = (block: string): string[] =>
+    block
+      .split(/(?<=[.!?])\s+(?=[A-Z`*"'(])/)
+      .map((x) => x.trim())
+      .filter((x) => x.length >= 25);
+
   it('finds no sentence of any layer in a second layer (criterion 23)', () => {
     const seen = new Map<string, string>();
-    for (const [id, sentences] of BY_LAYER) {
-      for (const sentence of sentences) {
+    for (const [id, blocks] of BY_LAYER) {
+      for (const sentence of blocks.flatMap(sentencesIn)) {
         const owner = seen.get(sentence);
         expect(owner, `"${sentence.slice(0, 70)}" is in both ${owner} and ${id}`).toBeUndefined();
         seen.set(sentence, id);
       }
     }
+  });
+
+  // cm:guard the check above is only worth its line if it can fail, and the shape it has to fail on
+  // is the one codex F2 named: the same sentence inside two bullets that differ everywhere else.
+  it('would catch a sentence copied into two otherwise-different bullets', () => {
+    const copied = 'The documentId is the only thing that goes in that last segment.';
+    const a = sentencesIn(`- keep only verified facts. ${copied}`);
+    const b = sentencesIn(`- cite ids exactly as tools returned them. ${copied}`);
+    expect(a).toContain(copied);
+    expect(b).toContain(copied);
+    expect(a.filter((x) => b.includes(x))).toEqual([copied]);
   });
 
   // cm:guard the other half: a sentence no ledger row claims is an instruction that arrived without

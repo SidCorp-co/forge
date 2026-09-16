@@ -6,6 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import type { CallToolResult } from '../mcp/tool-result.js';
 import type { ChatProvider, ChatStreamEvent } from './providers/types.js';
 import { runTurnEvents, type TurnCoreResult } from './run-turn-core.js';
@@ -57,5 +58,31 @@ describe('ToolCallRecord.resultIssueRefs', () => {
     const call = result.toolCalls[0] as { resultPreview: string; resultIssueRefs: string[] };
     expect(call.resultPreview).not.toContain('ISS-538');
     expect(call.resultIssueRefs).toEqual(['ISS-538', 'ISS-11']);
+  });
+
+  // cm:guard the set the TURN keeps is uncapped, and the cap lives on the audit write in
+  // `external-chat.ts`: a listing naming more references than the cap would otherwise have the
+  // reply screen refuse a citation the model genuinely read — the same false refusal this change
+  // exists to remove, arriving once a list gets long (codex F1 of the whole-set read).
+  it('keeps every reference a long listing named, past any audit cap', async () => {
+    const many = Array.from({ length: 120 }, (_, i) => formatIssueRef('ISS', i + 1)).join(' ');
+    const tools: ChatToolset = {
+      tools: [{ type: 'function', function: { name: 'list', parameters: {} } }],
+      execute: async () => ok(many),
+    };
+    const result = await drain(
+      runTurnEvents({
+        provider: provider([
+          [{ type: 'tool_call', id: 'c1', name: 'list', arguments: '{}' }, { type: 'done' }],
+          [{ type: 'chunk', text: 'ok' }, { type: 'done' }],
+        ]),
+        model: 'm',
+        messages: [{ role: 'user', content: 'go' }],
+        tools,
+      }),
+    );
+    const call = result.toolCalls[0] as { resultIssueRefs: string[] };
+    expect(call.resultIssueRefs).toHaveLength(120);
+    expect(call.resultIssueRefs).toContain('ISS-120');
   });
 });
