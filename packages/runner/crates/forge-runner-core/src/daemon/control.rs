@@ -723,14 +723,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn a_frame_carrying_no_known_token_names_nobody() {
-        let dir = std::env::temp_dir().join(format!("ct-{}", uuid::Uuid::new_v4()));
-        let tokens = SessionTokens::at(dir.join("control-tokens.json"));
-        tokens.mint("sess-a").unwrap();
-        assert_eq!(tokens.session_for("forged"), None);
-    }
-
     /// The `Request` enum's body, as source text.
     // cm:guard normalise CRLF and use `split_once`, because BOTH halves were silent failures. `str::split(..).next()` never answers `None`, so a delimiter that did not match returned the whole rest of the file and the scan below passed over `fn agent_event(.., session_id: &str)` instead of over the enum — a test that cannot fail. It only surfaced when a runner change made ci.yml's windows leg run at all; the path filter had been skipping it, and skipped is a pass to `ci-passed`.
     /// A `Control` whose ledger is in memory, so a declaration writes nowhere real.
@@ -776,447 +768,6 @@ mod tests {
         assert_eq!(req.token(), "t1", "the token is what resolves the session");
     }
 
-    #[test]
-    fn a_declaration_writes_a_row_and_answers_its_id() {
-        let (ctl, _t) = declaring_control("sess-a", "proj-1");
-        let reply = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a");
-        assert!(reply.ok, "{:?}", reply.reason);
-        let run_id = reply.job_id.expect("the declaration answers the row's id");
-        let held = ctl.ledger.lock().unwrap();
-        let run = held.as_ref().unwrap().run(&run_id).unwrap().unwrap();
-        assert_eq!(run.master_session_id, "sess-a");
-        assert_eq!(run.project_id.as_deref(), Some("proj-1"));
-        assert!(
-            run.agent_id.is_none(),
-            "a declaration precedes its subagent, so the row is unbound until `SubagentStart`"
-        );
-        assert_eq!(
-            held.as_ref()
-                .unwrap()
-                .issues(&run_id)
-                .unwrap()
-                .into_iter()
-                .map(|i| i.issue_key)
-                .collect::<Vec<_>>(),
-            ["ISS-1"]
-        );
-    }
-
-    // cm:guard the refusal must name the project this pane ACTUALLY serves. A master that typed the
-    // wrong project is the only caller that ever sees this, and what it needs is the right answer
-    // rather than a rejection (ISS-1050 criterion 7).
-    #[test]
-    fn a_declaration_for_a_project_this_pane_is_not_master_of_is_refused_and_writes_nothing() {
-        let (ctl, _t) = declaring_control("sess-a", "proj-1");
-        let reply = run_declare(&ctl, "proj-OTHER", &["ISS-1".into()], "/w/one", "sess-a");
-        assert!(!reply.ok);
-        let why = reply.reason.unwrap_or_default();
-        assert!(
-            why.contains("proj-1") && why.contains("proj-OTHER"),
-            "the refusal must name both the project asked for and the one this pane serves: {why}"
-        );
-        assert!(
-            ctl.ledger
-                .lock()
-                .unwrap()
-                .as_ref()
-                .unwrap()
-                .declared_without_session("boot-a")
-                .unwrap()
-                .is_empty(),
-            "a refused declaration writes no row"
-        );
-    }
-
-    // cm:guard `Masters` is an in-process optimisation and a daemon restart empties it while every
-    // master is still running, so a declaration in that window has to be REFUSED and told the
-    // window closes on its own. Serving it from the frame's own claim would let a pane on one
-    // project open a run over another's issue (ISS-1050 criterion 7).
-    #[test]
-    fn a_pane_this_daemon_has_not_yet_adopted_is_refused_and_told_the_window_closes_itself() {
-        let (ctl, _t) = declaring_control("sess-a", "proj-1");
-        let reply = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-UNKNOWN");
-        assert!(!reply.ok);
-        let why = reply.reason.unwrap_or_default();
-        assert!(
-            why.contains("sweep"),
-            "a master told only `refused` would stop declaring; it has to know the next sweep fixes this: {why}"
-        );
-    }
-
-    // cm:guard the ledger's own refusal text reaches the master WHOLE. It names the row to close,
-    // and a handler that replaced it with one word of its own would leave the pane with a refusal
-    // it cannot act on (ISS-1050 criterion 2).
-    #[test]
-    fn a_second_declaration_while_one_is_unbound_is_refused_naming_the_pending_row() {
-        let (ctl, _t) = declaring_control("sess-a", "proj-1");
-        let first = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a");
-        let pending = first.job_id.unwrap();
-        let second = run_declare(&ctl, "proj-1", &["ISS-2".into()], "/w/two", "sess-a");
-        assert!(!second.ok);
-        let why = second.reason.unwrap_or_default();
-        assert!(
-            why.contains(&pending) && why.contains("no subagent has bound it"),
-            "the refusal must name the pending row: {why}"
-        );
-    }
-
-    #[test]
-    fn a_master_closing_its_own_unbound_declaration_may_declare_again() {
-        let (ctl, _t) = declaring_control("sess-a", "proj-1");
-        let first = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a");
-        let run_id = first.job_id.unwrap();
-        assert!(run_close(&ctl, &run_id, Some("it never started"), "sess-a").ok);
-        let again = run_declare(&ctl, "proj-1", &["ISS-2".into()], "/w/two", "sess-a");
-        assert!(again.ok, "{:?}", again.reason);
-    }
-
-    // cm:guard a close keyed on the run id ALONE would let any pane on this box end another
-    // master's run, and the close is what releases its issues.
-    #[test]
-    fn one_master_cannot_close_another_masters_run() {
-        let (ctl, _t) = declaring_control("sess-a", "proj-1");
-        let run_id = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a")
-            .job_id
-            .unwrap();
-        let reply = run_close(&ctl, &run_id, None, "sess-b");
-        assert!(!reply.ok);
-        assert!(reply.reason.unwrap_or_default().contains("another master"));
-        assert!(
-            ctl.ledger
-                .lock()
-                .unwrap()
-                .as_ref()
-                .unwrap()
-                .run(&run_id)
-                .unwrap()
-                .unwrap()
-                .ended_by
-                .is_none(),
-            "a refused close ends nothing"
-        );
-    }
-
-    /// Declare a run, then mark it the way a resume does: owed a choice.
-    fn declared_and_inherited(ctl: &Arc<Control>, project_id: &str, session_id: &str) -> String {
-        let run_id = run_declare(ctl, project_id, &["ISS-7".into()], "/w/seven", session_id)
-            .job_id
-            .expect("declared");
-        let mut held = ctl.ledger.lock().unwrap();
-        let led = held.as_mut().unwrap();
-        // bind and end nothing: this is a run left open, which is what a resume inherits
-        led.owe_resume_choices(session_id, &ctl.boot_id).unwrap();
-        run_id
-    }
-
-    // cm:guard criterion 29's gate. A brief that only ASKS is one a master can read past, and the
-    // issues under those runs then sit claimed by work nobody decided to continue while the pane
-    // starts something new. The refusal is the only place this can be made to hold.
-    #[test]
-    fn a_resumed_pane_cannot_declare_new_work_before_answering_for_what_it_inherited() {
-        let (ctl, _t) = declaring_control("sess-a", "proj-1");
-        declared_and_inherited(&ctl, "proj-1", "sess-a");
-
-        let reply = run_declare(&ctl, "proj-1", &["ISS-8".into()], "/w/eight", "sess-a");
-
-        assert!(!reply.ok, "the declaration must be refused");
-        let reason = reply.reason.unwrap_or_default();
-        assert!(reason.contains("ISS-7"), "name the run's issues: {reason}");
-        assert!(
-            reason.contains("continue"),
-            "name the three words: {reason}"
-        );
-    }
-
-    #[test]
-    fn once_every_inherited_run_is_answered_for_the_next_declaration_is_allowed() {
-        let (ctl, _t) = declaring_control("sess-a", "proj-1");
-        let run_id = declared_and_inherited(&ctl, "proj-1", "sess-a");
-
-        let choice = run_choice(&ctl, &run_id, "restart", "the branch is empty", "sess-a");
-        assert!(choice.ok, "{:?}", choice.reason);
-        // The pre-existing one-unbound-row rule is a separate gate; bind this one so the assertion
-        // below is about the resume gate and not about that.
-        bind_or_release(
-            &ctl,
-            crate::daemon::agent_activity::Event::SubagentStarted,
-            Some("child-1"),
-            "sess-a",
-        );
-
-        let reply = run_declare(&ctl, "proj-1", &["ISS-8".into()], "/w/eight", "sess-a");
-        assert!(reply.ok, "{:?}", reply.reason);
-    }
-
-    // cm:guard the vocabulary is closed and refused BY NAME. A gate that accepted any string could
-    // not tell a decision from a typo, and `contineu` would satisfy it silently.
-    #[test]
-    fn a_choice_outside_the_three_words_is_refused_naming_them() {
-        let (ctl, _t) = declaring_control("sess-a", "proj-1");
-        let run_id = declared_and_inherited(&ctl, "proj-1", "sess-a");
-
-        let reply = run_choice(&ctl, &run_id, "contineu", "typo", "sess-a");
-
-        assert!(!reply.ok);
-        let reason = reply.reason.unwrap_or_default();
-        for word in RESUME_CHOICES {
-            assert!(reason.contains(word), "say what is valid: {reason}");
-        }
-    }
-
-    // cm:guard the reason is required, because a choice with no reason is a record nobody can act
-    // on six hours later — which is the silence this whole issue is about, one level up.
-    #[test]
-    fn a_choice_with_no_reason_is_refused() {
-        let (ctl, _t) = declaring_control("sess-a", "proj-1");
-        let run_id = declared_and_inherited(&ctl, "proj-1", "sess-a");
-
-        let reply = run_choice(&ctl, &run_id, "leave", "   ", "sess-a");
-
-        assert!(!reply.ok, "a choice needs its reason");
-    }
-
-    // cm:guard a pane may only answer for runs IT inherited. Without the scope a master on one
-    // project could satisfy another project's gate.
-    #[test]
-    fn a_pane_cannot_answer_for_a_run_it_did_not_inherit() {
-        let (ctl, _t) = declaring_control("sess-a", "proj-1");
-        let run_id = declared_and_inherited(&ctl, "proj-1", "sess-a");
-
-        let reply = run_choice(&ctl, &run_id, "leave", "not mine", "some-other-session");
-
-        assert!(
-            !reply.ok,
-            "another pane's run is not this pane's to answer for"
-        );
-    }
-
-    // cm:guard a pane's OWN fresh declarations owe nothing. Keyed on "no choice yet" alone, the
-    // second declaration of every ordinary pass would be refused — measured, that is exactly what
-    // happened before the obligation was written by the resume instead.
-    #[test]
-    fn a_pane_that_was_never_resumed_declares_freely() {
-        let (ctl, _t) = declaring_control("sess-a", "proj-1");
-        let first = run_declare(&ctl, "proj-1", &["ISS-7".into()], "/w/seven", "sess-a");
-        assert!(first.ok, "{:?}", first.reason);
-        bind_or_release(
-            &ctl,
-            crate::daemon::agent_activity::Event::SubagentStarted,
-            Some("child-1"),
-            "sess-a",
-        );
-
-        let second = run_declare(&ctl, "proj-1", &["ISS-8".into()], "/w/eight", "sess-a");
-
-        assert!(second.ok, "{:?}", second.reason);
-    }
-
-    // cm:guard criterion 14 is about the LEDGER, not the in-process registry, and this is the test
-    // that tells them apart. `note_master` and `master_for_project` had no production caller at all
-    // when the table was added: the row existed, nothing wrote it, and a resume would have had
-    // nothing to read. Asserting through `master_for_project` — a reader, on a fresh handle to the
-    // same ledger — is what makes this about the stored row rather than about the call (ISS-1050).
-    #[test]
-    fn a_master_pane_event_puts_that_pane_and_its_conversation_in_the_ledger() {
-        let (ctl, _t) = declaring_control("sess-a", "proj-1");
-
-        agent_event(&ctl, "Stop", None, None, Some("conv-abc"), "sess-a");
-
-        let held = ctl.ledger.lock().unwrap();
-        let row = held
-            .as_ref()
-            .unwrap()
-            .master_for_project("proj-1")
-            .unwrap()
-            .expect("the master row a resume reads");
-        assert_eq!(row.pane_name, "pane-1");
-        assert_eq!(row.conversation_id.as_deref(), Some("conv-abc"));
-    }
-
-    // cm:guard an event carrying NO conversation must not erase the one stored. Most hook events
-    // carry none, so an overwrite would empty the row within seconds of it being written and the
-    // resume would find nothing — the same silence as never writing it.
-    #[test]
-    fn an_event_without_a_conversation_leaves_the_stored_one_alone() {
-        let (ctl, _t) = declaring_control("sess-a", "proj-1");
-
-        agent_event(&ctl, "Stop", None, None, Some("conv-abc"), "sess-a");
-        agent_event(&ctl, "Stop", None, None, None, "sess-a");
-
-        let held = ctl.ledger.lock().unwrap();
-        let row = held
-            .as_ref()
-            .unwrap()
-            .master_for_project("proj-1")
-            .unwrap()
-            .expect("the master row");
-        assert_eq!(
-            row.conversation_id.as_deref(),
-            Some("conv-abc"),
-            "the only thing a resume can be built from may not be erased by an event that carries none"
-        );
-    }
-
-    // cm:guard a session the registry does not know as a master writes NOTHING. A row minted for a
-    // subagent's session would name a pane no resume can address, and `masters` is keyed by project
-    // so it would also displace the real master's row for that project.
-    #[test]
-    fn a_session_that_is_not_a_registered_master_writes_no_row() {
-        let (ctl, _t) = declaring_control("sess-a", "proj-1");
-
-        agent_event(
-            &ctl,
-            "Stop",
-            None,
-            None,
-            Some("conv-zzz"),
-            "some-other-session",
-        );
-
-        let held = ctl.ledger.lock().unwrap();
-        let row = held.as_ref().unwrap().master_for_project("proj-1").unwrap();
-        assert!(
-            row.is_none(),
-            "an unregistered session is not a master pane: {row:?}"
-        );
-    }
-
-    #[test]
-    fn a_subagent_starting_binds_the_row_its_master_declared_and_stopping_ends_it() {
-        let (ctl, _t) = declaring_control("sess-a", "proj-1");
-        let run_id = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a")
-            .job_id
-            .unwrap();
-        bind_or_release(
-            &ctl,
-            crate::daemon::agent_activity::Event::SubagentStarted,
-            Some("child-1"),
-            "sess-a",
-        );
-        assert_eq!(
-            ctl.ledger
-                .lock()
-                .unwrap()
-                .as_ref()
-                .unwrap()
-                .run(&run_id)
-                .unwrap()
-                .unwrap()
-                .agent_id
-                .as_deref(),
-            Some("child-1")
-        );
-        bind_or_release(
-            &ctl,
-            crate::daemon::agent_activity::Event::SubagentStopped,
-            Some("child-1"),
-            "sess-a",
-        );
-        let run = ctl
-            .ledger
-            .lock()
-            .unwrap()
-            .as_ref()
-            .unwrap()
-            .run(&run_id)
-            .unwrap()
-            .unwrap();
-        assert_eq!(run.ended_by.as_deref(), Some("subagent"));
-    }
-
-    // cm:guard a master dispatches subagents this box knows nothing about — a search, a review,
-    // anything it did not declare — and every one of them reaches this path. None may bind a row
-    // and none may end one, and none may fail the hook that carried it.
-    // cm:guard the harness makes no promise that a `SubagentStart` is delivered once, and this is
-    // what a replay costs if nothing refuses it: the replayed child binds the row its master
-    // declared for the NEXT subagent, its own `SubagentStop` then ends a run whose subagent is
-    // still working, and the real child of that row finds nothing pending to bind (ISS-1050
-    // criterion 1).
-    #[test]
-    fn a_replayed_start_from_a_child_already_bound_never_takes_the_next_row() {
-        let (ctl, _t) = declaring_control("sess-a", "proj-1");
-        let run_a = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a")
-            .job_id
-            .unwrap();
-        let start = crate::daemon::agent_activity::Event::SubagentStarted;
-        bind_or_release(&ctl, start, Some("child-a"), "sess-a");
-        let run_b = run_declare(&ctl, "proj-1", &["ISS-2".into()], "/w/two", "sess-a")
-            .job_id
-            .unwrap();
-        bind_or_release(&ctl, start, Some("child-a"), "sess-a");
-        let held = ctl.ledger.lock().unwrap();
-        let led = held.as_ref().unwrap();
-        assert_eq!(
-            led.run(&run_a).unwrap().unwrap().agent_id.as_deref(),
-            Some("child-a")
-        );
-        assert!(
-            led.run(&run_b).unwrap().unwrap().agent_id.is_none(),
-            "the row declared for the next subagent must still be waiting for it"
-        );
-        assert_eq!(led.run_for_agent("child-a").unwrap().unwrap().run_id, run_a);
-    }
-
-    // cm:guard an ENDED run still holds its child's name, so a start replayed after that run closed
-    // must not reach into the next row either. The `NOT EXISTS` looks at every run for this reason.
-    #[test]
-    fn a_start_replayed_after_its_own_run_ended_takes_no_other_row() {
-        let (ctl, _t) = declaring_control("sess-a", "proj-1");
-        let run_a = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a")
-            .job_id
-            .unwrap();
-        let start = crate::daemon::agent_activity::Event::SubagentStarted;
-        bind_or_release(&ctl, start, Some("child-a"), "sess-a");
-        bind_or_release(
-            &ctl,
-            crate::daemon::agent_activity::Event::SubagentStopped,
-            Some("child-a"),
-            "sess-a",
-        );
-        let run_b = run_declare(&ctl, "proj-1", &["ISS-2".into()], "/w/two", "sess-a")
-            .job_id
-            .unwrap();
-        bind_or_release(&ctl, start, Some("child-a"), "sess-a");
-        let held = ctl.ledger.lock().unwrap();
-        assert!(
-            held.as_ref()
-                .unwrap()
-                .run(&run_b)
-                .unwrap()
-                .unwrap()
-                .agent_id
-                .is_none(),
-            "a name already spent on a closed run cannot claim a new one"
-        );
-        let _ = run_a;
-    }
-
-    #[test]
-    fn a_subagent_answering_to_no_declared_run_binds_nothing_and_ends_nothing() {
-        let (ctl, _t) = declaring_control("sess-a", "proj-1");
-        bind_or_release(
-            &ctl,
-            crate::daemon::agent_activity::Event::SubagentStarted,
-            Some("stranger"),
-            "sess-a",
-        );
-        bind_or_release(
-            &ctl,
-            crate::daemon::agent_activity::Event::SubagentStopped,
-            Some("stranger"),
-            "sess-a",
-        );
-        assert!(ctl
-            .ledger
-            .lock()
-            .unwrap()
-            .as_ref()
-            .unwrap()
-            .run_for_agent("stranger")
-            .unwrap()
-            .is_none());
-    }
-
     fn request_enum_body() -> String {
         let src = include_str!("control.rs").replace("\r\n", "\n");
         let after = src
@@ -1259,6 +810,461 @@ mod tests {
                 !body.contains(gone),
                 "`{gone}` is a pool verb: a run is a subagent in the master's own session, and this socket may record what one was handed but may never select work or start a process. A declaration is `RunDeclare`."
             );
+        }
+    }
+
+    /// The half of this socket that only exists on a unix box.
+    ///
+    // cm:guard gated `unix`, matching the `#[cfg(unix)]` on the functions under test rather than
+    // on `cfg(test)` alone. `serve`, `agent_event`, `run_declare`, `run_close` and
+    // `bind_or_release` are all unix-only — the control socket is a `UnixListener` — so on Windows
+    // the items these tests call are simply absent and the lib test target fails to COMPILE, which
+    // is a red CI leg rather than a failing assertion. `cargo test` on a unix box can never catch
+    // it, because `cfg(unix)` is true there: the windows leg is the only thing that reads this, and
+    // this is the second landing to meet it (see the CRLF guard on `request_enum_body`).
+    // cm:guard the gate is drawn as tightly as it can be. Everything in the PARENT module —
+    // the frame decoding, the `ClaimReply` shape, the choice refusals and the three source-text
+    // scans over this file — is platform-independent and keeps compiling on both, because the
+    // scans in particular are the ones that hold the socket's shape and they are worth strictly
+    // more on the leg that has historically been skipped.
+    #[cfg(unix)]
+    mod unix {
+        use super::*;
+
+        // cm:guard the vocabulary is closed and refused BY NAME. A gate that accepted any string could
+        // not tell a decision from a typo, and `contineu` would satisfy it silently.
+        #[test]
+        fn a_choice_outside_the_three_words_is_refused_naming_them() {
+            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let run_id = declared_and_inherited(&ctl, "proj-1", "sess-a");
+
+            let reply = run_choice(&ctl, &run_id, "contineu", "typo", "sess-a");
+
+            assert!(!reply.ok);
+            let reason = reply.reason.unwrap_or_default();
+            for word in RESUME_CHOICES {
+                assert!(reason.contains(word), "say what is valid: {reason}");
+            }
+        }
+
+        // cm:guard the reason is required, because a choice with no reason is a record nobody can act
+        // on six hours later — which is the silence this whole issue is about, one level up.
+        #[test]
+        fn a_choice_with_no_reason_is_refused() {
+            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let run_id = declared_and_inherited(&ctl, "proj-1", "sess-a");
+
+            let reply = run_choice(&ctl, &run_id, "leave", "   ", "sess-a");
+
+            assert!(!reply.ok, "a choice needs its reason");
+        }
+
+        // cm:guard a pane may only answer for runs IT inherited. Without the scope a master on one
+        // project could satisfy another project's gate.
+        #[test]
+        fn a_pane_cannot_answer_for_a_run_it_did_not_inherit() {
+            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let run_id = declared_and_inherited(&ctl, "proj-1", "sess-a");
+
+            let reply = run_choice(&ctl, &run_id, "leave", "not mine", "some-other-session");
+
+            assert!(
+                !reply.ok,
+                "another pane's run is not this pane's to answer for"
+            );
+        }
+
+        #[test]
+        fn a_frame_carrying_no_known_token_names_nobody() {
+            let dir = std::env::temp_dir().join(format!("ct-{}", uuid::Uuid::new_v4()));
+            let tokens = SessionTokens::at(dir.join("control-tokens.json"));
+            tokens.mint("sess-a").unwrap();
+            assert_eq!(tokens.session_for("forged"), None);
+        }
+        #[test]
+        fn a_declaration_writes_a_row_and_answers_its_id() {
+            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let reply = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a");
+            assert!(reply.ok, "{:?}", reply.reason);
+            let run_id = reply.job_id.expect("the declaration answers the row's id");
+            let held = ctl.ledger.lock().unwrap();
+            let run = held.as_ref().unwrap().run(&run_id).unwrap().unwrap();
+            assert_eq!(run.master_session_id, "sess-a");
+            assert_eq!(run.project_id.as_deref(), Some("proj-1"));
+            assert!(
+                run.agent_id.is_none(),
+                "a declaration precedes its subagent, so the row is unbound until `SubagentStart`"
+            );
+            assert_eq!(
+                held.as_ref()
+                    .unwrap()
+                    .issues(&run_id)
+                    .unwrap()
+                    .into_iter()
+                    .map(|i| i.issue_key)
+                    .collect::<Vec<_>>(),
+                ["ISS-1"]
+            );
+        }
+        // cm:guard the refusal must name the project this pane ACTUALLY serves. A master that typed the
+        // wrong project is the only caller that ever sees this, and what it needs is the right answer
+        // rather than a rejection (ISS-1050 criterion 7).
+        #[test]
+        fn a_declaration_for_a_project_this_pane_is_not_master_of_is_refused_and_writes_nothing() {
+            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let reply = run_declare(&ctl, "proj-OTHER", &["ISS-1".into()], "/w/one", "sess-a");
+            assert!(!reply.ok);
+            let why = reply.reason.unwrap_or_default();
+            assert!(
+                why.contains("proj-1") && why.contains("proj-OTHER"),
+                "the refusal must name both the project asked for and the one this pane serves: {why}"
+            );
+            assert!(
+                ctl.ledger
+                    .lock()
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .declared_without_session("boot-a")
+                    .unwrap()
+                    .is_empty(),
+                "a refused declaration writes no row"
+            );
+        }
+        // cm:guard `Masters` is an in-process optimisation and a daemon restart empties it while every
+        // master is still running, so a declaration in that window has to be REFUSED and told the
+        // window closes on its own. Serving it from the frame's own claim would let a pane on one
+        // project open a run over another's issue (ISS-1050 criterion 7).
+        #[test]
+        fn a_pane_this_daemon_has_not_yet_adopted_is_refused_and_told_the_window_closes_itself() {
+            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let reply = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-UNKNOWN");
+            assert!(!reply.ok);
+            let why = reply.reason.unwrap_or_default();
+            assert!(
+                why.contains("sweep"),
+                "a master told only `refused` would stop declaring; it has to know the next sweep fixes this: {why}"
+            );
+        }
+        // cm:guard the ledger's own refusal text reaches the master WHOLE. It names the row to close,
+        // and a handler that replaced it with one word of its own would leave the pane with a refusal
+        // it cannot act on (ISS-1050 criterion 2).
+        #[test]
+        fn a_second_declaration_while_one_is_unbound_is_refused_naming_the_pending_row() {
+            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let first = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a");
+            let pending = first.job_id.unwrap();
+            let second = run_declare(&ctl, "proj-1", &["ISS-2".into()], "/w/two", "sess-a");
+            assert!(!second.ok);
+            let why = second.reason.unwrap_or_default();
+            assert!(
+                why.contains(&pending) && why.contains("no subagent has bound it"),
+                "the refusal must name the pending row: {why}"
+            );
+        }
+        #[test]
+        fn a_master_closing_its_own_unbound_declaration_may_declare_again() {
+            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let first = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a");
+            let run_id = first.job_id.unwrap();
+            assert!(run_close(&ctl, &run_id, Some("it never started"), "sess-a").ok);
+            let again = run_declare(&ctl, "proj-1", &["ISS-2".into()], "/w/two", "sess-a");
+            assert!(again.ok, "{:?}", again.reason);
+        }
+        // cm:guard a close keyed on the run id ALONE would let any pane on this box end another
+        // master's run, and the close is what releases its issues.
+        #[test]
+        fn one_master_cannot_close_another_masters_run() {
+            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let run_id = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a")
+                .job_id
+                .unwrap();
+            let reply = run_close(&ctl, &run_id, None, "sess-b");
+            assert!(!reply.ok);
+            assert!(reply.reason.unwrap_or_default().contains("another master"));
+            assert!(
+                ctl.ledger
+                    .lock()
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .run(&run_id)
+                    .unwrap()
+                    .unwrap()
+                    .ended_by
+                    .is_none(),
+                "a refused close ends nothing"
+            );
+        }
+        /// Declare a run, then mark it the way a resume does: owed a choice.
+        fn declared_and_inherited(
+            ctl: &Arc<Control>,
+            project_id: &str,
+            session_id: &str,
+        ) -> String {
+            let run_id = run_declare(ctl, project_id, &["ISS-7".into()], "/w/seven", session_id)
+                .job_id
+                .expect("declared");
+            let mut held = ctl.ledger.lock().unwrap();
+            let led = held.as_mut().unwrap();
+            // bind and end nothing: this is a run left open, which is what a resume inherits
+            led.owe_resume_choices(session_id, &ctl.boot_id).unwrap();
+            run_id
+        }
+        // cm:guard criterion 29's gate. A brief that only ASKS is one a master can read past, and the
+        // issues under those runs then sit claimed by work nobody decided to continue while the pane
+        // starts something new. The refusal is the only place this can be made to hold.
+        #[test]
+        fn a_resumed_pane_cannot_declare_new_work_before_answering_for_what_it_inherited() {
+            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            declared_and_inherited(&ctl, "proj-1", "sess-a");
+
+            let reply = run_declare(&ctl, "proj-1", &["ISS-8".into()], "/w/eight", "sess-a");
+
+            assert!(!reply.ok, "the declaration must be refused");
+            let reason = reply.reason.unwrap_or_default();
+            assert!(reason.contains("ISS-7"), "name the run's issues: {reason}");
+            assert!(
+                reason.contains("continue"),
+                "name the three words: {reason}"
+            );
+        }
+        #[test]
+        fn once_every_inherited_run_is_answered_for_the_next_declaration_is_allowed() {
+            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let run_id = declared_and_inherited(&ctl, "proj-1", "sess-a");
+
+            let choice = run_choice(&ctl, &run_id, "restart", "the branch is empty", "sess-a");
+            assert!(choice.ok, "{:?}", choice.reason);
+            // The pre-existing one-unbound-row rule is a separate gate; bind this one so the assertion
+            // below is about the resume gate and not about that.
+            bind_or_release(
+                &ctl,
+                crate::daemon::agent_activity::Event::SubagentStarted,
+                Some("child-1"),
+                "sess-a",
+            );
+
+            let reply = run_declare(&ctl, "proj-1", &["ISS-8".into()], "/w/eight", "sess-a");
+            assert!(reply.ok, "{:?}", reply.reason);
+        }
+        // cm:guard a pane's OWN fresh declarations owe nothing. Keyed on "no choice yet" alone, the
+        // second declaration of every ordinary pass would be refused — measured, that is exactly what
+        // happened before the obligation was written by the resume instead.
+        #[test]
+        fn a_pane_that_was_never_resumed_declares_freely() {
+            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let first = run_declare(&ctl, "proj-1", &["ISS-7".into()], "/w/seven", "sess-a");
+            assert!(first.ok, "{:?}", first.reason);
+            bind_or_release(
+                &ctl,
+                crate::daemon::agent_activity::Event::SubagentStarted,
+                Some("child-1"),
+                "sess-a",
+            );
+
+            let second = run_declare(&ctl, "proj-1", &["ISS-8".into()], "/w/eight", "sess-a");
+
+            assert!(second.ok, "{:?}", second.reason);
+        }
+        // cm:guard criterion 14 is about the LEDGER, not the in-process registry, and this is the test
+        // that tells them apart. `note_master` and `master_for_project` had no production caller at all
+        // when the table was added: the row existed, nothing wrote it, and a resume would have had
+        // nothing to read. Asserting through `master_for_project` — a reader, on a fresh handle to the
+        // same ledger — is what makes this about the stored row rather than about the call (ISS-1050).
+        #[test]
+        fn a_master_pane_event_puts_that_pane_and_its_conversation_in_the_ledger() {
+            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+
+            agent_event(&ctl, "Stop", None, None, Some("conv-abc"), "sess-a");
+
+            let held = ctl.ledger.lock().unwrap();
+            let row = held
+                .as_ref()
+                .unwrap()
+                .master_for_project("proj-1")
+                .unwrap()
+                .expect("the master row a resume reads");
+            assert_eq!(row.pane_name, "pane-1");
+            assert_eq!(row.conversation_id.as_deref(), Some("conv-abc"));
+        }
+        // cm:guard an event carrying NO conversation must not erase the one stored. Most hook events
+        // carry none, so an overwrite would empty the row within seconds of it being written and the
+        // resume would find nothing — the same silence as never writing it.
+        #[test]
+        fn an_event_without_a_conversation_leaves_the_stored_one_alone() {
+            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+
+            agent_event(&ctl, "Stop", None, None, Some("conv-abc"), "sess-a");
+            agent_event(&ctl, "Stop", None, None, None, "sess-a");
+
+            let held = ctl.ledger.lock().unwrap();
+            let row = held
+                .as_ref()
+                .unwrap()
+                .master_for_project("proj-1")
+                .unwrap()
+                .expect("the master row");
+            assert_eq!(
+                row.conversation_id.as_deref(),
+                Some("conv-abc"),
+                "the only thing a resume can be built from may not be erased by an event that carries none"
+            );
+        }
+        // cm:guard a session the registry does not know as a master writes NOTHING. A row minted for a
+        // subagent's session would name a pane no resume can address, and `masters` is keyed by project
+        // so it would also displace the real master's row for that project.
+        #[test]
+        fn a_session_that_is_not_a_registered_master_writes_no_row() {
+            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+
+            agent_event(
+                &ctl,
+                "Stop",
+                None,
+                None,
+                Some("conv-zzz"),
+                "some-other-session",
+            );
+
+            let held = ctl.ledger.lock().unwrap();
+            let row = held.as_ref().unwrap().master_for_project("proj-1").unwrap();
+            assert!(
+                row.is_none(),
+                "an unregistered session is not a master pane: {row:?}"
+            );
+        }
+        #[test]
+        fn a_subagent_starting_binds_the_row_its_master_declared_and_stopping_ends_it() {
+            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let run_id = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a")
+                .job_id
+                .unwrap();
+            bind_or_release(
+                &ctl,
+                crate::daemon::agent_activity::Event::SubagentStarted,
+                Some("child-1"),
+                "sess-a",
+            );
+            assert_eq!(
+                ctl.ledger
+                    .lock()
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .run(&run_id)
+                    .unwrap()
+                    .unwrap()
+                    .agent_id
+                    .as_deref(),
+                Some("child-1")
+            );
+            bind_or_release(
+                &ctl,
+                crate::daemon::agent_activity::Event::SubagentStopped,
+                Some("child-1"),
+                "sess-a",
+            );
+            let run = ctl
+                .ledger
+                .lock()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .run(&run_id)
+                .unwrap()
+                .unwrap();
+            assert_eq!(run.ended_by.as_deref(), Some("subagent"));
+        }
+        // cm:guard a master dispatches subagents this box knows nothing about — a search, a review,
+        // anything it did not declare — and every one of them reaches this path. None may bind a row
+        // and none may end one, and none may fail the hook that carried it.
+        // cm:guard the harness makes no promise that a `SubagentStart` is delivered once, and this is
+        // what a replay costs if nothing refuses it: the replayed child binds the row its master
+        // declared for the NEXT subagent, its own `SubagentStop` then ends a run whose subagent is
+        // still working, and the real child of that row finds nothing pending to bind (ISS-1050
+        // criterion 1).
+        #[test]
+        fn a_replayed_start_from_a_child_already_bound_never_takes_the_next_row() {
+            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let run_a = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a")
+                .job_id
+                .unwrap();
+            let start = crate::daemon::agent_activity::Event::SubagentStarted;
+            bind_or_release(&ctl, start, Some("child-a"), "sess-a");
+            let run_b = run_declare(&ctl, "proj-1", &["ISS-2".into()], "/w/two", "sess-a")
+                .job_id
+                .unwrap();
+            bind_or_release(&ctl, start, Some("child-a"), "sess-a");
+            let held = ctl.ledger.lock().unwrap();
+            let led = held.as_ref().unwrap();
+            assert_eq!(
+                led.run(&run_a).unwrap().unwrap().agent_id.as_deref(),
+                Some("child-a")
+            );
+            assert!(
+                led.run(&run_b).unwrap().unwrap().agent_id.is_none(),
+                "the row declared for the next subagent must still be waiting for it"
+            );
+            assert_eq!(led.run_for_agent("child-a").unwrap().unwrap().run_id, run_a);
+        }
+        // cm:guard an ENDED run still holds its child's name, so a start replayed after that run closed
+        // must not reach into the next row either. The `NOT EXISTS` looks at every run for this reason.
+        #[test]
+        fn a_start_replayed_after_its_own_run_ended_takes_no_other_row() {
+            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let run_a = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a")
+                .job_id
+                .unwrap();
+            let start = crate::daemon::agent_activity::Event::SubagentStarted;
+            bind_or_release(&ctl, start, Some("child-a"), "sess-a");
+            bind_or_release(
+                &ctl,
+                crate::daemon::agent_activity::Event::SubagentStopped,
+                Some("child-a"),
+                "sess-a",
+            );
+            let run_b = run_declare(&ctl, "proj-1", &["ISS-2".into()], "/w/two", "sess-a")
+                .job_id
+                .unwrap();
+            bind_or_release(&ctl, start, Some("child-a"), "sess-a");
+            let held = ctl.ledger.lock().unwrap();
+            assert!(
+                held.as_ref()
+                    .unwrap()
+                    .run(&run_b)
+                    .unwrap()
+                    .unwrap()
+                    .agent_id
+                    .is_none(),
+                "a name already spent on a closed run cannot claim a new one"
+            );
+            let _ = run_a;
+        }
+        #[test]
+        fn a_subagent_answering_to_no_declared_run_binds_nothing_and_ends_nothing() {
+            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            bind_or_release(
+                &ctl,
+                crate::daemon::agent_activity::Event::SubagentStarted,
+                Some("stranger"),
+                "sess-a",
+            );
+            bind_or_release(
+                &ctl,
+                crate::daemon::agent_activity::Event::SubagentStopped,
+                Some("stranger"),
+                "sess-a",
+            );
+            assert!(ctl
+                .ledger
+                .lock()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .run_for_agent("stranger")
+                .unwrap()
+                .is_none());
         }
     }
 }

@@ -601,6 +601,13 @@ pub async fn run(
 
     // cm:guard ONE map, shared by the socket that records and every reader that acts on it. A second instance would give the control socket somewhere to write that no liveness reader ever looks at, which is the shape of the bug this whole channel exists to close.
     let activity = Arc::new(agent_activity::Activities::new());
+    // cm:guard the whole control-socket arm is gated `unix`, because the socket IS a
+    // `UnixListener`: `control::serve` and every verb it dispatches are `#[cfg(unix)]`, so calling
+    // it unconditionally here fails to COMPILE on windows rather than failing at run time. A unix
+    // box can never catch that — `cfg(unix)` is true there — and ci.yml's windows leg is the only
+    // reader. On windows the daemon runs without the control socket, which is what it already did:
+    // there is no second path to add, only a call that must not be made.
+    #[cfg(unix)]
     {
         // cm:guard refuse to serve the socket with no token map rather than serving it unauthenticated. The one verb on this socket describes a session by capability, and a daemon that could not resolve the map would either refuse every frame or, worse, be tempted back to the declared id (ISS-964 criterion 29).
         let Some(tokens_path) = session_tokens::default_path() else {
