@@ -29,13 +29,17 @@ flowchart LR
 | The pull surface | `core/src/me/attention-routes.ts` (response + mapping), `core/src/me/attention-buckets.ts` (the bucket queries) |
 | Stop-and-ask | `schema.ts:waitingKinds`, `issues.reason`, status `needs_info` |
 | A structured question, and answering it from chat | `core/src/questions/`, `core/src/integrations/rocketchat/question-delivery.ts` |
-| Mentions and delivery | `core/src/notifications/` |
+| Mentions and delivery | `core/src/notifications/` — `deliver.ts` decides whether anybody is told; `kinds.ts` says what a type IS |
 | UI | web `features/attention/`, `notifications/`, `operator/` |
 
 ### The six attention buckets
 
 `GET /me/attention` is the routing surface that exists. Every bucket derives from **live** state, so
-it self-clears — never from a read/unread flag, which became a mute switch once already.
+it self-clears. `mentions` is the one bucket keyed on a read state, and it is deliberate: a mention
+is a `signal`, an event that happened, and the only question a human can answer about it is whether
+they have seen it. Every other bucket asks whether the thing is still true — which is the same
+distinction `notifications` itself now makes in the schema (below), after asking it with one boolean
+for a year.
 
 Ownership resolves two ways. `needsReview` is **assignee-only**; the buckets that carry a question or
 a proposal use `ownedForAnswer` — assignee, or the **creator** while nobody is assigned — because an
@@ -45,7 +49,7 @@ agent-filed issue has no assignee and MCP `forge_issues` cannot set one.
 |---|---|---|
 | `needsReview` | issues in `developed` or `reopen` | assignee |
 | `awaitingInput` | issues in `waiting` or `needs_info` — **not** `on_hold`, which is a pause somebody chose rather than a question somebody is owed (ISS-970) | `ownedForAnswer` |
-| `mentions` | unread `@mention` notifications | mentioned user |
+| `mentions` | `@mention` notifications with no `read_at` on the caller's delivery | mentioned user |
 | `failedJobs` | jobs the caller triggered that failed in 7 days — excluding superseded retry attempts and jobs whose issue already reached `closed`/`released` | job creator |
 | `pendingSkillUpdates` | reconcile runs at the human decision gate, for projects the caller admins | project admin |
 | `unseenDrafts` | `draft` issues an **agent** filed (`created_via` set and not `web`) that no human has commented on — priority-ordered, capped, with `unseenDraftsTotal` reporting the unclipped count | assignee; unassigned falls back to creator **or project admin** |
@@ -74,6 +78,36 @@ five rows while the count stays honest.
 
 The bucket criteria are documented in one place — the header comment on
 `me/attention-buckets.ts` — and it must stay in sync with the `WHERE` clauses below it.
+
+### Three record kinds, and the count a human reads
+
+`notifications` is the SYSTEM's record of a fact: no `user_id`, no `read`. `notification_deliveries`
+is one person's copy on one channel, and `read_at` lives there and nowhere else. Every type declares
+its kind and tier once, in `packages/contracts/src/notifications.ts`, mirrored for core's runtime by
+`notifications/kinds.ts` (contracts is type-only in core's image — ISS-510) and by the
+`notifications.kind` column; a lockstep test fails on any disagreement between the three.
+
+| Kind | States | Closed by |
+|---|---|---|
+| `signal` | `emitted`, `expired` | nothing — an event cannot stop having happened, so it never counts as open. A CHECK constraint forbids it a resolution key |
+| `condition` | `pending`, `firing`, `inhibited`, `resolved` | `auto-resolve.ts:resolveNotifications` and the sweeper pass `notifications/reevaluate.ts`. **No HTTP route reaches it** |
+| `task` | `open`, `acknowledged`, `done`, `dismissed` | `POST /api/notifications/:id/done` or `/dismiss` |
+
+`GET /api/notifications/open-count` is what the bell, the favicon dot and the document title read: the
+number of DISTINCT records still true for the caller. Opening one does not change it; resolving one
+member of a grouped delivery lowers it by one. The route it replaced, `unread-count`, is gone rather
+than redefined.
+
+Four primitives stand between a record and a person, each borrowed whole from an alerting system that
+already settled it, and all four live in `notifications/deliver.ts`: dedup on `resolution_key`
+(PagerDuty), a pending duration before a periodic detector's condition is delivered at all
+(Prometheus `for`), inhibition of a child by a firing root (`INHIBIT_RULES` in contracts), and a
+bounded expiring silence a reader sets for themselves (`notification_silences`). Grouping is the
+fifth: records sharing a `groupKey` reach one recipient as one delivery that names their cause and
+how many it holds.
+
+`notifications/emission-switch.ts` is the operator's blunt instrument beside them — deployment-wide,
+in code, visible in a diff. It currently suppresses nothing.
 
 ## Not built
 

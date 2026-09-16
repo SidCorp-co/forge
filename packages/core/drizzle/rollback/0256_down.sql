@@ -8,7 +8,10 @@
 --   * a `pending` or `inhibited` record has no delivery at all, so there is no recipient
 --     to attribute it to: it is DELETED, not restored. Nobody had been told about it.
 --   * a grouped delivery's grouping is lost; its member records come back as separate
---     rows, which is all the old schema could represent.
+--     rows, which is all the old schema could represent. Its own title goes with it —
+--     "15 issues are parked with merged code" was the DELIVERY's headline, and the old
+--     schema has nowhere to put a sentence about fifteen rows. Each row comes back
+--     carrying its own title, which is what it said before this change and after it.
 --   * `resolution_key` and `resolved_at` cleared on signal rows during 0256 stay cleared.
 --     This is the one loss that applies even to a database nothing has written to since,
 --     and it is what the pre-migration snapshot exists for.
