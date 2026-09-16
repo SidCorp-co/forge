@@ -27,6 +27,8 @@ import { registerWebConversationAdapter } from './assistant/conversation-send.js
 import { speakerLinkMeRoutes, speakerLinkProjectRoutes } from './assistant/identity/routes.js';
 import { bootstrapChatProviders } from './assistant/providers/bootstrap.js';
 import { chatRoutes } from './assistant/routes.js';
+import { registerAssistantWeekly, unregisterAssistantWeekly } from './assistant/weekly/register.js';
+import { assistantWeeklyRoutes } from './assistant/weekly/routes.js';
 import { devForceVerifyRoutes } from './auth/dev-force-verify.js';
 import { loginRoutes } from './auth/login.js';
 import { logoutRoutes } from './auth/logout.js';
@@ -252,6 +254,7 @@ export async function runShutdown(
     await unregisterPmCadenceTicker();
     await unregisterAgentCronTicker();
     await unregisterPmEscalationSweeper();
+    await unregisterAssistantWeekly();
     // cm:guard ISS-830 — MUST be awaited while the DB is still open and before closeDb(). The outbox claims a batch by committing `claimed_at = now()`, and only the emitting tick clears it (success → processed_at, failure → claimed_at NULL). Abandon that tick and the rows stay claimed until CLAIM_LEASE_MS (120s) expires, so every rolling restart that lands mid-drain adds up to two minutes of latency to the pipeline transitions in that batch.
     await stopOutboxWorker();
     await stopBoss();
@@ -318,6 +321,7 @@ app.route('/api/projects', projectMetricsRoutes);
 app.route('/api/projects', gitCredentialRoutes);
 app.route('/api/projects', runLedgerRoutes);
 app.route('/api/projects', projectRoutes);
+app.route('/api/projects', assistantWeeklyRoutes);
 app.route('/api/orgs', orgRoutes);
 // cm:guard several route modules may share one prefix — Hono composes sub-apps by path, not one-Hono-per-prefix (ISS-628) — but it then runs the middleware of EVERY router whose mount prefix matches, so a bare `use('*', ...)` on any one of them gates its neighbours' paths too. Check the sibling's middleware, not only its paths, before adding a mount here.
 app.route('/api/orgs', sshKeyRoutes);
@@ -486,6 +490,7 @@ if (isMain) {
   await registerChunkReindex();
   await registerMemoryDecay();
   await registerMemoryConsolidation();
+  await registerAssistantWeekly();
   await registerMemoryReconcileWorker();
   await registerDevicePrune();
   await registerMasterReaper();

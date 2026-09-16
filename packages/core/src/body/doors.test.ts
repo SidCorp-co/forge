@@ -39,6 +39,7 @@ const KERNEL_AUTHORED = [
   // carry from elsewhere is the run's own words, and those are printed byte for byte inside a fence
   // sized past the content on purpose: passing them through `prepareBody` would normalise a
   // statement the block is labelled as quoting.
+  'assistant/weekly/post.ts',
   'devices/run-evidence.ts',
   'issues/apply-transition.ts',
   'issues/drop-unblock.ts',

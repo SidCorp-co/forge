@@ -304,6 +304,66 @@ The door's retry rows — a query that is the corrective instruction the screen 
 `screen_repair` by history — are skipped as `retry row, not a person's query`: a task built on one
 would send the model a system check.
 
+## Weekly reading: the history, the judge, the compare and the harvest on a schedule
+
+Every day at 04:00 UTC a pg-boss cron entry (`assistant/weekly/register.ts`, queue
+`assistant-weekly-report`) runs `assistant/weekly/run.ts:runAssistantWeeklyOnce` over every
+project that opted in, and posts one comment per ISO week on that project's pinned issue:
+Monday's tick is the first for a new week, and the six that follow name the same week and skip
+when its report is already there. The comment is the
+report and its attachments are the files: `assistant-history-<week>.json` (the history file, the
+one `history --compare` and `harvest` read), `assistant-compare-<week>.txt` when a previous week's
+file is on the issue, and one `candidate-<id>.ts.txt` per candidate. Nothing else is written: no
+`chat_logs` column, no task file, no issue.
+
+A project opts in through `pipelineConfig.assistantWeekly` (`pipeline/pipeline-config-schema.ts`,
+mirrored on the Pipeline tab of the project's settings): `enabled`, `pinnedIssue` (an issue key on
+the project, `ISS-1060`), `judgeProviderId` (a provider the app registered from its environment,
+`providers/bootstrap.ts`), `judgeModel`, and one `source` when one door is wanted. Absent is off, as
+`knowledgePromotion` is; a cron nobody watches never reads a project that did not ask. The judge
+needs no credential of its own: `bench/judge.ts:createJudgeFromProvider` asks the registered
+provider the sidecar's one question at temperature 0, and the app's `LITELLM_*` (or whichever
+provider the id names) is the key.
+
+The week is the ISO week before the tick's — Monday 00:00 UTC to Monday 00:00 UTC
+(`weekly/window.ts:weekBefore`) — so Monday's tick and a Tuesday retry name the same window, and
+the window's id (`2026-09-07..2026-09-14`) is what the first line, the attachment names and the
+already-posted check carry. The steps run in order and post once: read the week in-process
+(`weekly/read-rows.ts` reads `chat_logs` by project slug and bound and excludes the benchmark's
+own rooms by the title `bench/run.ts` gives them, `weekly/run.ts:readWeek` grades, summarizes and
+judges the newest forty kept rows); compare with the newest `assistant-history-*.json` on the
+pinned issue (`weekly/previous.ts`), or say the comparison starts next week; harvest the judged
+`no` and `partial` rows against the shipped tasks; post as the project's creator
+(`weekly/post.ts`). The comment is whole or absent: a file that fails to attach removes what was
+written and the comment row before the error leaves.
+
+`POST /api/projects/:id/assistant-weekly/run` (`assistant/weekly/routes.ts`, org admin or owner;
+the "Run the reading now" button beside the toggle) runs the same function for one project at
+once, under the same window and the same already-posted check, and answers with the outcome
+(`posted`, `skipped` with its reason, or `failed` with the error): the first report after flipping
+the toggle, and a retry an operator does not want to wait a day for. A project whose config is off
+is refused by name with the fields to save. The cron and the door share one exclusion: a
+transaction-scoped advisory lock keyed by project and window (`assistant/weekly/lock.ts`), taken
+before the already-posted check, so two runs of the same week — two admins, or the door over the
+tick — post one report and the other skips as `another run holds <week> for this project`. A run
+that fails holds nothing.
+
+What the tick refuses or skips, by name in the log (`assistant.weekly: project skipped`) and never
+with a comment: a pinned issue that does not resolve on the project, a judge provider that is not
+registered, and a window whose report is already on the issue. A step that throws posts
+`Assistant weekly reading <week> failed: <name>: <message>` instead of a report, and that line does
+not start with the report's head, so the same window is tried again at the next day's tick; a
+week that fails on all seven days stays failed, its failure comments on the issue. A judge
+that is one of the week's models under test is refused before any row is judged
+(`weekly/run.ts:JudgeIsUnderTest`): a model reading its own replies is the one thing the sidecar
+exists to avoid.
+
+The first line reads `Assistant weekly reading <week>: <rows> rows`, and ` — thin (under 30)` when
+the week has fewer rows than `THIN_ROWS`; the rest is the per model/door counts with each mode's
+count beside its rate, the judge's tally and agreement, the compare lines, and the candidates as
+`<intent> — chat_logs <id> — <served>`. A test that plants the steps and asserts the order is
+`weekly/run.test.ts`; the reads against real Postgres are `tests/integration/assistant-weekly-e2e.test.ts`.
+
 ## What it does not do
 
 - Weight the judge into `pass`, pass^k or the ladder's score; `--judge` annotates, it never scores.
@@ -313,4 +373,5 @@ would send the model a system check.
   After code spans, URLs and double-quoted spans are removed it counts words carrying a Vietnamese
   letter or tone mark; `vi` needs three, `en` fails at two. A Vietnamese name in an English reply
   passes `en`; it says nothing about grammar or register.
-- Write to `chat_logs.quality_signals`; `history` reads the corpus and writes a file.
+- Write to `chat_logs.quality_signals`; `history` reads the corpus and writes a file, and the
+  weekly reading writes one comment and its files on the pinned issue.

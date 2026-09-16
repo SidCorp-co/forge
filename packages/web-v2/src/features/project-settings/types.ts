@@ -335,6 +335,20 @@ export interface PipelineConfig {
 		minRetrievals?: number;
 	};
 	/**
+	 * Per-project weekly assistant reading. When enabled, a daily 04:00 UTC job
+	 * grades the week's chat logs, judges them with `judgeModel` through the
+	 * registered provider `judgeProviderId`, and posts one report per ISO week on
+	 * `pinnedIssue` (Monday first; later days retry a failed week).
+	 * Absent = off. Mirrors `assistantWeekly` in core `pipeline/pipeline-config-schema.ts`.
+	 */
+	assistantWeekly?: {
+		enabled: boolean;
+		pinnedIssue: string;
+		judgeProviderId: string;
+		judgeModel: string;
+		source?: string;
+	};
+	/**
 	 * When true, production Coolify deploys auto-dispatch on release instead of
 	 * parking at the manual human-confirm gate (mirrors `autoProdDeploy` in core
 	 * `pipeline/pipeline-config-schema.ts`). Absent/false (the default) keeps the
