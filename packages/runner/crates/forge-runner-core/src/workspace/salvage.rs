@@ -123,6 +123,110 @@ fn truncate(s: &str, max: usize) -> String {
     s[..end].to_string()
 }
 
+/// How long a durability check may take.
+// cm:guard its own budget and not `PUSH_BUDGET`: this runs on the release path during recovery,
+// where a sweep that blocks costs every other run on the box its turn, and a fetch against an
+// unreachable remote hangs rather than failing. Shorter than the push it verifies, because it
+// moves no objects of its own worth speaking of.
+const FETCH_BUDGET: Duration = Duration::from_secs(20);
+
+/// Whether a checkout's commits exist anywhere but this box.
+// cm:guard three values and not a bool, because "not published" and "could not tell" lead to
+// different acts: the first is work to publish, the second is a box that cannot see its remote and
+// must not conclude anything about durability from that. Collapsing them would make an unreachable
+// network read as work at risk, or worse, as work that is safe.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Publication {
+    /// Every commit here is reachable from a remote ref, proven by a fresh fetch.
+    Published,
+    /// This many commits are on no remote ref.
+    Unpublished { commits: u32 },
+    /// The question could not be answered, in the reader's words.
+    Unknown { why: String },
+}
+
+/// Does any remote have this checkout's commits? Asked by FETCHING, never by trusting a push.
+// cm:guard the fetch is what makes this an answer rather than a memory. A `git push` that exited 0
+// proves the command returned, not that the ref is observable: a push can land on a remote that
+// later rejects it in a hook, a proxy can answer for a mirror that never received the objects, and
+// a box that pushed before its own clock or credentials went bad has a local memory of success and
+// nothing behind it. The whole point of the check is to ask the remote now (ISS-1050).
+// cm:guard counted against EVERY remote ref rather than the branch's upstream, for the same reason
+// `daemon/checkpoint.rs` does: a run that pushed under a differently-named remote branch HAS
+// published its work, and an upstream-only count would call it unpublished and hold its worktree.
+pub async fn publication_of(worktree: &Path) -> Publication {
+    let fetched =
+    // cm:guard `--prune`, and it is the difference between asking and remembering. Without it a
+    // remote-tracking ref that the remote no longer has survives the fetch, `rev-list --remotes`
+    // counts against that stale ref, and this reports Published on the strength of a local memory
+    // of a push — which is the exact claim the guard above says this function does not make. Found
+    // by a planted counterexample that passed: the branch below was unreachable in every fixture
+    // until one was built where the local ref and the remote disagreed.
+        tokio::time::timeout(
+            FETCH_BUDGET,
+            git(worktree, &["fetch", "--prune", "--quiet", "origin"]),
+        );
+    match fetched.await {
+        Ok(Some(out)) if out.status.success() => {}
+        Ok(Some(out)) => {
+            return Publication::Unknown {
+                why: format!("`git fetch origin` failed: {}", stderr_brief(&out)),
+            };
+        }
+        Ok(None) => {
+            return Publication::Unknown {
+                why: "`git fetch origin` could not be spawned".into(),
+            };
+        }
+        Err(_) => {
+            return Publication::Unknown {
+                why: format!(
+                    "`git fetch origin` did not answer within {}s",
+                    FETCH_BUDGET.as_secs()
+                ),
+            };
+        }
+    }
+    let Some(out) = git(
+        worktree,
+        &["rev-list", "--count", "HEAD", "--not", "--remotes"],
+    )
+    .await
+    else {
+        return Publication::Unknown {
+            why: "`git rev-list --count HEAD --not --remotes` could not be spawned".into(),
+        };
+    };
+    if !out.status.success() {
+        return Publication::Unknown {
+            why: format!(
+                "`git rev-list --count HEAD --not --remotes` failed: {}",
+                stderr_brief(&out)
+            ),
+        };
+    }
+    match stdout_trim(&out).parse::<u32>() {
+        Ok(0) => Publication::Published,
+        Ok(commits) => Publication::Unpublished { commits },
+        Err(e) => Publication::Unknown {
+            why: format!("could not read the unpublished count: {e}"),
+        },
+    }
+}
+
+/// Push this checkout's branch, then ask the remote whether it took it.
+// cm:guard the answer is `publication_of`'s and not the push's, so a push that returned 0 over a
+// ref no fetch can see reports `Unpublished` rather than success. That is the difference between
+// preserving work and believing you did.
+pub async fn publish(worktree: &Path, branch: &str) -> Publication {
+    let refspec = format!("HEAD:refs/heads/{branch}");
+    let argv = ["push", "origin", refspec.as_str()];
+    // cm:guard a failed push is not returned as an error here: the fetch below is the authority,
+    // and a push that failed while the ref is somehow already present must still read as published.
+    let _ = tokio::time::timeout(PUSH_BUDGET, git(worktree, &argv)).await;
+    publication_of(worktree).await
+}
+
 async fn git(dir: &Path, args: &[&str]) -> Option<std::process::Output> {
     Command::new("git")
         .args(args)

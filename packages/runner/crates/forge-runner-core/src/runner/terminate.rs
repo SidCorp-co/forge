@@ -85,9 +85,60 @@ async fn branch_of(worktree: &Path) -> Option<String> {
     (!name.is_empty()).then_some(name)
 }
 
-// cm:guard `committed_not_pushed` COUNTS as preserved and that is not a concession: the release is `git worktree remove`, which leaves the branch ref and its objects in the repo, so the commits outlive the checkout. Everything else does not count — `none` is reachable here only when salvage found nothing to commit in a tree `holds_work` had just said was holding some, which is a disagreement between two readers and no basis for deleting anything.
-fn preserved(outcome: Outcome) -> bool {
+// cm:guard this answers ONE question — did salvage get the uncommitted diff into a commit — and it
+// deliberately no longer answers whether that commit is safe. It used to: `committed_not_pushed`
+// counted as preserved because `git worktree remove` leaves the branch ref and its objects in the
+// shared `.git`, so the commits outlive the checkout. That is true and is still true, and it is
+// about THIS box. ISS-1050 is about the commit being lost WITH the box — a master's death taking
+// its issues with it is the whole subject — and a commit no remote has is exactly the record that
+// dies with the machine. Durability is now asked separately, of the remote, by
+// `publication_of` below, and this predicate is only the first half of the answer.
+// cm:guard `none` still does not count: it is reachable here only when salvage found nothing to
+// commit in a tree `holds_work` had just said was holding some, which is a disagreement between two
+// readers and no basis for deleting anything.
+fn committed(outcome: Outcome) -> bool {
     matches!(outcome, Outcome::Pushed | Outcome::CommittedNotPushed)
+}
+
+/// Put this checkout's commits somewhere other than this box, or refuse the release.
+///
+/// Answers `Ok(())` only when a fresh fetch says every commit here is on a remote.
+// cm:guard the refusal leaves the tree, leaves the run non-terminal, and names the commits at
+// risk. That is a real cost — the issue stays unavailable to every box until somebody acts — and it
+// is taken deliberately: releasing instead declares the run over while its only copy is on one
+// machine, and the next box picks the issue up with none of the work. The cost is bounded by the
+// two things that make this different from a silent hold: the master sweep retries it every thirty
+// seconds, so a network that comes back releases the tree with no human at all, and the box-side
+// report puts the held tree and this message on the issue, so a network that does not come back is
+// somebody's to see rather than nobody's.
+// cm:guard `Unknown` refuses too. A box that cannot reach its remote has not learned that its work
+// is safe; it has learned nothing, and releasing on nothing is the same act as releasing on a
+// commit only that box can see.
+async fn publish_before_release(
+    run_id: &str,
+    verb: Verb,
+    worktree: &Path,
+    branch: &str,
+) -> Result<()> {
+    match salvage::publication_of(worktree).await {
+        salvage::Publication::Published => return Ok(()),
+        salvage::Publication::Unpublished { .. } | salvage::Publication::Unknown { .. } => {}
+    }
+    match salvage::publish(worktree, branch).await {
+        salvage::Publication::Published => Ok(()),
+        salvage::Publication::Unpublished { commits } => Err(Error::Other(format!(
+            "refusing to {verb:?} run {run_id}: {commits} commit(s) on `{branch}` in {} are on no \
+             remote, and the push did not change that — the worktree stays until they land, \
+             because releasing it would declare this run over while its only copy is on this box",
+            worktree.display()
+        ))),
+        salvage::Publication::Unknown { why } => Err(Error::Other(format!(
+            "refusing to {verb:?} run {run_id}: this box cannot tell whether `{branch}` in {} is \
+             on a remote ({why}) — the worktree stays, because not knowing is not the same as \
+             knowing it is safe",
+            worktree.display()
+        ))),
+    }
 }
 
 /// Force a run terminal from outside it.
@@ -133,7 +184,7 @@ pub async fn force_terminal(
         })
         .await;
         // cm:guard the refusal is conditioned on the tree STILL holding uncommitted work, asked of that tree directly. Salvage answers `none` both when it could not preserve a diff and when there was no diff to preserve — a clean checkout carrying commits of its own arrives as the second, and reading it as the first refuses the release forever: the tree stays, the run never reaches terminal, and its issue is unavailable to every box. Measured on forge-vm 2026-09-11, six runs sat there. A removal cannot lose a commit, so a clean tree is safe to release whatever salvage made of it.
-        if !preserved(report.outcome)
+        if !committed(report.outcome)
             && crate::workspace::worktree_reap::has_uncommitted_changes(worktree).await
         {
             return Err(Error::Other(format!(
@@ -142,11 +193,20 @@ pub async fn force_terminal(
                 report.detail.as_deref().unwrap_or("no detail")
             )));
         }
+        publish_before_release(run_id, verb, worktree, &branch).await?;
         crate::workspace::worktree::remove_at(&what.repo_root.to_string_lossy(), worktree).await?;
         Some(report)
     } else {
-        // cm:guard a tree holding nothing is still RELEASED — there is simply no diff to preserve first. Leaving it because salvage was skipped would keep a checkout, and with it a slot's worth of disk, for every clean park ever abandoned.
+        // cm:guard a tree holding nothing UNCOMMITTED is still asked whether what it holds is
+        // published, and this is where the real hole was. An agent that committed its work and
+        // never pushed leaves a CLEAN checkout, so `holds_work` is false, salvage never runs, no
+        // push is ever attempted, and the tree was removed as though the work had been published.
+        // The commits did survive on this box, which is what the old reading was right about — and
+        // nothing ever put them anywhere else.
         if worktree.exists() {
+            if let Some(branch) = branch_of(worktree).await {
+                publish_before_release(run_id, verb, worktree, &branch).await?;
+            }
             crate::workspace::worktree::remove_at(&what.repo_root.to_string_lossy(), worktree)
                 .await?;
         }
@@ -267,6 +327,20 @@ mod tests {
         (root, wt)
     }
 
+    /// Make the fixture's bare remote reject every push, as a protected branch would.
+    async fn refuse_pushes(root: &Path) {
+        let hooks = root.with_extension("remote.git").join("hooks");
+        std::fs::create_dir_all(&hooks).expect("hooks dir");
+        let hook = hooks.join("pre-receive");
+        std::fs::write(&hook, "#!/bin/sh\necho 'refused by policy' >&2\nexit 1\n").expect("hook");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755))
+                .expect("hook mode");
+        }
+    }
+
     fn ledger_for(wt: &Path, incarnation: Incarnation, boot: &str) -> Ledger {
         let mut led = Ledger::open_in_memory().unwrap();
         led.create_run_group(NewRun {
@@ -380,7 +454,13 @@ mod tests {
 
         // The diff is on the branch, which outlives the checkout.
         let log = tokio::process::Command::new("git")
-            .args(["log", "--oneline", "ISS-964", "--", "work.txt"])
+            .args([
+                "log",
+                "--oneline",
+                "refs/remotes/origin/ISS-964",
+                "--",
+                "work.txt",
+            ])
             .current_dir(&root)
             .output()
             .await
@@ -613,8 +693,142 @@ mod tests {
         assert!(led.run("run-1").unwrap().unwrap().ended_by.is_some());
         let _ = std::fs::remove_dir_all(&root);
     }
-    /// A clean checkout whose commits exist only here: released, with the commits left behind.
-    // cm:guard salvage reports `none` for this tree because there was nothing uncommitted to commit, and until 2026-09-11 that was read as a failed preserve and refused forever — six runs on forge-vm. The assertion that matters is the last one: the commit is still reachable on the branch after the checkout is gone, which is why releasing it loses nothing.
+    /// A checkout that believes it pushed, over a remote that no longer has the ref.
+    // cm:guard this is the ONLY state that reaches the clean-checkout branch of the release, and
+    // building it took a planted counterexample that passed to notice. `holds_work` already asks
+    // whether HEAD is on a remote, so a clean tree with plainly unpushed commits goes down the
+    // salvage path instead — the clean branch is reached only when the box's own refs SAY the work
+    // is published. That is precisely the case a push exit code cannot be trusted for, and it is
+    // why the check fetches with `--prune` rather than reading what this box last saw.
+    #[tokio::test]
+    async fn a_ref_this_box_remembers_pushing_is_not_taken_as_a_ref_the_remote_has() {
+        let (root, wt) = repo("stale").await;
+        git(&wt, &["add", "work.txt"]).await;
+        git(&wt, &["commit", "-qm", "work"]).await;
+        git(&wt, &["push", "-q", "-u", "origin", "ISS-964"]).await;
+        // The remote loses the ref and will not take it back; this box still has
+        // `refs/remotes/origin/ISS-964` and an upstream that looks satisfied.
+        git(
+            &root.with_extension("remote.git"),
+            &["update-ref", "-d", "refs/heads/ISS-964"],
+        )
+        .await;
+        refuse_pushes(&root).await;
+
+        let mut led = ledger_for(&wt, Incarnation::Exited, "boot-a");
+        let (p, s, l) = (
+            Procs(Mutex::new(Vec::new())),
+            Sessions,
+            Leases(Mutex::new(HashSet::new())),
+        );
+
+        let err = force_terminal(
+            &mut led,
+            "run-1",
+            forcing(&root, "boot-a"),
+            ports(&p, &s, &l),
+        )
+        .await
+        .expect_err("a ref only this box remembers is not a published ref");
+
+        assert!(wt.exists(), "the worktree must be left where it was");
+        assert!(led.run("run-1").unwrap().unwrap().ended_by.is_none());
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = err;
+    }
+
+    /// A remote that refuses the push: the tree stays, and the run stays open.
+    // cm:guard this is the case the release rule exists for, and it costs something real — the
+    // issue is unavailable to every box until somebody acts. That is deliberate. Releasing instead
+    // declares the run over while its only copy is on this machine, and the next box picks the
+    // issue up with none of the work and no way to know any existed (ISS-1050 criterion 21).
+    #[tokio::test]
+    async fn a_push_the_remote_refuses_leaves_the_worktree_held_and_the_run_open() {
+        let (root, wt) = repo("refused").await;
+        git(&wt, &["add", "work.txt"]).await;
+        git(&wt, &["commit", "-qm", "work the remote will not take"]).await;
+        refuse_pushes(&root).await;
+
+        let mut led = ledger_for(&wt, Incarnation::Exited, "boot-a");
+        let (p, s, l) = (
+            Procs(Mutex::new(Vec::new())),
+            Sessions,
+            Leases(Mutex::new(HashSet::new())),
+        );
+
+        let err = force_terminal(
+            &mut led,
+            "run-1",
+            forcing(&root, "boot-a"),
+            ports(&p, &s, &l),
+        )
+        .await
+        .expect_err("a release over work no remote will take is a refusal");
+
+        let said = format!("{err}");
+        assert!(
+            said.contains("on no remote"),
+            "the refusal must name what is at risk: {said}"
+        );
+        assert!(wt.exists(), "the worktree must be left where it was");
+        assert!(
+            led.run("run-1").unwrap().unwrap().ended_by.is_none(),
+            "the run must stay open so the next sweep tries again"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A remote this box cannot reach at all: the same refusal, for a different reason.
+    // cm:guard not knowing is NOT the same as knowing the work is safe, and the two must not
+    // collapse into one another. A box whose network is down has learned nothing about durability;
+    // releasing on that is releasing on a commit only this box can see, by a longer road.
+    #[tokio::test]
+    async fn a_remote_this_box_cannot_reach_is_not_read_as_work_that_is_safe() {
+        let (root, wt) = repo("unreachable").await;
+        git(&wt, &["add", "work.txt"]).await;
+        git(&wt, &["commit", "-qm", "work"]).await;
+        git(
+            &wt,
+            &["remote", "set-url", "origin", "/nonexistent/remote.git"],
+        )
+        .await;
+
+        let mut led = ledger_for(&wt, Incarnation::Exited, "boot-a");
+        let (p, s, l) = (
+            Procs(Mutex::new(Vec::new())),
+            Sessions,
+            Leases(Mutex::new(HashSet::new())),
+        );
+
+        let err = force_terminal(
+            &mut led,
+            "run-1",
+            forcing(&root, "boot-a"),
+            ports(&p, &s, &l),
+        )
+        .await
+        .expect_err("a box that cannot ask the remote may not conclude the work is safe");
+
+        let said = format!("{err}");
+        assert!(
+            said.contains("cannot tell"),
+            "the refusal must say it does not know, not that the work is unsafe: {said}"
+        );
+        assert!(wt.exists(), "the worktree must be left where it was");
+        assert!(led.run("run-1").unwrap().unwrap().ended_by.is_none());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A clean checkout carrying commits no remote had: PUBLISHED, then released.
+    // cm:guard salvage reports `none` for this tree because there was nothing uncommitted to
+    // commit, and until 2026-09-11 that was read as a failed preserve and refused forever — six
+    // runs on forge-vm. Releasing it is still right and this test still asserts it.
+    // cm:guard what changed in ISS-1050 is the last assertion, and the old version of this test did
+    // not make it: it proved the commit was still reachable on the branch IN THIS REPO after the
+    // checkout was gone, which is a fact about this box. Nothing here ever pushed, so a clean
+    // checkout whose work had never been published was released as though it had been — the
+    // commits survived exactly as long as the machine did. The release now publishes first, and the
+    // assertion is against the REMOTE.
     #[tokio::test]
     async fn a_clean_checkout_whose_commits_are_only_local_is_released_and_keeps_them() {
         let (root, wt) = repo("localonly").await;
