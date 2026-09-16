@@ -35,6 +35,7 @@ export const EXISTING_TOP_K = 3;
 const CONTEXT_MARKER = '\n\n---\n\n';
 
 export type NoteRefusalCode =
+  | 'unasked'
   | 'restates_message'
   | 'second_note_this_turn'
   | 'too_short'
@@ -72,6 +73,14 @@ const FRAMING =
 
 const ABOUT_THE_CONVERSATION =
   /^\s*(?:the\s+(?:user|person|speaker|human|customer)\s+(?:asked|said|wants|wanted|told|requested|mentioned|is asking)|(?:i|we)\s+(?:was|were|have been)\s+(?:asked|told)|in\s+this\s+(?:conversation|chat|room|thread)|(?:this|the)\s+(?:conversation|chat)\s+(?:is|was)\s+about|user\s+(?:asked|said|wants))/iu;
+
+/** An ask to keep something, anywhere in a message: the framing above unanchored, plus the ways a person says it mid-sentence. */
+const ASKED =
+  /\b(?:remember|note (?:that|this|down|it)|keep (?:in mind|this|that|a note)|don['’]t forget|save (?:this|that)|for the record|write (?:this|that|it) down|make a note|take a note|memori[sz]e)\b/iu;
+
+/** A decision or a standing preference is worth keeping whether or not anyone asked. */
+const DECIDED =
+  /\b(?:decid(?:ed|e|ion)|agreed|we (?:will|won['’]t|are going to)|from now on|always|never|prefer(?:s|red)?|policy|the rule is|must|going forward|settled on)\b/iu;
 
 /** The person is changing a value already given: the duplicate rule stands aside for a note that differs from the twin (codex F2). */
 const CORRECTION =
@@ -158,6 +167,15 @@ export function judgeNote(input: NoteJudgeInput): NoteRefusal | null {
           .trim() || 'The fact they gave you, stated once.',
     };
   const newest = input.recentTurns.at(-1) ?? '';
+  // cm:guard a fact merely stated is the room's, not the store's: the ISS-1061 thread trials kept one note per sentence the person typed (8, 8, 9 over ten turns) and every one of them was a plain statement; what earns a note is an ask to keep it anywhere in the person's recent messages, a correction of a kept value, or a decision or preference in the text itself
+  const asked = input.recentTurns.some((m) => ASKED.test(m)) || CORRECTION.test(newest);
+  if (!asked && !DECIDED.test(text) && !DECIDED.test(newest))
+    return {
+      code: 'unasked',
+      rule: 'nobody asked to keep this and it is not a decision; the conversation holds it.',
+      howToWrite:
+        'Nothing, unless they ask you to remember it or it settles how the project works.',
+    };
   // cm:guard the framed message the note copies may be an earlier one, not the newest: "Remember: X" then "Thanks." then a note of "Remember: X" is still the request copied back (codex F1, third pass)
   const copied = input.recentTurns.find((m) => FRAMING.test(m) && sameWords(text, m));
   if (copied) {

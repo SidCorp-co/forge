@@ -31,6 +31,57 @@ const base = (over: Partial<NoteJudgeInput> = {}): NoteJudgeInput => ({
 const code = (input: NoteJudgeInput) => judgeNote(input)?.code ?? null;
 
 describe('judgeNote', () => {
+  it('a fact merely stated is refused as unasked; an ask anywhere in a recent message, a correction, or a decision passes', () => {
+    const said = 'Our deploy window is Wednesday, right after the morning standup.';
+    const r = judgeNote(
+      base({ text: 'Deploy window: Wednesday after the morning standup.', recentTurns: [said] }),
+    );
+    expect(r?.code).toBe('unasked');
+    expect(
+      code(
+        base({
+          text: 'Release lead: Marta Okafor.',
+          recentTurns: ['For the next release, note that the release lead is Marta Okafor.'],
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      code(
+        base({
+          text: 'Deploy window: Wednesday after standup.',
+          recentTurns: ['Remember this for our chat: the window matters.', said],
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      code(
+        base({
+          text: 'Release code name: bench-9f8e7d6c5b4a.',
+          recentTurns: [
+            'Correction: the release code name is bench-9f8e7d6c5b4a, forget the first one.',
+          ],
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      code(
+        base({
+          text: 'We decided to deploy on Wednesdays only.',
+          recentTurns: ['We decided to deploy on Wednesdays only, no exceptions.'],
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      code(
+        base({
+          text: 'Deploys happen on Wednesdays.',
+          recentTurns: ['From now on we deploy on Wednesdays.'],
+        }),
+      ),
+    ).toBeNull();
+    expect(refusalText(r as NoteRefusal)).toContain('Do this:');
+  });
+
   it('passes the fact with the remember-framing dropped, and refuses the message copied back', () => {
     expect(code(base())).toBeNull();
     const r = judgeNote(base({ text: REMEMBER }));
@@ -51,13 +102,15 @@ describe('judgeNote', () => {
 
   it('a message with no remember-framing may be kept word for word: the sentence is the fact', () => {
     const said = 'The deploy window is Thursday 14:00 UTC.';
-    expect(code(base({ text: said, recentTurns: [said] }))).toBeNull();
+    expect(
+      code(base({ text: said, recentTurns: ['Please remember what I tell you next.', said] })),
+    ).toBeNull();
   });
 
   it('a second note in a one-sentence turn is refused; a two-sentence message admits it', () => {
     expect(code(base({ notesThisTurn: 1 }))).toBe('second_note_this_turn');
     expect(code(base({ notesThisTurn: 0 }))).toBeNull();
-    const two = 'The reviewer is Priya Raman. We deploy on Wednesdays.';
+    const two = 'Remember these: the reviewer is Priya Raman. We deploy on Wednesdays.';
     expect(
       code(base({ text: 'Deploys happen on Wednesdays.', recentTurns: [two], notesThisTurn: 1 })),
     ).toBeNull();

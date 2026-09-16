@@ -444,8 +444,8 @@ requires the fresh room to return the second token and refuses the first by `mus
 
 The assistant is held to what it keeps before the benchmark counts it. `forge_memory_note` meets a
 gate in the turn loop (`assistant/tools/memory-note-gate.ts:judgeNote`, bound through
-`run-turn-core.ts:TurnCoreArgs.preCall` by both chat doors): a note that is the person's message
-copied back, a second note in a turn that stated one thing, one under 12 characters or over the
+`run-turn-core.ts:TurnCoreArgs.preCall` by both chat doors): a fact nobody asked to keep that settles
+nothing, a note that is the person's message copied back, a second note in a turn that stated one thing, one under 12 characters or over the
 tool's cap, one the project already holds at the store's near-duplicate threshold, or one about the
 conversation itself is refused as a tool error naming the rule and one note that would pass, and the
 row it leaves in `chat_logs.tool_calls` carries `isError: true`, so a trail and a history reading
