@@ -85,6 +85,8 @@ async function readFixtures(args: TrialArgs): Promise<Record<string, string>> {
         throw new Error('the project holds no open issue, so there is no bounded list to ask for');
       values.openIssueKeys = open.map((i) => i.key).join(', ');
       values.openIssueCount = String(open.length);
+      // cm:guard the newest one's id, so `linkTo` still demands a link that RESOLVES: without it a reply naming the keys and linking nothing passes every remaining check vacuously
+      values.openIssueId = open[0]?.id ?? '';
     }
     if (name === 'pipelineStates')
       values.stateList = (await client.pipelineStates(project.id)).join(', ');

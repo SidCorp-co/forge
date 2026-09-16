@@ -60,6 +60,7 @@ describe('summarizeCapabilities', () => {
     expect(out[1]).toEqual({
       capability: 'project-understanding',
       tasks: ['counts', 'states'],
+      notApplicable: [],
       score: 50,
       lowest: { id: 'counts', passK: 0 },
       fullTasks: 1,

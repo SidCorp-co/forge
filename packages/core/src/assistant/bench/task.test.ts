@@ -42,12 +42,15 @@ const MATRIX: Record<
     fixtures: ['projectName'],
   },
   'open-issues-linked': {
-    messages: ['List the open issues in this project, one line each, with a link to each issue.'],
+    messages: [
+      'List the five newest open issues in this project, one line each, with a link to each issue.',
+    ],
     kinds: [
       [
+        'listInOrder',
+        'linkTo',
         'linkShape',
         'linksResolve',
-        'mustMatch',
         'toolsRequired',
         'noHelp',
         'noPlaceholder',
@@ -56,7 +59,7 @@ const MATRIX: Record<
         'screenRepair',
       ],
     ],
-    fixtures: ['firstOpenIssue'],
+    fixtures: ['newestOpenIssues'],
   },
   'one-issue-by-key': {
     messages: ['What is {issueKey} about? One paragraph, then a link to it.'],
@@ -105,7 +108,7 @@ const MATRIX: Record<
   },
   'project-pipeline-states': {
     messages: [
-      'List this project’s pipeline states in order, from the first an issue enters to the last, using the exact state keys the pipeline config names.',
+      'What are this project’s pipeline states, in order, from the first an issue enters to the last? Give the state names as the pipeline uses them.',
     ],
     kinds: [['listInOrder', 'onlyFrom', 'notFallback', 'noHelp', 'noPlaceholder']],
     fixtures: ['pipelineStates'],

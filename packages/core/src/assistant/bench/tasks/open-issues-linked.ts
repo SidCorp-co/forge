@@ -21,6 +21,7 @@ export const openIssuesLinked: Task = {
         'List the five newest open issues in this project, one line each, with a link to each issue.',
       checks: [
         { kind: 'listInOrder', list: '{openIssueKeys}' },
+        { kind: 'linkTo', issueId: '{openIssueId}' },
         { kind: 'linkShape' },
         { kind: 'linksResolve' },
         { kind: 'toolsRequired', tools: ['forge'] },

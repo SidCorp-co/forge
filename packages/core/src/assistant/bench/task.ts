@@ -90,7 +90,7 @@ export type FixtureName =
 export const FIXTURE_KEYS: Record<FixtureName, readonly string[]> = {
   firstOpenIssue: ['issueKey', 'issueId'],
   /** The newest open issues, bounded: on a project holding 682 a task asking for every one measures patience rather than linking (ISS-1066). */
-  newestOpenIssues: ['openIssueKeys', 'openIssueCount'],
+  newestOpenIssues: ['openIssueKeys', 'openIssueCount', 'openIssueId'],
   projectName: ['projectName'],
   /** The project's issues counted by status, read before the turn so the answer is the project's own. */
   issueCounts: ['openCount', 'closedCount', 'draftCount'],

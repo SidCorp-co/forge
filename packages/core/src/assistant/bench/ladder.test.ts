@@ -252,7 +252,7 @@ describe('the printers', () => {
 
   it('prints the definition under the run table, every score beside its lowest task, the judge column, and a delta line', () => {
     const lines = ladderLines(runs, windows);
-    expect(lines[0]).toBe('runs');
+    expect(lines[0]).toBe('runs (project not recorded)');
     const best = lines.find((l) => l.includes('best.json')) ?? '';
     expect(best).toMatch(/66\.7\s+c 0%\s+2\/3\s+67% \(2\/3\)\s+10\.0s/);
     const plain = lines.find((l) => l.includes('plain.json')) ?? '';
@@ -304,7 +304,7 @@ describe('the printers', () => {
 
   it('renders the same rows as Markdown tables with the definition in italics', () => {
     const md = ladderMarkdown(runs, windows);
-    expect(md).toContain('### Runs');
+    expect(md).toContain('### runs (project not recorded)');
     expect(md).toContain(
       '| 1 | best.json | aaaaaaaa | terra | 66.7 | c 0% | 2/3 | 67% (2/3) | 10.0s | — |',
     );

@@ -179,7 +179,7 @@ describe('compare', () => {
       'tasks',
     ]);
     for (const task of c.tasks) {
-      expect(Object.keys(task).sort()).toEqual(['after', 'before', 'id']);
+      expect(Object.keys(task).sort()).toEqual(['after', 'before', 'id', 'notApplicable']);
       for (const side of [task.before, task.after]) {
         if (side) expect(Object.keys(side)).not.toContain('score');
       }

@@ -99,6 +99,7 @@ describe('the project readers (ISS-1061)', () => {
       openCount: 1,
       closedCount: 1,
       draftCount: 0,
+      byStatus: { open: 1, closed: 1, needs_info: 1 },
     });
     const pages = state.requests.filter(
       (r) => r.path === `/api/projects/${FAKE_PROJECT.id}/issues`,
@@ -118,12 +119,27 @@ describe('the project readers (ISS-1061)', () => {
     );
   });
 
-  it('pipelineStates reads the state keys in config order and refuses an empty config', async () => {
-    const { client } = on({ states: ['triage', 'building', 'shipped'] });
-    expect(await client.pipelineStates(FAKE_PROJECT.id)).toEqual(['triage', 'building', 'shipped']);
+  // cm:why the old assertion here read the stored config's KEYS back as the project's pipeline, and
+  // that is the ISS-1066 defect: it is per-stage configuration over four optional keys, `forge-plugin`
+  // stores one of them, and an empty map means every canonical rung rather than none.
+  it('pipelineStates answers the effective ladder, whatever the stored config names', async () => {
+    const LADDER = [
+      'open',
+      'confirmed',
+      'approved',
+      'in_progress',
+      'developed',
+      'testing',
+      'awaiting_release',
+      'closed',
+    ];
+    const { client } = on({ states: ['open'] });
+    expect(await client.pipelineStates(FAKE_PROJECT.id)).toEqual(LADDER);
     const { client: empty } = on({ states: [] });
-    await expect(empty.pipelineStates(FAKE_PROJECT.id)).rejects.toThrow(
-      'the pipeline config names no state',
+    expect(await empty.pipelineStates(FAKE_PROJECT.id)).toEqual(LADDER);
+    const { client: off } = on({ states: ['open'], statesOff: ['awaiting_release'] });
+    expect(await off.pipelineStates(FAKE_PROJECT.id)).toEqual(
+      LADDER.filter((s) => s !== 'awaiting_release'),
     );
   });
 

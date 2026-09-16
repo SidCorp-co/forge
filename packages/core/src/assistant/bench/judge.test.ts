@@ -7,11 +7,15 @@
 import { describe, expect, it } from 'vitest';
 import { createFakeDeployment, JUDGE_KEY, JUDGE_URL } from './fake-deployment.js';
 import {
+  ASKED_HEADER,
   agreement,
   agreementLine,
+  BRIEF_HEADER,
+  CALLS_HEADER,
   callLines,
   createJudge,
   createJudgeFromProvider,
+  ERROR_HEADER,
   isVerdict,
   type JudgeResult,
   judgeFromEnv,
@@ -273,5 +277,54 @@ describe('createJudgeFromProvider (ISS-1056)', () => {
       'j',
     );
     expect(await prose.judge(input)).toEqual({ error: 'judge answer is not JSON: It was fine.' });
+  });
+});
+
+// cm:why the pre-change text is written out here rather than derived: a "byte-identical" claim
+// checked against a function that builds both sides can only ever be true. This is what the block
+// was before ISS-1066 split it, and the assertion goes red if either half moves.
+describe('the reference block after the brief joined it (ISS-1066)', () => {
+  const base = { query: 'q', reply: 'r', calls: [], error: null };
+  const FIXTURES = 'openCount: 682\nclosedCount: 482';
+  const TURNS = 'turn 1 asked: hello\nturn 1 replied: hi';
+  const userOf = (input: Parameters<typeof judgeMessages>[0]): string =>
+    judgeMessages(input)[1]?.content ?? '';
+  const before = (reference: string | undefined): string =>
+    [
+      `${ASKED_HEADER}\nq`,
+      `${CALLS_HEADER}\n- none`,
+      `${ERROR_HEADER} none`,
+      `${REPLIED_HEADER}\nr`,
+      ...(reference ? [`${REFERENCE_HEADER}\n${reference}`] : []),
+    ].join('\n\n');
+
+  it('is byte-identical to the pre-change block with no brief: fixtures alone', () => {
+    expect(userOf({ ...base, reference: FIXTURES })).toBe(before(FIXTURES));
+  });
+
+  it('is byte-identical with no brief: turns alone', () => {
+    expect(userOf({ ...base, turns: TURNS })).toBe(before(TURNS));
+  });
+
+  it('is byte-identical with no brief: both halves, joined by the one newline they always were', () => {
+    expect(userOf({ ...base, reference: FIXTURES, turns: TURNS })).toBe(
+      before(`${FIXTURES}\n${TURNS}`),
+    );
+  });
+
+  it('is byte-identical with no brief: neither half, so no block at all', () => {
+    expect(userOf(base)).toBe(before(undefined));
+    expect(userOf(base)).not.toContain(REFERENCE_HEADER);
+  });
+
+  it('puts the brief under its own sub-header, after the fixtures and before the turns', () => {
+    expect(userOf({ ...base, reference: FIXTURES, brief: '# P', turns: TURNS })).toBe(
+      before(`${FIXTURES}\n${BRIEF_HEADER}\n# P\n${TURNS}`),
+    );
+  });
+
+  it('carries the brief on a turn that has neither fixtures nor earlier turns, which is the case it was filed for', () => {
+    const user = userOf({ ...base, brief: '# P\nopen 682' });
+    expect(user).toContain(`${REFERENCE_HEADER}\n${BRIEF_HEADER}\n# P\nopen 682`);
   });
 });
