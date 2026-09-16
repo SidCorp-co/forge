@@ -14,7 +14,7 @@ import { hooks } from '../pipeline/hooks.js';
  * per cleared row so the recipient's bell + unread count update live.
  *
  * Mark-read (not delete) keeps history auditable. The key embeds the entity it
- * tracks (e.g. `issue:<issueId>:status`), so clearing by key alone scopes to the
+ * tracks (e.g. `wedge:<jobId>`), so clearing by key alone scopes to the
  * right rows across all affected users without a per-user filter.
  *
  * Idempotent: only unstamped rows match, so a repeat call after the condition
