@@ -600,13 +600,18 @@ pub async fn kill(name: &str) -> Result<()> {
 // cm:guard ONE argv for both, because a run pane and a master pane differ only by their session prefix (ISS-933 criterion 1). A second list here is how the two drift into different permission modes with nothing comparing them.
 // cm:guard `unset CLAUDECODE` through a shell rather than tmux's `-e`. A tmux session inherits the client environment and `-e` can only SET a variable, so the daemon's own `CLAUDECODE` would reach the pane and the master would believe it is nested inside another Claude session. `build_command` removes it for every other spawn on this box; this is the same removal on the one path that does not go through it.
 // cm:guard no `-p`. The whole change is that this process reads from a terminal instead of taking one prompt and exiting, so `-p` here would restore the per-pass process with a tmux session wrapped uselessly around it.
-pub fn pane_argv() -> Vec<String> {
+// cm:guard `--strict-mcp-config` is NOT passed and adding it is a behaviour change, not a tightening: it would make this file the ONLY MCP configuration the pane has, dropping the checkout's `.mcp.json` — which is where the `forge` server itself comes from — and every server the operator configured on the box. The file this flag names carries the project's declared servers and nothing else, on purpose (ISS-1043).
+// cm:guard a pane reads `--mcp-config` at STARTUP and never again, so this argument is the whole of what a master will ever have. A project whose declaration changes mid-session needs a new pane; nothing here can retrofit one.
+pub fn pane_argv(mcp_config: Option<&std::path::Path>) -> Vec<String> {
     let bin = shell_quote(crate::runner::process::resolve_claude_bin());
-    vec![
-        "sh".into(),
-        "-c".into(),
-        format!("unset CLAUDECODE; exec {bin} --permission-mode bypassPermissions"),
-    ]
+    let mut line = format!("unset CLAUDECODE; exec {bin} --permission-mode bypassPermissions");
+    if let Some(path) = mcp_config {
+        line.push_str(&format!(
+            " --mcp-config {}",
+            shell_quote(&path.to_string_lossy())
+        ));
+    }
+    vec!["sh".into(), "-c".into(), line]
 }
 
 /// The environment a master's pane needs that a tmux session does not inherit.
@@ -974,7 +979,7 @@ mod tests {
     // cm:guard `-p` must never come back, and neither may `CLAUDECODE`. The first would restore the per-pass process ISS-919 removed, with a tmux session wrapped uselessly around it; the second makes the master believe it is nested inside another Claude session, which changes its behaviour with nothing in any log naming why.
     #[test]
     fn a_pane_runs_interactively_with_no_inherited_claudecode() {
-        let argv = pane_argv();
+        let argv = pane_argv(None);
         assert_eq!(argv[0], "sh");
         let line = &argv[2];
         assert!(line.contains("unset CLAUDECODE"), "{line}");
@@ -985,6 +990,44 @@ mod tests {
         assert!(
             !line.contains(" -p "),
             "a resident pane takes no -p: {line}"
+        );
+    }
+
+    // cm:guard a project that declares no MCP servers must get NO flag rather than an empty file. An empty `--mcp-config` document is a second thing to write, sweep and compare for every project on the box that never wanted one, and the absent flag is the shape every pane had before ISS-1043.
+    #[test]
+    fn a_project_with_no_servers_leaves_the_pane_argv_exactly_as_it_was() {
+        assert_eq!(pane_argv(None), pane_argv(None));
+        assert!(!pane_argv(None)[2].contains("--mcp-config"));
+    }
+
+    // cm:guard the path is SHELL-QUOTED. tmux hands this line to a shell, and `mcp_config_dir()` sits under `$XDG_CONFIG_HOME`, which is operator-set — dev1 runs several runners that differ only by it. An unquoted space is a pane that starts without its servers and a shell error nobody reads.
+    #[test]
+    fn the_mcp_config_path_reaches_the_pane_quoted_and_without_strict() {
+        let path =
+            std::path::PathBuf::from("/home/o p/config/forge-runner/mcp/forge-master-mcp-x.json");
+        let line = pane_argv(Some(&path))[2].clone();
+        assert!(
+            line.contains(
+                "--mcp-config '/home/o p/config/forge-runner/mcp/forge-master-mcp-x.json'"
+            ),
+            "{line}"
+        );
+        assert!(
+            !line.contains("--strict-mcp-config"),
+            "strict would drop the checkout's .mcp.json, which is where `forge` itself comes from: {line}"
+        );
+        let out = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(format!(
+                "printf %s {}",
+                shell_quote(&path.to_string_lossy())
+            ))
+            .output()
+            .expect("sh must run");
+        assert_eq!(
+            String::from_utf8_lossy(&out.stdout),
+            path.to_string_lossy(),
+            "the shell must see exactly the path"
         );
     }
 

@@ -2719,6 +2719,25 @@
   is no clone left to authenticate. Alongside it, the install now stops up front and says so by
   name when any dependency can only be fetched over SSH — which nothing in this project's checks
   can fetch — rather than dying inside the install with nothing a reader can act on. (ISS-1045)
+- **A project that declares MCP servers now actually gives them to the agents working on it.** A
+  project can name the tools its work needs — a storefront's own API, a browser — and the settings
+  screen has shown those names as configured for as long as the feature has existed. Nothing put
+  them in front of an agent. The route that once delivered them belonged to a way of starting
+  agents that has since been replaced, and the replacement was never given one, so the names were
+  read, validated, shown as fine, and consumed by nobody. For a project whose entire deliverable
+  lives behind one of those tools, every piece of work on it was unbuildable, and nothing on the
+  box or on the screen said why. A box now asks for its project's servers when it starts that
+  project's session, and everything that session does inherits them. Two things that used to be
+  silent are now said out loud: a server the project declared that could not be supplied — a
+  connection that was never finished, say — is named to the session at the start of its work
+  instead of surfacing hours later as work that mysteriously could not be done, and the box's own
+  health check reports it as a problem rather than reporting the declaration back as if it were
+  the thing itself. A session that was already running when its project's list changed keeps what
+  it started with, because it cannot be told a new one mid-flight; that is now reported, naming
+  what to do about it, rather than left to be discovered. The file holding a project's tool
+  credentials on the machine is now private to the account running the box from the moment it
+  exists, and a machine that cannot make it private is told so instead of being handed a readable
+  copy.
 
 - **A release that finished no longer locks the project out of the next one.** Finishing a batch
   closed every issue it had shipped and then left the release itself reading as still in progress,

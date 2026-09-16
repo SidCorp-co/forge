@@ -19,6 +19,7 @@ pub mod heartbeat;
 pub mod inbox;
 pub mod lifecycle;
 pub mod master;
+pub mod mcp_servers;
 pub mod plugins;
 pub mod protections;
 pub mod provision;

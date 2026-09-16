@@ -35,9 +35,12 @@ vi.mock('../integrations/sentry/resolver.js', () => ({
   ),
 }));
 
-const { resolveJobMcpServers, dedupeBrowserServers, sweepIntegrationSentinels } = await import(
-  './resolve-job-mcp-servers.js'
-);
+const {
+  resolveJobMcpServers,
+  resolveSessionMcpServers,
+  dedupeBrowserServers,
+  sweepIntegrationSentinels,
+} = await import('./resolve-job-mcp-servers.js');
 
 beforeEach(() => {
   limitResults.length = 0;
@@ -133,6 +136,38 @@ describe('resolveJobMcpServers (ISS-683)', () => {
     // sentinel sweep removes any leftover `true` for an integration name.
     expect(out.mcpServers?.sentry).toBeUndefined();
     expect(out.droppedNames).toEqual(['sentry']);
+  });
+});
+
+// ISS-1043 — the stage-less entry a BOX calls for a session it starts itself.
+// The dispatch entry above is exercised through `stageMcpServers`; nothing
+// covered the project-default-only path this route hands to a resident master.
+describe('resolveSessionMcpServers (ISS-1043)', () => {
+  it('expands a project-default catalog shorthand into a full spec', async () => {
+    limitResults.push([{ agentConfig: { pipelineConfig: { mcpServers: { playwright: true } } } }]);
+    const out = await resolveSessionMcpServers('p-1');
+    expect(out.mcpServers?.playwright).toMatchObject({ type: 'stdio', command: 'npx' });
+    expect(out.resolvedNames).toEqual(['playwright']);
+    expect(out.droppedNames).toEqual([]);
+  });
+
+  it('names a project-default integration sentinel with no active integration as dropped', async () => {
+    limitResults.push([{ agentConfig: { pipelineConfig: { mcpServers: { epodsystem: true } } } }]);
+    const out = await resolveSessionMcpServers('p-1');
+    // The integration resolvers are pass-through here — no active binding — so
+    // the sentinel is swept rather than reaching the box as the bare `true`
+    // that `mcp/config.rs` skips with only a warning.
+    expect(out.mcpServers?.epodsystem).toBeUndefined();
+    expect(out.resolvedNames).toEqual([]);
+    expect(out.droppedNames).toEqual(['epodsystem']);
+  });
+
+  it('answers a project that declares nothing with no servers and nothing dropped', async () => {
+    limitResults.push([{ agentConfig: null }]);
+    const out = await resolveSessionMcpServers('p-1');
+    expect(out.mcpServers).toBeNull();
+    expect(out.resolvedNames).toEqual([]);
+    expect(out.droppedNames).toEqual([]);
   });
 });
 
