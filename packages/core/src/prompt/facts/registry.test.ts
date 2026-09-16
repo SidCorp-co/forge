@@ -126,7 +126,6 @@ describe('forge facts registry', () => {
     }
   });
 
-
   // cm:guard the prose chain in PIPELINE_RULES and `CANONICAL_LADDER` are two copies of one sequence, and this is the only thing comparing them — the array's own guard used to say nothing did, which is how the prompt could state two ladders. It reads the array and searches the prose for it, so neither side is spelled twice here; a rung added to one alone leaves the other's chain unfindable and this goes red.
   it('the PIPELINE_RULES prose chain is the canonical ladder', () => {
     const rules = renderFact('pipeline-rules', { projectId: 'p', stage: 'code' }) ?? '';

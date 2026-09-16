@@ -2234,6 +2234,20 @@
 
 ### Removed
 
+- **Nine days of maintenance on prompts nothing could ever read, ended.** When the staged pipeline
+  was removed, the instructions written for its nine stages were left behind: eight blocks of
+  per-stage guidance and nine pieces of process knowledge, all addressed to steps that can no longer
+  run. They were still being edited nine days later. An agent working your issues never saw any of
+  it — a job of one of those retired kinds is refused before anything is written for it — so the
+  only thing they cost was the attention of whoever read them and believed they mattered. They are
+  gone. What an agent working your issues is actually told is unchanged, to the byte, and a new test
+  now says so on every run: change what a working agent reads and it goes red naming exactly which
+  part of the briefing moved, instead of the change being noticed weeks later in something an agent
+  did. The runner also stops carrying a switch for a check nobody ever wrote — a project could be
+  marked as a storefront rather than a code repository, and nothing anywhere acted on it. The
+  marking itself is kept, along with the one project that carries it, because it is somebody's
+  recorded intention and throwing it away is a decision for a person, not for a cleanup.
+
 - **The comment-grammar gate is gone, and the rationale it recorded stays.** A vendored checker
   read every comment in the repo and judged its form, its references and its density against a
   grammar, with roughly 5,600 annotations frozen as debt behind it. It was four of the twenty-two

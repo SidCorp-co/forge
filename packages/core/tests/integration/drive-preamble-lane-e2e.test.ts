@@ -66,7 +66,7 @@ describe('the assembled preamble forks on the lane', () => {
     return user;
   }
 
-  async function preambleFor(state: 'drive' | 'code'): Promise<string> {
+  async function preambleFor(state: 'drive' | 'release_batch'): Promise<string> {
     const user = await verifiedUser();
     const project = await createTestProject(harness.db, user.id);
     const token = await signUserToken(user.id);
@@ -114,9 +114,9 @@ describe('the assembled preamble forks on the lane', () => {
     }
   });
 
-  // cm:guard the staged control is half the evidence: every assertion above passes on a preamble that renders empty or on a fork that swallowed both lanes, and only this one tells those apart from a correct split
-  it('leaves the staged preamble carrying its ladder, its parks and its tools', async () => {
-    const code = await preambleFor('code');
+  // cm:guard the other arm is half the evidence: every assertion above passes on a preamble that renders empty or on a fork that swallowed both lanes, and only this one tells those apart from a correct split. It drove `code` until ISS-1047 — a job type `RUNNER_CAPABILITIES` refuses, so the control was a dispatch that cannot happen and would have kept passing while proving nothing. `release_batch` takes the same arm and IS claimable.
+  it('leaves the other arm carrying its ladder, its parks and its tools', async () => {
+    const code = await preambleFor('release_batch');
 
     expect(code).toContain('## Pipeline Rules');
     // cm:guard read the chain off `CANONICAL_LADDER`, never as a literal — a literal here passed while the array and the prose disagreed, which is the drift the array's own guard names. It is EIGHT rungs since ISS-976, each one a place a different party owes the next move; the shorter chains it has worn are why the assertion exists (153 hops over 4 projects in 3 hours on the retired ladder, 45 issues stranded, 2026-09-10).

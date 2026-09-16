@@ -15,8 +15,10 @@ use std::time::Duration;
 
 use tokio::process::Command;
 
-/// Cap for the network hop. Matches the preflight `ls-remote` budget — a slow
-/// remote must not hold a job or a chat turn open indefinitely.
+/// Cap for the network hop: a slow remote must not hold a job or a chat turn
+/// open indefinitely. It matched `daemon::preflight`'s `ls-remote` budget until
+/// ISS-1047 deleted that module — nothing called it — so this 20s is now the
+/// only statement of the budget rather than the second copy of one.
 const FETCH_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// Paths Forge itself rewrites inside a provisioned workspace. A project that

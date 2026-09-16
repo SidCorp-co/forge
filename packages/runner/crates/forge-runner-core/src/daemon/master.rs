@@ -1188,7 +1188,6 @@ mod tests {
                 repo_path: None,
                 branch: None,
                 status: (*status).into(),
-                kind: None,
                 workspace_setup: None,
                 master_policy: None,
                 rate_limited_for_seconds: *limited,
