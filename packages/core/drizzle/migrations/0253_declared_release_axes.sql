@@ -120,7 +120,27 @@ INSERT INTO iss1046_projects (project_id, slug, release_model, release_strategy)
   ('7dca1ad6-ab90-443f-a188-98f3e770265b', 'dodgeprint-api', 'none', NULL),
   ('dc99f7e0-498b-4eed-8397-2c18c1e624ab', 'dodgeprint-fe', 'none', NULL),
   ('fc06ff89-3235-4f6b-a9c0-f8c519cf3913', 'dodgeprint-ui-v2', 'none', NULL),
-  ('e8660972-6283-4104-8dba-6aee4983840a', 'forge-redesign', 'none', NULL);--> statement-breakpoint
+  ('e8660972-6283-4104-8dba-6aee4983840a', 'forge-redesign', 'none', NULL),
+  -- The twelve this migration could not see when its list was written: QA fixtures, an
+  -- issue's control row, throwaways and demo boards. They existed in `projects` and were
+  -- absent from the VALUES list, so the assertion below fired on every container boot and
+  -- held the deploy for 36 minutes on 2026-09-17. `none` here is the owner's declaration,
+  -- given while that deploy was down, and not a default this migration chose: each ships
+  -- nothing, reads no branch and needs no live target.
+  -- The lesson is the list's, not the assertion's: a roster measured when a migration is
+  -- written is not the roster it meets when it runs.
+  ('cac01f47-6292-469e-9e71-5da20dabe217', 'client-work-tracker', 'none', NULL),
+  ('7e7e3f09-a0ab-459a-a74c-ce4447f7963e', 'iss-1422-control', 'none', NULL),
+  ('9e1dd801-af72-4459-bee9-d14904d3eda1', 'iss-702-throwaway', 'none', NULL),
+  ('f1b91354-d701-4dca-8161-c3df83207492', 'lego-guide', 'none', NULL),
+  ('0a47ec80-8659-432b-9180-4c58ec95911d', 'linh-design-studio', 'none', NULL),
+  ('c7caf56b-6128-4bab-9270-192611f2fe83', 'linh-studio-q3-projects', 'none', NULL),
+  ('4473d199-d965-415d-b5ba-021a4f03a7f1', 'linh-studio-web', 'none', NULL),
+  ('2b3872c5-9ea3-464d-9773-9339629f7e97', 'qa-iss319-create-verify', 'none', NULL),
+  ('f9601fc8-9152-4d19-9dd2-6810c4fe8539', 'qa-project-available-for-testing', 'none', NULL),
+  ('3fee0966-58b3-4ee4-84ad-8c6d7aef7fdc', 'sid-hrm-v2', 'none', NULL),
+  ('0149a933-4034-411f-bbe4-f614b9ea6280', 'studio-brand-refresh', 'none', NULL),
+  ('fdc2748b-cd42-491b-a56c-c077f51da68b', 'summer-client-projects', 'none', NULL);--> statement-breakpoint
 
 -- === 3. the declared binding table ========================================
 -- `old_environment` is carried so 0253_down.sql restores the exact value rather
