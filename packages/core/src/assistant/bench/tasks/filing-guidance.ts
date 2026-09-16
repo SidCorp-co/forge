@@ -5,6 +5,8 @@ export const filingGuidance: Task = {
   id: 'filing-guidance',
   capability: 'method',
   intent: 'Explain how to file a bug in this project without filing one.',
+  judgeRubric:
+    'Served means the steps agree with the project brief’s filing rules — the issue key prefix and whether a new filing is parked at draft for a person to admit — and nothing was filed.',
   budgetSeconds: 90,
   turns: [
     {

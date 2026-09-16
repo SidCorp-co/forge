@@ -7,6 +7,7 @@
  * found by their tokens and removed, with a read-back for each.
  */
 
+import { BRIEF_OPEN_ISSUES } from './brief.js';
 import type { BenchClient, PreferenceChange, Preferences, Project, RoomMessage } from './client.js';
 import { extractIssueLinks, gradeTurn, type LinkOutcome, type PreferenceRow } from './grade.js';
 import { callLines, type Judge, type JudgeResult } from './judge.js';
@@ -23,6 +24,8 @@ export interface TrialArgs {
   log?: (line: string) => void;
   /** The sidecar judge; its verdict is stored beside the grade and never read into it. */
   judge?: Judge;
+  /** The per-run project brief, handed to the judge on every judged turn beside the fixtures (ISS-1066). */
+  brief?: string;
   /** Hex characters for a fresh token; defaults to a UUID's first twelve. */
   randomId?: () => string;
 }
@@ -74,6 +77,16 @@ async function readFixtures(args: TrialArgs): Promise<Record<string, string>> {
       const waiting = await client.waitingIssue(project.id);
       values.needsInfoKey = waiting.key;
       values.needsInfoId = waiting.id;
+    }
+    if (name === 'newestOpenIssues') {
+      const open = await client.newestOpenIssues(project.id, BRIEF_OPEN_ISSUES);
+      // cm:guard a task asking for a list the project cannot supply is recorded not applicable before any trial starts (bench/brief.ts:fixtureNotApplicable); reaching here with none is a caller that skipped that check, and an empty list would grade a reply about nothing
+      if (open.length === 0)
+        throw new Error('the project holds no open issue, so there is no bounded list to ask for');
+      values.openIssueKeys = open.map((i) => i.key).join(', ');
+      values.openIssueCount = String(open.length);
+      // cm:guard the newest one's id, so `linkTo` still demands a link that RESOLVES: without it a reply naming the keys and linking nothing passes every remaining check vacuously
+      values.openIssueId = open[0]?.id ?? '';
     }
     if (name === 'pipelineStates')
       values.stateList = (await client.pipelineStates(project.id)).join(', ');
@@ -248,13 +261,19 @@ function turnRecord(
   };
 }
 
-/** The block the judge reads that the assistant did not: the filled fixtures, then the earlier turns of this trial. */
-function referenceFor(
-  values: Record<string, string>,
-  sends: SentTurn[],
-  upTo: number,
-): string | undefined {
+/** The filled fixtures, as the judge reads them back. */
+function fixtureReference(values: Record<string, string>): string | undefined {
   const lines = Object.entries(values).map(([k, v]) => `${k}: ${v}`);
+  return lines.length === 0 ? undefined : lines.join('\n');
+}
+
+/**
+ * The earlier turns of this trial. Kept apart from the fixtures since ISS-1066 so the project brief
+ * can stand between the two; joined by the same single newline, so a trial with no brief hands the
+ * judge the text it handed it before.
+ */
+function turnReference(sends: SentTurn[], upTo: number): string | undefined {
+  const lines: string[] = [];
   for (const s of sends.slice(0, upTo)) {
     lines.push(`turn ${s.index + 1} asked: ${s.message}`);
     lines.push(`turn ${s.index + 1} replied: ${s.delivered ?? '(no reply)'}`);
@@ -283,7 +302,8 @@ async function judgeTurns(
   const judged: Array<JudgeResult | undefined> = [];
   for (const [i, sent] of sends.entries()) {
     const turnAttempts = attempts[i] ?? [];
-    const reference = referenceFor(values, sends, i);
+    const reference = fixtureReference(values);
+    const turns = turnReference(sends, i);
     judged[i] = await judge.judge({
       query: sent.message,
       reply: sent.delivered,
@@ -291,6 +311,8 @@ async function judgeTurns(
       error: turnAttempts.at(-1)?.error ?? null,
       ...(args.task.judgeRubric ? { rubric: args.task.judgeRubric } : {}),
       ...(reference ? { reference } : {}),
+      ...(args.brief ? { brief: args.brief } : {}),
+      ...(turns ? { turns } : {}),
     });
   }
   return { judged, refused: null };

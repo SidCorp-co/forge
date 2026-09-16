@@ -5,6 +5,7 @@
  */
 
 import type { FetchLike, PreferenceChange, RoomMessage } from './client.js';
+import { briefRoutes } from './fake-brief-routes.js';
 import { ASKED_HEADER, CALLS_HEADER, NO_REPLY, REPLIED_HEADER } from './judge.js';
 import type { ChatLogRow } from './trail.js';
 
@@ -53,8 +54,28 @@ export interface FakeOptions {
   rows?: FakeState['chatLogs'];
   /** The judge endpoint's answer: the text the model returns, or an HTTP status to refuse with. */
   judge?: (input: { query: string; reply: string | null; model: string }) => string | number;
-  /** The pipeline's state keys in order; defaults to the three every pipeline carries. */
+  /** The stage keys the project's stored config names; defaults to the one key nearly every project holds. */
   states?: string[];
+  /** Stage keys the project switched off, which is the one override a project has over the ladder (ISS-1066). */
+  statesOff?: string[];
+  /** ISS-606 — on, a filing is parked at `draft` for a person to admit; the brief says which. */
+  intakeGate?: boolean;
+  /** The project's own row, as `GET /api/projects/:id` serves it and the list route does not. */
+  detail?: { description?: string | null; issuePrefix?: string | null };
+  /** The author's kebab-key map, which ISS-1048 is moving into knowledge entries. */
+  projectFacts?: Record<string, string>;
+  /** The knowledge index and the body each entry's own route serves. */
+  knowledge?: Array<{
+    slug: string;
+    title: string;
+    kind: string;
+    injection: string;
+    body?: string;
+  }>;
+  /** Refuse the knowledge index with this status, as a credential without membership would. */
+  knowledgeStatus?: number;
+  /** Cut the UNFILTERED knowledge index to this many rows, as the route's 38,000-character response cap does. */
+  knowledgeIndexCap?: number;
   /** Memory notes the project holds before any trial. */
   notes?: FakeNote[];
 }
@@ -64,6 +85,11 @@ export interface FakeNote {
   sourceRef: string;
   textContent: string;
   archivedAt: string | null;
+}
+
+export interface FakeCtx {
+  opts: FakeOptions;
+  project: { id: string; slug: string; name: string };
 }
 
 export interface FakeState {
@@ -285,10 +311,20 @@ function issueRoutes(ctx: Ctx, method: string, url: URL): Response | null {
     );
   }
   if (method === 'GET' && path === `/api/projects/${ctx.project.id}/pipeline-config`) {
-    const states = Object.fromEntries(
-      (ctx.opts.states ?? ['open', 'in_progress', 'awaiting_release']).map((s) => [s, {}]),
+    // cm:why the default is `open` alone: that is what nearly every project stores, and reading its
+    // keys as the project's whole pipeline is the ISS-1066 defect — a default of three would have
+    // let the fixture look right in every test while being wrong in the field.
+    const states: Record<string, { enabled?: boolean }> = Object.fromEntries(
+      (ctx.opts.states ?? ['open']).map((s) => [s, {}]),
     );
-    return json(200, { pipelineConfig: { enabled: true, states } });
+    for (const off of ctx.opts.statesOff ?? []) states[off] = { enabled: false };
+    return json(200, {
+      pipelineConfig: {
+        enabled: true,
+        states,
+        ...(ctx.opts.intakeGate ? { intakeGate: { enabled: true } } : {}),
+      },
+    });
   }
   const issue = /^\/api\/issues\/([^/]+)$/.exec(path);
   if (method === 'GET' && issue) {
@@ -445,6 +481,7 @@ export function createFakeDeployment(opts: FakeOptions): { fetch: FetchLike; sta
     if (auth !== `Bearer ${FAKE_TOKEN}`) return json(401, { error: 'unauthorized' });
     if (method === 'GET' && path === '/api/chat-logs') return chatLogs(ctx, url);
     return (
+      briefRoutes(ctx, method, url, json) ??
       issueRoutes(ctx, method, url) ??
       memoryRoutes(ctx, method, url) ??
       roomRoutes(ctx, method, path, body) ??

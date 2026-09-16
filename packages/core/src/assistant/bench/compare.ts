@@ -30,6 +30,18 @@ export interface TaskComparison {
   id: string;
   before: TaskSide | null;
   after: TaskSide | null;
+  /** Why the project could not be asked this task, per side; a side with one is reported, never thin (ISS-1066). */
+  notApplicable: { before: string | null; after: string | null };
+}
+
+/** A comparison across two projects, refused unless the caller asked for one (ISS-1066). */
+export class ProjectMismatch extends Error {
+  constructor(before: string, after: string) {
+    super(
+      `these two runs are of different projects — before is ${before}, after is ${after}. A task's pass rate is about the project it was walked on, so putting the two on one row compares two questions rather than two builds. Pass --across-projects to do it anyway.`,
+    );
+    this.name = 'ProjectMismatch';
+  }
 }
 
 export interface Comparison {
@@ -120,18 +132,49 @@ function differences(before: BenchResult, after: BenchResult): string[] {
 /** The run's tasks sided at `k` and grouped by the capability each carries. */
 export function capabilitiesOf(r: BenchResult, k: number): CapabilitySummary[] {
   return summarizeCapabilities(
-    r.tasks.map((t) => ({ id: t.id, capability: t.capability, side: sideOf(t.trials, k) })),
+    r.tasks.map((t) => ({
+      id: t.id,
+      capability: t.capability,
+      side: sideOf(t.trials, k),
+      ...(t.notApplicable ? { notApplicable: t.notApplicable } : {}),
+    })),
   );
 }
 
+/**
+ * Refuse two files of two different projects unless asked. A file carrying `project: null` was
+ * written before a run recorded one, and is exempt: refusing it would make every stored run
+ * uncomparable to a new one, which is a cost with no reader behind it.
+ */
+export function assertSameProject(
+  before: BenchResult,
+  after: BenchResult,
+  acrossProjects: boolean,
+): void {
+  const a = before.project?.slug;
+  const b = after.project?.slug;
+  if (acrossProjects || !a || !b || a === b) return;
+  throw new ProjectMismatch(a, b);
+}
+
 /** The two files compared per task; `k` is the after file's unless the before file names a larger one. */
-export function compare(before: BenchResult, after: BenchResult): Comparison {
+export function compare(
+  before: BenchResult,
+  after: BenchResult,
+  opts: { acrossProjects?: boolean } = {},
+): Comparison {
+  assertSameProject(before, after, opts.acrossProjects === true);
   const k = Math.max(before.k, after.k);
   const ids = [...new Set([...before.tasks, ...after.tasks].map((t) => t.id))];
   const tasks = ids.map((id) => {
     const b = before.tasks.find((t) => t.id === id);
     const a = after.tasks.find((t) => t.id === id);
-    return { id, before: b ? sideOf(b.trials, k) : null, after: a ? sideOf(a.trials, k) : null };
+    return {
+      id,
+      before: b ? sideOf(b.trials, k) : null,
+      after: a ? sideOf(a.trials, k) : null,
+      notApplicable: { before: b?.notApplicable ?? null, after: a?.notApplicable ?? null },
+    };
   });
   return {
     k,
@@ -146,7 +189,14 @@ export function compare(before: BenchResult, after: BenchResult): Comparison {
 const pct = (v: number | null): string => (v === null ? '—' : `${Math.round(v * 100)}%`);
 const num = (v: number | null): string => (v === null ? '—' : v.toFixed(1));
 
-function sideLines(label: string, side: TaskSide | null, k: number): string[] {
+function sideLines(
+  label: string,
+  side: TaskSide | null,
+  k: number,
+  notApplicable: string | null = null,
+): string[] {
+  // cm:guard a task this project cannot be asked reads as its reason, never as `0/0 trials passed (thin: 0 < 3)` — those are two different facts and one of them is about the assistant
+  if (notApplicable) return [`  ${label}: not applicable — ${notApplicable}`];
   if (!side) return [`  ${label}: no trials`];
   const thin = side.thin ? ` (thin: ${side.n} < ${k})` : '';
   const modes = Object.entries(side.modes)
@@ -172,8 +222,8 @@ export function compareLines(c: Comparison): string[] {
   for (const task of c.tasks) {
     lines.push(
       task.id,
-      ...sideLines('before', task.before, c.k),
-      ...sideLines('after', task.after, c.k),
+      ...sideLines('before', task.before, c.k, task.notApplicable.before),
+      ...sideLines('after', task.after, c.k, task.notApplicable.after),
     );
   }
   for (const side of ['before', 'after'] as const) {

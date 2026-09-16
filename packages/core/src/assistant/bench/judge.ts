@@ -15,11 +15,18 @@ import type { ToolCall } from './trail.js';
 export const REFERENCE_HEADER =
   'What the benchmark read from the project and the earlier turns; the assistant did not see this block:';
 
+/** The sub-header the per-run project brief stands under, between the fixtures and the earlier turns (ISS-1066). */
+export const BRIEF_HEADER = 'The project as the benchmark read it at the top of this run:';
+
 export interface JudgeInput {
   /** One sentence the task adds to the generic rule (ISS-1061). */
   rubric?: string;
-  /** The facts the judge holds against the reply: filled fixtures and earlier turns (ISS-1061, codex F3). */
+  /** The filled fixtures the benchmark read for this task (ISS-1061, codex F3). */
   reference?: string;
+  /** The per-run project brief (ISS-1066); absent leaves the block byte-identical to the one before it existed. */
+  brief?: string;
+  /** The earlier turns of this trial, as the judge reads them back. */
+  turns?: string;
   query: string;
   reply: string | null;
   /** Each tool call rendered for a reader: `forge issue --status open`, with ` (error)` when the tool errored. */
@@ -63,6 +70,22 @@ export function callLines(calls: ToolCall[]): string[] {
   });
 }
 
+/**
+ * The reference block, or null where there is nothing to put in it.
+ *
+ * The three parts are joined by a single newline and the brief sits between the other two, so an
+ * input carrying no brief produces exactly the text `reference` alone produced before ISS-1066 —
+ * `judge.test.ts` pins that for fixtures alone, turns alone, both and neither.
+ */
+function referenceBlock(input: JudgeInput): string | null {
+  const parts = [
+    input.reference,
+    input.brief ? `${BRIEF_HEADER}\n${input.brief}` : undefined,
+    input.turns,
+  ].filter((part): part is string => part !== undefined && part !== '');
+  return parts.length === 0 ? null : `${REFERENCE_HEADER}\n${parts.join('\n')}`;
+}
+
 /** Pure: the two messages the judge is sent. */
 export function judgeMessages(input: JudgeInput): ChatMessage[] {
   const system = [
@@ -75,14 +98,24 @@ export function judgeMessages(input: JudgeInput): ChatMessage[] {
     ...(input.rubric
       ? [`For this exchange, "served" is read by this rule as well: ${input.rubric}`]
       : []),
+    // cm:guard said only where BOTH are present, and it is not decoration: the brief is read ONCE at
+    // the top of the run, the fixtures per trial, and on a live project an issue changes status in
+    // between. Without this the judge holds a correct fresh answer against a stale snapshot and its
+    // disagreement measures timing rather than the assistant (codex F2 on ISS-1066).
+    ...(input.brief && input.reference
+      ? [
+          'The reference block carries two readings of the project: the filled fixtures, which the benchmark read for THIS exchange, and the project brief, read once at the top of the run. Where a figure or a name differs between them, the fixtures are the current one and the brief is background — do not mark a reply unserved for matching the fixtures.',
+        ]
+      : []),
   ].join('\n');
   const calls = input.calls.length > 0 ? input.calls.map((c) => `- ${c}`).join('\n') : '- none';
+  const block = referenceBlock(input);
   const user = [
     `${ASKED_HEADER}\n${input.query}`,
     `${CALLS_HEADER}\n${calls}`,
     `${ERROR_HEADER} ${input.error ?? 'none'}`,
     `${REPLIED_HEADER}\n${input.reply ?? NO_REPLY}`,
-    ...(input.reference ? [`${REFERENCE_HEADER}\n${input.reference}`] : []),
+    ...(block === null ? [] : [block]),
   ].join('\n\n');
   return [
     { role: 'system', content: system },

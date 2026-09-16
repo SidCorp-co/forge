@@ -68,6 +68,20 @@ export interface TaskResult {
   id: string;
   capability: Capability;
   trials: TrialResult[];
+  /**
+   * Why this project cannot supply one of the task's fixtures, so no trial was run (ISS-1066).
+   * A refusal that was RIGHT — `forge-plugin` holds no issue waiting on information — used to cost
+   * three failed trials and read as a capability the assistant lacked.
+   */
+  notApplicable?: string;
+}
+
+/** The project a run was taken against, and the brief its judge was handed (ISS-1066). */
+export interface RunProject {
+  id: string;
+  slug: string;
+  brief: string;
+  readAt: string;
 }
 
 export interface BenchResult {
@@ -79,6 +93,8 @@ export interface BenchResult {
   runId: string;
   k: number;
   tasks: TaskResult[];
+  /** The project this run was taken against; `null` on a file written before ISS-1066. */
+  project: RunProject | null;
   /** Per capability walked: the same score rule over its tasks (ISS-1061). Derived from `tasks`; a reader recomputes it. */
   capabilities?: CapabilitySummary[];
   /** The judge model, when the run had one. */
@@ -105,6 +121,8 @@ export function readResult(text: string, where = 'result'): BenchResult {
     if (!(key in obj)) throw new ResultShapeError(`${where} lacks ${key}`);
   }
   if (!Array.isArray(obj.tasks)) throw new ResultShapeError(`${where}.tasks is not a list`);
+  // cm:why a file written before ISS-1066 names no project: it was taken before a run recorded one, and refusing it would make every stored run uncomparable to a new one. `null` is what the ladder and the comparison read as "which project is unknown", never as a project.
+  if (obj.project === undefined) obj.project = null;
   obj.tasks.forEach((task: unknown, t) => {
     const row = task as Record<string, unknown>;
     if (typeof row.id !== 'string' || !Array.isArray(row.trials))

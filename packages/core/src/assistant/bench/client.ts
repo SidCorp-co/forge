@@ -4,6 +4,8 @@
  * refusal naming the route, the status and the body's first line; nothing here returns a guess.
  */
 
+import { effectivePipelineStates } from '../../prompt/facts/effective-ladder.js';
+
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
 export class DeploymentRefusal extends Error {
@@ -27,6 +29,37 @@ export interface IssueCounts {
   openCount: number;
   closedCount: number;
   draftCount: number;
+  /** Every status the project's issues actually hold, counted; the three above are the ones a fixture fills. */
+  byStatus: Record<string, number>;
+}
+
+/** The project as `GET /api/projects/:id` serves it; the list route projects no description. */
+export interface ProjectDetail {
+  name: string;
+  description: string | null;
+  issuePrefix: string | null;
+}
+
+/** What `GET /api/projects/:id/pipeline-config` says about this project's stages. */
+export interface StoredPipelineConfig {
+  states: Record<string, { enabled?: boolean } | undefined>;
+  /** ISS-606: on, every filing lands at `draft` for a human to admit. */
+  intakeGate: boolean;
+}
+
+/** One row of `GET /api/projects/:id/knowledge`, which serves no body — `knowledgeEntry` fetches those. */
+export interface KnowledgeRow {
+  slug: string;
+  title: string;
+  kind: string;
+  injection: string;
+}
+
+/** The knowledge index with the route's own truncation metadata, which the brief discloses rather than drops. */
+export interface KnowledgeIndex {
+  rows: KnowledgeRow[];
+  total: number;
+  truncated: boolean;
 }
 
 export interface MemoryNote {
@@ -39,6 +72,13 @@ export interface IssueRef {
   id: string;
   key: string;
   title: string;
+}
+
+/** An issue as the brief lists it: newest first, by the list route's own default sort. */
+export interface IssueLine {
+  key: string;
+  title: string;
+  status: string;
 }
 
 export interface RoomMessage {
@@ -144,13 +184,15 @@ function projectReaders(json: JsonFn) {
   return {
     /** Every issue of the project, every page, counted by status. */
     async issueCounts(projectId: string): Promise<IssueCounts> {
-      const counts = { openCount: 0, closedCount: 0, draftCount: 0 };
-      for (const row of await listAll<{ status: string }>(`/api/projects/${projectId}/issues`)) {
-        if (row.status === 'open') counts.openCount += 1;
-        else if (row.status === 'closed') counts.closedCount += 1;
-        else if (row.status === 'draft') counts.draftCount += 1;
-      }
-      return counts;
+      const byStatus: Record<string, number> = {};
+      for (const row of await listAll<{ status: string }>(`/api/projects/${projectId}/issues`))
+        byStatus[row.status] = (byStatus[row.status] ?? 0) + 1;
+      return {
+        openCount: byStatus.open ?? 0,
+        closedCount: byStatus.closed ?? 0,
+        draftCount: byStatus.draft ?? 0,
+        byStatus,
+      };
     },
     /** The first issue waiting on information; refused by name where the project has none. */
     async waitingIssue(projectId: string): Promise<IssueRef> {
@@ -168,17 +210,18 @@ function projectReaders(json: JsonFn) {
         );
       return { id: row.id, key: row.displayId, title: row.title };
     },
-    /** The pipeline's state names in the order the project's config declares them. */
+    /**
+     * The project's effective pipeline states, in order.
+     *
+     * NOT the keys of the stored `states` map, which is per-stage configuration over four optional
+     * keys: `forge-plugin` stores only `open`, and reading that as its whole pipeline asked the
+     * assistant for a one-state answer and would have graded the right one wrong (ISS-1066). The
+     * empty-config refusal this replaced was a wrong refusal rather than a loud one — an empty map
+     * means every canonical rung, never none.
+     */
     async pipelineStates(projectId: string): Promise<string[]> {
-      const path = `/api/projects/${projectId}/pipeline-config`;
-      const res = await json<{ pipelineConfig?: { states?: Record<string, unknown> } }>(
-        'GET',
-        path,
-      );
-      const names = Object.keys(res.pipelineConfig?.states ?? {});
-      if (names.length === 0)
-        throw new DeploymentRefusal(`GET ${path}`, 200, 'the pipeline config names no state');
-      return names;
+      const { states } = await readPipelineConfig(json, projectId);
+      return effectivePipelineStates(states);
     },
     /** Every memory note of the project, every page, archived included (codex F1 on ISS-1061). */
     async listNotes(projectId: string): Promise<MemoryNote[]> {
@@ -191,6 +234,86 @@ function projectReaders(json: JsonFn) {
       const qs = new URLSearchParams({ projectId, source: 'note', sourceRef });
       const res = await json<{ deleted: number }>('DELETE', `/api/memory/by-source?${qs}`);
       return res.deleted;
+    },
+  };
+}
+
+/** The stored pipeline config, read once by whichever of the two readers below wants it. */
+async function readPipelineConfig(json: JsonFn, projectId: string): Promise<StoredPipelineConfig> {
+  const res = await json<{
+    pipelineConfig?: {
+      states?: Record<string, { enabled?: boolean }>;
+      intakeGate?: { enabled?: boolean };
+    };
+  }>('GET', `/api/projects/${projectId}/pipeline-config`);
+  return {
+    states: res.pipelineConfig?.states ?? {},
+    intakeGate: res.pipelineConfig?.intakeGate?.enabled === true,
+  };
+}
+
+/** ISS-1066 — what the per-run project brief reads, over the routes the product serves them on. */
+function briefReaders(json: JsonFn) {
+  return {
+    /** The project's own row: the list route projects no description, so the brief reads the detail. */
+    async projectDetail(projectId: string): Promise<ProjectDetail> {
+      const row = await json<{
+        name?: string;
+        description?: string | null;
+        issuePrefix?: string | null;
+      }>('GET', `/api/projects/${projectId}`);
+      return {
+        name: row.name ?? '',
+        description: row.description ?? null,
+        issuePrefix: row.issuePrefix ?? null,
+      };
+    },
+    pipelineConfig: (projectId: string) => readPipelineConfig(json, projectId),
+    /** The author's kebab-key → body map. ISS-1048 is moving this prose into knowledge entries; an empty map is a fact about the project, not a failure. */
+    async projectFacts(projectId: string): Promise<Record<string, string>> {
+      const res = await json<{ projectFacts?: Record<string, string> }>(
+        'GET',
+        `/api/projects/${projectId}/project-facts`,
+      );
+      return res.projectFacts ?? {};
+    },
+    /**
+     * The knowledge index, through the same route `forge_knowledge` action=list reads. A credential
+     * that cannot read it refuses here, before the first turn, rather than leaving the judge to grade
+     * project answers against a brief with a silently empty knowledge section.
+     */
+    async knowledge(projectId: string, injection?: string): Promise<KnowledgeIndex> {
+      const query = injection ? `?injection=${encodeURIComponent(injection)}` : '';
+      const res = await json<{ rows?: KnowledgeRow[]; total?: number; truncated?: boolean }>(
+        'GET',
+        `/api/projects/${projectId}/knowledge${query}`,
+      );
+      const rows = res.rows ?? [];
+      return { rows, total: res.total ?? rows.length, truncated: res.truncated === true };
+    },
+    /** One entry's body; the index serves none. The brief pulls only the always-injected ones. */
+    async knowledgeEntry(projectId: string, slug: string): Promise<string> {
+      const res = await json<{ body?: string }>(
+        'GET',
+        `/api/projects/${projectId}/knowledge/${encodeURIComponent(slug)}`,
+      );
+      return res.body ?? '';
+    },
+    /** The newest issues, by the list route's own default sort of `createdAt:desc` (issues/sort.ts). */
+    async newestIssues(projectId: string, limit: number): Promise<IssueLine[]> {
+      const env = await json<ListEnvelope<{ displayId: string; title: string; status: string }>>(
+        'GET',
+        `/api/projects/${projectId}/issues?limit=${limit}`,
+      );
+      return env.items.map((r) => ({ key: r.displayId, title: r.title, status: r.status }));
+    },
+    /** The newest open issues, bounded: a task asking for every one of 682 measures patience (ISS-1066). */
+    async newestOpenIssues(projectId: string, limit: number): Promise<IssueRef[]> {
+      const env = await json<ListEnvelope<{ id: string; displayId: string; title: string }>>(
+        'GET',
+        `/api/projects/${projectId}/issues?status=open&limit=${limit}`,
+      );
+      return env.items.map((r) => ({ id: r.id, key: r.displayId, title: r.title }));
     },
   };
 }
@@ -285,6 +408,7 @@ export function createClient(opts: ClientOptions) {
       return { id: row.id, key: row.displayId, title: row.title };
     },
     ...projectReaders(json),
+    ...briefReaders(json),
     async issueExists(id: string): Promise<'resolves' | 'dead'> {
       const path = `/api/issues/${id}`;
       const { status, text } = await call('GET', path);

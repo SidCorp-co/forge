@@ -245,6 +245,7 @@ describe('the inputs read off the files', () => {
       version: 'v',
       model: 'm',
       runId: 'r',
+      project: null,
       k: 3,
       tasks: [
         {

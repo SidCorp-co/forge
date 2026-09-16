@@ -5,6 +5,8 @@ export const summaryInStyle: Task = {
   id: 'summary-in-style',
   capability: 'method',
   intent: 'Summarize what the project is about in one message, in the style the person set.',
+  judgeRubric:
+    'Served means the summary says what the project brief’s name and description say this project is, and is written as bullets because that is the style the person set.',
   budgetSeconds: 90,
   preference: { setup: { answerStyle: 'bullets' }, restore: 'baseline' },
   turns: [

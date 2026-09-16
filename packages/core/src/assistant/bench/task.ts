@@ -81,6 +81,7 @@ export type Check =
 /** What a fixture reads from the deployment before the first turn, and the placeholders it fills. */
 export type FixtureName =
   | 'firstOpenIssue'
+  | 'newestOpenIssues'
   | 'projectName'
   | 'issueCounts'
   | 'waitingIssue'
@@ -88,12 +89,14 @@ export type FixtureName =
   | 'nonce';
 export const FIXTURE_KEYS: Record<FixtureName, readonly string[]> = {
   firstOpenIssue: ['issueKey', 'issueId'],
+  /** The newest open issues, bounded: on a project holding 682 a task asking for every one measures patience rather than linking (ISS-1066). */
+  newestOpenIssues: ['openIssueKeys', 'openIssueCount', 'openIssueId'],
   projectName: ['projectName'],
   /** The project's issues counted by status, read before the turn so the answer is the project's own. */
   issueCounts: ['openCount', 'closedCount', 'draftCount'],
   /** The first issue waiting on information; its own fixture, so a project with none still runs the counts (codex F4). */
   waitingIssue: ['needsInfoKey', 'needsInfoId'],
-  /** The pipeline's state keys in their declared order, joined by `, `. */
+  /** The project's EFFECTIVE pipeline states in order, joined by `, ` — the canonical ladder with this project's stage overrides applied, never the stored config's keys (ISS-1066). */
   pipelineStates: ['stateList'],
   /** Two independent random tokens per trial, so a correction task refuses the first by literal (codex F2). */
   nonce: ['nonce', 'nonce2'],
@@ -166,6 +169,9 @@ function movesPreferences(task: Task): boolean {
   );
 }
 
+/** What a multi-turn rubric has to say so the judge knows which turn a requirement is about. */
+const TURN_SCOPED = /\bon (a|the|each|every|its) (\w+ )?turn\b/i;
+
 /** Refuse the task list by name where it cannot be graded whole, else return it as given. */
 export function validateTasks(list: readonly Task[]): Task[] {
   const seen = new Set<string>();
@@ -183,6 +189,18 @@ export function validateTasks(list: readonly Task[]): Task[] {
       (/\n/.test(task.judgeRubric) || task.judgeRubric.length > 300)
     )
       throw new TaskLoadError(`task ${task.id} judgeRubric must be one line under 300 characters`);
+    // cm:guard `run.ts#judgeTurns` hands the rubric to EVERY judged turn of the task, so a
+    // task-wide requirement on a multi-turn task is one the person never asked for on the early
+    // turns: "served means the reply gives the deploy window" failed the turn that had only asked
+    // the assistant to remember it, and the disagreement read as the assistant's (ISS-1066).
+    if (
+      task.judgeRubric !== undefined &&
+      task.turns.length > 1 &&
+      !TURN_SCOPED.test(task.judgeRubric)
+    )
+      throw new TaskLoadError(
+        `task ${task.id} judgeRubric is handed to every one of its ${task.turns.length} turns, so it must name the turn each requirement belongs to ("on the first turn…", "on a turn that…", "on each turn…")`,
+      );
     if (!(task.budgetSeconds > 0))
       throw new TaskLoadError(`task ${task.id} names no budget in seconds`);
     if (task.turns.length === 0) throw new TaskLoadError(`task ${task.id} has no turn`);

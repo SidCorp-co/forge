@@ -5,14 +5,21 @@
  */
 
 import { adviceInputsOfHistory, adviceInputsOfRun, adviceLines, advise } from './advice.js';
+import { fixtureNotApplicable, projectBrief, readProjectBrief } from './brief.js';
 import { capabilityLines } from './capability.js';
-import { createClient, type FetchLike } from './client.js';
+import { type BenchClient, createClient, DeploymentRefusal, type FetchLike } from './client.js';
 import { capabilitiesOf, compare, compareLines, sideOf } from './compare.js';
 import { HISTORY_USAGE, historyMain } from './history/cli.js';
 import { readHistoryResult } from './history/result.js';
 import { isVerdict, type Judge, judgeFromEnv, tally, tallyLine } from './judge.js';
 import { ladderLines, ladderMarkdown, rankRuns, rankWindows } from './ladder.js';
-import { type BenchResult, readResult, serializeResult, type TaskResult } from './result.js';
+import {
+  type BenchResult,
+  type RunProject,
+  readResult,
+  serializeResult,
+  type TaskResult,
+} from './result.js';
 import { runTrial } from './run.js';
 import type { Task } from './task.js';
 import { loadTasks } from './tasks/index.js';
@@ -36,7 +43,7 @@ export type Env = Record<string, string | undefined>;
 
 export const USAGE = [
   'bench:assistant run --api <url> --project <slug> --out <file> [--tasks a,b] [--trials 3] [--k 3] [--judge <model>]',
-  'bench:assistant compare <before.json> <after.json>',
+  'bench:assistant compare <before.json> <after.json> [--across-projects]',
   'bench:assistant ladder <run.json>... [--history <history.json>]... [--out ladder.md]',
   'bench:assistant advise <run.json|history.json>',
   ...HISTORY_USAGE,
@@ -92,6 +99,25 @@ function positiveInt(name: string, raw: string | undefined, fallback: number): n
   return n;
 }
 
+/**
+ * Every trial reads the person's preferences to restore them, and a personal access token cannot
+ * reach that route at all — it resolves no project, so the deployment refuses it by name. Read it
+ * once before the first room: a run that finds this out per trial burns every trial's assistant
+ * calls first and reports 0/n as if the assistant had failed them (ISS-1066, found running the
+ * landed change against `forge-plugin`).
+ */
+async function credentialCanRunTrials(client: BenchClient): Promise<void> {
+  try {
+    await client.readPreferences();
+  } catch (err) {
+    if (err instanceof DeploymentRefusal && err.status === 403)
+      throw new Refusal(
+        `this credential cannot run the benchmark: ${err.message}\nEvery trial reads and restores the person's preferences, so the run would fail each one after paying for its turns. Use FORGE_BENCH_EMAIL and FORGE_BENCH_PASSWORD for an account that holds this project, rather than FORGE_BENCH_TOKEN.`,
+      );
+    throw err;
+  }
+}
+
 async function run(argv: string[], env: Env, deps: CliDeps): Promise<number> {
   const f = flags(argv);
   for (const need of ['api', 'project', 'out']) {
@@ -103,16 +129,34 @@ async function run(argv: string[], env: Env, deps: CliDeps): Promise<number> {
   const judge: Judge | undefined = f.judge ? judgeFromEnv(env, f.judge, deps.fetch) : undefined;
   const client = createClient({ api: f.api ?? '', fetch: deps.fetch, timeoutMs: 10 * 60_000 });
   await signIn(client, env);
+  await credentialCanRunTrials(client);
   const version = await client.version();
   const project = await client.projectBySlug(f.project ?? '');
   const runId = deps.randomId();
+  // cm:guard the brief is read ONCE, before the first turn, and refuses by name where the credential
+  // cannot see the project's knowledge: a run that judged project answers against a silently empty
+  // brief is what ISS-1066 was filed about (`brief.ts:readProjectBrief`).
+  const source = await readProjectBrief(client, project, deps.now);
+  const brief = projectBrief(source);
+  const runProject: RunProject = {
+    id: project.id,
+    slug: project.slug,
+    brief,
+    readAt: source.readAt,
+  };
   deps.stdout(
-    `run ${runId} against ${f.api} (${version.sourceCommit ?? 'unknown commit'}), project ${project.slug}`,
+    `run ${runId} against ${f.api} (${version.sourceCommit ?? 'unknown commit'}), project ${project.slug}, brief ${brief.length} characters read at ${source.readAt}`,
   );
 
   let model: string | null = null;
   const results: TaskResult[] = [];
   for (const task of tasks) {
+    const notApplicable = fixtureNotApplicable(task, source);
+    if (notApplicable) {
+      deps.stdout(`${task.id}: not applicable — ${notApplicable}`);
+      results.push({ id: task.id, capability: task.capability, trials: [], notApplicable });
+      continue;
+    }
     const row: TaskResult = { id: task.id, capability: task.capability, trials: [] };
     for (let i = 0; i < trials; i += 1) {
       const trial = await runTrial({
@@ -123,6 +167,7 @@ async function run(argv: string[], env: Env, deps: CliDeps): Promise<number> {
         now: deps.now,
         log: deps.stderr,
         randomId: () => `${deps.randomId()}${deps.randomId()}`.slice(0, 12),
+        brief,
         ...(judge ? { judge } : {}),
       });
       model ??= trial.model;
@@ -130,7 +175,7 @@ async function run(argv: string[], env: Env, deps: CliDeps): Promise<number> {
       // cm:guard a judge that is the model under test grades its own habits kindly; the trial it was refused on is kept whole (grades, room id) so the partial file still excludes that room from a history reading
       if (trial.judgeRefused) {
         results.push(row);
-        await writeResult(deps, f, version, model, runId, k, results, judge);
+        await writeResult(deps, f, version, model, runId, k, results, judge, runProject);
         throw new Refusal(
           `${task.id} trial ${i + 1}: ${trial.judgeRefused}; no further trial started, partial results written to ${f.out}`,
         );
@@ -138,7 +183,7 @@ async function run(argv: string[], env: Env, deps: CliDeps): Promise<number> {
       // cm:guard a restore that failed must not become the next trial's baseline: the next trial would read the moved value as the account's own and restore to it, and the run would end "clean" with the person's preference changed
       if (trial.result.cleanup.preferences.equal === false) {
         results.push(row);
-        await writeResult(deps, f, version, model, runId, k, results, judge);
+        await writeResult(deps, f, version, model, runId, k, results, judge, runProject);
         const { observed, expected } = trial.result.cleanup.preferences;
         throw new Refusal(
           `${task.id} trial ${i + 1}: preference restore failed (${JSON.stringify(observed)} read back against ${JSON.stringify(expected)}); no further trial started, partial results written to ${f.out}`,
@@ -159,7 +204,7 @@ async function run(argv: string[], env: Env, deps: CliDeps): Promise<number> {
     }
     results.push(row);
   }
-  const written = await writeResult(deps, f, version, model, runId, k, results, judge);
+  const written = await writeResult(deps, f, version, model, runId, k, results, judge, runProject);
   for (const line of capabilityLines(written.capabilities ?? [])) deps.stdout(line);
   return 0;
 }
@@ -173,6 +218,7 @@ async function writeResult(
   k: number,
   tasks: TaskResult[],
   judge: Judge | undefined,
+  project: RunProject,
 ): Promise<BenchResult> {
   const result: BenchResult = {
     at: deps.now().toISOString(),
@@ -183,6 +229,7 @@ async function writeResult(
     runId,
     k,
     tasks,
+    project,
     ...(judge ? { judge: { model: judge.model } } : {}),
   };
   result.capabilities = capabilitiesOf(result, k);
@@ -192,11 +239,12 @@ async function writeResult(
 }
 
 async function compareFiles(argv: string[], deps: CliDeps): Promise<number> {
-  const [before, after] = argv;
+  const acrossProjects = argv.includes('--across-projects');
+  const [before, after] = argv.filter((a) => a !== '--across-projects');
   if (!before || !after) throw new Refusal(`compare needs two result files\n${USAGE.join('\n')}`);
   const a = readResult(await deps.readFile(before), before);
   const b = readResult(await deps.readFile(after), after);
-  for (const line of compareLines(compare(a, b))) deps.stdout(line);
+  for (const line of compareLines(compare(a, b, { acrossProjects }))) deps.stdout(line);
   return 0;
 }
 

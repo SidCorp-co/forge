@@ -99,7 +99,7 @@ describe('run', () => {
     });
     expect(result.tasks.map((t) => [t.id, t.trials.length])).toEqual([['out-of-reach-tests', 2]]);
     expect(out).toEqual([
-      'run deadbeef against https://api.test (abc1234), project qa',
+      'run deadbeef against https://api.test (abc1234), project qa, brief 1007 characters read at 2026-09-16T00:00:00.000Z',
       'out-of-reach-tests: 2/2 trials passed',
       'wrote /tmp/out.json',
       'method: score — · full 0/1 · judge —',
@@ -108,6 +108,7 @@ describe('run', () => {
       {
         capability: 'method',
         tasks: ['out-of-reach-tests'],
+        notApplicable: [],
         score: null,
         lowest: null,
         fullTasks: 0,
@@ -390,7 +391,7 @@ describe('ladder', () => {
         d,
       ),
     ).toBe(0);
-    expect(out[0]).toBe('runs');
+    expect(out[0]).toBe('runs · project qa');
     expect(out).toContain('capabilities');
     expect(written['/l.md']).toContain('### Capabilities');
     const rows = out.filter((l) => /^\d+\s/.test(l));
@@ -399,9 +400,9 @@ describe('ladder', () => {
     expect(rows[1]).toContain('/bad.json');
     expect(rows[1]).toMatch(/0\.0\s+out-of-reach-tests 0%/);
     expect(rows[0]).toContain('partial (1 of 17 tasks)');
-    expect(out.indexOf('history windows')).toBeGreaterThan(out.indexOf('runs'));
+    expect(out.indexOf('history windows')).toBeGreaterThan(out.indexOf('runs · project qa'));
     expect(out.at(-1)).toBe('wrote /l.md');
-    expect(written['/l.md']).toContain('### Runs');
+    expect(written['/l.md']).toContain('### runs · project qa');
     expect(written['/l.md']).toContain('| 1 | /good.json |');
   });
 });

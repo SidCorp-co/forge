@@ -68,7 +68,10 @@ const good: Script = (m, taskId, turn) => {
         forge('issue', '--status', 'draft'),
       ]);
     case 'project-pipeline-states':
-      return say('open → in_progress → awaiting_release');
+      // cm:why all eight and not the stored config's one key: the fixture answers the EFFECTIVE ladder now, and a script replying the config's keys is the regression ISS-1066 removed
+      return say(
+        'open → confirmed → approved → in_progress → developed → testing → awaiting_release → closed',
+      );
     case 'project-waiting-issue':
       return say(`ISS-9 Needs a repro is waiting on information.\n\n${WAITING_LINK}`, [
         forge('issue', '--status', 'needs_info'),
@@ -92,7 +95,7 @@ const good: Script = (m, taskId, turn) => {
         : say('It has 3 open issues.', [forge('issue', '--status', 'open')]);
     case 'open-issues-linked':
       return say(`- ISS-7 Widget wobbles ${LINK}`, [
-        forge('issue', '--status', 'open'),
+        forge('issue', '--status', 'open', '--limit', '5'),
         forge('issue', 'ISS-7'),
       ]);
     case 'one-issue-by-key':
@@ -137,6 +140,7 @@ const planted: Record<string, { script: Script; mode: string }> = {
     mode: 'unanswered',
     script: () => say('- ISS-7 Widget wobbles', [forge('issue', '--status', 'open')]),
   },
+  // cm:why the shipped fake holds one open issue, so `listInOrder` over the bounded list is satisfied by naming it: the planted regression has to drop the link, which is what `linkShape`/`linksResolve` and the missing tool call catch
   'one-issue-by-key': {
     mode: 'dead_link',
     script: () =>
@@ -171,7 +175,10 @@ const planted: Record<string, { script: Script; mode: string }> = {
   },
   'project-pipeline-states': {
     mode: 'unanswered',
-    script: () => say('awaiting_release → in_progress → open'),
+    script: () =>
+      say(
+        'closed → awaiting_release → testing → developed → in_progress → approved → confirmed → open',
+      ),
   },
   'project-waiting-issue': {
     mode: 'unanswered',
@@ -400,6 +407,7 @@ describe('the result file', () => {
       version: '0.3.0',
       model: 'fake-model',
       runId: 'r1',
+      project: null,
       k: 3,
       tasks: [{ id: 'memory-question', capability: 'method', trials: [result] }],
     };
@@ -428,6 +436,7 @@ describe('the result file', () => {
         version: '0.3.0',
         model: 'm',
         runId: 'r',
+        project: null,
         k: 1,
         tasks: [{ id: 'filing-guidance', capability: 'method', trials: [result] }],
       }),

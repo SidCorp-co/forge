@@ -7,7 +7,7 @@ export const projectIssueCounts: Task = {
   intent:
     'Count this project’s open, closed and draft issues from the tracker and report all three.',
   judgeRubric:
-    'Served means the three counts in the reply equal openCount, closedCount and draftCount in the reference block, each named by its status.',
+    'Served means the three counts equal openCount, closedCount and draftCount, each named by its status; the brief’s counts-by-status line is the same project read earlier in the run and is background where it differs.',
   budgetSeconds: 180,
   fixtures: ['issueCounts'],
   turns: [

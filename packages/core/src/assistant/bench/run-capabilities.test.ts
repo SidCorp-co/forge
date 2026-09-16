@@ -14,11 +14,8 @@ import {
   FAKE_TOKEN,
   FAKE_WAITING,
   type FakeOptions,
-  JUDGE_KEY,
-  JUDGE_URL,
   type ScriptedTurn,
 } from './fake-deployment.js';
-import { createJudge, isVerdict, REFERENCE_HEADER } from './judge.js';
 import { readResult } from './result.js';
 import { runTrial, type TrialArgs } from './run.js';
 import type { Task } from './task.js';
@@ -118,28 +115,64 @@ describe('fixtures', () => {
     expect((await counts()).result.pass).toBe(true);
   });
 
-  it('pipeline states fill the joined list; every state must appear, in the config order, and none outside it', async () => {
-    const states = ['triage', 'building', 'review', 'shipped'];
-    const on = (reply: string) =>
-      trialOn(task('project-pipeline-states'), { states, script: () => say(reply) }).run();
-    expect((await on('triage, building, review, shipped')).result.pass).toBe(true);
-    const skipped = await on('triage, building, shipped');
-    expect(skipped.result.turns[0]?.evidence.map((e) => e.fact)).toEqual([
-      'reply does not match review',
-    ]);
-    const late = await on('triage, building, shipped, review');
+  // cm:why the states are no longer invented: the fixture answers the project's EFFECTIVE pipeline —
+  // the product's canonical ladder with this project's stage overrides applied — so the list a reply
+  // is held to is the eight rungs, and the stored config's keys are not it (ISS-1066).
+  it('pipeline states fill the joined list from the effective ladder, in order, with nothing outside it', async () => {
+    const LADDER = [
+      'open',
+      'confirmed',
+      'approved',
+      'in_progress',
+      'developed',
+      'testing',
+      'awaiting_release',
+      'closed',
+    ];
+    const on = (reply: string, over: { states?: string[]; statesOff?: string[] } = {}) =>
+      trialOn(task('project-pipeline-states'), {
+        states: ['open'],
+        ...over,
+        script: () => say(reply),
+      }).run();
+
+    expect((await on(LADDER.join(', '))).result.pass).toBe(true);
+
+    // The one-key config that started this: the stored map names `open` alone and the answer is still the whole sequence.
+    const oneKey = await on('open');
+    expect(oneKey.result.pass).toBe(false);
+    expect(oneKey.result.turns[0]?.evidence.map((e) => e.fact)).toEqual(
+      LADDER.slice(1).map((s) => `reply does not match ${s}`),
+    );
+
+    const late = await on(
+      'open, confirmed, approved, in_progress, developed, awaiting_release, testing, closed',
+    );
     expect(late.result.turns[0]?.evidence.map((e) => e.fact)).toEqual([
-      'reply names shipped before review',
+      'reply names awaiting_release before testing',
     ]);
-    // cm:why the product's whole lifecycle with the three configured states in order passed before ISS-1065; the states outside the config are what the task is meant to catch
-    const lifecycle = await on('triage → building → review → testing → shipped → closed');
-    expect(lifecycle.result.pass).toBe(false);
-    expect(lifecycle.result.turns[0]?.evidence.map((e) => e.fact)).toEqual([
-      'reply names state testing outside triage, building, review, shipped',
-      'reply names state closed outside triage, building, review, shipped',
+
+    const outside = await on(`${LADDER.join(', ')}, dropped`);
+    expect(outside.result.pass).toBe(false);
+    expect(outside.result.turns[0]?.evidence.map((e) => e.fact)).toEqual([
+      `reply names state dropped outside ${LADDER.join(', ')}`,
     ]);
-    const { run: empty } = trialOn(task('project-pipeline-states'), { states: [] });
-    expect((await empty()).result.error).toContain('the pipeline config names no state');
+
+    // A stage the project switched off leaves the ladder, and naming it is then naming a state outside the list.
+    const withoutRelease = LADDER.filter((s) => s !== 'awaiting_release');
+    const off = await on(withoutRelease.join(', '), { statesOff: ['awaiting_release'] });
+    expect(off.result.pass).toBe(true);
+    const named = await on(LADDER.join(', '), { statesOff: ['awaiting_release'] });
+    expect(named.result.pass).toBe(false);
+
+    // An empty stored config is every rung, never none: the refusal that stood here was a WRONG refusal.
+    const { run: empty } = trialOn(task('project-pipeline-states'), {
+      states: [],
+      script: () => say(LADDER.join(', ')),
+    });
+    const none = await empty();
+    expect(none.result.error).toBeNull();
+    expect(none.result.pass).toBe(true);
   });
 });
 
@@ -385,73 +418,5 @@ describe('a run file written before ISS-1061', () => {
     expect(capabilitiesOf(back, 3).map((s) => [s.capability, s.tasks])).toEqual([
       ['method', ['memory-question']],
     ]);
-  });
-});
-
-describe('what the judge is handed', () => {
-  const verdict = JSON.stringify({ intent: 'i', served: 'yes', reason: 'r', quote: '' });
-
-  it('the task rubric in the system prompt and the fixtures plus earlier turns as a reference block', async () => {
-    const fake = createFakeDeployment({ script: recall, judge: () => verdict });
-    const client = createClient({ api: 'https://api.test', fetch: fake.fetch });
-    client.useToken(FAKE_TOKEN);
-    const judge = createJudge({
-      baseUrl: JUDGE_URL,
-      apiKey: JUDGE_KEY,
-      model: 'judge-model',
-      fetch: fake.fetch,
-      retryDelaysMs: [0],
-    });
-    const t = task('memory-store-recall');
-    const ids = ['dddddddddddd', 'eeeeeeeeeeee'];
-    const { result } = await runTrial({
-      client,
-      task: t,
-      project: FAKE_PROJECT,
-      runId: 'r1',
-      judge,
-      randomId: () => ids.shift() ?? '',
-    });
-    expect(result.error).toBeNull();
-    expect(
-      result.turns.map((x) => (x.judge && isVerdict(x.judge) ? x.judge.served : null)),
-    ).toEqual(['yes', 'yes']);
-    const [first, second] = fake.state.judgeCalls;
-    expect(first?.system).toContain(`"served" is read by this rule as well: ${t.judgeRubric}`);
-    expect(first?.user).toContain(
-      `${REFERENCE_HEADER}\nnonce: bench-dddddddddddd\nnonce2: bench-eeeeeeeeeeee`,
-    );
-    expect(first?.user).not.toContain('turn 1 asked');
-    expect(second?.user).toContain(
-      'turn 1 asked: Remember for this project: the release code name is bench-dddddddddddd.',
-    );
-    expect(second?.user).toContain('turn 1 replied: Kept.');
-  });
-
-  it('a method task without a rubric or fixtures sends the judge the same messages as before', async () => {
-    // cm:why filing-guidance, not out-of-reach-tests: the latter carries a rubric since ISS-1065
-    const fake = createFakeDeployment({
-      script: () => say('File it as an issue on the project.'),
-      judge: () => verdict,
-    });
-    const client = createClient({ api: 'https://api.test', fetch: fake.fetch });
-    client.useToken(FAKE_TOKEN);
-    const judge = createJudge({
-      baseUrl: JUDGE_URL,
-      apiKey: JUDGE_KEY,
-      model: 'judge-model',
-      fetch: fake.fetch,
-      retryDelaysMs: [0],
-    });
-    await runTrial({
-      client,
-      task: task('filing-guidance'),
-      project: FAKE_PROJECT,
-      runId: 'r1',
-      judge,
-    });
-    const call = fake.state.judgeCalls[0];
-    expect(call?.system).not.toContain('read by this rule as well');
-    expect(call?.user).not.toContain(REFERENCE_HEADER);
   });
 });

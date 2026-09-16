@@ -113,6 +113,10 @@
 
 
 ### Added
+- **The assistant benchmark's judge now reads the live project.** Each judged turn carries a brief
+  of the real counts, pipeline and filing rules, so a confident wrong answer fails. A question the
+  project cannot be asked is recorded, not failed.
+
 - **The assistant benchmark now judges project understanding, memory storing and long-context
   handling, and reports each as its own score.** Every task names what it measures, and seven new
   tasks join the ten: three read the project itself before asking (its issue counts by status, its

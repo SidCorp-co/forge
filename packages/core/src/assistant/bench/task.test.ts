@@ -42,12 +42,15 @@ const MATRIX: Record<
     fixtures: ['projectName'],
   },
   'open-issues-linked': {
-    messages: ['List the open issues in this project, one line each, with a link to each issue.'],
+    messages: [
+      'List the five newest open issues in this project, one line each, with a link to each issue.',
+    ],
     kinds: [
       [
+        'listInOrder',
+        'linkTo',
         'linkShape',
         'linksResolve',
-        'mustMatch',
         'toolsRequired',
         'noHelp',
         'noPlaceholder',
@@ -56,7 +59,7 @@ const MATRIX: Record<
         'screenRepair',
       ],
     ],
-    fixtures: ['firstOpenIssue'],
+    fixtures: ['newestOpenIssues'],
   },
   'one-issue-by-key': {
     messages: ['What is {issueKey} about? One paragraph, then a link to it.'],
@@ -105,7 +108,7 @@ const MATRIX: Record<
   },
   'project-pipeline-states': {
     messages: [
-      'List this project’s pipeline states in order, from the first an issue enters to the last, using the exact state keys the pipeline config names.',
+      'What are this project’s pipeline states, in order, from the first an issue enters to the last? Give the state names as the pipeline uses them.',
     ],
     kinds: [['listInOrder', 'onlyFrom', 'notFallback', 'noHelp', 'noPlaceholder']],
     fixtures: ['pipelineStates'],
@@ -262,6 +265,28 @@ describe('what the loader refuses', () => {
     ).toHaveLength(1);
   });
 
+  // cm:why the loader and not a lint of the shipped set: the rubric reaches the judge on every turn
+  // of the task, so a task-wide requirement is a wrong grade on the early turns whoever wrote it
+  // (ISS-1066, codex F2)
+  it('a multi-turn rubric that does not say which turn a requirement belongs to', () => {
+    const twoTurns = { ...base, turns: [...base.turns, ...base.turns] };
+    expect(() =>
+      validateTasks([{ ...twoTurns, judgeRubric: 'Served means the reply gives the window.' }]),
+    ).toThrow('must name the turn each requirement belongs to');
+    expect(
+      validateTasks([
+        {
+          ...twoTurns,
+          judgeRubric: 'On the first turn an acknowledgement serves it; on the second, the window.',
+        },
+      ]),
+    ).toHaveLength(1);
+    // one turn is the whole exchange, so a rubric about it is already turn-scoped
+    expect(
+      validateTasks([{ ...base, judgeRubric: 'Served means the reply gives the window.' }]),
+    ).toHaveLength(1);
+  });
+
   it('a new room on the first turn, which is the turn that opens the room', () => {
     const turn = base.turns[0];
     if (!turn) throw new Error('base has no turn');
@@ -349,5 +374,49 @@ describe('fill', () => {
   it('substitutes every placeholder and refuses one with no value', () => {
     expect(fill('{a} and {b}', { a: '1', b: '2' })).toBe('1 and 2');
     expect(() => fill('{c}', {})).toThrow('placeholder {c} has no value');
+  });
+});
+
+// cm:why the six by name: before ISS-1066 the judge had nothing of the project for these, so
+// "served" was a reading of tone. `memory-followup` is the seventh because it is the task the
+// 17:42Z evidence was written about — 763 open issues answered against a project holding 682, and
+// the judge said yes twice.
+describe('the rubrics that send the judge to the brief (ISS-1066)', () => {
+  const REWORDED = [
+    'project-issue-counts',
+    'project-pipeline-states',
+    'project-waiting-issue',
+    'summary-in-style',
+    'filing-guidance',
+    'memory-question',
+    'memory-followup',
+  ];
+
+  it.each(REWORDED)('%s names the brief in its rubric', (id) => {
+    const found = loadTasks().find((t) => t.id === id);
+    expect(found?.judgeRubric, id).toMatch(/brief/);
+  });
+
+  // cm:why a task-wide rubric on a multi-turn task is a requirement the person never asked for:
+  // `run.ts#judgeTurns` hands the rubric to EVERY judged turn, so "served means the reply gives the
+  // deploy window" failed the turn that had only been asked to remember it, and the disagreement
+  // read as the assistant's (codex F2)
+  it.each(loadTasks().filter((t) => t.turns.length > 1 && t.judgeRubric !== undefined))(
+    '$id scopes its rubric to the turn it is about',
+    (task) => {
+      expect(task.judgeRubric, task.id).toMatch(/\bon (a|the) (\w+ )?turn\b/i);
+    },
+  );
+
+  it('asks about the effective pipeline rather than the keys the config names', () => {
+    const states = loadTasks().find((t) => t.id === 'project-pipeline-states');
+    expect(states?.turns[0]?.message).not.toMatch(/config names/);
+    expect(states?.intent).toMatch(/effective/);
+  });
+
+  it('bounds the open-issues walk instead of asking for every open issue', () => {
+    const open = loadTasks().find((t) => t.id === 'open-issues-linked');
+    expect(open?.fixtures).toEqual(['newestOpenIssues']);
+    expect(open?.turns[0]?.message).toMatch(/five newest/);
   });
 });

@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { choose, compare, compareLines, median, sideOf } from './compare.js';
+import { choose, compare, compareLines, median, ProjectMismatch, sideOf } from './compare.js';
 import type { BenchResult, TrialResult } from './result.js';
 
 const trial = (pass: boolean, over: Partial<TrialResult> = {}): TrialResult => ({
@@ -43,6 +43,7 @@ const file = (over: Partial<BenchResult>, trials: Record<string, TrialResult[]>)
   model: 'm1',
   runId: 'r1',
   k: 3,
+  project: null,
   tasks: Object.entries(trials).map(([id, t]) => ({
     id,
     capability: 'method' as const,
@@ -178,7 +179,7 @@ describe('compare', () => {
       'tasks',
     ]);
     for (const task of c.tasks) {
-      expect(Object.keys(task).sort()).toEqual(['after', 'before', 'id']);
+      expect(Object.keys(task).sort()).toEqual(['after', 'before', 'id', 'notApplicable']);
       for (const side of [task.before, task.after]) {
         if (side) expect(Object.keys(side)).not.toContain('score');
       }
@@ -251,5 +252,50 @@ describe('the judge beside the estimators', () => {
       a?.after?.passK,
     ]);
     expect(a?.after?.judge).toBeNull();
+  });
+});
+
+describe('two projects on one row (ISS-1066)', () => {
+  const on = (slug: string | null): BenchResult =>
+    file(
+      slug
+        ? { project: { id: `id-${slug}`, slug, brief: 'b', readAt: '2026-09-17T00:00:00.000Z' } }
+        : { project: null },
+      { a: [trial(true)] },
+    );
+
+  it('refuses two files naming two different projects, printing both slugs', () => {
+    expect(() => compare(on('qa'), on('forge-plugin'))).toThrow(ProjectMismatch);
+    expect(() => compare(on('qa'), on('forge-plugin'))).toThrow(/qa/);
+    expect(() => compare(on('qa'), on('forge-plugin'))).toThrow(/forge-plugin/);
+  });
+
+  it('does it anyway when asked', () => {
+    expect(() => compare(on('qa'), on('forge-plugin'), { acrossProjects: true })).not.toThrow();
+  });
+
+  it('never refuses two files of one project, or one written before a run recorded its project', () => {
+    expect(() => compare(on('qa'), on('qa'))).not.toThrow();
+    expect(() => compare(on(null), on('qa'))).not.toThrow();
+    expect(() => compare(on('qa'), on(null))).not.toThrow();
+    expect(() => compare(on(null), on(null))).not.toThrow();
+  });
+
+  it('prints a not-applicable side as its reason rather than as a thin zero', () => {
+    const before = on('qa');
+    const after = on('qa');
+    after.tasks = [
+      {
+        id: 'project-waiting-issue',
+        capability: 'project-understanding',
+        trials: [],
+        notApplicable: 'the project holds no issue waiting on information',
+      },
+    ];
+    const lines = compareLines(compare(before, after));
+    expect(lines).toContain(
+      '  after: not applicable — the project holds no issue waiting on information',
+    );
+    expect(lines.some((l) => l.includes('thin: 0 <'))).toBe(false);
   });
 });

@@ -5,10 +5,10 @@ the deployment itself recorded, repeated, and compared between builds as pass^k.
 
 | | |
 |---|---|
-| Run | `pnpm --filter @forge/core bench:assistant run --api <url> --project <slug> --out <file> [--tasks a,b] [--trials 3] [--k 3]` |
-| Compare | `pnpm --filter @forge/core bench:assistant compare <before.json> <after.json>` |
+| Run | `pnpm --filter @forge/core bench:assistant run --api <url> --project <slug> --out <file> [--tasks a,b] [--trials 3] [--k 3] [--judge <model>]` |
+| Compare | `pnpm --filter @forge/core bench:assistant compare <before.json> <after.json> [--across-projects]` |
 | Credentials | `FORGE_BENCH_TOKEN`, or `FORGE_BENCH_EMAIL` and `FORGE_BENCH_PASSWORD` — the environment only, never a file |
-| Code | `core/src/assistant/bench/` — `task.ts` (the check vocabulary), `tasks/` (one module per task), `client.ts`, `trail.ts`, `grade.ts`, `run.ts`, `result.ts`, `compare.ts`, `cli.ts` |
+| Code | `core/src/assistant/bench/` — `task.ts` (the check vocabulary), `tasks/` (one module per task), `client.ts`, `trail.ts`, `grade.ts`, `run.ts`, `brief.ts`, `result.ts`, `compare.ts`, `cli.ts` |
 | Proof | `core/src/assistant/bench/*.test.ts` over `fake-deployment.ts`, a scripted deployment; the live run is evidence on an issue, never part of `pnpm test` |
 
 ```mermaid
@@ -52,6 +52,85 @@ Every failure is a mode named from a fact a reader can point at (`grade.ts:FAILU
 `screen_repair`, `noop_trail_row`, `preference_not_moved`. The result file carries the fact beside
 the mode.
 
+## The project brief: what the judge is held to
+
+Every judged turn of every task carries a **project brief** in the judge's reference block, read
+once per run from the deployment before the first turn (`brief.ts:readProjectBrief`,
+`brief.ts:projectBrief`) and written whole into the result file under `project.brief` with
+`project.readAt`.
+
+Before ISS-1066 the judge saw the task's own filled fixtures and the earlier turns and nothing else,
+so on `summary-in-style`, `filing-guidance` and `memory-question` — which declare no fixtures — it
+had no project to hold a reply against and "served" was a reading of tone. On `forge-plugin` on
+2026-09-17 the assistant answered *"763 open issues"* against a project holding 682 and the judge
+said yes on both trials.
+
+The brief has two budgets, not one. The **grounding block** is never truncated: the project's name
+and slug, its issue counts by status, its effective pipeline in order, its filing rules (the issue
+key prefix, and whether the intake gate parks a filing at `draft` for a person to admit), and the
+issue waiting on information or a line saying there is none. It is bounded by the project's own
+shape rather than by anything an author typed, and it is what the claims a project-understanding
+task makes are checked against. What is left of `brief.ts:BRIEF_MAX_CHARS` (6,000) is shared among
+the four author-text sections — description, project facts, knowledge entries, the newest twenty
+issue titles — each cut to its own share and each naming its own cut, so a 20,000-character
+description cannot take the counts with it. A section with no room left says it was dropped.
+
+Knowledge is read through `GET /api/projects/:id/knowledge`, the route `forge_knowledge` action=list
+reads; that route serves no body, so the brief pulls the bodies of the `injection: 'always'` entries
+only (`brief.ts:BRIEF_KNOWLEDGE_BODIES`) — the ones the product itself injects into a prompt. A
+project holding no knowledge gets a section saying so rather than no section. A credential that
+cannot read that route refuses the whole run by name before the first turn, rather than leaving the
+judge to grade project answers against a silently empty brief. A personal access token is refused
+there too, before any room: every trial reads and restores the person's preferences and
+`/api/auth/preferences` resolves no project, so a PAT run would fail all of a run's trials after
+paying for each one's turns and report them as the assistant's failures. The benchmark needs
+`FORGE_BENCH_EMAIL` and `FORGE_BENCH_PASSWORD` for an account that holds the project.
+
+Two details of that read are load-bearing on a large project. The always-injected entries are asked
+for with the route's own `injection` filter rather than found by filtering the index, because the
+index arrives as a prefix once it passes the deployment's response cap
+(`knowledge/service.ts:MAX_RESPONSE_CHARS`), and an entry past that prefix would otherwise
+contribute none of its prose while the brief read as complete. What the cap left out and the
+filtered read did not recover is disclosed as a count. And the entries whose bodies the brief
+fetched are rendered **before** the title-only ones: the knowledge section is cut at its end, so a
+long enough prefix of titles would spend the section's whole allowance and slice off the very rule
+the second read paid a request for.
+
+A task's `judgeRubric` is handed to the judge on **every** judged turn of that task, so a multi-turn
+rubric says which turn each requirement belongs to: `memory-question`'s first turn asks only that the
+assistant remember a window, and a rubric demanding the window back would have failed the
+acknowledgement that served it.
+
+In the judge's messages the brief stands under its own sub-header (`judge.ts:BRIEF_HEADER`) between
+the filled fixtures and the earlier turns. An input carrying no brief produces the byte-identical
+block it produced before the split — `judge.test.ts` pins that against the pre-change text for
+fixtures alone, turns alone, both and neither, rather than against the function that builds both
+sides.
+
+## A task the project cannot be asked
+
+A task whose fixture the project's own shape cannot supply is recorded `notApplicable` with its
+reason and **no trial is run** (`brief.ts:fixtureNotApplicable`): today, `project-waiting-issue` on a
+project holding no `needs_info` issue, and `open-issues-linked` on a project holding no open issue.
+The refusal was always right; three failed trials were the wrong figure for it, and on the
+2026-09-17 `forge-plugin` run it read as a capability the assistant lacked. Such a task is charged to
+no denominator — not the score, not the capability's `full n/m`, not the ladder's thin mark — and
+its reason is printed on the run, on the ladder and in the comparison in place of
+`0/0 trials passed (thin: 0 < 3)`, which is a different fact about a different thing.
+
+## The effective pipeline
+
+`prompt/facts/effective-ladder.ts:effectivePipelineStates` is the one function both the benchmark and
+the product's prompt layer answer from: the canonical ladder (`prompt/facts/registry.ts:CANONICAL_LADDER`)
+minus every stage the project set `enabled: false`. The stored `pipelineConfig.states` map is
+per-stage **configuration** over four optional keys and is not a sequence — `forge-plugin` stores one
+of them — so the `pipelineStates` fixture reading its keys asked the assistant for a one-state
+pipeline and would have graded the right answer wrong. An empty stored map means every canonical
+rung, never none, and the refusal that used to stand there was a wrong refusal rather than a loud
+one. `prompt/facts/resolve.ts:buildLadder` is still a second copy of that filter while ISS-1048 holds
+that file; `effective-ladder.test.ts` reads its text and goes red if the condition drifts or a second
+copy appears in it.
+
 The fixture-bound checks (`task.ts:CHECK_KINDS`) read a value the deployment supplied: `listInOrder`
 holds every member of a filled list to its place; `onlyFrom` fails a reply naming a registry status
 (`pipeline-registry.ts:REGISTRY_ISSUE_STATUSES`, whole words, `in_progress` one token) outside that
@@ -67,12 +146,14 @@ listing was refused and the count is unknown (ISS-1064).
 The shipped set is `tasks/index.ts:SHIPPED_TASKS`; each module names its capability
 (`task.ts:CAPABILITIES`), its exact messages, the checks bound to each turn, the fixtures its
 placeholders read from the deployment (`task.ts:FIXTURE_KEYS`: `{issueKey}` and `{issueId}` from
-the project's first open issue, `{projectName}`, and the ISS-1061 fixtures below), the preference
+the project's first open issue, `{openIssueKeys}` / `{openIssueId}` from its five newest open ones,
+`{projectName}`, and the ISS-1061 fixtures below), the preference
 it sets before its first turn, and its budget in seconds. A task is complete on its own: a follow-up's antecedent
 is an earlier turn of the same task, and a task that reads a style sets that style first.
 `task.test.ts` loads the set whole and refuses a duplicate id, a turn with no check, a check outside
 the vocabulary, a placeholder no fixture fills, a preference move with no restore, a task with no
-capability, a judge rubric over one line, and a new room asked for on a first turn.
+capability, a judge rubric over one line, a multi-turn task whose rubric does not name the turn it
+is about, and a new room asked for on a first turn.
 
 ## Reading a comparison
 
@@ -169,9 +250,14 @@ after `--exclude` has dropped the bench rooms; `run --judge` judges every turn o
 ## Ladder: one printed score, never printed alone
 
 `pnpm --filter @forge/core bench:assistant ladder <run.json>... [--history <history.json>]... [--out ladder.md]`
-ranks every run file given, best first, on one score defined once in `ladder.ts:score` and printed
-under every ladder: **the mean of pass^k over the tasks the run walked, 0–100, ties broken by the
-lowest task**, at one k for every file on the ladder, the largest any file names, as `compare` does. ISS-1051 refused a composite because a mean hides a task that cliffs; the owner
+ranks the run files given, best first, **one table per project** (`ladder.ts:groupByProject`), on one
+score defined once in `ladder.ts:score` and printed under every ladder: **the mean of pass^k over the
+tasks the run walked, 0–100, ties broken by the lowest task**, at one k per project group, the largest
+that group names, as `compare` does. The group is why k is not taken across every file: a task's pass
+rate is about the project it was walked on, and a complete three-trial run was otherwise marked thin
+because another project's file named a larger k. For the same reason `compare` refuses two files
+naming two different projects, printing both slugs, unless `--across-projects` is given; a file
+written before a run recorded its project reads as `project: null` and is never refused. ISS-1051 refused a composite because a mean hides a task that cliffs; the owner
 reversed that on 2026-09-16 because a benchmark that cannot rank two builds is not one, and the
 reversal is made safe by the row, not the number: every score has the lowest task and its pass^k on
 the same row (`ladder.test.ts` plants a task at 0% on the run with the best mean and reads it
