@@ -170,6 +170,66 @@ The verification run walked two tasks once each, so no task has an estimator at 
 `—` and it is marked `partial` and `thin`; the two full runs share the same lowest task at 0%, and
 the mean alone would not have said so.
 
+## Advice: what the numbers ask of the harness
+
+Every `compare` and `compare-history` ends with an `advice:` block for the after side, and
+`bench:assistant advise <run.json|history.json>` prints the same block for one file. The block is
+derived from the flagged rows and the judge column already in the file (`advice.ts:advise`): no
+model is asked, nothing is written, and no count changes. A count is rows, so a turn that carries
+both `screen_repair` and `fallback_sent` is one row of that pattern. One line per pattern over its
+threshold, each carrying the count it rests on, the bar it crossed and the surface it points at:
+
+- `screen_repair`/`fallback_sent` rows with no readable verdict → `bench:assistant run --judge` /
+  `history --judge`: judge these rows before touching the screen. A missing verdict is never
+  evidence that a safeguard is too strict, and a group judged on a sample keeps this line for the
+  rows the sample missed.
+- `screen_repair`/`fallback_sent` rows the judge called `yes` or `partial` →
+  `conversations/screened-reply.ts:screenReply`: the repair served. The verdict is on the repaired
+  reply, never on the one the screen rejected (`history/grade-row.ts:gradeRow` marks the retry row;
+  a run turn's delivered text is its last attempt), so the line sends the reader to the rejected
+  attempt in the row and says to loosen the shape check only where that attempt answered the
+  question.
+- `screen_repair`/`fallback_sent` rows the judge called `no` → the repair did not serve either; the
+  fault is upstream of the screen, keep it.
+- `help_roundtrip` above 10% of rows (`advice.ts:THRESHOLDS`) → `guides/assistant-method-guide.ts:ASSISTANT_METHOD_GUIDE`:
+  the method guide sends the model to `-h` for every verb; carry the verbs' usage so no `-h` call
+  is needed.
+- `wrong_link_shape`/`dead_link` → `messaging/text-rules.ts:ISSUE_NAV_RE` and the link line in
+  `assistant/door-persona.ts:assistantOpening`: the link line is not landing; state the one URL shape
+  the web opens, `/projects/<slug>/issues/<documentId>`.
+- `over_budget`/`repeated_call` → `assistant/run-turn-core.ts:runTurnEvents`: the loop lacks a stop.
+- `language_mismatch` → `assistant/door-persona.ts`: the persona does not bind the reply language.
+- `unanswered` → `conversations/turn-runner.ts`: a provider error or an empty reply reached the person.
+
+A clean file prints `advice: none - every pattern is under its threshold`. The change a line names
+lands under its own issue with a before/after compare; the block never applies anything.
+
+The block printed on 2026-09-16 from `bench:assistant advise beta-history-judged.json` (the
+ISS-1054 judged window, 48 rows of `cx/gpt-5.6-terra` on the web door, 40 of them judged by
+`cx/gpt-6-astra`):
+
+```
+advice:
+  cx/gpt-5.6-terra / web: screen_repair/fallback_sent 5/48 (10%) above 0, repaired reply judged yes/partial -> conversations/screened-reply.ts:screenReply: the repair served; the verdict is on the repaired reply, not the rejected one - read the rejected attempt in the row, and loosen the shape check only where it answered the question
+  cx/gpt-5.6-terra / web: help_roundtrip 12/48 (25%) above 10% -> guides/assistant-method-guide.ts:ASSISTANT_METHOD_GUIDE: the method guide sends the model to -h for every verb; carry the verbs' usage so no -h call is needed
+  cx/gpt-5.6-terra / web: wrong_link_shape/dead_link 5/48 (10%) above 0 -> messaging/text-rules.ts:ISSUE_NAV_RE and the link line in assistant/door-persona.ts:assistantOpening: the link line is not landing; state the one URL shape the web opens, /projects/<slug>/issues/<documentId>
+```
+
+The same block at the end of `compare beta-run.json beta-run2.json` (the two ISS-1051 live runs,
+neither judged) asks for a judge before it says anything about the screen; the tasks below are two
+of ten:
+
+```
+advice:
+  summary-in-style: screen_repair/fallback_sent 3/3 (100%) above 0, unjudged -> bench:assistant run --judge / history --judge: the screen rejected replies and nothing says whether they were right; judge these rows before touching the screen
+  summary-in-style: unanswered 3/3 (100%) above 0 -> conversations/turn-runner.ts: the door lets a provider error or an empty reply reach the person; retry once or say so
+  filing-guidance: help_roundtrip 3/3 (100%) above 10% -> guides/assistant-method-guide.ts:ASSISTANT_METHOD_GUIDE: the method guide sends the model to -h for every verb; carry the verbs' usage so no -h call is needed
+```
+
+The first block is the evidence ISS-1057 starts from: five screen rejections whose repair the judge
+read as served, so the five rejected attempts are the reading ISS-1057 owes before it touches the
+shape check; twelve of forty-eight turns spent on `-h`; and five links in a shape the web does not open.
+
 ## What it does not do
 
 - Weight the judge into `pass`, pass^k or the ladder's score; `--judge` annotates, it never scores.

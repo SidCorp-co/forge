@@ -4,6 +4,7 @@
  * No composite exists here: a weighted mean is where the task that cliffs goes to hide.
  */
 
+import { type AdviceInput, adviceInputsOfRun, adviceLines, advise } from './advice.js';
 import { type Agreement, agreement, agreementLine, type Tally, tally, tallyLine } from './judge.js';
 import type { BenchResult, TrialResult } from './result.js';
 
@@ -36,6 +37,8 @@ export interface Comparison {
   /** How far the judge agreed with the rules on each side; null where the file had no judge. */
   agreement: { before: Agreement | null; after: Agreement | null };
   differences: string[];
+  /** The after side's counts per task, for the advice block; the build under judgement. */
+  advice: AdviceInput[];
 }
 
 /** C(n, k) as a number; 0 where k > n. */
@@ -125,6 +128,7 @@ export function compare(before: BenchResult, after: BenchResult): Comparison {
     tasks,
     agreement: { before: agreementOf(before), after: agreementOf(after) },
     differences: differences(before, after),
+    advice: adviceInputsOfRun(after),
   };
 }
 
@@ -164,5 +168,6 @@ export function compareLines(c: Comparison): string[] {
       ? 'differences: none (same commit, api, model, judge, k and trial count)'
       : `differences: ${c.differences.join('; ')}`,
   );
+  lines.push(...adviceLines(advise(c.advice)));
   return lines;
 }

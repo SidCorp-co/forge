@@ -3,6 +3,7 @@
  * come from, medians, and what separates the windows. No total line: a window is not a score.
  */
 
+import { type AdviceInput, adviceInputsOfHistory, adviceLines, advise } from '../advice.js';
 import type { FailureMode } from '../grade.js';
 import { agreementLine, tallyLine } from '../judge.js';
 import type { HistoryJudge, HistoryResult, JudgeGroup } from './result.js';
@@ -22,6 +23,8 @@ export interface HistoryComparison {
   /** Each file's judge block, for the agreement lines; null where the file had none. */
   judge: { before: HistoryJudge | null; after: HistoryJudge | null };
   differences: string[];
+  /** The after file's counts per group, for the advice block. */
+  advice: AdviceInput[];
 }
 
 const windowOf = (r: HistoryResult): string =>
@@ -70,6 +73,7 @@ export function compareHistory(before: HistoryResult, after: HistoryResult): His
     groups,
     judge: { before: before.judge ?? null, after: after.judge ?? null },
     differences: differences(before, after),
+    advice: adviceInputsOfHistory(after),
   };
 }
 
@@ -113,5 +117,6 @@ export function compareHistoryLines(c: HistoryComparison): string[] {
       ? 'no differences: same commit, window, budgets, judge and row count'
       : `differences: ${c.differences.join('; ')}`,
   );
+  lines.push(...adviceLines(advise(c.advice)));
   return lines;
 }

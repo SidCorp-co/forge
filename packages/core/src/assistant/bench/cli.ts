@@ -4,6 +4,7 @@
  * writes one result file and prints per-task counts, never a total.
  */
 
+import { adviceInputsOfHistory, adviceInputsOfRun, adviceLines, advise } from './advice.js';
 import { createClient, type FetchLike } from './client.js';
 import { compare, compareLines, sideOf } from './compare.js';
 import { HISTORY_USAGE, historyMain } from './history/cli.js';
@@ -32,6 +33,7 @@ export const USAGE = [
   'bench:assistant run --api <url> --project <slug> --out <file> [--tasks a,b] [--trials 3] [--k 3] [--judge <model>]',
   'bench:assistant compare <before.json> <after.json>',
   'bench:assistant ladder <run.json>... [--history <history.json>]... [--out ladder.md]',
+  'bench:assistant advise <run.json|history.json>',
   ...HISTORY_USAGE,
   'credentials: FORGE_BENCH_TOKEN, or FORGE_BENCH_EMAIL and FORGE_BENCH_PASSWORD',
   'judge (--judge): FORGE_BENCH_JUDGE_URL and FORGE_BENCH_JUDGE_KEY; the verdict is stored beside the modes and never read into pass',
@@ -228,13 +230,37 @@ async function ladder(argv: string[], deps: CliDeps): Promise<number> {
   return 0;
 }
 
-/** Exit code: 0 for a run, comparison or ladder that completed, 1 for a refusal or a deployment error. */
+/** The advice block for one file, read as a run file first and as a history file second. */
+async function adviseFile(argv: string[], deps: CliDeps): Promise<number> {
+  const [file, extra] = argv;
+  if (!file || extra !== undefined)
+    throw new Refusal(`advise needs exactly one run or history file\n${USAGE.join('\n')}`);
+  const text = await deps.readFile(file);
+  let inputs: ReturnType<typeof adviceInputsOfRun>;
+  try {
+    inputs = adviceInputsOfRun(readResult(text, file));
+  } catch (runErr) {
+    try {
+      inputs = adviceInputsOfHistory(readHistoryResult(text, file));
+    } catch (historyErr) {
+      const why = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+      throw new Refusal(
+        `${file} is neither a run file (${why(runErr)}) nor a history file (${why(historyErr)})`,
+      );
+    }
+  }
+  for (const line of adviceLines(advise(inputs))) deps.stdout(line);
+  return 0;
+}
+
+/** Exit code: 0 for a run, comparison, ladder or advice that completed, 1 for a refusal or a deployment error. */
 export async function main(argv: string[], env: Env, deps: CliDeps): Promise<number> {
   const [verb, ...rest] = argv;
   try {
     if (verb === 'run') return await run(rest, env, deps);
     if (verb === 'compare') return await compareFiles(rest, deps);
     if (verb === 'ladder') return await ladder(rest, deps);
+    if (verb === 'advise') return await adviseFile(rest, deps);
     if (verb === 'history' || verb === 'compare-history')
       return await historyMain(verb, rest, env, deps);
     throw new Refusal(USAGE.join('\n'));

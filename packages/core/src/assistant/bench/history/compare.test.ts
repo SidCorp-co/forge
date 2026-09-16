@@ -51,6 +51,10 @@ const file = (over: Partial<HistoryResult>, groups: Group[]): HistoryResult => (
   ...over,
 });
 
+/** The differences line, the last one before the advice block. */
+const differencesLine = (lines: string[]): string | undefined =>
+  lines.find((l) => l.startsWith('differences:') || l.startsWith('no differences:'));
+
 describe('compareHistory', () => {
   const before = file({}, [group('m1', 40, 4), group('m0', 5, 1)]);
   const after = file(
@@ -61,6 +65,34 @@ describe('compareHistory', () => {
     },
     [group('m1', 50, 2), group('m2', 10, 0)],
   );
+
+  it("ends with the after file's advice, per group, and the lines before it are the comparison unchanged", () => {
+    const g = after.groups[0];
+    if (!g) throw new Error('fixture');
+    const row = { chatLogId: 'l', sessionId: null, createdAt: 'x', evidence: [] };
+    const flagged = {
+      ...after,
+      flagged: [
+        { ...row, model: g.model, source: g.source, modes: ['unanswered' as const] },
+        { ...row, model: 'nobody', source: g.source, modes: ['unanswered' as const] },
+      ],
+    };
+    const c = compareHistory(before, flagged);
+    const lines = compareHistoryLines(c);
+    const at = lines.indexOf('advice:');
+    expect(at).toBeGreaterThan(0);
+    expect(lines[at - 1]).toContain('differences: commit: aaa -> bbb');
+    expect(lines.slice(at + 1)).toEqual([
+      `  ${g.model} / ${g.source}: unanswered 1/${g.rows} (${Math.round(100 / g.rows)}%) above 0 -> conversations/turn-runner.ts: the door lets a provider error or an empty reply reach the person; retry once or say so`,
+    ]);
+    expect(c.advice.map((a) => a.label)).toEqual(
+      after.groups.map((g) => `${g.model} / ${g.source}`),
+    );
+    expect(lines.slice(0, at)).toEqual(compareHistoryLines({ ...c, advice: [] }).slice(0, -1));
+    expect(compareHistoryLines(compareHistory(before, after)).at(-1)).toBe(
+      'advice: none - every pattern is under its threshold',
+    );
+  });
 
   it('pairs groups by model and source, null where a side lacks one', () => {
     const c = compareHistory(before, after);
@@ -92,13 +124,13 @@ describe('compareHistory', () => {
     expect(lines.find((l) => l.includes('thin'))).toContain('(thin: 5 < 30)');
     expect(lines.find((l) => l.startsWith('  after: no rows'))).toBeDefined();
     expect(lines.some((l) => /total|overall|score/i.test(l))).toBe(false);
-    expect(lines.at(-1)).toBe(
+    expect(differencesLine(lines)).toBe(
       'differences: commit: aaa -> bbb; window: qa 2026-09-01..2026-09-08 -> qa 2026-09-08..2026-09-16; resolved: false -> true; rows: 45 -> 60',
     );
   });
 
   it('says so when nothing separates the files', () => {
-    expect(compareHistoryLines(compareHistory(before, before)).at(-1)).toBe(
+    expect(differencesLine(compareHistoryLines(compareHistory(before, before)))).toBe(
       'no differences: same commit, window, budgets, judge and row count',
     );
     const clean = file({}, [group('m9', 10, 0)]);
@@ -139,12 +171,17 @@ describe('the judge beside the rates', () => {
     expect(lines).toContain(
       'after judge j, 0 of 40 asked: agreement: rule-failed rows judged no 2/2, clean rows judged yes 4/5',
     );
-    expect(lines.at(-1)).toBe('differences: judge: null -> j');
+    expect(differencesLine(lines)).toBe('differences: judge: null -> j');
     expect(lines.some((l) => /weighted|total|overall|score/i.test(l))).toBe(false);
   });
 
   it('a file without a judge prints no judge line at all', () => {
     const lines = compareHistoryLines(compareHistory(plain, plain));
-    expect(lines.slice(0, -1).some((l) => l.includes('judge'))).toBe(false);
+    expect(
+      lines
+        .slice(0, lines.indexOf('advice:'))
+        .filter((l) => !l.startsWith('no differences:'))
+        .some((l) => l.includes('judge')),
+    ).toBe(false);
   });
 });
