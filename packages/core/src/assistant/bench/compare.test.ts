@@ -26,9 +26,10 @@ const trial = (pass: boolean, over: Partial<TrialResult> = {}): TrialResult => (
     },
   ],
   cleanup: {
-    room: { id: 'room', expected: 'deleted', observed: '404', at: '2026-09-16T00:00:01.000Z' },
+    rooms: [{ id: 'room', expected: 'deleted', observed: '404', at: '2026-09-16T00:00:01.000Z' }],
     preferences: { expected: null, observed: null, equal: null, at: null },
     auditRowsAdded: 0,
+    memories: null,
   },
   ...over,
 });
@@ -41,7 +42,11 @@ const file = (over: Partial<BenchResult>, trials: Record<string, TrialResult[]>)
   model: 'm1',
   runId: 'r1',
   k: 3,
-  tasks: Object.entries(trials).map(([id, t]) => ({ id, trials: t })),
+  tasks: Object.entries(trials).map(([id, t]) => ({
+    id,
+    capability: 'method' as const,
+    trials: t,
+  })),
   ...over,
 });
 
@@ -145,9 +150,32 @@ describe('compare', () => {
     ]);
   });
 
+  it('prints a capabilities block before the differences line, one score per side (ISS-1061)', () => {
+    const c = compare(before, after);
+    expect(c.capabilities.before.map((s) => [s.capability, s.score, s.tasks])).toEqual([
+      ['method', 0, ['a', 'b']],
+    ]);
+    expect(c.capabilities.after.map((s) => [s.capability, s.score, s.fullTasks])).toEqual([
+      ['method', 100, 1],
+    ]);
+    const lines = compareLines(c);
+    const at = lines.indexOf('capabilities:');
+    expect(lines[at + 1]).toBe(
+      '  method: before 0.0 (lowest a 0%; full 0/2) → after 100.0 (lowest a 100%; full 1/2)',
+    );
+    expect(lines[at + 2]).toMatch(/^differences:/);
+  });
+
   it('holds no composite key and prints no total line', () => {
     const c = compare(before, after);
-    expect(Object.keys(c).sort()).toEqual(['advice', 'agreement', 'differences', 'k', 'tasks']);
+    expect(Object.keys(c).sort()).toEqual([
+      'advice',
+      'agreement',
+      'capabilities',
+      'differences',
+      'k',
+      'tasks',
+    ]);
     for (const task of c.tasks) {
       expect(Object.keys(task).sort()).toEqual(['after', 'before', 'id']);
       for (const side of [task.before, task.after]) {

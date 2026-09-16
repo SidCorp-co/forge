@@ -11,7 +11,15 @@ import type { FetchLike } from './client.js';
 import type { FailureMode } from './grade.js';
 import type { ToolCall } from './trail.js';
 
+/** The block the judge reads that the assistant never saw: the fixtures the benchmark read and the earlier turns. */
+export const REFERENCE_HEADER =
+  'What the benchmark read from the project and the earlier turns; the assistant did not see this block:';
+
 export interface JudgeInput {
+  /** One sentence the task adds to the generic rule (ISS-1061). */
+  rubric?: string;
+  /** The facts the judge holds against the reply: filled fixtures and earlier turns (ISS-1061, codex F3). */
+  reference?: string;
   query: string;
   reply: string | null;
   /** Each tool call rendered for a reader: `forge issue --status open`, with ` (error)` when the tool errored. */
@@ -64,6 +72,9 @@ export function judgeMessages(input: JudgeInput): ChatMessage[] {
     '"served": "yes" when the reply gives the person what they asked for, "partial" when it gives some of it or asks a fair question back, "no" when it does not;',
     '"reason": one sentence;',
     '"quote": a span copied exactly from the reply that the reason rests on, or "" when there is no reply or nothing in it to rest on.',
+    ...(input.rubric
+      ? [`For this exchange, "served" is read by this rule as well: ${input.rubric}`]
+      : []),
   ].join('\n');
   const calls = input.calls.length > 0 ? input.calls.map((c) => `- ${c}`).join('\n') : '- none';
   const user = [
@@ -71,6 +82,7 @@ export function judgeMessages(input: JudgeInput): ChatMessage[] {
     `${CALLS_HEADER}\n${calls}`,
     `${ERROR_HEADER} ${input.error ?? 'none'}`,
     `${REPLIED_HEADER}\n${input.reply ?? NO_REPLY}`,
+    ...(input.reference ? [`${REFERENCE_HEADER}\n${input.reference}`] : []),
   ].join('\n\n');
   return [
     { role: 'system', content: system },

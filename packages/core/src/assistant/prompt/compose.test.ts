@@ -118,12 +118,25 @@ const MANIFEST: Record<LayerId, Record<string, string>> = {
     'out-of-reach-tests': 'own-what-is-addressed-to-you, and refusing without delegating',
     'vietnamese-count': 'answer in the language the person wrote in',
     'summary-in-style': 'lead with what you found, and answer concisely',
+    'long-context-needle': 'read the whole message before answering: the fact sits mid-text',
+    'long-context-thread':
+      'hold the facts of eight turns and answer from them, not by asking again',
   },
   tools: {
     'one-issue-by-key': 'the carried `issue ISS-<n>` form is what removes the `-h` round',
     'open-issues-linked': 'the carried `issue --status` form, and the call budget it saves',
     'filing-guidance': 'the filing rules and the carried `new` form',
     'preference-restore': 'never say a write landed that you did not read back',
+    'project-issue-counts':
+      'the carried `issue --status` form read once per status, counted, never guessed',
+    'project-pipeline-states':
+      'the project’s own pipeline read from the tracker, in its declared order',
+    'project-waiting-issue':
+      'the `--status needs_info` filter and the link shape on the one it names',
+    'memory-store-recall':
+      'forge_memory_note to keep a fact, forge_memory_search to read it back in a new room',
+    'memory-correction':
+      'a correction overwrites the note; the search returns the newer value, not both',
   },
   linking: {
     'one-issue-by-key': 'the link shape and where a documentId comes from',

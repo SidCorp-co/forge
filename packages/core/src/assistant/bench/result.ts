@@ -5,8 +5,10 @@
  * refused by name rather than read as an empty run.
  */
 
+import type { CapabilitySummary } from './capability.js';
 import type { Evidence, FailureMode } from './grade.js';
 import type { JudgeResult } from './judge.js';
+import type { Capability } from './task.js';
 
 export interface AttemptRecord {
   chatLogId: string;
@@ -30,8 +32,16 @@ export interface TurnRecord {
   judge?: JudgeResult;
 }
 
+export interface RoomCleanup {
+  id: string;
+  expected: 'deleted';
+  observed: string;
+  at: string;
+}
+
 export interface CleanupRecord {
-  room: { id: string; expected: 'deleted'; observed: string; at: string };
+  /** Every room the trial opened, in the order opened; a turn marked `room: 'new'` adds one. */
+  rooms: RoomCleanup[];
   preferences: {
     expected: { answerStyle: string; assistantInstructions: string | null } | null;
     observed: { answerStyle: string; assistantInstructions: string | null } | null;
@@ -39,6 +49,8 @@ export interface CleanupRecord {
     at: string | null;
   };
   auditRowsAdded: number;
+  /** The memory notes the trial's rooms wrote or that carry a trial token: found, deleted, remaining on read-back; null where no room was opened. */
+  memories: { found: number; deleted: number; remaining: number } | null;
 }
 
 export interface TrialResult {
@@ -52,6 +64,7 @@ export interface TrialResult {
 
 export interface TaskResult {
   id: string;
+  capability: Capability;
   trials: TrialResult[];
 }
 
@@ -64,6 +77,8 @@ export interface BenchResult {
   runId: string;
   k: number;
   tasks: TaskResult[];
+  /** Per capability walked: the same score rule over its tasks (ISS-1061). Derived from `tasks`; a reader recomputes it. */
+  capabilities?: CapabilitySummary[];
   /** The judge model, when the run had one. */
   judge?: { model: string };
 }
@@ -92,6 +107,18 @@ export function readResult(text: string, where = 'result'): BenchResult {
     const row = task as Record<string, unknown>;
     if (typeof row.id !== 'string' || !Array.isArray(row.trials))
       throw new ResultShapeError(`${where}.tasks[${t}] lacks id or trials`);
+    // cm:why a file written before ISS-1061 names no capability: every task it walked was a method task, and reading it as such keeps an earlier run on the ladder
+    if (row.capability === undefined) row.capability = 'method';
+    for (const trial of row.trials as Array<Record<string, unknown>>) {
+      const cleanup = trial.cleanup as Record<string, unknown> | undefined;
+      if (!cleanup) continue;
+      // cm:why the same file holds one `cleanup.room`; a trial then opened one room, so it is the one-element list the history verb excludes by
+      if (cleanup.rooms === undefined && cleanup.room !== undefined) {
+        cleanup.rooms = [cleanup.room];
+        delete cleanup.room;
+      }
+      if (cleanup.memories === undefined) cleanup.memories = null;
+    }
     row.trials.forEach((trial: unknown, i) => {
       for (const key of TRIAL_KEYS) {
         if (!(key in (trial as Record<string, unknown>)))

@@ -24,6 +24,10 @@ export interface ScriptedTurn {
   moves?: Array<{ answerStyle?: string; assistantInstructions?: string | null }>;
   /** Answer the send with this status after its side effects, as a crashed door would. */
   failWith?: number;
+  /** Memory notes the turn writes, as `forge_memory_note` would (sourceRef `conversation:<roomId>:<id>`); the script reads the token from the message. */
+  notes?: string[];
+  /** Notes somebody else writes to the project during the turn, under another room's sourceRef; never the trial's to delete. */
+  foreignNotes?: string[];
 }
 
 export type Script = (message: string, taskId: string, turnIndex: number) => ScriptedTurn;
@@ -47,6 +51,17 @@ export interface FakeOptions {
   rows?: FakeState['chatLogs'];
   /** The judge endpoint's answer: the text the model returns, or an HTTP status to refuse with. */
   judge?: (input: { query: string; reply: string | null; model: string }) => string | number;
+  /** The pipeline's state keys in order; defaults to the three every pipeline carries. */
+  states?: string[];
+  /** Memory notes the project holds before any trial. */
+  notes?: FakeNote[];
+}
+
+export interface FakeNote {
+  id: string;
+  sourceRef: string;
+  textContent: string;
+  archivedAt: string | null;
 }
 
 export interface FakeState {
@@ -57,6 +72,9 @@ export interface FakeState {
   >;
   rooms: Map<string, { title: string; projectId: string; messages: RoomMessage[]; seq: number }>;
   deleted: string[];
+  notes: FakeNote[];
+  /** Every judge call's system and user text, so a test reads the rubric and reference the judge saw. */
+  judgeCalls: Array<{ model: string; system: string; user: string }>;
   requests: Array<{ method: string; path: string; auth: string | null; model?: string }>;
 }
 
@@ -70,6 +88,19 @@ export const FAKE_ISSUE: FakeIssue = {
   displayId: 'ISS-7',
   title: 'Widget wobbles',
   status: 'open',
+};
+/** Waiting on information, so the `waitingIssue` fixture has one to read. */
+export const FAKE_WAITING: FakeIssue = {
+  id: '55555555-5555-4555-8555-555555555555',
+  displayId: 'ISS-9',
+  title: 'Needs a repro',
+  status: 'needs_info',
+};
+export const FAKE_CLOSED: FakeIssue = {
+  id: '66666666-6666-4666-8666-666666666666',
+  displayId: 'ISS-8',
+  title: 'Shipped already',
+  status: 'closed',
 };
 export const DEAD_ISSUE_ID = '33333333-3333-4333-8333-333333333333';
 export const ERROR_ISSUE_ID = '44444444-4444-4444-8444-444444444444';
@@ -161,6 +192,20 @@ function playTurn(ctx: Ctx, roomId: string, content: string): Response {
     });
   }
   for (const move of turn.moves ?? []) writePrefs(ctx, move, roomId);
+  for (const text of turn.notes ?? [])
+    state.notes.push({
+      id: ctx.nextId('note'),
+      sourceRef: `conversation:${roomId}:${ctx.nextId('ref')}`,
+      textContent: text,
+      archivedAt: null,
+    });
+  for (const text of turn.foreignNotes ?? [])
+    state.notes.push({
+      id: ctx.nextId('note'),
+      sourceRef: `conversation:someone-elses-room:${ctx.nextId('ref')}`,
+      textContent: text,
+      archivedAt: null,
+    });
   if (turn.failWith) return json(turn.failWith, { error: 'the door crashed' });
   const deliver = turn.deliver === undefined ? (turn.attempts.at(-1)?.reply ?? null) : turn.deliver;
   if (deliver !== null)
@@ -191,6 +236,37 @@ function chatLogs(ctx: Ctx, url: URL): Response {
   return json(200, { items, returned: items.length, total: rows.length, limit: pageSize, offset });
 }
 
+/** A `listResponse` envelope over `rows` at the url's limit and offset, the page never wider than `cap`. */
+function page<T>(rows: T[], url: URL, cap = 100): Response {
+  const limit = Math.min(Number(url.searchParams.get('limit') ?? '50'), cap);
+  const offset = Number(url.searchParams.get('offset') ?? '0');
+  const items = rows.slice(offset, offset + limit);
+  return json(200, { items, returned: items.length, total: rows.length, limit, offset });
+}
+
+function memoryRoutes(ctx: Ctx, method: string, url: URL): Response | null {
+  const { state } = ctx;
+  const path = url.pathname;
+  if (method === 'GET' && path === '/api/memory') {
+    if (url.searchParams.get('projectId') !== ctx.project.id)
+      return json(403, { error: 'not your project' });
+    if (url.searchParams.get('source') !== 'note')
+      return json(400, { error: 'source must be a memory source' });
+    const archived = url.searchParams.get('includeArchived') === 'true';
+    const rows = state.notes.filter((n) => archived || n.archivedAt === null);
+    return page(rows, url, ctx.opts.pageSize);
+  }
+  if (method === 'DELETE' && path === '/api/memory/by-source') {
+    const ref = url.searchParams.get('sourceRef');
+    if (url.searchParams.get('projectId') !== ctx.project.id || !ref)
+      return json(400, { error: 'projectId, source and sourceRef are required' });
+    const before = state.notes.length;
+    state.notes = state.notes.filter((n) => n.sourceRef !== ref);
+    return json(200, { deleted: before - state.notes.length });
+  }
+  return null;
+}
+
 function issueRoutes(ctx: Ctx, method: string, url: URL): Response | null {
   const path = url.pathname;
   if (method === 'GET' && path === '/api/projects')
@@ -200,10 +276,17 @@ function issueRoutes(ctx: Ctx, method: string, url: URL): Response | null {
     ]);
   if (method === 'GET' && path === `/api/projects/${ctx.project.id}/issues`) {
     const status = url.searchParams.get('status');
-    const items = ctx.issues
-      .filter((i) => !status || i.status === status)
-      .slice(0, Number(url.searchParams.get('limit') ?? '50'));
-    return json(200, { items, returned: items.length, total: items.length, limit: 1, offset: 0 });
+    return page(
+      ctx.issues.filter((i) => !status || i.status === status),
+      url,
+      ctx.opts.pageSize,
+    );
+  }
+  if (method === 'GET' && path === `/api/projects/${ctx.project.id}/pipeline-config`) {
+    const states = Object.fromEntries(
+      (ctx.opts.states ?? ['open', 'in_progress', 'awaiting_release']).map((s) => [s, {}]),
+    );
+    return json(200, { pipelineConfig: { enabled: true, states } });
   }
   const issue = /^\/api\/issues\/([^/]+)$/.exec(path);
   if (method === 'GET' && issue) {
@@ -300,9 +383,15 @@ function judgeRoute(
   const model = String(body.model ?? '');
   const last = state.requests.at(-1);
   if (last) last.model = model;
+  const messages = (body.messages ?? []) as Array<{ role: string; content: string }>;
+  state.judgeCalls.push({
+    model,
+    system: messages.find((m) => m.role === 'system')?.content ?? '',
+    user: messages.find((m) => m.role === 'user')?.content ?? '',
+  });
   if (!ctx.opts.judge) return json(404, { error: 'no judge scripted' });
   const answer = ctx.opts.judge({
-    ...judgeInputOf((body.messages ?? []) as Array<{ role: string; content: string }>),
+    ...judgeInputOf(messages),
     model,
   });
   return typeof answer === 'number'
@@ -317,13 +406,15 @@ export function createFakeDeployment(opts: FakeOptions): { fetch: FetchLike; sta
     chatLogs: [...(opts.rows ?? [])],
     rooms: new Map(),
     deleted: [],
+    notes: [...(opts.notes ?? [])],
+    judgeCalls: [],
     requests: [],
   };
   let ids = 0;
   const ctx: Ctx = {
     opts,
     project: opts.project ?? FAKE_PROJECT,
-    issues: opts.issues ?? [FAKE_ISSUE],
+    issues: opts.issues ?? [FAKE_ISSUE, FAKE_CLOSED, FAKE_WAITING],
     state,
     nextId: (prefix) => `${prefix}-${String(++ids).padStart(4, '0')}`,
   };
@@ -351,6 +442,7 @@ export function createFakeDeployment(opts: FakeOptions): { fetch: FetchLike; sta
     if (method === 'GET' && path === '/api/chat-logs') return chatLogs(ctx, url);
     return (
       issueRoutes(ctx, method, url) ??
+      memoryRoutes(ctx, method, url) ??
       roomRoutes(ctx, method, path, body) ??
       preferenceRoutes(ctx, method, path, body) ??
       json(404, { error: `no route ${method} ${path}` })

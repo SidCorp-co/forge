@@ -142,14 +142,14 @@ async function signIn(client: BenchClient, env: Env): Promise<void> {
   );
 }
 
-/** The bench rooms every `--exclude` run file lists, by `cleanup.room.id`. */
+/** The bench rooms every `--exclude` run file lists, by `cleanup.rooms[].id`. */
 async function excludedSessions(deps: CliDeps, files: string[]): Promise<string[]> {
   const ids = new Set<string>();
   for (const file of files) {
     const run = readResult(await deps.readFile(file), file);
     for (const task of run.tasks) {
       for (const trial of task.trials) {
-        if (trial.cleanup.room.id) ids.add(trial.cleanup.room.id);
+        for (const room of trial.cleanup.rooms) if (room.id) ids.add(room.id);
       }
     }
   }

@@ -2,13 +2,15 @@
  * ISS-1051 — one trial of one task against a deployment: read the baseline, open the room, send
  * the turns, read the trail after each, look the links up, grade, and in `finally` undo what the
  * trial did with a read-back for each undo. A send that throws still yields a result: the error,
- * the turns graded so far, and the cleanup as it went.
+ * the turns graded so far, and the cleanup as it went. ISS-1061: a turn marked `room: 'new'`
+ * opens a fresh room, every room opened is deleted, and the memory notes a trial planted are
+ * found by their tokens and removed, with a read-back for each.
  */
 
 import type { BenchClient, PreferenceChange, Preferences, Project, RoomMessage } from './client.js';
 import { extractIssueLinks, gradeTurn, type LinkOutcome, type PreferenceRow } from './grade.js';
 import { callLines, type Judge, type JudgeResult } from './judge.js';
-import type { CleanupRecord, TrialResult, TurnRecord } from './result.js';
+import type { CleanupRecord, RoomCleanup, TrialResult, TurnRecord } from './result.js';
 import { FIXTURE_KEYS, fill, type Task } from './task.js';
 import { type Attempt, type ChatLogRow, pairTrail } from './trail.js';
 
@@ -21,10 +23,13 @@ export interface TrialArgs {
   log?: (line: string) => void;
   /** The sidecar judge; its verdict is stored beside the grade and never read into it. */
   judge?: Judge;
+  /** Hex characters for a fresh token; defaults to a UUID's first twelve. */
+  randomId?: () => string;
 }
 
 interface SentTurn {
   index: number;
+  roomIndex: number;
   message: string;
   delivered: string | null;
   seconds: number;
@@ -46,14 +51,37 @@ const preferenceValues = (
   assistantInstructions: p.assistantInstructions ?? null,
 });
 
+const freshToken = (args: TrialArgs): string =>
+  `bench-${(args.randomId ?? (() => crypto.randomUUID().replace(/-/g, '').slice(0, 12)))()}`;
+
 async function readFixtures(args: TrialArgs): Promise<Record<string, string>> {
   const values: Record<string, string> = {};
+  const { client, project } = args;
   for (const name of args.task.fixtures ?? []) {
-    if (name === 'projectName') values.projectName = args.project.name;
+    if (name === 'projectName') values.projectName = project.name;
     if (name === 'firstOpenIssue') {
-      const issue = await args.client.firstOpenIssue(args.project.id);
+      const issue = await client.firstOpenIssue(project.id);
       values.issueKey = issue.key;
       values.issueId = issue.id;
+    }
+    if (name === 'issueCounts') {
+      const counts = await client.issueCounts(project.id);
+      values.openCount = String(counts.openCount);
+      values.closedCount = String(counts.closedCount);
+      values.draftCount = String(counts.draftCount);
+    }
+    if (name === 'waitingIssue') {
+      const waiting = await client.waitingIssue(project.id);
+      values.needsInfoKey = waiting.key;
+      values.needsInfoId = waiting.id;
+    }
+    if (name === 'pipelineStates')
+      values.stateList = (await client.pipelineStates(project.id)).join(', ');
+    if (name === 'nonce') {
+      values.nonce = freshToken(args);
+      values.nonce2 = freshToken(args);
+      // cm:guard two tokens that collide would let a correction task pass by matching the first value; a caller's randomId that repeats is refused here rather than graded kindly
+      if (values.nonce === values.nonce2) throw new Error('nonce and nonce2 came out equal');
     }
     for (const key of FIXTURE_KEYS[name]) {
       if (values[key] === undefined) throw new Error(`fixture ${name} filled no {${key}}`);
@@ -78,32 +106,77 @@ const gained = (before: PreferenceChange[], after: PreferenceChange[]): Preferen
     .map((c) => ({ field: c.field, previousValue: c.previousValue, newValue: c.newValue }));
 };
 
+async function deleteRooms(args: TrialArgs, roomIds: string[]): Promise<RoomCleanup[]> {
+  const now = args.now ?? (() => new Date());
+  const out: RoomCleanup[] = [];
+  for (const id of roomIds) {
+    const row: RoomCleanup = { id, expected: 'deleted', observed: '', at: '' };
+    try {
+      await args.client.deleteRoom(id);
+      const back = await args.client.readRoom(id);
+      row.observed = back.status === 404 ? '404' : 'still readable (200)';
+    } catch (err) {
+      row.observed = `refused: ${errorText(err)}`;
+    }
+    row.at = now().toISOString();
+    out.push(row);
+  }
+  return out;
+}
+
+/** A note is the trial's when `forge_memory_note` wrote it from one of the trial's rooms (its sourceRef is `conversation:<roomId>:<id>`) or its text carries a trial token. */
+const ownedBy =
+  (rooms: string[], tokens: string[]) =>
+  (n: { sourceRef: string; text: string }): boolean =>
+    rooms.some((r) => n.sourceRef.startsWith(`conversation:${r}:`)) ||
+    tokens.some((t) => n.text.includes(t));
+
+/**
+ * Every note the trial's rooms wrote or that carries a trial token, across every page; deleted by
+ * its sourceRef and listed again. Ownership is the room in the sourceRef, never "new since the
+ * trial began": a note somebody else writes meanwhile is not ours to delete (codex F1).
+ */
+async function deleteNotes(
+  args: TrialArgs,
+  rooms: string[],
+  tokens: string[],
+): Promise<CleanupRecord['memories']> {
+  // cm:why every trial, not only the memory tasks: the ten method tasks carry no token, and the notes the assistant kept for "remember my deploy window" outlived every ISS-1051 run (22 on the QA project on 2026-09-16) because the cleanup only knew the room
+  const left = ownedBy(rooms, tokens);
+  const projectId = args.project.id;
+  let found = 0;
+  let deleted = 0;
+  try {
+    const hits = (await args.client.listNotes(projectId)).filter(left);
+    found = hits.length;
+    for (const ref of new Set(hits.map((h) => h.sourceRef)))
+      deleted += await args.client.deleteNote(projectId, ref);
+    const remaining = (await args.client.listNotes(projectId)).filter(left).length;
+    return { found, deleted, remaining };
+  } catch (err) {
+    args.log?.(`memory cleanup refused: ${errorText(err)}`);
+    // cm:guard a refusal mid-cleanup must not read as clean: what was found and not deleted is counted as remaining, and one is charged where the listing itself was refused
+    return { found, deleted, remaining: Math.max(1, found - deleted) };
+  }
+}
+
 async function cleanup(
   args: TrialArgs,
-  roomId: string | null,
+  roomIds: string[],
   baseline: Preferences | null,
   changesBefore: number,
+  values: Record<string, string>,
 ): Promise<CleanupRecord> {
   const now = args.now ?? (() => new Date());
   const record: CleanupRecord = {
-    room: {
-      id: roomId ?? '',
-      expected: 'deleted',
-      observed: 'never opened',
-      at: now().toISOString(),
-    },
+    rooms: await deleteRooms(args, roomIds),
     preferences: { expected: null, observed: null, equal: null, at: null },
     auditRowsAdded: 0,
+    memories: null,
   };
-  if (roomId) {
-    try {
-      await args.client.deleteRoom(roomId);
-      const back = await args.client.readRoom(roomId);
-      record.room.observed = back.status === 404 ? '404' : 'still readable (200)';
-    } catch (err) {
-      record.room.observed = `refused: ${errorText(err)}`;
-    }
-    record.room.at = now().toISOString();
+  if (roomIds.length > 0) {
+    const tokens = [values.nonce, values.nonce2].filter((t): t is string => Boolean(t));
+    record.memories = await deleteNotes(args, roomIds, tokens);
   }
   if (baseline && args.task.preference) {
     const expected = preferenceValues(baseline);
@@ -167,8 +240,22 @@ function turnRecord(
   };
 }
 
+/** The block the judge reads that the assistant did not: the filled fixtures, then the earlier turns of this trial. */
+function referenceFor(
+  values: Record<string, string>,
+  sends: SentTurn[],
+  upTo: number,
+): string | undefined {
+  const lines = Object.entries(values).map(([k, v]) => `${k}: ${v}`);
+  for (const s of sends.slice(0, upTo)) {
+    lines.push(`turn ${s.index + 1} asked: ${s.message}`);
+    lines.push(`turn ${s.index + 1} replied: ${s.delivered ?? '(no reply)'}`);
+  }
+  return lines.length === 0 ? undefined : lines.join('\n');
+}
+
 /**
- * Every sent turn judged, after the rules have graded and the room is gone; or none, with the
+ * Every sent turn judged, after the rules have graded and the rooms are gone; or none, with the
  * refusal, when the judge is one of the models the trail names — a model must not grade itself.
  */
 async function judgeTurns(
@@ -176,6 +263,7 @@ async function judgeTurns(
   sends: SentTurn[],
   attempts: Attempt[][],
   models: string[],
+  values: Record<string, string>,
 ): Promise<{ judged: Array<JudgeResult | undefined>; refused: string | null }> {
   const judge = args.judge;
   if (!judge) return { judged: [], refused: null };
@@ -187,14 +275,35 @@ async function judgeTurns(
   const judged: Array<JudgeResult | undefined> = [];
   for (const [i, sent] of sends.entries()) {
     const turnAttempts = attempts[i] ?? [];
+    const reference = referenceFor(values, sends, i);
     judged[i] = await judge.judge({
       query: sent.message,
       reply: sent.delivered,
       calls: callLines(turnAttempts.flatMap((a) => a.calls)),
       error: turnAttempts.at(-1)?.error ?? null,
+      ...(args.task.judgeRubric ? { rubric: args.task.judgeRubric } : {}),
+      ...(reference ? { reference } : {}),
     });
   }
   return { judged, refused: null };
+}
+
+/** The attempts per sent turn, paired room by room and laid back in turn order. */
+function pairRooms(
+  rooms: string[],
+  rows: TrailRow[],
+  snapshots: string[][][],
+  sends: SentTurn[],
+): Attempt[][] {
+  const out: Attempt[][] = sends.map(() => []);
+  rooms.forEach((roomId, r) => {
+    const own = sends.map((s, i) => [s, i] as const).filter(([s]) => s.roomIndex === r);
+    const paired = pairTrail(roomId, rows, snapshots[r] ?? [[]]);
+    own.forEach(([, sendIndex], j) => {
+      out[sendIndex] = paired[j] ?? [];
+    });
+  });
+  return out;
 }
 
 /**
@@ -214,25 +323,34 @@ export async function runTrial(
       dateTo: new Date(now().getTime() + SKEW_MS).toISOString(),
     });
 
-  let roomId: string | null = null;
+  const rooms: string[] = [];
   let baseline: Preferences | null = null;
   let changesBefore = 0;
   let error: string | null = null;
   const sends: SentTurn[] = [];
-  const snapshots: string[][] = [];
+  /** One snapshot list per room: the trail ids the room held after each of its sends. */
+  const snapshots: string[][][] = [];
   let rows: TrailRow[] = [];
   let values: Record<string, string> = {};
+
+  const openRoom = async (): Promise<string> => {
+    const title = `bench ${args.runId} ${args.task.id}${rooms.length > 0 ? ` room ${rooms.length + 1}` : ''}`;
+    const room = await args.client.openRoom(args.project.id, title);
+    rooms.push(room.id);
+    snapshots.push([[]]);
+    return room.id;
+  };
 
   try {
     baseline = await args.client.readPreferences();
     changesBefore = (await args.client.preferenceChanges()).length;
     values = await readFixtures(args);
     if (args.task.preference?.setup) await args.client.writePreferences(args.task.preference.setup);
-    const room = await args.client.openRoom(args.project.id, `bench ${args.runId} ${args.task.id}`);
-    roomId = room.id;
-    snapshots.push([]);
+    let roomId = await openRoom();
     const seen = new Set<string>();
     for (const [index, turn] of args.task.turns.entries()) {
+      if (turn.room === 'new') roomId = await openRoom();
+      const roomIndex = rooms.length - 1;
       const message = fill(turn.message, values);
       const before = await args.client.preferenceChanges();
       const t0 = now().getTime();
@@ -240,14 +358,14 @@ export async function runTrial(
       const seconds = (now().getTime() - t0) / 1000;
       const delivered = deliveredOf(sent.messages, seen);
       rows = await readTrail();
-      snapshots.push(rows.filter((r) => r.sessionId === roomId).map((r) => r.id));
+      snapshots[roomIndex]?.push(rows.filter((r) => r.sessionId === roomId).map((r) => r.id));
       const lookups: Record<string, LinkOutcome> = {};
       for (const link of extractIssueLinks(delivered ?? '')) {
         if (UUID_RE.test(link.segment) && lookups[link.segment] === undefined)
           lookups[link.segment] = await args.client.issueExists(link.segment);
       }
       const preferenceRows = gained(before, await args.client.preferenceChanges());
-      sends.push({ index, message, delivered, seconds, lookups, preferenceRows });
+      sends.push({ index, roomIndex, message, delivered, seconds, lookups, preferenceRows });
       args.log?.(`${args.task.id} turn ${index + 1}: ${seconds.toFixed(1)}s`);
     }
   } catch (err) {
@@ -255,20 +373,28 @@ export async function runTrial(
     args.log?.(`${args.task.id} stopped: ${error}`);
   }
 
-  const record = await cleanup(args, roomId, baseline, changesBefore);
-  const attempts = roomId ? pairTrail(roomId, rows, snapshots) : [];
-  const roomRows = rows.filter((r) => r.sessionId === roomId);
+  const record = await cleanup(args, rooms, baseline, changesBefore, values);
+  const attempts = pairRooms(rooms, rows, snapshots, sends);
+  const roomRows = rows.filter((r) => r.sessionId !== null && rooms.includes(r.sessionId));
   const models = [...new Set(roomRows.flatMap((r) => (r.model ? [r.model] : [])))];
-  const { judged, refused } = await judgeTurns(args, sends, attempts, models);
+  const { judged, refused } = await judgeTurns(args, sends, attempts, models, values);
   const turns = sends.map((sent, i) =>
     turnRecord(sent, attempts[i] ?? [], args, values, judged[i]),
   );
+  const undeleted = record.rooms.some((r) => r.observed !== '404');
+  const leftover = (record.memories?.remaining ?? 0) > 0;
   return {
     model: models[0] ?? null,
     judgeRefused: refused,
     result: {
       at: started.toISOString(),
-      pass: error === null && turns.length === args.task.turns.length && turns.every((t) => t.pass),
+      // cm:guard a trial whose room or notes outlived the cleanup is not a pass: the next reading of the project would carry them
+      pass:
+        error === null &&
+        turns.length === args.task.turns.length &&
+        turns.every((t) => t.pass) &&
+        !undeleted &&
+        !leftover,
       error,
       seconds: turns.reduce((sum, t) => sum + t.seconds, 0),
       turns,

@@ -5,7 +5,8 @@
  * never enters the score. Reverses ISS-1051's "no composite" on the owner's word of 2026-09-16.
  */
 
-import { median, sideOf, type TaskSide } from './compare.js';
+import { type CapabilitySummary, passKMean } from './capability.js';
+import { capabilitiesOf, median, sideOf, type TaskSide } from './compare.js';
 import type { HistoryResult } from './history/result.js';
 import { isVerdict } from './judge.js';
 import type { BenchResult } from './result.js';
@@ -42,6 +43,8 @@ export interface RunRow {
   thin: boolean;
   judgeServed: Rate | null;
   medianSeconds: number | null;
+  /** The same score per capability the file's tasks carry (ISS-1061). */
+  capabilities: CapabilitySummary[];
 }
 
 export interface WindowRow {
@@ -60,16 +63,7 @@ export function score(sides: Array<{ id: string; side: TaskSide }>): {
   score: number | null;
   lowest: Lowest | null;
 } {
-  const withK = sides.filter((s) => s.side.passK !== null);
-  if (withK.length === 0) return { score: null, lowest: null };
-  const mean = withK.reduce((sum, s) => sum + (s.side.passK ?? 0), 0) / withK.length;
-  const lowest = [...withK].sort(
-    (a, b) => (a.side.passK ?? 0) - (b.side.passK ?? 0) || a.id.localeCompare(b.id),
-  )[0];
-  return {
-    score: Math.round(mean * 1000) / 10,
-    lowest: lowest ? { id: lowest.id, passK: lowest.side.passK } : null,
-  };
+  return passKMean(sides);
 }
 
 const judgeServedOf = (r: BenchResult): Rate | null => {
@@ -115,6 +109,7 @@ export function rankRuns(
         thin: sides.some((x) => x.side.thin),
         judgeServed: judgeServedOf(result),
         medianSeconds: median(result.tasks.flatMap((t) => t.trials.map((trial) => trial.seconds))),
+        capabilities: capabilitiesOf(result, k),
       };
     })
     .sort(byScore);
@@ -237,6 +232,27 @@ export function deltaLine(runs: RunRow[]): string | null {
   return `delta (1st over 2nd): score ${delta(first.score, second.score)}; lowest task ${pct(first.lowest?.passK ?? null)} vs ${pct(second.lowest?.passK ?? null)}; full tasks ${first.fullTasks - second.fullTasks >= 0 ? '+' : ''}${first.fullTasks - second.fullTasks}; judge served ${rate(first.judgeServed)} vs ${rate(second.judgeServed)}; median ${delta(first.medianSeconds, second.medianSeconds, 's')}`;
 }
 
+/** The capability columns every run row names, in the order the first row that has each names it. */
+function capabilityNames(runs: RunRow[]): string[] {
+  return [...new Set(runs.flatMap((r) => r.capabilities.map((c) => c.capability)))];
+}
+
+/** One row per run in ladder order: the score per capability, `—` where the run walked none of its tasks. */
+function capabilityTable(runs: RunRow[]): { head: string[]; rows: string[][] } | null {
+  const names = capabilityNames(runs);
+  if (names.length === 0) return null;
+  const cell = (r: RunRow, name: string): string => {
+    const s = r.capabilities.find((c) => c.capability === name);
+    return s
+      ? `${num(s.score)} ${s.lowest ? `${s.lowest.id} ${pct(s.lowest.passK)}` : '—'} (${s.fullTasks}/${s.tasks.length} full)`
+      : '—';
+  };
+  return {
+    head: ['#', 'run', ...names],
+    rows: runs.map((r, i) => [String(i + 1), r.name, ...names.map((n) => cell(r, n))]),
+  };
+}
+
 /** The ladder for a terminal: the run table under its score definition, then the windows. */
 export function ladderLines(runs: RunRow[], windows: WindowRow[]): string[] {
   const lines: string[] = [];
@@ -244,6 +260,8 @@ export function ladderLines(runs: RunRow[], windows: WindowRow[]): string[] {
     lines.push('runs', ...table(RUN_HEAD, runs.map(runCells)), scoreDefinition(runs[0]?.k ?? 1));
     const d = deltaLine(runs);
     if (d) lines.push(d);
+    const caps = capabilityTable(runs);
+    if (caps) lines.push('capabilities', ...table(caps.head, caps.rows));
   }
   if (windows.length > 0) {
     lines.push(
@@ -277,6 +295,8 @@ export function ladderMarkdown(runs: RunRow[], windows: WindowRow[]): string {
     );
     const d = deltaLine(runs);
     if (d) parts.push('', d);
+    const caps = capabilityTable(runs);
+    if (caps) parts.push('', '### Capabilities', '', ...mdTable(caps.head, caps.rows));
   }
   if (windows.length > 0) {
     parts.push(

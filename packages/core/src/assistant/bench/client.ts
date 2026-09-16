@@ -23,6 +23,18 @@ export interface Project {
   name: string;
 }
 
+export interface IssueCounts {
+  openCount: number;
+  closedCount: number;
+  draftCount: number;
+}
+
+export interface MemoryNote {
+  id: string;
+  sourceRef: string;
+  text: string;
+}
+
 export interface IssueRef {
   id: string;
   key: string;
@@ -82,6 +94,86 @@ export interface ClientOptions {
 const firstLine = (text: string): string => text.split('\n')[0]?.slice(0, 200) ?? '';
 
 /** The benchmark's view of one deployment, bound to one bearer after `signIn` or `useToken`. */
+type JsonFn = <T>(method: string, path: string, body?: unknown) => Promise<T>;
+
+/** ISS-1061 — what the capability fixtures read from the project, over every page the deployment serves. */
+function projectReaders(json: JsonFn) {
+  /** Every page of a `listResponse` envelope, by limit and offset, until the total is read. */
+  async function listAll<T>(pathWithQuery: string): Promise<T[]> {
+    const rows: T[] = [];
+    const limit = 100;
+    const join = pathWithQuery.includes('?') ? '&' : '?';
+    for (let offset = 0; ; ) {
+      const env = await json<ListEnvelope<T>>(
+        'GET',
+        `${pathWithQuery}${join}limit=${limit}&offset=${offset}`,
+      );
+      rows.push(...env.items);
+      if (env.offset + env.returned >= env.total) return rows;
+      if (env.returned === 0)
+        throw new DeploymentRefusal(
+          `GET ${pathWithQuery}`,
+          200,
+          `offset ${offset} returned nothing of ${env.total}`,
+        );
+      offset = env.offset + env.returned;
+    }
+  }
+
+  return {
+    /** Every issue of the project, every page, counted by status. */
+    async issueCounts(projectId: string): Promise<IssueCounts> {
+      const counts = { openCount: 0, closedCount: 0, draftCount: 0 };
+      for (const row of await listAll<{ status: string }>(`/api/projects/${projectId}/issues`)) {
+        if (row.status === 'open') counts.openCount += 1;
+        else if (row.status === 'closed') counts.closedCount += 1;
+        else if (row.status === 'draft') counts.draftCount += 1;
+      }
+      return counts;
+    },
+    /** The first issue waiting on information; refused by name where the project has none. */
+    async waitingIssue(projectId: string): Promise<IssueRef> {
+      const path = `/api/projects/${projectId}/issues?status=needs_info&limit=1`;
+      const env = await json<ListEnvelope<{ id: string; displayId: string; title: string }>>(
+        'GET',
+        path,
+      );
+      const row = env.items[0];
+      if (!row)
+        throw new DeploymentRefusal(
+          `GET ${path}`,
+          200,
+          'the project holds no issue waiting on information',
+        );
+      return { id: row.id, key: row.displayId, title: row.title };
+    },
+    /** The pipeline's state names in the order the project's config declares them. */
+    async pipelineStates(projectId: string): Promise<string[]> {
+      const path = `/api/projects/${projectId}/pipeline-config`;
+      const res = await json<{ pipelineConfig?: { states?: Record<string, unknown> } }>(
+        'GET',
+        path,
+      );
+      const names = Object.keys(res.pipelineConfig?.states ?? {});
+      if (names.length === 0)
+        throw new DeploymentRefusal(`GET ${path}`, 200, 'the pipeline config names no state');
+      return names;
+    },
+    /** Every memory note of the project, every page, archived included (codex F1 on ISS-1061). */
+    async listNotes(projectId: string): Promise<MemoryNote[]> {
+      const rows = await listAll<{ id: string; sourceRef: string; textContent: string }>(
+        `/api/memory?projectId=${projectId}&source=note&includeArchived=true`,
+      );
+      return rows.map((r) => ({ id: r.id, sourceRef: r.sourceRef, text: r.textContent }));
+    },
+    async deleteNote(projectId: string, sourceRef: string): Promise<number> {
+      const qs = new URLSearchParams({ projectId, source: 'note', sourceRef });
+      const res = await json<{ deleted: number }>('DELETE', `/api/memory/by-source?${qs}`);
+      return res.deleted;
+    },
+  };
+}
+
 export function createClient(opts: ClientOptions) {
   const api = opts.api.replace(/\/+$/, '');
   let token: string | null = null;
@@ -138,6 +230,7 @@ export function createClient(opts: ClientOptions) {
       if (!row) throw new DeploymentRefusal(`GET ${path}`, 200, 'the project holds no open issue');
       return { id: row.id, key: row.displayId, title: row.title };
     },
+    ...projectReaders(json),
     async issueExists(id: string): Promise<'resolves' | 'dead'> {
       const path = `/api/issues/${id}`;
       const { status, text } = await call('GET', path);

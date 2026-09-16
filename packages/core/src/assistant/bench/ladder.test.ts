@@ -39,9 +39,10 @@ const trial = (pass: boolean, seconds = 10, served?: 'yes' | 'partial' | 'no'): 
     },
   ],
   cleanup: {
-    room: { id: 'room', expected: 'deleted', observed: '404', at: '2026-09-16T00:00:01.000Z' },
+    rooms: [{ id: 'room', expected: 'deleted', observed: '404', at: '2026-09-16T00:00:01.000Z' }],
     preferences: { expected: null, observed: null, equal: null, at: null },
     auditRowsAdded: 0,
+    memories: null,
   },
 });
 const P = (n: number, seconds?: number) => Array.from({ length: n }, () => trial(true, seconds));
@@ -55,7 +56,11 @@ const file = (over: Partial<BenchResult>, trials: Record<string, TrialResult[]>)
   model: 'terra',
   runId: 'r',
   k: 3,
-  tasks: Object.entries(trials).map(([id, t]) => ({ id, trials: t })),
+  tasks: Object.entries(trials).map(([id, t]) => ({
+    id,
+    capability: 'method' as const,
+    trials: t,
+  })),
   ...over,
 });
 const SHIPPED = ['a', 'b', 'c'];
@@ -256,6 +261,29 @@ describe('the printers', () => {
     expect(lines).toContain('history windows');
     expect(lines.find((l) => l.includes('h.json'))).toMatch(/40\s+20\s+50% \(1\/2\)\s+0\/40/);
     expect(lines.some((l) => /weighted|overall|total/i.test(l))).toBe(false);
+  });
+
+  it('prints a Capabilities table, one column per capability walked, each score beside its lowest task (ISS-1061)', () => {
+    const mixed = file({}, { a: P(3), b: F(3), c: P(3) });
+    mixed.tasks = mixed.tasks.map((t) => ({
+      ...t,
+      capability: t.id === 'a' ? ('long-context' as const) : ('method' as const),
+    }));
+    const rows = rankRuns([{ name: 'x.json', result: mixed }], SHIPPED);
+    expect(rows[0]?.capabilities.map((c) => [c.capability, c.score, c.tasks])).toEqual([
+      ['method', 50, ['b', 'c']],
+      ['long-context', 100, ['a']],
+    ]);
+    const lines = ladderLines(rows, []);
+    const at = lines.indexOf('capabilities');
+    expect(at).toBeGreaterThan(0);
+    expect(lines[at + 1]).toMatch(/^#\s+run\s+method\s+long-context$/);
+    expect(lines[at + 2]).toMatch(
+      /^1\s+x\.json\s+50\.0 b 0% \(1\/2 full\)\s+100\.0 a 100% \(1\/1 full\)$/,
+    );
+    const md = ladderMarkdown(rows, []);
+    expect(md).toContain('### Capabilities');
+    expect(md).toContain('| 1 | x.json | 50.0 b 0% (1/2 full) | 100.0 a 100% (1/1 full) |');
   });
 
   it('never prints a score without the lowest task on the same row', () => {

@@ -113,6 +113,21 @@
 
 
 ### Added
+- **The assistant benchmark now judges project understanding, memory storing and long-context
+  handling, and reports each as its own score.** Every task names what it measures, and seven new
+  tasks join the ten: three read the project itself before asking (its issue counts by status, its
+  pipeline states in their configured order, the one issue waiting on information) so a generic
+  answer fails against the project's own figures; two plant a random fact, ask the assistant to keep
+  it, and read it back from a room that never saw it, once plainly and once after a correction that
+  the first value must not survive; two bury a fact in a long pasted document or across eight turns
+  and an unrelated errand, and ask for it. The run, `compare` and the ladder print one line or column
+  per capability, with the same score rule the ladder already used, the lowest task beside it, and
+  the judge as a column. The judge now also reads the task's one-sentence rule and a block of what the
+  benchmark itself read from the project and the earlier turns. Every room a trial opens is deleted
+  with a read-back, every note it planted is found by its token across every page and removed, and a
+  room or note that outlives the cleanup fails the trial rather than passing quietly.
+  (`packages/core/src/assistant/bench/capability.ts`, `run.ts`, `tasks/`,
+  `docs/modules/agent-execution/assistant-bench.md` "Capabilities".)
 - **A weekly reading of the assistant, posted on an issue.** A project that opts in
   (`pipelineConfig.assistantWeekly` on the Pipeline tab: a pinned issue key, a registered judge
   provider and model, one door if wanted) gets one comment a week on that issue, from Monday 04:00 UTC:

@@ -45,13 +45,15 @@ the mode.
 
 ## The tasks
 
-The shipped set is `tasks/index.ts:SHIPPED_TASKS`; each module names its exact messages, the
-checks bound to each turn, the fixtures its placeholders read from the deployment (`{issueKey}`,
-`{issueId}` from the project's first open issue, `{projectName}`), the preference it sets before
-its first turn, and its budget in seconds. A task is complete on its own: a follow-up's antecedent
+The shipped set is `tasks/index.ts:SHIPPED_TASKS`; each module names its capability
+(`task.ts:CAPABILITIES`), its exact messages, the checks bound to each turn, the fixtures its
+placeholders read from the deployment (`task.ts:FIXTURE_KEYS`: `{issueKey}` and `{issueId}` from
+the project's first open issue, `{projectName}`, and the ISS-1061 fixtures below), the preference
+it sets before its first turn, and its budget in seconds. A task is complete on its own: a follow-up's antecedent
 is an earlier turn of the same task, and a task that reads a style sets that style first.
 `task.test.ts` loads the set whole and refuses a duplicate id, a turn with no check, a check outside
-the vocabulary, a placeholder no fixture fills, and a preference move with no restore.
+the vocabulary, a placeholder no fixture fills, a preference move with no restore, a task with no
+capability, a judge rubric over one line, and a new room asked for on a first turn.
 
 ## Reading a comparison
 
@@ -72,12 +74,12 @@ weighted mean is where the task that cliffs goes to hide (`compare.test.ts` asse
 ## What the run leaves behind
 
 Values come back; records stay. Each trial reads the account's preference values before it starts,
-deletes its room and reads the deletion back (`GET` → 404), writes the baseline values back and
+deletes every room it opened and reads each deletion back (`GET` → 404), writes the baseline values back and
 reads them back equal, and records expected, observed and time for both in the file. What it cannot
 remove it counts: a preference move and its restore each leave a `preference_changes` row through
 the one writer (`preference-changes.ts:writeAssistantPreferences`, which has no delete), and every
 attempt leaves a `chat_logs` row. Both carry the bench room's id (`conversation_id`, `session_id`),
-the file lists every room it opened (`cleanup.room.id`), and a reading of the corpus excludes the
+the file lists every room it opened (`cleanup.rooms[].id`), and a reading of the corpus excludes the
 benchmark's rows by those ids. `auditRowsAdded` in each trial is that count.
 
 ## History: the same graders over what real people asked
@@ -104,7 +106,7 @@ by side per model and source, every rate beside its count, and what separates th
 window, budgets, rows). There is no total line.
 
 The benchmark's own rows are traffic too. `--exclude <run.json>` reads a `bench:assistant run`
-file and drops every row whose `session_id` is a room that run opened (`cleanup.room.id`), naming
+file and drops every row whose `session_id` is a room that run opened (`cleanup.rooms[].id`), naming
 the sessions and the count dropped in the file. The verb writes result files and nothing else:
 `chat_logs.quality_signals` stays untouched.
 
@@ -364,9 +366,73 @@ count beside its rate, the judge's tally and agreement, the compare lines, and t
 `<intent> — chat_logs <id> — <served>`. A test that plants the steps and asserts the order is
 `weekly/run.test.ts`; the reads against real Postgres are `tests/integration/assistant-weekly-e2e.test.ts`.
 
+## Capabilities: what a task measures, and the figures grouped by it
+
+ISS-1061. Every task carries a `capability` (`task.ts:CAPABILITIES`): `method` for the ten tasks
+from ISS-1051, which measure how the assistant works its tools; `project-understanding`,
+`memory-storing` and `long-context` for the seven added here. The report groups by it and never
+guesses it: `capability.ts:summarizeCapabilities` applies the ladder's own score rule per
+capability over the tasks that carry it, with the lowest task, the count at 100% and the judge's
+tally as a column, and a capability no task walked is absent rather than zero. The run prints one
+line per capability after the task lines (`capability.ts:capabilityLines`), writes them under
+`capabilities` in the result file (derived from `tasks`; a reader recomputes rather than trusts),
+`compare` prints a `capabilities:` block before the differences line, and the ladder adds a
+`capabilities` table, one column per capability, each cell a score beside its lowest task. A file
+written before this change reads with every task as `method`, its one `cleanup.room` as the
+one-element `cleanup.rooms`, and `memories: null` (`result.ts:readResult`).
+
+**Project understanding** is graded against what the benchmark itself read from the project
+before the turn, so a generic answer fails by literal: `issueCounts` fills `{openCount}`,
+`{closedCount}` and `{draftCount}` from every page of the issue list counted by status
+(`client.ts:projectReaders`), and the `labeled` check holds each count to its status: the number
+that follows the label in its clause, or the one before it only when none follows
+(`grade.ts:labelPairs`), so a swap, an inflated figure or a neighbour's count borrowed across an
+"and" fails while prose and a table row both pass; `pipelineStates` fills
+`{stateList}` with the pipeline config's state keys in declared order, and `listInOrder` requires
+every member to match after the one before it, naming the one missing or out of place (the
+`inOrder` check does the same over fixed patterns); `waitingIssue` fills `{needsInfoKey}` and
+`{needsInfoId}` from the first issue at `needs_info`, the `linkTo` check requires a link to that
+very issue, and it is its own fixture, so a project with none refuses only that task and still runs
+the counts.
+
+**Memory storing** uses two random tokens per trial, `{nonce}` and `{nonce2}` (`bench-` and twelve
+hex characters, fresh from `TrialArgs.randomId`), so only a stored note can carry the fact into a
+room that never saw it. A turn marked `room: 'new'` opens a fresh room for itself and the turns
+after it; the trial pairs each room's trail on its own snapshots (`run.ts:pairRooms`), deletes every
+room with a read-back, and a room that outlives the cleanup fails the trial. The cleanup then lists
+every page of the project's notes, archived included
+(`GET /api/memory?source=note&includeArchived=true`), and deletes every note the trial owns, by its
+`sourceRef` (`DELETE /api/memory/by-source`): `forge_memory_note` writes
+`conversation:<roomId>:<id>` as the sourceRef, so a note is the trial's when that room is one the
+trial opened, or when its text carries either token; a note somebody else writes meanwhile is not
+ours and stays (`run.ts:ownedBy`). It lists again and records
+`cleanup.memories: { found, deleted, remaining }` on every trial that opened a room, not only the
+memory tasks: the notes the assistant kept for "remember my deploy window" outlived every ISS-1051
+run until this. `remaining > 0` fails the trial, and a listing or deletion the deployment refuses is
+counted as remaining rather than read as clean; `null` means no room was opened. `memory-correction`
+requires the fresh room to return the second token and refuses the first by `mustNotMatch`.
+
+**Long context** plants one fact in about 1,800 words of generated release notes
+(`tasks/long-context-needle.ts`) and asks for it, capped at two tool calls and three iterations
+so the answer comes from reading rather than searching; `long-context-thread` gives eight facts
+over eight turns, displaces them with a tracker question, then asks for two of them in order and
+refuses a reply that asks the person to repeat them.
+
+**The judge reads the task's rule and the benchmark's facts.** A task may carry one
+`judgeRubric` sentence, appended to the judge's system prompt as *For this exchange, "served" is
+read by this rule as well: …*; and every judged turn carries a reference block under
+`judge.ts:REFERENCE_HEADER` with the filled fixture values and the earlier turns' messages and
+replies, which the assistant never saw. Without either the messages are the ones ISS-1054 defined.
+The verdict stays a column: it is never read into `pass`, pass^k or any score.
+
+Each new task is claimed by the prompt layer that owns what it measures (`prompt/tools.ts` for
+project understanding and memory, `prompt/base.ts` for long context) and by `compose.test.ts`'s
+manifest, so a layer edit that unclaims one fails the build.
+
 ## What it does not do
 
-- Weight the judge into `pass`, pass^k or the ladder's score; `--judge` annotates, it never scores.
+- Weight the judge into `pass`, pass^k or the ladder's score; `--judge` annotates, it never scores,
+  and a task's `judgeRubric` changes what the judge is asked, never what the rules grade.
 - Print a score without the lowest task beside it; the ladder's row is the unit, not its number.
 - Walk the `POST /api/chat` or Rocket.Chat doors; only the browser's door is benchmarked.
 - Decide language: the `language` check is a diacritic heuristic (`grade.ts:vietnameseWords`).

@@ -5,8 +5,9 @@
  */
 
 import { adviceInputsOfHistory, adviceInputsOfRun, adviceLines, advise } from './advice.js';
+import { capabilityLines } from './capability.js';
 import { createClient, type FetchLike } from './client.js';
-import { compare, compareLines, sideOf } from './compare.js';
+import { capabilitiesOf, compare, compareLines, sideOf } from './compare.js';
 import { HISTORY_USAGE, historyMain } from './history/cli.js';
 import { readHistoryResult } from './history/result.js';
 import { isVerdict, type Judge, judgeFromEnv, tally, tallyLine } from './judge.js';
@@ -112,7 +113,7 @@ async function run(argv: string[], env: Env, deps: CliDeps): Promise<number> {
   let model: string | null = null;
   const results: TaskResult[] = [];
   for (const task of tasks) {
-    const row: TaskResult = { id: task.id, trials: [] };
+    const row: TaskResult = { id: task.id, capability: task.capability, trials: [] };
     for (let i = 0; i < trials; i += 1) {
       const trial = await runTrial({
         client,
@@ -121,6 +122,7 @@ async function run(argv: string[], env: Env, deps: CliDeps): Promise<number> {
         runId,
         now: deps.now,
         log: deps.stderr,
+        randomId: () => `${deps.randomId()}${deps.randomId()}`.slice(0, 12),
         ...(judge ? { judge } : {}),
       });
       model ??= trial.model;
@@ -157,7 +159,8 @@ async function run(argv: string[], env: Env, deps: CliDeps): Promise<number> {
     }
     results.push(row);
   }
-  await writeResult(deps, f, version, model, runId, k, results, judge);
+  const written = await writeResult(deps, f, version, model, runId, k, results, judge);
+  for (const line of capabilityLines(written.capabilities ?? [])) deps.stdout(line);
   return 0;
 }
 
@@ -170,7 +173,7 @@ async function writeResult(
   k: number,
   tasks: TaskResult[],
   judge: Judge | undefined,
-): Promise<void> {
+): Promise<BenchResult> {
   const result: BenchResult = {
     at: deps.now().toISOString(),
     api: f.api ?? '',
@@ -182,8 +185,10 @@ async function writeResult(
     tasks,
     ...(judge ? { judge: { model: judge.model } } : {}),
   };
+  result.capabilities = capabilitiesOf(result, k);
   await deps.writeFile(f.out ?? '', serializeResult(result));
   deps.stdout(`wrote ${f.out}`);
+  return result;
 }
 
 async function compareFiles(argv: string[], deps: CliDeps): Promise<number> {
