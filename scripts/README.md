@@ -191,9 +191,15 @@ Four contracts:
    zero exits `2`, not `0`. A checker whose scope matched nothing reports "clean"; forwarding that as
    a pass is the failure mode this guards.
 3. **Report everything** — no early exit. One fix cycle instead of six.
-4. **Advisory** — `cm impact` on every file changed against `origin/main`, including untracked ones,
-   printing the guards / edges / flows you should read. This is the pull-side stand-in for the
-   PreToolUse hook, and it works with no plugin installed.
+4. **Bounded width** — the checks run at a concurrency of 6 rather than all 20 at once, overridable
+   with `VERIFY_CONCURRENCY`. Why 6 and not more was measured, and the measurement lives at the
+   thing it decided: the `cm:why` on `verify.mjs:runAll`.
+
+   This contract read **"Advisory — `cm impact` on every file changed against `origin/main` …
+   the pull-side stand-in for the PreToolUse hook"** until 2026-09-17. `verify.mjs` has never run
+   `cm impact`, in any version — the string appears nowhere in the file — so the sentence described
+   an intention, and a reader who skipped the hook because the pull side "had it covered" was
+   covered by nothing.
 
 ### One proposition per verdict
 
@@ -241,7 +247,6 @@ unit-tested.
 
 - (none) — full run
 - `--ci-parity` — only the parity proof; cheap, zero-dep, no install needed
-- `--no-advisory` — skip the `cm impact` pass
 
 Exit codes: `0` clean, `1` violations, `2` a check could not run.
 
@@ -596,9 +601,13 @@ every neighbour stubbed out — that proves the function runs, not that the flow
 sources marked `authoritative` in `.forge/conformance.json` (today: the integration suite) settle a
 step.
 
-The step list comes from a grep, but the step **count** comes from `cm flow <name>`; a disagreement
-exits `2`. Deleting the last annotation of a declared flow, or declaring a flow nobody annotated,
-also exits `2` — never `0`.
+The step list and the step **count** both come from one `git grep -n -I -- cm:flow` over the
+checkout (`check-flow-coverage.mjs:collectSteps`). There is no second source, and so no
+disagreement to detect — what `.forge/conformance.json` declares for a flow is a name and a
+description, never a count. This paragraph claimed the count came from `cm flow <name>` and that a
+disagreement between the two exits `2`, which described a cross-check the file does not perform.
+Deleting the last annotation of a declared flow, or declaring a flow nobody annotated, does exit
+`2` — never `0`.
 
 ```bash
 pnpm --filter @forge/core test:integration:coverage   # produces the authoritative report
