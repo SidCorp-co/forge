@@ -9,9 +9,9 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { logger } from '../logger.js';
 import { resolveNotifications } from '../notifications/auto-resolve.js';
+import { deliverExisting } from '../notifications/deliver.js';
 import { emissionAllowed, noteSuppressed } from '../notifications/emission-switch.js';
 import { platformAdminUserIds } from '../notifications/platform-admins.js';
-import { hooks } from '../pipeline/hooks.js';
 import { computeAlerts, opsAlertResolutionKey } from './alert-queries.js';
 import type { AdminAlert } from './types.js';
 
@@ -76,10 +76,13 @@ async function claimOrEscalate(input: {
     return false;
   }
 
+  // cm:guard ISS-1063 — the conflict target lost `user_id` because the record lost it: one
+  // active ops_alert per resolution key, and the admins get a delivery each. The predicate
+  // must still match `notifications_ops_alert_active_uq` verbatim or this INSERT throws.
   const claimed = await db.execute<{ id: string }>(sql`
-    INSERT INTO notifications (user_id, project_id, type, title, body, severity, resolution_key, read, created_at)
-    VALUES (${userId}, NULL, 'ops_alert', ${title}, ${body}, ${severity}, ${resolutionKey}, false, now())
-    ON CONFLICT (user_id, resolution_key) WHERE resolved_at IS NULL AND resolution_key IS NOT NULL AND type = 'ops_alert' DO NOTHING
+    INSERT INTO notifications (project_id, type, kind, tier, state, title, body, severity, resolution_key, pending_since, last_seen_at, created_at)
+    VALUES (NULL, 'ops_alert', 'condition', 'ticket', 'firing', ${title}, ${body}, ${severity}, ${resolutionKey}, now(), now(), now())
+    ON CONFLICT (resolution_key) WHERE resolved_at IS NULL AND resolution_key IS NOT NULL AND type = 'ops_alert' DO NOTHING
     RETURNING id
   `);
   let notificationId = claimed[0]?.id;
@@ -87,41 +90,45 @@ async function claimOrEscalate(input: {
   if (!notificationId) {
     // cm:guard the CTE must be `FOR UPDATE`, not a plain `FROM notifications prev` self-join — a non-locked rowmark is re-read under EvalPlanQual, so with two core replicas sweeping at once BOTH read the pre-update severity, both report an escalation, and the recipient is notified twice for one move. Locking the row first serializes them: the loser sees the winner's severity and refreshes the text silently.
     // cm:guard refresh title/body on EVERY sweep, notify only on a severity move — gating the whole UPDATE on the severity change froze the text for the life of the incident, so an A2 opened at 3 stuck jobs still read "3 jobs" at 30, with no second notification coming to correct it. Reading `prev` is the only way to have both: RETURNING yields the NEW row, so the pre-update severity is otherwise unreachable.
-    // cm:guard clear `read` on a severity move, and ONLY on a severity move — an escalation on a row the admin had already opened otherwise reaches no channel at all: the toast needs a live socket, the bell counts unread, and the row keeps its original created_at so it does not resurface. It never self-heals either, because the next sweep finds severity already 'error' and fires nothing. Clearing it on every sweep instead would re-mark the row unread forever while the condition lasts.
+    // cm:guard ISS-1063 — the read-clearing arm moved OUT of this statement and onto the
+    // deliveries below, for the reason it existed: an escalation on a row the admin had
+    // already opened must reach a channel, and the channel that counts read state is the
+    // delivery. Clearing it here is no longer possible because `read` is not on this table,
+    // and the escalation-only condition is unchanged — clearing on every sweep would
+    // re-mark the row unread forever while the condition lasts.
     const updated = await db.execute<{ id: string; escalated: boolean }>(sql`
       WITH locked AS (
         SELECT id, severity FROM notifications
-        WHERE user_id = ${userId} AND resolution_key = ${resolutionKey}
+        WHERE resolution_key = ${resolutionKey}
           AND type = 'ops_alert' AND resolved_at IS NULL
         FOR UPDATE
       )
       UPDATE notifications n
-      SET severity = ${severity}, title = ${title}, body = ${body},
-          read = CASE WHEN prev.severity IS DISTINCT FROM ${severity} THEN false ELSE n.read END
+      SET severity = ${severity}, title = ${title}, body = ${body}, last_seen_at = now()
       FROM locked prev
       WHERE prev.id = n.id
       RETURNING n.id, (prev.severity IS DISTINCT FROM ${severity}) AS escalated
     `);
     if (!updated[0]?.escalated) return false;
     notificationId = updated[0].id;
+    // cm:guard ISS-1063 — an escalation un-reads the admin's DELIVERY, and only on a
+    // severity move. Without it the escalation reaches no surface at all: the toast needs a
+    // live socket and the bell counts unread deliveries, and the row keeps its original
+    // created_at so it does not resurface on its own.
+    await db.execute(sql`
+      UPDATE notification_deliveries d SET read_at = NULL
+      FROM notification_delivery_members m
+      WHERE m.delivery_id = d.id AND m.notification_id = ${notificationId} AND d.user_id = ${userId}
+    `);
   }
 
   if (!notificationId) return false;
 
-  await hooks.emit('notificationCreated', {
-    notificationId,
-    userId,
-    projectId: null,
-    type: 'ops_alert',
-    title,
-    body,
-    severity,
-    resolutionKey,
-    issueId: null,
-    secondaryIssueId: null,
-    agentSessionId: null,
-    decisionId: null,
-  });
+  // cm:why the `notificationCreated` hook is NOT emitted here any more (ISS-1063): it is
+  // emitted once per delivery inside `deliverExisting`, with the same payload the WS
+  // bridge reads. Emitting it here as well would fan one escalation out twice.
+  await deliverExisting(notificationId, [userId]);
+
   return true;
 }
 
