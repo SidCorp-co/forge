@@ -11,13 +11,8 @@
 import type { BodyNode } from "@forge/contracts";
 import { createElement, type ReactNode } from "react";
 import { cn } from "@/lib/utils/cn";
-import { coreFileUrl } from "@/lib/utils/core-url";
-import {
-  CODE_BLOCK_CLASS,
-  CODE_INLINE_CLASS,
-  COMPACT_TAG_CLASS,
-  LINK_CLASS,
-} from "./body-tags";
+import { BodyImage, BodyLink } from "./body-link";
+import { CODE_BLOCK_CLASS, CODE_INLINE_CLASS, COMPACT_TAG_CLASS } from "./body-tags";
 import { Markdown } from "./markdown";
 import { MermaidDiagram } from "./mermaid";
 
@@ -92,29 +87,14 @@ function renderNode(node: BodyNode, ctx: RenderCtx, key: string): ReactNode {
   const children = renderNodes(node.children, ctx, key);
 
   if (node.name === "a") {
-    const href = node.attrs.href;
     return (
-      <a
-        key={key}
-        href={href ? coreFileUrl(href) : undefined}
-        target="_blank"
-        rel="noreferrer noopener"
-        className={LINK_CLASS}
-      >
+      <BodyLink key={key} href={node.attrs.href}>
         {children}
-      </a>
+      </BodyLink>
     );
   }
   if (node.name === "img") {
-    return (
-      // biome-ignore lint/performance/noImgElement: a body image is an arbitrary attachment or external URL with no known intrinsic size, and `next/image` needs both a configured remote host and dimensions — the same reason `markdown.tsx` renders one for the markdown half of the very same allowlist
-      <img
-        key={key}
-        src={node.attrs.src ? coreFileUrl(node.attrs.src) : undefined}
-        alt={node.attrs.alt ?? ""}
-        className={COMPACT_TAG_CLASS.img}
-      />
-    );
+    return <BodyImage key={key} src={node.attrs.src} alt={node.attrs.alt} />;
   }
   if (node.name === "code") {
     const text = rawTextOf(node.children);

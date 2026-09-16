@@ -2,22 +2,19 @@
 
 // Thin Markdown renderer for web-v2 — a semantic-token-styled port of v1's
 // `packages/web/src/components/ui/markdown.tsx`, kept dependency-light
-// (react-markdown + remark-gfm only; no syntax-highlight bundle). Relative
-// image/link srcs are mapped through `coreFileUrl` so comment-embedded
-// attachments (`![](…/download)`) resolve against the core origin.
+// (react-markdown + remark-gfm only; no syntax-highlight bundle). Every link
+// and image goes through `body-link.tsx`, which asks `classifyBodyHref` which
+// origin the href belongs to: an app route stays on the web host in the same
+// tab, an `/api/...` file resolves against the core as it always did, and an
+// href naming neither is refused in words rather than pointed at one of them.
 
 import { useMemo } from "react";
 import type { ComponentProps, ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { coreFileUrl } from "@/lib/utils/core-url";
 import { cn } from "@/lib/utils/cn";
-import {
-  CODE_BLOCK_CLASS,
-  CODE_INLINE_CLASS,
-  COMPACT_TAG_CLASS as T,
-  LINK_CLASS,
-} from "./body-tags";
+import { BodyImage, BodyLink } from "./body-link";
+import { CODE_BLOCK_CLASS, CODE_INLINE_CLASS, COMPACT_TAG_CLASS as T, LINK_CLASS } from "./body-tags";
 import { MermaidDiagram } from "./mermaid";
 
 /** A relative link to another doc page (not scheme:/protocol-relative/absolute/
@@ -41,23 +38,14 @@ function resolveDocPath(baseFile: string, href: string): string {
   return out.join("/");
 }
 
-function renderExternalLink(href: string | undefined, children: ReactNode) {
-  return (
-    <a
-      href={href ? coreFileUrl(href) : undefined}
-      target="_blank"
-      rel="noreferrer noopener"
-      className={LINK_CLASS}
-    >
-      {children}
-    </a>
-  );
-}
-
-const linkRenderer: Components["a"] = ({ href, children }) => renderExternalLink(href, children);
+const linkRenderer: Components["a"] = ({ href, children }) => (
+  <BodyLink href={href}>{children}</BodyLink>
+);
 
 /** Link renderer for the Docs viewer: relative `.md` links navigate inside the
- *  viewer (`/docs?path=…`); everything else falls back to the external one. */
+ *  viewer (`/docs?path=…`); everything else falls back to the shared rule. This
+ *  is the one place a `Markdown` and a `BodyView` given the same bare-relative
+ *  href answer differently, and it is deliberate. */
 function makeDocLinkRenderer(docBasePath: string): Components["a"] {
   return ({ href, children }) => {
     if (href && isRelativeDocLink(href)) {
@@ -67,16 +55,12 @@ function makeDocLinkRenderer(docBasePath: string): Components["a"] {
         </a>
       );
     }
-    return renderExternalLink(href, children);
+    return <BodyLink href={href}>{children}</BodyLink>;
   };
 }
 
 const imgRenderer: Components["img"] = ({ src, alt }) => (
-  <img
-    src={typeof src === "string" ? coreFileUrl(src) : undefined}
-    alt={alt ?? ""}
-    className={T.img}
-  />
+  <BodyImage src={typeof src === "string" ? src : undefined} alt={alt} />
 );
 
 // cm:guard keep the mermaid interception HERE, in the factory both variants share — never by forking a second renderer. The fork this replaced (KnowledgeMarkdown) drifted: it gained mermaid but never gained `table`/`th`/`td`, so knowledge entries rendered diagrams and issue descriptions rendered tables, and neither did both.
