@@ -149,6 +149,48 @@ describe('a declaration retried after a lost answer', () => {
     ).toBe(1);
   });
 
+  // cm:guard the retry ANNOUNCES the run it answers with, when nobody has, which is ISS-1050 finding
+  // F3. `announceOneShotRun` is a second write after the transaction commits, so an emit that throws
+  // fails the request with the run already created — and the retry then takes the fast path above
+  // and answers with the committed session, announcing nothing, for good. The mark on the run is
+  // what lets the retry tell "already announced" from "announced by nobody"; clearing it here is
+  // exactly the state a failed emit leaves.
+  it('announces a run whose open event never reached anyone, on the retry that answers with it', async () => {
+    const user = await createTestUser(harness.db);
+    const project = await createTestProject(harness.db, user.id);
+    const device = await createTestDevice(harness.db, user.id);
+    const declaration = {
+      deviceId: device.id,
+      projectId: project.id,
+      issueKeys: ['ISS-1'],
+      name: 'run-a',
+      boxRunId: '77777777-7777-4777-8777-777777777777',
+    };
+
+    const first = await mods.openRunSession(declaration);
+    const announcedAt = async () => {
+      const rows = (await harness.db.execute(
+        sql`SELECT metadata->>'runSessionAnnouncedAt' AS at FROM pipeline_runs WHERE id = ${first.runId}`,
+      )) as unknown as { at: string | null }[];
+      return rows[0]?.at ?? null;
+    };
+    expect(await announcedAt(), 'an open that succeeded records that it announced').not.toBeNull();
+
+    // The state a failed emit leaves: the run and its session committed, nothing announced.
+    await harness.db.execute(
+      sql`UPDATE pipeline_runs SET metadata = metadata - 'runSessionAnnouncedAt' WHERE id = ${first.runId}`,
+    );
+    expect(await announcedAt()).toBeNull();
+
+    const retry = await mods.openRunSession(declaration);
+
+    expect(retry, 'still the same session — this must not open a second one').toEqual(first);
+    expect(
+      await announcedAt(),
+      'the retry is the only thing that will ever announce this run, and it answered without doing so',
+    ).not.toBeNull();
+  });
+
   // cm:guard scoped by DEVICE as well, because a run id is minted on the box: unscoped, one box's
   // retry would be handed another box's session and would then beat, close and release issues it
   // never held.

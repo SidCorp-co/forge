@@ -124,27 +124,55 @@ describe('closeRunSession', () => {
     expect(boundValues(lookupWhere)).toContain('dev-1');
   });
 
-  it('touches nothing when the session is already terminal', async () => {
+  it('flips nothing when the session is already terminal', async () => {
     sessionRow({ status: 'failed', runId: 'run-1' });
 
-    expect(await closeRunSession({ ...ARGS, outcome: 'died' })).toEqual({
+    expect((await closeRunSession({ ...ARGS, outcome: 'died' }))?.alreadyTerminal).toBe(true);
+    expect(applyKernelTransition).not.toHaveBeenCalled();
+  });
+
+  // cm:guard the terminal path FINISHES the close instead of reporting success over a half-applied
+  // one, and this reverses `touches nothing when the session is already terminal`, which asserted
+  // that it returned nothing (ISS-1050 finding F7). The close is two commits — the session
+  // transition, then the issue return — and a crash between them leaves the session terminal with
+  // its issues still reading `in_progress`. Nothing else revisits it: the silence reaper keys on a
+  // session that is not terminal, so the retry reporting `returned: []` was the last word.
+  it('finishes a close that stopped between the flip and the issue return', async () => {
+    sessionRow({ status: 'failed', runId: 'run-1' });
+
+    const closed = await closeRunSession({ ...ARGS, outcome: 'died', detail: 'pane vanished' });
+
+    expect(returnIssuesForRun).toHaveBeenCalledWith('run-1', { reason: 'pane vanished' });
+    expect(closeRunIfOneShot).toHaveBeenCalledWith('run-1', 'failed');
+    expect(closed).toEqual({ alreadyTerminal: true, returned: ['ISS-1'] });
+  });
+
+  // cm:guard a terminal session that ended WELL still returns nothing: `ended` and `killed_idle`
+  // mean the agent stopped of its own accord, so the statuses it left are its own record.
+  it('returns nothing on the terminal path when the run did not fail', async () => {
+    sessionRow({ status: 'completed', runId: 'run-1' });
+
+    expect(await closeRunSession({ ...ARGS, outcome: 'ended' })).toEqual({
       alreadyTerminal: true,
       returned: [],
     });
-    expect(applyKernelTransition).not.toHaveBeenCalled();
     expect(returnIssuesForRun).not.toHaveBeenCalled();
   });
 
-  // cm:guard the close and the reaper race on every silent-then-dying box, and the loser must give nothing back: two releases of one group logged separately cannot be read as a fleet signal.
-  it('gives nothing back when the reaper won the flip', async () => {
+  // cm:guard the close and the reaper race on every silent-then-dying box, and the loser still
+  // reports one release of one group — but it is `returnIssuesForRun` answering with nothing left
+  // to return that makes that true, not this function constructing an empty list. An issue already
+  // back at its opening status is a no-op there, so the observed answer and the constructed one
+  // agree whenever the winner really did finish, and differ exactly when it did not.
+  it('reports what was actually left to return when the reaper won the flip', async () => {
     sessionRow({ status: 'running', runId: 'run-1' });
     applyKernelTransition.mockResolvedValue([]);
+    returnIssuesForRun.mockResolvedValue([]);
 
     expect(await closeRunSession({ ...ARGS, outcome: 'died' })).toEqual({
       alreadyTerminal: true,
       returned: [],
     });
-    expect(returnIssuesForRun).not.toHaveBeenCalled();
-    expect(closeRunIfOneShot).not.toHaveBeenCalled();
+    expect(returnIssuesForRun).toHaveBeenCalledWith('run-1', { reason: 'run died' });
   });
 });

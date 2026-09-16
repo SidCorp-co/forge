@@ -24,6 +24,7 @@ let mods: {
   writeRunEvidence: typeof import('../../src/devices/run-evidence.js').writeRunEvidence;
   writeHeldWorktreeReport: typeof import('../../src/devices/run-evidence.js').writeHeldWorktreeReport;
   openRunSession: typeof import('../../src/devices/run-session.js').openRunSession;
+  runEvidenceMarker: typeof import('../../src/devices/run-evidence.js').runEvidenceMarker;
 };
 
 beforeAll(async () => {
@@ -38,6 +39,7 @@ beforeAll(async () => {
     writeRunEvidence: evidence.writeRunEvidence,
     writeHeldWorktreeReport: evidence.writeHeldWorktreeReport,
     openRunSession: runSession.openRunSession,
+    runEvidenceMarker: evidence.runEvidenceMarker,
   };
 });
 
@@ -111,6 +113,35 @@ async function aRunOver(issSeqs: number[], next?: string | null) {
     name: 'run-a',
   });
   return { user, project, device, issueIds, session };
+}
+
+/** Wait until Postgres itself says both reports are blocked on this issue's marker key. */
+// cm:why it asks the DATABASE what is happening rather than timing how long nothing happens, for the
+// reason `run-session-readback-e2e.test.ts` states at length: the assertion it feeds is an ABSENCE,
+// and an absence is satisfied by a busy pool or a worker the scheduler has not run. Two UNGRANTED
+// advisory locks on this exact key is a positive fact the unlocked code can never produce.
+async function bothAreWaitingOn(key: string): Promise<void> {
+  const deadline = Date.now() + 10_000;
+  let seen = -1;
+  while (Date.now() < deadline) {
+    const rows = (await harness.db.execute(sql`
+      SELECT count(*)::int AS n
+        FROM pg_locks
+       WHERE locktype = 'advisory'
+         AND NOT granted
+         AND database = (SELECT oid FROM pg_database WHERE datname = current_database())
+         AND classid = ((hashtextextended(${key}, 0) >> 32) & 4294967295)::oid
+         AND objid = (hashtextextended(${key}, 0) & 4294967295)::oid
+    `)) as unknown as { n: number }[];
+    seen = rows[0]?.n ?? 0;
+    if (seen >= 2) return;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  throw new Error(
+    `both reports should be BLOCKED on this issue's marker key while the harness holds it; ` +
+      `Postgres reports ${seen} waiter(s) after 10s. A writer that does not wait on this key is ` +
+      `reading around the marker rather than claiming it.`,
+  );
 }
 
 describe('what a dead run left, written onto its issues', () => {
@@ -204,6 +235,92 @@ describe('what a dead run left, written onto its issues', () => {
       fence.length,
       'the fence must be longer than the longest backtick run in the content',
     ).toBeGreaterThan(3);
+  });
+
+  // cm:guard whitespace is NOT nothing, which is ISS-1050 finding F5. Criterion 24 says the run's own
+  // text appears byte for byte and nowhere else, and `next.trim() === ''` answered for a run that
+  // wrote spaces with this module's sentence instead — a substitution on the one surface built to
+  // keep what the box read apart from what the run said. Only a lease with no text at all earns the
+  // empty block.
+  it('prints whitespace the run wrote rather than calling it nothing written', async () => {
+    const said = '   \n\t ';
+    const { device, issueIds, session } = await aRunOver([9], said);
+
+    await mods.writeRunEvidence({
+      deviceId: device.id,
+      sessionId: session.sessionId,
+      checkpoint: A_CHECKPOINT,
+    });
+
+    const [body] = await bodiesOn(issueIds[0] as string);
+    const text = body as string;
+    const testimony = text.slice(text.indexOf('### What the run said about itself'));
+    expect(
+      testimony,
+      'a run that wrote something, however little, did not write nothing',
+    ).not.toContain('wrote nothing onto its lease');
+    expect(testimony, 'and what it wrote is carried byte for byte').toContain(said);
+  });
+
+  // cm:guard two sweeps in flight TOGETHER, which is ISS-1050 finding F4 and the case the sequential
+  // retry below cannot reach. The marker was a select followed by an insert with nothing serialising
+  // them, so both callers read no comment and both inserted; the box reports a checkpoint on every
+  // sweep until core takes it, so two in flight is the ordinary condition rather than a rare race.
+  //
+  // cm:why the harness takes the writer's OWN key first and asserts both callers BLOCK on it, rather
+  // than firing two calls and counting the comments. Measured here: two concurrent calls against the
+  // UNLOCKED code still produced one comment, because the two awaits between the select and the
+  // insert let one finish before the other looked. A test that cannot fail proves nothing, and
+  // counting rows would have been exactly that. Two ungranted advisory locks on this key is a
+  // positive fact only the locking code can produce.
+  it('makes two reports of one close wait on each other, and writes once', async () => {
+    const { device, issueIds, session } = await aRunOver([9], 'twice at once');
+    const issueId = issueIds[0] as string;
+    const key = `run-evidence:${issueId}:${mods.runEvidenceMarker(session.sessionId)}`;
+
+    let releaseTheLock = () => {};
+    const lockHeld = new Promise<void>((resolve) => {
+      releaseTheLock = resolve;
+    });
+    const holder = harness.db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`);
+      await lockHeld;
+    });
+
+    const report = () =>
+      mods.writeRunEvidence({
+        deviceId: device.id,
+        sessionId: session.sessionId,
+        checkpoint: A_CHECKPOINT,
+      });
+    const settled: string[] = [];
+    const first = report().then((r) => {
+      settled.push('first');
+      return r;
+    });
+    const second = report().then((r) => {
+      settled.push('second');
+      return r;
+    });
+    await bothAreWaitingOn(key);
+
+    expect(
+      settled,
+      'a writer that answers while another holds this issue marker key has not claimed it — it has read around it',
+    ).toEqual([]);
+
+    releaseTheLock();
+    await holder;
+    const both = await Promise.all([first, second]);
+
+    expect(
+      (await bodiesOn(issueId)).length,
+      'the issue carries one copy of the evidence, whatever the box did',
+    ).toBe(1);
+    expect(
+      both.map((r) => r?.written).sort(),
+      'exactly one of the two calls is the one that wrote it',
+    ).toEqual([0, 1]);
   });
 
   it('writes once however many times the close is retried', async () => {

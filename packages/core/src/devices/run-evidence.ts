@@ -102,9 +102,14 @@ function reconstructionBlock(cp: RunCheckpoint): string {
   return lines.join('\n');
 }
 
+// cm:guard `''` is nothing written and whitespace is NOT, which is ISS-1050 finding F5. Criterion 24
+// says the run's own text appears byte for byte, and `next.trim() === ''` classified a run that
+// wrote spaces or a newline as one that wrote nothing at all — a substitution of this module's
+// words for the run's, on the one surface built to keep the two apart. What a whitespace-only
+// testimony looks like to a reader is the fence with nothing visible inside it, which is the truth.
 function testimonyBlock(next: string | null): string {
   const head = '### What the run said about itself';
-  if (next === null || next.trim() === '') {
+  if (next === null || next === '') {
     return `${head}\n\n_The run wrote nothing onto its lease before it ended._`;
   }
   const fence = fenceFor(next);
@@ -291,6 +296,49 @@ async function runIssuesWithTestimony(
     .where(and(eq(issues.projectId, projectId), inArray(issues.issSeq, seqs)));
 }
 
+/**
+ * Post one comment onto an issue, once, however many callers race to post it.
+ */
+// cm:guard the marker is an EXACTLY-ONCE key and a select followed by an insert is not one, which is
+// ISS-1050 finding F4. All three writers below are retried — the box reports a checkpoint on every
+// sweep until core takes it, and the held-worktree pass every thirty seconds — so two retries in
+// flight together both read no comment and both insert, and the issue carries the same block twice.
+// `openRunSession` had already met this exact shape and closed it with `pg_advisory_xact_lock`; this
+// is that lesson carried the three functions over it had not reached.
+// cm:guard the lock is TRANSACTION-scoped and its key is derived from the issue and the marker, so
+// nothing has to be cleaned up and two different markers on one issue never wait for each other.
+// The `run-evidence:` prefix is there because advisory keys share one namespace database-wide.
+// cm:guard the re-read happens INSIDE the transaction, after the lock. The read before it would be
+// the same defect with a lock next to it: what makes the key hold is that the loser blocks until
+// the winner commits and then sees the winner's row.
+async function insertCommentOnce(args: {
+  issueId: string;
+  marker: string;
+  body: string;
+  authorId: string;
+  deviceId: string;
+}): Promise<boolean> {
+  return await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended(${`run-evidence:${args.issueId}:${args.marker}`}, 0))`,
+    );
+    const existing = await tx
+      .select({ id: comments.id })
+      .from(comments)
+      .where(and(eq(comments.issueId, args.issueId), sql`${comments.body} LIKE ${`%${args.marker}%`}`))
+      .limit(1);
+    if (existing.length > 0) return false;
+    await tx.insert(comments).values({
+      issueId: args.issueId,
+      authorId: args.authorId,
+      authorDeviceId: args.deviceId,
+      authorAgency: 'agent',
+      body: args.body,
+    });
+    return true;
+  });
+}
+
 export interface RunEvidenceResult {
   /** Issues the run was holding. */
   issues: number;
@@ -320,26 +368,15 @@ export async function writeRunEvidence(args: {
   const marker = runEvidenceMarker(args.sessionId);
   let written = 0;
 
+  const authorId = await ownerOfDevice(args.deviceId);
   for (const row of rows) {
     const body = buildRunEvidenceBody({
       sessionId: args.sessionId,
       checkpoint: args.checkpoint,
       next: row.next,
     });
-    const existing = await db
-      .select({ id: comments.id })
-      .from(comments)
-      .where(and(eq(comments.issueId, row.id), sql`${comments.body} LIKE ${`%${marker}%`}`))
-      .limit(1);
-    if (existing.length > 0) continue;
-    await db.insert(comments).values({
-      issueId: row.id,
-      authorId: await ownerOfDevice(args.deviceId),
-      authorDeviceId: args.deviceId,
-      authorAgency: 'agent',
-      body,
-    });
-    written += 1;
+    if (await insertCommentOnce({ issueId: row.id, marker, body, authorId, deviceId: args.deviceId }))
+      written += 1;
   }
 
   logger.info(
@@ -372,22 +409,11 @@ export async function writeHeldWorktreeReport(args: {
   const rows = await runIssuesWithTestimony(session.projectId, keys);
   const marker = heldWorktreeMarker(args.sessionId, args.held.head);
   const body = buildHeldWorktreeBody({ sessionId: args.sessionId, held: args.held });
+  const authorId = await ownerOfDevice(args.deviceId);
   let written = 0;
   for (const row of rows) {
-    const existing = await db
-      .select({ id: comments.id })
-      .from(comments)
-      .where(and(eq(comments.issueId, row.id), sql`${comments.body} LIKE ${`%${marker}%`}`))
-      .limit(1);
-    if (existing.length > 0) continue;
-    await db.insert(comments).values({
-      issueId: row.id,
-      authorId: await ownerOfDevice(args.deviceId),
-      authorDeviceId: args.deviceId,
-      authorAgency: 'agent',
-      body,
-    });
-    written += 1;
+    if (await insertCommentOnce({ issueId: row.id, marker, body, authorId, deviceId: args.deviceId }))
+      written += 1;
   }
   logger.warn(
     {
@@ -421,22 +447,11 @@ export async function writeResumeChoice(args: {
   const rows = await runIssuesWithTestimony(session.projectId, keys);
   const marker = resumeChoiceMarker(args.choice.runId);
   const body = buildResumeChoiceBody({ choice: args.choice });
+  const authorId = await ownerOfDevice(args.deviceId);
   let written = 0;
   for (const row of rows) {
-    const existing = await db
-      .select({ id: comments.id })
-      .from(comments)
-      .where(and(eq(comments.issueId, row.id), sql`${comments.body} LIKE ${`%${marker}%`}`))
-      .limit(1);
-    if (existing.length > 0) continue;
-    await db.insert(comments).values({
-      issueId: row.id,
-      authorId: await ownerOfDevice(args.deviceId),
-      authorDeviceId: args.deviceId,
-      authorAgency: 'agent',
-      body,
-    });
-    written += 1;
+    if (await insertCommentOnce({ issueId: row.id, marker, body, authorId, deviceId: args.deviceId }))
+      written += 1;
   }
   logger.info(
     {

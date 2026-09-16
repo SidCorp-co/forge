@@ -334,6 +334,18 @@ fn run_declare(
             "this pane is the master for {serves} and cannot declare a run for {project_id}"
         ));
     }
+    // cm:guard the keys are checked for SHAPE before a row exists, because criterion 7 says a refused
+    // declaration writes nothing and the ledger row is written before core is ever asked. A key core
+    // cannot resolve is refused at `POST /me/run-sessions` — by which time this box is holding a
+    // declared run over it, retried by `open_declared_runs` every sweep for the life of the boot,
+    // pinning the worktree it names (ISS-1050 finding F12). What this CANNOT answer is whether a
+    // well-formed key exists in this project: that mapping is core's alone, and a box that guessed
+    // at it would be inventing the answer it is refusing to guess.
+    if let Some(bad) = issue_keys.iter().find(|k| !is_issue_key(k)) {
+        return ClaimReply::refused(format!(
+            "`{bad}` is not an issue key — a declaration takes keys shaped `ISS-<number>`, one per issue the subagent is being given, and nothing was recorded"
+        ));
+    }
     let run_id = uuid::Uuid::new_v4().to_string();
     let mut held = ctl.ledger.lock().expect("ledger poisoned");
     let Some(led) = held.as_mut() else {
@@ -399,6 +411,16 @@ fn run_declare(
         // cm:guard the ledger's own refusal text is passed through WHOLE. Each of the three names what a master has to do next — which issue collided, which tree is held, which declared row to close — and a handler that replaced them with one word of its own would take that away.
         Err(e) => ClaimReply::refused(e.to_string()),
     }
+}
+
+/// Whether a string is shaped like an issue key this tracker mints.
+// cm:guard SHAPE only, and deliberately no more. `ISS-<number>` is what every key in this system is
+// spelled as; whether that number names a real issue in this project is a question only core can
+// answer, and the refusal that matters there is core's own. Widening this to guess would be the
+// second live path this repository refuses everywhere else.
+fn is_issue_key(s: &str) -> bool {
+    s.strip_prefix("ISS-")
+        .is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
 }
 
 /// Record that a declared run is over, whether it ran or never started.
@@ -1011,6 +1033,40 @@ mod tests {
             led.owe_resume_choices(session_id, &ctl.boot_id).unwrap();
             run_id
         }
+        // cm:guard a declaration that is refused must leave the ledger EXACTLY as it found it —
+        // criterion 7 — and the row here is written before core is ever asked, so a key core will
+        // reject is a row nothing can close and a worktree nothing can release. The shape is the
+        // only half a box can answer on its own (ISS-1050 finding F12).
+        #[test]
+        fn a_key_that_is_not_an_issue_key_is_refused_by_name_and_writes_no_row() {
+            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+
+            let reply = run_declare(
+                &ctl,
+                "proj-1",
+                &["ISS-7".into(), "the whole backlog".into()],
+                "/w/seven",
+                "sess-a",
+            );
+
+            assert!(!reply.ok, "a declaration carrying a non-key must be refused");
+            let reason = reply.reason.unwrap_or_default();
+            assert!(
+                reason.contains("the whole backlog"),
+                "the refusal must name the value it refused: {reason}"
+            );
+            assert!(
+                reason.contains("ISS-"),
+                "and the shape it wanted instead: {reason}"
+            );
+            let mut held = ctl.ledger.lock().unwrap();
+            let led = held.as_mut().unwrap();
+            assert!(
+                led.unclosed_runs().unwrap().is_empty(),
+                "a refused declaration writes nothing, or the box holds a run core will never open"
+            );
+        }
+
         // cm:guard criterion 29's gate. A brief that only ASKS is one a master can read past, and the
         // issues under those runs then sit claimed by work nobody decided to continue while the pane
         // starts something new. The refusal is the only place this can be made to hold.
