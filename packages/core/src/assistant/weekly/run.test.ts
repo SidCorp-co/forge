@@ -56,6 +56,8 @@ const history = (model = 'm1'): HistoryResult => ({
   maxIterations: 8,
   resolved: true,
   excludedSessions: [],
+  excludedSessionsByTask: [],
+  excludedRowsByTask: 0,
   excludedRows: 0,
   groups: [
     {
@@ -357,8 +359,8 @@ describe('readWeek', () => {
     source: 'web',
     ...over,
   });
-  const io = (rows: HistoryRow[], benchRooms: string[] = []) => ({
-    readWeekRows: async () => ({ rows, benchRooms }),
+  const io = (rows: HistoryRow[], benchRooms: string[] = [], benchRoomsGone: string[] = []) => ({
+    readWeekRows: async () => ({ rows, benchRooms, benchRoomsGone }),
     lookupsFor: async () => ({}),
   });
   const judgeOf = () => {

@@ -89,7 +89,28 @@ export interface ClientOptions {
   fetch: FetchLike;
   /** Bound on one request; a send that runs past it is a refusal, never a hang. */
   timeoutMs?: number;
+  /** The wait before the one retry of a GET or DELETE whose fetch threw (ISS-1065); default 5000. */
+  retryDelayMs?: number;
 }
+
+/** A fetch that threw: no response reached the client. Names the request and the cause. */
+export class FetchFailure extends Error {
+  constructor(
+    public readonly method: string,
+    public readonly path: string,
+    cause: unknown,
+  ) {
+    super(`fetch failed (cause: ${causeText(cause)}) on ${method} ${path}`);
+    this.name = 'FetchFailure';
+  }
+}
+
+const causeText = (err: unknown): string => {
+  const cause = (err as { cause?: { code?: string; message?: string } } | undefined)?.cause;
+  return cause?.code ?? cause?.message ?? (err instanceof Error ? err.message : String(err));
+};
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 const firstLine = (text: string): string => text.split('\n')[0]?.slice(0, 200) ?? '';
 
@@ -178,6 +199,25 @@ export function createClient(opts: ClientOptions) {
   const api = opts.api.replace(/\/+$/, '');
   let token: string | null = null;
 
+  let retries = 0;
+
+  async function attempt(
+    method: string,
+    path: string,
+    init: RequestInit,
+  ): Promise<{ status: number; text: string }> {
+    try {
+      // cm:guard a fresh timeout signal per attempt: one made in `call` is already aborted by the time a timed-out first attempt is retried, and the retry would die at once without reaching the server (codex F1 on the ISS-1065 diff)
+      const timed: RequestInit = opts.timeoutMs
+        ? { ...init, signal: AbortSignal.timeout(opts.timeoutMs) }
+        : init;
+      const res = await opts.fetch(`${api}${path}`, timed);
+      return { status: res.status, text: await res.text() };
+    } catch (err) {
+      throw new FetchFailure(method, path, err);
+    }
+  }
+
   async function call(
     method: string,
     path: string,
@@ -188,9 +228,21 @@ export function createClient(opts: ClientOptions) {
     if (body !== undefined) headers['content-type'] = 'application/json';
     const init: RequestInit = { method, headers };
     if (body !== undefined) init.body = JSON.stringify(body);
-    if (opts.timeoutMs) init.signal = AbortSignal.timeout(opts.timeoutMs);
-    const res = await opts.fetch(`${api}${path}`, init);
-    return { status: res.status, text: await res.text() };
+    try {
+      return await attempt(method, path, init);
+    } catch (first) {
+      // cm:guard only a read is re-sent: a POST that threw may have reached the room before the connection dropped, and a second send would be answered twice and graded as one turn (ISS-1065 D1); a non-2xx never reaches here, it is a response
+      if (!(first instanceof FetchFailure) || (method !== 'GET' && method !== 'DELETE'))
+        throw first;
+      retries += 1;
+      await sleep(opts.retryDelayMs ?? 5000);
+      try {
+        return await attempt(method, path, init);
+      } catch (second) {
+        if (second instanceof FetchFailure) second.message += `; first attempt: ${first.message}`;
+        throw second;
+      }
+    }
   }
 
   async function json<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -201,6 +253,8 @@ export function createClient(opts: ClientOptions) {
   }
 
   return {
+    /** How many retries `call` has spent so far; a trial reads it before and after. */
+    retries: (): number => retries,
     useToken(value: string): void {
       token = value;
     },
@@ -250,6 +304,18 @@ export function createClient(opts: ClientOptions) {
       if (status === 200)
         return { status, messages: (JSON.parse(text) as { messages: RoomMessage[] }).messages };
       if (status === 404) return { status };
+      throw new DeploymentRefusal(`GET ${path}`, status, firstLine(text));
+    },
+    /**
+     * Whether the room is gone: 404 is gone, 200 and 403 (someone else's room, still there) are not.
+     * A bench room is deleted with a read-back at the end of every trial, so a gone room is the one
+     * lifecycle mark it leaves (ISS-1065 D2).
+     */
+    async roomGone(roomId: string): Promise<boolean> {
+      const path = `/api/conversations/${roomId}`;
+      const { status, text } = await call('GET', path);
+      if (status === 404) return true;
+      if (status === 200 || status === 403) return false;
       throw new DeploymentRefusal(`GET ${path}`, status, firstLine(text));
     },
     async deleteRoom(roomId: string): Promise<void> {

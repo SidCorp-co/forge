@@ -22,6 +22,7 @@ import type { BenchResult, TrialResult } from './result.js';
 
 const trial = (pass: boolean, seconds = 10, served?: 'yes' | 'partial' | 'no'): TrialResult => ({
   at: '2026-09-16T00:00:00.000Z',
+  retried: 0,
   pass,
   error: null,
   seconds,
@@ -179,6 +180,8 @@ const history = (
   maxIterations: 8,
   resolved: false,
   excludedSessions: [],
+  excludedSessionsByTask: [],
+  excludedRowsByTask: 0,
   excludedRows: 0,
   groups: [group({})],
   flagged: [],

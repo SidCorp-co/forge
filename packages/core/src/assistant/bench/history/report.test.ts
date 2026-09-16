@@ -49,6 +49,8 @@ const result = (groups: Group[], over: Partial<HistoryResult> = {}): HistoryResu
   maxIterations: 8,
   resolved: true,
   excludedSessions: ['room-1'],
+  excludedSessionsByTask: [],
+  excludedRowsByTask: 0,
   excludedRows: 4,
   groups,
   flagged: [],

@@ -226,6 +226,7 @@ describe('the inputs read off the files', () => {
     });
     const trial = (turns: ReturnType<typeof turn>[]) => ({
       at: 'x',
+      retried: 0,
       pass: turns.every((t) => t.pass),
       error: null,
       seconds: 1,

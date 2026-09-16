@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { createClient, DeploymentRefusal, type FetchLike } from './client.js';
+import { createClient, DeploymentRefusal, FetchFailure, type FetchLike } from './client.js';
 import {
   createFakeDeployment,
   DEAD_ISSUE_ID,
@@ -149,6 +149,97 @@ describe('the project readers (ISS-1061)', () => {
     expect(await client.deleteNote(FAKE_PROJECT.id, 'ref-2')).toBe(1);
     expect(await client.deleteNote(FAKE_PROJECT.id, 'ref-2')).toBe(0);
     expect(state.notes.map((n) => n.id)).toEqual(['n1', 'n3']);
+  });
+});
+
+describe('a fetch that threw (ISS-1065)', () => {
+  const dropped = () => Object.assign(new Error('fetch failed'), { cause: { code: 'ECONNRESET' } });
+
+  it('retries a GET once after the delay and returns the second answer, counting the retry', async () => {
+    const { fetch } = fake({
+      throwOn: (method, path, count) =>
+        method === 'GET' && path.startsWith('/api/projects') && count === 1 ? dropped() : null,
+    });
+    const client = createClient({ api: 'https://api.test', fetch, retryDelayMs: 1 });
+    client.useToken(FAKE_TOKEN);
+    expect((await client.projectBySlug(FAKE_PROJECT.slug)).id).toBe(FAKE_PROJECT.id);
+    expect(client.retries()).toBe(1);
+  });
+
+  it('a timed-out first attempt is retried on a fresh signal, never the one already aborted', async () => {
+    const { fetch: inner } = fake();
+    const signals: Array<AbortSignal | null | undefined> = [];
+    let first = true;
+    const fetch: FetchLike = async (url, init) => {
+      if (String(url).endsWith('/version')) {
+        signals.push(init?.signal);
+        if (first) {
+          first = false;
+          throw Object.assign(new Error('The operation was aborted due to timeout'), {
+            name: 'TimeoutError',
+          });
+        }
+      }
+      return inner(url, init);
+    };
+    const client = createClient({
+      api: 'https://api.test',
+      fetch,
+      timeoutMs: 5000,
+      retryDelayMs: 1,
+    });
+    client.useToken(FAKE_TOKEN);
+    await client.version();
+    expect(client.retries()).toBe(1);
+    expect(signals).toHaveLength(2);
+    expect(signals[0]).toBeInstanceOf(AbortSignal);
+    expect(signals[1]).toBeInstanceOf(AbortSignal);
+    expect(signals[1]).not.toBe(signals[0]);
+    expect(signals[1]?.aborted).toBe(false);
+  });
+
+  it('a GET that throws twice names the request, the cause and the first attempt', async () => {
+    const { fetch } = fake({ throwOn: (method) => (method === 'GET' ? dropped() : null) });
+    const client = createClient({ api: 'https://api.test', fetch, retryDelayMs: 1 });
+    client.useToken(FAKE_TOKEN);
+    const err = await client.version().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(FetchFailure);
+    expect((err as Error).message).toBe(
+      'fetch failed (cause: ECONNRESET) on GET /version; first attempt: fetch failed (cause: ECONNRESET) on GET /version',
+    );
+    expect(client.retries()).toBe(1);
+  });
+
+  it('never re-sends a POST that threw: one attempt, the error names it, no retry counted', async () => {
+    let posts = 0;
+    const { fetch } = fake({
+      throwOn: (method) => {
+        if (method !== 'POST') return null;
+        posts += 1;
+        return dropped();
+      },
+    });
+    const client = createClient({ api: 'https://api.test', fetch, retryDelayMs: 1 });
+    client.useToken(FAKE_TOKEN);
+    await expect(client.openRoom(FAKE_PROJECT.id, 'bench r1 t')).rejects.toThrow(
+      'fetch failed (cause: ECONNRESET) on POST /api/conversations',
+    );
+    expect(posts).toBe(1);
+    expect(client.retries()).toBe(0);
+  });
+
+  it('roomGone: 404 is gone, 200 and 403 are a room still standing, anything else is thrown', async () => {
+    const { fetch } = fake({
+      refuse: (method, path) =>
+        path.endsWith('/room-forbidden') ? 403 : path.endsWith('/room-broken') ? 500 : null,
+    });
+    const client = createClient({ api: 'https://api.test', fetch });
+    client.useToken(FAKE_TOKEN);
+    const room = await client.openRoom(FAKE_PROJECT.id, 'bench r1 t');
+    expect(await client.roomGone(room.id)).toBe(false);
+    expect(await client.roomGone('room-none')).toBe(true);
+    expect(await client.roomGone('room-forbidden')).toBe(false);
+    await expect(client.roomGone('room-broken')).rejects.toThrow(DeploymentRefusal);
   });
 });
 

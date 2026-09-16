@@ -103,6 +103,8 @@ describe('the history file', () => {
     maxIterations: 8,
     resolved: false,
     excludedSessions: [],
+    excludedSessionsByTask: [],
+    excludedRowsByTask: 0,
     ...summarize(graded([row(), row({ reply: null })])),
   });
 

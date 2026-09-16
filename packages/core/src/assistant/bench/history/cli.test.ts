@@ -7,9 +7,11 @@
 import { describe, expect, it } from 'vitest';
 import { CORRECTIVE_PREFIX } from '../../../conversations/fallback-replies.js';
 import { type CliDeps, main } from '../cli.js';
+import { createClient } from '../client.js';
 import {
   createFakeDeployment,
   DEAD_ISSUE_ID,
+  FAKE_PROJECT,
   FAKE_TOKEN,
   type FakeState,
   JUDGE_KEY,
@@ -97,6 +99,7 @@ const runFile = (): string =>
         trials: [
           {
             at: 'x',
+            retried: 0,
             pass: true,
             error: null,
             seconds: 1,
@@ -185,7 +188,7 @@ describe('history', () => {
     expect(out).toEqual([
       'gpt-x / web-chat-reply: 5 rows, 3 flagged (thin)',
       'gpt-x / rocketchat: 1 rows, 1 flagged (thin)',
-      'excluded 0 row(s) of 0 bench room(s); wrote /tmp/h.json',
+      'excluded 0 row(s) of 0 bench room(s) by run file and 0 row(s) of 0 by task message; wrote /tmp/h.json',
     ]);
   });
 
@@ -197,7 +200,52 @@ describe('history', () => {
     expect(h.excludedRows).toBe(2);
     expect(h.groups[0]?.rows).toBe(3);
     expect(h.flagged.some((f) => f.sessionId === BENCH_ROOM)).toBe(false);
-    expect(out.at(-1)).toBe('excluded 2 row(s) of 1 bench room(s); wrote /tmp/h.json');
+    expect(out.at(-1)).toBe(
+      'excluded 2 row(s) of 1 bench room(s) by run file and 0 row(s) of 0 by task message; wrote /tmp/h.json',
+    );
+  });
+
+  it('excludes a gone room whose every row is a shipped task message, counts it apart, and keeps a mixed session and a standing room (ISS-1065)', async () => {
+    const { fetch } = fake([
+      ...seededRows(),
+      // a bench room whose run file is lost: two task messages, the room deleted with a read-back
+      seed({ sessionId: 'lost-bench', query: 'Which project is this room scoped to? Name it.' }),
+      seed({ sessionId: 'lost-bench', query: 'How many open issues does it have?' }),
+      // a person who asked one task-shaped question and then something else, room gone
+      seed({ sessionId: 'person-mixed', query: 'How many open issues does it have?' }),
+      seed({ sessionId: 'person-mixed', query: 'And who is on call?' }),
+      // a person whose one query is a task's message, room still standing
+      seed({
+        sessionId: 'room-0001',
+        query: 'Summarize what this project is about in one message.',
+      }),
+    ]);
+    const client = createClient({ api: 'https://api.test', fetch });
+    client.useToken(FAKE_TOKEN);
+    expect((await client.openRoom(FAKE_PROJECT.id, 'a person’s room')).id).toBe('room-0001');
+    const { d, out, written } = deps(fetch, { '/tmp/run.json': runFile() });
+    expect(await main([...HISTORY, '--exclude', '/tmp/run.json'], ENV, d)).toBe(0);
+    const h = readHistoryResult(written['/tmp/h.json'] ?? '');
+    expect(h.excludedSessions).toEqual([BENCH_ROOM]);
+    expect(h.excludedRows).toBe(2);
+    expect(h.excludedSessionsByTask).toEqual(['lost-bench']);
+    expect(h.excludedRowsByTask).toBe(2);
+    expect(h.groups.reduce((n, g) => n + g.rows, 0)).toBe(4 + 3);
+    expect(out.at(-1)).toBe(
+      'excluded 2 row(s) of 1 bench room(s) by run file and 2 row(s) of 1 by task message; wrote /tmp/h.json',
+    );
+  });
+
+  it('reads a history file written before the by-task exclusion as an empty list and zero', () => {
+    const { d, written } = deps(fake().fetch);
+    return main(HISTORY, ENV, d).then(() => {
+      const file = JSON.parse(written['/tmp/h.json'] ?? '') as Record<string, unknown>;
+      delete file.excludedSessionsByTask;
+      delete file.excludedRowsByTask;
+      const h = readHistoryResult(JSON.stringify(file));
+      expect(h.excludedSessionsByTask).toEqual([]);
+      expect(h.excludedRowsByTask).toBe(0);
+    });
   });
 
   it('--exclude with --resolve never looks up a link inside an excluded room', async () => {
