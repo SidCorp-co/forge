@@ -17,9 +17,9 @@ import {
 } from "@/design";
 import {
   AGENT_ACCESS_CLOSED,
-  AgentAccessChoice, agentAccessBody} from "@/features/integrations/components/agent-access-control";
+  AgentAccessChoice, agentAccessBody, agentAccessDeniedReason, mayWriteAgentAccess} from "@/features/integrations/components/agent-access-control";
 import { ProjectIntegrationsPanel } from "@/features/integrations/components/project-integrations-panel";
-import { useBindExistingConnection, useConnections } from "@/features/integrations/hooks";
+import { useBindExistingConnection, useConnections, useIsOrgAdmin } from "@/features/integrations/hooks";
 import { providerLabel, providerModule } from "@/features/integrations/providers/registry";
 import { formatApiError } from "@/lib/api/error";
 import { providerCanDeploy } from "@forge/contracts/deploy-capability";
@@ -85,6 +85,7 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
   // No binding exists yet, so the risk class comes off the provider's own module. `none` renders no
   // control at all — that provider has no agent path for a grant to open.
   const agentPathKind = provider ? (providerModule(provider)?.agentPathKind ?? "none") : "none";
+  const isOrgAdmin = useIsOrgAdmin(projectId);
 
   // cm:guard the role picker CLEARS the stages it hides rather than leaving them in
   // state: a hidden control whose value still submits is how a service binding
@@ -211,8 +212,8 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
               value={agentAccess}
               onChange={setAgentAccess}
               pathKind={agentPathKind}
-              canEdit={canEdit && !bind.isPending}
-              disabledReason="Only the project owner can grant an integration to this project's agents."
+              canEdit={mayWriteAgentAccess(agentPathKind, { canEditProject: canEdit, isOrgAdmin }) && !bind.isPending}
+              disabledReason={agentAccessDeniedReason(agentPathKind)}
             />
             {formError && <Banner tone="attention">{formError}</Banner>}
             {bind.isError && <Banner tone="danger">{formatApiError(bind.error)}</Banner>}

@@ -21,6 +21,7 @@ import {
   useCreateProviderIntegration,
   useDeleteProviderIntegration,
   useIntegrationsList,
+  useIsOrgAdmin,
   useOrgConnectionLocked,
   useTestIntegration,
   useUpdateProviderIntegration,
@@ -35,7 +36,7 @@ import type { EpodsystemReadConfig } from "./config";
 import {
   AGENT_ACCESS_CLOSED,
   AgentAccessChoice,
-  AgentAccessControl, agentAccessBody} from "../../components/agent-access-control";
+  AgentAccessControl, agentAccessBody, agentAccessDeniedReason} from "../../components/agent-access-control";
 import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { epodsystem } from "./index";
@@ -183,6 +184,7 @@ function EpodsystemBindingRow({
   const remove = useDeleteProviderIntegration(projectId);
   const list = useIntegrationsList(projectId);
   const orgLocked = useOrgConnectionLocked(projectId, binding.connectionId);
+  const isOrgAdmin = useIsOrgAdmin(projectId);
 
   const [apiKey, setApiKey] = useState("");
   const [testResult, setTestResult] = useState<IntegrationTestResult | null>(null);
@@ -328,8 +330,8 @@ function EpodsystemBindingRow({
       <AgentAccessControl
         projectId={projectId}
         binding={binding}
-        canEdit={!orgLocked}
-        disabledReason="Org-shared credential — only an org owner/admin can grant it."
+        canEdit={isOrgAdmin}
+        disabledReason={agentAccessDeniedReason("direct-mcp")}
       />
 
       <ThemePanel config={binding.config as EpodsystemReadConfig} />
@@ -355,6 +357,7 @@ function AddEpodsystemForm({
   onCreated,
 }: AddEpodsystemFormProps) {
   const create = useCreateProviderIntegration(projectId);
+  const isOrgAdmin = useIsOrgAdmin(projectId);
   const [ownerOrgId, setOwnerOrgId] = useState<string | undefined>(undefined);
   const [label, setLabel] = useState("");
   const [apiKey, setApiKey] = useState("");
@@ -514,7 +517,7 @@ function AddEpodsystemForm({
         value={agentAccess}
         onChange={setAgentAccess}
         pathKind={epodsystem.agentPathKind}
-        canEdit={true}
+        canEdit={isOrgAdmin}
       />
 
       {error && <Banner tone="danger">{error}</Banner>}

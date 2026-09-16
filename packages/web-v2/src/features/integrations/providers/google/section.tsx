@@ -263,7 +263,7 @@ function GoogleBindingPanel({
       <AgentAccessControl
         projectId={projectId}
         binding={binding}
-        canEdit={!orgLocked}
+        canEdit={true}
         disabledReason="Org-shared credential — only an org owner/admin can grant it."
       />
     </div>

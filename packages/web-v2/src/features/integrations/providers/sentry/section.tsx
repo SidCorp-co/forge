@@ -18,6 +18,7 @@ import {
   useCreateProviderIntegration,
   useDeleteProviderIntegration,
   useIntegrationsList,
+  useIsOrgAdmin,
   useOrgConnectionLocked,
   useTestIntegration,
   useUpdateProviderIntegration,
@@ -31,7 +32,7 @@ import type {
 import {
   AGENT_ACCESS_CLOSED,
   AgentAccessChoice,
-  AgentAccessControl, agentAccessBody} from "../../components/agent-access-control";
+  AgentAccessControl, agentAccessBody, agentAccessDeniedReason} from "../../components/agent-access-control";
 import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { sentry } from "./index";
@@ -184,6 +185,7 @@ export function SentrySection({ projectId }: { projectId: string }) {
   // Org-shared credential: only an org owner/admin may change config/secrets/
   // active. Test connection stays enabled (binding-level, project admin OK).
   const orgLocked = useOrgConnectionLocked(projectId, existing?.connectionId);
+  const isOrgAdmin = useIsOrgAdmin(projectId);
   const canSave =
     form.host.trim().length > 0 &&
     (!keyRequired || form.authToken.trim().length >= 8) &&
@@ -420,16 +422,16 @@ export function SentrySection({ projectId }: { projectId: string }) {
             <AgentAccessControl
               projectId={projectId}
               binding={existing}
-              canEdit={!orgLocked}
-              disabledReason="Org-shared credential — only an org owner/admin can grant it."
+              canEdit={isOrgAdmin}
+              disabledReason={agentAccessDeniedReason("direct-mcp")}
             />
           ) : (
             <AgentAccessChoice
               value={agentAccess}
               onChange={setAgentAccess}
               pathKind={sentry.agentPathKind}
-              canEdit={!orgLocked}
-              disabledReason="Org-shared credential — only an org owner/admin can grant it."
+              canEdit={isOrgAdmin}
+              disabledReason={agentAccessDeniedReason("direct-mcp")}
             />
           )}
 

@@ -20,6 +20,9 @@ const createMutate = vi.fn();
 const listItems = vi.fn<() => IntegrationSummary[]>();
 
 vi.mock("../../hooks", () => ({
+  // ISS-1071 — a `direct-mcp` grant takes org admin; these cases are about the ROLE choice, so
+  // the caller is one who may grant and the switch is not what they are asserting on.
+  useIsOrgAdmin: () => true,
   useIntegrationsList: () => ({
     data: { items: listItems() },
     isLoading: false,

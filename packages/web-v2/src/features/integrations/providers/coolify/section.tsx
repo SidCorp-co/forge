@@ -332,7 +332,7 @@ function StagePanel({
         <AgentAccessControl
           projectId={projectId}
           binding={existing}
-          canEdit={!orgLocked}
+          canEdit={true}
           disabledReason="Org-shared credential — only an org owner/admin can grant it."
         />
       ) : (
@@ -340,7 +340,7 @@ function StagePanel({
           value={agentAccess}
           onChange={setAgentAccess}
           pathKind={coolify.agentPathKind}
-          canEdit={!orgLocked}
+          canEdit={true}
           disabledReason="Org-shared credential — only an org owner/admin can grant it."
         />
       )}

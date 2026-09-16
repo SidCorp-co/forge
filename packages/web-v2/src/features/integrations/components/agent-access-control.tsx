@@ -59,6 +59,29 @@ export function agentAccessBody(
 }
 
 /**
+ * May this caller write the grant, and if not, who can.
+ *
+ * cm:edge contract -> packages/core/src/integrations/agent-access.ts — one calculation for every
+ * door, mirroring `agentAccessTier`. A screen that decides this some other way offers an action the
+ * server answers 403 to, or hides one it would have accepted; both were happening before ISS-1071
+ * gave the two tiers different answers.
+ */
+export function mayWriteAgentAccess(
+  pathKind: AgentPathKind,
+  perms: { canEditProject: boolean; isOrgAdmin: boolean },
+): boolean {
+  if (pathKind === "none") return false;
+  return pathKind === "direct-mcp" ? perms.isOrgAdmin : perms.canEditProject;
+}
+
+/** Who the caller has to be, said in the same terms the server refuses in. */
+export function agentAccessDeniedReason(pathKind: AgentPathKind): string {
+  return pathKind === "direct-mcp"
+    ? "This integration's credential is sent to the runner, so only an organisation owner or admin can grant it to agents."
+    : "Only a project admin can change this.";
+}
+
+/**
  * The control itself, with no opinion about where the value is stored — the connect forms drive it
  * from their own state, the binding rows drive it from a PATCH.
  *

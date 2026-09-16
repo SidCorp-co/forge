@@ -18,6 +18,7 @@ import {
   useCreateProviderIntegration,
   useDeleteProviderIntegration,
   useIntegrationsList,
+  useIsOrgAdmin,
   useOrgConnectionLocked,
   useTestIntegration,
   useUpdateProviderIntegration,
@@ -32,7 +33,7 @@ import type {
 import {
   AGENT_ACCESS_CLOSED,
   AgentAccessChoice,
-  AgentAccessControl, agentAccessBody} from "../../components/agent-access-control";
+  AgentAccessControl, agentAccessBody, agentAccessDeniedReason} from "../../components/agent-access-control";
 import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { postman } from "./index";
@@ -115,6 +116,7 @@ export function PostmanSection({ projectId }: { projectId: string }) {
   // Org-shared credential: only an org owner/admin may change config/secrets/
   // active. Test connection stays enabled (binding-level, project admin OK).
   const orgLocked = useOrgConnectionLocked(projectId, existing?.connectionId);
+  const isOrgAdmin = useIsOrgAdmin(projectId);
   const canSave =
     (!keyRequired || form.apiKey.trim().length >= 8) &&
     !create.isPending &&
@@ -288,16 +290,16 @@ export function PostmanSection({ projectId }: { projectId: string }) {
             <AgentAccessControl
               projectId={projectId}
               binding={existing}
-              canEdit={!orgLocked}
-              disabledReason="Org-shared credential — only an org owner/admin can grant it."
+              canEdit={isOrgAdmin}
+              disabledReason={agentAccessDeniedReason("direct-mcp")}
             />
           ) : (
             <AgentAccessChoice
               value={agentAccess}
               onChange={setAgentAccess}
               pathKind={postman.agentPathKind}
-              canEdit={!orgLocked}
-              disabledReason="Org-shared credential — only an org owner/admin can grant it."
+              canEdit={isOrgAdmin}
+              disabledReason={agentAccessDeniedReason("direct-mcp")}
             />
           )}
 
