@@ -132,8 +132,9 @@ that file; `effective-ladder.test.ts` reads its text and goes red if the conditi
 copy appears in it.
 
 The fixture-bound checks (`task.ts:CHECK_KINDS`) read a value the deployment supplied. A literal
-pattern is matched on a word boundary at each end that has one (`grade.ts:literal`), because an
-issue key is a prefix of another issue key: `ISS-2` matched inside `ISS-25`, and `ISS-10` inside an
+pattern is matched on an alphanumeric boundary at each end that has one (`grade.ts:literal`, a
+lookaround rather than `\b`, because `_` is a word character and a reply may write `__ISS-25__`),
+because an issue key is a prefix of another issue key: `ISS-2` matched inside `ISS-25`, and `ISS-10` inside an
 `ISS-1056` that a title carried, so `open-issues-linked` could not be passed at all on the QA
 project — a reply listing all five in the deployment's own order was reported as naming them out of
 order. `listInOrder`

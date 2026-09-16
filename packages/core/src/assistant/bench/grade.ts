@@ -129,13 +129,18 @@ type Checker = (check: Check, facts: TurnFacts) => Evidence[];
 // inside an `ISS-1056` a title carried, so `listInOrder` reported a reply that had listed all five
 // in the deployment's own order as naming them out of order, and `open-issues-linked` could not be
 // passed at all (0/3, measured against beta 2026-09-16). A pattern that starts or ends on a
-// non-word character keeps that end unbounded, since `\b` there asserts the opposite of what is
-// meant (ISS-1066).
+// non-alphanumeric character keeps that end unbounded, since a boundary there asserts the opposite
+// of what is meant (ISS-1066).
+//
+// cm:why the boundary is a lookaround over [0-9A-Za-z] and not `\b`: `_` is a word character to
+// `\b`, so `\bISS-25\b` does not match the `__ISS-25__` a reply writes when it emphasises the key
+// in Markdown, and the fix for one false failure would have bought another (codex F1).
+const ALNUM = /[0-9A-Za-z]/;
 const literal = (p: Pattern, values: Record<string, string>): RegExp => {
   if (typeof p !== 'string') return p;
   const text = fill(p, values);
-  const head = /^\w/.test(text) ? '\\b' : '';
-  const tail = /\w$/.test(text) ? '\\b' : '';
+  const head = ALNUM.test(text.slice(0, 1)) ? '(?<![0-9A-Za-z])' : '';
+  const tail = ALNUM.test(text.slice(-1)) ? '(?![0-9A-Za-z])' : '';
   return new RegExp(`${head}${escapeRe(text)}${tail}`);
 };
 

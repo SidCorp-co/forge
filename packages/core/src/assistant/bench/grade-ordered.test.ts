@@ -101,6 +101,18 @@ describe('listInOrder, labeled and linkTo (codex F1–F3 on ISS-1061)', () => {
       facts({ delivered: reply, values: { openIssueKeys: keys } }),
     ).evidence;
     expect(evidence).toEqual([]);
+    // a reply that emphasises each key in Markdown is the same answer: `_` is a word character to
+    // `\b`, which is why the boundary is a lookaround over [0-9A-Za-z] instead (codex F1)
+    expect(
+      gradeTurn(
+        { message: 'm', checks: [check] },
+        facts({
+          delivered: '__ISS-25__, __ISS-11__, __ISS-10__, __ISS-9__, __ISS-2__',
+          values: { openIssueKeys: keys },
+        }),
+      ).evidence,
+    ).toEqual([]);
+
     // and a reply that really is out of order still fails: the two middle lines swapped
     const swapped = [
       '- [ISS-25 — Assistant weekly reading (pinned issue, ISS-1056)](/x/1)',
