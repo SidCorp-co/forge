@@ -6,8 +6,9 @@
 //   1. `prompt/system.ts` renders the `tier: 'mandatory'` facts into the
 //      static preamble injected on every job (status discipline + tool
 //      catalogue) — so the canonical text lives HERE, not duplicated there.
-//   2. The author-time surfaces (REST `GET /api/skill-facts`, MCP
-//      `forge_skill_facts`, the web Skill Studio palette) render the
+//   2. The author-time surfaces (REST `GET /api/skill-facts` and MCP
+//      `forge_skill_facts` — nothing under `packages/web-v2/src` fetches
+//      either, measured 2026-09-16) render the
 //      `tier: 'contextual'` facts, which an author addresses as
 //      `{{forge:<id>}}`. That is an ADDRESS, not a template: nothing expands
 //      it inside a skill file, and a contextual fact reaches an agent through
@@ -19,8 +20,7 @@
 // takes its inputs through `FactRenderContext` from `./resolve.ts`.
 
 import type { IssueStatus, JobType } from '../../db/schema.js';
-// cm:guard the only two non-type imports this module may carry, and only because both are leaves whose own imports erase — `dependency-effects.ts`'s schema import is type-only, and `body/components.ts` pulls nothing but zod. The cycle constraint above is what a third, DB- or env-touching import would break.
-import { WORK_EVIDENCE_WAIVER_NOTE } from '../../issues/dependency-effects.js';
+// cm:guard NO non-type import, which is where ISS-1047 left it: the two that were allowed here belonged to facts it removed, and each was allowed only because it was a leaf whose own imports erase. A DB- or env-touching import breaks the cycle constraint above; a leaf one is arguable and has to be argued here.
 
 export type FactCategory = 'enum' | 'protocol' | 'format' | 'reference';
 export type FactTier = 'mandatory' | 'contextual';
@@ -167,18 +167,6 @@ export const CANONICAL_LADDER: readonly IssueStatus[] = [
   'closed',
 ];
 
-const ISSUE_STAGES: readonly JobType[] = [
-  'triage',
-  'clarify',
-  'plan',
-  'code',
-  'review',
-  'test',
-  'release',
-  'fix',
-  'custom',
-];
-
 // cm:edge lockstep -> packages/core/src/memory/step-handoff-schema.ts#stepHandoffSchema — these key lists are what the prompt tells the agent to send; drift briefs the agent on a stale shape
 const HANDOFF_KEYS: Partial<Record<JobType, string>> = {
   triage: 'summary, suggestedApproach, complexity, risks, affectedAreas',
@@ -214,122 +202,6 @@ export const FORGE_FACTS: readonly ForgeFact[] = [
     namespace: 'forge',
     version: 2,
     render: () => TOOL_REFERENCE_TEXT,
-  },
-
-  {
-    id: 'complexity-scale',
-    title: 'Complexity scale (t-shirt sizing)',
-    category: 'enum',
-    tier: 'contextual',
-    scope: 'global',
-    namespace: 'forge',
-    appliesTo: ['triage', 'plan'],
-    version: 1,
-    render: () => `## Complexity scale
-\`complexity\` is t-shirt sizing for scope (NULL = unsized). Allowed values: \`xs\`, \`s\`, \`m\`, \`l\`, \`xl\`.
-- \`xs\`/\`s\` — trivial / small, single-file or single-concern.
-- \`m\` — medium, a few files in one area.
-- \`l\`/\`xl\` — large / cross-cutting; a strong signal to split the work into separate issues ordered by \`blocks\` edges.`,
-  },
-  {
-    id: 'priority-scale',
-    title: 'Priority scale',
-    category: 'enum',
-    tier: 'contextual',
-    scope: 'global',
-    namespace: 'forge',
-    appliesTo: ['triage'],
-    version: 1,
-    render: () => `## Priority scale
-\`priority\` allowed values: \`critical\`, \`high\`, \`medium\`, \`low\`, \`none\` (default \`medium\`).
-- \`critical\` — production down, data loss, security breach.
-- \`high\` — major feature broken / blocking many users.
-- \`medium\` — normal scoped work.
-- \`low\` — minor / cosmetic.
-- \`none\` — explicitly unprioritised.`,
-  },
-  {
-    id: 'category-enum',
-    title: 'Category convention',
-    category: 'enum',
-    tier: 'contextual',
-    scope: 'global',
-    namespace: 'forge',
-    appliesTo: ['triage'],
-    version: 1,
-    render: () => `## Category convention
-\`category\` is free text; Forge's recommended convention is one of:
-- \`bug\` — something broken / regressed (keywords: broken, error, crash, fails).
-- \`feature\` — net-new capability (keywords: add, new, support).
-- \`improvement\` — enhance existing behaviour (keywords: improve, optimise, refine).
-- \`task\` — chore / maintenance / config (keywords: update, bump, migrate).
-Preserve a reporter-supplied category; only infer when missing.`,
-  },
-  {
-    id: 'relations',
-    title: 'Issue relation kinds',
-    category: 'enum',
-    tier: 'contextual',
-    scope: 'global',
-    namespace: 'forge',
-    appliesTo: ['triage', 'plan'],
-    version: 2,
-    render: () => `## Issue relation kinds
-Edges are directional \`fromIssue --kind--> toIssue\`. Allowed \`kind\` values:
-- \`blocks\` — **the only dispatch-affecting kind.** A → blocks → B means B cannot dispatch until A's code is merged to the base branch — normally, until A has \`merged_at\` set (stamped on leaving \`awaiting_release\`, or via \`mark_merged\`). A reopened issue stays a blocker even if its prior merge stamp remains. A closed issue without \`merged_at\` unblocks B only when the project's base branch cannot be stamped structurally. It is NOT gated on A reaching \`awaiting_release\`: a blocker parked at a manual release gate already unblocks B the instant its \`merged_at\` is stamped.
-- \`relates\` — soft "see also"; PM/UX metadata only.
-- \`duplicates\` — A duplicates B; metadata only.
-- \`parent\` — A is the parent of B; metadata only.
-- \`decomposes\` — epic → child. ${WORK_EVIDENCE_WAIVER_NOTE} If a child must land before the parent's own work, say so with a \`blocks\` edge.
-(Do not invent names like \`blocked_by\`/\`depends_on\` — those are not valid kinds.)`,
-  },
-
-  {
-    id: 'status-ladder',
-    title: 'Status ladder (this project)',
-    category: 'protocol',
-    tier: 'contextual',
-    scope: 'project-resolved',
-    namespace: 'forge',
-    appliesTo: ISSUE_STAGES,
-    version: 2,
-    render: (ctx) => {
-      const ladder = ctx?.ladder?.length ? ctx.ladder : CANONICAL_LADDER;
-      return `## Status ladder
-This project's happy-path forward ladder (enabled stages only) — OVERRIDES the default chain in Pipeline Rules:
-\`${ladder.join(' → ')}\`
-Advance one step at a time as the FINAL action. Bounce states (\`needs_info\`, \`waiting\`, \`reopen\`, \`on_hold\`) are reachable from anywhere; \`draft\` is never a valid target.
-This ladder is also the authoritative set of statuses. **If your adopted skill's exit table names a status that is not on it, that step is stale — advance to the ladder's next rung instead.** Skills are copied per project and do not receive template fixes, so a stale exit status is expected; do not burn a retry discovering it. Two shapes of stale, and the second is the dangerous one:
-- \`deploying\`, \`pass\`, \`staging\` are gone from the enum, so \`forge_issues.update\` REFUSES them and you find out immediately.
-- \`clarified\`, \`waiting\`, \`tested\` are retired but still IN the enum, so the write SUCCEEDS and nothing warns you. Nothing dispatches at any of them, so the issue is stranded there until a person moves it by hand. Never write one, whatever a skill's exit table says.`;
-    },
-  },
-  {
-    id: 'comment-authoring',
-    title: 'Comment + status ordering',
-    category: 'protocol',
-    tier: 'contextual',
-    scope: 'global',
-    namespace: 'forge',
-    appliesTo: ISSUE_STAGES,
-    version: 1,
-    render: () => `## Comment + status ordering
-Post your findings/decision comment via \`forge_comments.create\` BEFORE the final \`forge_issues.update\` status change — the next pipeline step must see the comment already in place. Status is always the LAST action.`,
-  },
-  {
-    id: 'memory-recall-first',
-    title: 'Recall project memory before working',
-    category: 'protocol',
-    tier: 'contextual',
-    scope: 'global',
-    namespace: 'forge',
-    // cm:why the three stages where acting without prior context costs the most: a wrong design against a settled convention, a repro already recorded, a fix pattern already found. Every other stage may recall at will — `forge_memory` is in the Tool Reference — and `code` is out deliberately, because the orchestrator already injects a search-first `preventiveContext` into a code job and mandating it twice buys nothing.
-    appliesTo: ['clarify', 'plan', 'fix'],
-    version: 2,
-    render: () => `## Recall memory first
-Project memory is NOT auto-loaded into this prompt. BEFORE you design/reproduce/fix, recall what prior work already established for the area you are about to touch — conventions, gotchas, decisions, fix-patterns — so you neither contradict them nor rediscover from scratch:
-\`forge_memory.search({ projectId, query: <the feature / file / error you're about to work on>, topK: 3, sourceFilter: ['knowledge', 'policy'] })\`
-Run one or two focused queries on the concrete nouns of THIS task. Hits are point-in-time — verify against the live code/git before relying on them. Then REPORT the verification outcome for note/knowledge hits: \`forge_memory.feedback({ projectId, source, sourceRef, verdict: 'confirmed' })\` when the code agrees, or \`verdict: 'outdated', evidence: '<what disproved it>'\` to archive a stale row on the spot — a verification you don't report is a cleaning signal thrown away. This READ step is the counterpart to the "Capture Learnings" write step in Pipeline Rules.`,
   },
 
   {
@@ -427,39 +299,6 @@ Remove ONLY this issue's worktree, once its branch has merged — that is the re
 
 Never sweep other issues' worktrees, however old they look: a directory you did not create may hold an agent's work in progress right now.`,
   },
-  // cm:guard the RULE lives here and the OBSERVATION lives in the runner's `[workspace notice]`, and they must not swap places. What is wrong right now is only knowable on the box at dispatch; what an agent may do about it is policy, and policy in a per-box prompt line is policy that drifts per box and cannot be reviewed.
-  // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs — `workspace_notice_text` writes the `[workspace notice]` block this fact refers to by name; rename the prefix there and this text points at something the agent never receives
-  // cm:edge contract -> packages/core/src/mcp/tools/forge-projects.ts — the write-back this fact asks for is `forge_projects.update` with `workspaceSetup`; that field is the ONLY reason the derivation is paid for once instead of once per job
-  {
-    id: 'workspace-discipline',
-    title: 'The workspace you were handed',
-    category: 'protocol',
-    tier: 'contextual',
-    scope: 'global',
-    namespace: 'forge',
-    appliesTo: ISSUE_STAGES,
-    version: 1,
-    render: () => `## The workspace you were handed
-A setup step may have run in this checkout seconds before you started, and anything it changed or could not fix arrives as a \`[workspace notice]\` at the top of your prompt. If there is no notice, the workspace was already in the shape this step expects.
-
-- **Read the notice before you read the code.** It is the only thing that can tell you the tree is not what it looks like: a stale checkout makes file content and \`git log\` agree with each other, so reading the files cannot catch it.
-- **Uncommitted work you did not author is not yours to discard.** Not with \`checkout --force\`, \`reset --hard\` or \`clean\`. Leave it, and say in your result that you did — it is someone's interrupted attempt and it is unrecoverable.
-- **A workspace fault is not a reason to abandon the task**, and it is not this issue's work either. Fix what stands between you and the task, do the task, and report the repair under \`Extra fixes:\`.
-- **If the notice says this project declares no setup procedure and you worked one out, record it**: \`forge_projects.update\` with \`workspaceSetup\` = the minimal ordered steps that set this repo up from a fresh clone. Only steps you actually ran and saw succeed. That write is what stops the next job paying to work it out again; if it is refused for lack of permission, say so in your result and move on rather than retrying.`,
-  },
-  // cm:why phrased as a trigger condition rather than a noun-list — an agent reaches for an affordance when it recognises the situation, and `appliesTo` keeps it off the stages where the situation cannot arise.
-  {
-    id: 'feedback-red-flag',
-    title: 'Red flag: report friction you worked around',
-    category: 'protocol',
-    tier: 'contextual',
-    scope: 'global',
-    namespace: 'forge',
-    appliesTo: ['code', 'fix'],
-    version: 1,
-    render: () => `## Red flag: report the friction
-If you JUST worked around an ambiguous / contradictory / missing / redundant pipeline step (skill, tool, doc, orientation) to get unblocked, call \`forge_feedback\` (action=submit) BEFORE you finish — name the target + targetRef and what you expected vs what you hit. This is a trigger, not a checklist item: do it when the trigger fires, skip it when nothing snagged.`,
-  },
   // cm:why ISS-595 — this instruction used to belong in a `forge-triage` / `forge-clarify` skill body; those were deleted with the staged lane (ISS-895), and a fact reaches every stage of both lanes with no file to re-sync and can gate itself on project data, which a skill body cannot
   {
     id: 'module-attribution',
@@ -468,7 +307,7 @@ If you JUST worked around an ambiguous / contradictory / missing / redundant pip
     tier: 'contextual',
     scope: 'project-resolved',
     namespace: 'forge',
-    appliesTo: [...ISSUE_STAGES, 'drive'],
+    appliesTo: ['drive'],
     version: 1,
     // cm:guard the predicate, not an empty `render()`, is what makes this a no-op for a taxonomy-less project — `render()` is also what the Skill Studio palette and `GET /api/skill-facts` preview with no project at all, and `registry.test.ts` asserts every fact renders non-empty
     relevant: (ctx) => (ctx.modules?.length ?? 0) > 0,

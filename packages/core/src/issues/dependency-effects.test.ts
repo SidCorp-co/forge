@@ -69,15 +69,22 @@ describe('describeDependencyKind', () => {
   });
 });
 
-describe('the four surfaces that render the note', () => {
+// cm:guard THREE since ISS-1047, and the count is part of the claim: the fourth was the
+// `relations` prompt fact, whose `appliesTo` was `['triage','plan']` — job types
+// `RUNNER_CAPABILITIES` refuses, so it rendered the note for no agent. Removing it took nothing
+// away from a reader; a fifth surface appearing here without the note is still the defect.
+describe('the three surfaces that render the note', () => {
   it('the `issue-dependencies` guide', () => {
     const guide = FORGE_GUIDES.find((g) => g.slug === 'issue-dependencies');
     expect(guide?.body).toContain(WORK_EVIDENCE_WAIVER_NOTE);
   });
 
-  it('the `relations` prompt fact', () => {
-    const fact = FORGE_FACTS.find((f) => f.id === 'relations');
-    expect(fact?.render()).toContain(WORK_EVIDENCE_WAIVER_NOTE);
+  it('no prompt fact claims to render it, because none reaches an agent', () => {
+    for (const fact of FORGE_FACTS) {
+      expect(fact.render({ projectId: 'p', stage: null }), fact.id).not.toContain(
+        WORK_EVIDENCE_WAIVER_NOTE,
+      );
+    }
   });
 
   it('the `forge_pm.set_dependency` tool description', () => {

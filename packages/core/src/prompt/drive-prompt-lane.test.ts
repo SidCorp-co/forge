@@ -17,6 +17,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { RUNNER_CAPABILITIES } from '../pipeline/registry.js';
 import {
   mandatoryPreambleBlocks,
   PIPELINE_RULES,
@@ -144,11 +145,19 @@ describe('the mandatory preamble blocks fork with the lane', () => {
     }
   });
 
-  it('leaves every staged step on the byte-identical shared prefix', () => {
-    for (const step of ['code', 'review', 'test', 'triage', null] as const) {
+  // cm:guard the four claimable NON-drive job types, derived from `RUNNER_CAPABILITIES` rather
+  // than listed: this used to name `code`/`review`/`test`/`triage`, job types no runner can claim,
+  // so it asserted the other arm over an audience that does not exist while saying nothing about
+  // the one that does (ISS-1047). `null` stays because the chat/preview path passes it.
+  it('leaves every other claimable job type on the byte-identical shared prefix', () => {
+    const others = [...new Set(Object.values(RUNNER_CAPABILITIES).flat())].filter(
+      (t) => t !== 'drive',
+    );
+    expect(others.length).toBeGreaterThan(0);
+    for (const step of [...others, null]) {
       const { pipelineRules, toolReference } = mandatoryPreambleBlocks(step);
-      expect(pipelineRules).toBe(PIPELINE_RULES);
-      expect(toolReference).toBe(TOOL_REFERENCE);
+      expect(pipelineRules, `${step}`).toBe(PIPELINE_RULES);
+      expect(toolReference, `${step}`).toBe(TOOL_REFERENCE);
     }
   });
 });
