@@ -5325,28 +5325,17 @@
 - **Forge has gone quiet.** Every notification type except ops alerts stops arriving, on purpose,
   until the new model lands: two thirds of what the bell said could not be acted on.
 
-- **A project's own guides, rules and commands now live in one place, and the prompt points at the
-  place that holds them.** Every agent prompt carried an index of your project's guide names under
-  the instruction to fetch each one through the knowledge tool — and that tool held none of them,
-  because the text was stored somewhere else entirely. An agent that followed the instruction got
-  "no such entry"; one that did not think to try a second tool concluded the guide did not exist.
-  Every guide has moved to the knowledge store, keeping its name, its text and its always-inject
-  setting, so the names in that index are now names the tool can answer. The always-inject flag is
-  the entry's own `injection` setting, which also has an "off" value the old flag had no way to say.
-  Nothing was rewritten and nothing was dropped: the move is counted before the old copy is removed,
-  and a project whose counts do not agree stops the upgrade rather than losing a word of it.
+- **A project's guides now live where the prompt says they live.** Every agent prompt indexed your
+  guide names under "fetch these with the knowledge tool", which held none of them. They have moved
+  there, keeping name, text and always-inject setting.
 
-- **Project Settings no longer has a Project Facts tab, because the Knowledge screen's Rules tab is
-  the same editor.** Both edited the same text with the same always-inject toggle and the same
-  character budget. The Rules tab is the one that stays, and it now shows the budget and the sentence
-  about what always-inject does and does not promise that the other tab used to show.
+- **Project Settings loses its Project Facts tab.** The Knowledge screen's Rules tab was already the
+  same editor over the same text, and now also shows the character budget and what always-inject
+  does and does not promise.
 
-- **A project is only asked for what it actually has.** A project with no repository was reported as
-  missing its build and test commands; a project that declares it has no release step was reported as
-  missing a release procedure it will never run. Settings and the agent prompt now ask the same
-  question of the same list: a project with a repository owes build and test commands, a project that
-  releases owes a release procedure, and a project that has neither owes nothing. "Not declared" and
-  "does not apply" stopped looking alike.
+- **A project is only asked for what it actually has.** One with no repository was reported as
+  missing build and test commands; one with no release step, as missing a release procedure.
+  Undeclared and inapplicable no longer look alike.
 
 - **A project now says what releasing it means, and each connection says what it is for, so Forge
   stops guessing both.** One setting on a connection was being asked three different questions at
