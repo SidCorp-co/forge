@@ -71,7 +71,7 @@ function wireGoogle(w: Wiring = {}) {
     urls,
     tokenCalls: () =>
       urls.filter((u) => u.startsWith('https://oauth2.googleapis.com/token')).length,
-    sheetsCalls: () => urls.filter((u) => u.startsWith('https://sheets.googleapis.com')).length,
+    sheetsCalls: () => urls.filter((u) => u.startsWith('https://sheets.googleapis.com/')).length,
   };
 }
 

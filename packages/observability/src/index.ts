@@ -66,9 +66,10 @@ export const PEM_PRIVATE_KEY_PATTERN =
   /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g;
 
 // cm:guard this second pattern is not redundant with the paired one above and must run after it: a log cut mid-key has a BEGIN marker and no END, which the paired pattern does not match at all — and an unmatched truncated key is a whole credential printed in the clear, because the truncation takes the tail and not the head.
+// cm:guard the separator between two base64 runs is REQUIRED (`+`, not `*`), and this shape is not interchangeable with the shorter `(?:(?:\\n|\s)*[A-Za-z0-9+/=]{16,})*` it replaced. There the separator could match empty at a run boundary, so one base64 line had a partition for every way of cutting it into chunks of 16 — CodeQL `js/polynomial-redos`, high, on PR 430, against input that is a build log nobody controls. The two forms accept exactly the same strings, so NO unit test can tell them apart and none pretends to: the evidence is that alert, red on the old pattern and clear on this one.
 // cm:guard the continuation is runs of at least 16 base64 characters, NOT `[A-Za-z0-9+/=\s]*`. The loose form also matches ordinary prose — every word after an unterminated BEGIN marker is letters and spaces — so a log with one truncated key came back with the rest of the build output redacted, which is the diagnostic loss ISS-277 spent a day on.
 export const PEM_PRIVATE_KEY_HEAD_PATTERN =
-  /-----BEGIN [A-Z ]*PRIVATE KEY-----(?:(?:\\n|\s)*[A-Za-z0-9+/=]{16,})*/g;
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----(?:\\n|\s)*(?:[A-Za-z0-9+/=]{16,}(?:(?:\\n|\s)+[A-Za-z0-9+/=]{16,})*)?/g;
 
 /**
  * ISS-1036 — a Google OAuth2 access token, the thing Forge mints from a
