@@ -2858,6 +2858,24 @@
   with the facts instead of without them. Reported once however many times the machine retries, and
   recorded even for work the system had already given up on — which is the case it matters most in.
 
+- **Work that was saved on the machine but never sent anywhere is no longer thrown away when the
+  workspace is cleared, and the machine now says on the issue when it is holding the only copy.**
+  Clearing a finished run's workspace asked one question first: is there anything unsaved here? Work
+  that had been saved properly on that machine, and only on that machine, answered no — so the
+  workspace was cleared and the work went with it, silently, and looked exactly like a run that had
+  finished cleanly. Over one night on the maintainer's own box that was four runs and seventy-six
+  pieces of work, recovered by hand. The machine now sends the work somewhere safe **before**
+  clearing anything, and then asks whether it actually arrived rather than trusting that it did — a
+  send can report success against a machine's stale memory of an earlier one. If it did not arrive,
+  the workspace is kept and the issue is told: which branch, which commit, how much exists nowhere
+  else, and why it could not be sent. If the machine could not even find out — no route at all to
+  the place it sends work — it says it does not know, rather than reporting the work as unsafe,
+  because those are two different situations and only one of them is about the work. Said once and
+  not once a minute, though a run that saves more work while being held gets said again, since what
+  is at risk has changed. Nothing about the issue moves, and the machine goes on trying by itself: a
+  connection that comes back clears the whole thing with nobody involved. This exists for the one
+  that does not come back.
+
 - **An issue that says work is in progress with nothing actually working it is now named, and
   nothing about it is moved.** Two records have to agree for the product to be telling you the
   truth: the issue's status, which says somebody is on it, and the machine's own record of what it

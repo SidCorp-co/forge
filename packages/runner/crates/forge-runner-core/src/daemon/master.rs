@@ -27,6 +27,7 @@ use crate::config::Config;
 use crate::daemon::agent_activity;
 use crate::daemon::checkpoint;
 use crate::daemon::dispatch::resolve_repo;
+use crate::daemon::held_report;
 use crate::daemon::master_exit::{self, Verdict};
 use crate::daemon::recovery;
 use crate::daemon::recovery_ports::{CoreBeat, CoreRunState, PaneMasters, SignalProbe};
@@ -498,6 +499,17 @@ async fn sweep(
     let sessions = run_record::CoreSessions(client);
     let opened = run_record::open_declared_runs(&sessions, ledger, &boot).await;
     let closed = run_record::close_ended_runs(&sessions, ledger, &boot).await;
+    // cm:guard AFTER `close_ended_runs` and BEFORE `give_back_lost_runs`, and both ends matter. A
+    // run this sweep is about to close is not a held checkout yet, so reporting before the close
+    // would name a hold that ends seconds later. Running before the release attempt is what makes
+    // the report describe the state the release is about to refuse — and when the release succeeds
+    // instead, the tree is gone and the next sweep finds nothing to report, which is the correct
+    // silence (ISS-1050 criterion 33).
+    let held_said =
+        held_report::report_held_worktrees(&held_report::CoreHeld(client), ledger, &boot).await;
+    if held_said > 0 {
+        tracing::info!("[master] {held_said} held checkout(s) reported onto their issues");
+    }
     if opened > 0 || closed > 0 {
         tracing::info!("[run-record] {opened} run(s) opened at core, {closed} closed");
     }

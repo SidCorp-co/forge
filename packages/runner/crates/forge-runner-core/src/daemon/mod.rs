@@ -12,6 +12,7 @@ pub mod chat;
 pub mod checkpoint;
 pub mod control;
 pub mod dispatch;
+pub mod held_report;
 pub mod hook_install;
 pub mod inbox;
 pub mod master;

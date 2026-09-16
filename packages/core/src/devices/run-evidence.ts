@@ -130,9 +130,92 @@ export function buildRunEvidenceBody(args: {
   ].join('\n');
 }
 
+/**
+ * A worktree this box is still holding because its work is on no remote.
+ */
+// cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/held_report.rs — the box
+// builds this; a field added there and not here is dropped, and one required here and not sent
+// there is a 400 on a report whose whole purpose is to stop a silence.
+export const heldWorktreeSchema = z
+  .object({
+    worktree: z.string().min(1).max(1024),
+    branch: z.string().max(400).nullish(),
+    head: z.string().min(1).max(64),
+    commitsUnpushed: z.number().int().nonnegative().nullish(),
+    reason: z.string().min(1).max(600),
+  })
+  .strict();
+
+export type HeldWorktree = z.infer<typeof heldWorktreeSchema>;
+
+/** The line that makes a second report of the SAME held state a no-op. */
+// cm:guard keyed on the session AND the head commit, not the session alone. The hold is retried
+// every thirty seconds and must not say so every thirty seconds; but a run that commits again while
+// held has changed what is at risk, and that IS worth saying a second time. Keying on the session
+// alone would report the first state forever and never the current one.
+export function heldWorktreeMarker(sessionId: string, head: string): string {
+  return `held-worktree: ${sessionId}:${head}`;
+}
+
+export function buildHeldWorktreeBody(args: { sessionId: string; held: HeldWorktree }): string {
+  const { held } = args;
+  const count = held.commitsUnpushed ?? null;
+  return [
+    '## Work on this issue is on one machine only',
+    '',
+    `\`${heldWorktreeMarker(args.sessionId, held.head)}\``,
+    '',
+    `A run that was working this issue has stopped, and its checkout has **not** been released,`,
+    'because the box could not establish that its commits are on a remote.',
+    '',
+    `- branch: ${held.branch ? `\`${held.branch}\`` : '_not read_'}`,
+    `- commit: \`${held.head}\``,
+    count === null ? '- commits on no remote: _not counted_' : `- commits on no remote: ${count}`,
+    `- checkout: \`${held.worktree}\``,
+    '',
+    `Why it is held: ${held.reason}`,
+    '',
+    // cm:guard says plainly that nothing has been moved and that the box keeps trying. A report
+    // that reads like a request for action, when the box will in fact resolve it by itself the
+    // moment the remote is reachable, trains a reader to intervene where waiting was correct.
+    'Nothing about this issue has been moved. The box retries on every sweep, so a remote that',
+    'becomes reachable releases the checkout with no action from anybody. This is here so that a',
+    "remote which does *not* become reachable is somebody's to see rather than nobody's.",
+  ].join('\n');
+}
+
 interface RunIssueRow {
   id: string;
   next: string | null;
+}
+
+/** One device's run session, whatever status it has reached. */
+// cm:guard NOT filtered by status, and both writers here depend on that. A run whose box died is
+// reaped by `reapDeadRunSessions` after ten minutes and the box reports afterwards; filtering to a
+// live session drops the report in exactly the situation it is about.
+// cm:guard scoped by DEVICE. A session id alone would let one box write onto the issues another
+// box's run is holding.
+async function runSessionForDevice(
+  deviceId: string,
+  sessionId: string,
+): Promise<{ projectId: string; issueKeys: string[] | null; boxRunId: string | null } | undefined> {
+  const [row] = await db
+    .select({
+      projectId: agentSessions.projectId,
+      issueKeys: sql<string[] | null>`${pipelineRuns.metadata} -> ${RUN_ISSUES_METADATA_KEY}`,
+      boxRunId: sql<string | null>`${pipelineRuns.metadata} ->> ${BOX_RUN_ID_METADATA_KEY}`,
+    })
+    .from(agentSessions)
+    .innerJoin(pipelineRuns, eq(pipelineRuns.id, agentSessions.pipelineRunId))
+    .where(
+      and(
+        eq(agentSessions.id, sessionId),
+        eq(agentSessions.deviceId, deviceId),
+        sql`${agentSessions.metadata}->>'type' = ${RUN_SESSION_TYPE}`,
+      ),
+    )
+    .limit(1);
+  return row;
 }
 
 /** The run's issues, and what each one's lease says the run said. */
@@ -175,23 +258,7 @@ export async function writeRunEvidence(args: {
       `writeRunEvidence: a checkpoint must declare itself as \`${RECONSTRUCTION_SOURCE}\`, got \`${args.checkpoint.source}\` — an undeclared payload cannot be printed as the box's half without this end guessing what it is`,
     );
   }
-  const [session] = await db
-    .select({
-      projectId: agentSessions.projectId,
-      ownerDeviceId: agentSessions.deviceId,
-      issueKeys: sql<string[] | null>`${pipelineRuns.metadata} -> ${RUN_ISSUES_METADATA_KEY}`,
-      boxRunId: sql<string | null>`${pipelineRuns.metadata} ->> ${BOX_RUN_ID_METADATA_KEY}`,
-    })
-    .from(agentSessions)
-    .innerJoin(pipelineRuns, eq(pipelineRuns.id, agentSessions.pipelineRunId))
-    .where(
-      and(
-        eq(agentSessions.id, args.sessionId),
-        eq(agentSessions.deviceId, args.deviceId),
-        sql`${agentSessions.metadata}->>'type' = ${RUN_SESSION_TYPE}`,
-      ),
-    )
-    .limit(1);
+  const session = await runSessionForDevice(args.deviceId, args.sessionId);
   if (!session) return null;
 
   const keys = (session.issueKeys ?? []).map((k) => canonicalIssueKey(Number(k.split('-')[1])));
@@ -230,6 +297,55 @@ export async function writeRunEvidence(args: {
       written,
     },
     'run-evidence: what the run left is on its issues',
+  );
+  return { issues: rows.length, written };
+}
+
+/**
+ * Say on every issue this run holds that its work is on one machine only.
+ */
+// cm:guard REPORTS and moves nothing, exactly as the core-side invariant does. The box is refusing
+// to release a checkout, which is already the strongest act available to it; a status change on top
+// would be the kernel deciding what happens to work whose owner it cannot ask (ISS-1050).
+export async function writeHeldWorktreeReport(args: {
+  deviceId: string;
+  sessionId: string;
+  held: HeldWorktree;
+}): Promise<RunEvidenceResult | null> {
+  const session = await runSessionForDevice(args.deviceId, args.sessionId);
+  if (!session) return null;
+  const keys = (session.issueKeys ?? []).map((k) => canonicalIssueKey(Number(k.split('-')[1])));
+  const rows = await runIssuesWithTestimony(session.projectId, keys);
+  const marker = heldWorktreeMarker(args.sessionId, args.held.head);
+  const body = buildHeldWorktreeBody({ sessionId: args.sessionId, held: args.held });
+  let written = 0;
+  for (const row of rows) {
+    const existing = await db
+      .select({ id: comments.id })
+      .from(comments)
+      .where(and(eq(comments.issueId, row.id), sql`${comments.body} LIKE ${`%${marker}%`}`))
+      .limit(1);
+    if (existing.length > 0) continue;
+    await db.insert(comments).values({
+      issueId: row.id,
+      authorId: await ownerOfDevice(args.deviceId),
+      authorDeviceId: args.deviceId,
+      authorAgency: 'agent',
+      body,
+    });
+    written += 1;
+  }
+  logger.warn(
+    {
+      sessionId: args.sessionId,
+      deviceId: args.deviceId,
+      branch: args.held.branch,
+      head: args.held.head,
+      commitsUnpushed: args.held.commitsUnpushed,
+      issues: rows.length,
+      written,
+    },
+    'run-evidence: a checkout is held because its work is on no remote',
   );
   return { issues: rows.length, written };
 }

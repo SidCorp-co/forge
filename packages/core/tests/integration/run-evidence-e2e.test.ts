@@ -22,6 +22,7 @@ import {
 let harness: TestDatabase;
 let mods: {
   writeRunEvidence: typeof import('../../src/devices/run-evidence.js').writeRunEvidence;
+  writeHeldWorktreeReport: typeof import('../../src/devices/run-evidence.js').writeHeldWorktreeReport;
   openRunSession: typeof import('../../src/devices/run-session.js').openRunSession;
 };
 
@@ -35,6 +36,7 @@ beforeAll(async () => {
   const runSession = await import('../../src/devices/run-session.js');
   mods = {
     writeRunEvidence: evidence.writeRunEvidence,
+    writeHeldWorktreeReport: evidence.writeHeldWorktreeReport,
     openRunSession: runSession.openRunSession,
   };
 });
@@ -286,6 +288,158 @@ describe('what a dead run left, written onto its issues', () => {
         deviceId: otherDevice.id,
         sessionId: session.sessionId,
         checkpoint: A_CHECKPOINT,
+      }),
+    ).toBeNull();
+  });
+});
+
+const A_HELD = {
+  worktree: '/home/forge/projects/forge-dev/.worktrees/ISS-9',
+  branch: 'ISS-9-feature',
+  head: 'cccccccccccc',
+  commitsUnpushed: 3,
+  reason: '3 commit(s) here are on no remote, and the push to publish them did not land',
+};
+
+describe('a checkout this box is still holding, said on the issues it holds', () => {
+  it('says on every issue the run held that its work is on one machine only', async () => {
+    const { device, issueIds, session } = await aRunOver([9, 10], 'x');
+
+    const result = await mods.writeHeldWorktreeReport({
+      deviceId: device.id,
+      sessionId: session.sessionId,
+      held: A_HELD,
+    });
+
+    expect(result).toEqual({ issues: 2, written: 2 });
+    for (const id of issueIds) {
+      const body = (await bodiesOn(id)).join('\n');
+      expect(body).toContain('on one machine only');
+      expect(body).toContain('ISS-9-feature');
+      expect(body).toContain('commits on no remote: 3');
+      expect(body).toContain(A_HELD.reason);
+    }
+  });
+
+  // cm:guard the retry says nothing the second time. The box re-attempts the release every thirty
+  // seconds and re-reports on each sweep; keying the no-op on the session alone would be enough for
+  // THIS assertion, which is why the next test exists.
+  it('says the same hold once however many sweeps report it', async () => {
+    const { device, issueIds, session } = await aRunOver([9], 'x');
+
+    for (let i = 0; i < 4; i += 1) {
+      await mods.writeHeldWorktreeReport({
+        deviceId: device.id,
+        sessionId: session.sessionId,
+        held: A_HELD,
+      });
+    }
+
+    const first = issueIds[0];
+    if (!first) throw new Error('no issue');
+    expect(await bodiesOn(first)).toHaveLength(1);
+  });
+
+  // cm:guard a run that commits again while held has changed WHAT is at risk, and that is a second
+  // thing to say. This is the assertion that a session-only idempotency key would fail.
+  it('says it again when the head the box is holding has moved', async () => {
+    const { device, issueIds, session } = await aRunOver([9], 'x');
+
+    await mods.writeHeldWorktreeReport({
+      deviceId: device.id,
+      sessionId: session.sessionId,
+      held: A_HELD,
+    });
+    await mods.writeHeldWorktreeReport({
+      deviceId: device.id,
+      sessionId: session.sessionId,
+      held: { ...A_HELD, head: 'dddddddddddd', commitsUnpushed: 4 },
+    });
+
+    const first = issueIds[0];
+    if (!first) throw new Error('no issue');
+    const bodies = await bodiesOn(first);
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1]).toContain('commits on no remote: 4');
+  });
+
+  // cm:guard the report decides nothing and asks for nothing. A box refusing to release a checkout
+  // is already the strongest act available to it; a status move, or prose that reads as a request
+  // for one, would be the kernel deciding what happens to work whose owner it cannot ask.
+  it('moves the issue nowhere and says plainly that the box keeps trying', async () => {
+    const { device, issueIds, session } = await aRunOver([9], 'x');
+
+    await mods.writeHeldWorktreeReport({
+      deviceId: device.id,
+      sessionId: session.sessionId,
+      held: A_HELD,
+    });
+
+    const first = issueIds[0];
+    if (!first) throw new Error('no issue');
+    const rows = (await harness.db.execute(
+      sql`SELECT status, session_context FROM issues WHERE id = ${first}`,
+    )) as unknown as { status: string; session_context: unknown }[];
+    expect(rows[0]?.status).toBe('in_progress');
+    const body = (await bodiesOn(first)).join('\n');
+    expect(body).toContain('Nothing about this issue has been moved');
+    expect(body).toContain('releases the checkout with no action from anybody');
+  });
+
+  // cm:guard a box that could not count says so, rather than printing a zero it did not measure. A
+  // `0` here reads as "nothing is at risk", which is the opposite of what an unreachable remote
+  // established.
+  it('prints not-counted rather than a zero the box never measured', async () => {
+    const { device, issueIds, session } = await aRunOver([9], 'x');
+
+    await mods.writeHeldWorktreeReport({
+      deviceId: device.id,
+      sessionId: session.sessionId,
+      held: {
+        worktree: A_HELD.worktree,
+        head: A_HELD.head,
+        reason: 'this box cannot tell whether the work here is on a remote (no route to host)',
+      },
+    });
+
+    const first = issueIds[0];
+    if (!first) throw new Error('no issue');
+    const body = (await bodiesOn(first)).join('\n');
+    expect(body).toContain('commits on no remote: _not counted_');
+    expect(body).not.toContain('commits on no remote: 0');
+    expect(body).toContain('branch: _not read_');
+  });
+
+  // cm:guard the same status-blindness `writeRunEvidence` has, for the same reason: the report
+  // exists for the run whose box died, and core reaps that session after ten minutes.
+  it('accepts a hold reported for a session core has already reaped', async () => {
+    const { device, issueIds, session } = await aRunOver([9], 'x');
+    await harness.db.execute(
+      sql`UPDATE agent_sessions SET status = 'failed' WHERE id = ${session.sessionId}`,
+    );
+
+    const result = await mods.writeHeldWorktreeReport({
+      deviceId: device.id,
+      sessionId: session.sessionId,
+      held: A_HELD,
+    });
+
+    expect(result).toEqual({ issues: 1, written: 1 });
+    const first = issueIds[0];
+    if (!first) throw new Error('no issue');
+    expect(await bodiesOn(first)).toHaveLength(1);
+  });
+
+  it('answers nothing for a session belonging to another box', async () => {
+    const { session } = await aRunOver([9], 'x');
+    const other = await createTestUser(harness.db);
+    const otherDevice = await createTestDevice(harness.db, other.id);
+
+    expect(
+      await mods.writeHeldWorktreeReport({
+        deviceId: otherDevice.id,
+        sessionId: session.sessionId,
+        held: A_HELD,
       }),
     ).toBeNull();
   });

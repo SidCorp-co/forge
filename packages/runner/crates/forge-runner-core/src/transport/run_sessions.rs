@@ -134,6 +134,43 @@ pub async fn close(
     Ok(())
 }
 
+/// Tell core this box is keeping a checkout because its work is on no remote.
+// cm:edge contract -> packages/core/src/devices/pool-routes.ts — `POST
+// /me/run-sessions/:sessionId/held-worktree` is the other half, and it is device-scoped: a box
+// reporting about another box's session gets a 404.
+// cm:guard a 404 is NOT swallowed here, unlike the close above. The close treats a missing session
+// as "core got there first", which is a fact that lets the local marks land; a report that cannot
+// find its session has failed to say the thing it exists to say, and reporting success for that
+// would leave a held tree whose only record is this box's journal again.
+pub async fn report_held_worktree(
+    client: &CoreClient,
+    session_id: &str,
+    held: serde_json::Value,
+) -> Result<()> {
+    let url = client.url(&format!(
+        "/api/devices/me/run-sessions/{session_id}/held-worktree"
+    ));
+    let resp = client
+        .http()
+        .post(&url)
+        .bearer_auth(client.device_token())
+        .json(&held)
+        .send()
+        .await
+        .map_err(|e| Error::Other(format!("held-worktree report: {e}")))?;
+    if resp.status().as_u16() == 401 {
+        return Err(Error::Unauthorized);
+    }
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(Error::Other(format!(
+            "held-worktree report: {status}: {text}"
+        )));
+    }
+    Ok(())
+}
+
 /// Is this box's run session terminal? Read from core's own row.
 // cm:edge contract -> packages/core/src/devices/pool-routes.ts — `GET /me/run-sessions/:sessionId` is the other half, and it is device-scoped: a box asking about another box's session gets a 404, not an answer.
 // cm:guard a 404 answers TERMINAL rather than raising. Core no longer having the session means its own reaper got there first or an operator cancelled it; raising would park the ledger row forever on a run nothing else will ever close, where this lets the local marks land and the row retire.

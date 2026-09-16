@@ -46,7 +46,12 @@ import { readDeviceLoad, readFleetLoad, readProjectLoad } from './load.js';
 import { clearMasterLimit, recordMasterLimit } from './master-limit.js';
 import { closeMasterSession, ensureMasterSession } from './master-session.js';
 import { readPool } from './pool.js';
-import { runCheckpointSchema, writeRunEvidence } from './run-evidence.js';
+import {
+  heldWorktreeSchema,
+  runCheckpointSchema,
+  writeHeldWorktreeReport,
+  writeRunEvidence,
+} from './run-evidence.js';
 import {
   closeRunSession,
   isIssueLeaseHeld,
@@ -182,6 +187,35 @@ devicePoolRoutes.post(
     return c.json(closed);
   },
 );
+// cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/held_report.rs — the box
+// posts this when it has refused to release a checkout because it could not establish that the work
+// is on a remote. It is the half that moves that refusal off the box's journal and onto the issue:
+// without it the box is holding a checkout for a reason only its own logs carry, which is a
+// silence, and a silence is what this whole issue exists to end (ISS-1050 criterion 33).
+// cm:guard REPORTS and moves nothing. The box refusing to release is already the strongest act
+// available; a status change here would be the kernel deciding what happens to work whose owner it
+// cannot ask.
+devicePoolRoutes.post(
+  '/me/run-sessions/:sessionId/held-worktree',
+  requireDevice(),
+  zValidator('param', sessionParamsSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('json', heldWorktreeSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { sessionId } = c.req.valid('param');
+    const reported = await writeHeldWorktreeReport({
+      deviceId: c.get('device').id,
+      sessionId,
+      held: c.req.valid('json'),
+    });
+    if (reported === null) throw notFound('run session');
+    return c.json(reported);
+  },
+);
+
 const leaseParamsSchema = z.object({ issueKey: z.string().min(1).max(64) });
 
 // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/recovery_ports.rs — `CoreRunState` reads these back; the close loop sets a mark ONLY from what they answer, never from the ack of the write it just made (ISS-933 criterion 13).
