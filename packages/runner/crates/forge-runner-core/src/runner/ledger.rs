@@ -739,6 +739,12 @@ impl Ledger {
     // cm:guard the verb is stored as the master WROTE it. This module does not police the vocabulary —
     // `control.rs` refuses anything that is not `continue`, `restart` or `leave` before it gets here,
     // which keeps the refusal next to the caller who can be told what the valid shapes are.
+    // cm:guard `resume_owed_at IS NOT NULL` is a term and not a nicety: the column carries the three
+    // states `choices_awaiting_report` reads, and a choice written while none is owed sets
+    // `resume_choice` with no `resume_owed_at` beside it. `owe_resume_choices` then skips that run —
+    // it keys on `resume_choice IS NULL` — so the obligation can never be created for it and
+    // criterion 29's gate is spent before it was ever owed. Answering false is the refusal
+    // `control.rs` turns into a sentence naming the run (ISS-1050 finding F10).
     pub fn record_resume_choice(
         &self,
         run_id: &str,
@@ -750,7 +756,8 @@ impl Ledger {
             .conn
             .execute(
                 "UPDATE runs SET resume_choice = ?3, resume_choice_why = ?4
-                  WHERE run_id = ?1 AND master_session_id = ?2",
+                  WHERE run_id = ?1 AND master_session_id = ?2
+                    AND resume_owed_at IS NOT NULL",
                 params![run_id, master_session_id, choice, why],
             )
             .map_err(sql_err)?;
@@ -881,6 +888,17 @@ impl Ledger {
             .map_err(sql_err)
     }
 
+    /// Write a process id onto a run. **No production caller, by design.**
+    // cm:guard `#[cfg(test)]` is the DECLARATION that nothing writes `runs.pid` outside this suite,
+    // and it is here so the next reader meets it from the compiler rather than from a measured
+    // outage. A run is a subagent inside its master's session (`ddabc1f2b`), so it owns no process
+    // and there is no pid to write; every column this crate still reads from `pid` is answering
+    // about a row written BEFORE that model. Three readers have now keyed a live decision on a field
+    // with no writer — `recovery::reconcile`'s two owed marks, and `daemon::count_live_runs`, which
+    // read a full box as idle until ISS-1050 finding F11. A fourth would be the same defect again.
+    // Removing the column instead would take `Ledger::liveness`'s only positive refutation with it,
+    // and the 287 pre-subagent rows on forge-vm's ledger still answer through it.
+    #[cfg(test)]
     pub fn attach_pid(&self, run_id: &str, pid: u32) -> Result<()> {
         self.conn
             .execute(
@@ -1765,6 +1783,44 @@ mod tests {
         led.create_run_group(seed(&["ISS-1"])).unwrap();
         let run = led.run("run-1").unwrap().unwrap();
         assert_eq!(Ledger::liveness(&run, "boot-a", true), Liveness::Unknown);
+    }
+
+    // cm:guard a choice recorded when NONE is owed is refused, and the refusal is what protects the
+    // gate: `owe_resume_choices` keys on `resume_choice IS NULL`, so a choice written outside a
+    // resume means the obligation can never be created for that run afterwards — the pane is then
+    // resumed over work it is never asked about, and criterion 29's refusal never fires
+    // (ISS-1050 finding F10).
+    #[test]
+    fn a_choice_recorded_when_none_is_owed_is_refused_and_leaves_the_gate_armed() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(seed(&["ISS-1"])).unwrap();
+        led.bind_agent("run-1", "child-1").unwrap();
+
+        assert!(
+            !led.record_resume_choice("run-1", "master-1", "leave", "nobody asked")
+                .unwrap(),
+            "no resume has happened, so there is no choice to record"
+        );
+        assert_eq!(
+            led.run("run-1").unwrap().unwrap().resume_choice,
+            None,
+            "a refused record must write nothing, or the gate below is already spent"
+        );
+
+        assert_eq!(
+            led.owe_resume_choices("master-1", "boot-a").unwrap(),
+            1,
+            "the obligation must still be creatable — this is what the refusal was protecting"
+        );
+        assert!(
+            led.record_resume_choice("run-1", "master-1", "continue", "picking it up")
+                .unwrap(),
+            "once the resume has owed it, the same call is the one that answers"
+        );
+        assert_eq!(
+            led.run("run-1").unwrap().unwrap().resume_choice.as_deref(),
+            Some("continue")
+        );
     }
 
     // cm:guard revoking must INCREMENT the generation, because that number is the whole fence: a revival presenting the old one has to be refused rather than raced (ISS-964 criteria 40, 42).

@@ -102,15 +102,36 @@ fn live_run_sessions() -> usize {
 
 /// The predicate half, with the ledger and the process table passed in.
 // cm:guard split from `live_run_sessions` so the RULE is testable without a box: the I/O half resolves a path this process does not choose, and a rule reachable only through it is a rule no test can plant a counter-example for.
+// cm:guard the question is `Ledger::liveness`'s and NOT the pid's, and this is the whole of ISS-1050
+// finding F11. A run is a subagent inside its master's session (`ddabc1f2b`), so it has no process
+// of its own and `runs.pid` has no production writer at all — `attach_pid` is `#[cfg(test)]` below
+// for exactly that reason. Keyed on `pid.is_some_and(alive)` this counted 0 over a box carrying ten
+// live runs: measured forge-vm 2026-09-16 13:30Z, 300 rows, all 13 written since the 12:31Z restart
+// with a NULL pid and 8 of them still open across 4 projects. That is the 2026-09-09 incident in the
+// guard above arriving through the one term nothing had re-read after the model changed.
+// cm:guard only a POSITIVE refutation removes a run from the count: `Alive` and `Unknown` both hold
+// the restart and only `Dead` — an `Exited` incarnation, or a pid this boot's process table denies —
+// releases it. `Unknown` is the subagent shape, so reading it as idle is the failure above; reading
+// `Dead` as busy would pin the box on a stale binary, which `recovery::reconcile` owns instead.
+// cm:guard this REVERSES `a_run_that_never_spawned_holds_nothing`, which asserted `pid: None`
+// counted zero. That test was true of the model where a pid arrived milliseconds later and is false
+// of the one that shipped: the declared-and-not-yet-bound window now reads as busy. Priced — an
+// unbound row defers a restart for up to `DRAIN_TIMEOUT_SECS` per attempt, never forever — and
+// bounded by `create_run_group`, which refuses a master a second unbound row, and by
+// `recovery::reconcile`, which closes the row when its master goes.
 fn count_live_runs(
     runs: &[crate::runner::ledger::Run],
     this_boot: &str,
     alive: impl Fn(u32) -> bool,
 ) -> usize {
+    use crate::runner::ledger::{Ledger, Liveness};
     runs.iter()
         .filter(|r| !r.is_parked_on_human())
         .filter(|r| r.boot_id == this_boot)
-        .filter(|r| r.pid.is_some_and(&alive))
+        .filter(|r| {
+            let pid_refuted = r.pid.is_some_and(|p| !alive(p));
+            !matches!(Ledger::liveness(r, this_boot, pid_refuted), Liveness::Dead)
+        })
         .count()
 }
 
@@ -916,13 +937,39 @@ mod tests {
         );
     }
 
-    // cm:guard `pid: None` is the mid-start window — the ledger row is written BEFORE anything spawns — and it must not hold the restart, because a run that never spawned has nothing to lose and a row that never gains a pid would block forever.
+    // cm:guard THE production shape, and the counter-example this file could not state before: a run
+    // is a SUBAGENT inside its master's session and has no process of its own, so `runs.pid` is
+    // NULL for every row this box writes. Measured forge-vm 2026-09-16 13:30Z — 300 rows, the 287
+    // written before the subagent model carrying a pid and all 13 written after it carrying none,
+    // 8 of those still open across 4 projects. A count keyed on the pid answers 0 over a full box.
     #[test]
-    fn a_run_that_never_spawned_holds_nothing() {
+    fn a_subagent_run_with_no_pid_is_work_in_flight() {
         let mut led = Ledger::open_in_memory().unwrap();
         seeded_run(&mut led, "run-1", "boot-a", None);
         let runs = led.unclosed_runs().unwrap();
-        assert_eq!(count_live_runs(&runs, "boot-a", |_| true), 0);
+        assert_eq!(
+            count_live_runs(&runs, "boot-a", |_| true),
+            1,
+            "a subagent has no pid of its own, so a counter that requires one reads an occupied box as idle and restarts through it"
+        );
+    }
+
+    // cm:guard the OTHER side of the same reversal, and the term that keeps the count from pinning
+    // the box: a subagent that stopped has no pid either, so `Exited` is the only thing separating a
+    // finished run from a working one. Counting it would make every completed run defer the next
+    // restart forever, which is the failure `DRAIN_TIMEOUT_SECS` exists to bound arriving from inside.
+    #[test]
+    fn a_subagent_that_stopped_does_not_hold_the_restart() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        seeded_run(&mut led, "run-1", "boot-a", None);
+        led.end_run("run-1", "subagent", "the subagent finished")
+            .unwrap();
+        let runs = led.unclosed_runs().unwrap();
+        assert_eq!(
+            count_live_runs(&runs, "boot-a", |_| true),
+            0,
+            "`SubagentStop` writes `exited`, and that is what says this run is over — without it a pid-less count never falls back to zero"
+        );
     }
 
     // cm:guard with every test passing `|| 0`, nothing else would notice the term being deleted — and deleting it is exactly the bug 0.12.5 fixed: the drain answered idle 0.7ms after `apply()` while 26 panes were live, and the restart took the tmux server with it.

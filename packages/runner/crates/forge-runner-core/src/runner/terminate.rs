@@ -185,7 +185,7 @@ pub async fn force_terminal(
         .await;
         // cm:guard the refusal is conditioned on the tree STILL holding uncommitted work, asked of that tree directly. Salvage answers `none` both when it could not preserve a diff and when there was no diff to preserve — a clean checkout carrying commits of its own arrives as the second, and reading it as the first refuses the release forever: the tree stays, the run never reaches terminal, and its issue is unavailable to every box. Measured on forge-vm 2026-09-11, six runs sat there. A removal cannot lose a commit, so a clean tree is safe to release whatever salvage made of it.
         if !committed(report.outcome)
-            && crate::workspace::worktree_reap::has_uncommitted_changes(worktree).await
+            && crate::workspace::worktree_reap::has_unsaved_changes(worktree).await
         {
             return Err(Error::Other(format!(
                 "refusing to {verb:?} run {run_id}: the diff in {} was not preserved ({})",
@@ -203,10 +203,22 @@ pub async fn force_terminal(
         // push is ever attempted, and the tree was removed as though the work had been published.
         // The commits did survive on this box, which is what the old reading was right about — and
         // nothing ever put them anywhere else.
+        // cm:guard the SAME `None` as the salvage path thirty lines above, and it is a refusal here
+        // for the same reason: a branch this box cannot read is a checkout whose publication cannot
+        // be asked about, and removing it anyway spends the one thing `publish_before_release`
+        // exists to check. It read `if let Some(branch)` until ISS-1050 finding F9 — the publish was
+        // skipped and the removal happened regardless, silently, on a path whose whole subject is
+        // work that only looks published because `@{u}` is a local memory of a push.
         if worktree.exists() {
-            if let Some(branch) = branch_of(worktree).await {
-                publish_before_release(run_id, verb, worktree, &branch).await?;
-            }
+            let branch = branch_of(worktree).await.ok_or_else(|| {
+                Error::Other(format!(
+                    "refusing to {verb:?} run {run_id}: cannot read the branch of {} — the \
+                     worktree stays, because a checkout whose branch this box cannot name is one \
+                     whose commits it cannot ask any remote about",
+                    run.worktree_path.display()
+                ))
+            })?;
+            publish_before_release(run_id, verb, worktree, &branch).await?;
             crate::workspace::worktree::remove_at(&what.repo_root.to_string_lossy(), worktree)
                 .await?;
         }
@@ -479,7 +491,112 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    // cm:guard THE ordering hazard, and it cannot be caught by any assertion on the end state: `held_worktrees` is `ended_by IS NULL`, so a reap tick between `end_run` and the release would delete the diff. Read from the SOURCE because what is under test is the order of two statements, and both orders produce the same final row.
+    // cm:guard the file `git has never been told about`, which is the case ISS-1050 criterion 19
+    // names and finding F8 found open. The fixture deliberately does NOT stage `work.txt`: an
+    // agent's new file is untracked until somebody adds it, and `--untracked-files=no` made
+    // `holds_work` answer false over it, so salvage never ran and `remove_at` took the only copy.
+    // The sibling test above reaches salvage by staging first, which is why this one had to exist.
+    #[tokio::test]
+    async fn an_untracked_file_is_work_and_is_preserved_before_the_checkout_goes() {
+        let (root, wt) = repo("untracked").await;
+        let mut led = ledger_for(&wt, Incarnation::Exited, "boot-a");
+        let (p, s, l) = (
+            Procs(Mutex::new(Vec::new())),
+            Sessions,
+            Leases(Mutex::new(HashSet::new())),
+        );
+
+        let out = force_terminal(
+            &mut led,
+            "run-1",
+            forcing(&root, "boot-a"),
+            ports(&p, &s, &l),
+        )
+        .await
+        .expect("a tree holding an untracked file must reach terminal, not refuse");
+
+        assert!(
+            committed(out.salvage.expect("salvage ran").outcome),
+            "salvage must have RUN and committed — a release that reached the clean branch never looked at the file"
+        );
+        assert!(
+            !wt.exists(),
+            "the worktree must still be released once it is safe"
+        );
+        let log = tokio::process::Command::new("git")
+            .args([
+                "log",
+                "--oneline",
+                "refs/remotes/origin/ISS-964",
+                "--",
+                "work.txt",
+            ])
+            .current_dir(&root)
+            .output()
+            .await
+            .unwrap();
+        assert!(
+            !log.stdout.is_empty(),
+            "the untracked file must be committed and published BEFORE the checkout goes — git cannot see a file it has never been told about, and the checkout was its only copy"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // cm:guard the SILENT half of the same door, and it is finding F9. Thirty lines apart the same
+    // `None` from `branch_of` was a hard refusal naming the tree on the salvage path and a skipped
+    // publish on the clean one. The clean path is where it costs the most: `holds_work` is false
+    // because `@{u}` and the remote-tracking refs are a MEMORY of a push, and the fresh fetch inside
+    // `publish_before_release` is the only thing that re-asks — so skipping it removed the checkout
+    // on the strength of the very memory the publication check exists to distrust.
+    #[tokio::test]
+    async fn a_clean_checkout_whose_branch_cannot_be_read_is_refused_by_name() {
+        let (root, wt) = repo("nobranch").await;
+        git(&wt, &["add", "work.txt"]).await;
+        git(&wt, &["commit", "-qm", "work"]).await;
+        git(&wt, &["push", "-q", "-u", "origin", "ISS-964"]).await;
+        // The remote loses the ref; this box keeps `refs/remotes/origin/ISS-964`, so every local
+        // reader still calls this tree clean and published.
+        git(
+            &root.with_extension("remote.git"),
+            &["update-ref", "-d", "refs/heads/ISS-964"],
+        )
+        .await;
+        // `symbolic-ref` is what `branch_of` asks, and a detached HEAD is what it cannot answer.
+        git(&wt, &["checkout", "--detach", "-q"]).await;
+
+        let mut led = ledger_for(&wt, Incarnation::Exited, "boot-a");
+        let (p, s, l) = (
+            Procs(Mutex::new(Vec::new())),
+            Sessions,
+            Leases(Mutex::new(HashSet::new())),
+        );
+
+        let err = force_terminal(
+            &mut led,
+            "run-1",
+            forcing(&root, "boot-a"),
+            ports(&p, &s, &l),
+        )
+        .await
+        .expect_err("a branch this box cannot read is not a licence to remove the checkout");
+
+        let said = format!("{err}");
+        assert!(
+            said.contains(&wt.to_string_lossy().to_string()),
+            "the refusal must name the tree it is refusing, or an operator cannot act on it: {said}"
+        );
+        assert!(
+            wt.exists(),
+            "the checkout must still be there after the refusal"
+        );
+        assert!(
+            led.run("run-1").unwrap().unwrap().ended_by.is_none(),
+            "a run whose tree was not released has not ended"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // cm:guard THE ordering hazard    // cm:guard THE ordering hazard, and it cannot be caught by any assertion on the end state: `held_worktrees` is `ended_by IS NULL`, so a reap tick between `end_run` and the release would delete the diff. Read from the SOURCE because what is under test is the order of two statements, and both orders produce the same final row.
     #[test]
     fn the_release_is_written_before_the_run_is_ended() {
         let body = SOURCE
