@@ -66,7 +66,9 @@ async function storedServers(): Promise<Record<string, unknown>> {
     sql`SELECT agent_config -> 'pipelineConfig' -> 'mcpServers' AS m
         FROM projects WHERE id = ${projectId}`,
   );
-  const row = (rows as unknown as { rows?: Array<{ m: unknown }> }).rows ?? (rows as unknown as Array<{ m: unknown }>);
+  const row =
+    (rows as unknown as { rows?: Array<{ m: unknown }> }).rows ??
+    (rows as unknown as Array<{ m: unknown }>);
   return ((row[0]?.m ?? {}) as Record<string, unknown>) ?? {};
 }
 

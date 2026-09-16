@@ -8,7 +8,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const agentConfig = { value: null as unknown };
-const limit = vi.fn(async () => (agentConfig.value === undefined ? [] : [{ agentConfig: agentConfig.value }]));
+const limit = vi.fn(async () =>
+  agentConfig.value === undefined ? [] : [{ agentConfig: agentConfig.value }],
+);
 const where = vi.fn(() => ({ limit }));
 const from = vi.fn(() => ({ where }));
 vi.mock('../db/client.js', () => ({ db: { select: vi.fn(() => ({ from })) } }));

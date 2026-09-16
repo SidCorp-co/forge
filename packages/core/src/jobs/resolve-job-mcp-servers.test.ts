@@ -225,9 +225,7 @@ describe('resolveJobMcpServers stage opt-out (ISS-1038)', () => {
 
   it('a stage `false` reaches the integration resolver as an absent sentinel', async () => {
     const { applyEpodsystemMcpServers } = await import('../integrations/epodsystem/resolver.js');
-    limitResults.push([
-      { agentConfig: { pipelineConfig: { mcpServers: { epodsystem: true } } } },
-    ]);
+    limitResults.push([{ agentConfig: { pipelineConfig: { mcpServers: { epodsystem: true } } } }]);
     await resolveJobMcpServers({
       projectId: 'p-1',
       stageMcpServers: { epodsystem: false },
@@ -242,9 +240,7 @@ describe('resolveJobMcpServers stage opt-out (ISS-1038)', () => {
 
   it('a project default sentinel with no stage override still reaches the resolver', async () => {
     const { applyEpodsystemMcpServers } = await import('../integrations/epodsystem/resolver.js');
-    limitResults.push([
-      { agentConfig: { pipelineConfig: { mcpServers: { epodsystem: true } } } },
-    ]);
+    limitResults.push([{ agentConfig: { pipelineConfig: { mcpServers: { epodsystem: true } } } }]);
     await resolveJobMcpServers({
       projectId: 'p-1',
       stageMcpServers: null,
@@ -256,9 +252,7 @@ describe('resolveJobMcpServers stage opt-out (ISS-1038)', () => {
 
   it('a stage that excludes a LABEL still hands the resolver the bare sentinel it inherited', async () => {
     const { applyEpodsystemMcpServers } = await import('../integrations/epodsystem/resolver.js');
-    limitResults.push([
-      { agentConfig: { pipelineConfig: { mcpServers: { epodsystem: true } } } },
-    ]);
+    limitResults.push([{ agentConfig: { pipelineConfig: { mcpServers: { epodsystem: true } } } }]);
     await resolveJobMcpServers({
       projectId: 'p-1',
       stageMcpServers: { epodsystem_store: false },
@@ -321,8 +315,9 @@ describe('panel/dispatcher parity for epodsystem (ISS-1038)', () => {
       const { projectDeclaredProviders } = await import('../pipeline/mcp-catalog.js');
       const { applyEpodsystemMcpServers } = await import('../integrations/epodsystem/resolver.js');
 
-      const pipelineConfig = { mcpServers: c.mcpServers, states: c.states };
-      const [declaration] = projectDeclaredProviders(pipelineConfig, ['epodsystem']);
+      const pipelineConfig = { mcpServers: c.mcpServers, states: c.states ?? null };
+      const declaration = projectDeclaredProviders(pipelineConfig, ['epodsystem'])[0];
+      if (!declaration) throw new Error('projectDeclaredProviders returned no row');
 
       // What the PANEL would say for this scope.
       const panelSaysDeclared = c.stage

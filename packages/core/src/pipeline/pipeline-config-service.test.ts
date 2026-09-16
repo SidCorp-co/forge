@@ -22,7 +22,9 @@ function buildSelectChain() {
   return chain;
 }
 
-const dbExecute = vi.fn(async () => undefined);
+// Takes the fragment so a test can read the statement the service issued
+// (ISS-1038); `updatePipelineConfig`'s own tests ignore it.
+const dbExecute = vi.fn(async (_query?: unknown) => undefined);
 
 vi.mock('../db/client.js', () => ({
   db: {

@@ -18,8 +18,8 @@
  */
 // cm:edge lockstep -> packages/core/src/integrations/mcp-preview-service.ts — both project the same declaration; a provider added to one is a provider the other stops describing
 
-import { eq } from 'drizzle-orm';
 import type { McpInjectionProvider, McpInjectionProviderState } from '@forge/contracts';
+import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import {

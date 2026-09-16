@@ -100,7 +100,10 @@ export function isKnownMcpServerName(name: string): boolean {
  *  needs to import the other. */
 export interface McpDeclarationSource {
   mcpServers?: Record<string, unknown> | null;
-  states?: Record<string, { mcpServers?: Record<string, unknown> | null } | null | undefined> | null;
+  states?: Record<
+    string,
+    { mcpServers?: Record<string, unknown> | null } | null | undefined
+  > | null;
 }
 
 /**
@@ -172,7 +175,9 @@ export function projectDeclaredProviders(
 ): ProviderDeclaration[] {
   const defaultExpanded = expandMcpServers(pipelineConfig.mcpServers);
   const declaresIn = (map: Record<string, unknown>, provider: string): boolean =>
-    Object.entries(map).some(([name, value]) => value === true && matchesIntegrationProvider(name, provider));
+    Object.entries(map).some(
+      ([name, value]) => value === true && matchesIntegrationProvider(name, provider),
+    );
 
   const stages = Object.entries(pipelineConfig.states ?? {}).filter(
     (entry): entry is [string, { mcpServers?: Record<string, unknown> | null }] =>

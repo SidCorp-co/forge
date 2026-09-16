@@ -14,7 +14,6 @@ const {
   expandMcpServers,
   projectDeclaredProviders,
   applyStageFalseOptOuts,
-  matchesIntegrationProvider,
 } = await import('./mcp-catalog.js');
 
 describe('MCP_CATALOG', () => {
@@ -259,10 +258,10 @@ describe('dispatch mcpServers merge order', () => {
 // on — so these cases pin the semantics rather than the wording.
 describe('projectDeclaredProviders (ISS-1038)', () => {
   it('reports a project-default sentinel as declared by the default and by no stage', () => {
-    const [epodsystem] = projectDeclaredProviders(
-      { mcpServers: { epodsystem: true } },
-      ['epodsystem'],
-    );
+    const epodsystem = projectDeclaredProviders({ mcpServers: { epodsystem: true } }, [
+      'epodsystem',
+    ])[0];
+    if (!epodsystem) throw new Error('no declaration row');
     expect(epodsystem).toEqual({
       provider: 'epodsystem',
       declaredDefault: true,
@@ -272,38 +271,41 @@ describe('projectDeclaredProviders (ISS-1038)', () => {
   });
 
   it('reports a stage that declares it on its own, with no project default', () => {
-    const [sentry] = projectDeclaredProviders(
+    const sentry = projectDeclaredProviders(
       { mcpServers: {}, states: { testing: { mcpServers: { sentry: true } } } },
       ['sentry'],
-    );
+    )[0];
+    if (!sentry) throw new Error('no declaration row');
     expect(sentry.declaredDefault).toBe(false);
     expect(sentry.declaredStates).toEqual(['testing']);
     expect(sentry.excludedStates).toEqual([]);
   });
 
   it('reports a stage that turns a project default back off as excluding it', () => {
-    const [postman] = projectDeclaredProviders(
+    const postman = projectDeclaredProviders(
       { mcpServers: { postman: true }, states: { open: { mcpServers: { postman: false } } } },
       ['postman'],
-    );
+    )[0];
+    if (!postman) throw new Error('no declaration row');
     expect(postman.declaredDefault).toBe(true);
     expect(postman.excludedStates).toEqual(['open']);
   });
 
   it('does not call a stage excluding when there is no project default to turn off', () => {
-    const [postman] = projectDeclaredProviders(
+    const postman = projectDeclaredProviders(
       { mcpServers: {}, states: { open: { mcpServers: { postman: false } } } },
       ['postman'],
-    );
+    )[0];
+    if (!postman) throw new Error('no declaration row');
     expect(postman.declaredDefault).toBe(false);
     expect(postman.excludedStates).toEqual([]);
   });
 
   it('matches an epodsystem_<label> sentinel as the epodsystem provider', () => {
-    const [epodsystem] = projectDeclaredProviders(
-      { mcpServers: { epodsystem_store_a: true } },
-      ['epodsystem'],
-    );
+    const epodsystem = projectDeclaredProviders({ mcpServers: { epodsystem_store_a: true } }, [
+      'epodsystem',
+    ])[0];
+    if (!epodsystem) throw new Error('no declaration row');
     expect(epodsystem.declaredDefault).toBe(true);
   });
 
@@ -312,24 +314,26 @@ describe('projectDeclaredProviders (ISS-1038)', () => {
   // matching key is still true has not excluded the provider — and a panel
   // saying it had would be reporting a state no runner agrees with.
   it('a label `false` beside an inherited bare sentinel does not exclude the provider', () => {
-    const [epodsystem] = projectDeclaredProviders(
+    const epodsystem = projectDeclaredProviders(
       {
         mcpServers: { epodsystem: true },
         states: { in_progress: { mcpServers: { epodsystem_store: false } } },
       },
       ['epodsystem'],
-    );
+    )[0];
+    if (!epodsystem) throw new Error('no declaration row');
     expect(epodsystem.excludedStates).toEqual([]);
   });
 
   it('a stage holding one matching true beside one matching false declares the provider', () => {
-    const [epodsystem] = projectDeclaredProviders(
+    const epodsystem = projectDeclaredProviders(
       {
         mcpServers: {},
         states: { in_progress: { mcpServers: { epodsystem_a: true, epodsystem_b: false } } },
       },
       ['epodsystem'],
-    );
+    )[0];
+    if (!epodsystem) throw new Error('no declaration row');
     expect(epodsystem.declaredStates).toEqual(['in_progress']);
     expect(epodsystem.excludedStates).toEqual([]);
   });
@@ -338,10 +342,11 @@ describe('projectDeclaredProviders (ISS-1038)', () => {
     // `expandMcpServers` passes an object through verbatim as a custom spec and
     // the resolvers test for `=== true`, so this would inject nothing. Reading
     // it as declared is how the panel would promise a server no agent receives.
-    const [sentry] = projectDeclaredProviders(
+    const sentry = projectDeclaredProviders(
       { mcpServers: { sentry: { type: 'stdio', command: 'npx' } } },
       ['sentry'],
-    );
+    )[0];
+    if (!sentry) throw new Error('no declaration row');
     expect(sentry.declaredDefault).toBe(false);
   });
 

@@ -31,11 +31,7 @@ vi.mock('../lib/authz.js', () => ({
   },
   orgRoleAtLeast: (role: string | null, min: string) =>
     role !== null && ORG_ORDER.indexOf(role) >= ORG_ORDER.indexOf(min),
-  assertOrgRoleOnProject: (
-    a: { orgRole: string | null },
-    min: string,
-    message?: string,
-  ) => {
+  assertOrgRoleOnProject: (a: { orgRole: string | null }, min: string, message?: string) => {
     if (a.orgRole === null || ORG_ORDER.indexOf(a.orgRole) < ORG_ORDER.indexOf(min)) {
       throw new HTTPException(403, {
         message: message ?? 'forbidden',
@@ -65,7 +61,10 @@ const injectionState = vi.fn(async () => [
     configured: true,
   },
 ]);
-const setMcpServerSentinel = vi.fn(async () => ({ pipelineConfig: {}, warnings: [] }));
+const setMcpServerSentinel = vi.fn(async (_input: unknown) => ({
+  pipelineConfig: {},
+  warnings: [] as string[],
+}));
 
 vi.mock('./mcp-injection-service.js', () => ({
   MCP_INJECTION_PROVIDERS: ['postman', 'epodsystem', 'sentry'] as const,
@@ -74,7 +73,7 @@ vi.mock('./mcp-injection-service.js', () => ({
 }));
 
 vi.mock('../pipeline/pipeline-config-service.js', () => ({
-  setMcpServerSentinel: (input: unknown) => setMcpServerSentinel(input as never),
+  setMcpServerSentinel: (input: unknown) => setMcpServerSentinel(input),
 }));
 
 vi.mock('../projects/pipeline-config-http.js', () => ({
@@ -85,11 +84,15 @@ const { mcpInjectionRoutes } = await import('./mcp-injection-routes.js');
 const { errorHandler } = await import('../middleware/error.js');
 const { requestId } = await import('../middleware/request-id.js');
 
+type TestVars = { Variables: import('../middleware/request-id.js').RequestIdVars };
+
 function buildApp() {
-  const app = new Hono();
+  const app = new Hono<TestVars>();
   app.use('*', requestId());
   app.use('*', async (c, next) => {
-    c.set('userId', 'u-1');
+    // The real router sets this in `requireAuth()`, which is mounted a level up
+    // on `integrationsRoutes` rather than here.
+    (c as unknown as { set: (k: string, v: string) => void }).set('userId', 'u-1');
     await next();
   });
   app.route('/api/projects', mcpInjectionRoutes);
@@ -100,7 +103,10 @@ function buildApp() {
 const PROJECT = '11111111-1111-4111-8111-111111111111';
 const GET_PATH = `/api/projects/${PROJECT}/integrations/mcp-injection`;
 
-function asOrg(orgRole: 'owner' | 'admin' | 'member' | null, role: 'admin' | 'member' | null = 'member') {
+function asOrg(
+  orgRole: 'owner' | 'admin' | 'member' | null,
+  role: 'admin' | 'member' | null = 'member',
+) {
   access.value = { projectId: PROJECT, orgId: 'o-1', role, orgRole };
 }
 
