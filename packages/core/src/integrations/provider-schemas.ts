@@ -133,6 +133,8 @@ const BINDING_CONFIG_KEYS: Record<string, readonly string[]> = {
   sentry: RELEASE_CHANNEL_KEYS,
   // cm:guard `installationId` is binding-tier with owner/repo, not connection-tier — ONE App can hold several installations, and splitProviderConfig drops from the binding every key missing here, so leaving it out lets a bind succeed with the repository recorded and no way to mint a token for it (adapter.ts reads all three together)
   github: ['installationId', 'owner', 'repo', ...RELEASE_CHANNEL_KEYS],
+  // cm:edge contract -> packages/core/src/integrations/provider-schemas.ts — `defaultSpreadsheetId` is binding-tier because ONE service account is shared org-wide while the sheet it reads is the project's own; deleting it from this list moves the key to the connection and silently strips it from every PATCH (ISS-1036)
+  google: ['defaultSpreadsheetId', ...RELEASE_CHANNEL_KEYS],
   agent: RELEASE_CHANNEL_KEYS,
 };
 
@@ -252,6 +254,51 @@ const githubSecretsSchema = z.object({
   webhookSecret: z.string().min(8).max(500),
 });
 
+// ISS-1036 — Google service account. The credential is the account's JSON key
+// file, kept whole (see rotation.ts for why the file and not the PEM). Config
+// is identity only: `clientEmail` and `projectId` are READ BACK OUT of the key
+// by the healthcheck, mirroring epodsystem, so an operator transcribes nothing
+// Forge is about to discover.
+const googleConfigBase = z.object({
+  clientEmail: z.string().min(1).max(320).optional(),
+  projectId: z.string().min(1).max(200).optional(),
+  // cm:edge contract -> packages/core/src/integrations/google/commands.ts — the per-project sheet. It MUST stay listed in BINDING_CONFIG_KEYS below: a binding-tier key the provider does not declare there is stripped on PATCH (zod objects drop unknown keys) and the setting then reads as never-saved.
+  defaultSpreadsheetId: z.string().min(1).max(200).optional(),
+  ...releaseChannelFields,
+});
+
+const SERVICE_ACCOUNT_SHAPE_REFUSAL =
+  'serviceAccountJson must be the whole service-account key file Google issued — a JSON object with "type":"service_account", "client_email" and "private_key". Download it from the Google Cloud console under IAM & Admin → Service Accounts → Keys → Add key → JSON, and paste the file unchanged.';
+
+// cm:guard the file is validated for SHAPE here and never reshaped — Forge stores the bytes Google issued, so a key whose `private_key_id` or `token_uri` Forge did not think to model still signs correctly. Parsing it into named columns is how a future Google field goes missing in silence.
+const googleSecretsSchema = z.object({
+  serviceAccountJson: z
+    .string()
+    .min(100)
+    .max(20000)
+    .superRefine((value, ctx) => {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(value);
+      } catch {
+        ctx.addIssue({ code: 'custom', message: SERVICE_ACCOUNT_SHAPE_REFUSAL });
+        return;
+      }
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        ctx.addIssue({ code: 'custom', message: SERVICE_ACCOUNT_SHAPE_REFUSAL });
+        return;
+      }
+      const key = parsed as Record<string, unknown>;
+      const ok =
+        key.type === 'service_account' &&
+        typeof key.client_email === 'string' &&
+        key.client_email.length > 0 &&
+        typeof key.private_key === 'string' &&
+        key.private_key.includes('PRIVATE KEY');
+      if (!ok) ctx.addIssue({ code: 'custom', message: SERVICE_ACCOUNT_SHAPE_REFUSAL });
+    }),
+});
+
 // cm:why the release channel `agent` is declared here rather than left as free-text: the REST create path validates through the discriminated union below, so a provider absent from it cannot be created at all — `provider` being a `text` column only means no MIGRATION is needed. It carries no credential and has no adapter because nothing is integrated: the deploy is the project's own script, run by the release session on a box that already holds the key.
 const agentReleaseConfigSchema = z.object(releaseChannelFields);
 
@@ -307,6 +354,13 @@ export const createSchema = z.discriminatedUnion('provider', [
     environment: environmentSchema.default('prod'),
     config: githubConfigBase,
     secrets: githubSecretsSchema,
+    orgId: z.uuid().optional(),
+  }),
+  z.object({
+    provider: z.literal('google'),
+    environment: environmentSchema.default('prod'),
+    config: googleConfigBase,
+    secrets: googleSecretsSchema,
     orgId: z.uuid().optional(),
   }),
   z.object({
@@ -372,6 +426,13 @@ export const connectionCreateSchema = z.discriminatedUnion('provider', [
     secrets: githubSecretsSchema,
     orgId: z.uuid().optional(),
   }),
+  z.object({
+    provider: z.literal('google'),
+    displayName: z.string().min(1).max(200).optional(),
+    config: googleConfigBase,
+    secrets: googleSecretsSchema,
+    orgId: z.uuid().optional(),
+  }),
 ]);
 
 export const connectionUpdateSchema = z.object({
@@ -389,6 +450,7 @@ export function configSchemaForProvider(provider: string): z.ZodTypeAny {
   if (provider === 'sentry') return sentryConfigBase.partial();
   if (provider === 'rocketchat') return rocketchatConfigBase.partial();
   if (provider === 'github') return githubConfigBase.partial();
+  if (provider === 'google') return googleConfigBase.partial();
   if (provider === 'agent') return agentReleaseConfigSchema.partial();
   return coolifyConfigSchema.partial();
 }
@@ -399,6 +461,7 @@ function secretsSchemaForProvider(provider: RotatingProvider): z.ZodTypeAny {
   if (provider === 'sentry') return sentrySecretsSchema.partial();
   if (provider === 'rocketchat') return rocketchatSecretsSchema.partial();
   if (provider === 'github') return githubSecretsSchema.partial();
+  if (provider === 'google') return googleSecretsSchema.partial();
   return postmanSecretsSchema.partial();
 }
 
@@ -407,6 +470,7 @@ function primaryFieldForProvider(provider: RotatingProvider): string {
   if (provider === 'coolify') return 'apiToken';
   if (provider === 'sentry' || provider === 'rocketchat') return 'authToken';
   if (provider === 'github') return 'privateKey';
+  if (provider === 'google') return 'serviceAccountJson';
   return 'apiKey';
 }
 

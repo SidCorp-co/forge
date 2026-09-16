@@ -22,6 +22,7 @@ export const PROVIDER_LABEL: Record<string, string> = {
   sentry: "Sentry",
   rocketchat: "Rocket.Chat",
   github: "GitHub",
+  google: "Google Sheets",
 };
 
 /** One provider→icon map for every integrations surface (card, drawers, panel). */
@@ -32,6 +33,7 @@ export const PROVIDER_ICON: Record<string, IconName> = {
   sentry: "shield",
   rocketchat: "inbox",
   github: "github",
+  google: "rows",
 };
 
 /** The bare icon + text + tinted pill; feed it any `{icon,label,fg,bg}` meta. */

@@ -18,6 +18,7 @@ import { forgeCollaboratorsTool } from './tools/forge-collaborators.js';
 import { forgeCommentsTool } from './tools/forge-comments.js';
 import { forgeConfigTool } from './tools/forge-config.js';
 import { forgeCoolifyDeployTool } from './tools/forge-coolify-deploy.js';
+import { forgeGoogleSheetsTool } from './tools/forge-google-sheets.js';
 import { forgeFeedbackTool } from './tools/forge-feedback.js';
 import { forgeGuideTool } from './tools/forge-guide.js';
 import { forgeHealthTool } from './tools/forge-health.js';
@@ -120,6 +121,8 @@ import { patEffectiveProjectIds, resolveProjectIdFromSlug } from './tools/projec
  *  - `forge_projects.create` / `.update` / `.archive` — user-facing project
  *    provisioning over MCP. The caller always becomes owner of a created
  *    project; there is no cross-tenant create path.
+ *  - `forge_google_sheets` — action dispatcher (list/info/read/update/append)
+ *    reaching a project's bound Google service account; core holds the key.
  *  - `forge_coolify_deploy` — action dispatcher (list/deploy/status) for the
  *    Coolify deploy step the stock pipeline skills invoke (ISS-242). Input:
  *    `{ action: 'list'|'deploy'|'status', projectId?, issueId?, integrationId? }`.
@@ -197,6 +200,7 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeConfigTool(ctx),
     forgeKnowledgeTool(ctx),
     forgeCoolifyDeployTool(ctx),
+    forgeGoogleSheetsTool(ctx),
     forgeStorefrontTargetTool(ctx),
     forgeJobsListTool(ctx),
     forgeJobsGetTool(ctx),

@@ -13,6 +13,8 @@ import type {
   CoolifyTargetInput,
   EpodsystemConfigInput,
   EpodsystemSecretsInput,
+  GoogleConfigInput,
+  GoogleSecretsInput,
   IntegrationHealthResult,
   PostmanConfigInput,
   PostmanMode,
@@ -42,6 +44,8 @@ export type {
   SentrySecretsInput,
   RocketchatConfigInput,
   RocketchatSecretsInput,
+  GoogleConfigInput,
+  GoogleSecretsInput,
     // The project-facing binding summary + the owner-facing connection summary,
   // plus the connection CRUD request/response envelopes. All exclude secret
   // bytes by construction (only `hasSecrets`/`integrationSecretSet` booleans).
@@ -205,6 +209,9 @@ export interface ProviderConfig {
   // rocketchat
   serverUrl?: string;
   rids?: string[];
+  // google
+  clientEmail?: string;
+  defaultSpreadsheetId?: string;
 }
 
 /** One Rocket.Chat room the bot is a member of (room picker source). */
@@ -254,6 +261,13 @@ export type CreateIntegrationInput =
       config: RocketchatConfigInput;
       secrets: RocketchatSecretsInput;
       orgId?: string;
+    }
+  | {
+      provider: "google";
+      environment?: "staging" | "prod";
+      config: GoogleConfigInput;
+      secrets: GoogleSecretsInput;
+      orgId?: string;
     };
 
 /**
@@ -269,12 +283,14 @@ export interface UpdateIntegrationInput {
     | Partial<EpodsystemConfigInput>
     | Partial<PostmanConfigInput>
     | Partial<SentryConfigInput>
-    | Partial<RocketchatConfigInput>;
+    | Partial<RocketchatConfigInput>
+    | Partial<GoogleConfigInput>;
   secrets?:
     | Partial<CoolifySecretsInput>
     | Partial<EpodsystemSecretsInput>
     | Partial<PostmanSecretsInput>
     | Partial<SentrySecretsInput>
-    | Partial<RocketchatSecretsInput>;
+    | Partial<RocketchatSecretsInput>
+    | Partial<GoogleSecretsInput>;
   active?: boolean;
 }

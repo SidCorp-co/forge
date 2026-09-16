@@ -52,6 +52,7 @@ export const DRILLABLE_PROVIDERS = [
   "sentry",
   "rocketchat",
   "github",
+  "google",
 ] as const;
 export type DrillableProvider = (typeof DRILLABLE_PROVIDERS)[number];
 
@@ -221,7 +222,8 @@ export function getCapabilities(card: Pick<StatusCard, "meta"> | undefined | nul
 
 /** Keys whose values must never reach the DOM (ADR 0013). Matched
  *  case-insensitively against object keys when redacting free-form payloads. */
-const SECRET_KEY_RE = /(api[-_]?key|api[-_]?token|secret|webhook[-_]?secret|password|authorization|token|bearer|credential)/i;
+// cm:guard `private[-_]?key` and `service[-_]?account` are NOT covered by the `token`/`secret` alternatives beside them — a GitHub App PEM and a Google service-account key file carry neither word, so before ISS-1036 either would have rendered into the DOM verbatim. Adding a credential shape to the vault means adding its key name here.
+const SECRET_KEY_RE = /(api[-_]?key|api[-_]?token|private[-_]?key|service[-_]?account|secret|webhook[-_]?secret|password|authorization|token|bearer|credential)/i;
 
 export const REDACTED = "[redacted]";
 

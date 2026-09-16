@@ -27,6 +27,11 @@ export const INTEGRATION_USAGE: Record<string, IntegrationUsage> = {
       'Run API collections / target requests: read the write-target from\n' +
       '`GET /api/projects/:projectId/integrations/postman-target`, then use the `mcp__postman__*` tools.',
   },
+  google: {
+    usage:
+      'Read and write the project\'s bound Google Sheets via the `forge_google_sheets` tool. Core holds the service-account key — there is none to fetch, and a sheet is reachable only once it is shared with the account.',
+    guide: 'google-sheets',
+  },
   epodsystem: {
     usage:
       'Read store + theme context via `forge_storefront_target` and customize the storefront via the `mcp__epodsystem__*` shop tools. Always build on the DRAFT theme; publishing promotes draft → main.',
