@@ -32,8 +32,10 @@ export type BodyHref =
   | { kind: "in-app"; href: string }
   /** A file on the core. New tab, resolved against the core origin. */
   | { kind: "core-file"; href: string }
-  /** An absolute URL, or a `mailto:`/`tel:`. New tab, as written. */
-  | { kind: "external"; href: string }
+  /** An absolute URL, or a `mailto:`/`tel:`. New tab, as written. `scheme` is
+   *  the lowercased scheme with its colon, or empty for a protocol-relative
+   *  URL, which takes the page's. */
+  | { kind: "external"; href: string; scheme: string }
   /** Neither origin can be derived. Refused, loudly, with this reason. */
   | { kind: "unresolvable"; href: string; reason: string };
 
@@ -66,12 +68,13 @@ function parsedPath(href: string): { path: string; rest: string } | null {
 export function classifyBodyHref(href: string): BodyHref {
   if (!href) return { kind: "unresolvable", href, reason: "the link has no target" };
   if (href.startsWith("#")) return { kind: "anchor", href };
-  if (href.startsWith("//")) return { kind: "external", href };
+  if (href.startsWith("//")) return { kind: "external", href, scheme: "" };
 
   const scheme = SCHEME.exec(href)?.[0];
   if (scheme) {
-    return SAFE_SCHEMES.has(scheme.toLowerCase())
-      ? { kind: "external", href }
+    const lower = scheme.toLowerCase();
+    return SAFE_SCHEMES.has(lower)
+      ? { kind: "external", href, scheme: lower }
       : { kind: "unresolvable", href, reason: `${scheme} links are not opened from a body` };
   }
 
@@ -87,4 +90,20 @@ export function classifyBodyHref(href: string): BodyHref {
     href,
     reason: "a relative path here belongs to neither the app nor the core",
   };
+}
+
+/** Schemes that can address a file. A protocol-relative URL takes the page's,
+ *  which is one of these. */
+const FILE_SCHEMES = new Set(["", "http:", "https:"]);
+
+/**
+ * Whether a classification names something an `<img>` can load. `mailto:` and
+ * `tel:` are navigable and are not files, so an image pointed at one is refused
+ * rather than drawn broken — and an anchor names a place on this page, not a
+ * file at all. Which scheme is which lives here, beside the rule that read it;
+ * what to draw from the answer is the renderer's.
+ */
+export function addressesAFile(target: BodyHref): boolean {
+  if (target.kind === "in-app" || target.kind === "core-file") return true;
+  return target.kind === "external" && FILE_SCHEMES.has(target.scheme);
 }

@@ -8,7 +8,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { type BodyHref, classifyBodyHref } from "@/lib/utils/body-href";
+import { addressesAFile, type BodyHref, classifyBodyHref } from "@/lib/utils/body-href";
 import { COMPACT_TAG_CLASS, LINK_CLASS } from "./body-tags";
 
 /** An href that names neither origin is shown as refused, in words on the page
@@ -28,6 +28,13 @@ function Refused({ noun, target, reason, children }: {
       </span>
     </span>
   );
+}
+
+/** Why a classification does not name an image. */
+function imageRefusal(target: BodyHref): string {
+  if (target.kind === "anchor") return "an anchor names a place on this page, not an image";
+  if (target.kind === "external") return `${target.scheme} names a person, not an image`;
+  return target.kind === "unresolvable" ? target.reason : "";
 }
 
 /** A link in a body, drawn against the origin its href belongs to: an app route
@@ -62,15 +69,13 @@ export function BodyLink({ href, children }: { href?: string; children: ReactNod
   );
 }
 
-/** An image in a body. Every classification that names an origin draws an
- *  `<img>` from it; an anchor and an unresolvable href draw the refusal, from
- *  the alt text, because neither addresses an image. */
+/** An image in a body. Every classification that addresses a file draws an
+ *  `<img>` from it; everything else draws the refusal, from the alt text. */
 export function BodyImage({ src, alt }: { src?: string; alt?: string }): ReactNode {
   const target: BodyHref = classifyBodyHref(src ?? "");
-  if (target.kind === "anchor" || target.kind === "unresolvable") {
-    const reason = target.kind === "anchor" ? "an anchor names no image" : target.reason;
+  if (!addressesAFile(target)) {
     return (
-      <Refused noun="image" target={src ?? ""} reason={reason}>
+      <Refused noun="image" target={src ?? ""} reason={imageRefusal(target)}>
         {alt || "image"}
       </Refused>
     );

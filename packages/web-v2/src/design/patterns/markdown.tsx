@@ -17,6 +17,9 @@ import { BodyImage, BodyLink } from "./body-link";
 import { CODE_BLOCK_CLASS, CODE_INLINE_CLASS, COMPACT_TAG_CLASS as T, LINK_CLASS } from "./body-tags";
 import { MermaidDiagram } from "./mermaid";
 
+// cm:guard `urlTransform` is the IDENTITY on purpose, so `classifyBodyHref` is the only thing that decides what an href may be. react-markdown's own `defaultUrlTransform` allows `https?|ircs?|mailto|xmpp` and empties everything else, which is a second sanitizer with a different list: it drops `tel:` that `body-view.tsx` renders fine, so the two renderers disagreed on the same body. Removing this prop restores that disagreement; the unsafe schemes it used to blank are refused by name in `body-href.ts` instead.
+const sameUrl = (url: string) => url;
+
 /** A relative link to another doc page (not scheme:/protocol-relative/absolute/
  *  anchor). Covers slug links (`pair-a-runner`) and legacy `.md` links. */
 function isRelativeDocLink(href: string): boolean {
@@ -162,7 +165,7 @@ export function Markdown({ children, className, variant = "compact", docBasePath
   }, [variant, docBasePath]);
   return (
     <div className={cn("min-w-0 max-w-full break-words [overflow-wrap:anywhere]", className)}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components} urlTransform={sameUrl}>
         {children}
       </ReactMarkdown>
     </div>

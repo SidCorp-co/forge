@@ -104,6 +104,20 @@ describe("a link in a body", () => {
     }
   });
 
+  it("keeps a tel: link on both renderers — react-markdown's own sanitizer would drop it", () => {
+    for (const link of bothLinks("tel:+4412345")) {
+      expect(link).toHaveAttribute("href", "tel:+4412345");
+      expect(link).toHaveAttribute("target", "_blank");
+    }
+    expect(document.body.textContent).not.toContain("link not shown");
+  });
+
+  it("keeps a mailto: link on both renderers", () => {
+    for (const link of bothLinks("mailto:a@b.co")) {
+      expect(link).toHaveAttribute("href", "mailto:a@b.co");
+    }
+  });
+
   it("refuses a javascript: href rather than putting it on the page", () => {
     const [mdLink, htmlLink] = bothLinks("javascript:alert(1)");
     expect(mdLink).toBeNull();
@@ -129,6 +143,24 @@ describe("an image in a body", () => {
     for (const img of bothImages("/api/attachments/a1/download")) {
       expect(img).toHaveAttribute("src", `${CORE}/api/attachments/a1/download`);
     }
+  });
+
+  it.each(["mailto:a@b.co", "tel:+4412345"])(
+    "refuses %s as an image src — it navigates to a person, not a file",
+    (src) => {
+      const [mdImg, htmlImg] = bothImages(src);
+      expect(mdImg).toBeNull();
+      expect(htmlImg).toBeNull();
+      expect(document.body.textContent).toContain(`image not shown: ${src}`);
+      expect(document.body.textContent).toContain("names a person, not an image");
+    },
+  );
+
+  it("refuses an anchor as an image src", () => {
+    const [mdImg, htmlImg] = bothImages("#section");
+    expect(mdImg).toBeNull();
+    expect(htmlImg).toBeNull();
+    expect(document.body.textContent).toContain("not an image");
   });
 
   it("refuses an unresolvable src in words, from the alt text", () => {

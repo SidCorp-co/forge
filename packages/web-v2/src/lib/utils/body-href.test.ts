@@ -7,7 +7,7 @@ vi.hoisted(() => {
 });
 
 import { describe, expect, it, vi } from "vitest";
-import { classifyBodyHref } from "./body-href";
+import { addressesAFile, classifyBodyHref } from "./body-href";
 import { coreFileUrl } from "./core-url";
 
 const CORE = "https://core.example";
@@ -71,17 +71,21 @@ describe("classifyBodyHref", () => {
     expect(answer.href).toBe("%2fapi/logo.png");
   });
 
-  it.each(["https://example.com/x", "http://example.com/x", "mailto:a@b.co", "tel:+4412345"])(
-    "passes %s through untouched",
-    (href) => {
-      expect(classifyBodyHref(href)).toEqual({ kind: "external", href });
-    },
-  );
+  it.each([
+    ["https://example.com/x", "https:"],
+    ["http://example.com/x", "http:"],
+    ["HTTPS://example.com/x", "https:"],
+    ["mailto:a@b.co", "mailto:"],
+    ["tel:+4412345", "tel:"],
+  ])("passes %s through untouched, carrying its scheme", (href, scheme) => {
+    expect(classifyBodyHref(href)).toEqual({ kind: "external", href, scheme });
+  });
 
-  it("treats a protocol-relative URL as external", () => {
+  it("treats a protocol-relative URL as external, with the page's scheme", () => {
     expect(classifyBodyHref("//cdn.example.com/x.png")).toEqual({
       kind: "external",
       href: "//cdn.example.com/x.png",
+      scheme: "",
     });
   });
 
@@ -113,4 +117,20 @@ describe("classifyBodyHref", () => {
       reason: "the link has no target",
     });
   });
+});
+
+describe("addressesAFile", () => {
+  it.each(["/icon.png", "/api/attachments/a1/download", "https://cdn.example/x.png", "//cdn/x.png"])(
+    "says %s does",
+    (href) => {
+      expect(addressesAFile(classifyBodyHref(href))).toBe(true);
+    },
+  );
+
+  it.each(["mailto:a@b.co", "tel:+4412345", "#section", "shots/one.png", "javascript:x"])(
+    "says %s does not",
+    (href) => {
+      expect(addressesAFile(classifyBodyHref(href))).toBe(false);
+    },
+  );
 });
