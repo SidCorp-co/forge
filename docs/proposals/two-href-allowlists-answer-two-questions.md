@@ -55,3 +55,15 @@ href was refused. `tel:` is the one where the two rules reach opposite answers.
    from a warning on a response nobody reads.
 
 Settling 2 alone would remove three of the four disagreements without widening what is safe.
+
+## Honest costs
+
+What settling each question above takes from whoever settles it — the price of the fix, not of the
+disagreement.
+
+| Choice | What it costs |
+|---|---|
+| Add `tel:` to `SAFE_URL` | The stored-body allowlist stops being the set of schemes core has a use for and becomes a judgement about which schemes are safe. Every later scheme — `sms:`, `geo:`, `webcal:` — arrives as the same argument with no rule to settle it, and the argument is now about safety rather than about need. |
+| Store the href and let the renderer refuse it | Bodies begin carrying strings core has declined to vouch for, so every consumer of `nodes` — not only this web app — inherits the obligation to refuse them. A consumer that renders an href without asking is a `javascript:` away from the vulnerability the drop exists to prevent, and the drop is what makes that impossible today. |
+| Refuse a relative-to-the-page href loudly on the write | A write that succeeded with a warning starts failing. Every producer of a `format: html` body — the plugin's record writers among them — has to be audited for hrefs it emits today, and a body that has been written the same way for months becomes a 400 on the next send. |
+| Settle none of it | The two rules keep disagreeing about four hrefs. Three of the four cost a reader only the name of the link that was refused; `tel:` costs them the link. The next person to walk a body renderer measures this again from scratch, which is the cost this file is written to avoid and only partly can. |
