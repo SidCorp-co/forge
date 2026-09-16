@@ -361,6 +361,9 @@ mod tests {
             ended_by: Some("subagent".into()),
             ended_reason: Some("stopped".into()),
             agent_id: Some("child-1".into()),
+            resume_choice: None,
+            resume_choice_why: None,
+            resume_owed_at: None,
         }
     }
 

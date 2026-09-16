@@ -68,6 +68,20 @@ enum Request {
         issue_keys: Vec<String>,
         worktree_path: String,
     },
+    /// "I have decided what to do about a run I inherited when this pane was resumed."
+    // cm:guard this records a CHOICE and performs none of it. `continue`, `restart` and `leave` are
+    // three words a master writes down; nothing here starts, kills or reopens anything, because
+    // deciding what happens to work whose owner cannot be asked is the master's, and a verb that
+    // also acted would move that judgement into the box (ISS-1050 criterion 28).
+    #[serde(rename_all = "camelCase")]
+    RunChoice {
+        token: String,
+        run_id: String,
+        /// `continue`, `restart` or `leave`, and nothing else.
+        choice: String,
+        /// Why, in the master's own words. Stored and printed, never parsed.
+        why: String,
+    },
     /// "That run is finished" — or "the subagent I declared never started".
     #[serde(rename_all = "camelCase")]
     RunClose {
@@ -83,6 +97,7 @@ impl Request {
         match self {
             Request::AgentEvent { token, .. }
             | Request::RunDeclare { token, .. }
+            | Request::RunChoice { token, .. }
             | Request::RunClose { token, .. } => token,
         }
     }
@@ -244,6 +259,58 @@ fn agent_event(
     }
 }
 
+/// The three words a resumed master may write about a run it inherited.
+// cm:guard a CLOSED set, refused by name. The master is handed raw fields and asked to judge; the
+// judgement is its own, but the vocabulary is not, because a gate that accepts any string cannot
+// tell a decision from a typo and would let "contineu" satisfy it silently (ISS-1050 criterion 29).
+pub const RESUME_CHOICES: &[&str] = &["continue", "restart", "leave"];
+
+/// Record what a resumed master decided about one run it inherited.
+///
+/// Writes a word and a reason. Starts nothing, kills nothing, reopens nothing.
+// cm:guard the reason is REQUIRED and is not checked for content. Criterion 29 asks for the choice
+// AND why; a choice with an empty reason is a record nobody can act on six hours later, and a box
+// that judged the prose would be marking the master's homework.
+fn run_choice(
+    ctl: &Arc<Control>,
+    run_id: &str,
+    choice: &str,
+    why: &str,
+    session_id: &str,
+) -> ClaimReply {
+    if !RESUME_CHOICES.contains(&choice) {
+        return ClaimReply::refused(format!(
+            "`{choice}` is not one of the three choices a resumed master may record: {}",
+            RESUME_CHOICES.join(", ")
+        ));
+    }
+    if why.trim().is_empty() {
+        return ClaimReply::refused(
+            "a choice needs its reason — say why in your own words, because the record is what the next reader has",
+        );
+    }
+    let mut held = ctl.ledger.lock().expect("ledger poisoned");
+    let Some(led) = held.as_mut() else {
+        return ClaimReply::refused("this daemon has no ledger open, so it can record nothing");
+    };
+    match led.record_resume_choice(run_id, session_id, choice, why) {
+        Ok(true) => {
+            tracing::info!("[control] run {run_id}: this master chose to {choice} — {why}");
+            ClaimReply {
+                ok: true,
+                job_id: Some(run_id.to_string()),
+                agent_session_id: Some(session_id.to_string()),
+                issue_key: None,
+                reason: Some(choice.to_string()),
+            }
+        }
+        Ok(false) => ClaimReply::refused(format!(
+            "run {run_id} is not one this pane inherited, so it is not this pane's to answer for"
+        )),
+        Err(e) => ClaimReply::refused(e.to_string()),
+    }
+}
+
 /// Record that a master is about to hand these issues to a subagent.
 ///
 /// Writes a row and answers its id. Starts nothing, selects nothing, and moves
@@ -272,6 +339,41 @@ fn run_declare(
     let Some(led) = held.as_mut() else {
         return ClaimReply::refused("this daemon has no ledger open, so it can record nothing");
     };
+    // cm:guard the gate for criterion 29, and it is a REFUSAL rather than a reminder. A resumed
+    // pane is handed the runs it inherited and asked to say what happens to each; a brief that only
+    // asks is one a master can read past, and the issues under those runs then sit claimed by work
+    // nobody decided to continue while the pane starts something new. Refusing the next declaration
+    // is the only place that can be made to hold.
+    // cm:guard it names the runs and the three words rather than saying "answer first". A refusal
+    // that does not say what it wants is one the caller retries.
+    match led.runs_awaiting_choice(session_id, &ctl.boot_id) {
+        Ok(pending) if !pending.is_empty() => {
+            let names: Vec<String> = pending
+                .iter()
+                .map(|r| {
+                    let keys = led
+                        .issues(&r.run_id)
+                        .map(|m| {
+                            m.iter()
+                                .map(|i| i.issue_key.clone())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        })
+                        .unwrap_or_default();
+                    format!("{} ({keys})", r.run_id)
+                })
+                .collect();
+            return ClaimReply::refused(format!(
+                "this pane was resumed holding {} run(s) it has not answered for yet: {}. Say what happens to each — `continue`, `restart` or `leave`, with your reason — before declaring new work.",
+                pending.len(),
+                names.join("; ")
+            ));
+        }
+        Ok(_) => {}
+        Err(e) => {
+            return ClaimReply::refused(format!("cannot read this pane's inherited runs: {e}"));
+        }
+    }
     match led.create_run_group(crate::runner::ledger::NewRun {
         run_id: run_id.clone(),
         project_id: project_id.to_string(),
@@ -440,6 +542,12 @@ fn serve_request(ctl: &Arc<Control>, req: Request, session_id: &str) -> ClaimRep
             worktree_path,
             ..
         } => run_declare(ctl, &project_id, &issue_keys, &worktree_path, session_id),
+        Request::RunChoice {
+            run_id,
+            choice,
+            why,
+            ..
+        } => run_choice(ctl, &run_id, &choice, &why, session_id),
         Request::RunClose { run_id, reason, .. } => {
             run_close(ctl, &run_id, reason.as_deref(), session_id)
         }
@@ -787,6 +895,120 @@ mod tests {
                 .is_none(),
             "a refused close ends nothing"
         );
+    }
+
+    /// Declare a run, then mark it the way a resume does: owed a choice.
+    fn declared_and_inherited(ctl: &Arc<Control>, project_id: &str, session_id: &str) -> String {
+        let run_id = run_declare(ctl, project_id, &["ISS-7".into()], "/w/seven", session_id)
+            .job_id
+            .expect("declared");
+        let mut held = ctl.ledger.lock().unwrap();
+        let led = held.as_mut().unwrap();
+        // bind and end nothing: this is a run left open, which is what a resume inherits
+        led.owe_resume_choices(session_id, &ctl.boot_id).unwrap();
+        run_id
+    }
+
+    // cm:guard criterion 29's gate. A brief that only ASKS is one a master can read past, and the
+    // issues under those runs then sit claimed by work nobody decided to continue while the pane
+    // starts something new. The refusal is the only place this can be made to hold.
+    #[test]
+    fn a_resumed_pane_cannot_declare_new_work_before_answering_for_what_it_inherited() {
+        let (ctl, _t) = declaring_control("sess-a", "proj-1");
+        declared_and_inherited(&ctl, "proj-1", "sess-a");
+
+        let reply = run_declare(&ctl, "proj-1", &["ISS-8".into()], "/w/eight", "sess-a");
+
+        assert!(!reply.ok, "the declaration must be refused");
+        let reason = reply.reason.unwrap_or_default();
+        assert!(reason.contains("ISS-7"), "name the run's issues: {reason}");
+        assert!(
+            reason.contains("continue"),
+            "name the three words: {reason}"
+        );
+    }
+
+    #[test]
+    fn once_every_inherited_run_is_answered_for_the_next_declaration_is_allowed() {
+        let (ctl, _t) = declaring_control("sess-a", "proj-1");
+        let run_id = declared_and_inherited(&ctl, "proj-1", "sess-a");
+
+        let choice = run_choice(&ctl, &run_id, "restart", "the branch is empty", "sess-a");
+        assert!(choice.ok, "{:?}", choice.reason);
+        // The pre-existing one-unbound-row rule is a separate gate; bind this one so the assertion
+        // below is about the resume gate and not about that.
+        bind_or_release(
+            &ctl,
+            crate::daemon::agent_activity::Event::SubagentStarted,
+            Some("child-1"),
+            "sess-a",
+        );
+
+        let reply = run_declare(&ctl, "proj-1", &["ISS-8".into()], "/w/eight", "sess-a");
+        assert!(reply.ok, "{:?}", reply.reason);
+    }
+
+    // cm:guard the vocabulary is closed and refused BY NAME. A gate that accepted any string could
+    // not tell a decision from a typo, and `contineu` would satisfy it silently.
+    #[test]
+    fn a_choice_outside_the_three_words_is_refused_naming_them() {
+        let (ctl, _t) = declaring_control("sess-a", "proj-1");
+        let run_id = declared_and_inherited(&ctl, "proj-1", "sess-a");
+
+        let reply = run_choice(&ctl, &run_id, "contineu", "typo", "sess-a");
+
+        assert!(!reply.ok);
+        let reason = reply.reason.unwrap_or_default();
+        for word in RESUME_CHOICES {
+            assert!(reason.contains(word), "say what is valid: {reason}");
+        }
+    }
+
+    // cm:guard the reason is required, because a choice with no reason is a record nobody can act
+    // on six hours later — which is the silence this whole issue is about, one level up.
+    #[test]
+    fn a_choice_with_no_reason_is_refused() {
+        let (ctl, _t) = declaring_control("sess-a", "proj-1");
+        let run_id = declared_and_inherited(&ctl, "proj-1", "sess-a");
+
+        let reply = run_choice(&ctl, &run_id, "leave", "   ", "sess-a");
+
+        assert!(!reply.ok, "a choice needs its reason");
+    }
+
+    // cm:guard a pane may only answer for runs IT inherited. Without the scope a master on one
+    // project could satisfy another project's gate.
+    #[test]
+    fn a_pane_cannot_answer_for_a_run_it_did_not_inherit() {
+        let (ctl, _t) = declaring_control("sess-a", "proj-1");
+        let run_id = declared_and_inherited(&ctl, "proj-1", "sess-a");
+
+        let reply = run_choice(&ctl, &run_id, "leave", "not mine", "some-other-session");
+
+        assert!(
+            !reply.ok,
+            "another pane's run is not this pane's to answer for"
+        );
+    }
+
+    // cm:guard a pane's OWN fresh declarations owe nothing. Keyed on "no choice yet" alone, the
+    // second declaration of every ordinary pass would be refused — measured, that is exactly what
+    // happened before the obligation was written by the resume instead.
+    #[test]
+    fn a_pane_that_was_never_resumed_declares_freely() {
+        let (ctl, _t) = declaring_control("sess-a", "proj-1");
+        let first = run_declare(&ctl, "proj-1", &["ISS-7".into()], "/w/seven", "sess-a");
+        assert!(first.ok, "{:?}", first.reason);
+        bind_or_release(
+            &ctl,
+            crate::daemon::agent_activity::Event::SubagentStarted,
+            Some("child-1"),
+            "sess-a",
+        );
+
+        let second = run_declare(&ctl, "proj-1", &["ISS-8".into()], "/w/eight", "sess-a");
+
+        assert!(second.ok, "{:?}", second.reason);
     }
 
     // cm:guard criterion 14 is about the LEDGER, not the in-process registry, and this is the test

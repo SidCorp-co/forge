@@ -484,16 +484,50 @@ async fn sweep(
             .as_ref()
             .and_then(|led| led.master_for_project(&runner.project_id).ok().flatten())
             .and_then(|row| row.conversation_id);
-        if !ensure_master(
+        // cm:guard built HERE, into owned rows, because `Ledger` is not `Sync` and a borrow held
+        // across `ensure_master`'s awaits makes this future non-`Send`.
+        let inherited: Vec<InheritedRun> = masters
+            .get(&runner.project_id)
+            .map(|(sid, _)| sid)
+            .and_then(|sid| {
+                ledger
+                    .as_ref()
+                    .map(|led| inherited_runs(led, &sid, &runner.project_id))
+            })
+            .unwrap_or_default();
+        let pane = ensure_master(
             client,
             masters,
             &runner.project_id,
             &resolved,
             stored_conversation.as_deref(),
+            &inherited,
         )
-        .await
-        {
+        .await;
+        if pane == PaneState::Absent {
             continue;
+        }
+        // cm:guard the obligation is written by the RESUME, in the same pass that made it. A pane
+        // resumed over runs its predecessor left is the one thing that makes a choice owed, and
+        // marking anywhere else — on the declaration, on the sweep, on a timer — would either owe a
+        // choice for a pane's own fresh work or owe none at all (ISS-1050 criterion 29).
+        if pane == PaneState::Resumed {
+            let pane_boot = crate::runner::inflight::boot_identity().unwrap_or_default();
+            if let (Some(led), Some((session_id, _))) =
+                (ledger.as_mut(), masters.get(&runner.project_id))
+            {
+                match led.owe_resume_choices(&session_id, &pane_boot) {
+                    Ok(0) => {}
+                    Ok(n) => tracing::info!(
+                        "[master] {}: resumed holding {n} run(s) — it must say what happens to each before declaring new work",
+                        resolved.slug
+                    ),
+                    Err(e) => tracing::warn!(
+                        "[master] {}: cannot mark the runs this pane inherited: {e}",
+                        resolved.slug
+                    ),
+                }
+            }
         }
 
         if admissible.is_empty() {
@@ -802,6 +836,109 @@ fn install_hooks_logged(repo: &std::path::Path, slug: &str) {
     }
 }
 
+/// Every run still open under this master, as raw fields.
+// cm:guard reads by MASTER SESSION and not by project alone: two projects' masters may be up on one
+// box, and a pane handed another project's runs would be asked to judge work it has never seen.
+fn inherited_runs(led: &Ledger, master_session_id: &str, _project_id: &str) -> Vec<InheritedRun> {
+    let Ok(runs) = led.unclosed_runs() else {
+        return Vec::new();
+    };
+    runs.into_iter()
+        .filter(|r| r.master_session_id == master_session_id && r.ended_by.is_none())
+        .map(|r| InheritedRun {
+            issue_keys: led
+                .issues(&r.run_id)
+                .map(|m| m.into_iter().map(|i| i.issue_key).collect())
+                .unwrap_or_default(),
+            run_id: r.run_id,
+            worktree_path: r.worktree_path.display().to_string(),
+            incarnation: r.incarnation.wire(),
+            work: r.work.wire(),
+            agent_id: r.agent_id,
+            ended_by: r.ended_by,
+        })
+        .collect()
+}
+
+/// One run a resumed pane inherited, as the fields the box can state and nothing else.
+// cm:guard there is NO recommendation field and there will not be one. The box preserves, the
+// kernel retracts what became false, and the MASTER decides whether work continues or restarts —
+// a surface that handed over a pre-computed verdict would have moved that judgement into the box
+// through a second door, which is the one thing this issue's owner ruled out (ISS-1050 criterion
+// 28).
+// cm:guard the fields are RAW and are not summarised, scored or ordered by anything but the
+// ledger's own order. "3 commits ahead, tree dirty" is a fact; "probably worth restarting" is a
+// verdict wearing a fact's clothes.
+pub(crate) struct InheritedRun {
+    pub run_id: String,
+    pub issue_keys: Vec<String>,
+    pub worktree_path: String,
+    pub incarnation: &'static str,
+    pub work: &'static str,
+    pub agent_id: Option<String>,
+    pub ended_by: Option<String>,
+}
+
+/// The block a resumed pane is handed: every run still open under it, raw.
+// cm:guard says it was RESUMED in the first line (criterion 27). A pane cannot tell from inside
+// whether it is new or continuing, and one that assumes it is new re-declares work already running.
+pub(crate) fn resumed_brief(conversation: &str, runs: &[InheritedRun]) -> String {
+    let mut out = format!(
+        "\nThis pane was RESUMED, not started fresh: it is continuing conversation `{conversation}`, \
+so what you remember of this project may be from before the interruption that ended the last pane.\n"
+    );
+    if runs.is_empty() {
+        out.push_str(
+            "\nNo run rows were left open under this master, so there is nothing to decide before \
+you carry on.\n",
+        );
+        return out;
+    }
+    out.push_str(&format!(
+        "\n{} run(s) were left open under this master. For EACH of them, before you declare any new \
+work, record one of `continue`, `restart` or `leave` with your reason — the declaration will be \
+refused until you have. These are the fields this box can state about each. It states them and \
+judges none of them; the judgement is yours:\n",
+        runs.len()
+    ));
+    for r in runs {
+        out.push_str(&format!(
+            "\n- run `{}`\n  issues: {}\n  worktree: {}\n  incarnation: {}\n  work: {}\n  subagent: {}\n  ended: {}\n",
+            r.run_id,
+            if r.issue_keys.is_empty() { "none recorded".to_string() } else { r.issue_keys.join(", ") },
+            r.worktree_path,
+            r.incarnation,
+            r.work,
+            r.agent_id.as_deref().unwrap_or("never bound"),
+            r.ended_by.as_deref().unwrap_or("not ended"),
+        ));
+    }
+    out.push_str(
+        "\nRead the worktree and the issue before you choose. `continue` means the work stands and \
+you will carry it on; `restart` means it does not and you will cut it again; `leave` means it is \
+somebody else's to settle and you will touch neither. Whichever you pick, say why in your own \
+words: the record is what the next reader has.\n",
+    );
+    out
+}
+
+/// What `ensure_master` did about this project's pane on this pass.
+// cm:guard `Resumed` is distinguished from `ColdStarted` because only a resume creates an
+// obligation: the runs the previous pane left are now this one's to answer for, and a cold start
+// inherits a conversation it cannot read and therefore cannot be asked about (ISS-1050 criteria
+// 27, 29).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PaneState {
+    /// No master is up for this project and none could be started.
+    Absent,
+    /// A pane was already running and this daemon adopted it.
+    Adopted,
+    /// A pane was started with no conversation behind it.
+    ColdStarted,
+    /// A pane was started on the conversation its predecessor had.
+    Resumed,
+}
+
 /// Where Claude Code keeps the conversation for a directory, if it keeps one.
 ///
 /// Answers the path it would be at, which may not exist.
@@ -988,7 +1125,8 @@ async fn ensure_master(
     project_id: &str,
     resolved: &crate::daemon::dispatch::Resolved,
     stored_conversation: Option<&str>,
-) -> bool {
+    inherited: &[InheritedRun],
+) -> PaneState {
     let name = terminal::session_name(terminal::MASTER_PREFIX, &resolved.slug);
     // cm:guard refuse by name when tmux is missing rather than falling back to the per-pass `claude -p` this replaced. A box that quietly reverted would look identical in the log to one that is working, while none of the liveness, the transcript or the addressable pane exist on it.
     if !terminal::available() {
@@ -996,14 +1134,14 @@ async fn ensure_master(
             "[master] {}: tmux is not installed on this box — no master will run for it; install tmux (`forge-runner doctor` checks for it)",
             resolved.slug
         );
-        return false;
+        return PaneState::Absent;
     }
 
     let session = match master_api::register(client, project_id, &name).await {
         Ok(s) => s,
         Err(e) => {
             tracing::warn!("[master] {}: cannot register with core: {e}", resolved.slug);
-            return false;
+            return PaneState::Absent;
         }
     };
 
@@ -1024,7 +1162,7 @@ async fn ensure_master(
             );
             remember(masters, project_id, &session);
         }
-        return true;
+        return PaneState::Adopted;
     }
 
     // cm:guard refuse to start when the skill cannot be written, rather than starting without it. A master with no skill still starts, still claims, and runs the whole orchestration off a four-line prompt — work that looks like it is being managed and is not.
@@ -1034,7 +1172,7 @@ async fn ensure_master(
             resolved.slug,
             resolved.repo_path.display()
         );
-        return false;
+        return PaneState::Absent;
     }
 
     // cm:guard hooks are installed but a failure does NOT stop the master, and the asymmetry with the skill above is deliberate: a master with no skill improvises the whole process, while a master with no hooks is exactly what every box ran before this channel existed — blind, and working. Trading the pass for the telemetry would be the wrong way round.
@@ -1054,7 +1192,7 @@ async fn ensure_master(
                     "[master] {}: cannot mint a control capability: {e} — not starting a master",
                     resolved.slug
                 );
-                return false;
+                return PaneState::Absent;
             }
         },
         None => {
@@ -1062,7 +1200,7 @@ async fn ensure_master(
                 "[master] {}: cannot resolve the control token map — not starting a master",
                 resolved.slug
             );
-            return false;
+            return PaneState::Absent;
         }
     }
     let mcp_config = match crate::mcp::config::write_session(&resolved.slug, &declared.mcp_servers)
@@ -1092,7 +1230,7 @@ async fn ensure_master(
                     resolved.slug,
                     crate::mcp::config::session_dir().display()
                 );
-                return false;
+                return PaneState::Absent;
             }
             None
         }
@@ -1121,7 +1259,7 @@ async fn ensure_master(
         Ok(_) => {}
         Err(e) => {
             tracing::error!("[master] {}: could not start {name}: {e}", resolved.slug);
-            return false;
+            return PaneState::Absent;
         }
     }
     tracing::info!(
@@ -1143,10 +1281,20 @@ async fn ensure_master(
         &declared.dropped_names,
         asked.is_none(),
     );
+    // cm:guard the resumed block is APPENDED to the standing brief rather than replacing it. A
+    // resumed pane still needs the base branch, the policy and the MCP warnings; a pane told only
+    // what it inherited would decide three runs' fates and then work the project blind.
+    let brief = match resume.as_deref() {
+        Some(conv) => format!("{brief}{}", resumed_brief(conv, inherited)),
+        None => brief,
+    };
     if let Err(e) = terminal::brief_new_pane(&name, &brief).await {
         tracing::warn!("[master] {}: could not brief {name}: {e}", resolved.slug);
     }
-    true
+    match resume {
+        Some(_) => PaneState::Resumed,
+        None => PaneState::ColdStarted,
+    }
 }
 
 fn remember(masters: &Arc<Masters>, project_id: &str, session: &master_api::MasterSession) {
@@ -1623,6 +1771,79 @@ mod give_back_tests {
     const THIS_SOURCE: &str = include_str!("master.rs");
 
     type R<T> = crate::error::Result<T>;
+
+    fn three_inherited() -> Vec<InheritedRun> {
+        (1..=3)
+            .map(|n| InheritedRun {
+                run_id: format!("run-{n}"),
+                issue_keys: vec![format!("ISS-{n}")],
+                worktree_path: format!("/w/{n}"),
+                incarnation: "starting",
+                work: "runnable",
+                agent_id: None,
+                ended_by: None,
+            })
+            .collect()
+    }
+
+    // cm:guard criterion 27: a pane cannot tell from inside whether it is new or continuing, and
+    // one that assumes it is new re-declares work already running.
+    #[test]
+    fn a_resumed_pane_is_told_that_it_was_resumed() {
+        let brief = resumed_brief("conv-abc", &three_inherited());
+        assert!(brief.contains("RESUMED"), "{brief}");
+        assert!(brief.contains("conv-abc"), "{brief}");
+    }
+
+    // cm:guard criterion 28, and it is the owner's rule rather than a style preference: the box
+    // preserves, the kernel retracts, the MASTER decides. A recommendation here moves that
+    // judgement into the box through a second door.
+    #[test]
+    fn the_inherited_block_carries_no_recommendation_and_no_suggested_action() {
+        let brief = resumed_brief("conv-abc", &three_inherited());
+        for verdict in [
+            "recommend",
+            "suggest",
+            "you should",
+            "probably",
+            "advise",
+            "best to",
+            "likely wants",
+        ] {
+            assert!(
+                !brief.to_lowercase().contains(verdict),
+                "the block must hand over raw fields, not a verdict — found `{verdict}`:\n{brief}"
+            );
+        }
+    }
+
+    // cm:guard every inherited run appears, with the fields the box can state. A block that named
+    // only the first would have the master decide three fates from one row.
+    #[test]
+    fn every_inherited_run_appears_as_raw_fields() {
+        let brief = resumed_brief("conv-abc", &three_inherited());
+        for n in 1..=3 {
+            assert!(brief.contains(&format!("run-{n}")), "{brief}");
+            assert!(brief.contains(&format!("ISS-{n}")), "{brief}");
+            assert!(brief.contains(&format!("/w/{n}")), "{brief}");
+        }
+        assert!(
+            brief.contains("never bound"),
+            "an unbound run says so: {brief}"
+        );
+        assert!(brief.contains("continue"), "{brief}");
+        assert!(brief.contains("restart"), "{brief}");
+        assert!(brief.contains("leave"), "{brief}");
+    }
+
+    // cm:guard a resumed pane holding nothing must not be asked to decide anything, or every
+    // restart of a quiet project costs a round of prose about an empty list.
+    #[test]
+    fn a_resumed_pane_holding_nothing_is_asked_for_nothing() {
+        let brief = resumed_brief("conv-abc", &[]);
+        assert!(brief.contains("RESUMED"), "{brief}");
+        assert!(brief.contains("nothing to decide"), "{brief}");
+    }
 
     // cm:guard criterion 18: a stored conversation this box cannot reach must COLD START and say so
     // naming the conversation. The temptation is to pass `--resume` anyway and let claude decide —

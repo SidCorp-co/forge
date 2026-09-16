@@ -158,6 +158,11 @@ pub struct Run {
     /// The subagent this run was bound to, once its `SubagentStart` arrived.
     // cm:guard `None` is UNBOUND and not unknown: the master declares a run before it dispatches, so a row with no agent id is one whose subagent has not started yet, and `unbound_run_for_master` is the whole of the correlation rule that lets a later `SubagentStart` — which carries a child id and a conversation and no run id — name exactly one row (ISS-1050).
     pub agent_id: Option<String>,
+    /// What a resumed master chose to do about this run: `continue`, `restart` or `leave`.
+    pub resume_choice: Option<String>,
+    pub resume_choice_why: Option<String>,
+    /// Set when this pane was RESUMED over the run, which is what makes a choice owed.
+    pub resume_owed_at: Option<i64>,
 }
 
 /// What this box knows about one project's resident master pane.
@@ -217,6 +222,9 @@ const RUN_COLUMNS: &[&str] = &[
     "ended_reason",
     "created_at",
     "agent_id",
+    "resume_choice",
+    "resume_choice_why",
+    "resume_owed_at",
 ];
 
 #[cfg(test)]
@@ -263,7 +271,10 @@ CREATE TABLE IF NOT EXISTS runs (
   ended_by            TEXT,
   ended_reason        TEXT,
   created_at          INTEGER NOT NULL,
-  agent_id            TEXT
+  agent_id            TEXT,
+  resume_choice       TEXT,
+  resume_choice_why   TEXT,
+  resume_owed_at      INTEGER
 );
 CREATE TABLE IF NOT EXISTS run_issues (
   run_id            TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
@@ -305,6 +316,9 @@ const ADDED_COLUMNS: &[(&str, &str)] = &[
     ("ended_by", "TEXT"),
     ("ended_reason", "TEXT"),
     ("agent_id", "TEXT"),
+    ("resume_choice", "TEXT"),
+    ("resume_choice_why", "TEXT"),
+    ("resume_owed_at", "INTEGER"),
 ];
 
 /// The ledger, open on one box.
@@ -327,7 +341,7 @@ fn sql_err(e: rusqlite::Error) -> Error {
 const SELECT_RUN: &str = "SELECT run_id, project_id, master_session_id, session_id, worktree_path, pid, boot_id,
         incarnation, work, blocker_kind, waiting_on, resume_id, session_terminal_at, worktree_gone_at,
         claim_owner, claim_generation, claim_expires_at, revival_token, revival_deadline_at,
-        ended_by, ended_reason, agent_id
+        ended_by, ended_reason, agent_id, resume_choice, resume_choice_why, resume_owed_at
  FROM runs";
 
 fn map_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<Run> {
@@ -370,6 +384,9 @@ fn map_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<Run> {
         ended_by: row.get(19)?,
         ended_reason: row.get(20)?,
         agent_id: row.get(21)?,
+        resume_choice: row.get(22)?,
+        resume_choice_why: row.get(23)?,
+        resume_owed_at: row.get(24)?,
     })
 }
 
@@ -712,6 +729,75 @@ impl Ledger {
             )
             .optional()
             .map_err(sql_err)
+    }
+
+    /// Record what a resumed master chose to do about one of the runs it inherited.
+    ///
+    /// Answers false when the run is not this master's to choose for.
+    // cm:guard scoped to the MASTER that holds the run. A pane may only answer for runs it inherited,
+    // and without this a master on one project could satisfy another project's gate.
+    // cm:guard the verb is stored as the master WROTE it. This module does not police the vocabulary —
+    // `control.rs` refuses anything that is not `continue`, `restart` or `leave` before it gets here,
+    // which keeps the refusal next to the caller who can be told what the valid shapes are.
+    pub fn record_resume_choice(
+        &self,
+        run_id: &str,
+        master_session_id: &str,
+        choice: &str,
+        why: &str,
+    ) -> Result<bool> {
+        let n = self
+            .conn
+            .execute(
+                "UPDATE runs SET resume_choice = ?3, resume_choice_why = ?4
+                  WHERE run_id = ?1 AND master_session_id = ?2",
+                params![run_id, master_session_id, choice, why],
+            )
+            .map_err(sql_err)?;
+        Ok(n == 1)
+    }
+
+    /// A pane has just been resumed over these runs: each now owes a choice.
+    ///
+    /// Answers how many it marked.
+    // cm:guard the obligation is created by the RESUME and by nothing else. Keyed on "this run has
+    // no choice yet" alone, a pane's own fresh declarations would owe one too, and the second
+    // declaration of every ordinary pass would be refused — measured, that is exactly what happened
+    // before this column existed (ISS-1050 criterion 29).
+    // cm:guard `ended_by IS NULL`: a run that ended while the master was away needs no decision
+    // about whether to continue it, and owing one would wedge the pane behind an unanswerable
+    // question.
+    pub fn owe_resume_choices(&self, master_session_id: &str, boot_id: &str) -> Result<usize> {
+        let n = self
+            .conn
+            .execute(
+                "UPDATE runs SET resume_owed_at = ?3
+                  WHERE master_session_id = ?1 AND boot_id = ?2
+                    AND ended_by IS NULL AND resume_choice IS NULL",
+                params![master_session_id, boot_id, now()],
+            )
+            .map_err(sql_err)?;
+        Ok(n)
+    }
+
+    /// The runs this master inherited that it has not yet said anything about.
+    // cm:guard `ended_by IS NULL` as well as the choice being unset: a run that ended while the
+    // master was away needs no choice about whether to continue it, and gating a declaration on one
+    // would wedge the pane behind a question with no answer.
+    pub fn runs_awaiting_choice(&self, master_session_id: &str, boot_id: &str) -> Result<Vec<Run>> {
+        let mut stmt = self
+            .conn
+            .prepare(&format!(
+                "{SELECT_RUN} WHERE master_session_id = ?1 AND boot_id = ?2
+                   AND ended_by IS NULL AND resume_owed_at IS NOT NULL AND resume_choice IS NULL"
+            ))
+            .map_err(sql_err)?;
+        let rows = stmt
+            .query_map(params![master_session_id, boot_id], map_run)
+            .map_err(sql_err)?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(sql_err)?;
+        Ok(rows)
     }
 
     /// Record, or refresh, what this box knows about a project's master pane.
