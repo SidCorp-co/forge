@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -9,7 +9,7 @@ vi.mock('../config/env.js', () => ({
 const insertReturning = vi.fn(() => Promise.resolve([{ id: 'n1' }]));
 const insertValues = vi.fn(() => ({ returning: insertReturning }));
 const insert = vi.fn(() => ({ values: insertValues }));
-const selectLimit = vi.fn(() => Promise.resolve([]));
+const selectLimit = vi.fn<() => Promise<{ notifyOnMention: boolean }[]>>(() => Promise.resolve([]));
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
 
