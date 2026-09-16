@@ -4,7 +4,7 @@ use clap::Args as ClapArgs;
 use forge_runner_core::auth::cred_store;
 use forge_runner_core::config::Config;
 use forge_runner_core::error::Error;
-use forge_runner_core::transport::{heartbeat, runners, CoreClient};
+use forge_runner_core::transport::{heartbeat, mcp_servers, runners, CoreClient};
 use forge_runner_core::update;
 
 use super::Ctx;
@@ -190,6 +190,10 @@ async fn online_checks(ctx: &Ctx, cfg: &Config) -> bool {
             if rows.is_empty() {
                 println!("• runners      not assigned to any project on the server");
             }
+            // cm:guard start every project's MCP fetch BEFORE the per-project
+            // loop prints, so the whole section costs one `ONLINE_TIMEOUT`
+            // rather than one each. See `spawn_mcp_rows`.
+            let mut mcp_rows = spawn_mcp_rows(&client, &rows);
             for r in &rows {
                 let local_path = cfg
                     .bindings
@@ -228,6 +232,10 @@ async fn online_checks(ctx: &Ctx, cfg: &Config) -> bool {
                         }
                     }
                 }
+
+                if let Some(handle) = mcp_rows.remove(&r.project_id) {
+                    failed |= print_mcp_row(handle.await.unwrap_or(None));
+                }
             }
         }
         Ok(Err(Error::Unauthorized)) => {
@@ -247,6 +255,111 @@ async fn online_checks(ctx: &Ctx, cfg: &Config) -> bool {
     failed
 }
 
+/// Start one MCP fetch per project at once, keyed by project id.
+///
+/// Every request then shares one `ONLINE_TIMEOUT` window instead of taking its
+/// own in series: a box with 25 assignments against a stalled core cost about
+/// two minutes of apparent hang, after the runner list had already answered.
+// cm:guard a task RETURNS its line and never prints it. Tasks finish in whatever
+// order core answers, so a task that printed would drop project B's MCP row
+// between project A's runner row and A's — output that changes from run to run
+// and reads as a row belonging to the project above it. Awaiting in row order
+// orders the awaits, not what has already been written to stdout.
+fn spawn_mcp_rows(
+    client: &CoreClient,
+    rows: &[runners::MeRunner],
+) -> std::collections::HashMap<String, tokio::task::JoinHandle<Option<(bool, String)>>> {
+    rows.iter()
+        .map(|r| {
+            let client = client.clone();
+            let project_id = r.project_id.clone();
+            let slug = r.slug.clone();
+            (
+                r.project_id.clone(),
+                tokio::spawn(async move { mcp_servers_line(&client, &project_id, &slug).await }),
+            )
+        })
+        .collect()
+}
+
+/// Print one project's MCP row, in the caller's order. `true` when it is a
+/// problem.
+fn print_mcp_row(line: Option<(bool, String)>) -> bool {
+    match line {
+        None => false,
+        Some((ok, text)) => {
+            println!("{} mcp          {text}", if ok { "✔" } else { "✖" });
+            !ok
+        }
+    }
+}
+
+/// What this box can actually give a master for one project, as a doctor row.
+///
+/// ISS-1043 rule 5: a declared server must not read as `ok` on the strength of
+/// the declaration. Core is the only party that can say whether a sentinel has
+/// an active integration behind it, so the row asks core and reports what came
+/// back rather than what the project config says.
+///
+/// Returns `true` when the row is a problem.
+// cm:edge contract -> packages/core/src/devices/mcp-servers-routes.ts — `droppedNames` is what makes this row possible; a response folding the dropped names into the map would leave this printing `ok` for exactly the project ISS-1043 was filed from.
+async fn mcp_servers_line(
+    client: &CoreClient,
+    project_id: &str,
+    slug: &str,
+) -> Option<(bool, String)> {
+    let found =
+        match tokio::time::timeout(ONLINE_TIMEOUT, mcp_servers::fetch(client, project_id)).await {
+            Ok(Ok(found)) => found,
+            Ok(Err(e)) => {
+                return Some((
+                    false,
+                    format!("{slug}: could not read the declared MCP servers: {e}"),
+                ));
+            }
+            Err(_) => {
+                return Some((
+                    false,
+                    format!(
+                        "{slug}: timeout after {}s reading the declared MCP servers",
+                        ONLINE_TIMEOUT.as_secs()
+                    ),
+                ));
+            }
+        };
+    mcp_verdict(&found).map(|(ok, line)| (ok, format!("{slug}: {line}")))
+}
+
+/// The row's text and whether it is a pass, separated from the printing so the
+/// three shapes are testable.
+///
+/// `None` is the SILENT case: a project that declares nothing has nothing to
+/// say, and every project on the fleet but a handful is that one.
+// cm:guard a project with servers this box cannot supply is `✖` even though nothing is broken on the box. The operator reading this is deciding whether work on that project can run here, and ISS-1043 exists because the answer was printed as `ok` for days while every run on `mowment` reached none of its tools.
+fn mcp_verdict(found: &mcp_servers::ProjectMcpServers) -> Option<(bool, String)> {
+    if found.is_empty() {
+        return None;
+    }
+    if !found.dropped_names.is_empty() {
+        return Some((
+            false,
+            format!(
+                "declared but NOT available here: {} — a run on this project gets none of their tools{}",
+                found.dropped_names.join(", "),
+                if found.resolved_names.is_empty() {
+                    String::new()
+                } else {
+                    format!(" (available: {})", found.resolved_names.join(", "))
+                }
+            ),
+        ));
+    }
+    Some((
+        true,
+        format!("{} available", found.resolved_names.join(", ")),
+    ))
+}
+
 /// Returns `true` when the binary is on PATH.
 fn check_bin(bin: &str, label: &str) -> bool {
     match which::which(bin) {
@@ -258,5 +371,177 @@ fn check_bin(bin: &str, label: &str) -> bool {
             println!("✖ {label:<12} `{bin}` not found on PATH");
             false
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// A core that answers every MCP request after `delay`, for `n` requests.
+    async fn slow_core(n: usize, delay: std::time::Duration) -> String {
+        slow_core_body(
+            n,
+            delay,
+            r#"{"mcpServers":{},"resolvedNames":[],"droppedNames":[]}"#,
+        )
+        .await
+    }
+
+    /// A core that answers `body` after `delay`, for `n` requests.
+    async fn slow_core_body(n: usize, delay: std::time::Duration, body: &'static str) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            for _ in 0..n {
+                let Ok((mut sock, _)) = listener.accept().await else {
+                    return;
+                };
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 2048];
+                    let _ = sock.read(&mut buf).await;
+                    tokio::time::sleep(delay).await;
+                    let resp = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                    let _ = sock.write_all(resp.as_bytes()).await;
+                    let _ = sock.shutdown().await;
+                });
+            }
+        });
+        format!("http://{addr}")
+    }
+
+    fn row(n: u32) -> runners::MeRunner {
+        runners::MeRunner {
+            project_id: format!("p-{n}"),
+            runner_id: format!("r-{n}"),
+            slug: format!("slug-{n}"),
+            base_branch: None,
+            repo_path: None,
+            branch: None,
+            status: "assigned".into(),
+            kind: None,
+            workspace_setup: None,
+            master_policy: None,
+            limit_reason: None,
+            rate_limited_for_seconds: None,
+        }
+    }
+
+    /// F4. Every project's MCP fetch shares ONE wait, and every project still
+    /// gets exactly one row.
+    // cm:guard the elapsed assertion is the point and the delay is what makes it real: in series three 300ms answers cost 900ms, so a bound of 600ms cannot be met by a sequential version. The second half — a handle per project id — is the silence this could fail into instead: a row dropped from the map prints nothing for that project and reads as a project with no declaration.
+    #[tokio::test]
+    async fn every_project_mcp_row_shares_one_wait_and_none_is_dropped() {
+        let delay = std::time::Duration::from_millis(300);
+        let rows: Vec<runners::MeRunner> = (0..3u32).map(row).collect();
+        let url = slow_core(rows.len(), delay).await;
+        let client = CoreClient::new(url, String::from("tok"));
+
+        let started = std::time::Instant::now();
+        let mut handles = spawn_mcp_rows(&client, &rows);
+        assert_eq!(handles.len(), rows.len(), "one handle per project");
+        for r in &rows {
+            let handle = handles
+                .remove(&r.project_id)
+                .unwrap_or_else(|| panic!("{} has no row", r.project_id));
+            handle.await.unwrap();
+        }
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed < delay * 2,
+            "three {delay:?} answers took {elapsed:?} — they were fetched in series"
+        );
+    }
+
+    /// F4. A task hands its line back; it must not write to stdout itself, or
+    /// the row for whichever project core answered first lands under whichever
+    /// project the print loop had reached.
+    // cm:guard the assertion is on the RETURNED value, which is the only thing the print loop can order. A version that printed inside the task would still return something, so asserting only that a row comes back proves nothing — what makes this test real is that `mcp_servers_line` carries the slug INSIDE the string it hands over, so the caller can place it without knowing the project.
+    #[tokio::test]
+    async fn a_projects_mcp_row_is_handed_back_carrying_its_own_name_not_printed() {
+        // A project that declares nothing owes no line at all.
+        let quiet = slow_core(1, std::time::Duration::ZERO).await;
+        assert!(mcp_servers_line(
+            &CoreClient::new(quiet, String::from("tok")),
+            "p-1",
+            "slug-1"
+        )
+        .await
+        .is_none());
+        assert!(!print_mcp_row(None), "and no line is not a problem");
+
+        // A project that owes one gets it BACK, with its own name inside the
+        // text — the print loop places a line it cannot otherwise attribute.
+        let noisy = slow_core_body(
+            1,
+            std::time::Duration::ZERO,
+            r#"{"mcpServers":{},"resolvedNames":[],"droppedNames":["epodsystem"]}"#,
+        )
+        .await;
+        let (ok, line) = mcp_servers_line(
+            &CoreClient::new(noisy, String::from("tok")),
+            "p-2",
+            "butlocs",
+        )
+        .await
+        .expect("a dropped server owes a row");
+        assert!(!ok, "a server this box cannot supply is not a pass: {line}");
+        assert!(
+            line.starts_with("butlocs:"),
+            "the row must name its own project, because the loop prints it verbatim: {line}"
+        );
+        assert!(line.contains("epodsystem"), "{line}");
+        assert!(print_mcp_row(Some((ok, line))));
+    }
+
+    fn found(resolved: &[&str], dropped: &[&str]) -> mcp_servers::ProjectMcpServers {
+        mcp_servers::ProjectMcpServers {
+            mcp_servers: resolved
+                .iter()
+                .map(|n| ((*n).to_string(), serde_json::json!({ "type": "stdio" })))
+                .collect(),
+            resolved_names: resolved.iter().map(|n| (*n).to_string()).collect(),
+            dropped_names: dropped.iter().map(|n| (*n).to_string()).collect(),
+        }
+    }
+
+    // cm:guard this is criterion 12 and the whole of ISS-1043's rule 5. A version returning `Some((true, ..))` here reads as `✔ mcp` for the project the issue was filed from, which is the state that went unnoticed for days.
+    #[test]
+    fn a_declared_server_this_box_cannot_supply_is_a_problem_and_is_named() {
+        let (ok, line) = mcp_verdict(&found(&[], &["epodsystem"])).expect("a row is owed");
+        assert!(
+            !ok,
+            "a server that cannot be supplied is not a pass: {line}"
+        );
+        assert!(line.contains("epodsystem"), "{line}");
+        assert!(line.contains("NOT available"), "{line}");
+    }
+
+    /// Partly-supplied is still a problem, and the row says both halves so the
+    /// operator can tell which work is possible here.
+    #[test]
+    fn a_project_with_one_server_supplied_and_one_not_reports_the_problem_and_both_names() {
+        let (ok, line) =
+            mcp_verdict(&found(&["playwright"], &["epodsystem"])).expect("a row is owed");
+        assert!(!ok, "{line}");
+        assert!(line.contains("epodsystem"), "{line}");
+        assert!(line.contains("playwright"), "{line}");
+    }
+
+    #[test]
+    fn a_project_whose_declarations_all_resolved_reads_as_a_pass_naming_them() {
+        let (ok, line) = mcp_verdict(&found(&["playwright"], &[])).expect("a row is owed");
+        assert!(ok, "{line}");
+        assert!(line.contains("playwright"), "{line}");
+    }
+
+    // cm:guard the absent case prints NOTHING. Every project on this fleet but a handful declares no servers, and a reassuring `✔ mcp  none declared` row per project is noise an operator learns to skip past — including on the project where it later matters.
+    #[test]
+    fn a_project_that_declares_nothing_gets_no_row_at_all() {
+        assert!(mcp_verdict(&mcp_servers::ProjectMcpServers::default()).is_none());
     }
 }

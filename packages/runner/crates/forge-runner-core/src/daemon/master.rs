@@ -36,7 +36,7 @@ use crate::runner::close_loop;
 use crate::runner::ledger::Ledger;
 use crate::runner::terminate;
 use crate::transport::admissible::{self, AdmissibleIssue};
-use crate::transport::{master as master_api, runners, CoreClient};
+use crate::transport::{master as master_api, mcp_servers, runners, CoreClient};
 use tokio::sync::mpsc;
 
 /// How often the box asks whether any work exists.
@@ -61,10 +61,13 @@ const LIMITED_POLL_INTERVAL: Duration = Duration::from_secs(5 * 60);
 // cm:guard this is the STANDING brief and the pass prompt is the wave, and the split is what makes residency worth anything. Folding the two back together sends the whole brief every 30 seconds — the cold start this change removed, arriving as tokens instead of as a process.
 // cm:guard the policy is spliced VERBATIM and is never summarised, reordered or merged into the sentences around it. It is the project owner speaking, this box is a courier, and a courier that paraphrases is how an instruction that was typed correctly arrives wrong. The heading is what lets the skill defer to it by name.
 // cm:edge contract -> packages/core/src/devices/me-runners.ts — the text arrives as `masterPolicy` on `/me/runners`, from the `master-policy` projectFact. `None` means the project set none, and the skill's own defaults stand; it never means "brief nothing".
+// cm:edge contract -> packages/core/src/devices/mcp-servers-routes.ts — `dropped` is that route's `droppedNames`, the servers this project declared that core could not supply; an empty list says nothing rather than saying all is well.
 fn standing_prompt(
     project: &str,
     base_branch: Option<&str>,
     master_policy: Option<&str>,
+    dropped: &[String],
+    servers_unreadable: bool,
 ) -> String {
     let mut out = format!(
         "Use the `forge-master` skill. You are the resident master for project `{project}` on \
@@ -88,6 +91,24 @@ prints which roles the loaded copy ships. There is no job pool and no second ter
 deliberately did not dispatch and why — where the next pass can read it, and say it out loud rather \
 than only thinking it: this pane is the record.\n",
     );
+    // cm:guard the UNREADABLE case gets its own sentence and never borrows the dropped-names one. "This project declares nothing" and "this box could not find out what it declares" lead a master to opposite acts — the first says build here, the second says do not trust the tool inventory — and a master told the first while the second is true dispatches runs into an empty pane and reads the emptiness as the project's own shape.
+    if servers_unreadable {
+        out.push_str(
+            "\nThis box could NOT read this project's declared MCP servers from core, so this \
+pane carries none of them whatever the project declares. Treat the tool inventory you can see as \
+incomplete: an issue whose work needs a project MCP server cannot be judged buildable here until a \
+master starts on a pane that could read them.\n",
+        );
+    }
+    // cm:guard say it ONCE, here, and never let it become a park three hours later. A declared server that resolved to nothing is the shape this project was unbuildable in for days: the panel says `Connected`, the agent has no tools, and the only reader who can act on it is the master about to spend money dispatching runs into it.
+    if !dropped.is_empty() {
+        out.push_str(&format!(
+            "\nThis project declares MCP server(s) this box could NOT supply: {}. Runs you \
+dispatch will not have their tools. An issue whose work needs one of them cannot be built here — \
+say so on the issue rather than parking it as a run that failed.\n",
+            dropped.join(", ")
+        ));
+    }
     if let Some(policy) = master_policy {
         out.push_str(
             "\n## The project owner's standing policy\n\nThis is the owner's own instruction for \
@@ -121,6 +142,10 @@ struct MasterState {
     last_work: Instant,
     /// The work this master was last nudged about, and when.
     last_nudge: Option<(u64, Instant)>,
+    /// Whether this process has already said that the live pane's MCP
+    /// configuration is behind what core resolves.
+    // cm:guard in-process ON PURPOSE, and a daemon restart deliberately re-reports once. The alternative is a file, which would have to be swept and could outlive the pane it describes; a duplicate line after a restart costs a reader one glance, while a silence costs the operator the reason their master reaches no tools.
+    mcp_stale_reported: bool,
 }
 
 /// What the master is being asked to look at, as one comparable value.
@@ -178,6 +203,30 @@ impl Masters {
         let mut reg = self.0.lock().expect("masters poisoned");
         if let Some(m) = reg.live.get_mut(project_id) {
             m.last_work = Instant::now();
+        }
+    }
+
+    /// True the first time a project's live pane is found behind its config,
+    /// and false every sweep after, until the pane matches again.
+    fn claim_mcp_stale(&self, project_id: &str) -> bool {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        let Some(m) = reg.live.get_mut(project_id) else {
+            // Not in this process's registry — a pane it did not start, and one
+            // it has therefore never reported. Say it.
+            return true;
+        };
+        if m.mcp_stale_reported {
+            return false;
+        }
+        m.mcp_stale_reported = true;
+        true
+    }
+
+    /// The pane matches again; the next mismatch is worth saying.
+    fn clear_mcp_stale(&self, project_id: &str) {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        if let Some(m) = reg.live.get_mut(project_id) {
+            m.mcp_stale_reported = false;
         }
     }
 
@@ -340,6 +389,28 @@ async fn sweep(
             return POLL_INTERVAL;
         }
     };
+    // cm:guard the listing is AUTHORITATIVE here and only here — the `Err` arm
+    // above returned rather than falling through, so this is never a defaulted
+    // or partial set. It is the one place on the box that knows which projects
+    // it serves, and therefore the only route a session config has off disk:
+    // `sweep_stale` never touches them, because a live master stops rewriting
+    // its file whenever core is unreachable.
+    match crate::mcp::config::sweep_orphaned_sessions(
+        &served.iter().map(|r| r.slug.clone()).collect::<Vec<_>>(),
+    ) {
+        Ok(left) => {
+            for (path, why) in left {
+                tracing::error!(
+                    "[master] {} belongs to a project this box no longer serves and could not be removed: {why} — it holds that project's rendered integration credentials",
+                    path.display()
+                );
+            }
+        }
+        Err(e) => tracing::error!(
+            "[master] could not read {} to check for the configs of projects this box no longer serves: {e} — rendered integration credentials may be sitting there and this pass did not look",
+            crate::mcp::config::session_dir().display()
+        ),
+    }
     let delay = next_poll_delay(&served);
     if delay > POLL_INTERVAL {
         for r in served.iter().filter(|r| accepts_new_work(&r.status)) {
@@ -670,6 +741,119 @@ fn transcript_path(slug: &str) -> Option<std::path::PathBuf> {
     Some(dir.join("transcript.log"))
 }
 
+/// This project's declared MCP servers, resolved by core, or `None` when the
+/// box could not ask.
+///
+/// A failure is NOT fatal and is NOT silent: the box carries on and starts a
+/// master with no project servers, having said which project lost them and
+/// why. Refusing to start over this would take the reader off the box along
+/// with the tools.
+// cm:guard `None` and an EMPTY result are different answers and the type is what keeps them apart. "Core said this project declares nothing" is a fact two callers act on — one tells an operator to kill a live pane, the other removes the pane's config file — and a failed fetch flattened into `default()` would make a five-second core blip order an operator to end a correctly configured master. The log line alone cannot stop that, because neither caller reads logs.
+async fn project_mcp_servers(
+    client: &CoreClient,
+    project_id: &str,
+    slug: &str,
+) -> Option<mcp_servers::ProjectMcpServers> {
+    match mcp_servers::fetch(client, project_id).await {
+        Ok(found) => Some(found),
+        Err(e) => {
+            tracing::error!(
+                "[master] {slug}: could not read this project's declared MCP servers from core: {e} — any master started now has NONE of them, whatever the project declares"
+            );
+            None
+        }
+    }
+}
+
+/// Whether this box can honestly describe what it is about to hand a pane.
+#[derive(Debug, PartialEq, Eq)]
+enum LaunchRecord {
+    /// The file on disk says exactly what the pane will be given.
+    Truthful,
+    /// The config could not be written, but the record now says the pane gets
+    /// nothing — which is what will happen.
+    NoneAndSaysSo,
+    /// A record of OTHER servers survives that the pane will not carry.
+    Lying,
+}
+
+/// The launch decision, separated from the filesystem and the log so the one
+/// state that must refuse can be asserted.
+// cm:guard `Lying` is the ONLY refusal and it must stay the only one. `NoneAndSaysSo` has to start: a box whose MCP directory went read-only would otherwise lose every master on it, including for the projects that declare no servers and lose nothing, and the master is the one reader who could report the problem. `Lying` must not start: `session_matches` reads that surviving file as proof the live pane carries those servers, so the stale-pane report criterion 5 exists for goes silent for the whole life of the pane — and a pane cannot be told a new config, so nothing recovers it but an operator who was never told.
+fn launch_record(wrote: bool, cleared: bool) -> LaunchRecord {
+    match (wrote, cleared) {
+        (true, _) => LaunchRecord::Truthful,
+        (false, true) => LaunchRecord::NoneAndSaysSo,
+        (false, false) => LaunchRecord::Lying,
+    }
+}
+
+/// What a sweep may conclude about a live pane's MCP configuration.
+#[derive(Debug, PartialEq, Eq)]
+enum PaneConfig {
+    /// Core could not be asked, so nothing about this pane is known.
+    Unknown,
+    /// The pane carries what core resolves now.
+    Current,
+    /// The pane cannot carry what core resolves now: an operator must end it.
+    Stale,
+}
+
+/// The whole decision, separated from the filesystem and the log so the one
+/// case that costs a live master can be asserted.
+// cm:guard `Unknown` must never collapse into `Stale`. The report `Stale` prints is an instruction to `tmux kill-session` a running master, and a box that could not reach core for five seconds knows nothing about what the pane is missing — a version answering `Stale` there would end a correctly configured master, mid-pass, on every core blip.
+fn pane_config(
+    asked: Option<&mcp_servers::ProjectMcpServers>,
+    on_disk_matches: bool,
+) -> PaneConfig {
+    match asked {
+        None => PaneConfig::Unknown,
+        Some(_) if on_disk_matches => PaneConfig::Current,
+        Some(_) => PaneConfig::Stale,
+    }
+}
+
+/// Say, once, that a pane already running does not carry what core now resolves.
+///
+/// A pane reads `--mcp-config` at startup and can never be told a new one, and
+/// this daemon does not kill a live master to re-spawn it: a pass in flight is
+/// worth more than a same-sweep correction. So the answer is a line an operator
+/// can act on, repeated only when what it says changes.
+// cm:guard REPORT, never kill. `ensure_master` runs every sweep, so a version that restarted a mismatched pane would end a master mid-turn every time a project's declaration changed — and once, unrecoverably, for every pane on the box the first time this shipped.
+fn report_stale_pane_config(
+    masters: &Arc<Masters>,
+    project_id: &str,
+    name: &str,
+    slug: &str,
+    asked: Option<&mcp_servers::ProjectMcpServers>,
+) {
+    let on_disk_matches = asked
+        .map(|d| crate::mcp::config::session_matches(slug, &d.mcp_servers))
+        .unwrap_or(false);
+    let declared = match pane_config(asked, on_disk_matches) {
+        PaneConfig::Unknown => return,
+        PaneConfig::Current => {
+            if let Some(d) = asked {
+                let _ = crate::mcp::config::write_session(slug, &d.mcp_servers);
+            }
+            masters.clear_mcp_stale(project_id);
+            return;
+        }
+        PaneConfig::Stale => asked.expect("Stale is only reachable with an answer"),
+    };
+    if !masters.claim_mcp_stale(project_id) {
+        return;
+    }
+    tracing::error!(
+        "[master] {slug}: the resident session {name} was started before this project's MCP servers were resolved, or before they last changed, so its runs do NOT have {}. A pane cannot be told a new MCP config — end it with `tmux kill-session -t {name}` and the next sweep starts one that carries them.",
+        if declared.resolved_names.is_empty() {
+            "the servers it now declares".to_string()
+        } else {
+            declared.resolved_names.join(", ")
+        }
+    );
+}
+
 /// Make sure this project has a live, registered master, and return its id.
 // cm:guard register with core on EVERY sweep, not only when the pane is created. The row is what `jobs.held_by` carries, so a cached id would keep claiming onto a session core had already reaped — holds nobody can see, under an identity nobody is beating for. `ensureMasterSession` is idempotent precisely so this can be unconditional.
 async fn ensure_master(
@@ -696,7 +880,15 @@ async fn ensure_master(
         }
     };
 
+    let asked = project_mcp_servers(client, project_id, &resolved.slug).await;
+    // cm:guard an unreadable answer is NOT "declares nothing". The pane is still
+    // given nothing — the box has nothing to give it — but the file on disk is
+    // made to say so, and the master is told, so the silence ISS-1043 was filed
+    // from cannot come back wearing a core outage.
+    let declared = asked.clone().unwrap_or_default();
+
     if terminal::alive(&name).await {
+        report_stale_pane_config(masters, project_id, &name, &resolved.slug, asked.as_ref());
         if masters.get(project_id).is_none() {
             // cm:guard adopt a pane this daemon did not create rather than killing it. The master survives a `forge-runner` restart by design, and a daemon that started by clearing what it does not remember would make every deploy an outage for every project on the box.
             tracing::info!(
@@ -746,10 +938,50 @@ async fn ensure_master(
             return false;
         }
     }
+    let mcp_config = match crate::mcp::config::write_session(&resolved.slug, &declared.mcp_servers)
+    {
+        Ok(path) => path,
+        Err(e) => {
+            // cm:guard start ANYWAY and say so. A master that refused to exist over its MCP config would take out every project on a box whose config directory went read-only, including the ones that declare no servers at all — and the master is the one reader who could report the problem.
+            // cm:guard clear the file in the same breath, and REFUSE this one spawn when the clear also fails. Starting is right when the record can be made to say "this pane was given nothing" — a box whose config directory went read-only keeps its masters, and the master is the one reader who could report the problem. It is wrong when a record of OTHER servers survives: `session_matches` would later read an identical declaration as a match and go permanently silent on a pane that has none of them, which is criterion 5 failing in exactly the direction it exists to catch. The refusal is narrow by construction — `clear_session` answers Ok when there is no file, so every project with no previous record, including every project that declares no servers, still starts.
+            let cleared = crate::mcp::config::clear_session(&resolved.slug);
+            tracing::error!(
+                "[master] {}: could not write the pane's MCP config: {e} — {}",
+                resolved.slug,
+                if cleared.is_ok() {
+                    format!(
+                        "starting WITHOUT the project's declared servers ({})",
+                        declared.resolved_names.join(", ")
+                    )
+                } else {
+                    "and the previous config could not be removed either".to_string()
+                }
+            );
+            if let (LaunchRecord::Lying, Err(ce)) =
+                (launch_record(false, cleared.is_ok()), &cleared)
+            {
+                tracing::error!(
+                    "[master] {}: refusing to start a master this box could not describe: {ce} — a pane started now would carry none of this project's servers while the file on disk still claims it carries them, so no later sweep could report it. Make {} writable and the next sweep starts one.",
+                    resolved.slug,
+                    crate::mcp::config::session_dir().display()
+                );
+                return false;
+            }
+            None
+        }
+    };
+    if let Some(path) = mcp_config.as_deref() {
+        tracing::info!(
+            "[master] {}: pane declares {} from {}",
+            resolved.slug,
+            declared.resolved_names.join(", "),
+            path.display()
+        );
+    }
     match terminal::ensure(
         &name,
         &resolved.repo_path,
-        &terminal::pane_argv(),
+        &terminal::pane_argv(mcp_config.as_deref()),
         &env,
         transcript.as_deref(),
     )
@@ -773,6 +1005,8 @@ async fn ensure_master(
         &resolved.slug,
         resolved.base_branch.as_deref(),
         resolved.master_policy.as_deref(),
+        &declared.dropped_names,
+        asked.is_none(),
     );
     if let Err(e) = terminal::brief_new_pane(&name, &brief).await {
         tracing::warn!("[master] {}: could not brief {name}: {e}", resolved.slug);
@@ -788,6 +1022,7 @@ fn remember(masters: &Arc<Masters>, project_id: &str, session: &master_api::Mast
             name: session.name.clone(),
             last_work: Instant::now(),
             last_nudge: None,
+            mcp_stale_reported: false,
         },
     );
 }
@@ -1068,6 +1303,50 @@ mod tests {
         assert!(masters.get("p1").is_none());
     }
 
+    /// Criterion 5, the half that decides how often it is said. The comparison
+    /// itself lives in `mcp::config::session_matches` and is tested there; this
+    /// is the gate that keeps a true report from becoming a line every sweep.
+    // cm:guard a pane this process did NOT start must report. `ensure_master` adopts panes across a daemon restart, and those are exactly the panes most likely to predate their project's declaration — a version reading an absent registry entry as "already said" would go permanently silent on the only case the criterion is about.
+    #[test]
+    fn a_stale_pane_is_reported_once_per_process_and_an_adopted_one_is_always_reported() {
+        let masters = Arc::new(Masters::new());
+
+        // Never registered here: an adopted pane, and nothing has spoken for it.
+        assert!(masters.claim_mcp_stale("p-adopted"));
+        assert!(masters.claim_mcp_stale("p-adopted"));
+
+        remember(
+            &masters,
+            "p1",
+            &master_api::MasterSession {
+                session_id: "s1".into(),
+                name: "forge-master-p1".into(),
+                created: true,
+            },
+        );
+        assert!(masters.claim_mcp_stale("p1"), "the first mismatch is news");
+        assert!(
+            !masters.claim_mcp_stale("p1"),
+            "every sweep after is the same news"
+        );
+
+        // One project's silence is not another's.
+        remember(
+            &masters,
+            "p2",
+            &master_api::MasterSession {
+                session_id: "s2".into(),
+                name: "forge-master-p2".into(),
+                created: true,
+            },
+        );
+        assert!(masters.claim_mcp_stale("p2"));
+
+        // The pane matches again, so the NEXT mismatch is worth saying.
+        masters.clear_mcp_stale("p1");
+        assert!(masters.claim_mcp_stale("p1"));
+    }
+
     // cm:guard the policy must arrive VERBATIM and this asserts exactly that. A master briefed with a summary of the owner's instruction is a master following the summariser, and the whole failure ISS-929 fixes is an instruction that reached the pane wrong or not at all.
     // cm:edge contract -> packages/runner/crates/forge-runner-core/assets/forge-master-skill.md — `forge record decision` is the plugin's verb, not this binary's, and the skill is the only place a master is told it exists: dispatch names no recording verb, so dropping it here leaves the decided/asked ratio with a denominator of zero (ISS-964 criteria 1, 2).
     #[test]
@@ -1085,7 +1364,7 @@ mod tests {
     #[test]
     fn the_owner_policy_reaches_the_brief_verbatim() {
         let policy = "Budget: 5 sessions.\nDrafts are eligible work.\nGroup related issues.";
-        let brief = standing_prompt("forge-dev", Some("main"), Some(policy));
+        let brief = standing_prompt("forge-dev", Some("main"), Some(policy), &[], false);
         assert!(
             brief.contains(policy),
             "the policy must be spliced whole: {brief}"
@@ -1099,11 +1378,103 @@ mod tests {
     // cm:guard a project that set no policy must be briefed EXACTLY as it was before ISS-929. The absent case is every project on the fleet but one, so a stray heading or blank section here is a change to every master this repo starts.
     #[test]
     fn no_policy_leaves_the_brief_untouched() {
-        let brief = standing_prompt("forge-dev", Some("main"), None);
+        let brief = standing_prompt("forge-dev", Some("main"), None, &[], false);
         assert!(!brief.contains("standing policy"), "{brief}");
         assert!(
             brief.trim_end().ends_with("this pane is the record."),
             "{brief}"
+        );
+    }
+
+    // cm:guard the SILENT case is the one that matters: a project whose every declared server resolved must read exactly as it did before ISS-1043, because that is every project on this fleet but a handful. A reassuring "all servers present" line here would be a sentence every master pays for and none can act on.
+    #[test]
+    fn a_project_whose_servers_all_resolved_is_told_nothing_about_them() {
+        let brief = standing_prompt("forge-dev", Some("main"), None, &[], false);
+        assert!(!brief.contains("MCP server"), "{brief}");
+    }
+
+    /// F1. The one launch state that refuses, and the two that must not.
+    // cm:guard `NoneAndSaysSo` starting is half the assertion, and it is the half a defensive rewrite loses first: refusing whenever the config write failed takes out every master on a box with a read-only MCP directory, including the projects that declare no servers and would have been correct with nothing.
+    #[test]
+    fn only_a_record_that_would_lie_about_a_pane_refuses_the_spawn() {
+        assert_eq!(launch_record(true, false), LaunchRecord::Truthful);
+        assert_eq!(launch_record(true, true), LaunchRecord::Truthful);
+        assert_eq!(launch_record(false, true), LaunchRecord::NoneAndSaysSo);
+        assert_eq!(launch_record(false, false), LaunchRecord::Lying);
+
+        // and only `Lying` is the refusal.
+        for (wrote, cleared) in [(true, true), (true, false), (false, true)] {
+            assert_ne!(
+                launch_record(wrote, cleared),
+                LaunchRecord::Lying,
+                "wrote={wrote} cleared={cleared} must still start a master"
+            );
+        }
+    }
+
+    /// The three verdicts, and the one that must NOT be the kill instruction.
+    // cm:guard the `Unknown` case is the whole of this test. `Stale` prints `tmux kill-session` at an operator, and the answer that reaches it after a failed fetch used to be an empty `ProjectMcpServers` — indistinguishable from a project that declares nothing, which on a box holding a config file from a live master reads as a mismatch and orders that master ended.
+    #[test]
+    fn a_pane_core_could_not_be_asked_about_is_unknown_and_never_stale() {
+        let declared = mcp_servers::ProjectMcpServers {
+            resolved_names: vec!["playwright".into()],
+            ..Default::default()
+        };
+        let declares_nothing = mcp_servers::ProjectMcpServers::default();
+
+        // Could not ask: nothing is known, whatever the file on disk says.
+        assert_eq!(pane_config(None, false), PaneConfig::Unknown);
+        assert_eq!(pane_config(None, true), PaneConfig::Unknown);
+
+        // Core answered: the file on disk decides, and it decides both ways.
+        assert_eq!(pane_config(Some(&declared), true), PaneConfig::Current);
+        assert_eq!(pane_config(Some(&declared), false), PaneConfig::Stale);
+
+        // A project core says declares nothing is still an ANSWER, so a pane
+        // holding a file it should not have is still reported.
+        assert_eq!(
+            pane_config(Some(&declares_nothing), false),
+            PaneConfig::Stale
+        );
+        assert_eq!(
+            pane_config(Some(&declares_nothing), true),
+            PaneConfig::Current
+        );
+    }
+
+    // cm:guard a project whose servers core COULD be read must not carry the unreadable sentence, and the unreadable one must not borrow the dropped-names sentence. These are the two ways the fix for the flattened fetch goes silently wrong: one tells every master on the fleet its tools may be missing, the other leaves a master on a blipped box believing its empty pane is what the project asked for.
+    #[test]
+    fn a_box_that_could_not_read_the_declaration_says_so_in_its_own_words() {
+        let unreadable = standing_prompt("mowment", Some("main"), None, &[], true);
+        assert!(
+            unreadable.contains("could NOT read this project's declared MCP servers"),
+            "{unreadable}"
+        );
+        assert!(
+            !unreadable.contains("could NOT supply"),
+            "an unreadable declaration must not be reported as a named shortfall: {unreadable}"
+        );
+
+        let readable = standing_prompt("mowment", Some("main"), None, &[], false);
+        assert!(
+            !readable.contains("could NOT read"),
+            "a project core answered for must be told nothing about readability: {readable}"
+        );
+    }
+
+    // cm:guard name the SERVERS, not a count. The master's next act is deciding whether an issue can be built here, and "1 server unavailable" is not something it can weigh against an issue that needs the storefront.
+    #[test]
+    fn a_declared_server_this_box_cannot_supply_is_named_in_the_brief() {
+        let dropped = vec!["epodsystem".to_string(), "postman".to_string()];
+        let brief = standing_prompt("mowment", Some("main"), None, &dropped, false);
+        assert!(brief.contains("epodsystem, postman"), "{brief}");
+        assert!(
+            brief.contains("could NOT supply"),
+            "the master must be told this is a shortfall, not an inventory: {brief}"
+        );
+        assert!(
+            brief.contains("rather than parking it as a run that failed"),
+            "the brief must say what to do instead of discovering it as an empty park: {brief}"
         );
     }
 }
