@@ -15,6 +15,7 @@ import {
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { formatCountdown, formatRelativeTime } from "@/lib/utils/format";
+import Link from "next/link";
 import { useState } from "react";
 import { useReleaseRoster } from "../hooks";
 import type { ReleaseRosterEntry } from "../api";
@@ -37,7 +38,7 @@ function oldestMergedAt(issues: ReleaseRosterEntry[]): string | null {
  * toward a cut nothing will perform, and an issue already claimed by a running
  * batch is shown as shipping rather than as selectable.
  */
-export function ReleaseGatePanel({ projectId }: { projectId: string }) {
+export function ReleaseGatePanel({ projectId, slug }: { projectId: string; slug: string }) {
   const { data, isLoading, isError, error, refetch } = useReleaseRoster(projectId);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -151,6 +152,7 @@ export function ReleaseGatePanel({ projectId }: { projectId: string }) {
                 <RosterRow
                   key={issue.id}
                   issue={issue}
+                  slug={slug}
                   checked={selected.has(issue.id)}
                   onToggle={() => toggle(issue.id)}
                 />
@@ -179,16 +181,20 @@ export function ReleaseGatePanel({ projectId }: { projectId: string }) {
   );
 }
 
+// cm:guard "shipping now" is a LINK only where `claimedByRunId` holds a run, and the same field decides the words: a row that reads as shipping and does not open the run it is shipping under is the release screen being unreachable by anything but a typed uuid, which is how it shipped and why this link exists (ISS-1042).
 function RosterRow({
   issue,
+  slug,
   checked,
   onToggle,
 }: {
   issue: ReleaseRosterEntry;
+  slug: string;
   checked: boolean;
   onToggle: () => void;
 }) {
-  const claimed = issue.claimedByRunId !== null;
+  const runId = issue.claimedByRunId;
+  const claimed = runId !== null;
   return (
     <li className="flex items-center gap-2 py-1.5">
       <Checkbox
@@ -202,11 +208,19 @@ function RosterRow({
         {issue.title}
       </span>
       <span className="fg-body-xs text-fg-muted shrink-0 whitespace-nowrap">
-        {claimed
-          ? "shipping now"
-          : issue.mergedAt
-            ? `merged ${formatRelativeTime(issue.mergedAt)}`
-            : "merge time unknown"}
+        {runId !== null ? (
+          <Link
+            href={`/projects/${slug}/releases/${runId}`}
+            className="text-accent-text underline-offset-2 hover:underline"
+            title="Open what this release run has done so far"
+          >
+            shipping now
+          </Link>
+        ) : issue.mergedAt ? (
+          `merged ${formatRelativeTime(issue.mergedAt)}`
+        ) : (
+          "merge time unknown"
+        )}
       </span>
     </li>
   );

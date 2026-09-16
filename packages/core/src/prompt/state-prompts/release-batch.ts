@@ -4,6 +4,7 @@
  * `forge_step_start` (there is no issue). Entry call is
  * `GET /api/projects/:projectId/release-batches/:runId`.
  */
+// cm:guard the English-only rule covers the CHANGELOG and nothing else. It read "all output, comments, changelog" and swept in every comment the release agent writes — on a project whose issues, thread and operators are in another language, that is a release run answering in a language nobody there reads, for a rule that only ever existed because a changelog is a published artefact (ISS-1042).
 // cm:guard PROTOCOL ONLY. Branches, versioning, changelog shape and deploy belong to the project (release-batch/channel.ts injects them into the task prompt) — this block used to hardcode one project's Coolify ritual as if it were the contract, which is why epodsystem could not release without a code change.
 export const releaseBatchStatePrompt = `## This State — Batch Release (release_batch job)
 
@@ -35,6 +36,10 @@ does not fit what you actually found:
 
 ### Policy
 - Every issue in the batch closes together or none does. There is no partial finish.
-- English-only: all output, comments, changelog.
+- The CHANGELOG entry is written in English. Everything else — comments, your report — goes in
+  the language the project works in.
 - finish is idempotent: re-running finds no claimed issues and returns closed:[].
-- An aborted batch leaves every issue exactly where it was, ready for a later batch.`;
+- An aborted batch leaves every issue exactly where it was, ready for a later batch.
+- If the deploy comes up dead, REPAIR FORWARD. Never roll back, never revert a shared branch and
+  never restore an earlier build: from inside this session you cannot tell an outage you caused
+  from one that was already there. Where you cannot repair forward, abort with the reason.`;

@@ -3,8 +3,11 @@
  *
  * The axis that matters most is the one the pg-boss incident had: no HTTP
  * response at all. A probe that cannot connect must count against the window
- * exactly as a 503 does, and the deadline must end in a rollback rather than in
+ * exactly as a 503 does, and the deadline must end in a verdict rather than in
  * another poll.
+ *
+ * `pickRollbackImage` and its cases left with the automatic rollback (ISS-1042)
+ * — the gate no longer picks an image, because it no longer restores one.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -52,21 +55,9 @@ vi.mock('../../logger.js', () => ({
   },
 }));
 
-const {
-  HEALTH_GRACE_MS,
-  HEALTH_MIN_WINDOW_MS,
-  HEALTH_WINDOW_MS,
-  healthGateFor,
-  pickRollbackImage,
-  probeHealth,
-} = await import('./health-gate.js');
+const { HEALTH_GRACE_MS, HEALTH_MIN_WINDOW_MS, HEALTH_WINDOW_MS, healthGateFor, probeHealth } =
+  await import('./health-gate.js');
 const NOW = 1_800_000_000_000;
-
-const IMAGES = [
-  { tag: 'sha-new', createdAt: '2026-09-07T10:00:00Z', isCurrent: true },
-  { tag: 'sha-good', createdAt: '2026-09-06T10:00:00Z', isCurrent: false },
-  { tag: 'sha-older', createdAt: '2026-09-01T10:00:00Z', isCurrent: false },
-];
 
 beforeEach(() => {
   recordDeliveryMock.mockResolvedValue('inb-1');
@@ -132,45 +123,6 @@ describe('probeHealth', () => {
   });
 });
 
-type Img = { tag: string; createdAt: string | null; isCurrent: boolean };
-
-describe('pickRollbackImage', () => {
-  it('takes the newest image that is not the one running now', () => {
-    expect(pickRollbackImage(IMAGES, 'sha-new')).toBe('sha-good');
-  });
-
-  it('refuses when the only image listed is the current one', () => {
-    expect(pickRollbackImage([IMAGES[0] as Img], 'sha-new')).toBeNull();
-  });
-
-  it('refuses an empty list — Coolify answers 200 with no images when the server is unreachable', () => {
-    expect(pickRollbackImage([], null)).toBeNull();
-  });
-
-  it('does not trust a `current` tag that names no listed image', () => {
-    const unmarked = IMAGES.map((i) => ({ ...i, isCurrent: false }));
-    expect(pickRollbackImage(unmarked, 'sha-that-coolify-does-not-list')).toBeNull();
-  });
-
-  it('refuses a list where NOTHING says which image is running — the failed build is the newest in it', () => {
-    const unmarked = IMAGES.map((i) => ({ ...i, isCurrent: false }));
-    expect(pickRollbackImage(unmarked, null)).toBeNull();
-  });
-
-  it('excludes the running build by `current` when no row carries is_current', () => {
-    const unmarked = IMAGES.map((i) => ({ ...i, isCurrent: false }));
-    expect(pickRollbackImage(unmarked, 'sha-new')).toBe('sha-good');
-  });
-
-  it('sorts an unparseable createdAt LAST, whichever order Coolify listed it in', () => {
-    const live: Img = { tag: 'sha-new', createdAt: '2026-09-07T10:00:00Z', isCurrent: true };
-    const undated: Img = { tag: 'sha-undated', createdAt: null, isCurrent: false };
-    const dated: Img = { tag: 'sha-good', createdAt: '2026-09-06T10:00:00Z', isCurrent: false };
-    expect(pickRollbackImage([live, undated, dated], 'sha-new')).toBe('sha-good');
-    expect(pickRollbackImage([live, dated, undated], 'sha-new')).toBe('sha-good');
-  });
-});
-
 const gateArgs = {
   config: null as never,
   bindingId: 'bind-1',
@@ -178,7 +130,6 @@ const gateArgs = {
   deliveryId: null,
   deploymentUuid: 'dep-1',
   targetLabel: 'Backend',
-  forRollback: false,
 };
 
 describe('healthGateFor', () => {

@@ -11,6 +11,15 @@
 // it matches the commit the release says it pushed. The first half is why the
 // pre-release read is taken at claim time, before anything moves — without it,
 // an agent reporting the commit that was already live verifies perfectly.
+//
+// TWO QUESTIONS, ASKED IN ORDER, and never one (ISS-1042). Is the application
+// alive, and then is it serving the build the release pushed. They take the
+// repair in different directions: health red with identity green is a runtime
+// fault on a correct build, health green with identity red is routing, caching
+// or a rollout that did not finish. Until ISS-1042 `readProbe` answered `null`
+// to a non-2xx, an unreachable host, an unparseable body and a `commitPath`
+// that plucked nothing alike, so all four arrived as "no probe answered with a
+// commit" — a dead site and a typo in `commitPath` wearing one sentence.
 
 import { logger } from '../logger.js';
 
@@ -57,8 +66,44 @@ function pluck(body: unknown, path: string | undefined): string | null {
   return typeof cur === 'string' && cur.length > 0 ? cur : null;
 }
 
+/**
+ * One probe's answer, kept as the shape it actually had.
+ *
+ * `unreachable` and `http-error` are the application failing to answer;
+ * `unparseable` and `no-commit` are the application answering and the probe
+ * declaration not finding a commit in what it said. Collapsing the four is what
+ * made a `commitPath` typo indistinguishable from an outage.
+ */
+export type ProbeReading =
+  | { kind: 'commit'; commit: string }
+  | { kind: 'no-commit' }
+  | { kind: 'unparseable' }
+  | { kind: 'http-error'; status: number }
+  | { kind: 'unreachable'; detail: string };
+
+/** Whether this reading says the application answered at all. */
+export function probeIsHealthy(r: ProbeReading): boolean {
+  return r.kind !== 'unreachable' && r.kind !== 'http-error';
+}
+
+export function describeProbeReading(probe: VerifyProbe, r: ProbeReading): string {
+  switch (r.kind) {
+    case 'commit':
+      return `${probe.url} -> ${r.commit}`;
+    case 'no-commit':
+      return `${probe.url} answered 200 and \`${probe.commitPath ?? '(whole body)'}\` held no commit`;
+    case 'unparseable':
+      return `${probe.url} answered 200 with a body that is not JSON`;
+    case 'http-error':
+      return `${probe.url} answered http ${r.status}`;
+    case 'unreachable':
+      return `${probe.url} is unreachable (${r.detail})`;
+  }
+}
+
 // cm:guard the cache-buster and the no-cache header are BOTH required and neither is decoration — the probe reads through whatever CDN or reverse proxy fronts the site (varnish, in the case this was written for), and a cached 200 from the previous build is exactly the state verification exists to catch
-async function readProbe(probe: VerifyProbe): Promise<string | null> {
+// cm:guard return the SHAPE of the failure and never a bare null. The four ways a read can fail send the repair in two different directions, and a caller handed one value for all of them writes the sentence "no probe answered" over a site that answered perfectly well.
+export async function readProbe(probe: VerifyProbe): Promise<ProbeReading> {
   const url = new URL(probe.url);
   url.searchParams.set('_forge_cb', String(Math.random()).slice(2));
   try {
@@ -66,34 +111,99 @@ async function readProbe(probe: VerifyProbe): Promise<string | null> {
       headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
       redirect: 'follow',
     });
-    if (!res.ok) return null;
+    if (!res.ok) return { kind: 'http-error', status: res.status };
     const text = await res.text();
-    if (probe.commitPath === undefined) return text.trim() || null;
-    try {
-      return pluck(JSON.parse(text), probe.commitPath);
-    } catch {
-      return null;
+    if (probe.commitPath === undefined) {
+      const trimmed = text.trim();
+      return trimmed ? { kind: 'commit', commit: trimmed } : { kind: 'no-commit' };
     }
+    let body: unknown;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      return { kind: 'unparseable' };
+    }
+    const commit = pluck(body, probe.commitPath);
+    return commit == null ? { kind: 'no-commit' } : { kind: 'commit', commit };
   } catch (err) {
     logger.debug({ err, url: probe.url }, 'release-verify: probe unreachable');
-    return null;
+    return { kind: 'unreachable', detail: err instanceof Error ? err.message : 'unknown error' };
   }
 }
 
+/** Whether the application is alive, and the identity it reports if it is. */
+export interface LiveState {
+  health: 'up' | 'down';
+  /** `null` when the fleet does not agree on one commit, or none reports one. */
+  identity: string | null;
+  /** One line per probe, in declaration order, whatever the outcome. */
+  readings: string[];
+  /** The probes whose reading is not a commit, by what went wrong. */
+  unhealthy: string[];
+  unidentified: string[];
+  /** Set when every probe answered a commit and they disagree. */
+  disagreement: string[] | null;
+}
+
 /**
- * One read of every probe. `null` when any probe fails or the probes disagree
- * — a fleet half on the new build is not deployed.
+ * One read of every probe, kept as two answers.
+ *
+ * Health is every probe answering; identity is every probe agreeing on one
+ * commit. A fleet half on the new build is healthy and has no identity — which
+ * is the state the old single-value read reported as "nothing answered".
+ */
+export async function readLiveState(cfg: VerifyConfig): Promise<LiveState> {
+  const reads = await Promise.all(cfg.probes.map(readProbe));
+  const readings = reads.map((r, i) => describeProbeReading(cfg.probes[i] as VerifyProbe, r));
+  const unhealthy = reads
+    .map((r, i) => (probeIsHealthy(r) ? null : (readings[i] ?? null)))
+    .filter((s): s is string => s !== null);
+  const unidentified = reads
+    .map((r, i) => (probeIsHealthy(r) && r.kind !== 'commit' ? (readings[i] ?? null) : null))
+    .filter((s): s is string => s !== null);
+
+  const commits = reads.filter((r): r is { kind: 'commit'; commit: string } => r.kind === 'commit');
+  const agreed =
+    commits.length === reads.length && commits.length > 0
+      ? commits.every((r) => r.commit === commits[0]?.commit)
+        ? (commits[0]?.commit ?? null)
+        : null
+      : null;
+  const disagreement =
+    commits.length === reads.length && commits.length > 0 && agreed === null
+      ? [...new Set(commits.map((r) => r.commit))]
+      : null;
+
+  return {
+    health: unhealthy.length === 0 ? 'up' : 'down',
+    identity: agreed,
+    readings,
+    unhealthy,
+    unidentified,
+    disagreement,
+  };
+}
+
+/**
+ * One read of every probe, as the single commit the fleet agrees on.
+ *
+ * Kept because the pre-release baseline in `createReleaseBatch` wants exactly
+ * this and nothing else: what was serving before anything moved.
  */
 export async function readLiveCommit(cfg: VerifyConfig): Promise<string | null> {
-  const reads = await Promise.all(cfg.probes.map(readProbe));
-  const first = reads[0];
-  if (first == null) return null;
-  return reads.every((r) => r === first) ? first : null;
+  return (await readLiveState(cfg)).identity;
 }
 
 export type VerifyOutcome =
-  | { ok: true; commit: string }
-  | { ok: false; reason: string; live: string | null };
+  | { ok: true; commit: string; health: 'up'; identity: string }
+  | {
+      ok: false;
+      reason: string;
+      live: string | null;
+      health: 'up' | 'down';
+      identity: string | null;
+      readings: string[];
+    };
 
 export interface VerifyArgs {
   cfg: VerifyConfig;
@@ -115,30 +225,78 @@ export async function verifyDeployed(args: VerifyArgs): Promise<VerifyOutcome> {
 
   let stable = 0;
   let last: string | null = null;
-  let live: string | null = null;
+  let state: LiveState = {
+    health: 'down',
+    identity: null,
+    readings: [],
+    unhealthy: [],
+    unidentified: [],
+    disagreement: null,
+  };
 
   while (now() < deadline) {
-    live = await readLiveCommit(cfg);
+    state = await readLiveState(cfg);
+    const live = state.identity;
     const acceptable =
       live != null && live !== commitBefore && (expected == null || live === expected);
     stable = acceptable && live === last ? stable + 1 : acceptable ? 1 : 0;
     last = live;
-    if (stable >= needed) return { ok: true, commit: live as string };
+    if (stable >= needed && live != null) {
+      return { ok: true, commit: live, health: 'up', identity: live };
+    }
     if (now() >= deadline) break;
     await sleep(5000);
   }
 
-  if (live == null) return { ok: false, reason: 'no probe answered with a commit', live };
-  if (live === commitBefore) {
+  return { ...failureFor(state, commitBefore, expected), readings: state.readings };
+}
+
+/**
+ * Why the window closed red, health first and identity second.
+ */
+// cm:guard ask HEALTH before identity and never the other way round. A dead application has no identity to be wrong about, and reporting "the live build is unchanged" over a site answering 502 sends the repair at the build when the container is not running. The order here IS the diagnosis the account is written from.
+function failureFor(
+  state: LiveState,
+  commitBefore: string | null,
+  expected: string | null,
+): Omit<Extract<VerifyOutcome, { ok: false }>, 'readings'> {
+  const base = { ok: false as const, live: state.identity, identity: state.identity };
+  if (state.health === 'down') {
     return {
-      ok: false,
-      // cm:why this is the whole point of the pre-release read: the site is up, the deploy reported success, and it is still serving what it served before
-      reason: `the live build is unchanged (${live}) — the site is healthy and still serving the pre-release commit`,
-      live,
+      ...base,
+      health: 'down',
+      reason: `the application is not answering: ${state.unhealthy.join('; ')}`,
     };
   }
-  if (expected != null && live !== expected) {
-    return { ok: false, reason: `live is ${live}, the release pushed ${expected}`, live };
+  if (state.disagreement) {
+    return {
+      ...base,
+      health: 'up',
+      reason: `the application is healthy and the fleet disagrees about what it is serving (${state.disagreement.join(', ')}) — a rollout that has not finished, not a failed build`,
+    };
   }
-  return { ok: false, reason: 'the live commit never held still', live };
+  if (state.identity == null) {
+    return {
+      ...base,
+      health: 'up',
+      // cm:why this sentence is the one ISS-1042 exists to separate out. The site answered; what failed is the probe DECLARATION, and telling an operator the deploy did not land would send them to the build for a typo in `commitPath`.
+      reason: `the application is healthy and no probe reported a commit (${state.unidentified.join('; ')}) — read this as a probe declaration that does not match what the application serves, not as a failed deploy`,
+    };
+  }
+  if (state.identity === commitBefore) {
+    return {
+      ...base,
+      health: 'up',
+      // cm:why this is the whole point of the pre-release read: the site is up, the deploy reported success, and it is still serving what it served before
+      reason: `the live build is unchanged (${state.identity}) — the site is healthy and still serving the pre-release commit`,
+    };
+  }
+  if (expected != null && state.identity !== expected) {
+    return {
+      ...base,
+      health: 'up',
+      reason: `live is ${state.identity}, the release pushed ${expected}`,
+    };
+  }
+  return { ...base, health: 'up', reason: 'the live commit never held still' };
 }

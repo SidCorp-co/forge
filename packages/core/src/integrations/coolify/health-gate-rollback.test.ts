@@ -1,6 +1,13 @@
 /**
- * ISS-971 — what one poll of the gate does, and what a failed window does to
- * the application.
+ * What one poll of the gate does, and what a failed window does to the
+ * application — which since ISS-1042 is NOTHING beyond failing the hold and
+ * paging.
+ *
+ * The gate used to restore the previous image itself (ISS-971). From inside it
+ * a build that came up dead and an outage that predates the deploy are the same
+ * reading, so the automatic answer to both was to delete a reviewed build while
+ * the outage survived it. The negative cases below are the whole point of the
+ * file now: nothing is dispatched, and the hold still fails.
  *
  * The decision functions are next door in `health-gate.test.ts`; this file
  * drives the job itself, so every case here needs the binding, the delivery log
@@ -21,25 +28,8 @@ vi.mock('../../db/client.js', () => ({ db: {} }));
 vi.mock('../../queue/boss.js', () => ({ boss: { send: vi.fn() } }));
 
 const recordDeliveryMock = vi.fn(async (_input: unknown) => 'inb-1');
-const updateDeliveryMock = vi.fn(async (_id: string, _patch: unknown) => {});
 vi.mock('../deliveries.js', () => ({
   recordDelivery: (input: unknown) => recordDeliveryMock(input),
-  updateDelivery: (id: string, patch: unknown) => updateDeliveryMock(id, patch),
-}));
-
-let bindingConfig: Record<string, unknown> = {
-  targets: [{ id: 't1', label: 'Backend', resourceUuid: 'res-1', healthUrl: 'https://api/health' }],
-};
-const findBindingMock = vi.fn(async () => ({
-  id: 'bind-1',
-  connectionId: 'conn-1',
-  projectId: 'proj-1',
-}));
-let connectionActive = true;
-vi.mock('../store.js', () => ({
-  findBindingById: (...a: unknown[]) => findBindingMock(...(a as [])),
-  findConnectionById: async () => ({ id: 'conn-1', active: connectionActive }),
-  effectiveConfig: () => bindingConfig,
 }));
 
 const errorLog = vi.fn();
@@ -73,24 +63,14 @@ function gateJob(over: Record<string, unknown> = {}) {
     healthUrl: 'https://api/health',
     graceUntil: new Date(NOW - 1).toISOString(),
     deadlineAt: new Date(NOW + 60_000).toISOString(),
-    forRollback: false,
     ...over,
   };
 }
-
-const IMAGES = [
-  { tag: 'sha-new', createdAt: '2026-09-07T10:00:00Z', isCurrent: true },
-  { tag: 'sha-good', createdAt: '2026-09-06T10:00:00Z', isCurrent: false },
-  { tag: 'sha-older', createdAt: '2026-09-01T10:00:00Z', isCurrent: false },
-];
 
 function deps(over: Record<string, unknown> = {}) {
   return {
     probe: vi.fn(async () => ({ healthy: false, reason: 'unreachable (ECONNREFUSED)' })),
     settle: vi.fn(async () => {}),
-    rollback: vi.fn(async () => ({ performed: true, deploymentUuid: 'dep-rb' })),
-    listImages: vi.fn(async () => ({ current: 'sha-new', images: IMAGES })),
-    findRollbackMarker: vi.fn(async () => false),
     now: () => NOW,
     ...over,
     // biome-ignore lint/suspicious/noExplicitAny: the test builds a partial deps bag on purpose
@@ -99,12 +79,6 @@ function deps(over: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   recordDeliveryMock.mockResolvedValue('inb-1');
-  connectionActive = true;
-  bindingConfig = {
-    targets: [
-      { id: 't1', label: 'Backend', resourceUuid: 'res-1', healthUrl: 'https://api/health' },
-    ],
-  };
 });
 afterEach(() => vi.clearAllMocks());
 
@@ -124,7 +98,6 @@ describe('runCoolifyHealthGate', () => {
     const d = deps({ probe: vi.fn(async () => ({ healthy: true })) });
     expect(await runCoolifyHealthGate(gateJob(), d)).toEqual({ verdict: 'healthy' });
     expect(d.settle).toHaveBeenCalledWith('succeeded');
-    expect(d.rollback).not.toHaveBeenCalled();
   });
 
   it('an unhealthy reading inside the window queues another poll and settles nothing', async () => {
@@ -156,257 +129,85 @@ describe('runCoolifyHealthGate', () => {
   });
 });
 
-describe('the rollback a failed gate dispatches', () => {
-  it('rolls back to the previous image and health-gates the rollback', async () => {
+// cm:guard criteria 35 and 36 of ISS-1042, and they are two claims rather than one. A gate that
+// dispatched nothing but also settled nothing would satisfy the first and leave the deploy hold
+// pending until the sweeper's quiet window, which reads to an operator as a deploy still in flight.
+describe('a window that closes unhealthy repairs nothing by itself', () => {
+  const closed = () => gateJob({ deadlineAt: new Date(NOW - 1).toISOString() });
+
+  it('queues no further work of any kind', async () => {
+    await runCoolifyHealthGate(closed(), deps());
+
+    expect(sendCalls()).toEqual([]);
+  });
+
+  // cm:guard the delivery log is where an automatic rollback WOULD show, so asserting the whole
+  // list of events is the assertion. `toContain('deploy.unhealthy')` would go on passing beside a
+  // `deploy.rollback.auto` written next to it, which is the exact row this change removes.
+  it('writes the unhealthy row and no rollback row beside it', async () => {
+    await runCoolifyHealthGate(closed(), deps());
+
+    expect(
+      recordDeliveryMock.mock.calls.map((c) => (c[0] as { eventName: string }).eventName),
+    ).toEqual(['deploy.unhealthy']);
+  });
+
+  it('fails the deploy hold, naming the last reading', async () => {
     const d = deps();
-    const out = await runCoolifyHealthGate(
-      gateJob({ deadlineAt: new Date(NOW - 1).toISOString() }),
-      d,
-    );
-    expect(d.rollback).toHaveBeenCalledWith({
-      projectId: 'proj-1',
-      integrationId: 'bind-1',
-      resourceUuid: 'res-1',
-      commit: 'sha-good',
-    });
-    expect(out.rolledBackTo).toBe('sha-good');
-    expect(queuedGates().at(-1)?.[1]).toMatchObject({
-      deploymentUuid: 'dep-rb',
-      forRollback: true,
-      deliveryId: null,
-    });
-  });
 
-  it('dispatches nothing when Coolify lists no image other than the current one', async () => {
-    const d = deps({
-      listImages: vi.fn(async () => ({ current: 'sha-new', images: [IMAGES[0]] })),
-    });
-    const out = await runCoolifyHealthGate(
-      gateJob({ deadlineAt: new Date(NOW - 1).toISOString() }),
-      d,
-    );
-    expect(d.rollback).not.toHaveBeenCalled();
-    expect(out.rolledBackTo).toBeUndefined();
-    expect(errorLog.mock.calls.map((c) => String(c[1])).join(' ')).toContain(
-      'named no earlier image it could be restored to',
-    );
-  });
+    const out = await runCoolifyHealthGate(closed(), d);
 
-  it('pages when the rollback was accepted but not performed — the human-confirm gate said no', async () => {
-    const d = deps({
-      rollback: vi.fn(async () => ({
-        performed: false,
-        deploymentUuid: null,
-        detail: 'rollback against a production binding is not dispatched without a human',
-      })),
-    });
-    const out = await runCoolifyHealthGate(
-      gateJob({ deadlineAt: new Date(NOW - 1).toISOString() }),
-      d,
-    );
-    expect(out.rolledBackTo).toBeUndefined();
-    expect(errorLog.mock.calls.map((c) => String(c[1])).join(' ')).toContain(
-      'the rollback was not dispatched',
-    );
+    expect(out).toEqual({ verdict: 'unhealthy', reason: expect.any(String) });
     expect(d.settle.mock.calls[0]?.[0]).toBe('failed');
+    expect(String(d.settle.mock.calls[0]?.[1])).toContain('unreachable (ECONNREFUSED)');
   });
 
-  it('pages when the rollback itself is refused, and still fails the hold', async () => {
-    const d = deps({
-      rollback: vi.fn(async () => {
-        throw new Error('rollback image "sha-good" is not listed by Coolify');
-      }),
-    });
-    const out = await runCoolifyHealthGate(
-      gateJob({ deadlineAt: new Date(NOW - 1).toISOString() }),
-      d,
-    );
-    expect(out.verdict).toBe('unhealthy');
-    expect(errorLog.mock.calls.map((c) => String(c[1])).join(' ')).toContain(
-      'rollback was REFUSED',
-    );
-    expect(d.settle).toHaveBeenCalled();
+  // cm:guard the page has to say the broken build IS STILL SERVING. An operator who reads "the
+  // deploy failed" over a gate that used to roll back will assume the previous image is up, and
+  // that assumption is the outage going unattended.
+  it('pages saying the failed build is still serving and nothing was rolled back', async () => {
+    await runCoolifyHealthGate(closed(), deps());
+
+    const paged = errorLog.mock.calls.map((c) => String(c[1])).join(' ');
+    expect(paged).toContain('NOTHING was rolled back');
+    expect(paged).toContain('still serving');
   });
 
-  it('a rollback that never serves pages and dispatches no second rollback', async () => {
+  // cm:guard the hold is settled even when the audit row could not be written. `recordGateFailure`
+  // swallows its own failure precisely so the settle still happens, and a throw here would leave
+  // the run pending on a deploy everyone can see is dead.
+  it('still fails the hold when the unhealthy row cannot be written', async () => {
+    recordDeliveryMock.mockRejectedValueOnce(new Error('duplicate key value violates unique'));
     const d = deps();
-    const out = await runCoolifyHealthGate(
-      gateJob({
-        forRollback: true,
-        deliveryId: null,
-        runId: null,
-        deadlineAt: new Date(NOW - 1).toISOString(),
-      }),
-      d,
-    );
+
+    const out = await runCoolifyHealthGate(closed(), d);
+
     expect(out.verdict).toBe('unhealthy');
-    expect(d.rollback).not.toHaveBeenCalled();
-    expect(d.settle).not.toHaveBeenCalled();
-    expect(recordDeliveryMock.mock.calls[0]?.[0]).toMatchObject({
-      eventName: 'deploy.rollback.unhealthy',
-    });
-    expect(errorLog.mock.calls.map((c) => String(c[1])).join(' ')).toContain(
-      'the ROLLBACK is not serving either',
-    );
-  });
-
-  it('a healthy rollback settles nothing — the failed deploy already owns the hold', async () => {
-    const d = deps({ probe: vi.fn(async () => ({ healthy: true })) });
-    expect(await runCoolifyHealthGate(gateJob({ forRollback: true, deliveryId: null }), d)).toEqual(
-      { verdict: 'healthy' },
-    );
-    expect(d.settle).not.toHaveBeenCalled();
-  });
-
-  it('cannot roll back a target the config no longer holds, and says so', async () => {
-    bindingConfig = { targets: [] };
-    const d = deps();
-    await runCoolifyHealthGate(gateJob({ deadlineAt: new Date(NOW - 1).toISOString() }), d);
-    expect(d.listImages).not.toHaveBeenCalled();
-    expect(errorLog.mock.calls.map((c) => String(c[1])).join(' ')).toContain(
-      'no longer configured',
-    );
+    expect(d.settle.mock.calls[0]?.[0]).toBe('failed');
   });
 });
 
-describe('the rollback is dispatched at most once, and never left unwatched', () => {
-  it('does not roll back a second time when a marker for this deploy already exists', async () => {
-    const d = deps({ findRollbackMarker: vi.fn(async () => true) });
-    const out = await runCoolifyHealthGate(
-      gateJob({ deadlineAt: new Date(NOW - 1).toISOString() }),
-      d,
+// cm:guard criterion 37. The capability is NOT what was removed — only the automatic caller — and
+// this is the assertion that keeps the two apart. Read as source rather than exercised, because
+// what is claimed is that the operator door still names the verb; exercising the route would prove
+// the Hono handler and say nothing about whether this module reaches it.
+describe('the operator keeps the rollback this gate gave up', () => {
+  it('leaves runCoolifyRollback and listCoolifyRollbackImages reachable from the integration routes', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const routes = await readFile(
+      new URL('../coolify-routes.ts', import.meta.url).pathname,
+      'utf8',
     );
-    expect(d.rollback).not.toHaveBeenCalled();
-    expect(out.rolledBackTo).toBeUndefined();
-    expect(errorLog.mock.calls.map((c) => String(c[1])).join(' ')).toContain('already dispatched');
-    expect(d.settle.mock.calls[0]?.[0]).toBe('failed');
+
+    expect(routes).toContain('runCoolifyRollback(');
+    expect(routes).toContain('listCoolifyRollbackImages(');
   });
 
-  it('writes the rollback marker BEFORE dispatching, so a retry after a throw cannot double it', async () => {
-    const d = deps();
-    await runCoolifyHealthGate(gateJob({ deadlineAt: new Date(NOW - 1).toISOString() }), d);
-    const events = recordDeliveryMock.mock.calls.map(
-      (c) => (c[0] as { eventName: string }).eventName,
-    );
-    expect(events).toEqual(['deploy.unhealthy', 'deploy.rollback.auto']);
-    expect(recordDeliveryMock.mock.calls[1]?.[0]).toMatchObject({
-      direction: 'outbound',
-      requestId: 'health-rollback:dep-1',
-    });
-  });
+  it('leaves no automatic caller of either in the health gate', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const gate = await readFile(new URL('./health-gate.ts', import.meta.url).pathname, 'utf8');
 
-  it('names the OPEN circuit breaker rather than reporting a configuration problem', async () => {
-    connectionActive = false;
-    const d = deps();
-    const out = await runCoolifyHealthGate(
-      gateJob({ deadlineAt: new Date(NOW - 1).toISOString() }),
-      d,
-    );
-    expect(d.listImages).not.toHaveBeenCalled();
-    expect(d.rollback).not.toHaveBeenCalled();
-    expect(out.rolledBackTo).toBeUndefined();
-    expect(errorLog.mock.calls.map((c) => String(c[1])).join(' ')).toContain(
-      'circuit breaker is OPEN',
-    );
-  });
-
-  it('pages and settles rather than throwing when the rollback marker cannot be written', async () => {
-    recordDeliveryMock.mockImplementation(async (input: unknown) => {
-      if ((input as { eventName: string }).eventName === 'deploy.rollback.auto') {
-        throw new Error('duplicate key value violates unique constraint');
-      }
-      return 'inb-1';
-    });
-    const d = deps();
-
-    const out = await runCoolifyHealthGate(
-      gateJob({ deadlineAt: new Date(NOW - 1).toISOString() }),
-      d,
-    );
-
-    expect(d.rollback).not.toHaveBeenCalled();
-    expect(out.rolledBackTo).toBeUndefined();
-    expect(d.settle).toHaveBeenCalled();
-    expect(errorLog.mock.calls.map((c) => String(c[1])).join(' ')).toContain(
-      'could not be recorded',
-    );
-  });
-
-  it('a queue failure AFTER the rollback still settles the hold and reports the rollback', async () => {
-    (boss.send as unknown as { mockRejectedValueOnce: (e: Error) => void }).mockRejectedValueOnce(
-      new Error('boss is down'),
-    );
-    const d = deps();
-
-    const out = await runCoolifyHealthGate(
-      gateJob({ deadlineAt: new Date(NOW - 1).toISOString() }),
-      d,
-    );
-
-    expect(out.rolledBackTo).toBe('sha-good');
-    expect(d.settle).toHaveBeenCalled();
-    const paged = errorLog.mock.calls.map((c) => String(c[1])).join(' ');
-    expect(paged).toContain('the restored image is unwatched');
-    expect(paged).not.toContain('nothing was rolled back');
-  });
-
-  it('says so when the restored image ends up with no health check watching it', async () => {
-    bindingConfig = {
-      targets: [{ id: 't1', label: 'Backend', resourceUuid: 'res-1' }],
-    };
-    const d = deps();
-
-    await runCoolifyHealthGate(gateJob({ deadlineAt: new Date(NOW - 1).toISOString() }), d);
-
-    expect(errorLog.mock.calls.map((c) => String(c[1])).join(' ')).toContain(
-      'is NOT being health-checked',
-    );
-  });
-
-  it('closes the rollback marker instead of leaving an outbound delivery in flight forever', async () => {
-    await runCoolifyHealthGate(gateJob({ deadlineAt: new Date(NOW - 1).toISOString() }), deps());
-    expect(updateDeliveryMock).toHaveBeenCalledWith(
-      'inb-1',
-      expect.objectContaining({ status: 'ok' }),
-    );
-  });
-
-  it('closes the marker failed when the rollback was refused', async () => {
-    const d = deps({
-      rollback: vi.fn(async () => {
-        throw new Error('rollback image is not listed by Coolify');
-      }),
-    });
-    await runCoolifyHealthGate(gateJob({ deadlineAt: new Date(NOW - 1).toISOString() }), d);
-    expect(updateDeliveryMock).toHaveBeenCalledWith(
-      'inb-1',
-      expect.objectContaining({ status: 'failed' }),
-    );
-  });
-
-  it('a re-run whose unhealthy row already exists still reaches the marker, and rolls back nothing twice', async () => {
-    // cm:why this is the shape of a pg-boss retry after a transient failure downstream — the deterministic `health:<uuid>` row collides on the unique index and the marker for the rollback that already went out is present, which is the only way to reach the marker check at all
-    recordDeliveryMock.mockImplementation(async (input: unknown) => {
-      if ((input as { eventName: string }).eventName === 'deploy.unhealthy') {
-        throw new Error('duplicate key value violates unique constraint');
-      }
-      return 'inb-1';
-    });
-    const d = deps({ findRollbackMarker: vi.fn(async () => true) });
-
-    const out = await runCoolifyHealthGate(
-      gateJob({ deadlineAt: new Date(NOW - 1).toISOString() }),
-      d,
-    );
-
-    expect(d.rollback).not.toHaveBeenCalled();
-    expect(out.verdict).toBe('unhealthy');
-    expect(d.settle).toHaveBeenCalledWith(
-      'failed',
-      expect.stringContaining('never became healthy'),
-    );
-    const paged = errorLog.mock.calls.map((c) => String(c[1])).join(' ');
-    expect(paged).toContain('could not write the unhealthy-deploy row');
-    expect(paged).toContain('already dispatched');
+    expect(gate).not.toContain('deploy.rollback.auto');
+    expect(gate).not.toMatch(/deps\.rollback|deps\.listImages/);
   });
 });

@@ -55,11 +55,13 @@ describe('phase_journal E2E', () => {
     source: string,
     artifact: unknown,
     attempt = 1,
+    startedAt?: string,
   ): Promise<void> {
     await harness.db.execute(sql`
-      INSERT INTO phase_journal (id, project_id, run_id, phase, attempt, source, artifact)
+      INSERT INTO phase_journal (id, project_id, run_id, phase, attempt, source, artifact, started_at)
       VALUES (${randomUUID()}, ${projectId}, ${runId}, ${phase}, ${attempt}, ${source},
-              ${artifact === null ? null : JSON.stringify(artifact)}::jsonb)
+              ${artifact === null ? null : JSON.stringify(artifact)}::jsonb,
+              COALESCE(${startedAt ?? null}::timestamptz, now()))
     `);
   }
 
@@ -148,5 +150,66 @@ describe('phase_journal E2E', () => {
       'phase_journal_run_phase_attempt_idx',
     );
     await insertPhase('code', 'agent', null, 2);
+  });
+
+  /**
+   * ISS-1042 criterion 40 — the journal reads in the order it happened.
+   *
+   * `resumePoint` answered where to restart and was the only way in, so an
+   * operator could read what a run was stuck on and never what it had done.
+   */
+  describe('listPhases', () => {
+    // cm:guard the rows are inserted OUT of order on purpose. Ordering by `id` would pass against
+    // rows inserted in order and is wrong on every real journal, because `id` is a random uuid: a
+    // case that seeds chronologically cannot tell the two apart.
+    it('answers oldest first, whatever order the rows were written in', async () => {
+      const { listPhases } = await import('../../src/pipeline/phase-journal.js');
+      await insertPhase('ship', 'agent', null, 1, '2026-09-03T00:00:00Z');
+      await insertPhase('plan', 'agent', null, 1, '2026-09-01T00:00:00Z');
+      await insertPhase('code', 'agent', null, 1, '2026-09-02T00:00:00Z');
+
+      const rows = await listPhases(runId);
+
+      expect(rows.map((r) => r.phase)).toEqual(['plan', 'code', 'ship']);
+    });
+
+    // cm:guard the tie-break is `attempt` and it is the whole reason a second sort key exists: a
+    // phase re-entered inside the same millisecond is exactly the retry a reader is looking for,
+    // and with no tie-break the two come back in whatever order the planner chose.
+    it('orders two attempts of one phase written at the same instant by attempt', async () => {
+      const { listPhases } = await import('../../src/pipeline/phase-journal.js');
+      await insertPhase('code', 'agent', null, 2, '2026-09-01T00:00:00Z');
+      await insertPhase('code', 'agent', null, 1, '2026-09-01T00:00:00Z');
+
+      const rows = await listPhases(runId);
+
+      expect(rows.map((r) => r.attempt)).toEqual([1, 2]);
+    });
+
+    // cm:guard scoped to the run. A listing that leaked another run's phases would put one issue's
+    // history into another's timeline, which is worse than no listing at all.
+    it('answers only this run’s phases', async () => {
+      const { listPhases } = await import('../../src/pipeline/phase-journal.js');
+      const otherRun = randomUUID();
+      await harness.db.execute(sql`
+        INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, started_at)
+        VALUES (${otherRun}, ${projectId}, NULL, 'system', 'running', now())
+      `);
+      await harness.db.execute(sql`
+        INSERT INTO phase_journal (id, project_id, run_id, phase, attempt, source)
+        VALUES (${randomUUID()}, ${projectId}, ${otherRun}, 'someone-elses', 1, 'agent')
+      `);
+      await insertPhase('code', 'agent', null, 1);
+
+      const rows = await listPhases(runId);
+
+      expect(rows.map((r) => r.phase)).toEqual(['code']);
+    });
+
+    it('answers an empty journal rather than raising', async () => {
+      const { listPhases } = await import('../../src/pipeline/phase-journal.js');
+
+      await expect(listPhases(runId)).resolves.toEqual([]);
+    });
   });
 });

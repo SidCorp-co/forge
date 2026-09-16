@@ -176,6 +176,54 @@
   you left it; searching or filtering shows matches wherever they are, including inside a section
   you had shut, and puts your own choice back when you clear it.
 
+- **A release run now keeps a record of what it did, and nothing closes a batch on an agent's word
+  alone.** A batch release used to leave one row saying it was running and a transcript on whichever
+  machine happened to be holding it. Nobody else could read what a release had already done — not
+  whether it had merged, not whether it had deployed once or three times, not what the site said
+  afterwards — so if the session running it died, whoever picked it up had the list of issues and
+  nothing more. Every act a release makes is now written down before it happens and completed
+  afterwards, carrying the build it was about, the deploy it came from, and what Forge itself read
+  off the running site at that moment. The agent's own account of each act is kept beside that
+  reading rather than in place of it, and a log the machine had to cut short says so and says that
+  nobody has read the rest. One page assembles the whole run from those records plus a fresh look at
+  the site, so a different person or a different machine can carry on from where it stopped.
+
+- **You can now watch a release happen, act by act, instead of asking whoever is running it.** A
+  release that is shipping shows up on the issues screen as it always did, but the words "shipping
+  now" beside an issue are now a link, and behind it is the run itself: every act it made, oldest
+  first, with the agent's own account of that act as the entry and, underneath, the build it was
+  about, the deployment it came from, and what Forge read off the site while it happened. The two
+  are never merged into one sentence, so you can always see where the agent's version and the
+  machine's reading disagree. An act that was written down and never reported back is shown and
+  labelled incomplete rather than quietly left out — that is what a release killed halfway through
+  looks like, and it is the entry worth reading. Where the machine had to cut a log short, the page
+  says so and says nobody has read past the cut. The health of the site at the top of the page is
+  read while the page is being served, not remembered, so coming back to a tab you left open during
+  an outage does not show you the reading from before it.
+
+- **A release that cannot be checked is refused rather than believed.** A project that had never
+  said where its running site can be reached still got to close its whole batch of issues, because
+  the step that verifies a release simply skipped itself when there was nothing to check with — and
+  closing is the one thing that marks work as shipped. Setting up a release now asks for those
+  addresses up front, the settings screen names them as missing before anyone cuts a release, and
+  finishing a release without them is refused outright with the exact setting to fill in. Checking
+  also asks two questions in order instead of one: is the site answering at all, and is it serving
+  the build this release pushed. A site that is up but still serving the old build, and a site that
+  is down, no longer arrive as the same sentence — and a typo in the address now reads as a typo
+  rather than as a failed deploy.
+
+- **A release only runs on the machine that holds the production credential.** A project could name
+  the machine allowed to ship it, and nothing ever read that name after the release was created, so
+  the release ran wherever a machine asked for work first. It is now offered to, and accepted from,
+  only machines carrying that name, and a machine without it is told so by name instead of failing
+  half way through with the merge already pushed.
+
+- **Release runs now say how long is too long.** A release that quietly stopped making progress
+  looked exactly like one still working. Three readings now say otherwise — one for a release that
+  has been going far too long overall, one for a release that has gone quiet, and one for a release
+  where the site was up and has since gone down — and a release past any of them stops and says
+  which, rather than carrying on making changes nobody is watching.
+
 - **The issues list now says how long each row has sat where it is.** A status answers who is
   holding a piece of work; it has never been able to answer how long they have been holding it, and
   that is the question a person is actually asking when they scan the list. Two issues at the same
@@ -2824,6 +2872,27 @@
   credentials on the machine is now private to the account running the box from the moment it
   exists, and a machine that cannot make it private is told so instead of being handed a readable
   copy.
+
+- **A release that comes up dead is no longer answered by automatically restoring the previous
+  build.** When a deploy never became healthy, Forge put the previous build back by itself. From
+  inside that moment a build that came up broken and an outage that was already happening look
+  exactly the same, so the automatic answer to both was to delete work somebody had reviewed while
+  the outage carried on regardless. The deploy is now failed and reported loudly, saying in as many
+  words that the broken build is still the one serving, and going back to an earlier build is a
+  decision a person makes from the integration screen, where it has always been available. The
+  release agent is told the same thing: repair forward, and where it cannot, stop and say so.
+
+- **Calling off a release now leaves every issue somewhere true.** A release that ended without
+  finishing sent its whole list of issues to "reopened", whatever had actually happened. For a
+  release that never got as far as production that said the work had come back from a release that
+  never took place — the issues were still merged, still checked, still waiting to ship. For a
+  release that had already put code on production it said there was work to redo over code that is
+  serving right now. Where nothing reached production the issues go back to waiting for release;
+  where something did, they stay exactly where they are and say why, so a person decides. And
+  calling off a release that something else had already finished used to change nothing and report
+  success — the record went on claiming the release had completed. It now records that it was called
+  off, keeps what it had said before, and a later attempt to finish it is refused instead of being
+  answered with silence.
 
 - **A release that finished no longer locks the project out of the next one.** Finishing a batch
   closed every issue it had shipped and then left the release itself reading as still in progress,

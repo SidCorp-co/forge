@@ -98,8 +98,13 @@ describe('release batch finish E2E', () => {
       }
     });
 
-    // cm:guard an aborted release must be DISTINGUISHABLE from one never attempted. The abort used to clear the claim and leave the status alone, so a failed release and an untouched issue read identically; `reopen` is where a person decides, and it does not self-heal on purpose.
-    it('lands an aborted batch on `reopen` with the reason, not back where it started', async () => {
+    // cm:guard an aborted release must be DISTINGUISHABLE from one never attempted, and the claim
+    // being cleared is what says so — the abort used to clear it and leave the status alone, so a
+    // failed release and an untouched issue read identically. The DESTINATION changed at ISS-1042:
+    // a batch that recorded no promotion never moved this issue, which is still merged, still
+    // verified and still waiting for production, so it goes back to the project's own gate. It
+    // reached `reopen` before, which says it came back from a release that did not happen.
+    it('returns an aborted batch that never promoted to the project’s release gate', async () => {
       const { abortReleaseBatch } = await import('../../src/release-batch/service.js');
       const a = await insertIssue();
       const { runId } = await claim([a]);
@@ -107,9 +112,13 @@ describe('release batch finish E2E', () => {
 
       const touched = await abortReleaseBatch(runId, 'deploy never reported', ownerId);
 
-      expect(touched).toEqual([a]);
+      expect(touched).toMatchObject({
+        claimsCleared: [a],
+        destination: 'awaiting_release',
+        promoted: false,
+      });
       const after = await stored(a);
-      expect(after.status).toBe('reopen');
+      expect(after.status).toBe('awaiting_release');
       expect(after.claim).toBeNull();
       expect(after.mergedAt).toBeNull();
     });
@@ -187,15 +196,22 @@ describe('release batch finish E2E', () => {
 
       const released = await abortReleaseBatch(runId, 'the deploy never landed', ownerId);
 
-      expect(released.sort()).toEqual([a, b].sort());
+      expect(released.claimsCleared.sort()).toEqual([a, b].sort());
       for (const id of [a, b]) {
         const after = await stored(id);
-        // cm:guard `reopen`, not the gate status: this assertion read `released` until the release lane gained `releasing`, and asserting the gate status here is what made a failed release indistinguishable from one never attempted. Nothing may close — that is what the `mergedAt` check below is for.
-        expect(after.status).toBe('reopen');
+        // cm:guard the gate status because this run RECORDED NO PROMOTION, which is the reading
+        // ISS-1042 replaced the single `reopen` destination with. The claim being cleared is what
+        // separates a failed release from an untouched issue; nothing may close, which is what the
+        // `mergedAt` check below is for.
+        expect(after.status).toBe('awaiting_release');
         expect(after.claim).toBeNull();
         expect(after.mergedAt).toBeNull();
-        // cm:guard TWO comments, and both are load-bearing: the abort's own explanation, and the reason `requiresAuthoredReason` posts before the `reopen` write commits. A test asserting one would be satisfied by an abort that moved the status with no reason on the record — the unexplained park the reason rule exists to refuse.
-        expect(await commentCount(id)).toBe(2);
+        // cm:guard the abort's own explanation is now the ONLY comment, and that is the price of
+        // the destination change: `REASON_REQUIRED_STATUSES` covers `reopen`, `waiting` and
+        // `needs_info`, so returning the roster to the gate posts no second heading. The reason is
+        // still on the record — this assertion is what says it did not go silent, and one is the
+        // number to fail on rather than a floor.
+        expect(await commentCount(id)).toBe(1);
       }
     });
 
