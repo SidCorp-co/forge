@@ -46,9 +46,9 @@ export const forbidden = () =>
 export const notFound = (entity = 'integration') =>
   new HTTPException(404, { message: `${entity} not found`, cause: { code: 'NOT_FOUND' } });
 
-/** 409 for the one-active-binding-per-slot invariant (create + bind-existing). */
+/** 409 for the one-active-service-binding invariant (create + bind-existing). */
 export const alreadyExists = (
-  message = 'integration already exists for this provider+environment',
+  message = 'an active service binding for this provider already exists on this project',
 ) => new HTTPException(409, { message, cause: { code: 'ALREADY_EXISTS' } });
 
 /**

@@ -94,7 +94,7 @@ integrationsRoutes.post(
 
     const body = c.req.valid('json');
 
-    // cm:guard the clash check must match the UNIQUE index, which is (project_id, provider, environment, label) since ISS-558 — checking env-only for epodsystem refuses a second labeled storefront the index would have accepted, and checking by label for anyone else lets a duplicate through
+    // cm:guard the clash check must match the UNIQUE index, which since ISS-1046 is (project_id, provider, label) WHERE role = 'service' — checking without the label for epodsystem refuses a second labeled storefront the index would have accepted, and checking by label for anyone else lets a duplicate through. A DEPLOY binding is not covered by either: the index does not constrain it and `assertNoActiveBindingClash` returns early for it.
     const bindingLabel =
       body.provider === 'epodsystem' && 'label' in body && body.label ? body.label : '';
 
@@ -157,7 +157,9 @@ integrationsRoutes.post(
       // doesn't leave a dangling credential.
       await softDeleteConnection(connection.id).catch(() => {});
       if (isUniqueViolation(err)) {
-        throw alreadyExists('integration already exists for this provider+environment+label');
+        throw alreadyExists(
+          'an active service binding for this provider and label already exists on this project',
+        );
       }
       throw err;
     }

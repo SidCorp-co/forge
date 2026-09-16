@@ -10,7 +10,7 @@ const recordDelivery = vi.fn(async () => 'delivery-1');
 const updateDelivery = vi.fn(async () => undefined);
 const findLastOutbound = vi.fn(async () => null as unknown);
 const enqueueCoolifyConfirm = vi.fn(async () => undefined);
-const prodActionNeedsHumanConfirm = vi.fn(async () => false);
+const liveActionNeedsHumanConfirm = vi.fn(async () => false);
 const client = {
   cancelDeployment: vi.fn(),
   listRollbackImages: vi.fn(),
@@ -41,7 +41,7 @@ vi.mock('./confirm.js', () => ({
   enqueueCoolifyConfirm: (...a: unknown[]) => enqueueCoolifyConfirm(...(a as [])),
 }));
 vi.mock('../../pipeline/release-coolify.js', () => ({
-  prodActionNeedsHumanConfirm: (...a: unknown[]) => prodActionNeedsHumanConfirm(...(a as [])),
+  liveActionNeedsHumanConfirm: (...a: unknown[]) => liveActionNeedsHumanConfirm(...(a as [])),
 }));
 vi.mock('../store.js', () => ({
   buildContextFromBinding: () => ({ config: {}, secrets: { apiToken: 'tok' } }),
@@ -75,7 +75,7 @@ function integration(over: { environment?: string; targets?: unknown[] } = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  prodActionNeedsHumanConfirm.mockResolvedValue(false);
+  liveActionNeedsHumanConfirm.mockResolvedValue(false);
   activeCoolifyIntegrations.mockResolvedValue([integration()]);
 });
 
@@ -124,7 +124,7 @@ describe('runCoolifyCancel', () => {
 
   it('parks a prod cancel for a human instead of dispatching it', async () => {
     activeCoolifyIntegrations.mockResolvedValue([integration({ environment: 'prod' })]);
-    prodActionNeedsHumanConfirm.mockResolvedValue(true);
+    liveActionNeedsHumanConfirm.mockResolvedValue(true);
 
     const out = await runCoolifyCancel({ projectId: PROJECT_ID, deploymentUuid: 'dep-7' });
 
@@ -202,7 +202,7 @@ describe('runCoolifyRollback', () => {
 
   it('parks a prod rollback for a human before it reads anything', async () => {
     activeCoolifyIntegrations.mockResolvedValue([integration({ environment: 'prod' })]);
-    prodActionNeedsHumanConfirm.mockResolvedValue(true);
+    liveActionNeedsHumanConfirm.mockResolvedValue(true);
 
     const out = await runCoolifyRollback({ projectId: PROJECT_ID, commit: 'sha-a' });
 

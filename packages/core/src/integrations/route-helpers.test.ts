@@ -96,7 +96,8 @@ function bindingRow(id: string, projectId: string, over: Record<string, unknown>
     connectionId: 'conn-1',
     projectId,
     provider: 'coolify',
-    environment: 'prod',
+    role: 'deploy',
+    stages: ['live'],
     config: {},
     integrationSecret: null,
     label: '',
@@ -112,11 +113,18 @@ describe('summarizeConnectionWithUsage', () => {
   it('names every project the credential is bound to, so two cards can differ', () => {
     const out = summarizeConnectionWithUsage(connectionRow(), [
       bindingRow('b1', 'proj-a'),
-      bindingRow('b2', 'proj-b', { environment: 'staging', active: false }),
+      bindingRow('b2', 'proj-b', { stages: ['preview'], active: false }),
     ]);
     expect(out.usage.bindings).toEqual([
-      { id: 'b1', projectId: 'proj-a', environment: 'prod', label: '', active: true },
-      { id: 'b2', projectId: 'proj-b', environment: 'staging', label: '', active: false },
+      { id: 'b1', projectId: 'proj-a', role: 'deploy', stages: ['live'], label: '', active: true },
+      {
+        id: 'b2',
+        projectId: 'proj-b',
+        role: 'deploy',
+        stages: ['preview'],
+        label: '',
+        active: false,
+      },
     ]);
   });
 

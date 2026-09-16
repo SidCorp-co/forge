@@ -811,6 +811,8 @@ describe('forge_projects.get', () => {
         'orgId',
         'previewDeploy',
         'liveBranch',
+        'releaseModel',
+        'releaseStrategy',
         'repoPath',
         'role',
         'slug',

@@ -211,10 +211,16 @@ const forbidden = (message: string) =>
 // `projects_release_strategy_chk` are the same two rules in Postgres, and they are the authority.
 // This function exists so a caller gets a sentence naming what is missing instead of a 500 carrying a
 // constraint name, and the two must admit exactly the same rows.
+const RELEASE_MODEL_KEYS = ['releaseModel', 'liveBranch', 'releaseStrategy'] as const;
+
 async function assertReleaseModelCoherent(
   projectId: string,
   updates: Record<string, unknown>,
 ): Promise<void> {
+  // A PATCH touching none of the three leaves the row exactly as the two CHECKs already admitted it,
+  // so there is nothing to re-judge — and reading the project for every unrelated settings PATCH
+  // would buy a query per request to answer a question the body never asked.
+  if (!RELEASE_MODEL_KEYS.some((k) => k in updates)) return;
   const [row] = await db
     .select({
       releaseModel: projects.releaseModel,

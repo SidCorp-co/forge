@@ -168,6 +168,11 @@ beforeEach(() => {
   effectiveRole.mockReset();
   orgRoleMock.mockReset();
   findActiveBindingByLabel.mockReset();
+  // `clearAllMocks` clears calls, not queued `…Once` implementations. A deploy
+  // binding never consults `findActiveBinding` (ISS-1046 rule 3), so a `…Once`
+  // queued by a deploy test would otherwise be answered to the NEXT service
+  // test — which is how the service-clash case read 500 instead of 409.
+  findActiveBinding.mockReset();
 });
 
 describe('POST /api/projects/:projectId/integrations — vault guard', () => {
@@ -741,11 +746,7 @@ describe('coolify config tier split (binding-scoped deploy target)', () => {
     expect(res.status).toBe(201);
 
     const connArg = createConnection.mock.calls[0]?.[0] as { config: Record<string, unknown> };
-    expect(connArg.config).toEqual({
-      baseUrl: VALID_BODY.config.baseUrl,
-      role: 'deploy',
-      stages: ['preview'],
-    });
+    expect(connArg.config).toEqual({ baseUrl: VALID_BODY.config.baseUrl });
     const bindArg = createBinding.mock.calls[0]?.[0] as {
       config: { targets: Array<{ id: string; label: string; resourceUuid: string }> };
     };
@@ -799,7 +800,6 @@ describe('POST /api/integration-connections/:id/bindings — bind existing conne
     const token = await signUserToken(USER_ID);
     mockOwnerMembership(); // emailVerified + target-project owner
     findConnectionById.mockResolvedValueOnce(ownedConnection());
-    findActiveBinding.mockResolvedValueOnce(null);
     createBinding.mockResolvedValueOnce({
       id: 'bind-1',
       connectionId: CONN_ID,
@@ -839,7 +839,6 @@ describe('POST /api/integration-connections/:id/bindings — bind existing conne
     const token = await signUserToken(USER_ID);
     mockOwnerMembership();
     findConnectionById.mockResolvedValueOnce(ownedConnection());
-    findActiveBinding.mockResolvedValueOnce(null);
     createBinding.mockResolvedValueOnce({
       id: 'bind-2',
       connectionId: CONN_ID,
@@ -875,17 +874,51 @@ describe('POST /api/integration-connections/:id/bindings — bind existing conne
     ]);
   });
 
-  it('409 — provider+env clash on an existing active binding', async () => {
+  it('409 — a second active SERVICE binding for the same provider clashes', async () => {
     const token = await signUserToken(USER_ID);
     mockOwnerMembership();
     findConnectionById.mockResolvedValueOnce(ownedConnection());
     findActiveBinding.mockResolvedValueOnce({ binding: { id: 'existing' }, connection: {} });
 
-    const res = await bindReq(token, CONN_ID, { projectId: PROJECT_ID, role: 'deploy', stages: ['preview'] });
+    const res = await bindReq(token, CONN_ID, { projectId: PROJECT_ID, role: 'service' });
     expect(res.status).toBe(409);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('ALREADY_EXISTS');
     expect(createBinding).not.toHaveBeenCalled();
+  });
+
+  // ISS-1046 rule 3: a stage may hold more than one deploy binding, so the
+  // pre-flight that refuses a second SERVICE binding must NOT refuse this one.
+  // Eight fleet projects carry two coolify deploy bindings apiece; the old
+  // provider+environment uniqueness is what this replaced.
+  it('201 — a second active DEPLOY binding on the same stage is allowed', async () => {
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership();
+    findConnectionById.mockResolvedValueOnce(ownedConnection());
+    createBinding.mockResolvedValueOnce({
+      id: 'bind-2',
+      projectId: PROJECT_ID,
+      provider: 'coolify',
+      role: 'deploy',
+      stages: ['preview'],
+      config: { targets: [{ id: 't-2', label: 'App', resourceUuid: 'res-b' }] },
+      integrationSecret: null,
+      active: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const res = await bindReq(token, CONN_ID, {
+      projectId: PROJECT_ID,
+      role: 'deploy',
+      stages: ['preview'],
+      config: { targets: [{ label: 'App', resourceUuid: 'res-b' }] },
+    });
+    expect(res.status).toBe(201);
+    expect(createBinding).toHaveBeenCalled();
+    // The rule itself: the service pre-flight is never consulted for a deploy
+    // binding, so a project already carrying one cannot be refused a second.
+    expect(findActiveBinding).not.toHaveBeenCalled();
   });
 
   it('409 — Drizzle-wrapped 23505 on createBinding returns ALREADY_EXISTS (inactive duplicate)', async () => {
@@ -1270,6 +1303,7 @@ function makeEpodsystemBinding(label: string, active = true) {
     projectId: PROJECT_ID,
     provider: 'epodsystem',
     role: 'service',
+    stages: [],
     config: {},
     integrationSecret: null,
     label,
@@ -1282,6 +1316,7 @@ function makeEpodsystemBinding(label: string, active = true) {
 describe('POST /api/projects/:projectId/integrations — epodsystem multi-binding (ISS-558)', () => {
   const EPOD_BODY = {
     provider: 'epodsystem',
+    role: 'service',
     config: {},
     secrets: { apiKey: 'crmk_abc123456789' },
   };
@@ -1337,7 +1372,7 @@ describe('POST /api/projects/:projectId/integrations — epodsystem multi-bindin
     expect(res.status).toBe(400);
   });
 
-  it('409 — non-epodsystem (postman) still rejects a 2nd binding in same env', async () => {
+  it('409 — non-epodsystem (postman) still rejects a 2nd service binding', async () => {
     process.env.INTEGRATION_MASTER_KEY = TEST_KEY_B64;
     const token = await signUserToken(USER_ID);
     mockOwnerMembership();
@@ -1345,6 +1380,7 @@ describe('POST /api/projects/:projectId/integrations — epodsystem multi-bindin
 
     const res = await post(token, {
       provider: 'postman',
+      role: 'service',
       config: { workspaceName: 'W', region: 'us', mode: 'minimal' },
       secrets: { apiKey: 'PMAK-abcdef123456' },
     });

@@ -10,6 +10,8 @@ import { alias } from 'drizzle-orm/pg-core';
 import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
 import {
+  type BindingRole,
+  type DeployStage,
   type IssueStatus,
   type JobType,
   labels,
@@ -93,8 +95,8 @@ interface TestingUrl {
 
 interface IntegrationRow {
   provider: string;
-  role: string;
-  stages: string[];
+  role: BindingRole;
+  stages: DeployStage[];
   lastHealthStatus: string | null;
   /** ISS-526 — Sentry-only: the labelled targets the agent picks between when
    *  querying the Sentry MCP (org/project is passed per call). */

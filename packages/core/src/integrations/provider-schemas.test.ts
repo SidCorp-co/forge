@@ -22,6 +22,8 @@ const { configSchemaForProvider, createSchema, splitProviderConfig } = await imp
 
 const AGENT = {
   provider: 'agent' as const,
+  role: 'deploy' as const,
+  stages: ['live'] as const,
   config: {
     releaseRunnerLabel: 'epod-prod',
     verify: { probes: [{ url: 'https://admin.example.test/api/health', commitPath: 'commit' }] },
@@ -34,7 +36,8 @@ describe('the agent release channel', () => {
   it('can be created, which is what makes the column value reachable', () => {
     const parsed = createSchema.parse(AGENT);
     expect(parsed.provider).toBe('agent');
-    expect(parsed.environment).toBe('prod');
+    expect(parsed.role).toBe('deploy');
+    expect(parsed.stages).toEqual(['live']);
   });
 
   // cm:guard a deploy key stored here would put every project's production behind one decryption path — the blast radius the design refuses under "Not doing"
@@ -52,7 +55,10 @@ describe('the agent release channel', () => {
   });
 
   it('accepts a channel that declares nothing but itself', () => {
-    expect(createSchema.parse({ provider: 'agent', config: {} }).provider).toBe('agent');
+    expect(
+      createSchema.parse({ provider: 'agent', role: 'deploy', stages: ['live'], config: {} })
+        .provider,
+    ).toBe('agent');
   });
 });
 
@@ -244,6 +250,7 @@ describe('a Google connection carries the key file and nothing else (ISS-1036, c
   it('creates from the whole key file Google issued', () => {
     const parsed = createSchema.parse({
       provider: 'google',
+      role: 'service',
       config: { defaultSpreadsheetId: '1Sheet' },
       secrets: { serviceAccountJson: KEY },
     });
@@ -253,6 +260,7 @@ describe('a Google connection carries the key file and nothing else (ISS-1036, c
   it('refuses a body that is not a service-account key, naming what one looks like', () => {
     const result = createSchema.safeParse({
       provider: 'google',
+      role: 'service',
       config: {},
       secrets: { serviceAccountJson: JSON.stringify({ type: 'authorized_user' }).padEnd(120, ' ') },
     });

@@ -201,6 +201,7 @@ describe('POST /api/projects', () => {
       createdBy: 'uuid-owner',
     });
 
+    expect(txInsertProjectValues.mock.calls[0]?.[0]).not.toHaveProperty('liveBranch');
     expect(txInsertProjectValues).toHaveBeenCalledWith(
       expect.objectContaining({
         slug: 'my-proj',
@@ -208,10 +209,12 @@ describe('POST /api/projects', () => {
         orgId: ORG_ID,
         createdBy: 'uuid-owner',
         apiKey: expect.stringMatching(/^fk_[0-9a-f]{48}$/),
-        // ISS-274 — branch columns are defaulted at create time so the
-        // resolver never surfaces a null-base misconfig for new projects.
+        // ISS-274 — `baseBranch` is defaulted at create time so the resolver
+        // never surfaces a null-base misconfig for new projects.
         baseBranch: 'main',
-        liveBranch: 'main',
+        // ISS-1046 — `liveBranch` deliberately is NOT: a new project declares
+        // `releaseModel: 'none'`, which reads no live branch at all.
+        releaseModel: 'none',
       }),
     );
     expect(txInsertMembersValues).toHaveBeenCalledWith({
@@ -539,6 +542,12 @@ describe('PATCH /api/projects/:id', () => {
         agentConfig: null,
         webhookSecret: null,
       }),
+    ]);
+
+    // Touching `liveBranch` makes the PATCH read the row it is about to change,
+    // so the model and the branch are judged together (ISS-1046).
+    selectLimit.mockResolvedValueOnce([
+      { releaseModel: 'none', liveBranch: null, releaseStrategy: null },
     ]);
 
     const res = await req('/11111111-1111-4111-8111-111111111111', {

@@ -45,7 +45,7 @@ vi.mock('../ws/server.js', () => ({ roomManager: { publish: vi.fn() } }));
 const listBindings = vi.fn(async () => [] as unknown[]);
 vi.mock('../integrations/store.js', async (importActual) => {
   const actual = await importActual<typeof import('../integrations/store.js')>();
-  return { ...actual, listActiveBindingsForEnvironment: () => listBindings() };
+  return { ...actual, listActiveDeployBindingsForStage: () => listBindings() };
 });
 
 const closeRunMock = vi.fn(async (..._a: unknown[]) => undefined);
@@ -76,22 +76,41 @@ const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 const AGENT = { type: 'device', id: 'dev-1', ownerId: 'owner-1' } as const;
 const HUMAN = { type: 'user', id: '33333333-3333-4333-8333-333333333333' } as const;
 
-/** A project WITH production: a prod binding, and a production branch that is not the base. */
+/** A project that DECLARES a release and has somewhere for it to land. */
 function gated() {
-  projectSelectLimit.mockResolvedValueOnce([{ baseBranch: 'dev', liveBranch: 'master' }]);
+  projectSelectLimit.mockResolvedValueOnce([
+    {
+      baseBranch: 'dev',
+      liveBranch: 'master',
+      releaseModel: 'promote',
+      releaseStrategy: 'merge-branch',
+    },
+  ]);
   listBindings.mockResolvedValueOnce([{ binding: { provider: 'coolify' }, connection: {} }]);
 }
 
-/** A project with NO production — either half missing is enough. */
-function ungated(over: { branches?: boolean } = {}) {
-  projectSelectLimit.mockResolvedValueOnce(
-    over.branches
-      ? [{ baseBranch: 'dev', liveBranch: 'master' }]
-      : [{ baseBranch: 'main', liveBranch: 'main' }],
-  );
-  listBindings.mockResolvedValueOnce(
-    over.branches ? [] : [{ binding: { provider: 'sentry' }, connection: {} }],
-  );
+/**
+ * A project that declares it ships nowhere. Since ISS-1046 this is the ONLY ungated shape:
+ * the gate reads `releaseModel` and does not infer from branch names or provider identity, so
+ * a trunk project and a storefront are ungated for the same declared reason or not at all.
+ */
+function ungated() {
+  projectSelectLimit.mockResolvedValueOnce([
+    { baseBranch: 'main', liveBranch: null, releaseModel: 'none', releaseStrategy: null },
+  ]);
+}
+
+/** A project that declares a release but has no live deploy binding to land it on. */
+function undeclaredTarget() {
+  projectSelectLimit.mockResolvedValueOnce([
+    {
+      baseBranch: 'dev',
+      liveBranch: 'master',
+      releaseModel: 'promote',
+      releaseStrategy: 'merge-branch',
+    },
+  ]);
+  listBindings.mockResolvedValueOnce([]);
 }
 
 function queueUpdate(status: string) {
@@ -198,22 +217,44 @@ describe('who may still write `closed`', () => {
     expect(result.status).toBe('closed');
   });
 
-  // cm:guard both halves, separately. A trunk project with a prod binding (forge-dev carries two, sentry and epodsystem) and a promoting project with none (epodsystem-core, dev->master) each fail exactly one half, and each must keep closing its own issues — a gate on either would park every issue behind a release nothing is configured to cut.
-  it('an agent on a project whose production branch is its base', async () => {
+  // cm:guard `none` is a DECLARATION, not an inference. 25 of 32 fleet projects carry a production
+  // branch nothing promotes to and 7 carry a deploy binding, so every branch-shaped or provider-shaped
+  // test of "does this project release?" answered for a different project than the one it was asked
+  // about. The only ungated project is one that says so.
+  it('an agent on a project that declares `releaseModel: none`', async () => {
     ungated();
     queueUpdate('closed');
 
     const result = await transitionIssueStatus(AT_WORK, 'closed', AGENT);
 
     expect(result.status).toBe('closed');
+    // `none` short-circuits before the binding query: nothing about the bindings
+    // can make a declared non-releasing project release.
+    expect(listBindings).not.toHaveBeenCalled();
   });
+});
 
-  it('an agent on a project with distinct branches but no production binding', async () => {
-    ungated({ branches: true });
+// cm:guard the loud break. Before ISS-1046 this shape answered `null` — indistinguishable from a
+// project that had declared it ships nothing — and the issue closed as shipped against a release
+// that never ran. It must REFUSE, and the refusal must name the project and what is missing.
+describe('a project that declares a release it cannot land', () => {
+  it('refuses the close by name instead of letting it through', async () => {
+    undeclaredTarget();
     queueUpdate('closed');
 
-    const result = await transitionIssueStatus(AT_WORK, 'closed', AGENT);
+    await expect(transitionIssueStatus(AT_WORK, 'closed', AGENT)).rejects.toThrow(
+      /RELEASE_TARGET_UNDECLARED/,
+    );
+  });
 
-    expect(result.status).toBe('closed');
+  it('names the project and the two ways out', async () => {
+    undeclaredTarget();
+    queueUpdate('closed');
+
+    const err = await transitionIssueStatus(AT_WORK, 'closed', AGENT).catch((e: Error) => e);
+
+    expect(String(err)).toContain(PROJECT_ID);
+    expect(String(err)).toContain("no active deploy binding carrying the 'live' stage");
+    expect(String(err)).toContain("releaseModel='none'");
   });
 });

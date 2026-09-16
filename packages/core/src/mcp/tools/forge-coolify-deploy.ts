@@ -66,7 +66,7 @@ const inputSchema = z
     issueId: z.uuid().optional(),
     /** ISS-764 — batch release path: deploy via an existing pipeline run that
      *  has no associated issue. Mutually exclusive with issueId. When set,
-     *  dispatches prod (allowProd=true) through the shared release path. */
+     *  dispatches to the live stage (allowLive=true) through the shared release path. */
     pipelineRunId: z.uuid().optional(),
     integrationId: z.uuid().optional(),
     deploymentUuid: z.string().optional(),
@@ -116,8 +116,8 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
     '(code/fix/testing) is preview-only and NEVER touches a live binding, regardless of ' +
     'pipelineConfig.autoProdDeploy (that flag only bypasses the gate for the release-triggered ' +
     'auto-subscriber, not for this tool pre-release). With pipelineRunId (no issueId) — ISS-764 ' +
-    'batch release path: the run is already open (kind=system); dispatches ALL targets prod-allowed ' +
-    '(allowProd=true) via the shared release path. Prod human-confirm gate still applies — ' +
+    'batch release path: the run is already open (kind=system); dispatches ALL targets live-allowed ' +
+    '(allowLive=true) via the shared release path. The live human-confirm gate still applies — ' +
     'pendingHumanConfirm:true means abort the batch. Mutually exclusive with issueId. ' +
     'Without issueId or pipelineRunId — run-less resource redeploy: ' +
     'resolves the target integration like the logs action (explicit integrationId, else the single ' +

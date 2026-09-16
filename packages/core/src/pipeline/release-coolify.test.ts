@@ -97,7 +97,8 @@ const stagingPair = {
     id: STAGING_INT,
     projectId: PROJECT_ID,
     provider: 'coolify',
-    environment: 'staging',
+    role: 'deploy',
+    stages: ['preview'],
     config: {},
     active: true,
   },
@@ -108,7 +109,8 @@ const prodPair = {
     id: PROD_INT,
     projectId: PROJECT_ID,
     provider: 'coolify',
-    environment: 'prod',
+    role: 'deploy',
+    stages: ['live'],
     config: {},
     active: true,
   },
@@ -294,7 +296,7 @@ describe('tryDispatchCoolifyRelease — prod autoProdDeploy bypass', () => {
   });
 });
 
-describe('tryDispatchCoolifyRelease — integrationId hard filter + allowProd', () => {
+describe('tryDispatchCoolifyRelease — integrationId hard filter + allowLive', () => {
   it('integrationId filters to only that binding — prod is never touched', async () => {
     listBindingsSpy.mockResolvedValueOnce([stagingPair, prodPair]);
 
@@ -303,7 +305,7 @@ describe('tryDispatchCoolifyRelease — integrationId hard filter + allowProd', 
       issueId: ISSUE_ID,
       runId: RUN_ID,
       integrationId: STAGING_INT,
-      allowProd: true,
+      allowLive: true,
     });
 
     expect(enqueueSpy).toHaveBeenCalledTimes(1);
@@ -313,14 +315,14 @@ describe('tryDispatchCoolifyRelease — integrationId hard filter + allowProd', 
     expect(outcome.integrationIds).toEqual([STAGING_INT]);
   });
 
-  it('allowProd:false excludes prod bindings entirely — no enqueue, no gate', async () => {
+  it('allowLive:false excludes prod bindings entirely — no enqueue, no gate', async () => {
     listBindingsSpy.mockResolvedValueOnce([stagingPair, prodPair]);
 
     const outcome = await tryDispatchCoolifyRelease({
       projectId: PROJECT_ID,
       issueId: ISSUE_ID,
       runId: RUN_ID,
-      allowProd: false,
+      allowLive: false,
     });
 
     expect(enqueueSpy).toHaveBeenCalledTimes(1);

@@ -23,7 +23,8 @@ const { renderIntegrations } = await import('../../prompt/facts/resolve.js');
 function googleRow(overrides: Record<string, unknown> = {}) {
   return {
     provider: 'google',
-    environment: 'prod',
+    role: 'service',
+    stages: [],
     lastHealthStatus: 'ok',
     hasOrgGuide: false,
     instructions: null,
