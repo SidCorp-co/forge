@@ -52,7 +52,6 @@ import {
   buildContextFromBinding,
   createBinding,
   createConnection,
-  findActiveBindingByLabel,
   findBindingWithConnectionById,
   listBindingsForProject,
   softDeleteBinding,
@@ -94,19 +93,14 @@ integrationsRoutes.post(
 
     const body = c.req.valid('json');
 
-    // cm:guard the clash check must match the UNIQUE index, which since ISS-1046 is (project_id, provider, label) WHERE role = 'service' — checking without the label for epodsystem refuses a second labeled storefront the index would have accepted, and checking by label for anyone else lets a duplicate through. A DEPLOY binding is not covered by either: the index does not constrain it and `assertNoActiveBindingClash` returns early for it.
-    const bindingLabel =
-      body.provider === 'epodsystem' && 'label' in body && body.label ? body.label : '';
-
-    if (body.provider === 'epodsystem') {
-      const clash = await findActiveBindingByLabel(projectId, body.provider, bindingLabel);
-      if (clash) {
-        const labelSuffix = bindingLabel ? ` (label "${bindingLabel}")` : '';
-        throw alreadyExists(`integration already exists for this provider${labelSuffix}`);
-      }
-    } else {
-      await assertNoActiveBindingClash(projectId, body.provider, body.role);
-    }
+    // cm:guard ONE clash rule, matching the UNIQUE index exactly: (project_id, provider, label)
+    // WHERE role = 'service'. There were two, and each dropped half the key — the epodsystem branch
+    // asked by label without the role, so a service binding clashed with a DEPLOY one at the same
+    // label (the common shape after ISS-1046: all three fleet epodsystem bindings are `deploy`), and
+    // the other branch asked by role without the label, so a second NAMED storefront was refused.
+    // `label` is NOT NULL DEFAULT '', so the unlabelled providers need no branch of their own.
+    const bindingLabel = 'label' in body && body.label ? body.label : '';
+    await assertNoActiveBindingClash(projectId, body.provider, body.role, bindingLabel);
 
     const integrationSecret = `whsec_${randomBytes(24).toString('hex')}`;
 

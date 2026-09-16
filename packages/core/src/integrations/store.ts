@@ -43,36 +43,6 @@ export async function findBindingById(id: string): Promise<IntegrationBindingRow
 }
 
 /**
- * ISS-558 — Active epodsystem binding for a specific label slot.
- * label='' targets the default/unlabeled binding; a non-empty label targets
- * a named extra binding. Used by the create-guard for epodsystem only.
- */
-export async function findActiveBindingByLabel(
-  projectId: string,
-  provider: IntegrationProvider,
-  label: string,
-): Promise<BindingWithConnection | null> {
-  const rows = await db
-    .select({ binding: integrationBindings, connection: integrationConnections })
-    .from(integrationBindings)
-    .innerJoin(
-      integrationConnections,
-      eq(integrationBindings.connectionId, integrationConnections.id),
-    )
-    .where(
-      and(
-        eq(integrationBindings.projectId, projectId),
-        eq(integrationBindings.provider, provider),
-        eq(integrationBindings.label, label),
-        eq(integrationBindings.active, true),
-        eq(integrationConnections.active, true),
-      ),
-    )
-    .limit(1);
-  return rows[0] ?? null;
-}
-
-/**
  * The active SERVICE binding (+ its connection) for a project + provider, or none.
  *
  * Service-only ON PURPOSE, and this is the pre-flight side of
@@ -100,6 +70,49 @@ export async function findActiveServiceBinding(
       and(
         eq(integrationBindings.projectId, projectId),
         eq(integrationBindings.provider, provider),
+        eq(integrationBindings.role, 'service'),
+        eq(integrationBindings.active, true),
+        eq(integrationConnections.active, true),
+      ),
+    )
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/**
+ * The active SERVICE binding at one label, which is `integration_bindings_service_uq` exactly.
+ *
+ * The index is `(project_id, provider, label) WHERE role = 'service'`, and this is its pre-flight
+ * side. Both halves of that key matter and both were being dropped somewhere:
+ *
+ *   - Without the ROLE filter, adding an epodsystem service binding to a project that already has
+ *     an epodsystem DEPLOY binding at the same label is refused although the index admits the pair
+ *     — and after ISS-1046 that is the common shape, since all three fleet epodsystem bindings are
+ *     `deploy`.
+ *   - Without the LABEL filter, a second NAMED storefront is refused although the index admits it.
+ *     `label` is the multi-store slug; `''` is the unlabelled binding every other provider carries,
+ *     so one rule covers them all.
+ */
+// cm:edge contract -> packages/core/src/db/schema.ts `integration_bindings_service_uq` — this query
+// and that partial index must admit exactly the same rows. A preflight looser than the index 500s
+// on a constraint violation; one tighter refuses a pair the model permits, which is what it did.
+export async function findActiveServiceBindingAtLabel(
+  projectId: string,
+  provider: IntegrationProvider,
+  label: string,
+): Promise<BindingWithConnection | null> {
+  const rows = await db
+    .select({ binding: integrationBindings, connection: integrationConnections })
+    .from(integrationBindings)
+    .innerJoin(
+      integrationConnections,
+      eq(integrationBindings.connectionId, integrationConnections.id),
+    )
+    .where(
+      and(
+        eq(integrationBindings.projectId, projectId),
+        eq(integrationBindings.provider, provider),
+        eq(integrationBindings.label, label),
         eq(integrationBindings.role, 'service'),
         eq(integrationBindings.active, true),
         eq(integrationConnections.active, true),

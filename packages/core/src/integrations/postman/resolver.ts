@@ -56,7 +56,7 @@ export async function resolvePostmanMcpEntry(
     logger.warn({ err, projectId }, 'postman-resolver: integration lookup failed, skipping inject');
     return null;
   }
-  if (!pair || !pair.connection.secretsEnc) return null;
+  if (!pair?.connection.secretsEnc) return null;
 
   try {
     const secrets = decryptConnectionSecrets<PostmanSecrets>(pair.connection);

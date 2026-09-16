@@ -17,7 +17,7 @@ import {
   type BindingWithConnection,
   buildContextFromBinding,
   effectiveConfig,
-  findActiveServiceBinding,
+  findActiveServiceBindingAtLabel,
   findBindingWithConnectionById,
   type IntegrationBindingRow,
   type IntegrationConnectionRow,
@@ -65,14 +65,21 @@ export async function assertNoActiveBindingClash(
   projectId: string,
   provider: IntegrationProvider,
   role: BindingRole,
+  label = '',
 ): Promise<void> {
   if (role !== 'service') return;
-  // cm:guard the lookup is SERVICE-scoped, matching the partial index. Asking without the role
-  // filter refused an operator adding a coolify service binding to a project that already had a
-  // coolify deploy one — a pair the index admits and rule 3 requires, since the two are different
-  // declarations about the same credential.
-  const clash = await findActiveServiceBinding(projectId, provider);
-  if (clash) throw alreadyExists();
+  // cm:guard the lookup is SERVICE-scoped AND LABEL-scoped, matching the partial index
+  // `(project_id, provider, label) WHERE role = 'service'` exactly. Dropping the role filter
+  // refused an operator adding a service binding to a project that already had a deploy one — a
+  // pair the index admits and rule 3 requires, since the two are different declarations about the
+  // same credential. Dropping the label filter refused a second NAMED storefront, which the index
+  // also admits. `label` is NOT NULL DEFAULT '', so one rule covers every provider and epodsystem
+  // needs no branch of its own.
+  const clash = await findActiveServiceBindingAtLabel(projectId, provider, label);
+  if (clash)
+    throw alreadyExists(
+      label ? `integration already exists for this provider (label "${label}")` : undefined,
+    );
 }
 
 /** ISS-609 — apply rocketchat connection/binding CRUD to the live bot socket

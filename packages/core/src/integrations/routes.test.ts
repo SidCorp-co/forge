@@ -24,8 +24,7 @@ vi.mock('../db/client.js', () => ({
 const createConnection = vi.fn();
 const createBinding = vi.fn();
 const findActiveBinding = vi.fn();
-const findActiveServiceBinding = vi.fn();
-const findActiveBindingByLabel = vi.fn();
+const findActiveServiceBindingAtLabel = vi.fn();
 const findBindingWithConnectionById = vi.fn();
 const findConnectionById = vi.fn();
 const updateConnection = vi.fn();
@@ -51,8 +50,8 @@ vi.mock('./store.js', () => ({
   createConnection: (a: unknown) => createConnection(a),
   createBinding: (a: unknown) => createBinding(a),
   findActiveBinding: (...a: unknown[]) => findActiveBinding(...(a as [])),
-  findActiveServiceBinding: (...a: unknown[]) => findActiveServiceBinding(...(a as [])),
-  findActiveBindingByLabel: (...a: unknown[]) => findActiveBindingByLabel(...(a as [])),
+  findActiveServiceBindingAtLabel: (...a: unknown[]) =>
+    findActiveServiceBindingAtLabel(...(a as [])),
   findBindingWithConnectionById: (id: string) => findBindingWithConnectionById(id),
   findConnectionById: (id: string) => findConnectionById(id),
   updateConnection: (id: string, patch: unknown) => updateConnection(id, patch),
@@ -169,13 +168,12 @@ beforeEach(() => {
   selectLimit.mockReset();
   effectiveRole.mockReset();
   orgRoleMock.mockReset();
-  findActiveBindingByLabel.mockReset();
   // `clearAllMocks` clears calls, not queued `…Once` implementations. A deploy
   // binding never consults `findActiveBinding` (ISS-1046 rule 3), so a `…Once`
   // queued by a deploy test would otherwise be answered to the NEXT service
   // test — which is how the service-clash case read 500 instead of 409.
   findActiveBinding.mockReset();
-  findActiveServiceBinding.mockReset();
+  findActiveServiceBindingAtLabel.mockReset();
 });
 
 describe('POST /api/projects/:projectId/integrations — vault guard', () => {
@@ -1082,7 +1080,6 @@ describe('POST /api/projects/:projectId/integrations — epodsystem multi-bindin
     process.env.INTEGRATION_MASTER_KEY = TEST_KEY_B64;
     const token = await signUserToken(USER_ID);
     mockOwnerMembership();
-    findActiveBindingByLabel.mockResolvedValueOnce(null);
     createConnection.mockResolvedValueOnce(makeEpodsystemConn());
     createBinding.mockResolvedValueOnce(makeEpodsystemBinding(''));
 
@@ -1095,7 +1092,6 @@ describe('POST /api/projects/:projectId/integrations — epodsystem multi-bindin
     process.env.INTEGRATION_MASTER_KEY = TEST_KEY_B64;
     const token = await signUserToken(USER_ID);
     mockOwnerMembership();
-    findActiveBindingByLabel.mockResolvedValueOnce(null);
     createConnection.mockResolvedValueOnce(makeEpodsystemConn());
     createBinding.mockResolvedValueOnce(makeEpodsystemBinding('partner-a'));
 
@@ -1108,16 +1104,40 @@ describe('POST /api/projects/:projectId/integrations — epodsystem multi-bindin
     process.env.INTEGRATION_MASTER_KEY = TEST_KEY_B64;
     const token = await signUserToken(USER_ID);
     mockOwnerMembership();
-    findActiveBindingByLabel.mockResolvedValueOnce({
+    findActiveServiceBindingAtLabel.mockResolvedValueOnce({
       binding: makeEpodsystemBinding('partner-a'),
       connection: makeEpodsystemConn(),
     });
 
     const res = await post(token, { ...EPOD_BODY, label: 'partner-a' });
     expect(res.status).toBe(409);
-    const body = (await res.json()) as { code: string };
+    const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('ALREADY_EXISTS');
+    expect(body.message).toContain('partner-a');
     expect(createConnection).not.toHaveBeenCalled();
+    // cm:guard the preflight asks the index's WHOLE key. Dropping the label refused a second
+    // NAMED storefront; dropping the role refused a service binding beside a DEPLOY one at the
+    // same label, which after ISS-1046 is the shape every fleet epodsystem binding is in.
+    expect(findActiveServiceBindingAtLabel).toHaveBeenCalledWith(
+      PROJECT_ID,
+      'epodsystem',
+      'partner-a',
+    );
+  });
+
+  // cm:guard the pair the partial index admits and the old preflight refused.
+  it('201 — a service binding is allowed beside a DEPLOY one at the same label', async () => {
+    process.env.INTEGRATION_MASTER_KEY = TEST_KEY_B64;
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership();
+    // The index is `WHERE role = 'service'`, so a deploy row at this label is not a clash and the
+    // service-scoped lookup does not see it.
+    findActiveServiceBindingAtLabel.mockResolvedValueOnce(null);
+    createConnection.mockResolvedValueOnce(makeEpodsystemConn());
+    createBinding.mockResolvedValueOnce(makeEpodsystemBinding('partner-a'));
+
+    const res = await post(token, { ...EPOD_BODY, label: 'partner-a' });
+    expect(res.status).toBe(201);
   });
 
   it('400 — rejects invalid label (not kebab-case)', async () => {
@@ -1133,7 +1153,10 @@ describe('POST /api/projects/:projectId/integrations — epodsystem multi-bindin
     process.env.INTEGRATION_MASTER_KEY = TEST_KEY_B64;
     const token = await signUserToken(USER_ID);
     mockOwnerMembership();
-    findActiveServiceBinding.mockResolvedValueOnce({ binding: { id: 'existing' }, connection: {} });
+    findActiveServiceBindingAtLabel.mockResolvedValueOnce({
+      binding: { id: 'existing' },
+      connection: {},
+    });
 
     const res = await post(token, {
       provider: 'postman',
