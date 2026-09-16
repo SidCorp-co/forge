@@ -181,7 +181,7 @@ describe('a release job is offered only to the release pool', () => {
     expect(await poolIds(w)).toEqual([]);
   });
 
-  it('offers a release job to nobody when the project has no production binding', async () => {
+  it('offers a release job to nobody when the project has no live deploy binding', async () => {
     const w = await seed({ type: 'release_batch', labels: [LABEL], bindingConfig: null });
 
     expect(await poolIds(w)).toEqual([]);
