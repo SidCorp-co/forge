@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { type CliDeps, main } from './cli.js';
 import { createFakeDeployment, FAKE_TOKEN, JUDGE_KEY, JUDGE_URL } from './fake-deployment.js';
+import { readHistoryResult } from './history/result.js';
 import { isVerdict } from './judge.js';
 import { readResult } from './result.js';
 
@@ -241,5 +242,77 @@ describe('run --judge', () => {
     expect(trial?.cleanup.room.id).not.toBe('');
     expect(trial?.cleanup.room.observed).toBe('404');
     expect(state.rooms.size).toBe(0);
+  });
+});
+
+describe('ladder', () => {
+  const twoRuns = async () => {
+    const { fetch } = fake();
+    const a = deps(fetch);
+    await main([...RUN, ...TASK, '--trials', '3'], { FORGE_BENCH_TOKEN: FAKE_TOKEN }, a.d);
+    const passing = a.written['/tmp/out.json'] ?? '';
+    const failing = createFakeDeployment({
+      script: () => ({ attempts: [{ reply: null }], deliver: null }),
+    });
+    const b = deps(failing.fetch);
+    await main([...RUN, ...TASK, '--trials', '3'], { FORGE_BENCH_TOKEN: FAKE_TOKEN }, b.d);
+    return { passing, failing: b.written['/tmp/out.json'] ?? '' };
+  };
+
+  it('refuses with the usage when no run file is given, and refuses a file that is not a run file by name', async () => {
+    const { d, err } = deps(fake().fetch, { '/x.json': '{"not":"a run"}' });
+    expect(await main(['ladder'], {}, d)).toBe(1);
+    expect(err[0]).toContain('ladder needs at least one run file');
+    expect(await main(['ladder', '/x.json'], {}, d)).toBe(1);
+    expect(err[1]).toBe('/x.json lacks at');
+    expect(await main(['ladder', '/x.json', '--out'], {}, d)).toBe(1);
+    expect(err[2]).toBe('--out needs a value');
+  });
+
+  it('prints the ranked run table, the window table after it, and writes the Markdown to --out', async () => {
+    const { passing, failing } = await twoRuns();
+    const h = deps(fake().fetch);
+    const history = JSON.stringify({
+      ...readHistoryResult(
+        JSON.stringify({
+          at: 'x',
+          api: 'a',
+          commit: 'c',
+          version: 'v',
+          window: { projectSlug: 'qa', from: '2026-09-01', to: '2026-09-02', source: null },
+          budgetSeconds: 60,
+          maxIterations: 8,
+          resolved: false,
+          excludedSessions: [],
+          excludedRows: 0,
+          groups: [],
+          flagged: [],
+        }),
+      ),
+    });
+    void h;
+    const { d, out, written } = deps(fake().fetch, {
+      '/good.json': passing,
+      '/bad.json': failing,
+      '/h.json': history,
+    });
+    expect(
+      await main(
+        ['ladder', '/bad.json', '/good.json', '--history', '/h.json', '--out', '/l.md'],
+        {},
+        d,
+      ),
+    ).toBe(0);
+    expect(out[0]).toBe('runs');
+    const rows = out.filter((l) => /^\d+\s/.test(l));
+    expect(rows[0]).toContain('/good.json');
+    expect(rows[0]).toMatch(/100\.0\s+out-of-reach-tests 100%/);
+    expect(rows[1]).toContain('/bad.json');
+    expect(rows[1]).toMatch(/0\.0\s+out-of-reach-tests 0%/);
+    expect(rows[0]).toContain('partial (1 of 10 tasks)');
+    expect(out.indexOf('history windows')).toBeGreaterThan(out.indexOf('runs'));
+    expect(out.at(-1)).toBe('wrote /l.md');
+    expect(written['/l.md']).toContain('### Runs');
+    expect(written['/l.md']).toContain('| 1 | /good.json |');
   });
 });
