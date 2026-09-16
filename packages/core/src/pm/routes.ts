@@ -1,19 +1,10 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, count, desc, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import {
-  comments,
-  issues,
-  notificationDeliveries,
-  notificationDeliveryMembers,
-  notifications,
-  pmConfig,
-  pmDecisions,
-  pmPolicies,
-} from '../db/schema.js';
+import { comments, issues, pmConfig, pmDecisions, pmPolicies } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { logger } from '../logger.js';
@@ -25,6 +16,7 @@ import {
   restActor,
   restAuthored,
 } from '../middleware/auth.js';
+import { closeEscalationTasks } from '../notifications/close-escalation.js';
 import { hooks } from '../pipeline/hooks.js';
 import { type SpawnPmSessionResult, spawnPmSession } from './spawner.js';
 
@@ -208,44 +200,10 @@ pmRoutes.post(
       });
     }
 
-    // cm:why ISS-1063 — answering the escalation CLOSES the task, where this used to mark
-    // it read. `pm_escalation` is a task: it needed a person, a person acted, and the work
-    // is done. Marking it read said only that somebody had looked, which left it in the
-    // open count for ever and is the confusion this issue exists to end. The deliveries
-    // are marked read too, because the person who answered has plainly seen it.
-    const closed = await db
-      .update(notifications)
-      .set({ state: 'done', resolvedAt: new Date() })
-      .where(
-        and(
-          eq(notifications.type, 'pm_escalation'),
-          eq(notifications.projectId, projectId),
-          isNull(notifications.resolvedAt),
-          sql`(${notifications.body}::jsonb->>'decisionId') = ${decisionId}`,
-        ),
-      )
-      .returning({ id: notifications.id });
-    for (const row of closed) {
-      const told = await db
-        .update(notificationDeliveries)
-        .set({ readAt: new Date() })
-        .where(
-          and(
-            isNull(notificationDeliveries.readAt),
-            inArray(
-              notificationDeliveries.id,
-              db
-                .select({ id: notificationDeliveryMembers.deliveryId })
-                .from(notificationDeliveryMembers)
-                .where(eq(notificationDeliveryMembers.notificationId, row.id)),
-            ),
-          ),
-        )
-        .returning({ userId: notificationDeliveries.userId });
-      for (const t of told) {
-        await hooks.emit('notificationRead', { notificationId: row.id, userId: t.userId });
-      }
-    }
+    // cm:edge protocol -> packages/core/src/notifications/close-escalation.ts — what an
+    // answered escalation does to its record is the notifications module's to decide; this
+    // route says only that the question was answered.
+    await closeEscalationTasks(projectId, decisionId);
 
     const spawn = await spawnPmSession({
       projectId,

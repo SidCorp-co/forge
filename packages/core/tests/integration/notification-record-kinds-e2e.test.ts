@@ -33,101 +33,99 @@ type Mods = {
   EVALUATION_MS: typeof import('../../src/notifications/deliver.js').EVALUATION_MS;
 };
 
-describe('notifications · records, deliveries and a count that is still true', () => {
-  let harness: TestDatabase;
-  let mods: Mods;
-  let app: Hono<{ Variables: import('../../src/middleware/request-id.js').RequestIdVars }>;
-  let ownerId: string;
-  let otherId: string;
-  let projectId: string;
-  let authHeader: string;
+let harness: TestDatabase;
+let mods: Mods;
+let app: Hono<{ Variables: import('../../src/middleware/request-id.js').RequestIdVars }>;
+let ownerId: string;
+let otherId: string;
+let projectId: string;
+let authHeader: string;
 
-  beforeAll(async () => {
-    harness = await setupTestDatabase();
-    process.env.DATABASE_URL = harness.url;
-    process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
-    process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
-    process.env.SMTP_HOST ??= 'localhost';
-    process.env.SMTP_PORT ??= '1025';
-    process.env.SMTP_USER ??= 'test';
-    process.env.SMTP_PASS ??= 'test';
-    process.env.SMTP_FROM ??= 'test@example.com';
-    process.env.APP_BASE_URL ??= 'http://localhost:3000';
-    process.env.CORS_ORIGINS ??= 'http://localhost:3000';
-    process.env.NODE_ENV ??= 'test';
+beforeAll(async () => {
+  harness = await setupTestDatabase();
+  process.env.DATABASE_URL = harness.url;
+  process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
+  process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
+  process.env.SMTP_HOST ??= 'localhost';
+  process.env.SMTP_PORT ??= '1025';
+  process.env.SMTP_USER ??= 'test';
+  process.env.SMTP_PASS ??= 'test';
+  process.env.SMTP_FROM ??= 'test@example.com';
+  process.env.APP_BASE_URL ??= 'http://localhost:3000';
+  process.env.CORS_ORIGINS ??= 'http://localhost:3000';
+  process.env.NODE_ENV ??= 'test';
 
-    const deliver = await import('../../src/notifications/deliver.js');
-    const autoResolve = await import('../../src/notifications/auto-resolve.js');
-    mods = {
-      recordAndDeliver: deliver.recordAndDeliver,
-      EVALUATION_MS: deliver.EVALUATION_MS,
-      resolveNotifications: autoResolve.resolveNotifications,
-    };
+  const deliver = await import('../../src/notifications/deliver.js');
+  const autoResolve = await import('../../src/notifications/auto-resolve.js');
+  mods = {
+    recordAndDeliver: deliver.recordAndDeliver,
+    EVALUATION_MS: deliver.EVALUATION_MS,
+    resolveNotifications: autoResolve.resolveNotifications,
+  };
 
-    const { notificationRoutes } = await import('../../src/notifications/routes.js');
-    const { errorHandler } = await import('../../src/middleware/error.js');
-    const { requestId } = await import('../../src/middleware/request-id.js');
-    app = new Hono<{
-      Variables: import('../../src/middleware/request-id.js').RequestIdVars;
-    }>();
-    app.use('*', requestId());
-    app.route('/api/notifications', notificationRoutes);
-    app.onError(errorHandler);
-  }, 60_000);
+  const { notificationRoutes } = await import('../../src/notifications/routes.js');
+  const { errorHandler } = await import('../../src/middleware/error.js');
+  const { requestId } = await import('../../src/middleware/request-id.js');
+  app = new Hono<{
+    Variables: import('../../src/middleware/request-id.js').RequestIdVars;
+  }>();
+  app.use('*', requestId());
+  app.route('/api/notifications', notificationRoutes);
+  app.onError(errorHandler);
+}, 60_000);
 
-  afterAll(async () => {
-    if (harness) await harness.cleanup();
+afterAll(async () => {
+  if (harness) await harness.cleanup();
+});
+
+beforeEach(async () => {
+  await truncateAll(harness.db);
+  ownerId = (await createTestUser(harness.db)).id;
+  otherId = (await createTestUser(harness.db)).id;
+  await harness.db.execute(sql`UPDATE users SET email_verified_at = now()`);
+  projectId = (await createTestProject(harness.db, ownerId)).id;
+  const { signUserToken } = await import('../../src/auth/jwt.js');
+  authHeader = `Bearer ${await signUserToken(ownerId)}`;
+});
+
+async function openCount(): Promise<number> {
+  const res = await app.request('/api/notifications/open-count', {
+    headers: { authorization: authHeader },
   });
+  expect(res.status).toBe(200);
+  return ((await res.json()) as { count: number }).count;
+}
 
-  beforeEach(async () => {
-    await truncateAll(harness.db);
-    ownerId = (await createTestUser(harness.db)).id;
-    otherId = (await createTestUser(harness.db)).id;
-    await harness.db.execute(sql`UPDATE users SET email_verified_at = now()`);
-    projectId = (await createTestProject(harness.db, ownerId)).id;
-    const { signUserToken } = await import('../../src/auth/jwt.js');
-    authHeader = `Bearer ${await signUserToken(ownerId)}`;
+interface BellRow {
+  id: string;
+  title: string;
+  readAt: string | null;
+  members: number;
+  openMembers: number;
+  resolvedNotice: boolean;
+  type: string;
+}
+
+async function bell(): Promise<BellRow[]> {
+  const res = await app.request('/api/notifications', {
+    headers: { authorization: authHeader },
   });
+  expect(res.status).toBe(200);
+  return ((await res.json()) as { items: BellRow[] }).items;
+}
 
-  async function openCount(): Promise<number> {
-    const res = await app.request('/api/notifications/open-count', {
-      headers: { authorization: authHeader },
-    });
-    expect(res.status).toBe(200);
-    return ((await res.json()) as { count: number }).count;
-  }
+/** A `pipeline_wedge` — a condition with no pending duration, so it fires at once. */
+async function wedge(key: string, title: string, recipients = [ownerId]) {
+  return mods.recordAndDeliver({
+    recipients,
+    projectId,
+    type: 'pipeline_wedge',
+    title,
+    resolutionKey: key,
+  });
+}
 
-  interface BellRow {
-    id: string;
-    title: string;
-    readAt: string | null;
-    members: number;
-    openMembers: number;
-    resolvedNotice: boolean;
-    type: string;
-  }
-
-  async function bell(): Promise<BellRow[]> {
-    const res = await app.request('/api/notifications', {
-      headers: { authorization: authHeader },
-    });
-    expect(res.status).toBe(200);
-    return ((await res.json()) as { items: BellRow[] }).items;
-  }
-
-  /** A `pipeline_wedge` — a condition with no pending duration, so it fires at once. */
-  async function wedge(key: string, title: string, recipients = [ownerId]) {
-    return mods.recordAndDeliver({
-      recipients,
-      projectId,
-      type: 'pipeline_wedge',
-      title,
-      resolutionKey: key,
-    });
-  }
-
-  // ─── the count itself ──────────────────────────────────────────────────────
-
+describe('notifications · the count itself', () => {
   it('counts records still true for the reader, not deliveries they have not opened', async () => {
     await wedge('wedge:a', 'job a is wedged');
     await wedge('wedge:b', 'job b is wedged');
@@ -181,9 +179,9 @@ describe('notifications · records, deliveries and a count that is still true', 
     )) as unknown as [{ n: number }];
     expect(n).toBe(0);
   });
+});
 
-  // ─── signals ───────────────────────────────────────────────────────────────
-
+describe('notifications · signals', () => {
   it('a signal carries no resolution key, and never counts as open', async () => {
     await mods.recordAndDeliver({
       recipients: [ownerId],
@@ -211,9 +209,9 @@ describe('notifications · records, deliveries and a count that is still true', 
       );
     expect(refusal).toMatch(/notifications_signal_has_no_resolve_state/);
   });
+});
 
-  // ─── who may close what ────────────────────────────────────────────────────
-
+describe('notifications · who may close what', () => {
   it('no request a person can send resolves a condition', async () => {
     await wedge('wedge:a', 'job a is wedged');
     const [row] = await bell();
@@ -244,9 +242,9 @@ describe('notifications · records, deliveries and a count that is still true', 
     expect(await res.json()).toEqual({ closed: 1 });
     expect(await openCount()).toBe(0);
   });
+});
 
-  // ─── grouping ──────────────────────────────────────────────────────────────
-
+describe('notifications · grouping', () => {
   it('fifteen conditions raised in one tick reach one reader as one notification', async () => {
     for (let i = 0; i < 15; i += 1) {
       await mods.recordAndDeliver({
@@ -309,9 +307,9 @@ describe('notifications · records, deliveries and a count that is still true', 
     `)) as unknown as [{ records: number; deliveries: number }];
     expect({ records, deliveries }).toEqual({ records: 1, deliveries: 2 });
   });
+});
 
-  // ─── inhibition ────────────────────────────────────────────────────────────
-
+describe('notifications · inhibition', () => {
   it('a condition whose root cause is firing delivers nothing while it fires', async () => {
     await wedge('wedge:root', 'the pipeline is wedged');
     await mods.recordAndDeliver({
@@ -355,9 +353,9 @@ describe('notifications · records, deliveries and a count that is still true', 
     )) as unknown as [{ n: number }];
     expect(n).toBe(0);
   });
+});
 
-  // ─── the pending duration ──────────────────────────────────────────────────
-
+describe('notifications · the pending duration', () => {
   it('a condition declaring a pending duration delivers nothing on first sight', async () => {
     await mods.recordAndDeliver({
       recipients: [ownerId],
@@ -390,9 +388,9 @@ describe('notifications · records, deliveries and a count that is still true', 
     });
     expect(await openCount()).toBe(1);
   });
+});
 
-  // ─── resolved notices ──────────────────────────────────────────────────────
-
+describe('notifications · resolved notices', () => {
   it('a condition that clears tells the people who were told it started', async () => {
     await wedge('wedge:a', 'job a is wedged', [ownerId, otherId]);
     await mods.resolveNotifications('wedge:a');
@@ -411,9 +409,9 @@ describe('notifications · records, deliveries and a count that is still true', 
     const after = await bell();
     expect(after.filter((r) => r.resolvedNotice)).toHaveLength(1);
   });
+});
 
-  // ─── silences ──────────────────────────────────────────────────────────────
-
+describe('notifications · silences', () => {
   it('a reader can silence a set of records by matcher for a stated period', async () => {
     const res = await app.request('/api/notifications/silences', {
       method: 'POST',
@@ -455,9 +453,9 @@ describe('notifications · records, deliveries and a count that is still true', 
     await wedge('wedge:a', 'job a is wedged');
     expect(await bell()).toHaveLength(1);
   });
+});
 
-  // ─── the metric this change was not allowed to move ────────────────────────
-
+describe('notifications · the metric this change was not allowed to move', () => {
   // cm:guard VISION §1 metric ② counts one row per `pipeline_wedge` straight off this table (`issue_intervention_events`, migration 0117). Consolidating wedge rows would move a north-star metric in silence, so the delivery layer must leave one record per wedge identity — this is the case that says so.
   it('the interventions view still counts one row per wedge', async () => {
     await wedge('wedge:a', 'job a is wedged', [ownerId, otherId]);

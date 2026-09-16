@@ -133,10 +133,10 @@ describe("what a first-open replay costs, by the state of the query it lands on"
 
 	// cm:guard the ONE figure this change moves, and it moves UP: a questions query on its first fetch had its unconditional replay swallowed by the blanket path, and `invalidateThroughInFlight` is that prefix's recovery finally happening rather than appearing to.
 	// cm:guard the three notification keys ride the reconnect replay since ISS-1019 turned window focus off: `routeEvent` reaches them live, but a notification that arrived while the socket was down was repaired by returning to the tab and by nothing else, so this is what goes red if they are dropped from REPLAY_PREFIXES.
-	it("repairs the unread count after a reconnect, which focus used to do", async () => {
+	it("repairs the open count after a reconnect, which focus used to do", async () => {
 		const qc = client();
 		let calls = 0;
-		mount(qc, ["notifications-unread"], async () => {
+		mount(qc, ["notifications-open"], async () => {
 			calls += 1;
 			return { count: calls };
 		});
