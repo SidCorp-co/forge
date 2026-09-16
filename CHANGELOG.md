@@ -2706,6 +2706,20 @@
   conversation it would not go on to show you. Bringing a room back leaves you where you were,
   looking at the rest of what you archived, rather than throwing you across to the other list.
 
+- **Automated dependency update pull requests can pass CI again.** Every one of them had been
+  failing every check for days, and the reason was invisible from outside: six jobs went red at
+  once, each before it ran a line of its own work, and what they printed was a repository clone
+  that could not authenticate. The six were one failure — the workspace install. When the update
+  bot proposes a bump it regenerates the lockfile, and doing so it rewrote how one dependency is
+  fetched: from a plain download over the public web to a clone that needs an SSH key. An
+  update raised by the bot deliberately runs without the repository's secrets, so no key could be
+  given to it, and nothing anywhere said that was the problem. Four updates, security ones among
+  them, sat unmergeable while the cause read as a broken lockfile. That dependency is now declared
+  as the download the install was already using anyway, pinned to the same exact commit, so there
+  is no clone left to authenticate. Alongside it, the install now stops up front and says so by
+  name when any dependency can only be fetched over SSH — which nothing in this project's checks
+  can fetch — rather than dying inside the install with nothing a reader can act on. (ISS-1045)
+
 - **A release that finished no longer locks the project out of the next one.** Finishing a batch
   closed every issue it had shipped and then left the release itself reading as still in progress,
   so no further batch could be cut — for hours, until somebody aborted a release that had already
