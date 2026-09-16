@@ -17,8 +17,17 @@
 // cm:guard the two lookaheads are what keep a lockfile's own rows out: `//` after the colon is a URL
 // scheme, so `forge-plugin@https://codeload…` is the shipped entry and not a host called `https`
 // cm:guard the path must carry a `/`, or every `pkg@1.2.3:` key line reads as a host and a path
+// cm:guard a bracketed IPv6 literal is a host too, and its own colons are why it needs its own branch
 // cm:hack ISS-1045 until:this parses a lockfile rather than scanning it — `@host:1234/path` is read as a URL port and skipped, so a remote whose first path segment is entirely numeric is missed; the alternative false-accuses `https://user@host:8080/path` and blocks every install on a private registry
-const SSH_FORMS = [/\bssh:\/\//, /[\w.~-]+@[\w.-]+:(?!\/\/)(?!\d+\/)[^\s,}]*\/[^\s,}]*/];
+const SSH_FORMS = [
+  /\bssh:\/\//,
+  /[\w.~-]+@(?:\[[0-9a-fA-F:]+\]|[\w.-]+):(?!\/\/)(?!\d+\/)[^\s,}]*\/[^\s,}]*/,
+];
+
+// cm:guard the strip takes only a `#` that follows whitespace, so it removes as little as it can — a
+// git resolution's `…/repo.git#<sha>` is a fragment rather than a comment and stays on the line
+// cm:guard stripping at all is safe only because pnpm writes no such comment — measured, neither this repo's lockfile nor the Dependabot one holds one ` #` line — and no test separates this from a strip at any `#`, because on every shape a lockfile holds the SSH form falls before the fragment
+const TRAILING_COMMENT = /\s#.*$/;
 
 // cm:guard the `{}` tail is what makes a `snapshots:` row a key line too — drop it and an offending
 // `pkg@git+ssh://…: {}` row is named by its section heading, `snapshots`, rather than by its package.
@@ -45,9 +54,10 @@ export function sshResolutions(text) {
 
   text.split('\n').forEach((raw, index) => {
     if (raw.trim() === '') return;
-    // cm:guard a comment-only line is skipped BEFORE the forms run: a lockfile comment quoting an
-    // old `git@host:owner/repo.git` is not a dependency, and accusing it blocks every install here
+    // cm:guard a comment is dropped BEFORE the forms run: a lockfile comment quoting an old
+    // `git@host:owner/repo.git` is not a dependency, and accusing it blocks every install here
     if (raw.trimStart().startsWith('#')) return;
+    const line = raw.replace(TRAILING_COMMENT, '');
     const indent = raw.length - raw.trimStart().length;
     for (const held of [...keysByIndent.keys()]) {
       if (held >= indent) keysByIndent.delete(held);
@@ -57,7 +67,7 @@ export function sshResolutions(text) {
     const key = KEY_LINE.exec(trimmed)?.[1];
     if (trimmed.startsWith('resolution: {')) scanned += 1;
 
-    if (SSH_FORMS.some((form) => form.test(raw))) {
+    if (SSH_FORMS.some((form) => form.test(line))) {
       offenders.push({
         line: index + 1,
         owner: key ?? ownerOf(keysByIndent, indent) ?? '(top level)',

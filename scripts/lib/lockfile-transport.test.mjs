@@ -120,6 +120,28 @@ snapshots:
     expect(sshResolutions(urlKeyed)).toEqual({ scanned: 2, offenders: [] });
   });
 
+  it('reads a bracketed IPv6 literal as the host it is', () => {
+    const v6 = DEPENDABOT.replace(
+      'hono@4.13.5:\n    resolution: {integrity: sha512-deadbeef}',
+      'private-pkg@1.0.0:\n    resolution: {repo: git@[2001:db8::1]:team/private-pkg.git, type: git}',
+    );
+    expect(sshResolutions(v6).offenders.map((o) => o.owner)).toContain('private-pkg@1.0.0');
+  });
+
+  it('accuses no trailing comment, while the `#<sha>` a git resolution ends on still counts', () => {
+    const commented = `packages:
+
+  hono@4.13.5:
+    resolution: {integrity: sha512-deadbeef} # replaced ssh://git@host:team/pkg.git with the tarball
+
+  forge-plugin@git+https://git@github.com:SidCorp-co/forge-plugin.git#${SHA}:
+    resolution: {commit: ${SHA}, repo: git@github.com:SidCorp-co/forge-plugin.git, type: git}
+`;
+    const { scanned, offenders } = sshResolutions(commented);
+    expect(scanned).toBe(2);
+    expect(offenders.map((o) => o.line)).toEqual([6, 7]);
+  });
+
   it('reads no host and no path in a `name@version:` key line, which every lockfile is full of', () => {
     const versions = `packages:
 

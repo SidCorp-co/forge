@@ -439,7 +439,10 @@ stop every install in every job:
 - `//` after the colon is a URL scheme, so `forge-plugin@https://codeload…` — the entry this change
   ships — reads as the URL it is and not as a host called `https`.
 - the path has to carry a `/`, or every `pkg@1.2.3:` key line would read as a host and a path.
-- a comment-only line is skipped, or a comment quoting the old remote is an offender.
+- a comment goes before the forms run, or a comment quoting the old remote is an offender. Only a
+  `#` that follows whitespace: a git resolution's `…/repo.git#<sha>` is a fragment, not a comment.
+
+A bracketed IPv6 literal is read as a host, since its own colons need their own branch.
 
 One shape is knowingly missed and the trade is priced in a `cm:hack` on the file: `@host:1234/path`
 is read as a URL port, so a remote whose first path segment is entirely numeric goes unreported. The
