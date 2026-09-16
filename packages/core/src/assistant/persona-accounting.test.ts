@@ -21,9 +21,13 @@ import { LEDGER, type Owner } from './persona-claims.fixture.js';
 
 // cm:guard nothing is mocked in this file, and that is the point: every fragment below is the real exported text, so a ledger entry is checked against what a door actually renders rather than against a fixture (ISS-1007).
 const { ASSISTANT_METHOD_GUIDE } = await import('../guides/assistant-method-guide.js');
-const { assistantOpening, webDoorLines, webConversationPersona } = await import(
-  './door-persona.js'
-);
+const {
+  assistantOpening,
+  webAgentConversationPersona,
+  webAgentDoorLines,
+  webDoorLines,
+  webConversationPersona,
+} = await import('./door-persona.js');
 const { rocketChatChannelLines, rocketChatPersona } = await import(
   '../integrations/rocketchat/persona.js'
 );
@@ -53,6 +57,7 @@ const FRAGMENTS: Record<Owner, string> = {
   sharedOpening: withoutGuide(assistantOpening({ ...OPENING, venue: 'somewhere' }).join('\n')),
   rocketchatOnly: rocketChatChannelLines('bob', { botName: 'Bao' }).join('\n'),
   webOnly: webDoorLines('alpha', 'Alice').join('\n'),
+  webAgentOnly: webAgentDoorLines('Alice').join('\n'),
   personaStyle: MIGRATION_SQL,
 };
 
@@ -72,6 +77,11 @@ const RENDERED: Array<{ door: string; text: string; fragments: Owner[] }> = [
     text: webConversationPersona('Alpha', 'alpha', 'Alice'),
     fragments: ['sharedOpening', 'webOnly'],
   },
+  {
+    door: 'web-agent',
+    text: webAgentConversationPersona('Alpha', 'alpha', 'Alice'),
+    fragments: ['sharedOpening', 'webAgentOnly'],
+  },
 ];
 
 describe('the persona claim ledger', () => {
@@ -88,7 +98,9 @@ describe('the persona claim ledger', () => {
       5,
     );
     // 33 through ISS-1057; ISS-1064 added the tracker's word for a waiting issue (`waiting-issue-is-needs-info`)
-    expect(LEDGER).toHaveLength(34);
+    // 34 through ISS-1064; ISS-1039 added Agent mode's own five, which contradict the web door's
+    // sentence by sentence and therefore cannot share its rows
+    expect(LEDGER).toHaveLength(39);
   });
 
   it('gives each claim exactly one owner', () => {

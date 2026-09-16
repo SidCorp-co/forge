@@ -30,6 +30,10 @@ export type ConversationAdapter = (typeof conversationAdapters)[number];
 export const conversationShapes = ['direct', 'group'] as const;
 export type ConversationShape = (typeof conversationShapes)[number];
 
+// cm:guard what a room is TALKING TO, chosen by the person opening it and frozen by their first message — `assistant` is the in-core turn under the fenced project toolset, `agent` a Claude Code session on a paired box with the checkout. It is on the ROOM and not on the project, because the person asking knows whether their question needs a box and the operator does not; and it is settled once, because a room holding both kinds of turn raises a question nothing answers — what the runner session is handed as context when the lane switches under it (ISS-1039).
+export const conversationModes = ['assistant', 'agent'] as const;
+export type ConversationMode = (typeof conversationModes)[number];
+
 export const conversationMessageRoles = ['user', 'assistant', 'system'] as const;
 export type ConversationMessageRole = (typeof conversationMessageRoles)[number];
 
@@ -63,6 +67,8 @@ export const conversations = pgTable(
     // cm:guard the transport's OWN id for the venue, unique within that transport only — for Rocket.Chat the rid, or `<rid> <tmid>` for a thread, which is why the pair and never `external_id` alone is the unique index.
     externalId: text('external_id').notNull(),
     shape: text('shape', { enum: conversationShapes }).notNull().default('direct'),
+    // cm:guard NULLABLE and with no default, and the null is load-bearing: it is the one state in which the composer still offers the choice, so a default would settle every room the moment it was opened and take the pick away before anybody made it. A null read at turn time means `assistant`, which is what every room opened before ISS-1039 was (ISS-1039).
+    mode: text('mode', { enum: conversationModes }),
     title: text('title'),
     // cm:guard provenance for the reverse migration and NOTHING else — scope may never be read from it, and a reader that took `origin.projectId` for the room's project would restore the column this table exists to remove. Null on every conversation opened after 0241 ran.
     origin: jsonb('origin').$type<ConversationOrigin | null>(),
@@ -83,6 +89,10 @@ export const conversations = pgTable(
       sql`${t.adapter} IN ('web','widget','rocketchat','telegram')`,
     ),
     shapeKnown: check('conversations_shape_known', sql`${t.shape} IN ('direct','group')`),
+    modeKnown: check(
+      'conversations_mode_known',
+      sql`${t.mode} IS NULL OR ${t.mode} IN ('assistant','agent')`,
+    ),
   }),
 );
 
@@ -192,6 +202,7 @@ export const conversationMessages = pgTable(
  */
 // cm:guard the five silences are told APART and are not one `silent`: a person asking why nothing was said is owed the difference between nobody having anything to add, a guard pacing the room, authority refusing, an agent that could not be reached, and an outcome nobody knows yet. Collapsing them is the unreadable silence ISS-1004 exists to remove.
 // cm:guard `undetermined` is NOT a failure and no caller may act on it as one: the reply may still arrive by the path the turn was handed to, and re-routing the window on it is how one answer becomes two (ISS-1004 rule 4).
+// cm:guard `handed-off` is what a DIVERTED turn closes as, and it is not `undetermined`: the two differ in what is known, which is the whole of rule 4. `undetermined` is a delivery that was started and whose outcome nobody recorded; `handed-off` is a turn nobody has attempted to deliver yet, running as a session on a box, whose reply arrives through the completion bridge. Reading a live one as `undetermined` is how the Forge UI told a person "a reply was sent and never confirmed" about an answer that had not been written (ISS-1039).
 /** What opened a window: a message that arrived, or a heartbeat tick re-reading a quiet room (ISS-1034). */
 export const conversationWindowOrigins = ['inbound', 'heartbeat'] as const;
 export type ConversationWindowOrigin = (typeof conversationWindowOrigins)[number];
@@ -205,6 +216,7 @@ export const conversationWindowDecisions = [
   'authority-refused',
   'unreachable',
   'undetermined',
+  'handed-off',
 ] as const;
 export type ConversationWindowDecision = (typeof conversationWindowDecisions)[number];
 
@@ -267,7 +279,7 @@ export const conversationWindows = pgTable(
     ),
     decisionKnown: check(
       'conversation_windows_decision_known',
-      sql`${t.decision} IS NULL OR ${t.decision} IN ('answered','nothing-to-say','guard-backoff','guard-agent-loop','guard-dormant','authority-refused','unreachable','undetermined')`,
+      sql`${t.decision} IS NULL OR ${t.decision} IN ('answered','nothing-to-say','guard-backoff','guard-agent-loop','guard-dormant','authority-refused','unreachable','undetermined','handed-off')`,
     ),
     // cm:guard a closed window ALWAYS carries its decision and an open one never does: a close with no decision is the unreadable silence this table was added to make impossible, and the constraint is what stops a caller inventing a third state.
     closedHasDecision: check(

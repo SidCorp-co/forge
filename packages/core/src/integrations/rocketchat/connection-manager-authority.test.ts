@@ -180,6 +180,8 @@ vi.mock('../../conversations/store.js', () => ({
     return row;
   },
   getConversation: async (id: string) => conversationsById.get(id) ?? null,
+  effectiveConversationMode: (row: { mode?: 'assistant' | 'agent' | null }) =>
+    row.mode ?? 'assistant',
   readMessages: async () => collected,
   readMessagesInRange: async () => collected,
   deliveredDecisionUnderKey: async () => null,

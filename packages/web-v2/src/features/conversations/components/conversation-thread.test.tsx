@@ -9,7 +9,7 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { ConversationMessage, ConversationWindow } from "../types";
+import type { AgentTurn, ConversationMessage, ConversationWindow } from "../types";
 import { ConversationThread } from "./conversation-thread";
 
 expect.extend(matchers);
@@ -91,5 +91,96 @@ describe("ConversationThread", () => {
     expect(line).toHaveTextContent("bob@example.com joined; this room is now a group.");
     expect(line.tagName).toBe("P");
     expect(line.closest("[class*='rounded-lg']")).toBeNull();
+  });
+
+  // cm:guard ISS-1039 criteria 19 to 22 — a runner-hosted turn is four different things on screen,
+  // and the two that owe the person something are `failed` and only `failed`: which failure it was,
+  // and what to do about it. A single grey line reading "agent" for all four is the blank thread
+  // this feature exists to remove, and it passes any assertion made on the test id alone — so each
+  // case here reads the SENTENCE.
+  describe("a turn handed to a paired box", () => {
+    const handed: ConversationWindow = { ...closed("handed-off") };
+    const turn = (over: Partial<AgentTurn> = {}): AgentTurn => ({
+      windowId: "w1",
+      sessionId: "s1",
+      state: "dispatched",
+      reason: null,
+      ...over,
+    });
+
+    it("says a dispatched turn is waiting to be picked up", () => {
+      render(
+        <ConversationThread messages={[asked]} windows={[handed]} agentTurns={[turn()]} />,
+      );
+      const row = screen.getByTestId("thread-agent-turn");
+      expect(row).toHaveAttribute("data-agent-turn-state", "dispatched");
+      expect(row).toHaveTextContent(/waiting for one to pick it up/);
+    });
+
+    it("says a running turn is being worked on, in different words", () => {
+      render(
+        <ConversationThread
+          messages={[asked]}
+          windows={[handed]}
+          agentTurns={[turn({ state: "running" })]}
+        />,
+      );
+      const row = screen.getByTestId("thread-agent-turn");
+      expect(row).toHaveAttribute("data-agent-turn-state", "running");
+      expect(row).toHaveTextContent(/A session is working on this/);
+      expect(row).not.toHaveTextContent(/waiting for one to pick it up/);
+    });
+
+    it("shows a delivered turn as its reply and not as a label saying one arrived", () => {
+      render(
+        <ConversationThread
+          messages={[
+            asked,
+            {
+              ...asked,
+              id: "m1",
+              seq: 1,
+              role: "assistant",
+              authorUserId: null,
+              authorLabel: null,
+              content: "two issues left",
+            },
+          ]}
+          windows={[handed]}
+          agentTurns={[turn({ state: "delivered" })]}
+        />,
+      );
+      expect(screen.queryByTestId("thread-agent-turn")).not.toBeInTheDocument();
+      expect(screen.getByText("two issues left")).toBeInTheDocument();
+    });
+
+    it("tells a failed turn which failure it was, and what to do next", () => {
+      render(
+        <ConversationThread
+          messages={[asked]}
+          windows={[handed]}
+          agentTurns={[
+            turn({ state: "failed", reason: "the session ended before it answered" }),
+          ]}
+        />,
+      );
+      const row = screen.getByTestId("thread-agent-turn");
+      expect(row).toHaveAttribute("data-agent-turn-state", "failed");
+      expect(row).toHaveTextContent("the session ended before it answered");
+      expect(row).toHaveTextContent(/Ask again to start a fresh session/);
+    });
+
+    // cm:guard the one sentence this thread must NEVER print over a live turn: "sent and never
+    // confirmed" is what a `handed-off` window read as before it had a branch of its own, and it
+    // tells a person their answer is lost while a box is still working on it (criterion 27).
+    it("never reads a live turn as a reply that was sent and never confirmed", () => {
+      for (const state of ["dispatched", "running", "failed"] as const) {
+        cleanup();
+        render(
+          <ConversationThread messages={[asked]} windows={[handed]} agentTurns={[turn({ state })]} />,
+        );
+        expect(screen.queryByText(/sent and never confirmed/)).toBeNull();
+      }
+    });
   });
 });

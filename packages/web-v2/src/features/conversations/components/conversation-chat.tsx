@@ -22,9 +22,15 @@ import { useProjects } from "@/features/projects/hooks";
 import { Composer, ReadOnlyComposerNote } from "@/features/session/components/composer";
 import { useStickToBottom } from "@/features/session/components/use-stick-to-bottom";
 import { formatApiError } from "@/lib/api/error";
-import { useConversation, useOpenConversation, useSendMessage } from "../hooks";
+import {
+  useConversation,
+  useDraftAgentMode,
+  useOpenConversation,
+  useSendMessage,
+} from "../hooks";
 import { composerRefusal } from "../membership";
-import { type OutboxMessage, conversationTitle } from "../types";
+import { type ConversationMode, type OutboxMessage, conversationTitle } from "../types";
+import { ConversationModeToggle } from "./conversation-mode-toggle";
 import { ConversationMembers } from "./conversation-members";
 import { ConversationThread } from "./conversation-thread";
 import { ScopeNotice } from "./scope-notice";
@@ -77,9 +83,30 @@ export function ConversationChat({
   const [outbox, setOutbox] = useState<OutboxMessage[]>([]);
   const sending = useRef(false);
 
+  // cm:guard the pick lives in this component's state and NOT in the query cache, because until the
+  // first send there is no room to hold it: a draft has no conversation row at all, and the room a
+  // first send opens gets its mode from the same request that carries the message (ISS-1039).
+  const [pick, setPick] = useState<ConversationMode>("assistant");
+
   const messages = useMemo(() => roomQ.data?.messages ?? [], [roomQ.data]);
   const windows = useMemo(() => roomQ.data?.windows ?? [], [roomQ.data]);
+  const agentTurns = useMemo(() => roomQ.data?.agentTurns ?? [], [roomQ.data]);
   const busy = send.isPending || open.isPending;
+
+  // cm:guard the control is live while the room is EMPTY and by no other test: a room whose column
+  // is still null but which already holds a transcript was opened before ISS-1039 and answers in
+  // Assistant mode, and offering the pick over it would offer something the server refuses. A draft
+  // holds no room at all, which is the emptiest a room gets.
+  const settled = Boolean(roomQ.data && (roomQ.data.mode !== null || messages.length > 0));
+  // cm:guard a DRAFT asks the PROJECT, because there is no room to ask about yet and the pick has to
+  // be right before a message is spent: offering Agent enabled on the strength of nothing sent a
+  // person on a box-less project through composing a question to find out from the refusal. While
+  // that read is in flight Agent stays disabled and says so — an unknown is not a yes (ISS-1039,
+  // commit consult F5).
+  const draftOfferQ = useDraftAgentMode(projectId, !resolvedId);
+  const agentOffer =
+    roomQ.data?.agentMode ??
+    draftOfferQ.data ?? { available: false, reason: "checking whether a box is free" };
 
   // cm:guard the composer is CLOSED before a person types rather than after they press enter, because the server refuses a turn in a room about more than one project by name — and a person who has written a paragraph into a box that was never going to send it has lost the paragraph and learned nothing. The reason and the way out below are the same ones that refusal carries (ISS-1011 criterion 33).
   const refusal = roomQ.data ? composerRefusal(roomQ.data) : null;
@@ -127,7 +154,16 @@ export function ConversationChat({
           setActiveId(id);
           onConversationActive?.(id);
         }
-        await send.mutateAsync({ conversationId: id, content: next.content });
+        // cm:guard the mode rides the FIRST message and no other, which is what the server accepts:
+        // it is settled inside the transaction that commits that message, and a later send carrying
+        // one is refused by name. `fresh` is true of a draft's own first send too, where the room
+        // was opened three lines above and holds nothing yet.
+        const fresh = !settled && messages.length === 0;
+        await send.mutateAsync({
+          conversationId: id,
+          content: next.content,
+          ...(fresh ? { mode: pick } : {}),
+        });
         setOutbox((o) => o.filter((m) => m.id !== next.id));
       } catch (err) {
         setOutbox((o) =>
@@ -139,7 +175,7 @@ export function ConversationChat({
         sending.current = false;
       }
     })();
-  }, [outbox, resolvedId, projectId, open, send, onConversationActive]);
+  }, [outbox, resolvedId, projectId, open, send, onConversationActive, settled, messages.length, pick]);
 
   // cm:guard the header is built ONCE and rendered above every body state, rather than the loading
   // and error states returning a screen of their own: a room whose read fails — one deleted in
@@ -237,6 +273,7 @@ export function ConversationChat({
               messages={messages}
               windows={windows}
               outbox={outbox}
+              agentTurns={agentTurns}
               onRetry={retry}
             />
           )}
@@ -255,7 +292,20 @@ export function ConversationChat({
           <p className="fg-caption mt-0.5 text-muted">{refusal.wayOut}</p>
         </div>
       ) : canWrite ? (
-        <Composer onSend={handleSend} busy={busy} queueWhileBusy sticky={false} />
+        <>
+          {/* cm:guard rendered only while the room is unsettled, which is the whole of the rule: the
+              first send writes the mode, and from the second turn on there is no control offering
+              it because there is nothing left to offer (ISS-1039). */}
+          {!settled && (
+            <ConversationModeToggle
+              value={pick}
+              onChange={setPick}
+              offer={agentOffer}
+              disabled={busy}
+            />
+          )}
+          <Composer onSend={handleSend} busy={busy} queueWhileBusy sticky={false} />
+        </>
       ) : (
         <ReadOnlyComposerNote sticky={false} />
       )}

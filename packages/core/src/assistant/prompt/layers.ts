@@ -8,6 +8,7 @@
 import { BASE_LAYER } from './base.js';
 import { ROCKETCHAT_DOOR_LAYER } from './door-rocketchat.js';
 import { WEB_DOOR_LAYER } from './door-web.js';
+import { WEB_AGENT_DOOR_LAYER } from './door-web-agent.js';
 import { IDENTITY_LAYER } from './identity.js';
 import type { PromptLayer } from './layer.js';
 import { LINKING_LAYER } from './linking.js';
@@ -20,6 +21,7 @@ export const ALL_LAYERS: readonly PromptLayer[] = [
   TOOLS_LAYER,
   LINKING_LAYER,
   WEB_DOOR_LAYER,
+  WEB_AGENT_DOOR_LAYER,
   ROCKETCHAT_DOOR_LAYER,
 ];
 
@@ -35,4 +37,9 @@ export const METHOD_LAYERS: readonly PromptLayer[] = [BASE_LAYER, TOOLS_LAYER];
 const OPENING: readonly PromptLayer[] = [IDENTITY_LAYER, BASE_LAYER, TOOLS_LAYER, LINKING_LAYER];
 
 export const WEB_DOOR_LAYERS: readonly PromptLayer[] = [...OPENING, WEB_DOOR_LAYER];
+// cm:guard the SAME opening and a different door layer, which is what makes the two modes one
+// assistant answering from two places rather than two products: the identity, the method, the tools
+// and the linking rule are the project's and do not change because the turn found a checkout
+// (ISS-1039).
+export const WEB_AGENT_DOOR_LAYERS: readonly PromptLayer[] = [...OPENING, WEB_AGENT_DOOR_LAYER];
 export const ROCKETCHAT_DOOR_LAYERS: readonly PromptLayer[] = [...OPENING, ROCKETCHAT_DOOR_LAYER];

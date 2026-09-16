@@ -1772,6 +1772,13 @@
       "when": 1795392000000,
       "tag": "0254_project_facts_to_knowledge",
       "breakpoints": true
+    },
+    {
+      "idx": 258,
+      "version": "7",
+      "when": 1795478400000,
+      "tag": "0258_conversation_mode",
+      "breakpoints": true
     }
   ]
 }

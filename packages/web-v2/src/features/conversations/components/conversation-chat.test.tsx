@@ -20,12 +20,19 @@ Element.prototype.scrollIntoView = vi.fn();
 const open = vi.fn();
 const send = vi.fn();
 const detail = vi.fn();
+const agentMode = vi.fn(
+  async (_projectId: string): Promise<{ available: boolean; reason: string | null }> => ({
+    available: true,
+    reason: null,
+  }),
+);
 
 vi.mock("../api", () => ({
   conversationsApi: {
     open: (...a: unknown[]) => open(...a),
     send: (...a: unknown[]) => send(...a),
     detail: (...a: unknown[]) => detail(...a),
+    agentMode: (projectId: string) => agentMode(projectId),
     list: async () => ({ items: [], total: 0 }),
     rename: async () => ({}),
     remove: async () => undefined,
@@ -298,5 +305,146 @@ describe("ConversationChat · who may change who is in the room", () => {
     await openRoster();
     expect(await screen.findByText("Ada")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /add agent/i })).not.toBeInTheDocument();
+  });
+});
+
+// cm:guard ISS-1039 criteria 1, 2, 15 and 16 — the pick between Assistant and Agent is offered in
+// the COMPOSER of an empty room and nowhere else, and Agent is offered disabled-with-a-reason on a
+// project that has no box to run it. Each case here was watched going red: hiding the control
+// unconditionally kills the first, rendering it unconditionally kills the second, and dropping the
+// server's `agentMode` on the floor kills the last two.
+describe("ConversationChat · picking what the room talks to", () => {
+  const emptyRoom = (agentMode: { available: boolean; reason: string | null }) => ({
+    id: "c1",
+    adapter: "web",
+    externalId: "v1",
+    shape: "direct",
+    title: null,
+    mode: null,
+    updatedAt: "2026-09-14T00:00:00.000Z",
+    scope: ["p1"],
+    scopeProjects: [{ id: "p1", name: "Alpha", slug: "alpha" }],
+    participants: [],
+    messages: [],
+    windows: [],
+    agentMode,
+    agentTurns: [],
+  });
+
+  function mountRoom() {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(
+      <QueryClientProvider client={qc}>
+        <ConversationChat projectId="p1" conversationId="c1" />
+      </QueryClientProvider>,
+    );
+  }
+
+  it("offers both modes in an empty room", async () => {
+    detail.mockResolvedValue(emptyRoom({ available: true, reason: null }));
+    mountRoom();
+    await waitFor(() => expect(screen.getByTestId("conversation-mode-toggle")).toBeInTheDocument());
+    expect(screen.getByRole("radio", { name: "Assistant" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "Agent" })).toBeEnabled();
+  });
+
+  it("offers nothing to pick once the room holds a message", async () => {
+    detail.mockResolvedValue({
+      ...emptyRoom({ available: true, reason: null }),
+      mode: "assistant",
+      messages: [
+        {
+          id: "m0",
+          seq: 0,
+          role: "user",
+          authorUserId: "u1",
+          authorLabel: "Ada",
+          content: "is the release ready?",
+          silenceReason: null,
+          createdAt: "2026-09-14T00:00:00.000Z",
+        },
+      ],
+    });
+    mountRoom();
+    // cm:why the title renders the first message's text too, so the wait is on ALL of them: a
+    // `getByText` here fails on the second copy rather than on the behaviour being asserted.
+    await waitFor(() =>
+      expect(screen.getAllByText("is the release ready?").length).toBeGreaterThan(0),
+    );
+    expect(screen.queryByTestId("conversation-mode-toggle")).not.toBeInTheDocument();
+  });
+
+  it("offers Agent disabled, with the server's own reason, where no box can take it", async () => {
+    detail.mockResolvedValue(
+      emptyRoom({ available: false, reason: "no device is paired with Alpha" }),
+    );
+    mountRoom();
+    await waitFor(() => expect(screen.getByTestId("conversation-mode-toggle")).toBeInTheDocument());
+    const agent = screen.getByRole("radio", { name: "Agent" });
+    expect(agent).toBeDisabled();
+    // cm:guard the reason is READ OFF the server's answer and never composed here: a screen that
+    // writes its own sentence tells a person to pair a box when the real refusal was something else.
+    expect(screen.getByText(/no device is paired with Alpha/)).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Assistant" })).toBeEnabled();
+  });
+
+  it("sends the mode the person picked", async () => {
+    detail.mockResolvedValue(emptyRoom({ available: true, reason: null }));
+    mountRoom();
+    await waitFor(() => expect(screen.getByTestId("conversation-mode-toggle")).toBeInTheDocument());
+    await act(async () => {
+      fireEvent.click(screen.getByRole("radio", { name: "Agent" }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "send" }));
+    });
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+    expect(send.mock.calls[0]?.[2]).toBe("agent");
+  });
+});
+
+// cm:guard the composer of a DRAFT is where this pick is usually made — there is no room yet, so the
+// room's own `agentMode` cannot answer, and the screen was offering Agent enabled on the strength of
+// nothing. A person on a project with no box paired then composed a question and learned from the
+// refusal. Criteria 15 and 16 are about the control being right BEFORE a message is spent
+// (ISS-1039, commit consult F5).
+describe("ConversationChat \u00b7 the pick before any room exists", () => {
+  function mountDraft() {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(
+      <QueryClientProvider client={qc}>
+        <ConversationChat projectId="p1" />
+      </QueryClientProvider>,
+    );
+  }
+
+  it("asks the project whether a box is free, with no room in hand", async () => {
+    agentMode.mockResolvedValue({ available: true, reason: null });
+    mountDraft();
+    await waitFor(() => expect(agentMode).toHaveBeenCalledWith("p1"));
+    await waitFor(() => expect(screen.getByRole("radio", { name: "Agent" })).toBeEnabled());
+  });
+
+  it("offers Agent disabled, with the project's own reason, where no box is paired", async () => {
+    agentMode.mockResolvedValue({ available: false, reason: "this project has no box paired" });
+    mountDraft();
+    // cm:why the wait is on the REASON and not on the disabled state: the control is disabled while
+    // the read is still in flight too, so waiting on that alone passes before the answer arrives and
+    // asserts the loading sentence.
+    await waitFor(() => expect(screen.getByText(/no box paired/)).toBeInTheDocument());
+    expect(screen.getByRole("radio", { name: "Agent" })).toBeDisabled();
+  });
+
+  // cm:guard an unknown is not a yes: while the read is in flight the control is disabled and says
+  // what it is doing, because offering it and refusing the send a second later is the same lie.
+  it("holds Agent closed while it does not yet know", async () => {
+    let answer: (v: { available: boolean; reason: string | null }) => void = () => undefined;
+    agentMode.mockImplementation(() => new Promise((resolve) => { answer = resolve; }));
+    mountDraft();
+    await waitFor(() => expect(screen.getByRole("radio", { name: "Agent" })).toBeDisabled());
+    expect(screen.getByText(/checking whether a box is free/)).toBeInTheDocument();
+    await act(async () => {
+      answer({ available: true, reason: null });
+    });
   });
 });

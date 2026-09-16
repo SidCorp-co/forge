@@ -205,6 +205,13 @@ export const rocketChatConversationPorts: ConversationAdapterPorts<RocketChatFra
     );
   },
 
+  // cm:guard the SAME `authForVenue` the delivery makes, asked early: a session runs long, and a room rebound while it ran is not this project's to answer into. It is not a substitute for the read `deliver` makes — that one is what stops the answer being posted — it is what stops a rebound room costing a failover redispatch and a screening turn first (ISS-1039).
+  async canDeliver(venue: ConversationVenue): Promise<boolean> {
+    const parts = parseRocketChatVenueId(venue.externalId);
+    if (!parts) return false;
+    return (await authForVenue(parts.namespace, parts.rid, venue.projectId)) !== null;
+  },
+
   async fetchHistory(
     venue: ConversationVenue,
     limit: number,

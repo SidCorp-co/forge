@@ -53,7 +53,21 @@ beforeEach(async () => {
 describe('the Forge UI reply door, against a real database', () => {
   /** The door production picks, read from production, never named here. */
   const webDoor = (project: { id: string; slug: string; name: string }) =>
-    webConversationTurn({ project, handleName: 'Babo', askedBy: 'Alice' }).door;
+    webConversationTurn({
+      project: { ...project, repoPath: null },
+      handleName: 'Babo',
+      askedBy: 'Alice',
+      window: {
+        venue: { adapter: 'web', externalId: 'v1', shape: 'direct', projectId: project.id },
+        conversationId: 'c1',
+        windowId: 'w1',
+        deliveryKey: 'k1',
+        mode: 'assistant',
+        question: 'hello',
+        conversationContext: async () => null,
+        reserve: async () => true,
+      },
+    }).door;
 
   let nextSeq = 500;
 

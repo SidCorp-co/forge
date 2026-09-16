@@ -14,6 +14,7 @@ import { db as defaultDb } from '../db/client.js';
 import { projectMembers } from '../db/schema.js';
 import {
   type ConversationAdapter,
+  type ConversationMode,
   type ConversationShape,
   conversationParticipants,
   conversations,
@@ -25,6 +26,11 @@ export interface ConversationRow {
   adapter: ConversationAdapter;
   externalId: string;
   shape: ConversationShape;
+  /**
+   * What this room is talking to, or null while nobody has settled it.
+   */
+  // cm:guard null is NOT `assistant` on the row and the two are read apart by `effectiveConversationMode`: null is the one state in which the composer still offers the pick, and an answer computed from it is `assistant` because that is what every room opened before ISS-1039 was. Collapsing them at the column would take the choice away from every room the moment it opened.
+  mode: ConversationMode | null;
   title: string | null;
   /** Set = archived: out of the default list, every message still readable by id. */
   archivedAt: Date | null;
@@ -35,6 +41,7 @@ export const selection = {
   adapter: conversations.adapter,
   externalId: conversations.externalId,
   shape: conversations.shape,
+  mode: conversations.mode,
   title: conversations.title,
   archivedAt: conversations.archivedAt,
 };
@@ -176,4 +183,30 @@ export async function deleteConversation(
     .where(eq(conversations.id, conversationId))
     .returning({ id: conversations.id });
   return rows.length > 0;
+}
+
+/**
+ * What this room answers in, for a caller deciding rather than offering.
+ */
+// cm:guard a null reads `assistant` and never "unknown": every room opened before ISS-1039 ran its turns in core under the fenced project toolset, so that IS what they are, and a caller made to handle a third value would invent a default of its own somewhere this one cannot see (ISS-1039).
+export function effectiveConversationMode(row: Pick<ConversationRow, 'mode'>): ConversationMode {
+  return row.mode ?? 'assistant';
+}
+
+/**
+ * Settle a room's mode, once, and say whether this caller is the one who did.
+ */
+// cm:guard the `mode IS NULL` fence is the ADMISSION and not a tidy-up: two first sends racing in one empty room both pass the route's "this room is empty" read, and this update is where exactly one of them wins. The loser is told which mode the winner settled and its message is never collected, which is the only arrangement where a client that believes it opened an Agent room and a room that did not cannot both exist (ISS-1039, plan consult F2).
+// cm:guard it takes the caller's executor and no default: its whole value is running inside the transaction that commits the first message and its window, so a settle that lost can abort the collection with it. A version of this with its own connection would commit the mode beside a message that never landed.
+export async function settleConversationMode(
+  tx: Executor,
+  conversationId: string,
+  mode: ConversationMode,
+): Promise<boolean> {
+  const won = await tx
+    .update(conversations)
+    .set({ mode })
+    .where(and(eq(conversations.id, conversationId), isNull(conversations.mode)))
+    .returning({ id: conversations.id });
+  return won.length > 0;
 }

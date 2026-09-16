@@ -289,7 +289,9 @@ describe("ConversationPanel \u00b7 what a slow or failing request must not do", 
     // cm:guard the assertion waits for the SEND, which is the step after the callback this guards:
     // asserting straight after `settle` passes whatever the panel does, because the callback has not
     // run yet and the screen still holds the room the person chose.
-    await waitFor(() => expect(sendMsg).toHaveBeenCalledWith("cNew", "hello"));
+    // cm:guard the third argument is the MODE, and it rides the first send of a room and no other:
+    // a draft's own first message is what settles it, so the call that opens the room carries it.
+    await waitFor(() => expect(sendMsg).toHaveBeenCalledWith("cNew", "hello", "assistant"));
     expect(detail).not.toHaveBeenCalledWith("cNew");
     expect(screen.getByText("everything said in c1")).toBeInTheDocument();
   });

@@ -12,10 +12,11 @@ const EXPECTED: ReadonlyArray<[DoorId, string, string, number | null]> = [
   ['web-chat-reply', 'role:chat', 'fallback', 1],
   ['escalation-synthesis', 'public:report', 'fallback', 1],
   ['agent-chat-completion', 'public:report', 'fallback', 0],
+  ['web-agent-completion', 'role:chat', 'fallback', 0],
 ];
 
 describe('the door table', () => {
-  it('is exactly these seven doors — dropping one fails here', () => {
+  it('is exactly these eight doors — dropping one fails here', () => {
     expect(DOORS.map((d) => d.id)).toEqual(EXPECTED.map(([id]) => id));
   });
 
@@ -50,9 +51,13 @@ describe('the door table', () => {
   });
 
   // cm:guard the Forge UI reply is on a cell of its OWN and must not drift back onto `role:report`: ISS-1005's review caught that move dropping `only-verified-citations`, `no-empty-promise` and `progress-figures-match`, three rules that are about the turn rather than the reader, and the last of those cannot be added to `role:report` because `screenAgentComment` gathers no progress and the rule fails closed. This reds if somebody folds the two back together (ISS-1005).
-  it('reads the browser reply at a cell no other door reads', () => {
+  // cm:guard `role:chat` is read at TWO doors since ISS-1039 and the property this case defends is
+  // unchanged: the cell is the Forge UI's and nothing else's. What the second door adds is a repair
+  // count, which is the same argument `public:report` makes three doors down — the reader is one
+  // person and the budget is the lane's.
+  it('reads the browser reply at a cell no other surface reads', () => {
     const chat = DOORS.filter((d) => d.cell === 'role:chat');
-    expect(chat.map((d) => d.id)).toEqual(['web-chat-reply']);
+    expect(chat.map((d) => d.id)).toEqual(['web-chat-reply', 'web-agent-completion']);
     const spec = cellFor('role', 'chat');
     expect(spec?.rules.map((r) => r.id)).toEqual([
       'non-empty',

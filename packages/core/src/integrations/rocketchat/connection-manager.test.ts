@@ -146,6 +146,8 @@ vi.mock('../../conversations/store.js', () => ({
     return row;
   },
   getConversation: async (id: string) => conversationsById.get(id) ?? null,
+  effectiveConversationMode: (row: { mode?: 'assistant' | 'agent' | null }) =>
+    row.mode ?? 'assistant',
   readMessages: async () => collected,
   readMessagesInRange: async () => collected,
   deliveredDecisionUnderKey: async () => null,
@@ -402,17 +404,27 @@ describe('connection-manager ISS-727 answer-mode routing', () => {
     const ac = makeAc();
     await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
 
+    // cm:guard the turn is addressed by VENUE, window and delivery key and no longer by a connection
+    // id and a rid: the lane behind this call is shared with the Forge UI, and a room id reaching it
+    // would be this transport's vocabulary back inside it (ISS-1039).
     expect(startAgentChat).toHaveBeenCalledWith(
       expect.objectContaining({
-        projectId: 'proj-1',
-        connectionId: 'conn-1',
-        rid: 'room-1',
+        venue: expect.objectContaining({
+          adapter: 'rocketchat',
+          externalId: 'chat.example.co room-1',
+          projectId: 'proj-1',
+        }),
+        conversationId: expect.any(String),
+        windowId: expect.any(String),
+        deliveryKey: expect.any(String),
         botName: 'Babo',
         message: 'How does the pipeline work?',
         askedByUsername: 'alice',
         persona: expect.any(String),
       }),
     );
+    expect(startAgentChat.mock.calls[0]?.[0]).not.toHaveProperty('rid');
+    expect(startAgentChat.mock.calls[0]?.[0]).not.toHaveProperty('connectionId');
     expect(runExternalChatTurn).not.toHaveBeenCalled();
     // cm:guard no immediate ack: a fast turn's answer arrives through the completion bridge, and only a slow turn gets the delayed ack, scheduled inside `startAgentChat` rather than sent from here.
     expect(deliver).not.toHaveBeenCalled();

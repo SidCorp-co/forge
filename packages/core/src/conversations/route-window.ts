@@ -11,7 +11,7 @@
  * is the piece between them that decides whether to take one at all.
  */
 
-import type { ConversationWindowDecision } from '../db/schema-conversations.js';
+import type { ConversationMode, ConversationWindowDecision } from '../db/schema-conversations.js';
 import { logger } from '../logger.js';
 import { readSelvesFor } from '../orgs/agent-selves.js';
 import { handleForProject, roomHandles } from './participants.js';
@@ -21,6 +21,7 @@ import { decideProactivity } from './proactivity.js';
 import { linkedSpeakerOf } from './speaker.js';
 import {
   deliveredDecisionUnderKey,
+  effectiveConversationMode,
   getConversation,
   readMessagesInRange,
   type StoredConversationMessage,
@@ -65,6 +66,11 @@ export interface RouteWindowArgs {
     authorKey: string | null;
     authorLabel: string | null;
   }) => Promise<string | null> | string | null;
+  /**
+   * Whether a turn for this window was already handed to something that answers later.
+   */
+  // cm:guard asked in the RESERVED-DELIVERY branch, where the reservation is all this module can see and it cannot tell the two things a reservation means apart: a reply handed to a transport whose outcome nobody recorded, and a turn handed to a session that has not written one yet. Only the caller knows which, and without it a core that died between the dispatch and the close reopened as `undetermined` — the Forge UI's words for that are "a reply was sent and never confirmed", about an answer nobody had written (ISS-1039, plan consult F5).
+  handoffFor?: (windowId: string) => Promise<{ sessionId: string } | null>;
 }
 
 /**
@@ -76,6 +82,16 @@ export type WindowMessage = StoredConversationMessage;
 /** What the adapter is given to build its inputs from. */
 export interface WindowContext {
   venue: ConversationVenue;
+  /** The room this window is in — what a diversion hands to whatever answers later. */
+  conversationId: string;
+  /** This window's own id, and the stable key its one delivery answers. */
+  windowId: string;
+  deliveryKey: string;
+  /**
+   * What this room answers in, read off the room rather than off any project's config.
+   */
+  // cm:guard THE fork's input, and it is on the context rather than read by the adapter because the adapter may not read the store: `transport-free.test.ts` fails CI on one that does, and this module already holds the room's row for its own reasons (ISS-1039).
+  mode: ConversationMode;
   /** The messages this window collected, oldest first. */
   messages: StoredConversationMessage[];
   principalUserId: string;
@@ -150,6 +166,19 @@ async function decide(
 
   // cm:guard a reservation with no delivered row is the fourth state and NOT a licence to try again: the previous holder handed the text to the transport and died before it could say how that went, so the room may or may not be holding this answer already. Sending again to find out is how one reply becomes two, and calling it a failure is what rule 4 forbids outright (ISS-1004, review F2).
   if (window.deliveryReservedAt) {
+    // cm:guard the handoff is asked about FIRST, because a reservation alone cannot tell a delivery whose outcome was lost from a turn that is still being written on a box: the first is `undetermined` and the second is a session somebody can watch, and answering the second with the first's words is what put "a reply was sent and never confirmed" under a live agent turn (ISS-1039).
+    const handed = await args.handoffFor?.(window.id);
+    if (handed) {
+      return {
+        decision: 'handed-off',
+        detail: {
+          deliveryKey,
+          sessionId: handed.sessionId,
+          reservedAt: window.deliveryReservedAt.toISOString(),
+          reason: 'this turn is running as a session on a paired device; its reply arrives later',
+        },
+      };
+    }
     return {
       decision: 'undetermined',
       detail: {
@@ -219,6 +248,10 @@ async function decide(
   const handleUserId = await handleForProject(window.conversationId, venue.projectId);
   const inputs = args.inputs({
     venue,
+    conversationId: window.conversationId,
+    windowId: window.id,
+    deliveryKey,
+    mode: effectiveConversationMode(conversation),
     messages,
     principalUserId,
     speakerUserId,
@@ -243,9 +276,9 @@ async function decide(
       return { decision: 'answered', detail: { messageId: outcome.messageId } };
     case 'declined':
       return { decision: 'nothing-to-say', detail: { reason: outcome.reason } };
-    // cm:guard a DIVERTED turn is `undetermined` and never a failure: the answer arrives by the path the adapter handed it to, and a caller that retried on this would deliver a second one (ISS-1004 rule 4).
+    // cm:guard a DIVERTED turn is `handed-off` and never a failure: the answer arrives by the path the adapter handed it to, and a caller that retried on this would deliver a second one (ISS-1004 rule 4). It was `undetermined` until ISS-1039, which is a different claim — that a delivery was started and its outcome lost — and the Forge UI prints that claim in those words under every live agent turn.
     case 'diverted':
-      return { decision: 'undetermined', detail: { reason: outcome.reason } };
+      return { decision: 'handed-off', detail: { reason: outcome.reason } };
     // cm:guard a SUPERSEDED turn writes nothing anyone reads, and it is `undetermined` only so this function has one shape: the close that follows is fenced on the same lapsed claim and applies to nothing, which is the point — the holder that took the window over is the one whose decision lands (ISS-1004, review pass 1 F1).
     case 'superseded':
       return { decision: 'undetermined', detail: { reason: outcome.reason, superseded: true } };

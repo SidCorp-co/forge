@@ -20,7 +20,7 @@ const row: ListedConversation = {
   id: "c1",
   adapter: "web",
   externalId: "v1",
-  shape: "direct",
+  shape: "direct", mode: null,
   title: "Release plan",
   updatedAt: "2026-09-14T00:00:00.000Z",
   archivedAt: null,

@@ -1,6 +1,6 @@
 ---
 name: forge-message-shape
-description: "The shape every agent-written message to a person must have before Forge will accept it: the three intents, the two audiences, the five cells they make, the rules each cell holds, and the seven doors those cells are read at. Read this when a write was refused with a rule id, before writing a comment or a question round, or before adding a rule or a door. Triggers on: /forge-message-shape, my comment was refused, MESSAGE_REFUSED, QUESTION_MESSAGE_REFUSED, what shape does a comment need, message screen, audience and intent."
+description: "The shape every agent-written message to a person must have before Forge will accept it: the three intents, the two audiences, the five cells they make, the rules each cell holds, and the eight doors those cells are read at. Read this when a write was refused with a rule id, before writing a comment or a question round, or before adding a rule or a door. Triggers on: /forge-message-shape, my comment was refused, MESSAGE_REFUSED, QUESTION_MESSAGE_REFUSED, what shape does a comment need, message screen, audience and intent."
 user_invocable: true
 ---
 
@@ -194,7 +194,7 @@ differ — at one, the agent is still on the line; at another, the message posts
 minutes later with nobody left to ask. A repair count on the cell would have to
 be right for both and can only be right for one.
 
-So the count lives on the **door**. There are seven.
+So the count lives on the **door**. There are eight.
 
 | door | cell | ending | repairs |
 |---|---|---|---|
@@ -205,6 +205,7 @@ So the count lives on the **door**. There are seven.
 | `web-chat-reply` | `role:chat` | fallback | 1 |
 | `escalation-synthesis` | `public:report` | fallback | 1 |
 | `agent-chat-completion` | `public:report` | fallback | 0 |
+| `web-agent-completion` | `role:chat` | fallback | 0 |
 
 **refusal** — the write does not happen and the author is told why. Nothing is
 posted in its place. Every one of these has the agent on the line, so telling it
@@ -229,6 +230,13 @@ which are three of the things a person opens the Forge UI to ask for.
 `agent-chat-completion` declares **0** deliberately: the runner session whose
 final message it carries has already ended, so there is no turn to ask again, and
 a budget it could never spend would be a lie in the table.
+
+`web-agent-completion` is the same reply arriving in the Forge UI instead of a
+room, and it takes the **cell** of the surface and the **repairs** of the lane:
+`role:chat` because its reader holds a role and `no-developer-detail` would refuse
+the file path they asked about, and **0** because the session that wrote it has
+already ended. It is why `role:chat` is now read at two doors rather than one —
+the reader is the same person in both, and only the repair budget differs.
 
 ## Nothing rewrites what an agent wrote
 
