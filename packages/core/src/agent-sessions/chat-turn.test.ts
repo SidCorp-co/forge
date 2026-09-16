@@ -12,8 +12,7 @@ vi.mock('../config/env.js', () => ({
 // stays local.
 
 const selectLimit = vi.fn();
-const selectWhere = vi.fn(() => ({ limit: selectLimit }));
-const selectFrom = vi.fn(() => ({ where: selectWhere }));
+const selectFrom = vi.fn(() => ({ where: vi.fn(() => ({ limit: selectLimit })) }));
 
 const updateReturning = vi.fn();
 const updateWhere = vi.fn(() => ({ returning: updateReturning }));
@@ -30,8 +29,8 @@ vi.mock('../db/client.js', () => {
   return { db: dbStub };
 });
 
-const findAvailableDeviceForProject = vi.fn(),
-  findChatCapableDeviceForProject = vi.fn();
+const findAvailableDeviceForProject = vi.fn();
+const findChatCapableDeviceForProject = vi.fn();
 const resolveSessionRepoPathForDevice = vi.fn(
   async (_projectId: string, _deviceId: string | null, projectRepoPath: string | null) =>
     projectRepoPath ?? null,
@@ -82,7 +81,7 @@ const syncTurnsSpy = vi.fn(async () => ({ appended: [], truncatedFromTurnIndex: 
 vi.mock('./turns-helpers.js', () => ({
   syncTurnsWithMessages: (...args: unknown[]) => syncTurnsSpy(...(args as [])),
 }));
-(await import('../integrations/register-all.js')).registerAllIntegrations(); // ISS-1071 registry
+(await import('../integrations/register-all.js')).registerAllIntegrations(); // cm:why ISS-1071 — the dispatch path asks the registry which providers render an MCP server for a granted binding, and reading it EMPTY throws rather than answering "none declared", so this file registers as the app does at boot.
 vi.mock('../pipeline/runs.js', () => ({
   openOneShotRun: vi.fn(async () => ({ id: 'run-1' })),
 }));
