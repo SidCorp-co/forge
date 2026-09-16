@@ -7,7 +7,13 @@
 import { describe, expect, it } from "vitest";
 import type { ConnectionDirectoryItem } from "@forge/contracts";
 import type { DirectoryStatus } from "./derive";
-import { appLabel, groupConnectionsByApp, groupSummary, tallyOf } from "./connection-groups";
+import {
+  appLabel,
+  type GroupTally,
+  groupConnectionsByApp,
+  groupSummary,
+  tallyOf,
+} from "./connection-groups";
 
 function conn(over: Partial<ConnectionDirectoryItem> = {}): ConnectionDirectoryItem {
   return {
@@ -26,24 +32,26 @@ function conn(over: Partial<ConnectionDirectoryItem> = {}): ConnectionDirectoryI
     updatedAt: "2026-09-01T00:00:00.000Z",
     usage: { bindings: [] },
     ...over,
-  } as ConnectionDirectoryItem;
+  };
 }
 
 describe("tallyOf", () => {
-  // Every member of the union, including the one no connection row can reach,
-  // so a state added to DirectoryStatus cannot be counted by accident.
-  const cases: [DirectoryStatus, "attention" | "off" | null][] = [
-    ["connected", null],
-    ["degraded", "attention"],
-    ["error", "attention"],
-    ["needs_reauth", "attention"],
-    ["needs_scope", "attention"],
-    ["disabled", "off"],
-    ["unverified", null],
-    ["not_connected", null],
-  ];
+  // A Record over the whole union rather than a list of pairs: a state added
+  // to DirectoryStatus fails to compile HERE as well as in tallyOf itself, so
+  // the table cannot go stale while the switch stays exhaustive. Includes the
+  // one no connection row can reach.
+  const EXPECTED: Record<DirectoryStatus, GroupTally> = {
+    connected: null,
+    degraded: "attention",
+    error: "attention",
+    needs_reauth: "attention",
+    needs_scope: "attention",
+    disabled: "off",
+    unverified: null,
+    not_connected: null,
+  };
 
-  for (const [status, expected] of cases) {
+  for (const [status, expected] of Object.entries(EXPECTED) as [DirectoryStatus, GroupTally][]) {
     it(`counts ${status} toward ${expected ?? "neither tally"}`, () => {
       expect(tallyOf(status)).toBe(expected);
     });

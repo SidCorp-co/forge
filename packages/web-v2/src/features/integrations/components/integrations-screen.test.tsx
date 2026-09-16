@@ -62,7 +62,7 @@ function conn(over: Partial<ConnectionDirectoryItem> = {}): ConnectionDirectoryI
     updatedAt: "2026-09-01T00:00:00.000Z",
     usage: { bindings: [] },
     ...over,
-  } as ConnectionDirectoryItem;
+  };
 }
 
 // Typed rather than inferred: `environment` is a two-member union on
@@ -85,9 +85,14 @@ function openApp(label: string) {
   fireEvent.click(appHeader(label));
 }
 
-/** The control that opens one connection's drawer — a real button, not a div wearing the role. */
+/**
+ * The control that opens one connection's drawer — a real button, not a div
+ * wearing the role. Matched on the PREFIX because the accessible name carries
+ * the row's discriminators after it, which is what keeps two unnamed
+ * credentials of one app from being announced identically.
+ */
 function manageButton(title: string) {
-  return screen.getByRole("button", { name: `Manage connection ${title}` });
+  return screen.getByRole("button", { name: new RegExp(`^Manage connection ${title}(?: —|$)`) });
 }
 
 /** The whole row: that button, the status pill and the management controls beside it. */
@@ -154,6 +159,43 @@ describe("IntegrationsScreen", () => {
     expect(manage.tagName).toBe("BUTTON");
     expect(within(manage).queryAllByRole("button")).toHaveLength(0);
     expect(within(row("Coolify deploy")).getByRole("button", { name: "Remove" })).toBeInTheDocument();
+  });
+
+  it("tells two unnamed credentials of one app apart in the accessible name", () => {
+    // The motivating case: a deploy token per environment, neither named. An
+    // aria-label of "Manage connection Coolify deploy" on both rebuilds the
+    // wall this issue removes, inside the accessibility tree.
+    connectionItems.mockReturnValue([
+      conn({ id: "c1", config: { baseUrl: "https://staging.example.com" } }),
+      conn({ id: "c2", config: { baseUrl: "https://prod.example.com" } }),
+    ]);
+    render(<IntegrationsScreen />);
+    openApp("Coolify deploy");
+    const names = screen
+      .getAllByRole("button", { name: /^Manage connection Coolify deploy/ })
+      .map((b) => b.getAttribute("aria-label"));
+    expect(names).toEqual([
+      "Manage connection Coolify deploy — staging.example.com",
+      "Manage connection Coolify deploy — prod.example.com",
+    ]);
+  });
+
+  it("falls back to the bound projects when two unnamed credentials point nowhere", () => {
+    // No config target on either, so the third discriminator the row shows —
+    // who uses it — is what has to reach the accessible name.
+    connectionItems.mockReturnValue([
+      conn({ id: "c1", usage: BOUND }),
+      conn({ id: "c2", usage: { bindings: [] } }),
+    ]);
+    render(<IntegrationsScreen />);
+    openApp("Coolify deploy");
+    const names = screen
+      .getAllByRole("button", { name: /^Manage connection Coolify deploy/ })
+      .map((b) => b.getAttribute("aria-label"));
+    expect(names).toEqual([
+      "Manage connection Coolify deploy — used by forge-dev",
+      "Manage connection Coolify deploy",
+    ]);
   });
 
   it("shows the endpoint a credential points at", () => {

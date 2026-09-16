@@ -18,7 +18,7 @@ import { type DirectoryStatus, deriveConnectionStatus } from "./derive";
 export type GroupTally = "attention" | "off" | null;
 
 // cm:guard `unverified` counts toward NEITHER tally and `disabled` toward `off` alone — derive.ts calls unverified "no signal is not a live problem, just an unproven one", and a header counting it as attention sends the operator into a group where nothing is wrong
-// cm:edge contract -> packages/web-v2/src/features/integrations/derive.ts — every DirectoryStatus this switch does not name falls to `null`, so a state added there is uncounted until it is named here
+// cm:edge contract -> packages/web-v2/src/features/integrations/derive.ts — EVERY member of DirectoryStatus is named here and the default branch is a `never` assignment, so adding a state there fails the build until somebody classifies it. A silent `default: null` was the alternative, and it would have let a new unhealthy state land uncounted: the header would keep saying nothing needs attention while a row under it went amber.
 export function tallyOf(status: DirectoryStatus): GroupTally {
   switch (status) {
     case "degraded":
@@ -28,8 +28,17 @@ export function tallyOf(status: DirectoryStatus): GroupTally {
       return "attention";
     case "disabled":
       return "off";
-    default:
+    case "connected":
+    case "unverified":
+    case "not_connected":
       return null;
+    default: {
+      // Unreachable while the union is exhausted above; a value from outside it
+      // could only come off the wire, and a tally is not the place to throw.
+      const _exhaustive: never = status;
+      void _exhaustive;
+      return null;
+    }
   }
 }
 

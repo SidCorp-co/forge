@@ -53,6 +53,30 @@ function UsageLine({
   );
 }
 
+/**
+ * What assistive technology and voice control call the control that opens a
+ * row's drawer. `aria-label` overrides every descendant, so a bare "Manage
+ * connection <title>" announces the four unnamed Coolify credentials of one
+ * org identically — the very wall this issue set out to remove, rebuilt in the
+ * accessibility tree where nobody looks at it. The discriminators are the
+ * row's OWN visible ones, in the order `connection-identity.ts` sets: the name
+ * its owner gave it, then the target its config points at, then the projects
+ * using it. Where the row shows nothing that tells two apart, neither does
+ * this: suffixing an id would name the rows by something no one can see, and
+ * two rows that read the same are then honestly the same.
+ */
+export function connectionRowLabel(
+  connection: ConnectionDirectoryItem,
+  projectName: (id: string) => string,
+): string {
+  const parts = [`Manage connection ${connectionTitle(connection)}`];
+  const target = connectionTarget(connection);
+  if (target) parts.push(target);
+  else if (connection.usage.bindings.length > 0)
+    parts.push(`used by ${connection.usage.bindings.map((b) => projectName(b.projectId)).join(", ")}`);
+  return parts.join(" — ");
+}
+
 function RemoveButton({ connection }: { connection: ConnectionDirectoryItem }) {
   const remove = useRemoveConnection();
   const [armed, setArmed] = useState(false);
@@ -127,7 +151,7 @@ export function ConnectionRow({
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line-subtle px-3 py-2">
       <button
         type="button"
-        aria-label={`Manage connection ${title}`}
+        aria-label={connectionRowLabel(connection, projectName)}
         onClick={onOpen}
         className="-mx-1 flex min-w-[220px] flex-1 cursor-pointer flex-col gap-0.5 rounded-md px-1 py-0.5 text-left hover:bg-sunken focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
       >
