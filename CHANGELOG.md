@@ -114,6 +114,20 @@
 
 ### Added
 
+- **The workspace connections page is now one list per app, not a wall of equal cards.** Every
+  credential used to be an identical card in a three-column grid, and the only way to find one was
+  to already know what to type into the search box. That reads fine with one credential per app and
+  stops working the moment an organisation holds several of the same kind — a deploy token per
+  environment is already the normal case. The page now opens on the apps themselves, each one a
+  line saying how many credentials sit under it, how many of those need attention and how many are
+  switched off, so you can tell whether a shut section is worth opening without opening it. Open the
+  app you came for and its credentials are underneath, one compact row each instead of a card, so
+  several are on screen at once — each still naming what the credential is, what it points at and
+  which projects use it, with Disable, Enable and Remove where they always were and the whole row
+  still opening the editor. Which apps you leave open is remembered, so the page comes back the way
+  you left it; searching or filtering shows matches wherever they are, including inside a section
+  you had shut, and puts your own choice back when you clear it.
+
 - **The issues list now says how long each row has sat where it is.** A status answers who is
   holding a piece of work; it has never been able to answer how long they have been holding it, and
   that is the question a person is actually asking when they scan the list. Two issues at the same
