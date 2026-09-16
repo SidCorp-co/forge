@@ -61,6 +61,8 @@ export interface TrailQuery {
   projectSlug: string;
   dateFrom: string;
   dateTo: string;
+  /** One door's rows only, as GET /api/chat-logs?source= filters them. */
+  source?: string;
 }
 
 interface ListEnvelope<T> {
@@ -173,6 +175,7 @@ export function createClient(opts: ClientOptions) {
           page: String(page),
           pageSize: String(pageSize),
         });
+        if (q.source) qs.set('source', q.source);
         const env = await json<ListEnvelope<T>>('GET', `/api/chat-logs?${qs}`);
         rows.push(...env.items);
         // cm:why the envelope's own offset, not page × the size asked for: the route caps pageSize, and a page smaller than asked would otherwise end the read early

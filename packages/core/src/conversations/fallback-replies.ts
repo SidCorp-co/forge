@@ -18,3 +18,6 @@ export const unverifiedFallbackReply = (name: string): string =>
 export const emptyFallbackReply = (name: string): string =>
   // cm:ignore CM001 — the i18n pragma `check-source-language` reads to allow this user-facing Vietnamese reply; deleting it to satisfy codemap reds the language gate instead
   `Xin lỗi, ${name} chưa đưa ra được câu trả lời cho yêu cầu này — bạn diễn đạt lại giúp ${name} nhé.`; // i18n-allow: user-facing channel reply
+
+/** The head of the door's corrective retry, which is the retry row's `chat_logs.query`: history reads a screen repair by it (ISS-1053). */
+export const CORRECTIVE_PREFIX = '[SYSTEM CHECK — not from the user]';
