@@ -9,6 +9,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { ADMITTED_RUNNER } from './pool-admission.js';
+import { RUNNER_MAY_TAKE_JOB } from './release-label.js';
 
 export type PoolRelation = {
   kind: string;
@@ -59,6 +60,7 @@ const RELATIONS = sql`
 // cm:guard the exclusions here are exactly the conditions under which a claim CANNOT succeed — queued under a live run, unheld, off cooldown, no in-flight sibling for the issue. Do NOT add a dependency filter, a project cap, or an ordering by priority: those are routing judgements the master owns, and a pool that pre-decides them is the kernel deciding routing again, which is the whole thing this replaces.
 // cm:edge lockstep -> packages/core/src/devices/claim.ts — the sibling-job NOT EXISTS below must stay identical to L1 in `prepareJobForMaster`. Looser here offers work every claim refuses; tighter hides work a master could have taken, and neither failure says a word.
 // cm:edge lockstep -> packages/core/src/devices/pool-admission.ts — `ADMITTED_RUNNER` is the same predicate `prepareJobForMaster` answers by name; the join above proves a BINDING exists and says nothing about whether an operator has withdrawn the box.
+// cm:edge lockstep -> packages/core/src/devices/release-label.ts — `RUNNER_MAY_TAKE_JOB` is the other predicate `prepareJobForMaster` answers by name, and it is the ONLY thing narrowing a `release_batch` job to the box that holds the production credential. It is a routing judgement the guard above forbids for every other job type and is admitted here for one reason: it is not a preference between boxes that could both do the work, it is the set of boxes on which the work can happen at all.
 export async function readPool(args: {
   deviceId: string;
   projectId?: string | undefined;
@@ -79,6 +81,7 @@ export async function readPool(args: {
     JOIN projects ipj ON ipj.id = j.project_id
     WHERE j.status = 'queued'
       AND ${ADMITTED_RUNNER}
+      AND ${RUNNER_MAY_TAKE_JOB}
       AND pr.status IN ('running', 'paused')
       AND j.held_by IS NULL
       AND (j.retry_after_at IS NULL OR j.retry_after_at <= now())

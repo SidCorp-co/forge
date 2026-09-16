@@ -14,9 +14,10 @@ const loadProjectAccess = vi.fn();
 const startPhase = vi.fn();
 const endPhase = vi.fn();
 const resumePoint = vi.fn();
+const listPhases = vi.fn();
 
 vi.mock('./runs.js', () => ({ readPipelineRun }));
-vi.mock('./phase-journal.js', () => ({ startPhase, endPhase, resumePoint }));
+vi.mock('./phase-journal.js', () => ({ startPhase, endPhase, resumePoint, listPhases }));
 vi.mock('../lib/authz.js', () => ({
   loadProjectAccess,
   assertProjectRole: (access: { role?: string }, need: 'viewer' | 'member') => {
@@ -54,6 +55,7 @@ beforeEach(() => {
   loadProjectAccess.mockResolvedValue({ role: 'member' });
   startPhase.mockResolvedValue({ phase: 'code', attempt: 2, startedAt: new Date(0) });
   resumePoint.mockResolvedValue(null);
+  listPhases.mockResolvedValue([]);
 });
 
 describe('POST /:id/phases', () => {
@@ -143,5 +145,86 @@ describe('GET /:id/resume-point', () => {
     loadProjectAccess.mockResolvedValue({ role: 'viewer' });
     const res = await phaseRoutes.request(`/${RUN}/resume-point`);
     expect(res.status).toBe(200);
+  });
+});
+
+/**
+ * ISS-1042 criterion 40 — a run's journal is readable in order.
+ *
+ * `resume-point` answered where to restart and was the only way in, so an
+ * operator could read what a run was stuck on and never what it had done. The
+ * ordering itself belongs to `listPhases` and is asserted against real rows in
+ * the integration suite; what this file owns is that the route exists, answers
+ * a viewer, and passes the rows through without reshaping them into a summary.
+ */
+describe('GET /:id/phases', () => {
+  const rows = [
+    {
+      phase: 'code',
+      attempt: 1,
+      source: 'agent',
+      outcome: 'failed',
+      startedAt: new Date(0),
+      endedAt: new Date(1),
+      artifact: { kind: 'note', text: 'the build broke' },
+    },
+    {
+      phase: 'code',
+      attempt: 2,
+      source: 'agent',
+      outcome: null,
+      startedAt: new Date(2),
+      endedAt: null,
+      artifact: null,
+    },
+  ];
+
+  it('answers the whole journal in the order the reader was given it', async () => {
+    listPhases.mockResolvedValue(rows);
+
+    const res = await phaseRoutes.request(`/${RUN}/phases`);
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { phases: Array<{ phase: string; attempt: number }> };
+    expect(body.phases.map((p) => [p.phase, p.attempt])).toEqual([
+      ['code', 1],
+      ['code', 2],
+    ]);
+  });
+
+  // cm:guard the OUTCOME and the artifact have to survive the route. A listing that answered phase
+  // names and timestamps would tell a reader a run had a `code` phase twice and nothing about why
+  // the first one ended, which is the only part worth reading.
+  it('carries each phase’s outcome and its artifact through', async () => {
+    listPhases.mockResolvedValue(rows);
+
+    const body = (await (await phaseRoutes.request(`/${RUN}/phases`)).json()) as {
+      phases: Array<Record<string, unknown>>;
+    };
+
+    expect(body.phases[0]).toMatchObject({
+      outcome: 'failed',
+      source: 'agent',
+      artifact: { kind: 'note', text: 'the build broke' },
+    });
+    expect(body.phases[1]).toMatchObject({ outcome: null, endedAt: null });
+  });
+
+  // cm:guard a viewer, the same role `resume-point` takes. Gating a read of what a run did above
+  // the role that can already read the run's status leaves the people who look at a stuck release
+  // unable to see what it had done.
+  it('answers a viewer', async () => {
+    loadProjectAccess.mockResolvedValue({ role: 'viewer' });
+
+    expect((await phaseRoutes.request(`/${RUN}/phases`)).status).toBe(200);
+  });
+
+  it('404s on a run that does not exist rather than answering an empty journal', async () => {
+    readPipelineRun.mockResolvedValue(null);
+
+    const res = await phaseRoutes.request(`/${RUN}/phases`);
+
+    expect(res.status).toBe(404);
+    expect(listPhases).not.toHaveBeenCalled();
   });
 });

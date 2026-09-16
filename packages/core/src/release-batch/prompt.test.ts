@@ -4,7 +4,7 @@
 // is always told which of the two it got.
 
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_RELEASE_PROCEDURE, type ReleasePlan } from './plan.js';
+import { DEFAULT_RELEASE_PROCEDURE, RELEASE_BATCH_SKILL, type ReleasePlan } from './plan.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
 
 const BASE = {
@@ -26,43 +26,55 @@ const plan = (over: Partial<ReleasePlan> = {}): ReleasePlan => ({
 });
 
 describe('buildReleaseBatchPrompt', () => {
-  // cm:guard both halves. A prompt that names a rollback ONLY when one is declared leaves the undeclared case silent, and an agent facing a dead deploy with no instruction improvises one — which is the single action ISS-897 rule 2 forbids outright.
-  it('tells the agent to abort when the project declares no rollback', () => {
-    const out = buildReleaseBatchPrompt({ ...BASE, plan: plan({ rollback: null }) });
-    expect(out).toContain('declares NO rollback');
-    expect(out).toContain('ABORT');
-    expect(out).toContain('Reverting is a human decision');
+  // cm:guard criterion 38 of ISS-1042, and the negative half is the load-bearing one. The block
+  // used to have four branches and three of them told the agent to perform a rollback; a test that
+  // only asserted the new sentence would pass with any one of those still emitted beside it.
+  it('tells the agent to repair forward and to roll back under no declaration at all', () => {
+    for (const rollback of [
+      null,
+      { kind: 'manual' as const, text: 'promote the previous theme revision' },
+      { kind: 'coolify-image' as const },
+      { kind: 'unrepresentable' as const, text: 'ssh in and docker compose up -d' },
+    ]) {
+      const out = buildReleaseBatchPrompt({ ...BASE, plan: plan({ rollback }) });
+
+      expect(out).toContain('REPAIR FORWARD, and never roll back');
+      expect(out).toContain('Rolling back is a human decision');
+      expect(out).not.toContain('forge_coolify_deploy action=rollback');
+      expect(out).not.toContain('Roll back AT MOST ONCE');
+    }
   });
 
-  it('gives the declared rollback instead, and never both', () => {
+  // cm:guard the declaration is still QUOTED, and quoted as the human's option. A human deciding
+  // whether to roll back wants to read it; dropping it would make the agent's abort comment the
+  // only place it appears, which is nowhere.
+  it("quotes the declared way back as the human's, not as a step", () => {
     const out = buildReleaseBatchPrompt({
       ...BASE,
       plan: plan({ rollback: { kind: 'manual', text: 'promote the previous theme revision' } }),
     });
+
+    expect(out).toContain('quoted for the human and NOT for you');
     expect(out).toContain('promote the previous theme revision');
-    expect(out).not.toContain('declares NO rollback');
   });
 
-  it('names the Forge action when the binding declares the coolify rollback', () => {
-    const out = buildReleaseBatchPrompt({
-      ...BASE,
-      plan: plan({ rollback: { kind: 'coolify-image' } }),
-    });
-    expect(out).toContain('forge_coolify_deploy action=rollback-images');
-    expect(out).toContain('forge_coolify_deploy action=rollback');
-    expect(out).not.toContain('declares NO rollback');
+  // cm:guard criterion 25. The assertion reads the CONSTANT rather than the string `release-flow`,
+  // because what is claimed is that the prompt and the job's `skillName` cannot name two different
+  // skills — a literal here would go on passing after the constant moved.
+  it('emits an invocation line for the skill the job names', () => {
+    const out = buildReleaseBatchPrompt({ ...BASE, plan: plan() });
+
+    expect(out).toContain(`run the \`${RELEASE_BATCH_SKILL}\` skill`);
   });
 
-  it('tells the agent to abort on a coolify binding whose rollback is still prose', () => {
-    const out = buildReleaseBatchPrompt({
-      ...BASE,
-      plan: plan({
-        rollback: { kind: 'unrepresentable', text: 'ssh in and docker compose up -d' },
-      }),
-    });
-    expect(out).toContain('ABORT');
-    expect(out).toContain('ssh in and docker compose up -d');
-    expect(out).toContain('Do NOT follow the text below yourself');
+  // cm:guard a skill that does not load must produce an ANNOUNCEMENT, not a release improvised out
+  // of this prompt. `release-flow` does not exist until forge-plugin ISS-1521 ships it, so today
+  // this is the branch every run takes.
+  it('tells the agent what to do when the skill does not load', () => {
+    const out = buildReleaseBatchPrompt({ ...BASE, plan: plan() });
+
+    expect(out).toContain('If the skill does not load, announce THAT');
+    expect(out).toContain('do not improvise a release out of this prompt');
   });
 
   // cm:guard the floor exists because 17 gated projects had no procedure on the day this shipped; drop it and every one of their releases starts with the agent being told nothing

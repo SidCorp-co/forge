@@ -369,7 +369,10 @@ describe('a finish racing an abort', () => {
       run: await runStatus(runId),
       issue: (await stored(a)).status,
       claim: (await stored(a)).claim,
-    }).toEqual({ run: 'cancelled', issue: 'reopen', claim: null });
+      // cm:guard the gate status and no longer `reopen` (ISS-1042): this run recorded no
+      // promotion, so the abort returned its roster to where it was waiting rather than saying it
+      // had come back from a release.
+    }).toEqual({ run: 'cancelled', issue: 'awaiting_release', claim: null });
   }, 60_000);
 });
 
@@ -385,7 +388,13 @@ describe('a finish after an abort of a reaped run', () => {
   // about an empty roster, which is a worse account of a batch a person called off than saying
   // nothing closed. The roster-still-claimed half, which the guard must never swallow, is the case
   // above; both are needed and neither covers the other.
-  it('closes nothing and leaves the abort standing', async () => {
+  //
+  // ISS-1042 sharpened the answer rather than changing it. The abort now also takes the concluded
+  // run to `cancelled` (`cancelConcludedRun`), so the later finish meets a run that SAYS it was
+  // called off — and the refusal names that instead of returning the empty success, which ISS-1032's
+  // own guard forbids on a `cancelled` run because it would make finish and abort report the same
+  // thing. Everything the abort owns is still asserted below, unchanged.
+  it('refuses, naming the abort, and leaves everything the abort did standing', async () => {
     const { abortReleaseBatch, finishReleaseBatch } = await import(
       '../../src/release-batch/service.js'
     );
@@ -415,10 +424,11 @@ describe('a finish after an abort of a reaped run', () => {
     );
     await new Promise<void>((done) => probe.close(() => done()));
 
-    expect(result).toEqual({ closed: [], failed: [] });
+    expect(result).toBeInstanceOf(Error);
+    expect((result as Error).message).toBe('RELEASE_BATCH_ABORTED');
     expect({
       issue: (await stored(a)).status,
       claim: (await stored(a)).claim,
-    }).toEqual({ issue: 'reopen', claim: null });
+    }).toEqual({ issue: 'awaiting_release', claim: null });
   }, 60_000);
 });

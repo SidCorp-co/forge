@@ -42,6 +42,8 @@ function project(over: {
   selectLimit.mockResolvedValue([row]);
 }
 
+const PROBES = { probes: [{ url: 'https://example.test/api/health', commitPath: 'commit' }] };
+
 function prodBinding(config: Record<string, unknown> = {}) {
   listBindings.mockResolvedValue([
     { binding: { provider: 'coolify', config, instructions: null }, connection: { config: {} } },
@@ -88,7 +90,12 @@ describe('loadReleaseReadiness', () => {
     const out = await loadReleaseReadiness(PROJECT_ID);
 
     expect(out?.hasProduction).toBe(true);
-    expect(out?.gaps.sort()).toEqual(['release-procedure', 'release-runner', 'rollback']);
+    expect(out?.gaps.sort()).toEqual([
+      'release-procedure',
+      'release-runner',
+      'rollback',
+      'verify-probes',
+    ]);
   });
 
   it('drops each release gap as its half is declared', async () => {
@@ -96,7 +103,11 @@ describe('loadReleaseReadiness', () => {
       productionBranch: 'production',
       facts: { ...CONTRACT_FACTS, 'release-procedure': 'cut a tag, then deploy' },
     });
-    prodBinding({ releaseRunnerLabel: 'prod-box', rollback: { mode: 'coolify-image' } });
+    prodBinding({
+      releaseRunnerLabel: 'prod-box',
+      verify: PROBES,
+      rollback: { mode: 'coolify-image' },
+    });
 
     const out = await loadReleaseReadiness(PROJECT_ID);
 
@@ -112,7 +123,11 @@ describe('loadReleaseReadiness', () => {
       productionBranch: 'production',
       facts: { ...CONTRACT_FACTS, 'release-procedure': 'cut a tag, then deploy' },
     });
-    prodBinding({ releaseRunnerLabel: 'prod-box', rollback: 'redeploy the previous tag' });
+    prodBinding({
+      releaseRunnerLabel: 'prod-box',
+      verify: PROBES,
+      rollback: 'redeploy the previous tag',
+    });
 
     const out = await loadReleaseReadiness(PROJECT_ID);
 
@@ -145,5 +160,33 @@ describe('loadReleaseReadiness', () => {
     expect(out?.gaps).toContain('rollback');
     expect(out?.gaps).not.toContain('release-runner');
     expect(out?.hasVerify).toBe(false);
+  });
+
+  // cm:guard criterion 3 of ISS-1042, and it is the ONLY warning an operator gets before
+  // `createReleaseBatch` refuses them. The refusal and this gap are one declaration read at two
+  // moments; a gap reported only once a release is being cut is the arrival this module exists to
+  // move earlier.
+  it('names the undeclared probes of a production project as their own gap', async () => {
+    project({ productionBranch: 'production' });
+    prodBinding({ releaseRunnerLabel: 'prod-box', rollback: { mode: 'coolify-image' } });
+
+    const out = await loadReleaseReadiness(PROJECT_ID);
+
+    expect(out?.gaps).toContain('verify-probes');
+    expect(out?.hasVerify).toBe(false);
+  });
+
+  it('reports no probe gap once the binding declares them', async () => {
+    project({ productionBranch: 'production' });
+    prodBinding({
+      releaseRunnerLabel: 'prod-box',
+      verify: PROBES,
+      rollback: { mode: 'coolify-image' },
+    });
+
+    const out = await loadReleaseReadiness(PROJECT_ID);
+
+    expect(out?.gaps).not.toContain('verify-probes');
+    expect(out?.hasVerify).toBe(true);
   });
 });

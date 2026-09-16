@@ -72,7 +72,7 @@ function state(over: Partial<ReleaseRoster> | null, flags: Record<string, unknow
 function renderPanel() {
   return render(
     <QueryClientProvider client={new QueryClient()}>
-      <ReleaseGatePanel projectId="proj-1" />
+      <ReleaseGatePanel projectId="proj-1" slug="forge-dev" />
     </QueryClientProvider>,
   );
 }
@@ -125,6 +125,21 @@ describe("ReleaseGatePanel — merge age", () => {
     state({ issues: ISSUES });
     renderPanel();
     expect(screen.getByText(/oldest merged 2d ago/)).toBeInTheDocument();
+  });
+});
+
+describe("ReleaseGatePanel — the way in to a run that is shipping", () => {
+  it("opens the run a claimed issue is shipping under", () => {
+    state({ issues: ISSUES });
+    renderPanel();
+    const link = screen.getByRole("link", { name: "shipping now" });
+    expect(link).toHaveAttribute("href", "/projects/forge-dev/releases/run-9");
+  });
+
+  it("leaves an unclaimed row as text, with no run to open", () => {
+    state({ issues: [ISSUES[0]] });
+    renderPanel();
+    expect(screen.queryByRole("link", { name: "shipping now" })).not.toBeInTheDocument();
   });
 });
 

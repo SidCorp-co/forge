@@ -12,9 +12,15 @@
 // claim release to `releasing-recovery.ts`, which is also what a batch that
 // died without either outcome goes through.
 
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, issues, pipelineRuns } from '../db/schema.js';
+import {
+  type IssueStatus,
+  issues,
+  jobs,
+  type PipelineRunStatus,
+  pipelineRuns,
+} from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
@@ -22,12 +28,13 @@ import { issuesMissingReleaseRecord } from '../issues/release-record-required.js
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { ActiveJobConflictError, insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
-import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
+import { cancelConcludedRun, closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
 import { readProjectBranches } from '../projects/service.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import { resolveReleaseChannel, resolveReleaseDeviceIds, resolveReleasePlan } from './channel.js';
-import { RELEASE_GATE_STATUS, resolveReleaseGate } from './gate.js';
-import { ReleaseBranchesUndeclaredError, releaseBranches } from './plan.js';
+import { resolveReleaseGate } from './gate.js';
+import { assertMethodFor, readMethod } from './method.js';
+import { RELEASE_BATCH_SKILL, ReleaseBranchesUndeclaredError, releaseBranches } from './plan.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
 import { recoverStrandedReleasing } from './releasing-recovery.js';
 import { readLiveCommit, verifyDeployed } from './verify.js';
@@ -64,6 +71,18 @@ export class ReleaseRunnerUndeclaredError extends Error {
   }
 }
 
+/**
+ * The project declares a release gate and no verification probes, so nothing
+ * but the agent's own word could say the release happened.
+ */
+// cm:guard the gate and the probes are ONE declaration, refused together. `finish` is the only thing in Forge that writes `closed`, and with no probes its whole verification block was skipped — sid-desk ISS-191 is 42 issues closed on a release that was not running. Refusing at creation is what makes the operator declare probes instead of discovering at close time that nothing checked. `finish` refuses too, and must: a run created before this rule existed reaches it with no probes and would close its roster on the agent's word.
+export class ReleaseProbesUndeclaredError extends Error {
+  constructor() {
+    super('RELEASE_PROBES_UNDECLARED');
+    this.name = 'ReleaseProbesUndeclaredError';
+  }
+}
+
 export class NoRunnerOnlineError extends Error {
   constructor() {
     super('NO_RUNNER_ONLINE');
@@ -82,6 +101,17 @@ export class ReleaseNotVerifiedError extends Error {
   ) {
     super('RELEASE_NOT_VERIFIED');
     this.name = 'ReleaseNotVerifiedError';
+  }
+}
+
+/**
+ * `finish` was called on a run somebody aborted.
+ */
+// cm:guard refused BY NAME and never answered with an empty success. ISS-1032's own guard states the rule this completes: `completed` and never "terminal", because a silent empty success on a `cancelled` run makes finish and abort report the same thing. Before ISS-1042's abort cancelled a concluded run, this case fell through to the probes and came back RELEASE_NOT_VERIFIED — a sentence about the deploy for a condition that is about the batch having been called off, which sends an agent to production over a decision a person already took.
+export class ReleaseBatchAbortedError extends Error {
+  constructor() {
+    super('RELEASE_BATCH_ABORTED');
+    this.name = 'ReleaseBatchAbortedError';
   }
 }
 
@@ -154,6 +184,8 @@ export async function createReleaseBatch(
   const plan = await resolveReleasePlan(projectId);
   // cm:guard a gated project MUST name its release runner, and an undeclared label refuses here rather than widening to the fleet. The pool exists because one box holds the production credential; `allowDeviceIds: null` means "anyone", and a release that lands on a box without that credential fails halfway through with the merge already pushed. Measured 2026-09-03: 0 of 20 active prod bindings carried `releaseRunnerLabel`, so this refusal is what makes the operator declare one instead of discovering the gap mid-deploy.
   if (!plan.releaseRunnerLabel) throw new ReleaseRunnerUndeclaredError();
+  // cm:edge lockstep -> packages/core/src/release-batch/service.ts finishReleaseBatch — the same refusal stands at the close, and deleting either half puts back the path where a project with no probes closes its roster on a sentence an agent wrote.
+  if (!plan.verify) throw new ReleaseProbesUndeclaredError();
   const allowDeviceIds = await resolveReleaseDeviceIds(projectId, plan.releaseRunnerLabel);
   if (allowDeviceIds.length === 0) {
     throw new ReleasePoolEmptyError(plan.releaseRunnerLabel);
@@ -248,7 +280,8 @@ export async function createReleaseBatch(
       pipelineRunId: run.id,
       createdBy: userId,
       type: 'release_batch',
-      skillName: 'release-flow',
+      // cm:edge lockstep -> packages/core/src/release-batch/prompt.ts — the prompt emits the invocation line off this SAME constant. A literal here is how the job comes to name one skill while the prompt asks for another, which is the state ISS-1042 found: the column said `release-flow` and nothing in the prompt, the runner or the plugin ever read it.
+      skillName: RELEASE_BATCH_SKILL,
       promptString,
       payloadExtras: {
         releaseBatch: true,
@@ -272,79 +305,6 @@ export async function createReleaseBatch(
   }
 
   return { runId: run.id, jobId, issueIds, gateStatus };
-}
-
-export interface ReleaseBatchIssue {
-  id: string;
-  displayId: string;
-  title: string;
-  releaseNotes: unknown;
-  status: IssueStatus;
-}
-
-export interface ReleaseBatchContext {
-  runId: string;
-  projectId: string;
-  gateStatus: IssueStatus;
-  baseBranch: string;
-  productionBranch: string;
-  deployPlanned: boolean;
-  productionMergePlanned: boolean;
-  issues: ReleaseBatchIssue[];
-}
-
-export async function loadReleaseBatchContext(runId: string): Promise<ReleaseBatchContext | null> {
-  const [run] = await db
-    .select({
-      id: pipelineRuns.id,
-      projectId: pipelineRuns.projectId,
-      metadata: pipelineRuns.metadata,
-    })
-    .from(pipelineRuns)
-    .where(eq(pipelineRuns.id, runId))
-    .limit(1);
-
-  if (!run) return null;
-  const meta = (run.metadata ?? {}) as Record<string, unknown>;
-  if (meta.source !== 'release-batch') return null;
-
-  // cm:guard the fallback is the CURRENT gate status. It read `'tested'` until ISS-897 — a rung of the deleted staged ladder that no issue is at any more and no project declares — so a run whose metadata predates `gateStatus` would have been reconstructed against a status the batch could never match.
-  const gateStatus = (meta.gateStatus as IssueStatus | undefined) ?? RELEASE_GATE_STATUS;
-  const deployPlanned = (meta.deployPlanned as boolean | undefined) ?? false;
-  const productionMergePlanned = (meta.productionMergePlanned as boolean | undefined) ?? false;
-
-  const { baseBranch, productionBranch } = releaseBranches(
-    (await readProjectBranches(run.projectId)) ?? { baseBranch: null, productionBranch: null },
-  );
-
-  const claimedIssues = await db
-    .select({
-      id: issues.id,
-      issSeq: issues.issSeq,
-      title: issues.title,
-      releaseNotes: issues.releaseNotes,
-      status: issues.status,
-    })
-    .from(issues)
-    .where(eq(issues.releaseBatchRunId, runId));
-
-  const claimedPrefix = await activeIssuePrefix(run.projectId);
-  return {
-    runId,
-    projectId: run.projectId,
-    gateStatus,
-    baseBranch,
-    productionBranch,
-    deployPlanned,
-    productionMergePlanned,
-    issues: claimedIssues.map((r) => ({
-      id: r.id,
-      displayId: r.issSeq != null ? formatIssueRef(claimedPrefix, r.issSeq) : r.id,
-      title: r.title ?? '(untitled)',
-      releaseNotes: r.releaseNotes,
-      status: r.status,
-    })),
-  };
 }
 
 export interface FinishReleaseBatchResult {
@@ -409,18 +369,45 @@ export async function finishReleaseBatch(
   // batch, and a silent empty success on one would make the two verbs report the same thing.
   if (run?.status === 'completed' && claimed.length === 0) return { closed: [], failed: [] };
 
+  // cm:guard a `cancelled` run is an ABORTED batch and the refusal has to say so. It cannot share
+  // the empty success above — that answer means "this finish already ran" — and it must not fall
+  // through to the probes, which would answer RELEASE_NOT_VERIFIED about a release nobody is
+  // attempting any more. The abort already returned the roster and released the claims; what is
+  // left to tell the caller is that its own abort stands.
+  if (run?.status === 'cancelled') throw new ReleaseBatchAbortedError();
+
   if (run) {
+    // cm:guard the expected skill is read off the RUN'S OWN JOB and never off `RELEASE_BATCH_SKILL`
+    // directly: a run cut before the constant last moved is still working from the skill its job
+    // named, and comparing it to today's constant would refuse a release for having been dispatched
+    // last week. The job is the record of what this run was asked to run.
+    // cm:edge lockstep -> packages/core/src/release-batch/method.ts — `assertMethodFor` is the
+    // predicate and this is its one caller. An announcement whose `loaded` is false passes on
+    // purpose; the guard there prices that amnesty.
+    // cm:why `skillName` is a key of `jobs.payload` and not a column of `jobs` — `insertAndEnqueueJob` writes it into the payload jsonb beside `promptString`, and `feedback_reports.skill_name` is a different field about a different thing.
+    const [job] = await db
+      .select({ payload: jobs.payload })
+      .from(jobs)
+      .where(and(eq(jobs.pipelineRunId, runId), eq(jobs.type, 'release_batch')))
+      .orderBy(desc(jobs.queuedAt))
+      .limit(1);
+    const jobSkill = (job?.payload as { skillName?: unknown } | null)?.skillName;
+    assertMethodFor(
+      readMethod(run.metadata),
+      typeof jobSkill === 'string' && jobSkill.length > 0 ? jobSkill : RELEASE_BATCH_SKILL,
+    );
+
     const channel = await resolveReleaseChannel(run.projectId);
-    if (channel.verify) {
-      const meta = (run.metadata ?? {}) as Record<string, unknown>;
-      const outcome = await verifyDeployed({
-        cfg: channel.verify,
-        commitBefore: typeof meta.commitBefore === 'string' ? meta.commitBefore : null,
-        expected: options.commit ?? null,
-      });
-      // cm:guard refuse BEFORE closing anything. A partial close would leave some issues claiming a release the probes just said did not happen, and nothing walks that back.
-      if (!outcome.ok) throw new ReleaseNotVerifiedError(outcome.reason, outcome.live);
-    }
+    // cm:guard `if (channel.verify)` used to wrap the whole block, so a project declaring no probes fell straight through to the closes — the shape this issue is named for. It is a REFUSAL now and not a skip: an unverifiable release is not a verified one, and the operator's way out is to declare probes or abort.
+    if (!channel.verify) throw new ReleaseProbesUndeclaredError();
+    const meta = (run.metadata ?? {}) as Record<string, unknown>;
+    const outcome = await verifyDeployed({
+      cfg: channel.verify,
+      commitBefore: typeof meta.commitBefore === 'string' ? meta.commitBefore : null,
+      expected: options.commit ?? null,
+    });
+    // cm:guard refuse BEFORE closing anything. A partial close would leave some issues claiming a release the probes just said did not happen, and nothing walks that back.
+    if (!outcome.ok) throw new ReleaseNotVerifiedError(outcome.reason, outcome.live);
   }
 
   const closed: string[] = [];
@@ -464,13 +451,27 @@ export async function finishReleaseBatch(
   return { closed, failed };
 }
 
+export interface AbortReleaseBatchResult {
+  claimsCleared: string[];
+  /** Where the roster went, or `null` when nothing moved. */
+  destination: IssueStatus | null;
+  /** True when the run had promoted, so the roster stayed at `releasing`. */
+  promoted: boolean;
+  /** What the abort did to the run row, in its own words. */
+  run: {
+    status: PipelineRunStatus | null;
+    wasAlreadyTerminal: boolean;
+    cancelledFrom: PipelineRunStatus | null;
+  };
+}
+
 export async function abortReleaseBatch(
   runId: string,
   reason: string,
   actorUserId: string,
-): Promise<string[]> {
-  // cm:guard an aborted release lands on `reopen` and does NOT self-heal, which is the trade this takes deliberately: a half-landed batch re-driven automatically becomes two half-landed batches. Before this the abort cleared the column and left the status untouched, so a failed release was indistinguishable from one never attempted. It goes through the shared recovery so an abort and a batch that merely died reach the same place by the same writer.
-  const { claimsCleared } = await recoverStrandedReleasing(runId, {
+): Promise<AbortReleaseBatchResult> {
+  // cm:guard an aborted release does NOT self-heal, which is the trade this takes deliberately: a half-landed batch re-driven automatically becomes two half-landed batches. Before this the abort cleared the column and left the status untouched, so a failed release was indistinguishable from one never attempted. It goes through the shared recovery so an abort and a batch that merely died reach the same place by the same writer — and since ISS-1042 that place is chosen by whether the run PROMOTED, not by which verb called.
+  const { claimsCleared, destination, promoted } = await recoverStrandedReleasing(runId, {
     reason: `batch release aborted: ${reason}`,
     actorUserId,
     comment: true,
@@ -479,7 +480,19 @@ export async function abortReleaseBatch(
   // cm:guard abort is "nothing under this run executes any further", not just "no claims" — batch ee39c4ae (2026-09-03) was aborted while its retry job kept running, shipped 20 commits to production, then `finish` found no claims and closed 0 of 12; the run must go terminal here so the cascade cancels queued retries and kills the live session
   await closeRunIfOneShot(runId, 'cancelled');
 
-  return claimsCleared;
+  // cm:guard `closeRunIfOneShot` matches `running|paused` ONLY, so an abort arriving after anything else concluded the run wrote nothing and SAID nothing: the row went on reading `completed` about a batch somebody had called off and the caller was handed a plain success. Routed here from ISS-1032 because this issue owns "a release run cannot lie" — the second call is what makes the row agree with the verb, and the result below is what makes the caller able to tell the two cases apart.
+  const after = await cancelConcludedRun(runId);
+
+  return {
+    claimsCleared,
+    destination,
+    promoted,
+    run: {
+      status: after.cancelled ? 'cancelled' : after.was,
+      wasAlreadyTerminal: after.cancelled,
+      cancelledFrom: after.cancelled ? after.was : null,
+    },
+  };
 }
 
 // cm:edge naming -> packages/core/src/release-batch/queries.ts — every caller imports the batch surface from this module; the read-only half lives next door for the size budget, and re-exporting keeps that a file layout rather than an API change
@@ -488,7 +501,10 @@ export {
   findReleaseBatchRun,
   getActiveReleaseBatch,
   isOpenReleaseBatchRun,
+  loadReleaseBatchContext,
   loadReleaseRoster,
+  type ReleaseBatchContext,
+  type ReleaseBatchIssue,
   type ReleaseRoster,
   type ReleaseRosterEntry,
 } from './queries.js';
