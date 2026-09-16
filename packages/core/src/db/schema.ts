@@ -192,7 +192,6 @@ export const refreshTokens = pgTable(
   }),
 );
 
-
 export const orgMemberRoles = ['owner', 'admin', 'member'] as const;
 export type OrgMemberRole = (typeof orgMemberRoles)[number];
 
@@ -2244,7 +2243,6 @@ export const retrievalAnalyticsRelations = relations(retrievalAnalytics, ({ one 
   project: one(projects, { fields: [retrievalAnalytics.projectId], references: [projects.id] }),
 }));
 
-
 /**
  * One live outgoing `decomposes` edge waives the ISS-786 work-evidence gate for the `from` issue, which `pipeline/work-evidence.ts#hasChildIssues` is what reads.
  *
@@ -3061,7 +3059,6 @@ export const downloadTickets = pgTable(
   }),
 );
 
-
 export const divergenceCharters = pgTable(
   'divergence_charters',
   {
@@ -3125,7 +3122,6 @@ export interface ReconcileVerifierVote {
   reason: string;
   decidedAt: string;
 }
-
 
 export const reconcileRuns = pgTable(
   'reconcile_runs',

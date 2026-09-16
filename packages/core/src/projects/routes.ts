@@ -630,7 +630,6 @@ projectRoutes.patch(
   },
 );
 
-
 projectRoutes.patch(
   '/:id/plugins',
   zValidator('param', idParamSchema, (result) => {

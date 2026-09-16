@@ -180,24 +180,22 @@ export async function listActiveBindingsForProjectProvider(
   projectId: string,
   provider: IntegrationProvider,
 ): Promise<BindingWithConnection[]> {
-  return (
-    db
-      .select({ binding: integrationBindings, connection: integrationConnections })
-      .from(integrationBindings)
-      .innerJoin(
-        integrationConnections,
-        eq(integrationBindings.connectionId, integrationConnections.id),
-      )
-      .where(
-        and(
-          eq(integrationBindings.projectId, projectId),
-          eq(integrationBindings.provider, provider),
-          eq(integrationBindings.active, true),
-          eq(integrationConnections.active, true),
-        ),
-      )
-      .orderBy(asc(integrationBindings.createdAt))
-  );
+  return db
+    .select({ binding: integrationBindings, connection: integrationConnections })
+    .from(integrationBindings)
+    .innerJoin(
+      integrationConnections,
+      eq(integrationBindings.connectionId, integrationConnections.id),
+    )
+    .where(
+      and(
+        eq(integrationBindings.projectId, projectId),
+        eq(integrationBindings.provider, provider),
+        eq(integrationBindings.active, true),
+        eq(integrationConnections.active, true),
+      ),
+    )
+    .orderBy(asc(integrationBindings.createdAt));
 }
 
 /**
@@ -211,25 +209,23 @@ export async function listActiveDeployBindingsForStage(
   projectId: string,
   stage: DeployStage,
 ): Promise<BindingWithConnection[]> {
-  return (
-    db
-      .select({ binding: integrationBindings, connection: integrationConnections })
-      .from(integrationBindings)
-      .innerJoin(
-        integrationConnections,
-        eq(integrationBindings.connectionId, integrationConnections.id),
-      )
-      .where(
-        and(
-          eq(integrationBindings.projectId, projectId),
-          eq(integrationBindings.role, 'deploy'),
-          sql`${stage} = ANY(${integrationBindings.stages})`,
-          eq(integrationBindings.active, true),
-          eq(integrationConnections.active, true),
-        ),
-      )
-      .orderBy(asc(integrationBindings.createdAt))
-  );
+  return db
+    .select({ binding: integrationBindings, connection: integrationConnections })
+    .from(integrationBindings)
+    .innerJoin(
+      integrationConnections,
+      eq(integrationBindings.connectionId, integrationConnections.id),
+    )
+    .where(
+      and(
+        eq(integrationBindings.projectId, projectId),
+        eq(integrationBindings.role, 'deploy'),
+        sql`${stage} = ANY(${integrationBindings.stages})`,
+        eq(integrationBindings.active, true),
+        eq(integrationConnections.active, true),
+      ),
+    )
+    .orderBy(asc(integrationBindings.createdAt));
 }
 
 /** Decrypt a connection's secrets blob, or `{}` when it has none. */
