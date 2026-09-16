@@ -222,3 +222,56 @@ describe("McpServersPanel — what it says about scope (ISS-1038)", () => {
     expect(screen.queryByText(/Add `<serverName>: true`/)).toBeNull();
   });
 });
+
+describe("McpServersPanel out-of-order responses (ISS-1038 review F2)", () => {
+  it("an older response for one provider does not revert a newer sibling", async () => {
+    injectionResponse = {
+      providers: [providerState({ provider: "postman" }), providerState({ provider: "sentry" })],
+      canEdit: true,
+    };
+    const deferred: Record<string, (v: McpInjectionStateResponse) => void> = {};
+    setMcpInjection.mockImplementation(
+      (_p: string, provider: string) =>
+        new Promise<McpInjectionStateResponse>((resolve) => {
+          deferred[provider] = resolve;
+        }),
+    );
+
+    renderPanel();
+    const POSTMAN = "Inject Postman into this project's agents";
+    const SENTRY = "Inject Sentry into this project's agents";
+    await waitFor(() => expect(toggleFor(POSTMAN)).toBeTruthy());
+
+    // Both switched on. The lock is per provider, so both requests go.
+    fireEvent.click(toggleFor(POSTMAN));
+    fireEvent.click(toggleFor(SENTRY));
+    await waitFor(() => expect(setMcpInjection).toHaveBeenCalledTimes(2));
+
+    // Sentry answers first, and its envelope reports only what its own server
+    // read saw: sentry on, postman not yet committed.
+    deferred.sentry?.({
+      providers: [
+        providerState({ provider: "postman", declaredDefault: false }),
+        providerState({ provider: "sentry", declaredDefault: true }),
+      ],
+      canEdit: true,
+    });
+    await waitFor(() => expect(isOn(SENTRY)).toBe(true));
+
+    // Postman's call read state BEFORE sentry committed and arrives second, so
+    // its envelope still says sentry is off. Written whole into the cache it
+    // puts Sentry back off on screen while the store holds both — a panel
+    // reporting a state the dispatcher denies. Only that provider's row may be
+    // taken from it.
+    deferred.postman?.({
+      providers: [
+        providerState({ provider: "postman", declaredDefault: true }),
+        providerState({ provider: "sentry", declaredDefault: false }),
+      ],
+      canEdit: true,
+    });
+
+    await waitFor(() => expect(isOn(POSTMAN)).toBe(true));
+    expect(isOn(SENTRY)).toBe(true);
+  });
+});

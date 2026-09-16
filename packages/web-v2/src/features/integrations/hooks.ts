@@ -5,6 +5,7 @@ import { useProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { McpInjectionStateResponse } from "@forge/contracts";
 import { integrationConnectionsApi, integrationsApi } from "./api";
 import type {
   BindExistingConnectionRequest,
@@ -80,8 +81,25 @@ export function useSetMcpInjection(projectId: string | undefined) {
       integrationsApi.setMcpInjection(projectId as string, vars.provider, {
         enabled: vars.enabled,
       }),
-    onSuccess: (fresh) => {
-      qc.setQueryData(["integrations", "mcp-injection", projectId], fresh);
+    onSuccess: (fresh, vars) => {
+      // Merge ONLY the provider this write was about. The response is a whole
+      // envelope computed when the server handled it, so two providers switched
+      // at once can have their responses arrive out of order and the older one
+      // would otherwise put the newer sibling back the way it was — on screen
+      // only, while the store holds both. Taking one row keeps every other
+      // provider on whatever the cache already had.
+      qc.setQueryData<McpInjectionStateResponse>(
+        ["integrations", "mcp-injection", projectId],
+        (prev) => {
+          const written = fresh.providers.find((p) => p.provider === vars.provider);
+          if (!prev || !written) return fresh;
+          return {
+            ...prev,
+            canEdit: fresh.canEdit,
+            providers: prev.providers.map((p) => (p.provider === vars.provider ? written : p)),
+          };
+        },
+      );
       qc.invalidateQueries({ queryKey: ["integrations", "mcp-preview", projectId] });
     },
   });

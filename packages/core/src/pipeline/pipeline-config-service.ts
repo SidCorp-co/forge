@@ -1,7 +1,7 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, projects, runners } from '../db/schema.js';
-import { isIntegrationSentinelName } from './mcp-catalog.js';
+import { isIntegrationSentinelName, matchesIntegrationProvider } from './mcp-catalog.js';
 import {
   PIPELINE_CONFIG_DEFAULTS,
   type PipelineConfig,
@@ -261,28 +261,37 @@ export async function updatePipelineConfig(
 }
 
 /**
- * ISS-1038 — set or clear ONE key of `pipelineConfig.mcpServers`, in one
- * statement, without the caller re-sending a map it read earlier.
+ * ISS-1038 — the ONE writer of a project-default integration sentinel, behind
+ * `PUT /:projectId/integrations/mcp-injection/:provider`.
  *
- * `updatePipelineConfig` above merges at the top level, so `mcpServers` is
- * replaced wholesale from whatever the client last fetched: two tabs, or one
- * tab and one dispatch-time edit, and the later write silently drops the
- * other's key. That is the `wholesale-config-clobber` affordance, and the
- * Integrations panel's switch must not be a second instance of it — it knows
- * one provider's answer and nothing about the rest of the map.
+ * `updatePipelineConfig` above replaces `mcpServers` wholesale from whatever
+ * map the client last fetched, which is the `wholesale-config-clobber`
+ * affordance; the Integrations panel's switch knows one provider's answer and
+ * nothing about the rest of the map, so it must not be a second instance of it.
+ * Here the read and the write are one transaction under a `FOR UPDATE` row
+ * lock, so a read-modify-write of the `mcpServers` key is serialised against
+ * the other writer rather than racing it.
  *
- * The value written is the bare boolean sentinel and never a credential: the
- * provider's key stays in the integration store and is rendered into a
- * dispatch payload only.
+ * Disabling removes EVERY literal-`true` key matching the provider, not just
+ * the bare name: a project whose only declaration is `epodsystem_store_a: true`
+ * is switched ON as far as the resolver is concerned, so deleting only
+ * `epodsystem` would leave the panel showing a switch that changes nothing —
+ * this issue's own defect, one level down. Object-valued keys are left alone:
+ * they are raw custom specs, not sentinels, and this switch does not own them.
+ *
+ * The value written is the bare boolean and never a credential: the provider's
+ * key stays in the integration store and is rendered into a dispatch payload
+ * only.
  *
  * Authorization is the caller's, as it is for `updatePipelineConfig`.
  */
-// cm:guard the UPDATE writes `mcpServers -> name` and nothing else. Re-sending the whole map from a read-modify-write here would reintroduce exactly the clobber this exists to avoid, because the read and the write would not be one statement.
+// cm:guard the read and the write are ONE transaction holding the row lock. Split them and this is the clobber it exists to avoid, because the map written would be one read before somebody else's write.
+// cm:edge lockstep -> packages/core/src/pipeline/mcp-catalog.ts — `matchesIntegrationProvider` decides what this removes and what `projectDeclaredProviders` calls declared; a provider that matches in one and not the other is a switch that disagrees with the panel above it
 export async function setMcpServerSentinel(input: {
   projectId: string;
   name: string;
   enabled: boolean;
-}): Promise<UpdatePipelineConfigResult> {
+}): Promise<void> {
   const { projectId, name, enabled } = input;
 
   await db.transaction(async (tx) => {
@@ -298,46 +307,39 @@ export async function setMcpServerSentinel(input: {
     const currentPipeline = (currentAc.pipelineConfig ?? {}) as Record<string, unknown>;
     const currentServers = (currentPipeline.mcpServers ?? {}) as Record<string, unknown>;
 
+    const nextServers: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(currentServers)) {
+      // Drop every matching sentinel when disabling; keep everything else,
+      // including an object spec stored under a matching name.
+      if (!enabled && value === true && matchesIntegrationProvider(key, name)) continue;
+      nextServers[key] = value;
+    }
+    if (enabled) nextServers[name] = true;
+
     // Validate the document this write PROJECTS, on the same terms the patch
     // path uses: a merge that fails while the stored document parses clean is
     // this write's own doing and is refused; one that was already failing is
     // not answered with a rule the caller did not break.
-    const nextServers = { ...currentServers };
-    if (enabled) nextServers[name] = true;
-    else delete nextServers[name];
     assertMergedConfigValid(currentPipeline, { ...currentPipeline, mcpServers: nextServers });
 
-    // One statement, one key. `jsonb_set` needs the parent to exist, so seed
-    // `mcpServers` with `||` in the same expression when it does not.
-    //
-    // The path is a Postgres `text[]` built with ARRAY[...] and the provider name
-    // bound as a parameter. A JSON-shaped literal reads as a malformed array
-    // literal at the server (22P02) — which a mocked `db.execute` cannot show,
-    // and which tests/integration/mcp-injection-concurrency.test.ts caught.
-    const path = sql`ARRAY['pipelineConfig', 'mcpServers', ${name}]`;
+    // `jsonb_set` needs the parent to exist, so seed `pipelineConfig` with `||`
+    // in the same expression when it does not. The path is a real `text[]`
+    // built with ARRAY[...]: a JSON-shaped literal cast to text[] reads as
+    // 22P02 `malformed array literal` at the server, which a mocked
+    // `db.execute` cannot show and which the integration suite caught.
     await tx.execute(
-      enabled
-        ? sql`UPDATE projects
-            SET agent_config = jsonb_set(
-              COALESCE(agent_config, '{}'::jsonb)
-                || jsonb_build_object(
-                     'pipelineConfig',
-                     COALESCE(agent_config -> 'pipelineConfig', '{}'::jsonb)
-                       || jsonb_build_object(
-                            'mcpServers',
-                            COALESCE(agent_config -> 'pipelineConfig' -> 'mcpServers', '{}'::jsonb)
-                          )
-                   ),
-              ${path},
-              'true'::jsonb,
-              true
-            )
-            WHERE id = ${projectId}`
-        : sql`UPDATE projects
-            SET agent_config = COALESCE(agent_config, '{}'::jsonb) #- ${path}
-            WHERE id = ${projectId}`,
+      sql`UPDATE projects
+          SET agent_config = jsonb_set(
+            COALESCE(agent_config, '{}'::jsonb)
+              || jsonb_build_object(
+                   'pipelineConfig',
+                   COALESCE(agent_config -> 'pipelineConfig', '{}'::jsonb)
+                 ),
+            ARRAY['pipelineConfig', 'mcpServers'],
+            ${JSON.stringify(nextServers)}::jsonb,
+            true
+          )
+          WHERE id = ${projectId}`,
     );
   });
-
-  return updatePipelineConfig({ projectId, patch: {} });
 }

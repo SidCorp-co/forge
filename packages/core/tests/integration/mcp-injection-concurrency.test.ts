@@ -138,6 +138,65 @@ describe('setMcpServerSentinel against real Postgres (ISS-1038)', () => {
     expect(stored['chrome-devtools-mcp']).toEqual({ type: 'stdio', command: 'npx' });
   });
 
+  it('switching OFF removes a LABELLED sentinel, not only the bare name', async () => {
+    // Review F1. `projectDeclaredProviders` reads `epodsystem_store_a: true` as
+    // Epodsystem being declared, and the resolver injects against it — so a
+    // switch that deleted only the bare `epodsystem` key would leave the panel
+    // showing a control that changes nothing, which is this issue's own defect
+    // one level down.
+    await seed({ playwright: true });
+    await testDb.db.execute(
+      sql`UPDATE projects
+          SET agent_config = jsonb_set(agent_config, ARRAY['pipelineConfig','mcpServers'],
+              '{"playwright":true,"epodsystem_store_a":true}'::jsonb, true)
+          WHERE id = ${projectId}`,
+    );
+    expect((await storedServers()).epodsystem_store_a).toBe(true);
+
+    await mods.setMcpServerSentinel({ projectId, name: 'epodsystem', enabled: false });
+
+    const stored = await storedServers();
+    expect(stored.epodsystem_store_a).toBeUndefined();
+    expect(stored.playwright).toBe(true);
+  });
+
+  it('switching OFF leaves an object spec stored under a matching name alone', async () => {
+    // An object value is a raw custom server, not a sentinel: the resolvers
+    // test for `=== true` and would inject no credential for it. This switch
+    // does not own it.
+    await seed({ playwright: true });
+    await testDb.db.execute(
+      sql`UPDATE projects
+          SET agent_config = jsonb_set(agent_config, ARRAY['pipelineConfig','mcpServers'],
+              '{"epodsystem":true,"epodsystem_custom":{"type":"stdio"}}'::jsonb, true)
+          WHERE id = ${projectId}`,
+    );
+
+    await mods.setMcpServerSentinel({ projectId, name: 'epodsystem', enabled: false });
+
+    const stored = await storedServers();
+    expect(stored.epodsystem).toBeUndefined();
+    expect(stored.epodsystem_custom).toEqual({ type: 'stdio' });
+  });
+
+  it('succeeds against a project whose stored config was already invalid', async () => {
+    // Review F3. `assertMergedConfigValid` deliberately lets an edit through
+    // when the STORED document already fails the schema — the write did not
+    // cause that and refusing would leave the operator no way to edit out of
+    // it. What must not happen is the write committing and the call then
+    // reporting failure, which is state lying about itself.
+    await testDb.db.execute(
+      sql`UPDATE projects
+          SET agent_config = '{"pipelineConfig":{"states":{"open":{"enabled":"yes-please"}}}}'::jsonb
+          WHERE id = ${projectId}`,
+    );
+
+    await expect(
+      mods.setMcpServerSentinel({ projectId, name: 'epodsystem', enabled: true }),
+    ).resolves.toBeUndefined();
+    expect((await storedServers()).epodsystem).toBe(true);
+  });
+
   it('is idempotent — switching on twice leaves one key with one value', async () => {
     await mods.setMcpServerSentinel({ projectId, name: 'sentry', enabled: true });
     await mods.setMcpServerSentinel({ projectId, name: 'sentry', enabled: true });

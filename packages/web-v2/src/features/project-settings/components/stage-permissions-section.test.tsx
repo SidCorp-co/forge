@@ -40,17 +40,17 @@ describe("StagePermissionsSection integration sentinels (ISS-1038)", () => {
   it("says a `true` sentinel IS injected at this stage", () => {
     renderStages({ epodsystem: true });
     expect(screen.getByText("epodsystem")).toBeTruthy();
-    expect(screen.getByText(/Epodsystem · injected at this stage/)).toBeTruthy();
+    expect(screen.getByText(/Epodsystem · this declaration is on/)).toBeTruthy();
   });
 
-  it("says a `false` entry is NOT injected at this stage", () => {
+  it("says a `false` entry is off, without claiming the provider is not injected", () => {
     // The state this change made effective at dispatch. Labelling it the same
-    // as a `true` would leave the screen stating the opposite of what a job at
-    // this stage gets — which is the defect this whole issue is about, one
-    // level down.
+    // as a `true` would state the opposite of what a job at this stage gets —
+    // and claiming the PROVIDER is not injected would be wrong the other way,
+    // because another matching key can still be `true`.
     renderStages({ epodsystem: false });
     expect(screen.getByText("epodsystem")).toBeTruthy();
-    expect(screen.getByText(/Epodsystem · NOT injected at this stage/)).toBeTruthy();
+    expect(screen.getByText(/Epodsystem · this declaration is off/)).toBeTruthy();
   });
 
   it("says an object value under an integration name carries no credential", () => {
@@ -61,7 +61,7 @@ describe("StagePermissionsSection integration sentinels (ISS-1038)", () => {
   it("labels a labelled epodsystem_<label> sentinel too", () => {
     renderStages({ epodsystem_store_a: true });
     expect(screen.getByText("epodsystem_store_a")).toBeTruthy();
-    expect(screen.getByText(/Epodsystem · injected at this stage/)).toBeTruthy();
+    expect(screen.getByText(/Epodsystem · this declaration is on/)).toBeTruthy();
   });
 
   it("names where the project-wide switch lives", () => {
@@ -79,6 +79,46 @@ describe("StagePermissionsSection integration sentinels (ISS-1038)", () => {
   it("does not label a genuine custom server as an integration", () => {
     renderStages({ mything: { type: "stdio" } });
     expect(screen.getByText("mything")).toBeTruthy();
-    expect(screen.queryByText(/injected at this stage/)).toBeNull();
+    expect(screen.queryByText(/this declaration is/)).toBeNull();
+  });
+});
+
+describe("StagePermissionsSection scope honesty (ISS-1038 review F4/F5)", () => {
+  function renderWith(
+    projectDefault: Record<string, unknown>,
+    stageMcp: Record<string, unknown>,
+    canEdit = true,
+  ) {
+    const config = {
+      mcpServers: projectDefault,
+      states: { in_progress: { mcpServers: stageMcp } },
+    } as unknown as PipelineConfig;
+    render(<StagePermissionsSection projectId="p-1" config={config} canEdit={canEdit} />);
+    fireEvent.click(screen.getByText("Running"));
+  }
+
+  it("a label `false` under an inherited bare sentinel does not claim the provider is off", () => {
+    // `resolveJobMcpServers` still injects here: the bare `epodsystem: true`
+    // survives the stage's `epodsystem_store: false`. A row saying Epodsystem
+    // is not injected at this stage would be the screen contradicting dispatch.
+    renderWith({ epodsystem: true }, { epodsystem_store: false });
+    expect(document.body.textContent).not.toMatch(/not injected/i);
+    expect(screen.getByText(/this declaration is off/)).toBeTruthy();
+  });
+
+  it("a stage holding one matching true beside one matching false says so per entry", () => {
+    renderWith({}, { epodsystem_a: true, epodsystem_b: false });
+    expect(screen.getByText(/epodsystem_a/)).toBeTruthy();
+    expect(screen.getByText(/epodsystem_b/)).toBeTruthy();
+    expect(screen.getByText(/this declaration is on/)).toBeTruthy();
+    expect(screen.getByText(/this declaration is off/)).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/not injected/i);
+  });
+
+  it("the READ-ONLY view labels true, false and a custom spec differently", () => {
+    renderWith({}, { epodsystem: true, postman: false, sentry: { type: "stdio" } }, false);
+    expect(screen.getByText(/Epodsystem · this declaration is on/)).toBeTruthy();
+    expect(screen.getByText(/Postman · this declaration is off/)).toBeTruthy();
+    expect(screen.getByText(/Sentry · custom spec, no credential attached/)).toBeTruthy();
   });
 });

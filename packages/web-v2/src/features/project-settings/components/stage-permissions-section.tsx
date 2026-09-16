@@ -41,10 +41,16 @@ import { ToolListEditor } from "./tool-list-editor";
  * would leave the screen stating the opposite of what a job at that stage gets.
  * An object value is a raw custom spec, which injects no credential at all.
  */
-function stageEntryLabel(name: string, value: unknown): string {
+export function stageEntryLabel(name: string, value: unknown): string {
   const label = integrationServerLabel(name);
-  if (value === true) return `${label} · injected at this stage`;
-  if (value === false || value === null) return `${label} · NOT injected at this stage`;
+  // Scoped to THIS key, never to the provider. A stage that sets
+  // `epodsystem_store: false` under a project default of `epodsystem: true`
+  // still gets Epodsystem at dispatch, because the resolver injects whenever
+  // some matching key survives as `true` — so a row reading "not injected"
+  // would be stating the opposite of what a job at that stage receives.
+  if (value === true) return `${label} · this declaration is on`;
+  if (value === false || value === null)
+    return `${label} · this declaration is off — another ${label} entry may still inject`;
   return `${label} · custom spec, no credential attached`;
 }
 
@@ -309,7 +315,18 @@ export function StagePermissionsSection({
                       </p>
                       <div className="flex flex-wrap gap-1.5">
                         {mcpNames.map((n) => (
-                          <MonoTag key={n}>{n}</MonoTag>
+                          <span key={n} className="flex items-center gap-1.5">
+                            <MonoTag>{n}</MonoTag>
+                            {/* ISS-1038 — the same label the editor shows. A
+                                viewer reading three identical bare tags for
+                                `true`, `false` and a custom spec learns nothing
+                                about which way the entry points. */}
+                            {isIntegrationServerName(n) && (
+                              <span className="fg-caption rounded-pill bg-sunken px-2 py-0.5 text-subtle">
+                                {stageEntryLabel(n, row.config.mcpServers?.[n])}
+                              </span>
+                            )}
+                          </span>
                         ))}
                       </div>
                     </div>
