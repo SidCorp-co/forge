@@ -1,7 +1,13 @@
 "use client";
 
-// Rules inner tab — editor for rule/guide knowledge entries with always-inject budget
-// meter (parity with project-facts-tab.tsx). Backed by /api/projects/:id/knowledge.
+// Rules inner tab — the editor for this project's own prose: rule and guide
+// knowledge entries, each with an always-inject toggle and a budget meter over
+// the sum of the injected bodies. Backed by /api/projects/:id/knowledge.
+//
+// It is the ONLY such editor. Project Settings → Project Facts edited the same
+// text as `agentConfig.projectFacts` with its own toggle and its own copy of the
+// budget until ISS-1048 moved the store; keeping both would have been two
+// editors for one table.
 import { useEffect, useMemo, useState } from "react";
 import {
   Banner,
@@ -22,7 +28,6 @@ import { formatApiError } from "@/lib/api/error";
 import { useDeleteEntry, useKnowledgeEntries, useKnowledgeEntry, useUpsertEntry } from "../hooks";
 import type { KnowledgeInjection, KnowledgeKind, KnowledgeListRow } from "../types";
 
-const ALWAYS_INJECT_MAX_CHARS = 6000;
 const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 const ENTRY_MAX_CHARS = 100_000;
 
@@ -81,17 +86,29 @@ export function RulesTab({ projectId, canManage }: RulesTabProps) {
     return <ErrorState title="Couldn't load rules" message={errorMsg} onRetry={retry} />;
   }
 
-  return <RulesEditor projectId={projectId} serverRows={rows} canManage={canManage} />;
+  return (
+    <RulesEditor
+      projectId={projectId}
+      serverRows={rows}
+      canManage={canManage}
+      maxAlwaysInjectChars={entriesQ.data?.maxAlwaysInjectChars ?? 6000}
+      alwaysInjectGuarantee={entriesQ.data?.alwaysInjectGuarantee ?? ""}
+    />
+  );
 }
 
 function RulesEditor({
   projectId,
   serverRows,
   canManage,
+  maxAlwaysInjectChars,
+  alwaysInjectGuarantee,
 }: {
   projectId: string;
   serverRows: KnowledgeListRow[];
   canManage: boolean;
+  maxAlwaysInjectChars: number;
+  alwaysInjectGuarantee: string;
 }) {
   const [editRows, setEditRows] = useState<EditRow[]>([]);
   const [nextRid, setNextRid] = useState(1);
@@ -130,8 +147,8 @@ function RulesEditor({
         .reduce((sum, r) => sum + r.body.length, 0),
     [editRows],
   );
-  const overBudget = injectedChars > ALWAYS_INJECT_MAX_CHARS;
-  const budgetPct = Math.min(100, Math.round((injectedChars / ALWAYS_INJECT_MAX_CHARS) * 100));
+  const overBudget = injectedChars > maxAlwaysInjectChars;
+  const budgetPct = Math.min(100, Math.round((injectedChars / maxAlwaysInjectChars) * 100));
   // True when always-inject bodies haven't been fetched yet (count is an underestimate).
   const hasUnloadedAlwaysInject = useMemo(
     () => editRows.some((r) => !r.isNew && r.injection === "always" && !r.body),
@@ -239,7 +256,7 @@ function RulesEditor({
             className="fg-caption font-mono"
             style={{ color: overBudget ? "var(--red-600)" : "var(--fg-muted)" }}
           >
-            {injectedChars.toLocaleString()} / {ALWAYS_INJECT_MAX_CHARS.toLocaleString()} chars
+            {injectedChars.toLocaleString()} / {maxAlwaysInjectChars.toLocaleString()} chars
             {hasUnloadedAlwaysInject && " (estimated)"}
           </span>
         </div>
@@ -257,6 +274,9 @@ function RulesEditor({
             Over budget — all always-inject entries are still injected, but this bloats every prompt
             for this project. Trim a body or change injection to on-demand.
           </p>
+        )}
+        {alwaysInjectGuarantee && (
+          <p className="fg-caption mt-1.5 text-muted">{alwaysInjectGuarantee}</p>
         )}
       </div>
 

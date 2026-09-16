@@ -66,6 +66,8 @@ function fixedInputs(): Inputs {
         : undefined,
     projectFactKeys: ['build-commands'],
     alwaysInjectFacts: [],
+    factsUnavailable: false,
+    missingObligations: [],
     modules: [{ name: 'prompt', parentName: null }],
   };
 }

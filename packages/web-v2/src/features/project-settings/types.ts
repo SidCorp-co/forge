@@ -14,52 +14,6 @@ export type {
 	UxToggleSettings,
 } from "@forge/contracts";
 
-// cm:edge contract -> packages/core/src/projects/project-facts.ts — the project-facts shapes below are hand-mirrored from `projectFactsPatchSchema`; the always-inject tier is injected verbatim into every agent prompt, so a key added there and not here is silently undisplayable
-/** Per-key config map; `alwaysInject` flags a fact for verbatim injection. */
-export type ProjectFactsConfig = Record<string, { alwaysInject?: boolean }>;
-
-/** `GET /api/projects/:id/project-facts` response shape. */
-export interface ProjectFactsResponse {
-	/** kebab-key → guide text. */
-	projectFacts: Record<string, string>;
-	projectFactsConfig: ProjectFactsConfig;
-	/** Char budget for the SUM of always-inject bodies (warn-on-overflow). */
-	maxAlwaysInjectChars: number;
-	// cm:edge contract -> packages/core/src/projects/project-facts.ts — `ALWAYS_INJECT_GUARANTEE_NOTE`, served rather than copied: core may not value-import `@forge/contracts` and web-v2 cannot import core, so a string both sides must agree on otherwise lives twice behind a parity test
-	/** What the always-inject flag does and does not promise, for the owner setting it. */
-	alwaysInjectGuarantee: string;
-}
-
-/** `PATCH /api/projects/:id/project-facts` body. Per-key merge: a `null` value
- *  removes that key; omit a map to leave it untouched. */
-export interface ProjectFactsPatch {
-	projectFacts?: Record<string, string | null> | null;
-	projectFactsConfig?: Record<string, { alwaysInject?: boolean } | null> | null;
-}
-
-/** Reserved (derived) keys the server ignores — surfaced for inline validation
- *  so the UI rejects them before a round-trip. Mirrors
- *  `project-facts.ts:RESERVED_PROJECT_FACT_KEYS` in core, member for member and
- *  in the same order; core's `mergeProjectFacts` drops a reserved key SILENTLY,
- *  so a key missing here is a fact the operator types, saves, and never sees
- *  again. Held by a parity test against core's list. */
-export const RESERVED_PROJECT_FACT_KEYS = [
-	"base-branch",
-	"live-branch",
-	"production-branch",
-	"repo-path",
-	"test-urls",
-	"test-creds",
-	"test-notes",
-	"integrations",
-] as const;
-
-/** Max length of a single fact body (mirrors `projectFactsPatchSchema`). */
-export const PROJECT_FACT_MAX_CHARS = 8000;
-
-/** Kebab-case key pattern (mirrors `projectFactKeySchema`). */
-export const PROJECT_FACT_KEY_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
-
 /** Patch body accepted by `PATCH /api/projects/:id` (basics + repo + testing).
  *  `orgId` moves the project to another org — requires org admin on BOTH the
  *  current and the destination org (403/404 otherwise). */

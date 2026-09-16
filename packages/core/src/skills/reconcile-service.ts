@@ -33,6 +33,7 @@ import {
   updatePackets,
 } from '../db/schema.js';
 import { enqueueReconcileJob } from '../jobs/enqueue.js';
+import { selectKnowledgeBodies } from '../knowledge/service.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
 import { resolveNotifications } from '../notifications/auto-resolve.js';
@@ -361,11 +362,7 @@ export async function assembleBundle(
     runningBody,
     runningHash,
     charter: charter ? { entries: charter.entries } : null,
-    projectFacts:
-      ((project.agentConfig as Record<string, unknown> | null)?.projectFacts as Record<
-        string,
-        unknown
-      >) ?? {},
+    projectKnowledge: await selectKnowledgeBodies(input.projectId),
     pipelineConfig:
       ((project.agentConfig as Record<string, unknown> | null)?.pipelineConfig as Record<
         string,
@@ -394,7 +391,7 @@ export async function assembleBundle(
       runningBody: runningIsObserved ? 'observed-from-run' : 'from-code',
       runningHash: runningIsObserved ? 'observed-from-run' : 'from-code',
       charter: 'human',
-      projectFacts: 'human',
+      projectKnowledge: 'human',
       pipelineConfig: 'human',
       recentRunEvidence: 'observed-from-run',
       priorReconcileHistory: 'observed-from-run',

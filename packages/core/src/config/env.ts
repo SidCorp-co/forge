@@ -102,7 +102,6 @@ const EnvSchema = z.object({
   OIDC_SCOPES: z.string().min(1).default('openid email profile'),
   // cm:why ISS-552 (C1) — past this many forge_feedback submissions on one device principal's active job the extras soft-reject with {ok:false, reason:'rate_limited'} instead of 500ing; ISS-565 (P1) below moves always/on_demand project facts from agentConfig to knowledge_entries and stays OFF for the deprecation window, until the migrate-project-facts script has run
   FEEDBACK_MAX_PER_JOB: z.coerce.number().int().positive().default(5),
-  KNOWLEDGE_INJECTION_ENABLED: z.coerce.boolean().default(false),
   // cm:guard ISS-663 — these bound a hung db.transaction() callback pinning a stale MVCC snapshot on a pooled connection, so they must stay well above any legitimate query duration AND well below the pipeline's RESULT_QUIET_MINUTES=60 job-quiet threshold (loop-monitor.ts): raised past it they start killing long-running pipeline operations that were working
   DATABASE_IDLE_IN_TX_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
   DATABASE_STATEMENT_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),

@@ -348,6 +348,39 @@ export async function selectAlwaysInjectFromKnowledge(
   return rows.map((r) => ({ key: r.slug, text: r.body }));
 }
 
+/**
+ * Every non-archived entry as slug → body, for a caller that needs the prose
+ * itself rather than an index. Each body is cut at `SNAPSHOT_BODY_MAX_CHARS`,
+ * which is the cap the `agentConfig.projectFacts` values this replaced were held
+ * to; a knowledge body may be 100k, and a snapshot carrying a dozen of those is
+ * a payload nobody reads rather than a richer one.
+ */
+export const SNAPSHOT_BODY_MAX_CHARS = 8000;
+
+export async function selectKnowledgeBodies(
+  projectId: string,
+): Promise<Record<string, string>> {
+  const rows = await db
+    .select({ slug: knowledgeEntries.slug, body: knowledgeEntries.body })
+    .from(knowledgeEntries)
+    .where(and(eq(knowledgeEntries.projectId, projectId), isNull(knowledgeEntries.archivedAt)))
+    .orderBy(asc(knowledgeEntries.slug));
+  return Object.fromEntries(rows.map((r) => [r.slug, r.body.slice(0, SNAPSHOT_BODY_MAX_CHARS)]));
+}
+
+/** Every non-archived slug this project holds, whatever its injection setting —
+ *  what `missingProjectKnowledge` measures the contract against. */
+export async function selectAllSlugsFromKnowledge(projectId: string): Promise<string[]> {
+  const rows = await db
+    .select({ slug: knowledgeEntries.slug })
+    .from(knowledgeEntries)
+    .where(
+      and(eq(knowledgeEntries.projectId, projectId), isNull(knowledgeEntries.archivedAt)),
+    )
+    .orderBy(asc(knowledgeEntries.slug));
+  return rows.map((r) => r.slug);
+}
+
 export async function selectOnDemandSlugsFromKnowledge(projectId: string): Promise<string[]> {
   const rows = await db
     .select({ slug: knowledgeEntries.slug, orderIndex: knowledgeEntries.orderIndex })

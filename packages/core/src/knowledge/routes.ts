@@ -5,19 +5,33 @@ import { z } from 'zod';
 import { RULES } from '../config/rate-limits.js';
 import { EMBEDDING_UNAVAILABLE, EmbeddingUnavailableError } from '../embeddings/index.js';
 import { assertProjectAccess } from '../lib/authz.js';
+import {
+  ALWAYS_INJECT_GUARANTEE_NOTE,
+  ALWAYS_INJECT_MAX_CHARS,
+} from '../projects/project-facts.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import {
   deleteKnowledgeEntry,
   getKnowledgeEntry,
   listKnowledgeEntries,
+  slugSchema,
   upsertKnowledgeEntry,
   upsertKnowledgeInputSchema,
 } from './service.js';
 import { runUnifiedSearch } from './unified-search.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
-const slugParamSchema = z.object({ id: z.uuid(), slug: z.string().min(1).max(512) });
+/**
+ * The slug is validated here rather than only on the way to the database, and
+ * every route below matches it as `:slug{.+}` so that a slug carrying a slash
+ * REACHES this schema. Matched as a single path segment, `convention/some-rule`
+ * matched no route at all and came back as a bare routing 404 — which reads as
+ * "there is no such entry" when the truth is "that is not a slug", and sent at
+ * least one run off to file a defect against a store that was behaving. A wrong
+ * input is refused by name, with the rule it broke.
+ */
+const slugParamSchema = z.object({ id: z.uuid(), slug: slugSchema });
 
 const listQuerySchema = z.object({
   kind: z
@@ -27,6 +41,10 @@ const listQuerySchema = z.object({
 });
 
 const badRequest = (message: string) => new HTTPException(400, { message });
+const badSlug = (slug: string) =>
+  badRequest(
+    `"${slug}" is not a knowledge slug: a slug is kebab-case — lower-case letters and digits separated by hyphens, starting with a letter or digit, at most 512 characters — and carries no slash, so there are no nested slugs. A path like "convention/my-rule" is not an entry that is hard to reach, it is a name this store cannot hold; write it as "convention-my-rule". Memory documents DO carry slash-separated source refs and are a different store, reached through forge_memory rather than forge_knowledge.`,
+  );
 const notFound = () => new HTTPException(404, { message: 'knowledge entry not found' });
 
 export const knowledgeRoutes = new Hono<{ Variables: AuthVars }>();
@@ -47,7 +65,15 @@ knowledgeRoutes.get(
     await assertProjectAccess(id, userId);
 
     const result = await listKnowledgeEntries({ projectId: id, kind, injection });
-    return c.json(result);
+    // The budget and the guarantee travel with the list because this response is
+    // what the editor for these rows is built on. Both used to be served by
+    // `GET /projects/:id/project-facts` to the Project Facts tab; that tab and
+    // that route are gone (ISS-1048) and the obligation moved with the flag.
+    return c.json({
+      ...result,
+      maxAlwaysInjectChars: ALWAYS_INJECT_MAX_CHARS,
+      alwaysInjectGuarantee: ALWAYS_INJECT_GUARANTEE_NOTE,
+    });
   },
 );
 
@@ -91,9 +117,9 @@ knowledgeRoutes.post(
 );
 
 knowledgeRoutes.get(
-  '/:id/knowledge/:slug',
-  zValidator('param', slugParamSchema, (r) => {
-    if (!r.success) throw badRequest('invalid params');
+  '/:id/knowledge/:slug{.+}',
+  zValidator('param', slugParamSchema, (r, c) => {
+    if (!r.success) throw badSlug(c.req.param('slug') ?? '');
   }),
   async (c) => {
     const { id, slug } = c.req.valid('param');
@@ -109,9 +135,9 @@ knowledgeRoutes.get(
 const upsertBodySchema = upsertKnowledgeInputSchema.omit({ projectId: true, slug: true });
 
 knowledgeRoutes.put(
-  '/:id/knowledge/:slug',
-  zValidator('param', slugParamSchema, (r) => {
-    if (!r.success) throw badRequest('invalid params');
+  '/:id/knowledge/:slug{.+}',
+  zValidator('param', slugParamSchema, (r, c) => {
+    if (!r.success) throw badSlug(c.req.param('slug') ?? '');
   }),
   zValidator('json', upsertBodySchema, (r) => {
     if (!r.success) throw badRequest('invalid body');
@@ -139,9 +165,9 @@ knowledgeRoutes.put(
 );
 
 knowledgeRoutes.delete(
-  '/:id/knowledge/:slug',
-  zValidator('param', slugParamSchema, (r) => {
-    if (!r.success) throw badRequest('invalid params');
+  '/:id/knowledge/:slug{.+}',
+  zValidator('param', slugParamSchema, (r, c) => {
+    if (!r.success) throw badSlug(c.req.param('slug') ?? '');
   }),
   async (c) => {
     const { id, slug } = c.req.valid('param');

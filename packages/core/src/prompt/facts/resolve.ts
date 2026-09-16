@@ -7,7 +7,6 @@
 
 import { and, eq } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
 import {
   type BindingRole,
@@ -27,6 +26,7 @@ import type { SentryConfig, SentryTarget } from '../../integrations/sentry/types
 import { listBindingsForProject } from '../../integrations/store.js';
 import { getIntegrationGuide, getIntegrationUsage } from '../../integrations/usage-registry.js';
 import {
+  selectAllSlugsFromKnowledge,
   selectAlwaysInjectFromKnowledge,
   selectOnDemandSlugsFromKnowledge,
 } from '../../knowledge/service.js';
@@ -36,9 +36,13 @@ import {
   resolveNoProgressRounds,
 } from '../../pipeline/reopen-policy.js';
 import {
-  PROJECT_FACTS_ALWAYS_INJECT_MAX_CHARS,
+  type KnowledgeObligation,
+  missingProjectKnowledge,
+} from '../../projects/autonomous-contract.js';
+import {
+  ALWAYS_INJECT_MAX_CHARS,
   type RESERVED_PROJECT_FACT_KEYS,
-  selectAlwaysInjectFacts,
+  unreservedProjectKeyRefusal,
 } from '../../projects/project-facts.js';
 import {
   CANONICAL_LADDER,
@@ -77,12 +81,22 @@ export interface ProjectFactInputs {
   noProgressRounds: number;
   /** Resolver for `{{project:<key>}}`. */
   project: ProjectVarResolver;
-  /** Author-defined `agentConfig.projectFacts` keys (for dumping all guides). */
+  /** Slugs of this project's `injection: 'on_demand'` knowledge entries — the
+   *  fetch-on-demand index, which names the tool that holds them. */
   projectFactKeys: string[];
-  /** projectFacts flagged `alwaysInject` (ISS-521): rendered VERBATIM into the
-   *  preamble (like a mandatory ForgeFact), and excluded from the
-   *  fetch-on-demand guide index. Paired with their full text, in map order. */
+  /** This project's `injection: 'always'` knowledge entries: rendered VERBATIM
+   *  into the preamble (like a mandatory ForgeFact), and excluded from the
+   *  fetch-on-demand index. Paired with their full body, in order. */
   alwaysInjectFacts: Array<{ key: string; text: string }>;
+  /** The knowledge store could not be read for this project. The index is then
+   *  rendered as a named absence rather than left out: an agent told nothing is
+   *  an agent that concludes this project has no guides. */
+  factsUnavailable: boolean;
+  /** Entries this project owes and has not written, computed from what it
+   *  declares. Empty for a project that owes nothing — which is a different
+   *  state from one that owes something and has not answered, and the reason
+   *  the contract is computed rather than listed. */
+  missingObligations: KnowledgeObligation[];
   /** The project's `kind='module'` labels (ISS-595). Empty for a project with
    *  no taxonomy, which is what keeps `module-attribution` out of its prompt. */
   modules: ProjectModuleFact[];
@@ -195,10 +209,14 @@ function buildLadder(states: Record<string, { enabled?: boolean } | undefined>):
 }
 
 /**
- * `{{project:<key>}}` resolver: reserved keys derive from first-class project
- * columns (`base-branch`, `live-branch`, `repo-path`, `test-urls`) plus a
- * security-safe pointer for `test-creds`; everything else reads the author's
- * `agentConfig.projectFacts` map. Pure.
+ * `{{project:<key>}}` resolver. Every key it answers derives from a first-class
+ * project column or from `previewDeploy`; there is no author-owned map behind it
+ * any more. A key outside the reserved set resolves to a refusal naming the
+ * knowledge store, NOT to `undefined` — an unresolved reference renders as the
+ * empty string, so returning nothing would silently delete a sentence from the
+ * prompt of every project whose skill body still carries one, and no gate in
+ * this repository can see a skill body in another. That is the same decision
+ * `production-branch` carries above it. Pure.
  */
 export function makeProjectResolver(src: {
   baseBranch: string | null;
@@ -208,7 +226,6 @@ export function makeProjectResolver(src: {
   testingUrls: TestingUrl[];
   testNotes: string | null;
   integrations: IntegrationRow[];
-  projectFacts: Record<string, string>;
 }): ProjectVarResolver {
   const reserved: Record<(typeof RESERVED_PROJECT_FACT_KEYS)[number], () => string | undefined> = {
     'base-branch': () => src.baseBranch ?? undefined,
@@ -235,7 +252,9 @@ export function makeProjectResolver(src: {
     integrations: () => renderIntegrations(src.integrations),
   };
   return (key) =>
-    key in reserved ? reserved[key as keyof typeof reserved]() : src.projectFacts[key];
+    key in reserved
+      ? reserved[key as keyof typeof reserved]()
+      : unreservedProjectKeyRefusal(key);
 }
 
 /**
@@ -257,13 +276,11 @@ export async function loadProjectModules(projectId: string): Promise<ProjectModu
   return rows.map((r) => ({ name: r.name, parentName: r.parentName ?? null }));
 }
 
-/** Load the per-project inputs for fact resolution: the status ladder and the
+/** Load the per-project inputs for fact resolution: the status ladder, the
  *  `{{project:}}` resolver (project columns + previewDeploy + connected
- *  integrations + the author's projectFacts map). */
+ *  integrations) and this project's knowledge entries. */
 export async function loadProjectFactInputs(projectId: string): Promise<ProjectFactInputs> {
   let states: Record<string, { enabled?: boolean } | undefined> = {};
-  let projectFacts: Record<string, string> = {};
-  let projectFactsConfig: Record<string, { alwaysInject?: boolean }> = {};
   let baseBranch: string | null = null;
   let liveBranch: string | null = null;
   let releaseModel: ReleaseModel = 'none';
@@ -273,12 +290,18 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
   let integrations: IntegrationRow[] = [];
   let noProgressRounds = DEFAULT_NO_PROGRESS_ROUNDS;
   let modules: ProjectModuleFact[] = [];
+  let alwaysInjectFacts: Array<{ key: string; text: string }> = [];
+  let projectFactKeys: string[] = [];
+  let factsUnavailable = false;
+  let missingObligations: KnowledgeObligation[] = [];
+  let repoUrl: string | null = null;
   try {
     const [row] = await db
       .select({
         agentConfig: projects.agentConfig,
         previewDeploy: projects.previewDeploy,
         repoPath: projects.repoPath,
+        repoUrl: projects.repoUrl,
         baseBranch: projects.baseBranch,
         liveBranch: projects.liveBranch,
         releaseModel: projects.releaseModel,
@@ -290,16 +313,9 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
     const ac =
       (row?.agentConfig as {
         pipelineConfig?: { states?: typeof states };
-        projectFacts?: Record<string, string>;
-        projectFactsConfig?: Record<string, { alwaysInject?: boolean }>;
       } | null) ?? null;
     states = ac?.pipelineConfig?.states ?? {};
     noProgressRounds = resolveNoProgressRounds(row?.agentConfig);
-    projectFacts = ac?.projectFacts && typeof ac.projectFacts === 'object' ? ac.projectFacts : {};
-    projectFactsConfig =
-      ac?.projectFactsConfig && typeof ac.projectFactsConfig === 'object'
-        ? ac.projectFactsConfig
-        : {};
     const pd =
       (row?.previewDeploy as { testingUrls?: TestingUrl[]; notes?: string | null } | null) ?? null;
     testingUrls = Array.isArray(pd?.testingUrls) ? pd.testingUrls : [];
@@ -308,6 +324,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
     liveBranch = row?.liveBranch ?? null;
     releaseModel = row?.releaseModel ?? 'none';
     repoPath = row?.repoPath ?? null;
+    repoUrl = row?.repoUrl ?? null;
 
     integrations = await loadActiveIntegrationRows(projectId, row?.orgId ?? null);
     modules = await loadProjectModules(projectId);
@@ -315,26 +332,29 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
     // defaults → full ladder, empty {{project:}} resolver
   }
 
-  // When the flag is ON, source alwaysInjectFacts and projectFactKeys from
-  // knowledge_entries instead of agentConfig. The {{project:key}} resolver
-  // still reads agentConfig for the deprecation window so inline templates
-  // kept in skill files continue to work.
-  let alwaysInjectFacts: Array<{ key: string; text: string }>;
-  let projectFactKeys: string[];
-  if (env.KNOWLEDGE_INJECTION_ENABLED) {
-    try {
-      [alwaysInjectFacts, projectFactKeys] = await Promise.all([
-        selectAlwaysInjectFromKnowledge(projectId),
-        selectOnDemandSlugsFromKnowledge(projectId),
-      ]);
-    } catch {
-      // cm:why a prompt with stale facts beats no prompt: this path runs at dispatch, and throwing here would fail the job rather than the read
-      alwaysInjectFacts = selectAlwaysInjectFacts(projectFacts, projectFactsConfig);
-      projectFactKeys = Object.keys(projectFacts);
-    }
-  } else {
-    alwaysInjectFacts = selectAlwaysInjectFacts(projectFacts, projectFactsConfig);
-    projectFactKeys = Object.keys(projectFacts);
+  // The knowledge store is the only source of project prose. There is no second
+  // one to fall back to, so a failure here is reported into the prompt rather
+  // than swallowed: this runs at dispatch, and throwing would fail the job
+  // instead of the read, while rendering nothing would tell the agent this
+  // project has no guides — which is a different claim from "could not look".
+  try {
+    let heldSlugs: string[];
+    [alwaysInjectFacts, projectFactKeys, heldSlugs] = await Promise.all([
+      selectAlwaysInjectFromKnowledge(projectId),
+      selectOnDemandSlugsFromKnowledge(projectId),
+      selectAllSlugsFromKnowledge(projectId),
+    ]);
+    // cm:edge contract -> packages/core/src/projects/autonomous-contract.ts — the SAME function `release-batch/readiness.ts` asks. Two lists is how the contract and the readiness gaps came to disagree about what a project owes, and this is the second reader that makes one list load-bearing rather than tidy.
+    missingObligations = missingProjectKnowledge({ repoPath, repoUrl, releaseModel }, heldSlugs);
+  } catch (err) {
+    factsUnavailable = true;
+    alwaysInjectFacts = [];
+    projectFactKeys = [];
+    missingObligations = [];
+    logger.error(
+      { err: (err as Error).message, projectId },
+      'prompt.facts: knowledge store unreadable, the prompt says so in place of the guide index',
+    );
   }
 
   return {
@@ -349,10 +369,11 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
       testingUrls,
       testNotes,
       integrations,
-      projectFacts,
     }),
     projectFactKeys,
     alwaysInjectFacts,
+    factsUnavailable,
+    missingObligations,
     modules,
   };
 }
@@ -370,9 +391,10 @@ function demoteHeadings(text: string): string {
  * Inlines ONLY what steers mandatory behaviour: the stage-applicable
  * contextual facts (status ladder, enums, protocols) plus the connected
  * integrations (tool-routing info). Everything an agent can fetch through a
- * Forge tool is pointed-to, not inlined — author `projectFacts` guides render
- * as a fetch-on-demand key index (`forge_config` get), and test URLs/creds are
- * already covered by the Project Context pointer to `forge_projects.get`.
+ * Forge tool is pointed-to, not inlined — the project's `on_demand` knowledge
+ * entries render as a slug index the agent fetches through `forge_knowledge`,
+ * which is the tool that holds them, and test URLs/creds are already covered by
+ * the Project Context pointer to `forge_projects.get`.
  */
 export function renderStageFactsText(
   inputs: ProjectFactInputs,
@@ -405,16 +427,16 @@ export function renderStageFactsText(
   const alwaysInjectKeys = new Set(alwaysInject.map((f) => f.key));
   if (alwaysInject.length > 0) {
     const totalChars = alwaysInject.reduce((sum, f) => sum + f.text.length, 0);
-    if (totalChars > PROJECT_FACTS_ALWAYS_INJECT_MAX_CHARS) {
+    if (totalChars > ALWAYS_INJECT_MAX_CHARS) {
       logger.warn(
         {
           projectId,
           stage,
           totalChars,
-          maxChars: PROJECT_FACTS_ALWAYS_INJECT_MAX_CHARS,
+          maxChars: ALWAYS_INJECT_MAX_CHARS,
           keys: alwaysInject.map((f) => f.key),
         },
-        'projectFacts always-inject content exceeds char budget — every prompt for this project carries the overflow',
+        'always-inject knowledge entries exceed the char budget — every prompt for this project carries the overflow',
       );
     }
     projectParts.push(
@@ -429,15 +451,41 @@ export function renderStageFactsText(
   const integrations = inputs.project('integrations');
   if (integrations) projectParts.push(demoteHeadings(integrations));
 
-  // Fetch-on-demand index excludes always-inject keys — their bodies are
+  // Fetch-on-demand index excludes always-inject slugs — their bodies are
   // already inlined above, so listing them again as "fetch this" is noise.
-  const indexKeys = inputs.projectFactKeys.filter((key) => !alwaysInjectKeys.has(key));
-  if (indexKeys.length > 0) {
+  //
+  // An unreadable store is said rather than left out: the two render differently
+  // on purpose, because an agent shown no index concludes this project has no
+  // guides, which is a claim nobody made.
+  if (inputs.factsUnavailable) {
     projectParts.push(
       [
         '### Project guides (fetch on demand)',
-        'Author-maintained guides exist for this project. When the task needs one, fetch its text via `forge_knowledge` (action `get` + slug) — do NOT guess its contents:',
-        ...indexKeys.map((key) => `- ${key}`),
+        "This project's knowledge store could not be read while this prompt was built, so the guide index below is missing rather than empty. Do not conclude that this project has no guides: list them yourself with `forge_knowledge` (action `list`) before deciding anything rests on their absence.",
+      ].join('\n'),
+    );
+  } else {
+    const indexKeys = inputs.projectFactKeys.filter((key) => !alwaysInjectKeys.has(key));
+    if (indexKeys.length > 0) {
+      projectParts.push(
+        [
+          '### Project guides (fetch on demand)',
+          'Author-maintained guides exist for this project. When the task needs one, fetch its text via `forge_knowledge` (action `get` + slug) — do NOT guess its contents:',
+          ...indexKeys.map((key) => `- ${key}`),
+        ].join('\n'),
+      );
+    }
+  }
+
+  // What this project owes and has not written. Rendered only when there is
+  // something owed: a project with no repository and no release model owes
+  // nothing, and a block saying so on every prompt is a line that never varies.
+  if (inputs.missingObligations.length > 0) {
+    projectParts.push(
+      [
+        '### Undeclared project knowledge',
+        'This project owes the entries below and none of them exists yet. Nothing here blocks you — but a step that needs one has nothing to read, so say so rather than inventing the answer, and offer the text to whoever owns the project:',
+        ...inputs.missingObligations.map((o) => `- \`${o.slug}\` — ${o.role} (owed because ${o.because})`),
       ].join('\n'),
     );
   }

@@ -44,6 +44,10 @@ import { applyIssuePrefixPatch } from './issue-prefix-patch.js';
 import { projectOnboardRoutes } from './onboard-routes.js';
 import { pipelineConfigHttpError } from './pipeline-config-http.js';
 import { projectFactsRoutes } from './project-facts-routes.js';
+import {
+  RETIRED_PROJECT_FACTS_CONFIG_MESSAGE,
+  RETIRED_PROJECT_FACTS_MESSAGE,
+} from './project-facts.js';
 import { PATCHED_PROJECT, PROJECT_DETAIL } from './projections.js';
 import { readableLiveBranch, releaseModelGap, releaseModelPatchFields } from './release-model.js';
 import { projectRunnerRoutes } from './runners-routes.js';
@@ -136,13 +140,22 @@ export const updateProjectSchema = z
 // cm:guard the walk refuses ONLY what has been retired. Widening it to validate `agentConfig` generally closes an escape hatch four other settings surfaces write through, and none of them is declared on this schema.
 function refuseRetiredProjectKeys(raw: unknown, ctx: z.RefinementCtx): void {
   if (!raw || typeof raw !== 'object') return;
-  const retired = (path: (string | number)[]) =>
-    ctx.addIssue({ code: 'custom', path, message: RETIRED_STATE_CONTEXT_MESSAGE });
+  const retired = (path: (string | number)[], message: string) =>
+    ctx.addIssue({ code: 'custom', path, message });
   const body = raw as { stateContext?: unknown; agentConfig?: unknown };
-  if ('stateContext' in body) retired(['stateContext']);
+  if ('stateContext' in body) retired(['stateContext'], RETIRED_STATE_CONTEXT_MESSAGE);
   const ac = body.agentConfig as { pipelineConfig?: unknown } | null | undefined;
   if (!ac || typeof ac !== 'object') return;
-  if ('stateContext' in ac) retired(['agentConfig', 'stateContext']);
+  if ('stateContext' in ac) retired(['agentConfig', 'stateContext'], RETIRED_STATE_CONTEXT_MESSAGE);
+  // ISS-1048 — the raw record is still assigned straight onto the column, so a
+  // write carrying either retired prose key would land it back in the blob the
+  // migration emptied and the prompt no longer reads. Refused here by name for
+  // the same reason `stateContext` is: the object below strips an undeclared key
+  // silently, which answers the operator with a 200 and no write.
+  if ('projectFacts' in ac) retired(['agentConfig', 'projectFacts'], RETIRED_PROJECT_FACTS_MESSAGE);
+  if ('projectFactsConfig' in ac) {
+    retired(['agentConfig', 'projectFactsConfig'], RETIRED_PROJECT_FACTS_CONFIG_MESSAGE);
+  }
   const states = (ac.pipelineConfig as { states?: unknown } | null | undefined)?.states;
   refuseRetiredStageKeys(states, ctx, ['agentConfig', 'pipelineConfig', 'states']);
 }

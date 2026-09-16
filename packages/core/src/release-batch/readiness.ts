@@ -15,10 +15,11 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { ReleaseModel, ReleaseStrategy } from '../db/schema.js';
 import { projects } from '../db/schema.js';
-import { missingAutonomousFacts } from '../projects/autonomous-contract.js';
+import { selectAllSlugsFromKnowledge } from '../knowledge/service.js';
+import { missingProjectKnowledge } from '../projects/autonomous-contract.js';
 import { releaseRunnerLabelOf, resolveReleaseChannels } from './channel.js';
 import { resolveReleaseDeclaration } from './gate.js';
-import { RELEASE_PROCEDURE_FACT, type ReleaseRollback } from './plan.js';
+import type { ReleaseRollback } from './plan.js';
 
 export type ReleaseGapKey = string;
 
@@ -46,10 +47,6 @@ export interface ReleaseReadiness {
   gaps: ReleaseGapKey[];
 }
 
-function isDeclared(v: unknown): boolean {
-  return typeof v === 'string' && v.trim().length > 0;
-}
-
 /**
  * The contract this project owes, and which parts of it are missing.
  *
@@ -69,16 +66,24 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
   if (!decl) return null;
 
   const [row] = await db
-    .select({ agentConfig: projects.agentConfig })
+    .select({
+      repoPath: projects.repoPath,
+      repoUrl: projects.repoUrl,
+      releaseModel: projects.releaseModel,
+    })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
-  const facts = ((row?.agentConfig as { projectFacts?: Record<string, unknown> } | null)
-    ?.projectFacts ?? {}) as Record<string, unknown>;
 
   const channels = decl.kind === 'gated' ? await resolveReleaseChannels(projectId) : [];
-  // cm:edge contract -> packages/core/src/projects/autonomous-contract.ts — the unconditional half of the contract is DECLARED there and read here; listing `build-commands` and `test-commands` again would let the two disagree about what a project owes
-  const gaps: ReleaseGapKey[] = missingAutonomousFacts(facts).map((f) => f.key);
+  // cm:edge contract -> packages/core/src/projects/autonomous-contract.ts — the contract is COMPUTED there from what this project declares, and read here; listing any slug again would let the two disagree about what a project owes. The prompt reads the same function (prompt/facts/resolve.ts), which is the second reader that made a second list a defect rather than a duplication.
+  const declarations = {
+    repoPath: row?.repoPath ?? null,
+    repoUrl: row?.repoUrl ?? null,
+    releaseModel: row?.releaseModel ?? 'none',
+  };
+  const held = await selectAllSlugsFromKnowledge(projectId);
+  const gaps: ReleaseGapKey[] = missingProjectKnowledge(declarations, held).map((o) => o.slug);
   // cm:guard `undeclared-target` earns a gap of its own rather than silently behaving like a project
   // with no release step. Settings is where an operator finds out that the project says it releases
   // and has nowhere to release to; before ISS-1046 both shapes answered `null` and the second one was
@@ -97,7 +102,11 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
   // gap rather than by averaging. `createReleaseBatch` is the reader that refuses per channel.
   const first = channels[0] ?? null;
   if (decl.kind === 'gated') {
-    if (!isDeclared(facts[RELEASE_PROCEDURE_FACT])) gaps.push('release-procedure');
+    // `release-procedure` is NOT pushed here: it is part of the computed contract
+    // above, owed by every project whose `releaseModel` is not `none` rather than
+    // only by one that already has a live binding. A project that declares it
+    // releases and has not yet bound anywhere owes the procedure too, and used to
+    // be told it owed nothing.
     if (!releaseRunnerLabel && !gaps.includes('release-runner-ambiguous'))
       gaps.push('release-runner');
     // cm:edge lockstep -> packages/core/src/release-batch/service.ts — `createReleaseBatch` REFUSES on this, and reporting it here is what gives the operator the gap before a release discovers it. Drop this line and the refusal arrives with nothing in settings having said it was coming.

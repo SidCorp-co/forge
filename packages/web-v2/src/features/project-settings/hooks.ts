@@ -17,7 +17,6 @@ import type {
 	MemoryModelStatus,
 	PipelineConfig,
 	PluginDesignation,
-	ProjectFactsPatch,
 	ProjectUpdateInput,
 	UxContractRulePatch,
 } from "./types";
@@ -153,33 +152,14 @@ export function useReleaseReadiness(id: string | undefined) {
 	});
 }
 
-/** GET the per-project facts + always-inject config. */
-export function useProjectFacts(id: string | undefined) {
+/** GET one knowledge entry by slug — the compiled UX contract, today. A 404 is
+ *  "no such entry" and not a failure, so this does not retry. */
+export function useKnowledgeEntry(id: string | undefined, slug: string) {
 	return useQuery({
-		queryKey: ["project", id, "project-facts"],
-		queryFn: () => projectSettingsApi.getProjectFacts(id as string),
+		queryKey: ["project", id, "knowledge", slug],
+		queryFn: () => projectSettingsApi.getKnowledgeEntry(id as string, slug),
 		enabled: !!id,
-	});
-}
-
-/** PATCH project facts (per-key merge). Writes the merged response straight
- *  into the query cache so the editor reflects the saved state immediately. */
-export function useUpdateProjectFacts(id: string | undefined) {
-	const qc = useQueryClient();
-	const { toast } = useToast();
-	return useMutation({
-		mutationFn: (patch: ProjectFactsPatch) =>
-			projectSettingsApi.updateProjectFacts(id as string, patch),
-		onSuccess: (data) => {
-			qc.setQueryData(["project", id, "project-facts"], data);
-			toast({ title: "Project facts saved", tone: "success" });
-		},
-		onError: (err) =>
-			toast({
-				title: "Couldn't save project facts",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+		retry: false,
 	});
 }
 
@@ -401,12 +381,12 @@ export function useUxFindings(id: string | undefined) {
 	});
 }
 
-/** Every UX-contract rule mutation invalidates both the rules list AND
- *  `project-facts` (the compiled-prose preview reads `projectFacts['ux-contract']`,
+/** Every UX-contract rule mutation invalidates both the rules list AND the
+ *  `ux-contract` knowledge entry (the compiled-prose preview reads that entry,
  *  which the server recompiles on every mutating call). */
 function invalidateUxContract(qc: ReturnType<typeof useQueryClient>, id: string | undefined) {
 	qc.invalidateQueries({ queryKey: ["project", id, "ux-contract-rules"] });
-	qc.invalidateQueries({ queryKey: ["project", id, "project-facts"] });
+	qc.invalidateQueries({ queryKey: ["project", id, "knowledge", "ux-contract"] });
 }
 
 /** POST apply-preset — REPLACES the whole rule set (caller must confirm first). */

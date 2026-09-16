@@ -27,7 +27,7 @@ import {
 	useApplyUxPreset,
 	useDeleteUxRule,
 	usePatchUxRule,
-	useProjectFacts,
+	useKnowledgeEntry,
 	useUxContractRules,
 	useUxFindings,
 } from "../hooks";
@@ -60,7 +60,9 @@ export function UxContractTab({
 	const projectId = project.id;
 	const rulesQ = useUxContractRules(projectId);
 	const findingsQ = useUxFindings(projectId);
-	const factsQ = useProjectFacts(projectId);
+	// A 404 here means "not compiled yet" rather than an error, so the query does
+	// not retry and the empty state below reads it.
+	const factsQ = useKnowledgeEntry(projectId, "ux-contract");
 	const applyPreset = useApplyUxPreset(projectId);
 	const patchRule = usePatchUxRule(projectId);
 	const deleteRule = useDeleteUxRule(projectId);
@@ -264,11 +266,9 @@ export function UxContractTab({
 					<p className="fg-body-sm mb-3 text-muted">
 						This is exactly what the pipeline sees.
 					</p>
-					{factsQ.isError ? (
-						<ErrorState message={formatApiError(factsQ.error)} onRetry={() => factsQ.refetch()} />
-					) : factsQ.data?.projectFacts["ux-contract"] ? (
+					{factsQ.data?.body ? (
 						<pre className="max-h-[50vh] overflow-auto rounded-md border border-line bg-sunken p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap">
-							{factsQ.data.projectFacts["ux-contract"]}
+							{factsQ.data.body}
 						</pre>
 					) : (
 						<EmptyState

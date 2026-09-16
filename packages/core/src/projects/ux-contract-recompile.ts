@@ -1,10 +1,7 @@
 import { and, asc, eq } from 'drizzle-orm';
-import { env } from '../config/env.js';
 import { db } from '../db/client.js';
-import { projects, uxContractRules } from '../db/schema.js';
+import { knowledgeEntries, projects, uxContractRules } from '../db/schema.js';
 import { upsertKnowledgeEntry } from '../knowledge/service.js';
-import { logger } from '../logger.js';
-import { mergeProjectFacts } from './project-facts.js';
 import {
   compileUxContract,
   DEFAULT_UX_SCAFFOLD,
@@ -52,42 +49,27 @@ export async function recompileAndPersistUxContract(projectId: string): Promise<
   const ac = { ...((row.agentConfig ?? {}) as Record<string, unknown>) };
   const prose = compileUxContract(rules, scaffoldFromAgentConfig(ac));
 
-  const merged = mergeProjectFacts(ac.projectFacts, { 'ux-contract': prose });
+  // cm:guard writing the prose is only half of shipping it — an `ux-contract` entry left `on_demand` is fetch-on-demand, and `forge-code`/`forge-clarify` both say it arrives "injected in your preamble", so a contract nobody flagged reaches no agent at all. Measured on forge-beta 2026-08-31: `qa-project-available-for-testing` had 22 active rules compiled to 2,925 characters and `alwaysInject` unset since 2026-08-11 — applied by the Settings button, injected nowhere, zero findings. Default it to `always` when NO entry exists yet; an entry a person already set is left at whatever they set it to.
+  const [existing] = await db
+    .select({ injection: knowledgeEntries.injection })
+    .from(knowledgeEntries)
+    .where(and(eq(knowledgeEntries.projectId, projectId), eq(knowledgeEntries.slug, 'ux-contract')))
+    .limit(1);
 
-  // cm:guard writing the prose is only half of shipping it — an `ux-contract` fact with no `alwaysInject` is fetch-on-demand, and `forge-code`/`forge-clarify` both say it arrives "injected in your preamble", so a contract nobody flagged reaches no agent at all. Measured on forge-beta 2026-08-31: `qa-project-available-for-testing` had 22 active rules compiled to 2,925 characters and `alwaysInject` unset since 2026-08-11 — applied by the Settings button, injected nowhere, zero findings. Default it ON when the key is ABSENT only; an explicit `false` is a human's decision and is left alone.
-  const factsConfig =
-    (ac.projectFactsConfig as Record<string, { alwaysInject?: boolean }> | undefined) ?? {};
-  const updatedFactsConfig =
-    factsConfig['ux-contract'] === undefined
-      ? { ...factsConfig, 'ux-contract': { alwaysInject: true } }
-      : factsConfig;
-
-  const updatedAc =
-    merged !== null
-      ? { ...ac, projectFacts: merged, projectFactsConfig: updatedFactsConfig }
-      : { ...ac, projectFactsConfig: updatedFactsConfig };
-
-  await db.update(projects).set({ agentConfig: updatedAc }).where(eq(projects.id, projectId));
-
-  // cm:edge lockstep -> packages/core/src/projects/project-facts-routes.ts — same knowledge_entries write-through, keep guard/shape in sync
-  // cm:edge lockstep -> packages/core/src/mcp/tools/forge-config.ts — same knowledge_entries write-through, keep guard/shape in sync
-  if (env.KNOWLEDGE_INJECTION_ENABLED) {
-    const alwaysInject = updatedFactsConfig['ux-contract']?.alwaysInject === true;
-    await upsertKnowledgeEntry({
-      projectId,
-      slug: 'ux-contract',
-      title: 'ux-contract',
-      body: prose,
-      kind: 'guide',
-      injection: alwaysInject ? 'always' : 'on_demand',
-      confidence: 'verified',
-      authoredBy: 'human',
-      orderIndex: merged !== null ? Object.keys(merged).indexOf('ux-contract') : -1,
-    }).catch((err: Error) => {
-      logger.warn(
-        { err: err.message, projectId },
-        'ux-contract recompile: knowledge write-through failed',
-      );
-    });
-  }
+  // Not caught: the knowledge entry IS the contract now, so a failed write means
+  // the rules the operator just saved reach nobody. It used to be a best-effort
+  // mirror of an `agentConfig.projectFacts` write and could be warned about;
+  // warning about the only write there is would be a save that reports success
+  // and did nothing (ISS-1048).
+  await upsertKnowledgeEntry({
+    projectId,
+    slug: 'ux-contract',
+    title: 'ux-contract',
+    body: prose,
+    kind: 'guide',
+    injection: existing?.injection ?? 'always',
+    confidence: 'verified',
+    authoredBy: 'human',
+    orderIndex: 0,
+  });
 }

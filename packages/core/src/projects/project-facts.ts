@@ -1,29 +1,29 @@
-// Author-defined project constants referenced from a skill body via
-// `{{project:<key>}}`. Stored under
-// `projects.agentConfig.projectFacts` as a flat kebab-case → text map.
+// The reserved `{{project:<key>}}` names, and the sentences the always-inject
+// tier owes whoever sets it.
 //
-// SECURITY: values are spliced VERBATIM into the device-installed SKILL.md, so
-// they land on disk. NEVER store secrets here — test credentials stay in
-// `previewDeploy.testCredentials` and are fetched at runtime via
-// `forge_projects.get` (the built-in `{{project:test-creds}}` fact renders a
-// pointer, not the secret).
+// Project prose itself no longer lives here. Until ISS-1048 it was
+// `projects.agentConfig.projectFacts`, a kebab-key → free-text map with no type,
+// no authorship, no confidence and an injection boolean in a sibling map, while
+// `knowledge_entries` modelled the same prose with `kind`, `confidence`,
+// `authoredBy`, an embedding and a three-valued `injection` — and the drive
+// prompt printed an index of the first while telling the agent to fetch each
+// name from the second. Migration 0254 moved every key across; what is left in
+// this file is the part that was never prose.
 //
-// Reserved keys are derived (from project columns / connected integrations) and
-// cannot be shadowed by this map: `base-branch`, `live-branch`, `repo-path`,
-// `test-urls`, `test-creds`, `test-notes`, `integrations`.
+// Reserved keys are DERIVED — from project columns, from `previewDeploy`, or
+// from the connected integrations — and are resolved by
+// `prompt/facts/resolve.ts`. Everything else is a knowledge entry, reached with
+// `forge_knowledge`.
+//
+// SECURITY: a reserved value is spliced VERBATIM into the device-installed
+// SKILL.md, so it lands on disk. `test-creds` therefore renders a POINTER and
+// never the secret.
 //
 // `production-branch` STAYS reserved after ISS-1046 renamed the column, and it resolves to a
 // one-line refusal naming its replacement rather than to a branch or to nothing. A skill body on any
 // project may still carry `{{project:production-branch}}`, and nothing in this repo can gate a skill
 // body in another one — an unresolved key renders as empty, so dropping the name would delete a
 // sentence from an agent's prompt with nobody told.
-//
-// Everything else is a free-text guide note (we run an LLM — structured field
-// values aren't needed; a `forge_*` MCP fetches live detail, so a how-to-use
-// note injected into the prompt is enough). E.g. `build-commands`,
-// `test-commands`, `git-remote`, `feature-flags` are just prose the agent reads.
-
-import { z } from 'zod';
 
 export const RESERVED_PROJECT_FACT_KEYS = [
   'base-branch',
@@ -36,32 +36,40 @@ export const RESERVED_PROJECT_FACT_KEYS = [
   'integrations',
 ] as const;
 
-const projectFactKeySchema = z
-  .string()
-  .min(1)
-  .max(64)
-  .regex(/^[a-z0-9][a-z0-9-]*$/, 'key must be kebab-case (a-z, 0-9, hyphen)');
+/**
+ * What `{{project:<key>}}` renders for a key outside the reserved set.
+ *
+ * A refusal and not `undefined`, for the reason `production-branch` is also a
+ * refusal: an unresolved reference renders as the empty string, so answering
+ * nothing would silently delete a sentence from the prompt of every project
+ * whose skill body still splices a guide inline — and no gate in this
+ * repository can see a skill body in another one.
+ */
+export function unreservedProjectKeyRefusal(key: string): string {
+  return `⚠️ \`{{project:${key}}}\` resolves to nothing: project prose moved out of \`agentConfig.projectFacts\` into the knowledge store (ISS-1048). Fetch it where you need it with \`forge_knowledge\` (action \`get\`, slug \`${key}\`), and remove this reference from the skill body.`;
+}
 
-/** Patch shape exposed by REST/MCP: a value of `null` removes that key; the
- *  whole map `null` wipes projectFacts. */
-export const projectFactsPatchSchema = z
-  .record(projectFactKeySchema, z.string().max(8000).nullable())
-  .nullable()
-  .optional();
+/**
+ * ISS-1048 — the two retired `agentConfig` keys, refused by name on every door
+ * that used to accept them.
+ *
+ * Dropping a key from a non-strict zod object answers the operator's save with a
+ * `200` and a silent discard, which is the shape ISS-994 and ISS-1000
+ * established and the reason these messages exist rather than a deletion.
+ */
+export const RETIRED_PROJECT_FACTS_MESSAGE =
+  'agentConfig.projectFacts has been removed — project prose lives in knowledge_entries, which models the same text with a kind, a confidence, an author, an embedding and a three-valued injection setting. Write it with the forge_knowledge tool (action `write`), or PUT /api/projects/:id/knowledge/:slug, and remove projectFacts from this request. Migration 0254 already moved every key this project held.';
 
-export type ProjectFacts = Record<string, string>;
-export type ProjectFactsPatch = Record<string, string | null> | null;
+export const RETIRED_PROJECT_FACTS_CONFIG_MESSAGE =
+  'agentConfig.projectFactsConfig has been removed — the always-inject flag it held is now the `injection` field on the knowledge entry itself, which takes `always`, `on_demand` or `none` rather than a boolean in a second map. Set it with the forge_knowledge tool (action `write`), or PUT /api/projects/:id/knowledge/:slug, and remove projectFactsConfig from this request.';
 
-// cm:why ISS-521 kept the always-inject flag in a SECOND map (`agentConfig.projectFactsConfig`) rather than widening the kebab-key→text one: `agentConfig` is jsonb, so a parallel map needed no migration, and a fact's text then evolves independently of its injection policy.
 // cm:guard this tier is `mandatory` about DELIVERY and about nothing else — no gate reads the rule back. `ALWAYS_INJECT_GUARANTEE_NOTE` below is the sentence every surface offering the flag owes the owner who sets it, and ISS-936 is why.
-// cm:guard the cap is on the SUM of flagged bodies and the renderer does NOT truncate at it — every body is injected whatever the total, because a half-rendered hard rule is worse than a warned-but-present one. Char-based, since core has no tokenizer; ~1.5k tokens at 4 chars/tok.
+// cm:guard the cap is on the SUM of injected bodies and the renderer does NOT truncate at it — every body is injected whatever the total, because a half-rendered hard rule is worse than a warned-but-present one. Char-based, since core has no tokenizer; ~1.5k tokens at 4 chars/tok.
 // cm:edge lockstep -> packages/core/src/prompt/facts/resolve.ts — the only reader of this cap, and the one that decides overflow is warned rather than cut
-export const PROJECT_FACTS_ALWAYS_INJECT_MAX_CHARS = 6000;
+export const ALWAYS_INJECT_MAX_CHARS = 6000;
 
 // cm:guard the one LINE the owner-facing surfaces owe whoever sets this flag, and it is a promise-shaped flag: the tier renders under "Hard rules ... Follow them exactly" and nothing reads the rule back (ISS-936). Interpolate it — never paraphrase — or the surface goes back to implying the control plane enforces the rule.
 // cm:guard ONE sentence, and no markdown: it renders as body copy in the settings tab, where the project's own UX contract asks for one calm line, and into an MCP tool description and a terminal-read guide, where backticks would be swallowed. The detail that does not fit a line lives in `ALWAYS_INJECT_ENFORCEMENT_NOTE`.
-// cm:edge contract -> packages/core/src/projects/project-facts-routes.ts — returned verbatim as `alwaysInjectGuarantee` on BOTH the GET and the PATCH the settings tab uses
-// cm:edge contract -> packages/web-v2/src/features/project-settings/components/project-facts-tab.tsx — the browser copy, which reads it off that response instead of holding a second copy
 export const ALWAYS_INJECT_GUARANTEE_NOTE =
   'Flagging a fact always-inject guarantees it is READ, never that it was DONE: the body ' +
   'reaches every agent prompt, and nothing checks whether the agent followed it.';
@@ -75,102 +83,5 @@ export const ALWAYS_INJECT_ENFORCEMENT_NOTE =
   'afterwards on the job, whether it was followed is recorded nowhere. One obligation on this ' +
   'deployment does have a readback, and it shows the price: the UX contract is stored as ' +
   'ux_contract_rules rows with ids, its prose is compiled from them, and agents cite those ids ' +
-  'when they record a ux_findings row. A free-text fact has no ids to cite, so write the rule ' +
+  'when they record a ux_findings row. A free-text entry has no ids to cite, so write the rule ' +
   'so that an agent following it leaves evidence a human can look at.';
-
-const projectFactConfigEntrySchema = z.object({ alwaysInject: z.boolean().optional() }).strict();
-
-/** Patch shape for `projectFactsConfig`: per-key config; a value of `null`
- *  removes that key's config; the whole map `null` wipes it. */
-export const projectFactsConfigPatchSchema = z
-  .record(projectFactKeySchema, projectFactConfigEntrySchema.nullable())
-  .nullable()
-  .optional();
-
-// cm:why the explicit `| undefined` matches the Zod-inferred shape under `exactOptionalPropertyTypes`, which is what lets a caller pass parsed input straight in; dropping it makes every call site rebuild the object.
-export type ProjectFactConfigEntry = { alwaysInject?: boolean | undefined };
-export type ProjectFactsConfig = Record<string, ProjectFactConfigEntry>;
-export type ProjectFactsConfigPatch = Record<string, ProjectFactConfigEntry | null> | null;
-
-/**
- * Merge a projectFacts patch into the existing map. Per-key: a string sets the
- * key, `null` removes it. `patch === null` wipes the whole map (returns null so
- * the caller drops the `projectFacts` agentConfig key); `undefined` is a no-op.
- * Reserved keys are silently ignored (they are derived, not author-settable).
- */
-export function mergeProjectFacts(
-  existing: unknown,
-  patch: ProjectFactsPatch | undefined,
-): Record<string, string> | null {
-  const base: Record<string, string> =
-    existing && typeof existing === 'object' && !Array.isArray(existing)
-      ? { ...(existing as Record<string, string>) }
-      : {};
-  if (patch === null) return null;
-  if (patch === undefined) return base;
-  const reserved = new Set<string>(RESERVED_PROJECT_FACT_KEYS);
-  for (const [key, value] of Object.entries(patch)) {
-    if (reserved.has(key)) continue;
-    if (value === null) delete base[key];
-    else base[key] = value;
-  }
-  return base;
-}
-
-/**
- * Merge a projectFactsConfig patch into the existing map (mirrors
- * `mergeProjectFacts`). Per-key: an object sets the key's config, `null`
- * removes it. `patch === null` wipes the whole map (returns null so the caller
- * drops the `projectFactsConfig` agentConfig key); `undefined` is a no-op.
- * Reserved keys are silently ignored (they are derived, never always-injected).
- */
-export function mergeProjectFactsConfig(
-  existing: unknown,
-  patch: ProjectFactsConfigPatch | undefined,
-): ProjectFactsConfig | null {
-  const base: ProjectFactsConfig =
-    existing && typeof existing === 'object' && !Array.isArray(existing)
-      ? { ...(existing as ProjectFactsConfig) }
-      : {};
-  if (patch === null) return null;
-  if (patch === undefined) return base;
-  const reserved = new Set<string>(RESERVED_PROJECT_FACT_KEYS);
-  for (const [key, value] of Object.entries(patch)) {
-    if (reserved.has(key)) continue;
-    if (value === null) delete base[key];
-    else base[key] = value;
-  }
-  return base;
-}
-
-/**
- * Select the projectFacts keys flagged `alwaysInject` and pair each with its
- * full text, preserving the `projectFacts` map's declaration order. Skips
- * reserved keys and any flagged key whose text is missing/blank (a config entry
- * can outlive its fact). Pure — the char budget is applied by the renderer.
- */
-export function selectAlwaysInjectFacts(
-  projectFacts: unknown,
-  projectFactsConfig: unknown,
-): Array<{ key: string; text: string }> {
-  const facts =
-    projectFacts && typeof projectFacts === 'object' && !Array.isArray(projectFacts)
-      ? (projectFacts as Record<string, unknown>)
-      : {};
-  const config =
-    projectFactsConfig &&
-    typeof projectFactsConfig === 'object' &&
-    !Array.isArray(projectFactsConfig)
-      ? (projectFactsConfig as Record<string, ProjectFactConfigEntry | null | undefined>)
-      : {};
-  const reserved = new Set<string>(RESERVED_PROJECT_FACT_KEYS);
-  const out: Array<{ key: string; text: string }> = [];
-  for (const [key, rawText] of Object.entries(facts)) {
-    if (reserved.has(key)) continue;
-    if (config[key]?.alwaysInject !== true) continue;
-    const text = typeof rawText === 'string' ? rawText : '';
-    if (text.trim().length === 0) continue;
-    out.push({ key, text });
-  }
-  return out;
-}
