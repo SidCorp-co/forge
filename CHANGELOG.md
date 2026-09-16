@@ -5281,6 +5281,27 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+- **A project now says what releasing it means, and each connection says what it is for, so Forge
+  stops guessing both.** One setting on a connection was being asked three different questions at
+  once: which environment a deploy target serves, whether this connection is the thing that ships
+  the project, and — for a third of them — nothing at all, because an error tracker or a chat room
+  has no environment and the form demanded one anyway. That filler was then read back as the answer
+  to the second question, and the results were exactly as bad as that sounds: on one project the
+  release step was handed the error tracker as the thing to release, on another it was handed the
+  chat room, and both had been waiting at "ready to release" ever since. Three separate settings
+  replace it. A project declares whether releasing it moves code to another branch, publishes to a
+  live destination without moving any branch, or means nothing at all because finishing the work is
+  finishing it. A connection declares whether Forge can deploy to it or whether it is a facility the
+  project simply uses; only the first kind carries environments, and they are now called Preview and
+  Live rather than Staging and Production, because the old names were also branch names on eight
+  projects and told you the wrong thing on at least one. Nothing is inferred from the name of a
+  provider or from comparing two branch names. A project set up to release with nowhere to release
+  to is now told so by name, instead of being handed whichever connection happened to be created
+  first. Where more than one live destination is declared, the release step is given all of them
+  rather than one picked for it, and two that disagree about which machine should run the release
+  stop the release rather than sending it somewhere arbitrary. Two projects that should have had a
+  release step and did not now have one. No connection was deleted in the change, and no branch
+  anyone had recorded was discarded. (ISS-1046)
 
 - **The watchdog that spots a stalled job stops reading every event the deployment has ever
   recorded.** Twice a minute, and again every five minutes, Forge asks a small question: which of
