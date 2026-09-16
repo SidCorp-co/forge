@@ -75,7 +75,15 @@ INSERT INTO iss1046_bindings (binding_id, slug, provider, old_environment, role,
   ('153efbf7-632b-430e-bef7-ca7bdc0a7757', 'sidpeak', 'coolify', 'staging', 'deploy', ARRAY['preview']::text[]),
   ('e1767a04-228d-469a-b239-18112cfd678c', 'traceos', 'github', 'prod', 'service', '{}'::text[]),
   ('4866a074-e511-4543-b778-ce55b12e9227', 'dodgeprint-api', 'sentry', 'prod', 'service', '{}'::text[]),
-  ('4e11a87b-e739-4a26-8fc0-cd1a33dab313', 'dodgeprint-api', 'rocketchat', 'prod', 'service', '{}'::text[]);
+  ('4e11a87b-e739-4a26-8fc0-cd1a33dab313', 'dodgeprint-api', 'rocketchat', 'prod', 'service', '{}'::text[]),
+  -- The six the forward roster was written before. Their `environment` is not guessed
+  -- here: it is the reading the forward migration refused to run without.
+  ('749993a9-132a-4268-a724-8c67340b88d0', 'qa-project-available-for-testing', 'coolify', 'staging', 'deploy', ARRAY['preview']::text[]),
+  ('924679c1-43c5-4783-92fa-4f0653a76ff3', 'qa-iss319-create-verify', 'coolify', 'staging', 'deploy', ARRAY['preview']::text[]),
+  ('efc97d7e-6f61-4a3f-9264-f0318091a454', 'qa-project-available-for-testing', 'coolify', 'prod', 'deploy', ARRAY['live']::text[]),
+  ('a6782c32-8ef7-42c9-905b-d055023edfc8', 'qa-project-available-for-testing', 'epodsystem', 'prod', 'deploy', ARRAY['preview', 'live']::text[]),
+  ('aac45791-3758-4178-b992-129f312df2c2', 'qa-project-available-for-testing', 'epodsystem', 'prod', 'deploy', ARRAY['preview', 'live']::text[]),
+  ('e5544f43-d94f-4bb6-984e-c9f4d4954640', 'qa-project-available-for-testing', 'epodsystem', 'prod', 'deploy', ARRAY['preview', 'live']::text[]);
 
 -- A binding created while 0253 was live has no declared `environment` to go back
 -- to, and guessing one is how a rollback loses a row's meaning silently. Name it
@@ -116,6 +124,34 @@ UPDATE integration_bindings b
  WHERE d.binding_id = b.id;
 
 ALTER TABLE "integration_bindings" ALTER COLUMN "environment" SET NOT NULL;
+
+-- The inverse of 0253's step 6b. Forward, a service row whose only separation from the
+-- default binding was `environment` took a label to survive the index; with `environment`
+-- back, the label is that same fact stated twice and the row belongs at '' again.
+-- Narrow on purpose: only a row still sitting beside a default binding of the same
+-- (project, provider) whose label repeats its own environment — an epodsystem store
+-- genuinely named `staging` has no such sibling and is left alone.
+DO $$
+DECLARE back text;
+BEGIN
+  WITH undone AS (
+    UPDATE integration_bindings b SET label = ''
+     WHERE b.role = 'service' AND b.label = b.environment AND b.label <> ''
+       AND EXISTS (SELECT 1 FROM integration_bindings o
+                    WHERE o.project_id = b.project_id AND o.provider = b.provider
+                      AND o.label = '' AND o.role = 'service' AND o.id <> b.id)
+    RETURNING b.id, b.project_id, b.provider, b.environment
+  )
+  SELECT string_agg(format('%s (project %s, provider %s, environment %s)',
+                           u.id, p.slug, u.provider, u.environment), ', ' ORDER BY u.id)
+    INTO back
+    FROM undone u JOIN projects p ON p.id = u.project_id;
+  IF back IS NOT NULL THEN
+    RAISE NOTICE 'ISS-1046 rollback: service binding(s) gave back the label 6b handed them, '
+      'now that `environment` carries the distinction again: %', back;
+  END IF;
+END $$;
+
 
 CREATE UNIQUE INDEX "integration_bindings_project_provider_env_label_uq"
     ON "integration_bindings" ("project_id","provider","environment","label");
