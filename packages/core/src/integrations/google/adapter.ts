@@ -110,7 +110,9 @@ export const googleAdapter: IntegrationAdapter<GoogleConfig, GoogleSecrets> = {
       mint = await mintForHealthcheck(ctx.connectionId, ctx.secrets);
     } catch (err) {
       if (err instanceof GoogleAuthError && err.kind === 'rejected') {
-        return failHealth(ctx.connectionId, 'needs_reauth', err.message, { httpStatus: err.status });
+        return failHealth(ctx.connectionId, 'needs_reauth', err.message, {
+          httpStatus: err.status,
+        });
       }
       const message = err instanceof Error ? err.message : 'unknown error';
       logger.warn(

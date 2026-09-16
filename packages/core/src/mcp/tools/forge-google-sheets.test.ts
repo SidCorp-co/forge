@@ -81,7 +81,7 @@ beforeEach(() => {
 });
 
 describe('forge_google_sheets routing', () => {
-  it('list reaches the project\'s bindings', async () => {
+  it("list reaches the project's bindings", async () => {
     pushMemberOk();
     listSpy.mockResolvedValue({ integrations: [] });
     await tool().handler({ action: 'list', projectId: PROJECT_ID });
@@ -163,9 +163,9 @@ describe('forge_google_sheets refusals', () => {
 
   it('refuses a read with no range rather than guessing one', async () => {
     pushMemberOk();
-    await expect(
-      tool().handler({ action: 'read', projectId: PROJECT_ID }),
-    ).rejects.toThrow(/needs `range`/);
+    await expect(tool().handler({ action: 'read', projectId: PROJECT_ID })).rejects.toThrow(
+      /needs `range`/,
+    );
     expect(readSpy).not.toHaveBeenCalled();
   });
 
@@ -178,9 +178,7 @@ describe('forge_google_sheets refusals', () => {
   });
 
   it('refuses an unknown action at the schema, before any project is resolved', async () => {
-    await expect(
-      tool().handler({ action: 'delete', projectId: PROJECT_ID }),
-    ).rejects.toThrow();
+    await expect(tool().handler({ action: 'delete', projectId: PROJECT_ID })).rejects.toThrow();
   });
 
   it('refuses a key an operator hoped to pass through', async () => {

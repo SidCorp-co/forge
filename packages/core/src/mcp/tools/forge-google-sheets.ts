@@ -54,17 +54,17 @@ type Input = z.infer<typeof inputSchema>;
 export const forgeGoogleSheetsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_google_sheets',
   description:
-    'Read and write the Google Sheets this project\'s service account is granted. Actions: list | ' +
+    "Read and write the Google Sheets this project's service account is granted. Actions: list | " +
     'info | read | update | append. ' +
     'MODEL: the credential is a Google SERVICE ACCOUNT held by Forge, never by you — core resolves ' +
     "the project's binding and makes the Google call itself, so there is no key to fetch and none " +
-    'is returned. A sheet is reachable only if it has been SHARED with the account\'s client_email ' +
+    "is returned. A sheet is reachable only if it has been SHARED with the account's client_email " +
     '(Viewer for reads, Editor for writes); `info` is how you find out. ' +
     'spreadsheetId is the segment between /d/ and /edit in the sheet URL, and is OPTIONAL: omitted, ' +
     "it resolves to the spreadsheet this project's binding declares as its default. Naming one " +
     'overrides that default for the call. If neither is present the call is REFUSED — no sheet is ' +
     'guessed. ' +
-    'list: the project\'s Google bindings — { id, environment, active, clientEmail, ' +
+    "list: the project's Google bindings — { id, environment, active, clientEmail, " +
     'defaultSpreadsheetId, lastHealthStatus }. An empty array means this project has no Google ' +
     'connection; that is the answer, not an error. ' +
     'info: { spreadsheetId, title, sheetTitles[] } — read this BEFORE a range, because a range ' +

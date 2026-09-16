@@ -121,9 +121,7 @@ describe('scopes (criteria 8, 9)', () => {
     });
     const claims = decodeSegment(String(ep.calls[0]?.body.get('assertion')?.split('.')[1]));
     expect(claims.scope).toBe('https://www.googleapis.com/auth/spreadsheets.readonly');
-    expect(ep.calls[0]?.body.get('grant_type')).toBe(
-      'urn:ietf:params:oauth:grant-type:jwt-bearer',
-    );
+    expect(ep.calls[0]?.body.get('grant_type')).toBe('urn:ietf:params:oauth:grant-type:jwt-bearer');
   });
 
   it('a write mints the read-write scope alone', async () => {

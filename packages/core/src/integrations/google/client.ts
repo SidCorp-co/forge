@@ -42,7 +42,11 @@ export interface GoogleClientArgs {
 }
 
 // cm:guard 401 and 403 are different verdicts and must never be collapsed — Google answers 401 for a token it will not accept and 403 for an account it accepts and refuses this spreadsheet, and the two name different operator actions: replace the credential, or share the sheet with the account. The same guard is on `coolify/adapter.ts` and `github/adapter.ts` (ISS-924).
-function describeSheetsFailure(status: number, route: string, spreadsheetId: string): GoogleApiError {
+function describeSheetsFailure(
+  status: number,
+  route: string,
+  spreadsheetId: string,
+): GoogleApiError {
   if (status === 401) {
     return new GoogleApiError(
       401,

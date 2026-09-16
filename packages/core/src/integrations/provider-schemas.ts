@@ -12,6 +12,7 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { integrationEnvironments } from '../db/schema.js';
+import { parseServiceAccountKey } from './google/auth.js';
 import { isRotatingProvider, mergeRotatedSecrets, type RotatingProvider } from './rotation.js';
 import { assertVaultConfigured, badRequest } from './route-helpers.js';
 
@@ -270,32 +271,19 @@ const googleConfigBase = z.object({
 const SERVICE_ACCOUNT_SHAPE_REFUSAL =
   'serviceAccountJson must be the whole service-account key file Google issued — a JSON object with "type":"service_account", "client_email" and "private_key". Download it from the Google Cloud console under IAM & Admin → Service Accounts → Keys → Add key → JSON, and paste the file unchanged.';
 
-// cm:guard the file is validated for SHAPE here and never reshaped — Forge stores the bytes Google issued, so a key whose `private_key_id` or `token_uri` Forge did not think to model still signs correctly. Parsing it into named columns is how a future Google field goes missing in silence.
+// cm:edge contract -> packages/core/src/integrations/google/auth.ts — what counts as a service-account key file is decided by `parseServiceAccountKey` and nowhere else. Restating the field checks here would let the create form accept a file the mint then refuses, which is the create-time validation and the run-time validation disagreeing about the same bytes.
+// cm:guard the file is validated for SHAPE and never reshaped — Forge stores the bytes Google issued, so a key carrying a field Forge did not think to model still signs correctly. Parsing it into named columns is how a future Google field goes missing in silence.
 const googleSecretsSchema = z.object({
   serviceAccountJson: z
     .string()
     .min(100)
     .max(20000)
     .superRefine((value, ctx) => {
-      let parsed: unknown;
       try {
-        parsed = JSON.parse(value);
+        parseServiceAccountKey(value);
       } catch {
         ctx.addIssue({ code: 'custom', message: SERVICE_ACCOUNT_SHAPE_REFUSAL });
-        return;
       }
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        ctx.addIssue({ code: 'custom', message: SERVICE_ACCOUNT_SHAPE_REFUSAL });
-        return;
-      }
-      const key = parsed as Record<string, unknown>;
-      const ok =
-        key.type === 'service_account' &&
-        typeof key.client_email === 'string' &&
-        key.client_email.length > 0 &&
-        typeof key.private_key === 'string' &&
-        key.private_key.includes('PRIVATE KEY');
-      if (!ok) ctx.addIssue({ code: 'custom', message: SERVICE_ACCOUNT_SHAPE_REFUSAL });
     }),
 });
 

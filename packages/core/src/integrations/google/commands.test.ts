@@ -69,7 +69,9 @@ function row(opts: {
     connection: {
       id: 'conn-1',
       provider: 'google',
-      config: opts.connectionConfig ?? { clientEmail: 'forge@forge-sheets-1.iam.gserviceaccount.com' },
+      config: opts.connectionConfig ?? {
+        clientEmail: 'forge@forge-sheets-1.iam.gserviceaccount.com',
+      },
       active: opts.connectionActive ?? true,
       lastHealthStatus: 'ok',
       secretsPlain: opts.secrets === null ? {} : (opts.secrets ?? { serviceAccountJson: KEY_FILE }),

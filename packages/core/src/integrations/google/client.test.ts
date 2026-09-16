@@ -2,7 +2,7 @@ import { generateKeyPairSync } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import { __resetGoogleTokenCache } from './auth.js';
 import { appendValues, getSpreadsheet, readValues, updateValues } from './client.js';
-import { GoogleApiError } from './types.js';
+import type { GoogleApiError } from './types.js';
 
 const { privateKey } = generateKeyPairSync('rsa', {
   modulusLength: 2048,
@@ -47,7 +47,7 @@ function fakeGoogle(opts: { sheetsStatus?: number; title?: string } = {}) {
       );
     }
 
-    const parsedBody = rawBody && rawBody.startsWith('{') ? JSON.parse(rawBody) : rawBody;
+    const parsedBody = rawBody?.startsWith('{') ? JSON.parse(rawBody) : rawBody;
     seen.push({
       url,
       method: init?.method ?? 'GET',

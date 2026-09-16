@@ -88,7 +88,7 @@ export function resolveSpreadsheetId(
   if (typeof fallback === 'string' && fallback.length > 0) return fallback;
   throw new GoogleCommandError(
     'NO_SPREADSHEET',
-    'no spreadsheet was named and this project\'s Google binding declares no default — pass `spreadsheetId`, or set a default spreadsheet on the binding. Nothing was sent to Google.',
+    "no spreadsheet was named and this project's Google binding declares no default — pass `spreadsheetId`, or set a default spreadsheet on the binding. Nothing was sent to Google.",
   );
 }
 

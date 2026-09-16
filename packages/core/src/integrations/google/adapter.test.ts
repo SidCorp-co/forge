@@ -67,7 +67,8 @@ function wireGoogle(w: Wiring = {}) {
   }) as unknown as typeof fetch;
   return {
     urls,
-    tokenCalls: () => urls.filter((u) => u.startsWith('https://oauth2.googleapis.com/token')).length,
+    tokenCalls: () =>
+      urls.filter((u) => u.startsWith('https://oauth2.googleapis.com/token')).length,
     sheetsCalls: () => urls.filter((u) => u.startsWith('https://sheets.googleapis.com')).length,
   };
 }
@@ -191,10 +192,10 @@ describe('googleAdapter.healthcheck (criteria 10, 11, 12, 13)', () => {
         }
         return new Response('{"error":"invalid_grant"}', { status: 400 });
       }
-      return new Response(
-        JSON.stringify({ properties: { title: 'Roster' }, sheets: [] }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      );
+      return new Response(JSON.stringify({ properties: { title: 'Roster' }, sheets: [] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
     }) as unknown as typeof fetch;
 
     const res = await googleAdapter.healthcheck(

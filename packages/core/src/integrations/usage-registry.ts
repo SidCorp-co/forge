@@ -29,7 +29,7 @@ export const INTEGRATION_USAGE: Record<string, IntegrationUsage> = {
   },
   google: {
     usage:
-      'Read and write the project\'s bound Google Sheets via the `forge_google_sheets` tool. Core holds the service-account key — there is none to fetch, and a sheet is reachable only once it is shared with the account.',
+      "Read and write the project's bound Google Sheets via the `forge_google_sheets` tool. Core holds the service-account key — there is none to fetch, and a sheet is reachable only once it is shared with the account.",
     guide: 'google-sheets',
   },
   epodsystem: {
