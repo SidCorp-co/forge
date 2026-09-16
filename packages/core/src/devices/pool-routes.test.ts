@@ -129,6 +129,29 @@ describe('POST /me/run-sessions', () => {
       projectId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
       issueKeys: ['ISS-957', 'ISS-958'],
       name: 'grp-957-958',
+      boxRunId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    });
+  });
+
+  // cm:guard the assertion is that the box's own run id REACHES the service, and it is separate
+  // from the case above because the schema has demanded this field since the route was written
+  // while the handler dropped it: every existing test passed a `runId` and none of them asked
+  // what became of it, so a 200 that discarded it was indistinguishable from a 200 that stored it
+  // (ISS-1050 criterion 6).
+  it('passes the box run id through rather than discarding the field it demands', async () => {
+    openRunSession.mockResolvedValue({ sessionId: 's9', runId: 'r9' });
+    await app.request('/api/devices/me/run-sessions', {
+      method: 'POST',
+      headers: { ...AUTH, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        projectId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        runId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+        issueKeys: ['ISS-957'],
+        name: 'grp',
+      }),
+    });
+    expect(openRunSession.mock.calls.at(-1)?.[0]).toMatchObject({
+      boxRunId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
     });
   });
 

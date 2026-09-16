@@ -25,6 +25,10 @@ export const RUN_SESSION_TYPE = 'run_session';
 /** Where a run's issue group lives on its one-shot run. */
 export const RUN_ISSUES_METADATA_KEY = 'runIssues';
 
+/** The box's own run id for this dispatch, so the two records can be joined. */
+// cm:guard STORED and never read for control. The box mints this id first, into its own sqlite registry, and core mints a `pipeline_runs` id of its own; without one side recording the other's there is no key at all between a row in `~/.local/share/forge-runner/ledger.sqlite` and the run session that answers for it, and a person holding one has to guess. It is recorded because the route was already being handed it and dropping it on the floor is a 200 that does nothing with a field the caller sent (ISS-1050 criterion 6).
+export const BOX_RUN_ID_METADATA_KEY = 'boxRunId';
+
 /** Where each issue's status AT OPEN lives, beside the group itself. */
 // cm:guard a SECOND key beside `runIssues` and never a reshape of it: `releaseIssueLease` and `isIssueLeaseHeld` both match `runIssues` with `@> to_jsonb(<key>)`, so turning its elements into objects makes every lease on every box unreadable at once — and the containment query fails OPEN, reporting no lease held rather than erroring.
 export const RUN_ISSUE_STATUSES_METADATA_KEY = 'runIssueStatuses';
@@ -78,6 +82,7 @@ export async function openRunSession(args: {
   projectId: string;
   issueKeys: string[];
   name: string;
+  boxRunId?: string;
 }): Promise<RunSession> {
   if (args.issueKeys.length === 0) {
     throw new Error('openRunSession: a run session must carry at least one issue');
@@ -93,6 +98,7 @@ export async function openRunSession(args: {
       deviceId: args.deviceId,
       [RUN_ISSUES_METADATA_KEY]: canonical.keys,
       [RUN_ISSUE_STATUSES_METADATA_KEY]: openingStatuses,
+      ...(args.boxRunId ? { [BOX_RUN_ID_METADATA_KEY]: args.boxRunId } : {}),
     },
   });
   const [row] = await db
@@ -110,7 +116,13 @@ export async function openRunSession(args: {
     .returning({ id: agentSessions.id });
   if (!row) throw new Error('openRunSession: insert returned no row');
   logger.info(
-    { runSessionId: row.id, runId: run.id, deviceId: args.deviceId, issues: canonical.keys },
+    {
+      runSessionId: row.id,
+      runId: run.id,
+      boxRunId: args.boxRunId ?? null,
+      deviceId: args.deviceId,
+      issues: canonical.keys,
+    },
     'run-session: opened',
   );
   return { sessionId: row.id, runId: run.id };

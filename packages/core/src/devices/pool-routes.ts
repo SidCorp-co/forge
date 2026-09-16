@@ -119,6 +119,11 @@ devicePoolRoutes.post(
       projectId: body.projectId,
       issueKeys: body.issueKeys,
       name: body.name,
+      // cm:guard the box's run id is PASSED ON rather than dropped. The schema has always
+      // demanded it and the handler used to discard it, which is a 200 that does nothing with a
+      // field the caller sent, and it left the box ledger and `pipeline_runs` with no key
+      // between them (ISS-1050 criterion 6).
+      boxRunId: body.runId,
     });
     return c.json(session);
   },
