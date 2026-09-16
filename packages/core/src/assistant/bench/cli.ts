@@ -7,7 +7,9 @@
 import { createClient, type FetchLike } from './client.js';
 import { compare, compareLines, sideOf } from './compare.js';
 import { HISTORY_USAGE, historyMain } from './history/cli.js';
+import { readHistoryResult } from './history/result.js';
 import { isVerdict, type Judge, judgeFromEnv, tally, tallyLine } from './judge.js';
+import { ladderLines, ladderMarkdown, rankRuns, rankWindows } from './ladder.js';
 import { type BenchResult, readResult, serializeResult, type TaskResult } from './result.js';
 import { runTrial } from './run.js';
 import type { Task } from './task.js';
@@ -29,6 +31,7 @@ export type Env = Record<string, string | undefined>;
 export const USAGE = [
   'bench:assistant run --api <url> --project <slug> --out <file> [--tasks a,b] [--trials 3] [--k 3] [--judge <model>]',
   'bench:assistant compare <before.json> <after.json>',
+  'bench:assistant ladder <run.json>... [--history <history.json>]... [--out ladder.md]',
   ...HISTORY_USAGE,
   'credentials: FORGE_BENCH_TOKEN, or FORGE_BENCH_EMAIL and FORGE_BENCH_PASSWORD',
   'judge (--judge): FORGE_BENCH_JUDGE_URL and FORGE_BENCH_JUDGE_KEY; the verdict is stored beside the modes and never read into pass',
@@ -186,12 +189,52 @@ async function compareFiles(argv: string[], deps: CliDeps): Promise<number> {
   return 0;
 }
 
-/** Exit code: 0 for a run or comparison that completed, 1 for a refusal or a deployment error. */
+/** Run files ranked on one printed score, history windows ranked beside them; Markdown to `--out`. */
+async function ladder(argv: string[], deps: CliDeps): Promise<number> {
+  const runFiles: string[] = [];
+  const historyFiles: string[] = [];
+  let out: string | undefined;
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i] ?? '';
+    if (arg === '--history' || arg === '--out') {
+      const value = argv[i + 1];
+      if (value === undefined || value.startsWith('--')) throw new Refusal(`${arg} needs a value`);
+      if (arg === '--history') historyFiles.push(value);
+      else out = value;
+      i += 1;
+    } else if (arg.startsWith('--')) throw new Refusal(`unknown flag ${arg}\n${USAGE.join('\n')}`);
+    else runFiles.push(arg);
+  }
+  if (runFiles.length === 0)
+    throw new Refusal(`ladder needs at least one run file\n${USAGE.join('\n')}`);
+  const runs = rankRuns(
+    await Promise.all(
+      runFiles.map(async (name) => ({ name, result: readResult(await deps.readFile(name), name) })),
+    ),
+  );
+  const windows = rankWindows(
+    await Promise.all(
+      historyFiles.map(async (name) => ({
+        name,
+        result: readHistoryResult(await deps.readFile(name), name),
+      })),
+    ),
+  );
+  for (const line of ladderLines(runs, windows)) deps.stdout(line);
+  if (out) {
+    await deps.writeFile(out, ladderMarkdown(runs, windows));
+    deps.stdout(`wrote ${out}`);
+  }
+  return 0;
+}
+
+/** Exit code: 0 for a run, comparison or ladder that completed, 1 for a refusal or a deployment error. */
 export async function main(argv: string[], env: Env, deps: CliDeps): Promise<number> {
   const [verb, ...rest] = argv;
   try {
     if (verb === 'run') return await run(rest, env, deps);
     if (verb === 'compare') return await compareFiles(rest, deps);
+    if (verb === 'ladder') return await ladder(rest, deps);
     if (verb === 'history' || verb === 'compare-history')
       return await historyMain(verb, rest, env, deps);
     throw new Refusal(USAGE.join('\n'));

@@ -113,6 +113,10 @@
 
 
 ### Added
+- `bench:assistant ladder <run.json>... [--history h.json] [--out ladder.md]`: runs ranked on one
+  printed score (mean pass^k over the tasks walked, 0–100) with the lowest task on the same row,
+  the judge's served rate as a column, `partial` and `thin` marks, and history windows ranked by
+  served rate; reverses ISS-1051's no-composite rule on the owner's word. (ISS-1059)
 - `bench:assistant run --judge <model>` and `history --judge <model> [--judge-sample 40]`: a
   second model, on another family, says whether the person was served; the verdict sits beside the
   modes and is never read into `pass`, pass^k or a rate; comparisons print its counts and its

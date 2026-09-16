@@ -134,9 +134,46 @@ refused by name before any call, and a run stops there with the refused trial's 
 in the partial file. `history --judge` judges the newest `--judge-sample` kept rows (default 40)
 after `--exclude` has dropped the bench rooms; `run --judge` judges every turn of every trial.
 
+## Ladder: one printed score, never printed alone
+
+`pnpm --filter @forge/core bench:assistant ladder <run.json>... [--history <history.json>]... [--out ladder.md]`
+ranks every run file given, best first, on one score defined once in `ladder.ts:score` and printed
+under every ladder: **the mean of pass^k over the tasks the run walked, 0–100, ties broken by the
+lowest task**, at one k for every file on the ladder, the largest any file names, as `compare` does. ISS-1051 refused a composite because a mean hides a task that cliffs; the owner
+reversed that on 2026-09-16 because a benchmark that cannot rank two builds is not one, and the
+reversal is made safe by the row, not the number: every score has the lowest task and its pass^k on
+the same row (`ladder.test.ts` plants a task at 0% on the run with the best mean and reads it
+there), the count of tasks at 100%, the judge's served rate as a column that never enters the score,
+the median seconds, and the marks `partial (7 of 10 tasks)` and `thin`. A `delta` line closes the
+run table with the gap between the top two rows, column by column. A second table ranks history
+files by served rate (judge `yes` over judged rows) and then by the fewest flagged rows, with rows
+and sessions beside them and `thin` under 30 rows. `--out` writes the same tables as Markdown.
+
+A ladder printed from the two ISS-1051 live runs, the ISS-1051 verification run and the ISS-1054
+judged history reading (`bench:assistant ladder beta-run.json beta-run2.json beta-verify.json --history beta-history-judged.json`):
+
+```
+runs
+#  run               commit    model             score  lowest task         full  judge served  median  marks
+1  beta-run.json     3012f636  cx/gpt-5.6-terra  50.0   filing-guidance 0%  5/10  —             9.7s    —
+2  beta-run2.json    99c1002a  cx/gpt-5.6-terra  40.0   filing-guidance 0%  4/10  —             9.6s    —
+3  beta-verify.json  2343225c  cx/gpt-5.6-terra  —      —                   0/2   —             6.6s    partial (2 of 10 tasks), thin
+score = mean of pass^k over the tasks walked at k = 3, 0-100; tie: the lowest task; the judge is a column, never in the score
+delta (1st over 2nd): score +10.0; lowest task 0% vs 0%; full tasks +1; judge served — vs —; median +0.1s
+history windows
+#  window file               commit    window                                                   rows  sessions  served       flagged  marks
+1  beta-history-judged.json  63a54a44  qa-project-available-for-testing 2026-09-14..2026-09-17  48    26        78% (31/40)  18/48    —
+served = judge yes over judged rows; flagged = rows carrying a mode over rows
+```
+
+The verification run walked two tasks once each, so no task has an estimator at k = 3, its score is
+`—` and it is marked `partial` and `thin`; the two full runs share the same lowest task at 0%, and
+the mean alone would not have said so.
+
 ## What it does not do
 
-- Weight the judge into `pass`, pass^k or any composite; `--judge` annotates, it never scores.
+- Weight the judge into `pass`, pass^k or the ladder's score; `--judge` annotates, it never scores.
+- Print a score without the lowest task beside it; the ladder's row is the unit, not its number.
 - Walk the `POST /api/chat` or Rocket.Chat doors; only the browser's door is benchmarked.
 - Decide language: the `language` check is a diacritic heuristic (`grade.ts:vietnameseWords`).
   After code spans, URLs and double-quoted spans are removed it counts words carrying a Vietnamese
