@@ -1,0 +1,88 @@
+/**
+ * ISS-1053 - two history files side by side, per model and source: rates beside the counts they
+ * come from, medians, and what separates the windows. No total line: a window is not a score.
+ */
+
+import type { FailureMode } from '../grade.js';
+import type { HistoryResult } from './result.js';
+import type { Group, ModeTally } from './summarize.js';
+
+export interface GroupComparison {
+  model: string;
+  source: string;
+  before: Group | null;
+  after: Group | null;
+}
+
+export interface HistoryComparison {
+  groups: GroupComparison[];
+  differences: string[];
+}
+
+const windowOf = (r: HistoryResult): string =>
+  `${r.window.projectSlug} ${r.window.from}..${r.window.to}${r.window.source ? ` source=${r.window.source}` : ''}`;
+const rowsOf = (r: HistoryResult): number => r.groups.reduce((sum, g) => sum + g.rows, 0);
+
+function differences(before: HistoryResult, after: HistoryResult): string[] {
+  const out: string[] = [];
+  const pairs: Array<[string, unknown, unknown]> = [
+    ['commit', before.commit, after.commit],
+    ['window', windowOf(before), windowOf(after)],
+    ['budget seconds', before.budgetSeconds, after.budgetSeconds],
+    ['max iterations', before.maxIterations, after.maxIterations],
+    ['resolved', before.resolved, after.resolved],
+    ['rows', rowsOf(before), rowsOf(after)],
+  ];
+  for (const [name, a, b] of pairs) {
+    if (a !== b) out.push(`${name}: ${String(a)} -> ${String(b)}`);
+  }
+  return out;
+}
+
+/** Every group present on either side, paired by model and source. */
+export function compareHistory(before: HistoryResult, after: HistoryResult): HistoryComparison {
+  const key = (g: Group): string => `${g.model} ${g.source}`;
+  const keys = [...new Set([...before.groups, ...after.groups].map(key))];
+  const groups = keys.flatMap((k) => {
+    const b = before.groups.find((g) => key(g) === k) ?? null;
+    const a = after.groups.find((g) => key(g) === k) ?? null;
+    const any = b ?? a;
+    return any ? [{ model: any.model, source: any.source, before: b, after: a }] : [];
+  });
+  return { groups, differences: differences(before, after) };
+}
+
+const pct = (v: number | null): string => (v === null ? '-' : `${(v * 100).toFixed(1)}%`);
+const num = (v: number | null): string => (v === null ? '-' : v.toFixed(1));
+
+function sideLines(label: string, g: Group | null): string[] {
+  if (!g) return [`  ${label}: no rows`];
+  const modes = (Object.entries(g.modes) as Array<[FailureMode, ModeTally]>)
+    .filter(([, t]) => t.count > 0)
+    .sort((x, y) => y[1].count - x[1].count)
+    .map(([m, t]) => `${m} ${t.count}/${g.rows} (${pct(t.rate)})`)
+    .join(', ');
+  const thin = g.thin ? ` (thin: ${g.rows} < 30)` : '';
+  return [
+    `  ${label}: ${g.rows} rows in ${g.sessions} sessions${thin}; median ${num(g.medians.ms)}ms, ${num(g.medians.calls)} calls, ${num(g.medians.iterations)} iterations`,
+    `    ${modes || 'no mode on any row'}`,
+  ];
+}
+
+/** Lines for a terminal: every rate beside its count, and no total. */
+export function compareHistoryLines(c: HistoryComparison): string[] {
+  const lines: string[] = [];
+  for (const g of c.groups) {
+    lines.push(
+      `${g.model} / ${g.source}`,
+      ...sideLines('before', g.before),
+      ...sideLines('after', g.after),
+    );
+  }
+  lines.push(
+    c.differences.length === 0
+      ? 'no differences: same commit, window, budgets and row count'
+      : `differences: ${c.differences.join('; ')}`,
+  );
+  return lines;
+}

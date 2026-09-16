@@ -14,6 +14,7 @@ import { doorPolicy } from '../messaging/doors.js';
 import { withRepairs } from '../messaging/repairs.js';
 import { screenReplyAtDoor } from '../messaging/reply-screen.js';
 import {
+  CORRECTIVE_PREFIX,
   emptyFallbackReply,
   errorFallbackReply,
   unverifiedFallbackReply,
@@ -37,7 +38,7 @@ export function declinedTurn(text: string): boolean {
 }
 
 const correctiveMessage = (problems: string[]): string =>
-  `[SYSTEM CHECK — not from the user] Your previous reply cannot be sent as-is: ${problems.join('; ')}. Rewrite it now, keep only verified facts, actually CALL the tools if work is needed, cite issue ids/links only exactly as tools returned them, and reply in the user's language.`;
+  `${CORRECTIVE_PREFIX} Your previous reply cannot be sent as-is: ${problems.join('; ')}. Rewrite it now, keep only verified facts, actually CALL the tools if work is needed, cite issue ids/links only exactly as tools returned them, and reply in the user's language.`;
 
 const EMPTY_RETRY = {
   rule: 'non-empty',

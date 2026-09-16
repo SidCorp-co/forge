@@ -114,6 +114,15 @@
 
 ### Added
 
+- **The assistant's chat history is graded too.** `bench:assistant history` reads a window of
+  `chat_logs` rows through the API and grades each row with the benchmark's own graders on what a
+  row alone can show: a fallback sent, no answer or an error, a screen repair (the retry's own
+  query names it), help roundtrips, placeholder arguments, repeated calls, badly shaped or dead
+  issue links, a Vietnamese question answered in English, a turn over budget. The file counts per
+  model and source with every rate beside its count, medians, and the flagged rows each pointing
+  at a `chat_logs` id; `compare-history` puts two windows side by side. It reads only, and drops
+  the benchmark's own rooms when given the run file. (ISS-1053)
+
 - **The assistant has a benchmark.** Until now a change to a persona line, a tool description or a
   door budget was judged by hand from the next few replies. `pnpm --filter @forge/core
   bench:assistant run` walks ten fixed tasks through the browser's chat door against a served build,

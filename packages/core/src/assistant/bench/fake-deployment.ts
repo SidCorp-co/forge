@@ -42,12 +42,16 @@ export interface FakeOptions {
   /** Return a status to refuse a request with, or null to let it through. */
   refuse?: (method: string, path: string, count: number) => number | null;
   pageSize?: number;
+  /** Rows the window already holds before any room is opened, for the history verb's tests. */
+  rows?: FakeState['chatLogs'];
 }
 
 export interface FakeState {
   prefs: { answerStyle: string; assistantInstructions: string | null };
   changes: PreferenceChange[];
-  chatLogs: Array<ChatLogRow & { projectSlug: string; model: string }>;
+  chatLogs: Array<
+    ChatLogRow & { projectSlug: string; model: string; query: string; source: string }
+  >;
   rooms: Map<string, { title: string; projectId: string; messages: RoomMessage[]; seq: number }>;
   deleted: string[];
   requests: Array<{ method: string; path: string; auth: string | null }>;
@@ -136,6 +140,8 @@ function playTurn(ctx: Ctx, roomId: string, content: string): Response {
       sessionId: roomId,
       projectSlug: ctx.project.slug,
       model: 'fake-model',
+      query: content,
+      source: 'web-chat-reply',
       reply: a.reply,
       toolCalls: (a.toolCalls ?? []).map((c) => ({
         ...c,
@@ -166,13 +172,14 @@ function playTurn(ctx: Ctx, roomId: string, content: string): Response {
 
 function chatLogs(ctx: Ctx, url: URL): Response {
   const slug = url.searchParams.get('projectSlug');
+  const source = url.searchParams.get('source');
   const page = Number(url.searchParams.get('page') ?? '1');
   const pageSize = Math.min(
     Number(url.searchParams.get('pageSize') ?? '50'),
     ctx.opts.pageSize ?? 100,
   );
   const rows = ctx.state.chatLogs
-    .filter((r) => r.projectSlug === slug)
+    .filter((r) => r.projectSlug === slug && (!source || r.source === source))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
   const offset = (page - 1) * pageSize;
   const items = rows.slice(offset, offset + pageSize);
@@ -259,7 +266,7 @@ export function createFakeDeployment(opts: FakeOptions): { fetch: FetchLike; sta
   const state: FakeState = {
     prefs: { ...(opts.prefs ?? { answerStyle: 'default', assistantInstructions: null }) },
     changes: [],
-    chatLogs: [],
+    chatLogs: [...(opts.rows ?? [])],
     rooms: new Map(),
     deleted: [],
     requests: [],

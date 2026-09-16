@@ -6,6 +6,7 @@
 
 import { createClient, type FetchLike } from './client.js';
 import { compare, compareLines, sideOf } from './compare.js';
+import { HISTORY_USAGE, historyMain } from './history/cli.js';
 import { type BenchResult, readResult, serializeResult, type TaskResult } from './result.js';
 import { runTrial } from './run.js';
 import type { Task } from './task.js';
@@ -27,6 +28,7 @@ export type Env = Record<string, string | undefined>;
 export const USAGE = [
   'bench:assistant run --api <url> --project <slug> --out <file> [--tasks a,b] [--trials 3] [--k 3]',
   'bench:assistant compare <before.json> <after.json>',
+  ...HISTORY_USAGE,
   'credentials: FORGE_BENCH_TOKEN, or FORGE_BENCH_EMAIL and FORGE_BENCH_PASSWORD',
 ];
 
@@ -166,6 +168,8 @@ export async function main(argv: string[], env: Env, deps: CliDeps): Promise<num
   try {
     if (verb === 'run') return await run(rest, env, deps);
     if (verb === 'compare') return await compareFiles(rest, deps);
+    if (verb === 'history' || verb === 'compare-history')
+      return await historyMain(verb, rest, env, deps);
     throw new Refusal(USAGE.join('\n'));
   } catch (err) {
     deps.stderr(err instanceof Error ? err.message : String(err));

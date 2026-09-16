@@ -80,6 +80,34 @@ attempt leaves a `chat_logs` row. Both carry the bench room's id (`conversation_
 the file lists every room it opened (`cleanup.room.id`), and a reading of the corpus excludes the
 benchmark's rows by those ids. `auditRowsAdded` in each trial is that count.
 
+## History: the same graders over what real people asked
+
+`pnpm --filter @forge/core bench:assistant history --api <url> --project <slug> --from <date> --to <date> --out <file> [--source s] [--resolve] [--budget-seconds 60] [--max-iterations 8] [--exclude run.json]...`
+reads every `chat_logs` row of the window through `GET /api/chat-logs` and grades each row on what
+a row alone can show (`history/grade-row.ts:gradeRow`): the benchmark's own checks that need no
+task expectation, run through `grade.ts:gradeTurn` over a synthetic turn (`linkShape`,
+`notFallback`, `noHelp`, `noPlaceholder`, `noRepeatedCall`, `maxIterations`, `maxSeconds`, and
+`linksResolve` only under `--resolve`, one `GET /api/issues/:id` per distinct link), plus three rules
+history alone has: a row whose `query` is the door's corrective instruction
+(`fallback-replies.ts:CORRECTIVE_PREFIX`) is a `screen_repair`; a row with an `error` is
+`unanswered` whatever text it left; a question with three or more Vietnamese-marked words answered
+with none is a `language_mismatch`. What a row cannot show is not graded: `mustMatch`,
+`toolsRequired`, `preferenceRows` and the other task-bound checks need an expectation no row
+carries.
+
+The file (`history/result.ts`) holds the window, the served commit, the budgets, and per model and
+source: rows, sessions, `thin` under 30 rows, every mode's count **and** rate, medians of duration,
+tool calls and iterations; then `flagged`, every row that carried a mode, newest first, with its
+`chat_logs` id, session, modes and the fact behind each. Rates, not pass^k: a row is not a trial and
+a session is not a task. `bench:assistant compare-history <before> <after>` prints two windows side
+by side per model and source, every rate beside its count, and what separates the files (commit,
+window, budgets, rows). There is no total line.
+
+The benchmark's own rows are traffic too. `--exclude <run.json>` reads a `bench:assistant run`
+file and drops every row whose `session_id` is a room that run opened (`cleanup.room.id`), naming
+the sessions and the count dropped in the file. The verb writes result files and nothing else:
+`chat_logs.quality_signals` stays untouched.
+
 ## What it does not do
 
 - Judge quality with a model, even advisory.
@@ -88,5 +116,4 @@ benchmark's rows by those ids. `auditRowsAdded` in each trial is that count.
   After code spans, URLs and double-quoted spans are removed it counts words carrying a Vietnamese
   letter or tone mark; `vi` needs three, `en` fails at two. A Vietnamese name in an English reply
   passes `en`; it says nothing about grammar or register.
-- Write to `chat_logs.quality_signals` or compare windows of live traffic — a follow-up that reuses
-  `grade.ts`.
+- Write to `chat_logs.quality_signals`; `history` reads the corpus and writes a file.
