@@ -319,8 +319,8 @@ describe('UX improver — supersede: propose, then approve (ISS-579)', () => {
     expect(byId.get(ruleId)).toBe('retired');
 
     const proseRows = await harness.db.execute(sql`
-      SELECT agent_config -> 'projectFacts' ->> 'ux-contract' AS prose
-      FROM projects WHERE id = ${project.id}
+      SELECT body AS prose FROM knowledge_entries
+       WHERE project_id = ${project.id} AND slug = 'ux-contract'
     `);
     const prose = (proseRows as unknown as Array<{ prose: string | null }>)[0]?.prose ?? '';
     expect(prose.split(RULE_TEXT)).toHaveLength(2);
@@ -337,8 +337,8 @@ describe('UX improver — supersede: propose, then approve (ISS-579)', () => {
     await improver.applyUxImproverProposals(project.id, [report.candidates[0]?.key as string]);
 
     const rows = await harness.db.execute(sql`
-      SELECT agent_config -> 'projectFacts' ->> 'ux-contract' AS prose
-      FROM projects WHERE id = ${project.id}
+      SELECT body AS prose FROM knowledge_entries
+       WHERE project_id = ${project.id} AND slug = 'ux-contract'
     `);
     const prose = (rows as unknown as Array<{ prose: string | null }>)[0]?.prose ?? '';
     expect(prose).not.toContain('empty-search state');

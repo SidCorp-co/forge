@@ -29,7 +29,7 @@ import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../db/client.js', () => ({ db: {} }));
-vi.mock('../config/env.js', () => ({ env: { KNOWLEDGE_INJECTION_ENABLED: false } }));
+vi.mock('../config/env.js', () => ({ env: {} }));
 vi.mock('../knowledge/service.js', () => ({
   selectAlwaysInjectFromKnowledge: vi.fn(),
   selectOnDemandSlugsFromKnowledge: vi.fn(),

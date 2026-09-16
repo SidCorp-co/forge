@@ -12,7 +12,7 @@ vi.mock('../db/client.js', () => {
   const select = vi.fn();
   return { db: { select } };
 });
-vi.mock('../config/env.js', () => ({ env: { KNOWLEDGE_INJECTION_ENABLED: false } }));
+vi.mock('../config/env.js', () => ({ env: {} }));
 vi.mock('../knowledge/service.js', () => ({
   selectAlwaysInjectFromKnowledge: vi.fn(),
   selectOnDemandSlugsFromKnowledge: vi.fn(),
