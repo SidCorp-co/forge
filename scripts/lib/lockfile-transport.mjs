@@ -68,7 +68,9 @@ export function sshResolutions(text) {
       if (held >= indent) keysByIndent.delete(held);
     }
 
-    const trimmed = raw.trim();
+    // cm:guard `line` and not `raw`: the key tracking reads the same comment-stripped text the forms
+    // do, or `private-pkg@1.0.0: # a note` registers no key and its offender is named `packages`
+    const trimmed = line.trim();
     const key = KEY_LINE.exec(trimmed)?.[1];
     if (trimmed.startsWith('resolution: {')) scanned += 1;
 

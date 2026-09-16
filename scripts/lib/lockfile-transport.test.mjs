@@ -166,6 +166,17 @@ snapshots:
     expect(sshResolutions(mapped).offenders.map((o) => o.owner)).toContain('private-pkg@1.0.0');
   });
 
+  it('names the package on a key line carrying its own trailing comment', () => {
+    const commentedKey = `packages:
+
+  private-pkg@1.0.0: # private dependency
+    resolution: {repo: git@gitlab.example.com:team/private-pkg.git, type: git}
+`;
+    expect(sshResolutions(commentedKey).offenders.map((o) => o.owner)).toEqual([
+      'private-pkg@1.0.0',
+    ]);
+  });
+
   it('reads a port as a port outside a `repo:` field, so a registry URL still installs', () => {
     const registry = `packages:
 

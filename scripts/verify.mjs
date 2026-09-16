@@ -407,8 +407,16 @@ function composedGuardParity() {
     return { code: 2, why: 'the composite runs no `pnpm install` — the parser again' };
   if (guard < 0)
     return { code: 1, why: 'the composite no longer runs check-lockfile-transport.mjs' };
-  if (guard > install) {
-    return { code: 1, why: 'the composite runs check-lockfile-transport.mjs AFTER `pnpm install`' };
+  // cm:guard `>=` and not `>`: one `run:` holding both commands gives them ONE index, so `>` reads
+  // `pnpm install --frozen-lockfile && node scripts/check-lockfile-transport.mjs` as ordered
+  if (guard >= install) {
+    return {
+      code: 1,
+      why:
+        guard === install
+          ? 'the composite runs check-lockfile-transport.mjs and `pnpm install` in one step, where their order cannot be read'
+          : 'the composite runs check-lockfile-transport.mjs AFTER `pnpm install`',
+    };
   }
   return { code: 0 };
 }
