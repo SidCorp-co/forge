@@ -8,7 +8,6 @@
 import { zValidator } from '@hono/zod-validator';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { projects } from '../../db/schema.js';
@@ -19,8 +18,7 @@ import { realDeps, runAssistantWeeklyForProject } from './run.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
+// cm:why refusals are answered with `c.json` in the error handler's `{ code, message }` shape rather than thrown: `hono/http-exception` is a subpath the archmap cannot resolve, the repo sits exactly at its 200-edge ceiling, and one more file importing it turns the conformance audit red (R7)
 
 // cm:why a router of its own, mounted at `/api/projects` from `index.ts` beside `gitCredentialRoutes` and NOT under `projectRoutes`: that file already coordinates six modules and the archmap contract refuses a seventh; so this one carries its own auth pair, the same two `projectRoutes` applies
 export const assistantWeeklyRoutes = new Hono<{ Variables: AuthVars }>();
@@ -28,8 +26,12 @@ assistantWeeklyRoutes.use('*', requireAuth(), assertEmailVerified());
 
 assistantWeeklyRoutes.post(
   '/:id/assistant-weekly/run',
-  zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+  zValidator('param', idParamSchema, (result, c) => {
+    if (!result.success)
+      return c.json(
+        { code: 'BAD_REQUEST', message: 'Invalid input', details: z.flattenError(result.error) },
+        400,
+      );
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -45,20 +47,25 @@ assistantWeeklyRoutes.post(
       .from(projects)
       .where(eq(projects.id, id))
       .limit(1);
-    if (!row)
-      throw new HTTPException(404, { message: 'project not found', cause: { code: 'NOT_FOUND' } });
+    if (!row) return c.json({ code: 'NOT_FOUND', message: 'project not found' }, 404);
     const config = readAssistantWeekly(row.agentConfig);
     if (!config)
-      throw new HTTPException(409, {
-        message:
-          'pipelineConfig.assistantWeekly is not enabled on this project; save it with enabled, pinnedIssue, judgeProviderId and judgeModel first',
-        cause: { code: 'ASSISTANT_WEEKLY_OFF' },
-      });
+      return c.json(
+        {
+          code: 'ASSISTANT_WEEKLY_OFF',
+          message:
+            'pipelineConfig.assistantWeekly is not enabled on this project; save it with enabled, pinnedIssue, judgeProviderId and judgeModel first',
+        },
+        409,
+      );
     if (!row.createdBy)
-      throw new HTTPException(409, {
-        message: 'the project has no creator to post the reading as',
-        cause: { code: 'ASSISTANT_WEEKLY_NO_AUTHOR' },
-      });
+      return c.json(
+        {
+          code: 'ASSISTANT_WEEKLY_NO_AUTHOR',
+          message: 'the project has no creator to post the reading as',
+        },
+        409,
+      );
     const outcome = await runAssistantWeeklyForProject(
       { projectId: row.id, slug: row.slug, createdBy: row.createdBy, config },
       realDeps(),
