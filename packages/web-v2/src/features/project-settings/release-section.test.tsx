@@ -211,7 +211,7 @@ describe("ReleaseSection", () => {
     expect(screen.getByText(/aborts and comments/i)).toBeInTheDocument();
   });
 
-  // cm:guard a fact gap sends the reader to Project Facts and a binding gap to Integrations — the two are edited on different screens, so one shared link would be wrong for whichever half it is not.
+  // cm:guard a fact gap sends the reader to the Knowledge screen's Rules editor and a binding gap to Integrations — the two are edited on different screens, so one shared link would be wrong for whichever half it is not. The fact half pointed at `settings?tab=facts` until ISS-1048 deleted that tab; this assertion is what stops the link rotting again, so it pins the whole href and not just its presence.
   it("sends each gap to the screen that fixes it", () => {
     renderWith({
       hasReleaseGate: true,
@@ -220,9 +220,9 @@ describe("ReleaseSection", () => {
       gaps: ["release-procedure", "release-runner"],
     });
 
-    expect(screen.getByRole("link", { name: /Project Facts/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /Knowledge rules/i })).toHaveAttribute(
       "href",
-      "/projects/forge-dev/settings?tab=facts",
+      "/projects/forge-dev/library?tab=knowledge&sub=rules",
     );
     expect(screen.getByRole("link", { name: /live binding/i })).toHaveAttribute(
       "href",
