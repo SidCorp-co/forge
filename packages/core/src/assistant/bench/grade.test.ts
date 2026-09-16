@@ -20,6 +20,7 @@ import {
   vietnameseWords,
 } from './grade.js';
 import type { Check } from './task.js';
+import { SHIPPED_TASKS } from './tasks/index.js';
 import type { Attempt, ToolCall } from './trail.js';
 
 const UUID = '22222222-2222-4222-8222-222222222222';
@@ -132,6 +133,16 @@ describe('text checks', () => {
     ]);
   });
 
+  it('the out-of-reach pattern reads a curly apostrophe as the assistant types it', () => {
+    const task = SHIPPED_TASKS.find((t) => t.id === 'out-of-reach-tests');
+    const check = task?.turns[0]?.checks[0];
+    if (check?.kind !== 'mustMatch') throw new Error('matrix moved');
+    expect(
+      modesOf(check, facts({ delivered: 'I can’t run the test suite from this chat.' })),
+    ).toEqual([]);
+    expect(modesOf(check, facts({ delivered: "I can't run it." }))).toEqual([]);
+  });
+
   it('mustNotMatch fails a reply matching a forbidden pattern', () => {
     expect(
       modesOf(
@@ -236,6 +247,12 @@ describe('trail checks', () => {
     expect(
       modesOf({ kind: 'toolsRequired', tools: ['forge'] }, facts({ attempts: calls })),
     ).toEqual([]);
+  });
+
+  it('argvNotMatch ignores a help call on the verb: forge new -h files nothing', () => {
+    const help = facts({ attempts: [attempt([forge('new', '-h')])] });
+    expect(modesOf({ kind: 'argvNotMatch', pattern: /^new$/ }, help)).toEqual([]);
+    expect(modesOf({ kind: 'noHelp' }, help)).toEqual(['help_roundtrip']);
   });
 
   it('argvNotMatch fails a forge verb matching the pattern', () => {

@@ -129,6 +129,9 @@ const forgeCalls = (attempts: Attempt[]): ToolCall[] =>
 
 const allCalls = (attempts: Attempt[]): ToolCall[] => attempts.flatMap((a) => a.calls);
 
+const isHelp = (call: ToolCall): boolean =>
+  (call.argv ?? []).some((a) => a === '-h' || a === '--help');
+
 const unanswered = (fact: string): Evidence[] => [{ mode: 'unanswered', fact }];
 
 const checkers: Record<Check['kind'], Checker> = {
@@ -216,13 +219,14 @@ const checkers: Record<Check['kind'], Checker> = {
   },
   argvNotMatch: (c, f) => {
     if (c.kind !== 'argvNotMatch') return [];
+    // cm:why a help call is not the verb: `forge new -h` files nothing, and `noHelp` already names it as a roundtrip — counting it here too would fail a reply that did exactly what was asked
     return forgeCalls(f.attempts)
-      .filter((call) => c.pattern.test(call.argv?.[0] ?? ''))
+      .filter((call) => !isHelp(call) && c.pattern.test(call.argv?.[0] ?? ''))
       .map((call) => ({ mode: 'forbidden_tool', fact: `forge ${call.argv?.join(' ')}` }));
   },
   noHelp: (_c, f) =>
     forgeCalls(f.attempts)
-      .filter((call) => (call.argv ?? []).some((a) => a === '-h' || a === '--help'))
+      .filter(isHelp)
       .map((call) => ({ mode: 'help_roundtrip', fact: `forge ${call.argv?.join(' ')}` })),
   noPlaceholder: (_c, f) =>
     forgeCalls(f.attempts)
