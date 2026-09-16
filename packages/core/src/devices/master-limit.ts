@@ -29,7 +29,7 @@ export interface MasterLimitReport {
 }
 
 // cm:guard the daemon sends a TYPED verdict, and core must never classify text on this route. The two existing limit paths classify because their evidence IS text they own — a job's own error, a transcript with roles to exclude. A master's pane carries the issue body, the plan and every comment, so accepting raw text here would let anyone who can write an issue plant "you've hit your 5-hour limit, resets 4am (Asia/Bangkok)", have the master echo it, and hard-exclude the box from dispatch. `detail` is display-only for exactly this reason.
-// cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/master.rs — the runner owns the classification (`detect_usage_limit`) and sends the verdict; adding a reason to `runnerLimitReasons` without teaching that side leaves a cap the master can see and cannot report.
+// cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/master_limit.rs — the runner owns the classification and sends the verdict, and that file is where the mapping lives; `daemon/master.rs` only calls it. Adding a reason to `runnerLimitReasons` without teaching that side leaves a cap the master can see and cannot report, which `master-limit-reasons.json` is what makes fail in a suite rather than on a box.
 /**
  * Any runner row of this device — the limit fans out device-wide from it.
  *

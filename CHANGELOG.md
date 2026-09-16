@@ -2841,6 +2841,23 @@
 
 ### Fixed
 
+- **A machine whose Claude account has run out now says so, instead of being asked for work it
+  cannot do.** Each project a machine serves keeps a Claude session running, waiting to be told
+  there is something to look at. When the account behind those sessions hit its usage limit, every
+  one of them started refusing — and nothing anywhere recorded it. The machine's own page went on
+  saying it was healthy, work went on being routed to it, and each session went on being prompted
+  on its usual schedule, spending a full turn to be told no. The machine now reports the refusal
+  the moment one of its sessions meets it, saying which kind it was — the account's quota window,
+  a short throttle, or a login that needs fixing — and how long it expects to wait. Work stops
+  being routed there until it recovers, the prompting slows to a fifth of its usual rate, and
+  anyone looking at the machine sees the reason rather than a healthy row and an idle fleet. It
+  slows rather than stops on purpose: a session still has to try occasionally, because a turn that
+  succeeds is the only proof the account is back. The moment one does, the machine says so and
+  everything returns to normal — including when someone fixes the account by hand, which used to
+  mean waiting out a guessed reset time that may already have been wrong. A machine being out of
+  quota is not treated as a fault: nothing is shut down, no session is ended, and no work in flight
+  is disturbed.
+
 - **A link in an assistant's reply now opens the page it names, instead of the API's 404.** When the
   assistant pointed you at an issue or at a project's Agents screen, the link it wrote was correct —
   but the page put it together with the address of the backend the app talks to, so clicking it

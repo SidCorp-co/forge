@@ -1,0 +1,4 @@
+{
+  "_contract": "ISS-1060 · every limit reason a resident master's box can send core on POST /api/devices/me/limit. Read by the Rust side against daemon::master_limit::Reason and by packages/core/src/devices/pool-routes.test.ts against runnerLimitReasons and masterLimitSchema, so a rename on either side stops matching this file rather than failing in the field.",
+  "reasons": ["auth", "rate_limit", "usage_limit"]
+}
