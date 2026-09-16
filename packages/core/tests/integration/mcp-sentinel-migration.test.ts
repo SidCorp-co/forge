@@ -245,38 +245,42 @@ describe('0255_down.sql — the way back', () => {
   it.each([
     ['google', 'core-mediated: ungated once the column is gone'],
     ['epodsystem', "direct-mcp: the project's restored sentinel re-enables its whole active set"],
-  ])('refuses a denied %s binding created after the forward run', async (provider) => {
-    const f = await fresh();
-    try {
-      const g = await ground(f.sql);
-      // The seed binding exists only so the forward run has a sentinel to strip and the rollback
-      // has something to restore; it is `postman` so the late binding below, which is the subject,
-      // does not collide with it on `integration_bindings_service_uq`.
-      const projectId = await plantProject(f.sql, g, 'new-denial', config({ postman: true }));
-      await plantBinding(f.sql, g, { projectId, provider: 'postman' });
+  ])(
+    'refuses a denied %s binding created after the forward run',
+    async (provider) => {
+      const f = await fresh();
+      try {
+        const g = await ground(f.sql);
+        // The seed binding exists only so the forward run has a sentinel to strip and the rollback
+        // has something to restore; it is `postman` so the late binding below, which is the subject,
+        // does not collide with it on `integration_bindings_service_uq`.
+        const projectId = await plantProject(f.sql, g, 'new-denial', config({ postman: true }));
+        await plantBinding(f.sql, g, { projectId, provider: 'postman' });
 
-      await runForward(f.sql);
-      const stripped = await allConfigs(f.sql);
-      // Created AFTER the forward run, so it has no row in the image table, and left closed.
-      const lateId = await plantBinding(f.sql, g, { projectId, provider });
-      expect(await grantOf(f.sql, lateId)).toBe('none');
+        await runForward(f.sql);
+        const stripped = await allConfigs(f.sql);
+        // Created AFTER the forward run, so it has no row in the image table, and left closed.
+        const lateId = await plantBinding(f.sql, g, { projectId, provider });
+        expect(await grantOf(f.sql, lateId)).toBe('none');
 
-      const err = await runDown(f.sql).then(
-        () => null,
-        (e: unknown) => (e instanceof Error ? e.message : String(e)),
-      );
-      expect(err).toMatch(new RegExp(lateId));
-      expect(err).toMatch(/new-denial/);
+        const err = await runDown(f.sql).then(
+          () => null,
+          (e: unknown) => (e instanceof Error ? e.message : String(e)),
+        );
+        expect(err).toMatch(new RegExp(lateId));
+        expect(err).toMatch(/new-denial/);
 
-      const cols = await f.sql.unsafe(
-        `SELECT column_name FROM information_schema.columns WHERE table_name = 'integration_bindings'`,
-      );
-      expect(cols.map((c) => c.column_name as string)).toContain('agent_access');
-      expect(await allConfigs(f.sql)).toEqual(stripped);
-    } finally {
-      await f.drop();
-    }
-  }, 120_000);
+        const cols = await f.sql.unsafe(
+          `SELECT column_name FROM information_schema.columns WHERE table_name = 'integration_bindings'`,
+        );
+        expect(cols.map((c) => c.column_name as string)).toContain('agent_access');
+        expect(await allConfigs(f.sql)).toEqual(stripped);
+      } finally {
+        await f.drop();
+      }
+    },
+    120_000,
+  );
 
   // A provider with no agent path at all was never reachable, so going back grants it nothing and
   // 1b must let it through — otherwise the refusal is a blanket "any new binding" and an operator
