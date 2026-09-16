@@ -121,7 +121,8 @@
   and the judged `no`/`partial` rows harvested into candidate task modules — with the history
   file, the compare and every candidate attached. A week that fails posts the failure by name and
   is tried again each day until its report is there; a judge that is a model under test is refused before any row is
-  judged. Absent config means nothing runs. (ISS-1056)
+  judged. Absent config means nothing runs; "Run the reading now" beside the toggle
+  (`POST /api/projects/:id/assistant-weekly/run`) posts the first report without the wait. (ISS-1056)
 - `bench:assistant harvest <history.json> --out <dir>` writes one candidate task module per
   judged row the judge called `no` or `partial` whose intent no shipped task covers, with the
   scrubbed real query, the judge's intent, the provenance and `checks: []` for a person to fill;

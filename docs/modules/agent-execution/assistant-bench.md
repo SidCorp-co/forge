@@ -337,6 +337,17 @@ pinned issue (`weekly/previous.ts`), or say the comparison starts next week; har
 (`weekly/post.ts`). The comment is whole or absent: a file that fails to attach removes what was
 written and the comment row before the error leaves.
 
+`POST /api/projects/:id/assistant-weekly/run` (`assistant/weekly/routes.ts`, org admin or owner;
+the "Run the reading now" button beside the toggle) runs the same function for one project at
+once, under the same window and the same already-posted check, and answers with the outcome
+(`posted`, `skipped` with its reason, or `failed` with the error): the first report after flipping
+the toggle, and a retry an operator does not want to wait a day for. A project whose config is off
+is refused by name with the fields to save. The cron and the door share one exclusion: a
+transaction-scoped advisory lock keyed by project and window (`assistant/weekly/lock.ts`), taken
+before the already-posted check, so two runs of the same week — two admins, or the door over the
+tick — post one report and the other skips as `another run holds <week> for this project`. A run
+that fails holds nothing.
+
 What the tick refuses or skips, by name in the log (`assistant.weekly: project skipped`) and never
 with a comment: a pinned issue that does not resolve on the project, a judge provider that is not
 registered, and a window whose report is already on the issue. A step that throws posts

@@ -34,7 +34,7 @@ export function readAssistantWeekly(agentConfig: unknown): AssistantWeeklyConfig
   const raw = ac.pipelineConfig?.assistantWeekly as
     | (Partial<AssistantWeeklyConfig> & { enabled?: unknown })
     | undefined;
-  if (!raw || raw.enabled !== true) return null;
+  if (raw?.enabled !== true) return null;
   if (!raw.pinnedIssue || !raw.judgeProviderId || !raw.judgeModel) return null;
   return {
     pinnedIssue: raw.pinnedIssue,

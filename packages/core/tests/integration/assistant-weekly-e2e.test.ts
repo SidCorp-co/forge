@@ -26,6 +26,7 @@ let hasPublishedReport: typeof import('../../src/assistant/weekly/previous.js').
 let readPreviousHistory: typeof import('../../src/assistant/weekly/previous.js').readPreviousHistory;
 let postWeeklyComment: typeof import('../../src/assistant/weekly/post.js').postWeeklyComment;
 let postWeeklyFailure: typeof import('../../src/assistant/weekly/post.js').postWeeklyFailure;
+let withWeeklyLock: typeof import('../../src/assistant/weekly/lock.js').withWeeklyLock;
 let listCommentAttachmentsForIssue: typeof import('../../src/comments/attachment-service.js').listCommentAttachmentsForIssue;
 
 const FROM = new Date('2026-09-07T00:00:00Z');
@@ -48,6 +49,7 @@ beforeAll(async () => {
   ));
   ({ postWeeklyComment, postWeeklyFailure } = await import('../../src/assistant/weekly/post.js'));
   ({ listCommentAttachmentsForIssue } = await import('../../src/comments/attachment-service.js'));
+  ({ withWeeklyLock } = await import('../../src/assistant/weekly/lock.js'));
 });
 
 afterAll(async () => {
@@ -231,5 +233,42 @@ describe('the pinned issue as the series', () => {
     }
     const previous = await readPreviousHistory(issueId, harness.db);
     expect(previous?.window.from).toBe('2026-08-31');
+  });
+});
+
+describe('withWeeklyLock against Postgres', () => {
+  it('a second run for the same project and window is not acquired while the first holds; another window is', async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const first = withWeeklyLock('p1', WINDOW, async () => {
+      await gate;
+      return 'first';
+    });
+    await new Promise((r) => setTimeout(r, 150));
+    expect(await withWeeklyLock('p1', WINDOW, async () => 'second')).toEqual({ acquired: false });
+    expect(await withWeeklyLock('p1', '2026-09-14..2026-09-21', async () => 'other')).toEqual({
+      acquired: true,
+      value: 'other',
+    });
+    release();
+    expect(await first).toEqual({ acquired: true, value: 'first' });
+    expect(await withWeeklyLock('p1', WINDOW, async () => 'after')).toEqual({
+      acquired: true,
+      value: 'after',
+    });
+  });
+
+  it('a run that throws releases the lock and the error leaves', async () => {
+    await expect(
+      withWeeklyLock('p2', WINDOW, async () => {
+        throw new Error('boom');
+      }),
+    ).rejects.toThrow('boom');
+    expect(await withWeeklyLock('p2', WINDOW, async () => 'retry')).toEqual({
+      acquired: true,
+      value: 'retry',
+    });
   });
 });

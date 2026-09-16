@@ -104,6 +104,7 @@ function fakeDeps(over: Partial<WeeklyDeps> = {}) {
       order.push(`failure:${a.error.name}`);
     },
     makeJudge: (_prov, model): Judge => ({ model, judge: async () => ({ error: 'unused' }) }),
+    lock: async (_p, _w, fn) => ({ acquired: true, value: await fn() }),
     log: { info: vi.fn(), warn: vi.fn() } as unknown as WeeklyDeps['log'],
     ...over,
   };
@@ -225,6 +226,90 @@ describe('runAssistantWeeklyForProject', () => {
       new Date('2026-09-16T09:00:00Z'),
     );
     expect(wednesday.outcome).toBe('skipped');
+  });
+});
+
+describe('one run per project and window', () => {
+  /** An in-memory stand-in for the advisory lock: held from entry to exit, never across a failure. */
+  const memoryLock = () => {
+    const held = new Set<string>();
+    const lock: WeeklyDeps['lock'] = async (projectId, windowId, fn) => {
+      const key = `${projectId}:${windowId}`;
+      if (held.has(key)) return { acquired: false };
+      held.add(key);
+      try {
+        return { acquired: true, value: await fn() };
+      } finally {
+        held.delete(key);
+      }
+    };
+    return lock;
+  };
+
+  it('a second run for the same window while the first is judging skips by name, posts nothing, and the first posts once', async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const published = new Set<string>();
+    const posts: string[] = [];
+    const { deps } = fakeDeps({
+      lock: memoryLock(),
+      hasReport: async (_i, w) => published.has(w),
+      read: async () => {
+        await gate;
+        return history();
+      },
+      post: async (a) => {
+        posts.push(a.issueId);
+        published.add(WINDOW);
+      },
+    });
+    const first = runAssistantWeeklyForProject(project(), deps, MONDAY);
+    await new Promise((r) => setImmediate(r));
+    const second = await runAssistantWeeklyForProject(project(), deps, MONDAY);
+    expect(second).toEqual({
+      outcome: 'skipped',
+      windowId: WINDOW,
+      reason: `another run holds ${WINDOW} for this project`,
+    });
+    release();
+    expect(await first).toEqual({ outcome: 'posted', windowId: WINDOW });
+    expect(posts).toEqual(['issue-1']);
+    const third = await runAssistantWeeklyForProject(project(), deps, MONDAY);
+    expect(third).toMatchObject({
+      outcome: 'skipped',
+      reason: `a report for ${WINDOW} is already on the issue`,
+    });
+  });
+
+  it('a failed run holds nothing: the retry takes the lock', async () => {
+    let calls = 0;
+    const { deps } = fakeDeps({
+      lock: memoryLock(),
+      read: async () => {
+        calls += 1;
+        if (calls === 1) throw new Error('first try');
+        return history();
+      },
+    });
+    expect((await runAssistantWeeklyForProject(project(), deps, MONDAY)).outcome).toBe('failed');
+    expect(await runAssistantWeeklyForProject(project(), deps, MONDAY)).toEqual({
+      outcome: 'posted',
+      windowId: WINDOW,
+    });
+  });
+
+  it('different windows and different projects do not block each other', async () => {
+    const lock = memoryLock();
+    const a = await lock('p1', 'w1', async () => 'a');
+    const b = await lock('p2', 'w1', async () => 'b');
+    const c = await lock('p1', 'w2', async () => 'c');
+    expect([a, b, c]).toEqual([
+      { acquired: true, value: 'a' },
+      { acquired: true, value: 'b' },
+      { acquired: true, value: 'c' },
+    ]);
   });
 });
 

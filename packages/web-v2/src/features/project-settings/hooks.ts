@@ -548,3 +548,33 @@ export function useCancelMemoryReindex(id: string | undefined) {
 			}),
 	});
 }
+
+/** ISS-1056 — run the weekly assistant reading for this project now. */
+export function useRunAssistantWeekly(id: string | undefined) {
+	const { toast } = useToast();
+	return useMutation({
+		mutationFn: () => projectSettingsApi.runAssistantWeekly(id as string),
+		onSuccess: (out) => {
+			if (out.outcome === "posted")
+				toast({ title: `Weekly reading ${out.windowId} posted`, tone: "success" });
+			else if (out.outcome === "skipped")
+				toast({
+					title: `Weekly reading ${out.windowId} skipped`,
+					description: out.reason,
+					tone: "info",
+				});
+			else
+				toast({
+					title: `Weekly reading ${out.windowId} failed`,
+					description: out.error,
+					tone: "error",
+				});
+		},
+		onError: (err) =>
+			toast({
+				title: "Couldn't run the weekly reading",
+				description: err instanceof Error ? err.message : String(err),
+				tone: "error",
+			}),
+	});
+}

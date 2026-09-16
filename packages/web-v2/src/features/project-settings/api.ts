@@ -49,6 +49,16 @@ export const projectSettingsApi = {
 			`/projects/${id}/pipeline-config`,
 		),
 
+	/** `POST /api/projects/:id/assistant-weekly/run` — run this project's weekly
+	 *  assistant reading now (org admin/owner). Same window and already-posted
+	 *  check as the 04:00 UTC tick, so pressing it twice posts once. */
+	runAssistantWeekly: (id: string) =>
+		apiClient<
+			| { outcome: "posted"; windowId: string }
+			| { outcome: "skipped"; windowId: string; reason: string }
+			| { outcome: "failed"; windowId: string; error: string }
+		>(`/projects/${id}/assistant-weekly/run`, { method: "POST" }),
+
 	/** `PATCH /api/projects/:id/pipeline-config` — full config (owner only).
 	 *  Core returns `{ pipelineConfig, warnings }`; `warnings` are non-blocking
 	 *  advisories (e.g. an enabled stage with no skill that will auto-skip). */

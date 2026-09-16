@@ -6,7 +6,7 @@
 import { useEffect, useState } from "react";
 import { Banner, Button, Toggle } from "@/design";
 import { formatPipelineConfigError } from "@/lib/api/error";
-import { useUpdatePipelineConfig } from "../hooks";
+import { useRunAssistantWeekly, useUpdatePipelineConfig } from "../hooks";
 import type { PipelineConfig } from "../types";
 
 type Slice = NonNullable<PipelineConfig["assistantWeekly"]>;
@@ -26,6 +26,7 @@ export function AssistantWeeklySection({
 	canEdit: boolean;
 }) {
 	const update = useUpdatePipelineConfig(projectId);
+	const runNow = useRunAssistantWeekly(projectId);
 	const seeded = seed(config);
 	const [slice, setSlice] = useState<Slice>(seeded);
 	useEffect(() => {
@@ -117,15 +118,27 @@ export function AssistantWeeklySection({
 							Assistant weekly reading saved.
 						</Banner>
 					)}
-					<Button
-						variant="primary"
-						loading={update.isPending}
-						disabled={!dirty || !complete || update.isPending}
-						onClick={save}
-						className="min-h-11"
-					>
-						Save assistant weekly reading
-					</Button>
+					<div className="flex flex-wrap gap-3">
+						<Button
+							variant="primary"
+							loading={update.isPending}
+							disabled={!dirty || !complete || update.isPending}
+							onClick={save}
+							className="min-h-11"
+						>
+							Save assistant weekly reading
+						</Button>
+						<Button
+							variant="secondary"
+							loading={runNow.isPending}
+							disabled={dirty || !seeded.enabled || runNow.isPending}
+							onClick={() => runNow.mutate()}
+							className="min-h-11"
+							title="Runs the saved config for the previous ISO week now; a week whose report is already on the issue is skipped"
+						>
+							Run the reading now
+						</Button>
+					</div>
 				</div>
 			)}
 		</div>
