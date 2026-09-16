@@ -44,8 +44,17 @@ afterEach(() => {
   pending = false;
 });
 
-const issue = (description: string | null): IssueDetail =>
-  ({ id: "i1", description, descriptionFormat: "markdown" }) as IssueDetail;
+const issue = (
+  description: string | null,
+  over: Partial<IssueDetail> = {},
+): IssueDetail =>
+  ({
+    id: "i1",
+    description,
+    descriptionFormat: "markdown",
+    status: "in_progress",
+    ...over,
+  }) as IssueDetail;
 
 describe("DescriptionCard", () => {
   it("offers no edit affordance to someone who may not write", () => {
@@ -97,5 +106,82 @@ describe("DescriptionCard", () => {
   it("invites the first description rather than reporting an absence", () => {
     render(<DescriptionCard issue={issue(null)} attachments={[]} canWrite />);
     expect(screen.getByText(/No description yet/)).toBeInTheDocument();
+  });
+});
+
+// ISS-1010 — a drive job rewrites a description wholesale (ISS-1010's own thread
+// carries four such rewrites of its body), so the Edit affordance is a way to
+// lose work while one is running.
+describe("DescriptionCard, while an agent is working the issue", () => {
+  const held = "An agent is working this — your edit would be overwritten";
+
+  it("offers no Edit control", () => {
+    render(
+      <DescriptionCard
+        issue={issue("body", { agentStatus: "running" })}
+        attachments={[]}
+        canWrite
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+  });
+
+  // cm:guard the reason stands where the control was, rather than the control simply vanishing — a card that quietly stops offering Edit is indistinguishable from one that is broken
+  it("names the reason where the Edit control was", () => {
+    render(
+      <DescriptionCard
+        issue={issue("body", { agentStatus: "running" })}
+        attachments={[]}
+        canWrite
+      />,
+    );
+    expect(screen.getByText(held)).toBeInTheDocument();
+  });
+
+  // cm:guard `needs_info` is the one park a person's answer restarts, and the lock must not reach it on any surface
+  it("still offers Edit on a needs_info issue", () => {
+    render(
+      <DescriptionCard
+        issue={issue("body", { status: "needs_info", agentStatus: "running" })}
+        attachments={[]}
+        canWrite
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
+    expect(screen.queryByText(held)).toBeNull();
+  });
+
+  // cm:guard only the way IN is locked. Refusing a draft already open discards text the person has typed — a worse loss than the overwrite, and one they cannot recover.
+  it("keeps Save on a draft that was already open when the job started", () => {
+    const { rerender } = render(
+      <DescriptionCard issue={issue("before")} attachments={[]} canWrite />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    rerender(
+      <DescriptionCard
+        issue={issue("before", { agentStatus: "running" })}
+        attachments={[]}
+        canWrite
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Issue description"), {
+      target: { value: "typed while it ran" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(save).toHaveBeenCalledWith(
+      { id: "i1", body: { description: "typed while it ran" } },
+      expect.anything(),
+    );
+  });
+
+  it("locks nothing while the job is only queued", () => {
+    render(
+      <DescriptionCard
+        issue={issue("body", { agentStatus: "queued" })}
+        attachments={[]}
+        canWrite
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
   });
 });
