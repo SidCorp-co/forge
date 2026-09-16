@@ -24,14 +24,15 @@
 
 BEGIN;
 
-CREATE TEMP TABLE iss1046_bindings (
+DROP TABLE IF EXISTS iss1046_bindings;
+CREATE TABLE iss1046_bindings (
   binding_id uuid PRIMARY KEY,
   slug text NOT NULL,
   provider text NOT NULL,
   old_environment text NOT NULL,
   role text NOT NULL,
   stages text[] NOT NULL
-) ON COMMIT DROP;
+);
 
 INSERT INTO iss1046_bindings (binding_id, slug, provider, old_environment, role, stages) VALUES
   ('4682e858-9e8f-40e9-b871-370da5df6ab7', 'archmap', 'coolify', 'staging', 'deploy', ARRAY['preview']::text[]),
@@ -114,5 +115,7 @@ ALTER TABLE "integration_bindings" DROP COLUMN "role";
 ALTER TABLE "projects" RENAME COLUMN "live_branch" TO "production_branch";
 ALTER TABLE "projects" DROP COLUMN "release_strategy";
 ALTER TABLE "projects" DROP COLUMN "release_model";
+
+DROP TABLE iss1046_bindings;
 
 COMMIT;

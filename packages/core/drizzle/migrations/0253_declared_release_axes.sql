@@ -48,12 +48,17 @@ ALTER TABLE "integration_bindings" ADD COLUMN "role" text;--> statement-breakpoi
 ALTER TABLE "integration_bindings" ADD COLUMN "stages" text[] DEFAULT '{}'::text[] NOT NULL;--> statement-breakpoint
 
 -- === 2. the declared project table ========================================
-CREATE TEMP TABLE iss1046_projects (
+-- A real table, not a TEMP one: `ON COMMIT DROP` only survives while one
+-- transaction spans the whole file, and whether that holds is the migrator's
+-- business rather than this file's. Dropped explicitly at the end; a failed run
+-- leaves it behind on purpose, where the operator fixing the abort can read it.
+DROP TABLE IF EXISTS iss1046_projects;--> statement-breakpoint
+CREATE TABLE iss1046_projects (
   project_id uuid PRIMARY KEY,
   slug text NOT NULL,
   release_model text NOT NULL,
   release_strategy text
-) ON COMMIT DROP;--> statement-breakpoint
+);--> statement-breakpoint
 
 INSERT INTO iss1046_projects (project_id, slug, release_model, release_strategy) VALUES
   ('8075eba2-c7d3-464e-b4a9-38f45d3dd1ab', 'adminhub-api', 'none', NULL),
@@ -95,14 +100,15 @@ INSERT INTO iss1046_projects (project_id, slug, release_model, release_strategy)
 -- rows become {preview,live} while three others become `service`, and
 -- getcontent's coolify 'staging' becomes {live} — so an inverse computed from
 -- role and stages would put the wrong value back on six rows.
-CREATE TEMP TABLE iss1046_bindings (
+DROP TABLE IF EXISTS iss1046_bindings;--> statement-breakpoint
+CREATE TABLE iss1046_bindings (
   binding_id uuid PRIMARY KEY,
   slug text NOT NULL,
   provider text NOT NULL,
   old_environment text NOT NULL,
   role text NOT NULL,
   stages text[] NOT NULL
-) ON COMMIT DROP;--> statement-breakpoint
+);--> statement-breakpoint
 
 INSERT INTO iss1046_bindings (binding_id, slug, provider, old_environment, role, stages) VALUES
   ('4682e858-9e8f-40e9-b871-370da5df6ab7', 'archmap', 'coolify', 'staging', 'deploy', ARRAY['preview']::text[]),
@@ -238,4 +244,8 @@ ALTER TABLE "integration_bindings" ADD CONSTRAINT "integration_bindings_role_chk
 -- exists to refuse.
 ALTER TABLE "integration_bindings" ADD CONSTRAINT "integration_bindings_role_stages_chk"
   CHECK ((role = 'service' AND cardinality(stages) = 0)
-      OR (role = 'deploy' AND cardinality(stages) >= 1 AND stages <@ ARRAY['preview','live']));
+      OR (role = 'deploy' AND cardinality(stages) >= 1 AND stages <@ ARRAY['preview','live']));--> statement-breakpoint
+
+-- === 9. the declared tables have done their job ===========================
+DROP TABLE iss1046_bindings;--> statement-breakpoint
+DROP TABLE iss1046_projects;
