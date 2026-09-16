@@ -60,9 +60,6 @@ vi.mock('../integrations/deliveries.js', () => ({
 
 const listBindingsSpy = vi.fn();
 vi.mock('../integrations/store.js', () => ({
-  // cm:guard the deploy path resolves through the DEPLOY-scoped helper. A coolify `service`
-  // binding is a facility the project uses, not somewhere Forge pushes to, and the mock is named
-  // for the query the code actually makes so a rename here cannot quietly restore the old one.
   listActiveDeployBindingsForProvider: (...a: unknown[]) => listBindingsSpy(...(a as [])),
 }));
 

@@ -66,10 +66,6 @@ describe("ReleaseSection", () => {
     expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
   });
 
-  // cm:guard the heading must distinguish all THREE states. It used to end "Otherwise the session
-  // closes it directly", which is right for `none` and wrong for a declared model with no live
-  // target: that one neither gates nor closes — core answers `409 RELEASE_TARGET_UNDECLARED`. The
-  // panel was promising a close on the same screen its own banner reported a refusal.
   it("says the session closes issues directly only when the project declares no release", () => {
     renderWith({ hasReleaseGate: false, releaseModel: "none" });
 
@@ -89,9 +85,6 @@ describe("ReleaseSection", () => {
     expect(onScreen).not.toMatch(/closes its issues directly/i);
   });
 
-  // cm:guard the link names what the operator must DO, and `release-target` IS the absence of a
-  // live binding — sending the reader to "set it on the live binding" points at a row that does
-  // not exist. Caught by rendering the real screen against a real core, not by a component test.
   it("tells a project with no live target to ADD one, not to set something on it", () => {
     const { container } = renderWith({
       hasReleaseGate: false,
@@ -129,7 +122,6 @@ describe("ReleaseSection", () => {
     expect(onScreen).not.toMatch(/closes its issues directly/i);
   });
 
-  // cm:guard the AND is the product rule and the copy has to carry it: an operator on a trunk repo with a sentry binding has "an integration" and no release, and a panel that says only "no production" sends them to add a second binding that changes nothing.
   it("says which half is missing on a trunk project that has a binding", () => {
     renderWith({ hasReleaseGate: false, releaseModel: "none", providers: ["sentry"] });
 
@@ -140,9 +132,6 @@ describe("ReleaseSection", () => {
     expect(screen.getByText("none", { selector: "span" })).toBeInTheDocument();
   });
 
-  // cm:guard the OTHER half of "no gate": a project that DOES declare a release and has nothing
-  // live to send it to. The two states have different remedies — declare a model, or add a
-  // binding — and one sentence covering both sends half the operators to the wrong screen.
   it("says the target is missing when the project declares a release and has none", () => {
     renderWith({
       hasReleaseGate: false,
@@ -177,9 +166,6 @@ describe("ReleaseSection", () => {
     expect(screen.getByText("prod-box")).toBeInTheDocument();
   });
 
-  // cm:guard a `publish` project carrying a live branch left over from the era when the column
-  // defaulted to 'main' — 25 of 32 fleet projects do — must NOT have it rendered as a promotion.
-  // Reading that value without the model is the defect this whole change removed.
   it("renders no branch promotion for a publish project that still carries a live branch", () => {
     renderWith({
       hasReleaseGate: true,
@@ -195,7 +181,6 @@ describe("ReleaseSection", () => {
     ).toBeInTheDocument();
   });
 
-  // cm:guard each gap gets its OWN sentence naming its own consequence. These five arrive from different places and are fixed in different screens; one banner reading "configuration incomplete" would be the same non-answer a job gives hours later.
   it("names every gap separately, with the consequence of leaving it", () => {
     renderWith({
       hasReleaseGate: true,
@@ -211,7 +196,6 @@ describe("ReleaseSection", () => {
     expect(screen.getByText(/aborts and comments/i)).toBeInTheDocument();
   });
 
-  // cm:guard a fact gap sends the reader to Project Facts and a binding gap to Integrations — the two are edited on different screens, so one shared link would be wrong for whichever half it is not.
   it("sends each gap to the screen that fixes it", () => {
     renderWith({
       hasReleaseGate: true,
@@ -230,11 +214,6 @@ describe("ReleaseSection", () => {
     );
   });
 
-  // cm:guard the refusal this very change introduced has to be PREDICTED here. Two live deploy
-  // bindings that agree on their runner label and declare every fact leave `gaps` otherwise empty,
-  // so the panel read complete while `createReleaseBatch` answered 409 — a project whose releases
-  // had stopped, with nothing on the one screen that could say why. The sentence has to carry the
-  // reason (one check of one address) and a remedy, or it is the generic banner this panel replaced.
   it("says why a project with two live deploy bindings cannot cut a release", () => {
     renderWith({
       hasReleaseGate: true,
@@ -260,7 +239,6 @@ describe("ReleaseSection", () => {
     expect(screen.queryByRole("link")).toBeNull();
   });
 
-  // cm:guard an undeclared rollback is a DEFAULT the operator is running under, not an absence — the release aborts and comments rather than rolling back blind, and a dash here would read as "unknown".
   it("states the abort-and-comment default rather than a dash", () => {
     renderWith({
       hasReleaseGate: true,
@@ -272,7 +250,6 @@ describe("ReleaseSection", () => {
     expect(screen.getByText("abort and comment")).toBeInTheDocument();
   });
 
-  // cm:guard free text on a coolify binding must NOT read as "declared" — Forge does not execute it, so a settled-looking row here hides a release that will abort (ISS-925).
   it("says a coolify binding's free text is not executed", () => {
     renderWith({
       hasReleaseGate: true,

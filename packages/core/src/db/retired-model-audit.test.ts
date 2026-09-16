@@ -57,8 +57,6 @@ describe('the rules leave live code alone', () => {
     'const b = readableLiveBranch(row);',
     'const branch = project.liveBranch;',
     'type Stage = "preview" | "live";',
-    // cm:guard the plural. `resolveReleaseChannels` is the replacement and must not be flagged by
-    // the rule that retires the singular — a checker that fires on its own remedy is unusable.
     'const set = await resolveReleaseChannels(projectId);',
     'const e = deploymentEnvironment;',
     'const x = environmentOf(binding);',
@@ -68,9 +66,6 @@ describe('the rules leave live code alone', () => {
 });
 
 describe('the comment stripper', () => {
-  // cm:guard the defect this lexer replaced. Two regexes could not tell a comment from the same
-  // two characters inside a string, so one line carrying both passed the audit — the gate going
-  // green on the one input it was written for.
   it('does not let a string containing two slashes hide the rest of its line', () => {
     const line = "const sep = '//'; const b = row.productionBranch;";
     expect(hits(line)).toContain('production-branch-column');
@@ -81,9 +76,6 @@ describe('the comment stripper', () => {
     expect(hits('/* binding.environment is gone */')).toEqual([]);
   });
 
-  // cm:guard newlines survive a block comment, because the caller reports `i + 1` as the line
-  // number: a multi-line comment collapsed to one space renumbers every finding below it, and a
-  // cited line number that is wrong is wrong in silence.
   it('preserves the line numbering across a multi-line comment', () => {
     const src = ['const a = 1;', '/*', ' * two', ' * three', ' */', 'const b = 2;'].join('\n');
     expect(stripComments(src).split('\n')).toHaveLength(6);
@@ -94,11 +86,6 @@ describe('the comment stripper', () => {
     expect(stripComments('sql`SELECT b.environment FROM t`')).toContain('b.environment');
   });
 
-  // cm:guard the SAME defect one nesting level down, and the lexer that replaced the regexes still
-  // had it: a `${` inside a template is CODE again, so the backtick that opens a nested template
-  // was read as the one that closes the outer one. Everything after it on that line was then
-  // stripped as a line comment, taking the retired reader with it. Measured at the landing head:
-  // the previous spelling returned "const s = `${`" and nothing else from this line.
   it('re-enters code inside a template substitution, so a nested template hides nothing', () => {
     // biome-ignore lint/suspicious/noTemplateCurlyInString: the `${` IS the input under test — source text handed to the lexer, never a template the runtime should interpolate.
     const line = 'const s = `${`//`}`; const b = row.productionBranch;';
@@ -106,10 +93,6 @@ describe('the comment stripper', () => {
     expect(hits(line)).toContain('production-branch-column');
   });
 
-  // cm:guard the substitution frame counts braces. A frame that pops on the FIRST `}` leaves the
-  // lexer in template state for the rest of the substitution, where a comment is ordinary text —
-  // so an obituary written inside a `${...}` is scanned and reported as the very defect it records.
-  // That is the failure this whole function exists to prevent, one nesting level in.
   it('closes a substitution on its own brace, so a comment inside one is still blanked', () => {
     // biome-ignore lint/suspicious/noTemplateCurlyInString: same reason as above — the `${` is the lexer's input, not an interpolation this file wants performed.
     const line = 'const q = `${ cfg({a: 1}) /* row.productionBranch was renamed */ }`;';

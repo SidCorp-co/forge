@@ -216,11 +216,6 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
               maxLength={100}
             />
           </Field>
-          {/* cm:guard a new project declares `releaseModel: 'none'`, which reads no live
-              branch at all, so this dialog does not ask for one. Asking here, and defaulting
-              the answer to 'main', is how 25 of 32 fleet projects came to carry a production
-              branch nothing ever promoted to — including projects with no repository. The
-              live branch is declared under Settings → Release, with the model that reads it. */}
 
           <div>
             <Button

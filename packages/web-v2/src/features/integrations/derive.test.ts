@@ -199,10 +199,6 @@ describe("groupCardsByProvider", () => {
     expect(groups[1].cards).toHaveLength(1);
   });
 
-  // cm:guard a service row sorts LAST, under both deploy stages. Without this the
-  // rank could return the same number for every input and the two cases above would
-  // still pass, because a sort that ties leaves the input order — and the input
-  // order there already happens to be the answer for one of them.
   it("sorts a service row below both deploy stages", () => {
     const groups = groupCardsByProvider([
       card({

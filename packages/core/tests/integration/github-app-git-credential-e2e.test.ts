@@ -241,11 +241,6 @@ describe('mintGitCredentialForDevice resolves', () => {
     }
   });
 
-  // cm:guard the old rule here was "prefer the `prod` binding over the `staging` one". ISS-1046
-  // removed the column that expressed it, and the tie-break it was standing in for is still real:
-  // this query spans every project the DEVICE runs, so two bindings can still name one repository
-  // with different installations. The replacement is oldest-first, and it must be watched — an
-  // unordered pick passes this test roughly half the time, which is no evidence at all.
   it('picks the same binding every time when two name the same repository', async () => {
     await seedRunner();
     await seedBinding({ owner: OWNER, repo: REPO, installationId: INSTALLATION_ID }, 'first');

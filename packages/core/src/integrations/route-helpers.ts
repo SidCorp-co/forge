@@ -56,11 +56,6 @@ export const alreadyExists = (
  * (project, provider) — 409 ALREADY_EXISTS on a clash. (Epodsystem creates check by label
  * instead — see the create route.)
  */
-// cm:edge contract -> packages/core/src/db/schema.ts — this is `integration_bindings_service_uq` read
-// in application code so the caller gets a 409 rather than a 500 from Postgres, and the two must admit
-// the same rows. A DEPLOY binding is deliberately unchecked: a stage may hold more than one and core
-// never picks among them (ISS-1046 rule 3), so refusing a second here would re-impose the uniqueness
-// the index dropped and eight fleet projects already violate with two coolify bindings apiece.
 export async function assertNoActiveBindingClash(
   projectId: string,
   provider: IntegrationProvider,
@@ -68,13 +63,6 @@ export async function assertNoActiveBindingClash(
   label = '',
 ): Promise<void> {
   if (role !== 'service') return;
-  // cm:guard the lookup is SERVICE-scoped AND LABEL-scoped, matching the partial index
-  // `(project_id, provider, label) WHERE role = 'service'` exactly. Dropping the role filter
-  // refused an operator adding a service binding to a project that already had a deploy one — a
-  // pair the index admits and rule 3 requires, since the two are different declarations about the
-  // same credential. Dropping the label filter refused a second NAMED storefront, which the index
-  // also admits. `label` is NOT NULL DEFAULT '', so one rule covers every provider and epodsystem
-  // needs no branch of its own.
   const clash = await findActiveServiceBindingAtLabel(projectId, provider, label);
   if (clash)
     throw alreadyExists(

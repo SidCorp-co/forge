@@ -67,7 +67,6 @@ export class ReleaseMultiChannelUnsupportedError extends Error {
  * The project declares a release gate and no verification probes, so nothing
  * but the agent's own word could say the release happened.
  */
-// cm:guard the gate and the probes are ONE declaration, refused together. `finish` is the only thing in Forge that writes `closed`, and with no probes its whole verification block was skipped — sid-desk ISS-191 is 42 issues closed on a release that was not running. Refusing at creation is what makes the operator declare probes instead of discovering at close time that nothing checked. `finish` refuses too, and must: a run created before this rule existed reaches it with no probes and would close its roster on the agent's word.
 export class ReleaseProbesUndeclaredError extends Error {
   constructor() {
     super('RELEASE_PROBES_UNDECLARED');
@@ -99,7 +98,6 @@ export class ReleaseNotVerifiedError extends Error {
 /**
  * `finish` was called on a run somebody aborted.
  */
-// cm:guard refused BY NAME and never answered with an empty success. ISS-1032's own guard states the rule this completes: `completed` and never "terminal", because a silent empty success on a `cancelled` run makes finish and abort report the same thing. Before ISS-1042's abort cancelled a concluded run, this case fell through to the probes and came back RELEASE_NOT_VERIFIED — a sentence about the deploy for a condition that is about the batch having been called off, which sends an agent to production over a decision a person already took.
 export class ReleaseBatchAbortedError extends Error {
   constructor() {
     super('RELEASE_BATCH_ABORTED');
@@ -118,7 +116,6 @@ export class ClaimConflictError extends Error {
  * One or more issues in the batch have no release note, so the batch would
  * close them claiming a ship nobody wrote anything about.
  */
-// cm:guard distinct from ClaimConflictError ON PURPOSE — "wrong status or already claimed" and "nothing written about what shipped" need different remedies, and folding the second into the first is how a caller retries forever against an error that will never clear on its own
 export class ReleaseRecordMissingError extends Error {
   constructor(public readonly issueIds: string[]) {
     super(`RELEASE_RECORD_MISSING: ${issueIds.length} issue(s) have no release note`);

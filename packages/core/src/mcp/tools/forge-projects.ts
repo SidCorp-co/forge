@@ -49,7 +49,6 @@ export const forgeProjectsListTool: ContextScopedMcpToolFactory = (ctx) => ({
     inputSchema.parse(args);
     const { principal } = ctx;
 
-    // cm:guard the role is derived from the SAME two columns `effectiveProjectRole` reads, through the SAME expression, and never by a per-row call: this handler ran `effectiveProjectRole` once per project — a third visit to `project_members` and `organization_members` after the visibility join had already selected both — and a visible list of fifty projects cost fifty-two serialised queries (ISS-1025). A future field that needs more than the role belongs in `listVisibleProjectsWithRole`'s projection, not in a loop reinstated here.
     const rows = await loadVisibleProjectsWithRoleForPrincipal(principal);
     const listed: ListedProject[] = rows.map((r) => ({
       id: r.id,
@@ -173,15 +172,11 @@ const updateInputSchema = z
         repoPath: z.string().trim().max(500).nullable().optional(),
         baseBranch: z.string().trim().max(100).nullable().optional(),
         liveBranch: z.string().trim().max(100).nullable().optional(),
-        // cm:guard exposed here and not left to REST because REST PATCH needs a user JWT — a device/MCP principal cannot reach it, and the only projects that need `website` are set up by an agent. Removing it makes the field create-only again for anyone without a browser session.
         kind: z.enum(projectKinds).optional(),
-        // cm:guard scoped write for `previewDeploy.notes` ONLY — the rest of previewDeploy holds testCredentials and stays REST-only. This merges into the existing jsonb; it must never replace it, or a note would delete the credentials beside it.
         previewDeployNotes: z.string().trim().max(8000).nullable().optional(),
-        // cm:guard writable over MCP so the stage that just repaired a workspace can record the procedure that WORKED — the whole saving depends on the loop closing without a human, and no browser session exists on a runner box. It is read by the setup agent and executed by nobody, so treat a rewrite as documentation, not configuration: never overwrite a human-authored procedure with a guess.
         workspaceSetup: z.string().trim().max(8000).nullable().optional(),
       })
       .strict()
-      // cm:guard refine on VALUES and never on key count: zod v4 `.strict()` rejects unknown keys but does NOT strip an explicit `undefined` from an optional field, so `{name: undefined}` passes an `Object.keys(o).length > 0` guard and then loses every field to the downstream `!== undefined` filter, leaving an empty drizzle SET and malformed SQL.
       .refine((o) => Object.values(o).some((v) => v !== undefined), {
         message: 'patch must have at least one defined field',
       }),
@@ -330,7 +325,6 @@ export const forgeProjectsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
         createdBy: proj.createdBy,
         role,
         repoPath: proj.repoPath,
-        // cm:guard this handler returns a HAND-BUILT object, so adding a column to the `select` above is only half the change — the field is fetched and then silently dropped. Shipped exactly that way on 2026-08-18 while the project-settings guide already told agents `get` returns it.
         workspaceSetup: proj.workspaceSetup,
         baseBranch: proj.baseBranch,
         liveBranch: readableLiveBranch(proj),

@@ -1,7 +1,5 @@
 "use client";
 
-// cm:why every gap listed here used to be found by a job — the driver with no build command, the batch with no labelled box, the release agent with no procedure falling back to a floor written for another repo. Saying it in settings does not add a rule; it moves the same sentence to a moment a person can act on it.
-// cm:edge contract -> packages/core/src/release-batch/readiness.ts — the gap keys and the release-gate rule are decided there; this file only renders them
 
 import { Badge, Banner, ErrorState, Skeleton } from "@/design";
 import { formatApiError } from "@/lib/api/error";
@@ -30,17 +28,12 @@ const GAP_TEXT: Record<ReleaseReadiness["gaps"][number], string> = {
     "A live binding declares no verify probe — a release batch is refused, because a gate with no probes closes on the agent's word.",
 };
 
-// cm:guard the link says what the operator must DO, and for one gap that is not "set it on the
-// live binding" — `release-target` IS the absence of a live binding, so sending the reader to
-// change one names a row that does not exist. Every other integration gap is about a declaration
-// missing FROM a binding that is there.
 const INTEGRATION_GAP_LINK: Partial<Record<ReleaseReadiness["gaps"][number], string>> = {
   "release-target": "Add a live deploy binding",
   "release-runner-ambiguous": "Reconcile the release runner labels",
   "release-multi-channel": "Review the live deploy bindings",
 };
 
-// cm:edge contract -> packages/core/src/release-batch/channel.ts — the three modes are decided by `classifyRollback`; rendering `unrepresentable` as "declared" would show a green-looking declaration for a release that will abort (ISS-925).
 const ROLLBACK_TEXT: Record<NonNullable<ReleaseReadiness["rollbackMode"]>, string> = {
   manual: "declared — the release agent follows it",
   "coolify-image": "Forge rolls back to a Coolify image",
@@ -56,18 +49,12 @@ const RELEASE_MODEL_TEXT: Record<ReleaseReadiness["releaseModel"], string> = {
   publish: "publish — an act on a live target",
 };
 
-// cm:guard the branch pair is shown ONLY under `promote`. Under `publish` and `none` a project may still carry a live branch it was created with, and printing it is how the retired gate came to read "this project promotes" for one that promotes nothing.
 function branchPair(r: ReleaseReadiness): string {
   return r.releaseModel === "promote" && r.liveBranch
     ? `${r.baseBranch} → ${r.liveBranch}`
     : `${r.baseBranch} (no branch moves)`;
 }
 
-// cm:guard THREE states, never two. "Otherwise the session closes it directly" was true of one
-// project in two and wrong about the third: a project that declares a model and has no live target
-// neither gates nor closes — core throws `ReleaseTargetUndeclaredError` and the API answers
-// `409 RELEASE_TARGET_UNDECLARED` (packages/core/src/release-batch/routes.ts). The panel said the
-// issue would close while its own banner below said the release was refused.
 function stateLine(r: ReleaseReadiness) {
   if (r.hasReleaseGate)
     return (

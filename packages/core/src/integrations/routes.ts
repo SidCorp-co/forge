@@ -93,12 +93,6 @@ integrationsRoutes.post(
 
     const body = c.req.valid('json');
 
-    // cm:guard ONE clash rule, matching the UNIQUE index exactly: (project_id, provider, label)
-    // WHERE role = 'service'. There were two, and each dropped half the key — the epodsystem branch
-    // asked by label without the role, so a service binding clashed with a DEPLOY one at the same
-    // label (the common shape after ISS-1046: all three fleet epodsystem bindings are `deploy`), and
-    // the other branch asked by role without the label, so a second NAMED storefront was refused.
-    // `label` is NOT NULL DEFAULT '', so the unlabelled providers need no branch of their own.
     const bindingLabel = 'label' in body && body.label ? body.label : '';
     await assertNoActiveBindingClash(projectId, body.provider, body.role, bindingLabel);
 
@@ -126,11 +120,7 @@ integrationsRoutes.post(
       ownerType: body.orgId ? 'org' : 'user',
       ownerId: body.orgId ?? userId,
       provider: body.provider,
-      // cm:edge contract -> packages/core/src/integrations/connection-routes.ts — BOTH create paths must name the connection; this is the one an operator actually walks (project settings → Integrations), and naming only the other one leaves the anonymous rows still arriving
       displayName: defaultConnectionDisplayName(body.provider, tiers.connection),
-      // cm:guard the binding's role/stages are NOT mirrored into `connection.config` — the old code
-      // wrote `environment` here as well, a second copy `effectiveConfig` then overlaid, so one
-      // connection shared across projects carried whichever binding was created last (ISS-1046).
       config: tiers.connection,
       secrets: body.secrets,
     });
@@ -251,7 +241,6 @@ integrationsRoutes.patch(
       const bindingPatch: Parameters<typeof updateBinding>[1] = {};
       if (mergedBindingConfig !== undefined) bindingPatch.config = mergedBindingConfig;
       if (patch.active !== undefined) bindingPatch.active = patch.active;
-      // cm:why project-admin editable without the org-owner escalation above — instructions are per-project prompt text, not a shared credential, so a project admin scoping their own store's guidance touches nothing another project can see
       if (patch.instructions !== undefined) bindingPatch.instructions = patch.instructions;
       await updateBinding(binding.id, bindingPatch);
     }

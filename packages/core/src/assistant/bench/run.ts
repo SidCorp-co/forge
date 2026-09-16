@@ -80,7 +80,6 @@ async function readFixtures(args: TrialArgs): Promise<Record<string, string>> {
     if (name === 'nonce') {
       values.nonce = freshToken(args);
       values.nonce2 = freshToken(args);
-      // cm:guard two tokens that collide would let a correction task pass by matching the first value; a caller's randomId that repeats is refused here rather than graded kindly
       if (values.nonce === values.nonce2) throw new Error('nonce and nonce2 came out equal');
     }
     for (const key of FIXTURE_KEYS[name]) {
@@ -141,7 +140,6 @@ async function deleteNotes(
   rooms: string[],
   tokens: string[],
 ): Promise<CleanupRecord['memories']> {
-  // cm:why every trial, not only the memory tasks: the ten method tasks carry no token, and the notes the assistant kept for "remember my deploy window" outlived every ISS-1051 run (22 on the QA project on 2026-09-16) because the cleanup only knew the room
   const left = ownedBy(rooms, tokens);
   const projectId = args.project.id;
   let found = 0;
@@ -155,7 +153,6 @@ async function deleteNotes(
     return { found, deleted, remaining };
   } catch (err) {
     args.log?.(`memory cleanup refused: ${errorText(err)}`);
-    // cm:guard a refusal mid-cleanup must not read as clean: what was found and not deleted is counted as remaining, and one is charged where the listing itself was refused
     return { found, deleted, remaining: Math.max(1, found - deleted) };
   }
 }
@@ -388,7 +385,6 @@ export async function runTrial(
     judgeRefused: refused,
     result: {
       at: started.toISOString(),
-      // cm:guard a trial whose room or notes outlived the cleanup is not a pass: the next reading of the project would carry them
       pass:
         error === null &&
         turns.length === args.task.turns.length &&

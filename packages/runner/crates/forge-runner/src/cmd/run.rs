@@ -96,12 +96,6 @@ pub async fn run(_ctx: super::Ctx, args: Args) -> anyhow::Result<()> {
 }
 
 /// The run id a successful declaration must carry.
-// cm:guard an `ok` reply with no id is a FAILURE with a non-zero exit, not a line of prose on
-// stdout. This verb's whole output is the run id: a master reads it and passes it to `run close`,
-// and a sentence printed in its place exits 0, is captured as the id, and the close then names a
-// run that does not exist — while the declared row stays open holding the tree and the issues. It
-// printed "the daemon recorded the run but named no id" until ISS-1050 finding F13, which is the
-// silent substitution this file's own header says this verb does not make.
 fn declared_id(job_id: Option<String>) -> anyhow::Result<String> {
     job_id.ok_or_else(|| {
         anyhow::anyhow!(

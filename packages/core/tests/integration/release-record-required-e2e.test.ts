@@ -52,8 +52,6 @@ describe('release record required E2E', () => {
     projectId = (await createTestProject(harness.db, owner.id)).id;
   });
 
-  // cm:guard the batch gate is DECLARED on the project since ISS-1046 — `release_model` plus an active deploy binding carrying the `live` stage. Seed neither half and every case here fails on NO_RELEASE_GATE long before reaching what it meant to assert. The branch comparison this replaced could not see a storefront, whose base and live branch are identical by nature.
-  // cm:edge contract -> packages/core/src/release-batch/gate.ts — `resolveReleaseDeclaration` reads exactly these facts
   async function declareProduction(): Promise<void> {
     const connectionId = randomUUID();
     await harness.db.execute(sql`
@@ -87,7 +85,6 @@ describe('release record required E2E', () => {
     return id;
   }
 
-  // cm:why raw SQL returns snake_case; the transition reads the drizzle row shape
   async function load(id: string): Promise<IssueRow> {
     const rows = await harness.db.execute(sql`
       SELECT id, project_id AS "projectId", status, reopen_count AS "reopenCount"
@@ -122,7 +119,6 @@ describe('release record required E2E', () => {
     expect(await stored(id)).toEqual({ status: 'in_progress', mergedAt: null });
   });
 
-  // cm:guard `released -> closed` is the canonical close, and it is the case the first version of the rule got wrong: with a `merged_at IS NULL` condition the check read NULL here — the stamp lands later in the same transaction — and refused the path it meant to exempt. Both halves are asserted so that condition cannot come back green.
   it('refuses from `released` too, and lets it through once a note exists', async () => {
     const { applyStatusTransition } = await import('../../src/issues/apply-transition.js');
     const bare = await insertIssue('awaiting_release');
@@ -148,7 +144,6 @@ describe('release record required E2E', () => {
     expect((await stored(id)).status).toBe('closed');
   });
 
-  // cm:guard `skip` is the wide flag every internal transition carries — the park rewrites, any future sweep — so exempting on it would let an unrecorded issue reach `closed` from any of them. Widening this to `skip` was tried and the integration suite falsified it.
   it('refuses a bare `skip`, which is what the orchestrator auto-skip chain carries', async () => {
     const { applyStatusTransition } = await import('../../src/issues/apply-transition.js');
     const id = await insertIssue('awaiting_release');
@@ -168,8 +163,6 @@ describe('release record required E2E', () => {
     expect(await stored(id)).toEqual({ status: 'dropped', mergedAt: null });
   });
 
-  // cm:guard the OTHER door. `finishReleaseBatch` closes with `viaReleasePath`, which the transition rule exempts, so the batch is refused at its CLAIM instead — and this block is the whole justification for that exemption. ISS-863's evidence row is a batch that closed two issues whose releaseNotes was null; delete the preflight and that path is open again.
-  // cm:guard this project declares production and the outer one deliberately does NOT — the two halves of this file need opposite answers from the same gate. With a gate, an agent's `closed` is rewritten to `released` (`issues/release-gate-hold.ts`) and every close case above would assert nothing; without one, `createReleaseBatch` throws NO_RELEASE_GATE before it reaches the note preflight these cases are about.
   describe('the release batch, refused at the claim rather than the close', () => {
     beforeEach(async () => {
       await declareProduction();
@@ -201,7 +194,6 @@ describe('release record required E2E', () => {
       expect((await stored(bare)).status).toBe('awaiting_release');
     });
 
-    // cm:guard the refusal must come from the NOTE, not from something else failing first — a fully-noted batch has to get PAST this preflight, or the case above would pass just as well against a preflight that refused everything
     it('lets a fully-noted batch past this preflight', async () => {
       const a = await insertIssue('awaiting_release', SKIP_NOTE);
       const b = await insertIssue('awaiting_release', SKIP_NOTE);

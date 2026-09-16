@@ -179,11 +179,6 @@ githubCallbackRoutes.get('/integrations/github/manifest-callback', async (c) => 
     connectionId: connection.id,
     projectId: state.projectId,
     provider: 'github',
-    // cm:guard `service` and never a stage: `providerCanDeploy('github')` is false, so a github
-    // binding cannot be `role: 'deploy'` at all. This used to read an `environment` query parameter
-    // and coerce anything that was not the literal `staging` to `prod` — a coercion that made the
-    // caller's answer unrecoverable and which had nothing to decide, since GitHub is a repo host on
-    // every project and is somewhere Forge deploys to on none.
     role: 'service',
     config: {},
     integrationSecret: app.webhookSecret,

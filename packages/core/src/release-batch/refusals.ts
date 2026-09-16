@@ -52,9 +52,6 @@ export function declarationRefusal(err: unknown): HTTPException | null {
   }
   return null;
 }
-// cm:guard the message must name the CONFIG KEY and the shape, because this refusal is the first
-// thing a project with a fresh gate meets and an operator cannot guess `verify.probes` from
-// "no probes declared".
 export function undeclaredProbes(): HTTPException {
   return conflict(
     'RELEASE_PROBES_UNDECLARED',
@@ -83,9 +80,6 @@ export function refuseMachineKeys(body: Record<string, unknown>): void {
   if (sent.length === 0) return;
   throw new HTTPException(400, {
     message: `\`${sent.join('`, `')}\` ${sent.length === 1 ? 'is' : 'are'} core's reading and not yours to send. Core takes them from this project's declared probes at the moment you record your account, and stores them beside it. Send \`account\`, and \`providerRef\` for the provider's own handle on what you did.`,
-    // cm:why the keys go under `details` and not beside the code — `middleware/error.ts`
-    // `extractCause` copies `code`, `details` and `wwwAuthenticate` and drops every other key, so a
-    // sibling field reaches the caller as nothing at all.
     cause: { code: 'RELEASE_VERDICT_NOT_YOURS', details: { keys: sent } },
   });
 }

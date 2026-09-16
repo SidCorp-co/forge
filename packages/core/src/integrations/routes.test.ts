@@ -1115,9 +1115,6 @@ describe('POST /api/projects/:projectId/integrations — epodsystem multi-bindin
     expect(body.code).toBe('ALREADY_EXISTS');
     expect(body.message).toContain('partner-a');
     expect(createConnection).not.toHaveBeenCalled();
-    // cm:guard the preflight asks the index's WHOLE key. Dropping the label refused a second
-    // NAMED storefront; dropping the role refused a service binding beside a DEPLOY one at the
-    // same label, which after ISS-1046 is the shape every fleet epodsystem binding is in.
     expect(findActiveServiceBindingAtLabel).toHaveBeenCalledWith(
       PROJECT_ID,
       'epodsystem',
@@ -1125,7 +1122,6 @@ describe('POST /api/projects/:projectId/integrations — epodsystem multi-bindin
     );
   });
 
-  // cm:guard the pair the partial index admits and the old preflight refused.
   it('201 — a service binding is allowed beside a DEPLOY one at the same label', async () => {
     process.env.INTEGRATION_MASTER_KEY = TEST_KEY_B64;
     const token = await signUserToken(USER_ID);

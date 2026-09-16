@@ -31,9 +31,6 @@ describe('the live branch reaches an agent only under `promote`', () => {
     expect(out).toContain('- liveBranch: production');
   });
 
-  // cm:guard the two cases this rule exists for. The row KEEPS its branch — the migration does
-  // not discard a real declaration — so a `publish` or `none` project reaches here with a live
-  // branch present and must not have it printed.
   it.each(['publish', 'none'] as const)(
     'prints no live branch line at all under `%s`, even with a branch on the row',
     (model) => {
@@ -58,8 +55,6 @@ describe('the branch-detection paragraph asks only for branches this project rea
     expect(out).toContain('Branch detection:');
   });
 
-  // cm:guard a `publish` project with no live branch is fully configured, not half-configured.
-  // Asking it to go detect one is how an agent comes to invent a promote target.
   it.each(['publish', 'none'] as const)(
     'asks for nothing under `%s` when the base branch is set, whatever the live branch is',
     (model) => {

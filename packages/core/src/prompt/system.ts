@@ -167,7 +167,6 @@ async function resolveMemberLenses(
   }
 }
 
-// cm:guard fork the CALL, not the warning — the secrets sentence applies to every lane and must survive both branches. The drive branch is a CONSISTENCY choice, not a capability one: that lane's skill and preamble both speak `forge-runner api`, and a third name for one read is what put `forge_step_start` in 4,806 audit rows against a skill that named it nowhere.
 function formatProjectContext(projectId: string, step: JobType | null): string {
   const fetch =
     step === 'drive'
@@ -179,16 +178,6 @@ function formatProjectContext(projectId: string, step: JobType | null): string {
 ${fetch} Do NOT echo passwords in commits, PR descriptions, or tool output beyond the immediate authentication step.`;
 }
 
-// cm:guard the park this line names must be one the reader's lane can actually write. It said `waiting` unconditionally until 2026-09-02, and `issues/autonomous-park.ts` rewrites `waiting` to `needs_info` for a device actor on every write — so the stop signal instructed the driver into the exact move a net exists to catch, on the only job type that runs unattended.
-// cm:guard the live-branch line is printed ONLY under `releaseModel: 'promote'`, and this is half of
-// one change with the column rename (ISS-1046) — the other half is that `liveBranch` is no longer
-// defaulted at create. Printing `- liveBranch: <not configured>` for the 25 `none` projects would
-// have fired the branch-detection paragraph below, which ends in an abort-and-ask instruction, into
-// 25 projects' drive prompts at once. Under `publish` and `none` there is no such branch to state,
-// so the honest render is silence rather than a sentinel.
-// cm:edge contract -> packages/core/src/release-batch/gate.ts — the same `releaseModel` decides the
-// gate; a prompt that states a promotion the gate does not make is Forge telling an agent one thing
-// and the tracker another
 export function formatProjectConfig(
   baseBranch: string | null,
   liveBranch: string | null,
@@ -198,7 +187,6 @@ export function formatProjectConfig(
 ): string {
   const promotes = releaseModel === 'promote';
   const b = baseBranch ?? BRANCH_SENTINEL;
-  // cm:guard the "no movement" qualifier is the whole line (RFC 0002 INV-8) — printing the bare number teaches the deleted cap back, and an agent that reads it as a cap stops at round 5 on work that is progressing fine
   const park = step === 'drive' ? 'needs_info' : 'waiting';
   const liveLine = promotes ? `\n- liveBranch: ${liveBranch ?? BRANCH_SENTINEL}` : '';
   let out = `## Project Config\n- baseBranch: ${b}${liveLine}\n- noProgressRounds: ${noProgressRounds} — a stop signal, NOT a cap. Nothing limits how many times an issue may be reopened. If you have fixed the same problem this many times and NOTHING changed (same failure, same symptom, no new information), stop and set \`${park}\` with what you tried and what you need. Rounds that each move something forward are normal work.`;
@@ -212,7 +200,6 @@ export function formatProjectConfig(
   return out;
 }
 
-// cm:why orgId rides along on the row the chat preamble already reads — the integration block needs it to resolve that org's runtime guides, and a second projects SELECT for one column would double this path's cheapest query
 async function loadProjectBranches(projectId: string): Promise<{
   baseBranch: string | null;
   liveBranch: string | null;
@@ -274,7 +261,6 @@ export async function buildChatPreamble(
     buildChatNudge(lenses),
     formatProjectConfig(project.baseBranch, project.liveBranch, project.releaseModel),
   ];
-  // cm:why chat drives connected integrations (an MCP-only project has no code to read), so the tool-routing hint must reach it too — renderStageFactsText gates the whole facts block behind a JobType, which chat has none of
   const integrations = await renderChatIntegrations(projectId, project.orgId);
   if (integrations) sections.push(integrations);
   if (mcpDiagnostics && mcpDiagnostics.dropped.length > 0) {
@@ -283,7 +269,6 @@ export async function buildChatPreamble(
   return `${sections.join('\n\n')}\n\n---\n\n`;
 }
 
-// cm:why best-effort: an integrations-lookup hiccup must degrade chat to the plain preamble, never fail the send
 async function renderChatIntegrations(
   projectId: string,
   orgId: string | null,
@@ -404,7 +389,6 @@ export async function buildPipelinePreambleStructured(
     id: 'project-context',
     body: formatProjectContext(projectId, step),
   });
-  // cm:why the facts are injected HERE rather than copied into skill bodies — that keeps a skill pure business logic and current without re-syncing every skill file, and it is why projectFacts arrive as a fetch-on-demand index rather than inlined values
   if (step && factInputs) {
     const factsBlock = renderStageFactsText(factInputs, projectId, step);
     if (factsBlock) sections.push({ id: 'forge-facts', body: factsBlock });

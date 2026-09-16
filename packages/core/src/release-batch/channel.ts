@@ -34,7 +34,6 @@ export { defaultReleaseProcedure, RELEASE_PROCEDURE_FACT } from './plan.js';
  * exposes a rollback API and Forge performs it, so a paragraph there is a
  * second path to the same outcome that nothing has verified is still true.
  */
-// cm:guard prose on a coolify binding must NOT degrade to `manual` — that is the silent substitution ISS-925 removed, and it reads identically to a working declaration. It is carried through so the prompt can quote it and settings can name the binding; it is never handed to an agent as an instruction. To undo the break, return `{kind:'manual'}` here.
 export function classifyRollback(provider: string, raw: unknown): ReleaseRollback | null {
   if (typeof raw === 'string') {
     const text = raw.trim();
@@ -59,11 +58,6 @@ export function classifyRollback(provider: string, raw: unknown): ReleaseRollbac
  * `instructions` as a guide or a requirement, handled by hand, and reported into the release job like
  * any other step.
  */
-// cm:guard the previous shape was `bindings[0]` off a query ordered `created_at ASC`, and that WAS the
-// defect: on `getcontent` the oldest active `prod` binding is a Rocket.Chat room and on the archived
-// `dodgeprint-api` it was a Sentry project, so the release agent was handed a chat channel and an
-// error tracker as things to release onto. Adding a uniqueness constraint would not have fixed it —
-// the fault was core choosing, not the set having more than one member.
 export async function resolveReleaseChannels(projectId: string): Promise<ReleaseChannel[]> {
   const pairs = await listActiveDeployBindingsForStage(projectId, 'live');
   return pairs.map((pair) => {
@@ -76,7 +70,6 @@ export async function resolveReleaseChannels(projectId: string): Promise<Release
       instructions: pair.binding.instructions ?? null,
       verify: parseVerifyConfig(cfg.verify),
       rollback: classifyRollback(pair.binding.provider, cfg.rollback),
-      // cm:guard read the pool label out of `config`, NEVER out of `integration_bindings.label` — that column is the multi-store slug (ISS-558), and borrowing it would make "which box releases" and "which store is this" the same field
       releaseRunnerLabel: typeof label === 'string' && label.length > 0 ? label : null,
     };
   });
@@ -103,7 +96,6 @@ export class ReleaseRunnerAmbiguousError extends Error {
  * a single answer, because it names a machine: sending the job to whichever row sorted first is the
  * same silent pick `resolveReleaseChannels` exists to remove.
  */
-// cm:edge lockstep -> packages/core/src/devices/release-label.ts — `RELEASE_LABEL_FOR_JOB` is this rule in raw SQL, on the pool and claim paths. Looser there offers a release job to a box this would refuse.
 export function releaseRunnerLabelOf(projectId: string, channels: ReleaseChannel[]): string | null {
   const labels = [...new Set(channels.map((c) => c.releaseRunnerLabel).filter((l) => l !== null))];
   if (labels.length > 1) throw new ReleaseRunnerAmbiguousError(projectId, labels);
@@ -131,8 +123,6 @@ export async function resolveReleasePlan(projectId: string): Promise<ReleasePlan
  * named a pool that no box is in — which the caller must treat as a refusal,
  * never as "use anyone".
  */
-// cm:guard the key is the LABEL, not a device id: a rebuilt box gets a new uuid and would silently drop out of a pool pinned by id, and the failure would read as "no runner online" rather than "the box you rebuilt lost its label"
-// cm:why `labels ? ${label}` is jsonb element-membership, not key lookup — runners.labels is a jsonb ARRAY, and `?` reads an array as its set of elements
 export async function resolveReleaseDeviceIds(projectId: string, label: string): Promise<string[]> {
   const rows = await db.execute<{ device_id: string }>(sql`
     SELECT DISTINCT device_id

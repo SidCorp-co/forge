@@ -159,9 +159,6 @@ const bindExistingSchema = z
     // are validated then dropped — a bind must not shadow the shared baseUrl.
     config: z.record(z.string(), z.unknown()).optional(),
   })
-  // cm:guard the SAME three refusals the create path makes, from the same function — this is the
-  // second door onto `integration_bindings`, and a caller who reaches a wrong role/stages pair
-  // through it deserves the same sentence rather than a Postgres CHECK violation as a 500.
   .superRefine((body, ctx) => {
     checkRoleStagesPairing(body, ctx);
   });

@@ -112,12 +112,6 @@ export const RETIRED_STRATEGY_INPUTS = {
       'transition awaiting_release → reopen and post the standard conflict comment ' +
       'so forge-fix can resolve it. Never leave the issue at awaiting_release after ' +
       'a conflict — silent waiting blocks the release indefinitely.',
-    // cm:guard the condition is `releaseModel: 'promote'` and NOT a branch comparison. It read "the
-    // two branches differ" until ISS-1046, which is the same inference `release-batch/gate.ts`
-    // dropped: 25 of 32 fleet projects carry a `live_branch` left over from a column default and six
-    // of them a branch genuinely distinct from their base, so the old test handed rebase-onto-
-    // production advice to six projects that promote nothing, and withheld it from a `publish`
-    // storefront where it would be wrong for the opposite reason.
     appliesWhen:
       "The project declares releaseModel='promote' in its project config, meaning the release " +
       'moves code from baseBranch to liveBranch and ISS-* branches must track liveBranch to ' +

@@ -63,7 +63,6 @@ function isDeclared(v: unknown): boolean {
  * binding whose declaration is free text Forge no longer executes, which is
  * the same abort wearing a declaration, and names the one binding to convert.
  */
-// cm:guard the contract facts are owed by EVERY project, production or not — they are what the driver needs to prove its own work. Only the three release gaps are conditional. Reporting the contract conditionally would make a project with no production look complete while its very first issue has nothing to run.
 export async function loadReleaseReadiness(projectId: string): Promise<ReleaseReadiness | null> {
   const decl = await resolveReleaseDeclaration(projectId);
   if (!decl) return null;
@@ -77,38 +76,20 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
     ?.projectFacts ?? {}) as Record<string, unknown>;
 
   const channels = decl.kind === 'gated' ? await resolveReleaseChannels(projectId) : [];
-  // cm:edge contract -> packages/core/src/projects/autonomous-contract.ts — the unconditional half of the contract is DECLARED there and read here; listing `build-commands` and `test-commands` again would let the two disagree about what a project owes
   const gaps: ReleaseGapKey[] = missingAutonomousFacts(facts).map((f) => f.key);
-  // cm:guard `undeclared-target` earns a gap of its own rather than silently behaving like a project
-  // with no release step. Settings is where an operator finds out that the project says it releases
-  // and has nowhere to release to; before ISS-1046 both shapes answered `null` and the second one was
-  // discovered by a release agent being handed an error tracker.
   if (decl.kind === 'undeclared-target') gaps.push('release-target');
-  // cm:why the label is read through the same refusal `createReleaseBatch` makes, and a disagreement
-  // is reported as a gap rather than thrown: settings must render for a misconfigured project.
   let releaseRunnerLabel: string | null = null;
   try {
     releaseRunnerLabel = releaseRunnerLabelOf(projectId, channels);
   } catch {
     gaps.push('release-runner-ambiguous');
   }
-  // cm:why the FIRST channel's verify/rollback answers the readiness flags: settings asks "is the
-  // contract declared at all", and a set where one member declares nothing is reported by its own
-  // gap rather than by averaging. `createReleaseBatch` is the reader that refuses per channel.
   const first = channels[0] ?? null;
   if (decl.kind === 'gated') {
     if (!isDeclared(facts[RELEASE_PROCEDURE_FACT])) gaps.push('release-procedure');
     if (!releaseRunnerLabel && !gaps.includes('release-runner-ambiguous'))
       gaps.push('release-runner');
-    // cm:edge lockstep -> packages/core/src/release-batch/service.ts — `createReleaseBatch` REFUSES on this, and reporting it here is what gives the operator the gap before a release discovers it. Drop this line and the refusal arrives with nothing in settings having said it was coming.
     if (channels.some((c) => !c.verify)) gaps.push('verify-probes');
-    // cm:edge lockstep -> packages/core/src/release-batch/service.ts — the SAME rule as the line
-    // above, for `ReleaseMultiChannelUnsupportedError`. A project with two live channels that agree
-    // on their runner label and declare every fact has no gap at all by every other measure, so
-    // settings rendered it complete while `createReleaseBatch` refused it by name. Widening what a
-    // release RETURNS to the live set did not widen the attempt ledger, which records one reading
-    // and closes the whole roster on it; until per-binding verification lands, this is the gap that
-    // says so where the operator can act on it.
     if (channels.length > 1) gaps.push('release-multi-channel');
     if (channels.some((c) => !c.rollback)) gaps.push('rollback');
     else if (channels.some((c) => c.rollback?.kind === 'unrepresentable'))

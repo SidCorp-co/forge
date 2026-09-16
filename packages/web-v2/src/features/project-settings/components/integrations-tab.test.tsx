@@ -145,10 +145,6 @@ describe("ShareExistingCard — the stage control under `service`", () => {
     expect(screen.getByRole("checkbox", { name: /Live/ })).toBeInTheDocument();
   });
 
-  // cm:guard hiding is not enough and this is the case that separates the two: a
-  // control unmounted with its value still in state re-submits that value the
-  // moment anything else re-renders, and the database refuses a service binding
-  // carrying a stage. Switching back must show the boxes CLEARED.
   it("clears the stages it hides, so switching back shows nothing selected", () => {
     renderTab();
     choose(COOLIFY_OPTION, "deploy");
@@ -187,9 +183,6 @@ describe("ShareExistingCard — the two refusals, on the form", () => {
     expect(bindMutate).not.toHaveBeenCalled();
   });
 
-  // cm:guard the refusal NAMES the provider. "Bad request" sends the operator to
-  // read the request; "Forge cannot deploy to Sentry" sends them to change the
-  // role, which is the only thing that works.
   it("refuses a deploy role inline for a provider with no deploy adapter, naming it", () => {
     renderTab();
     choose(SENTRY_OPTION, "deploy");

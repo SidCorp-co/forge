@@ -33,7 +33,6 @@ import { ConnectionOwnerField } from "./connection-owner-field";
 import { IntegrationEnabledControl } from "./integration-enabled-control";
 import { scopeLabel } from "./status-pill";
 
-// cm:guard POST this as a real FORM navigation, never `fetch` — GitHub's App-manifest flow reads `manifest` from a top-level form POST, and the redirect back to /api/integrations/github/manifest-callback authenticates on the `forge_auth` cookie (SameSite=Lax), which a background request would not carry
 function submitManifest(start: GitHubConnectStart): void {
   const form = document.createElement("form");
   form.method = "POST";
@@ -47,7 +46,6 @@ function submitManifest(start: GitHubConnectStart): void {
   form.submit();
 }
 
-// cm:guard bind github at `prod` and offer no environment choice — the adapter declares canDeploy false and the drawer reads rows[0] for such providers, so a binding stamped `staging` is not a second environment, it is a row every prod-scoped lookup walks straight past
 function permissionRows(manifest: Record<string, unknown>): [string, string][] {
   const perms = manifest.default_permissions;
   if (!perms || typeof perms !== "object") return [];

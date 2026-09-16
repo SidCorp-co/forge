@@ -25,7 +25,6 @@ import { RELEASE_CHANNEL_KEYS, releaseChannelFields } from './release-channel-sc
 import { isRotatingProvider, mergeRotatedSecrets, type RotatingProvider } from './rotation.js';
 import { assertVaultConfigured, badRequest } from './route-helpers.js';
 
-// cm:why `id` is server-assigned when omitted so it stays STABLE across config edits — it is the key mapping an outbound deploy to the target it was for, so regenerating it would orphan deliveries already recorded against the old one
 const coolifyTargetSchema = z
   .object({
     id: z.string().min(1).max(64).optional(),
@@ -33,7 +32,6 @@ const coolifyTargetSchema = z
     resourceUuid: z.string().min(1).max(200),
     healthUrl: z.string().url().max(500).optional(),
   })
-  // cm:guard never default `healthUrl` — an absent one is the operator declaring NO post-deploy health gate for this target, and a derived default would arm automatic rollback on every application whose health path Forge guessed wrong (ISS-971)
   .transform((t) => ({
     id: t.id ?? randomUUID(),
     label: t.label,
@@ -52,7 +50,6 @@ const COOLIFY_ROLLBACK_PROSE_REFUSAL =
  * value is a sentence naming the replacement, not `expected object, received
  * string`.
  */
-// cm:guard the union `releaseChannelFields` implies across providers is a shape, NOT a type: `rollback` alone differs, and this key must stay LAST in `coolifyConfigSchema` so it overrides the spread above it. `RELEASE_CHANNEL_KEYS` still lists it because splitProviderConfig routes by key name and is indifferent to the value's shape (ISS-925).
 const coolifyRollbackSchema = z
   .unknown()
   .superRefine((value, ctx) => {
@@ -77,8 +74,6 @@ const coolifyRollbackSchema = z
 
 const coolifyConfigSchema = z.object({
   baseUrl: z.string().url().max(500),
-  // cm:why several targets under one binding because a split BE/FE deploy is two separate Coolify applications sharing one project's credential and release gate
-  // cm:guard labels are UNIQUE within a binding, and the refusal is here because nothing downstream can recover from a duplicate: a `coolify.confirm` job carries only `targetLabel`, so two targets sharing one makes the post-deploy health gate read the first match's health URL and roll back that application instead of the one that failed (ISS-971)
   targets: z
     .array(coolifyTargetSchema)
     .min(1)
@@ -100,7 +95,6 @@ const coolifyConfigSchema = z.object({
   rollback: coolifyRollbackSchema,
 });
 
-// cm:why binding-tier = per project: two projects share one org connection (the credential + baseUrl) but each deploys its own targets and names its own release box, probes and rollback — a key left on the connection tier is also a key a project admin cannot write on an org-owned connection
 const COOLIFY_BINDING_CONFIG_KEYS = ['targets', ...RELEASE_CHANNEL_KEYS] as const;
 
 /** Provider → binding-tier config keys (everything else stays on the
@@ -114,9 +108,7 @@ const BINDING_CONFIG_KEYS: Record<string, readonly string[]> = {
   postman: RELEASE_CHANNEL_KEYS,
   epodsystem: RELEASE_CHANNEL_KEYS,
   sentry: RELEASE_CHANNEL_KEYS,
-  // cm:guard `installationId` is binding-tier with owner/repo, not connection-tier — ONE App can hold several installations, and splitProviderConfig drops from the binding every key missing here, so leaving it out lets a bind succeed with the repository recorded and no way to mint a token for it (adapter.ts reads all three together)
   github: ['installationId', 'owner', 'repo', ...RELEASE_CHANNEL_KEYS],
-  // cm:edge contract -> packages/core/src/integrations/provider-schemas.ts — `defaultSpreadsheetId` is binding-tier because ONE service account is shared org-wide while the sheet it reads is the project's own; deleting it from this list moves the key to the connection and silently strips it from every PATCH (ISS-1036)
   google: ['defaultSpreadsheetId', ...RELEASE_CHANNEL_KEYS],
   agent: RELEASE_CHANNEL_KEYS,
 };
@@ -144,7 +136,6 @@ const coolifySecretsSchema = z.object({
   apiToken: z.string().min(8).max(2000),
 });
 
-// cm:guard keep this base free of `.default()` — zod's `.partial()` still EMITS a field's default when the key is absent, so a default here turns a PATCH that names one field into one that silently resets region, mode and workspaceName. Defaults belong on the create schema alone (ISS-336).
 const postmanConfigBase = z.object({
   workspaceId: z.string().min(1).max(200).optional(),
   workspaceName: z.string().min(1).max(200),
@@ -164,8 +155,6 @@ const postmanSecretsSchema = z.object({
   apiKey: z.string().min(8).max(2000),
 });
 
-// cm:guard the endpoint is NOT a config key here and must not become one — it is platform config read from `EPODSYSTEM_ENDPOINT`, so a field for it would let one project point the integration at another host (ISS-387)
-// cm:guard every field is optional on input BECAUSE the healthcheck fills the store identity (slug, name, theme ids) — requiring any of them would make the operator transcribe what Forge is about to discover, and staging binds the draft theme against prod's main
 const epodsystemConfigBase = z.object({
   storeSlug: z.string().min(1).max(200).optional(),
   storeName: z.string().min(1).max(200).optional(),
@@ -230,17 +219,14 @@ const githubConfigBase = z.object({
   ...releaseChannelFields,
 });
 
-// cm:guard every field here is WRITTEN BY GitHub, never typed by an operator — the app-manifest conversion returns `id`, `pem` and `webhook_secret` together, so a connection carrying some of them is a half-finished authorization, not a mis-typed form. `webhookSecret` belongs to the App and is copied onto each binding's `integrationSecret`; that is why the adapter must match the repository itself rather than letting the signature pick the binding.
 const githubSecretsSchema = z.object({
   appId: z.string().min(1).max(50),
   privateKey: z.string().min(100).max(20000),
   webhookSecret: z.string().min(8).max(500),
 });
 
-// cm:why the release channel `agent` is declared here rather than left as free-text: the REST create path validates through the discriminated union below, so a provider absent from it cannot be created at all — `provider` being a `text` column only means no MIGRATION is needed. It carries no credential and has no adapter because nothing is integrated: the deploy is the project's own script, run by the release session on a box that already holds the key.
 const agentReleaseConfigSchema = z.object(releaseChannelFields);
 
-// cm:why `environment` defaults to 'prod' on postman because that provider has no staging/prod split, while the binding column and its unique index still require a value
 const createVariants = z.discriminatedUnion('provider', [
   z.object({
     provider: z.literal('coolify'),
@@ -305,7 +291,6 @@ const createVariants = z.discriminatedUnion('provider', [
     provider: z.literal('agent'),
     ...bindingShapeFields,
     config: agentReleaseConfigSchema,
-    // cm:guard NO secrets, ever. The whole point of this channel is that the production credential stays on the runner box: a deploy key in Forge would put every project's production behind one decryption path, which is the blast radius the release gate was designed to refuse.
     secrets: z.object({}).strict().default({}),
     orgId: z.uuid().optional(),
   }),
@@ -313,12 +298,10 @@ const createVariants = z.discriminatedUnion('provider', [
 
 export const createSchema = createVariants.superRefine(checkBindingShape);
 
-// cm:guard this shape is loose ON PURPOSE — a PATCH carries no provider, so `config`/`secrets` are re-validated against the EXISTING binding's provider inside the handler; tightening it here would validate against a provider nobody named
 export const updateSchema = z.object({
   config: z.record(z.string(), z.unknown()).optional(),
   secrets: z.record(z.string(), z.unknown()).optional(),
   active: z.boolean().optional(),
-  // cm:why deliberately NOT a provider-config key — this is Forge-side prompt text, so routing it through configSchemaForProvider would force all five provider schemas to carry a field none of them consume
   instructions: z.string().max(4000).nullable().optional(),
 });
 

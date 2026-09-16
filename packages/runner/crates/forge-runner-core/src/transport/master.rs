@@ -39,9 +39,6 @@ pub async fn close(client: &CoreClient, session_id: &str, reason: &str) -> Resul
 /// the device stops being prompted into it.
 ///
 /// A TYPED verdict and never text: core classifies nothing on this route.
-// cm:guard the runner owns the classification and core owns the record, and that split is load bearing rather than tidy. A master's pane carries issue bodies, plans and comments, so a raw-text door would let anyone who can write an issue plant a refusal banner, have the master echo it, and hard-exclude this box from dispatch. `detail` is display-only for exactly that reason.
-// cm:edge contract -> packages/core/src/devices/pool-routes.ts — `masterLimitSchema` is the validator these three field names answer to, and it refuses `auth` carrying a reset BY NAME (`AUTH_LIMIT_HAS_NO_RESET`), which `Refusal::new` is what keeps this side from ever sending.
-// cm:edge lockstep -> packages/runner/crates/forge-runner-core/assets/master-limit-wire.json — the body this builds from the captured `429_five_hour` record, asserted byte for byte on this side and read off disk by `packages/core/src/devices/pool-routes.test.ts` on the other. One file, two readers: a field renamed on either side stops matching it.
 pub async fn report_limit(
     client: &CoreClient,
     reason: &str,
@@ -49,7 +46,6 @@ pub async fn report_limit(
     detail: &str,
 ) -> Result<()> {
     let mut body = serde_json::json!({ "reason": reason, "detail": detail });
-    // cm:guard OMITTED rather than sent as null when there is none. Core reads the field as `nullish`, so both forms parse — but an `auth` report is refused outright if the key carries a number, and building the object one way for every reason is what keeps that impossible.
     if let Some(secs) = resets_in_seconds {
         body["resetsInSeconds"] = serde_json::json!(secs);
     }
@@ -59,7 +55,6 @@ pub async fn report_limit(
 
 /// Lift the limit core is holding for this device: the master's own next
 /// successful turn is the proof its account works again.
-// cm:why a DELETE on the same path rather than a flag on the report, which is core's own shape: the two carry opposite evidence, and one door taking both is how a caller ends up clearing a limit by omitting a field.
 pub async fn clear_limit(client: &CoreClient) -> Result<()> {
     let url = client.url("/api/devices/me/limit");
     let resp = client
@@ -80,7 +75,6 @@ pub async fn clear_limit(client: &CoreClient) -> Result<()> {
     Ok(())
 }
 
-// cm:guard the caller names the ROUTE in `what`, because this helper now serves three of them and an error saying `master-session` over a `/me/limit` refusal sends whoever reads the log to the wrong half of the daemon.
 async fn post(
     client: &CoreClient,
     what: &str,
@@ -164,7 +158,6 @@ mod tests {
         assert_eq!(body["resetsInSeconds"], 900);
     }
 
-    // cm:guard the key is ABSENT rather than null. Core refuses an `auth` report carrying a reset by name, so a body that always wrote the field would report nothing at all for the one limit an operator has to fix by hand.
     #[tokio::test]
     async fn an_auth_report_carries_no_reset_key_at_all() {
         let (url, rx) = capture("200 OK").await;
@@ -183,7 +176,6 @@ mod tests {
         assert!(req.starts_with("DELETE /api/devices/me/limit "), "{req}");
     }
 
-    // cm:guard a refusal must come back as an Err rather than as a silent success, because the sweep memoises a refusal ONLY on the Ok — an error swallowed here would record the report as sent and the cap would never reach core.
     #[tokio::test]
     async fn a_core_that_refuses_the_report_is_an_error_the_caller_can_see() {
         let (url, _rx) = capture("500 Internal Server Error").await;

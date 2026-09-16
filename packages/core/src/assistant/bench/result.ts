@@ -107,12 +107,10 @@ export function readResult(text: string, where = 'result'): BenchResult {
     const row = task as Record<string, unknown>;
     if (typeof row.id !== 'string' || !Array.isArray(row.trials))
       throw new ResultShapeError(`${where}.tasks[${t}] lacks id or trials`);
-    // cm:why a file written before ISS-1061 names no capability: every task it walked was a method task, and reading it as such keeps an earlier run on the ladder
     if (row.capability === undefined) row.capability = 'method';
     for (const trial of row.trials as Array<Record<string, unknown>>) {
       const cleanup = trial.cleanup as Record<string, unknown> | undefined;
       if (!cleanup) continue;
-      // cm:why the same file holds one `cleanup.room`; a trial then opened one room, so it is the one-element list the history verb excludes by
       if (cleanup.rooms === undefined && cleanup.room !== undefined) {
         cleanup.rooms = [cleanup.room];
         delete cleanup.room;

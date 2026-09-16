@@ -246,8 +246,6 @@ describe('POST /me/limit', () => {
     expect(clearMasterLimit).toHaveBeenCalledWith('dev-1');
   });
 
-  // cm:edge lockstep -> packages/runner/crates/forge-runner-core/assets/master-limit-wire.json — the file read here is the body the Rust producer builds from a captured refusal, asserted byte for byte on that side by `daemon::master_limit::tests::a_captured_refusal_reaches_core_as_the_bytes_both_languages_read`. Reading the artifact rather than retyping it is the point: a field renamed on either side stops matching ONE file, instead of passing two suites and failing on a live box.
-  // cm:guard the file is read off disk, NOT imported. The two packages have no build dependency on each other and must not gain one over a test fixture; `relations archmap` walks imports, and an import here would declare a coupling that does not exist at runtime.
   it('takes the body the runner actually sends, read off the file both sides read', async () => {
     const body = readFileSync(WIRE_FIXTURE, 'utf8').trim();
     const res = await app.request('/api/devices/me/limit', {
@@ -259,7 +257,6 @@ describe('POST /me/limit', () => {
     expect(recordMasterLimit).toHaveBeenCalledWith('dev-1', JSON.parse(body));
   });
 
-  // cm:guard the WHOLE set, in both directions. A reason core stops storing is a report the box sends into a 400 forever; a reason core gains that the runner never sends is a cap a master can see and cannot report. Neither shows up in a test that only checks the reasons it happens to name.
   it('stores exactly the reasons the runner declares it can send', () => {
     const declared = JSON.parse(readFileSync(REASONS_FIXTURE, 'utf8')).reasons as string[];
     expect([...declared].sort()).toEqual([...runnerLimitReasons].sort());

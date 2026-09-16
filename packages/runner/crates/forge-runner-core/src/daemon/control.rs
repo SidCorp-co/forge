@@ -31,20 +31,15 @@ use crate::config::Config;
 use crate::daemon::session_tokens::SessionTokens;
 
 /// Where the daemon listens and the CLI connects: beside `config.toml`.
-// cm:guard derive this from `Config::path()` and nothing else. dev1 runs several runner services that differ ONLY by `XDG_CONFIG_HOME`, so the config dir is already the thing that separates them; a socket keyed on anything else (a fixed name, the hostname, `XDG_RUNTIME_DIR`) puts two daemons on one path, and a session then reports its turns to whichever bound first.
 pub fn socket_path() -> Option<PathBuf> {
     let cfg = Config::path().ok()?;
     Some(cfg.with_file_name("control.sock"))
 }
 
-// cm:guard every variant carries `token` and NONE declares a session. The daemon maps token -> session and an unknown field on the frame is dropped by serde, so a session that names another session is served as itself (ISS-964 criteria 29-31).
-// cm:guard what may be added here is a frame that RECORDS, and what may never be is one that selects work or starts a process. This guard used to say no second verb at all, on the premise that the lease on the issue was the whole record of a run; ISS-1050 made that premise false — nothing was recording what a master handed out, so a master dying took its issues with it — and the premise, not the caution, is what changed. The caution is kept as a bound: a declaration names the project it is for and is refused unless that is the project whose master this token's session is, so a pane whose hooks are noisy or forged can still move no work that is not already its own.
 #[derive(Debug, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 enum Request {
     /// What this session's own hooks say it is doing (turn boundaries).
-    // cm:guard the ONLY verb on this socket, and it REPORTS rather than acts: it takes no run id, claims nothing and releases nothing, so a pane whose hooks are noisy or forged can move no work. A verb added here that acts is a second way to reach work that the lease on the issue is supposed to be the whole record of.
-    // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/agent_activity.rs — `event` is a Claude Code hook event NAME and that module owns the closed set; an unknown one is refused by name rather than recorded as something adjacent.
     #[serde(rename_all = "camelCase")]
     AgentEvent {
         token: String,
@@ -52,7 +47,6 @@ enum Request {
         #[serde(default)]
         at_ms: Option<i64>,
         /// The child this event is about: `agent_id`, or `teammate_name` on `TeammateIdle`.
-        // cm:guard OPTIONAL and never defaulted to anything: measured against claude 2.1.257, a child event carries `agent_id` and a lead event carries none, so an absent field is the discriminator rather than a gap to fill.
         #[serde(default)]
         agent_id: Option<String>,
         /// Claude Code's own `session_id` — which conversation these claims belong to.
@@ -60,7 +54,6 @@ enum Request {
         conversation_id: Option<String>,
     },
     /// "I am about to hand these issues to a subagent."
-    // cm:guard `project_id` is on the frame AND checked against the one this token's session is master of, rather than simply derived from the token. Derived, a master that named the wrong project would be served silently under the right one, and the mistake would surface as a run recorded against issues nobody meant; named and checked, it is refused saying which project the pane actually serves (ISS-1050 criterion 7).
     #[serde(rename_all = "camelCase")]
     RunDeclare {
         token: String,
@@ -69,10 +62,6 @@ enum Request {
         worktree_path: String,
     },
     /// "I have decided what to do about a run I inherited when this pane was resumed."
-    // cm:guard this records a CHOICE and performs none of it. `continue`, `restart` and `leave` are
-    // three words a master writes down; nothing here starts, kills or reopens anything, because
-    // deciding what happens to work whose owner cannot be asked is the master's, and a verb that
-    // also acted would move that judgement into the box (ISS-1050 criterion 28).
     #[serde(rename_all = "camelCase")]
     RunChoice {
         token: String,
@@ -130,7 +119,6 @@ impl ClaimReply {
 }
 
 /// What serving one frame needs, and deliberately nothing more.
-// cm:guard still NO core client, no repo lock and no runner, and that is the line rather than the count of fields. The two below let a frame write a row in this box's own registry and read which project a pane serves; neither can reach core, so nothing served here can move an issue, take a lease or start a process. A core client added to this struct is how a verb that acts gets written next, because there would be something here to act WITH — the ledger is not that, and the core-side half of a declaration is opened by the daemon's own tick, which already has a client (ISS-1050).
 pub struct Control {
     /// Which session is on the other end of a frame.
     pub tokens: SessionTokens,
@@ -139,14 +127,12 @@ pub struct Control {
     /// Which project each live master pane serves, for bounding a declaration.
     pub masters: Arc<crate::daemon::master::Masters>,
     /// This box's own registry of what its masters have handed out.
-    // cm:guard a `Mutex` and not a second `Ledger` per frame: `rusqlite::Connection` is not `Sync`, and one connection per frame would open and migrate the file on every hook call.
     pub ledger: Arc<std::sync::Mutex<Option<crate::runner::ledger::Ledger>>>,
     /// The boot this daemon is in, which scopes every row it writes.
     pub boot_id: String,
 }
 
 /// Serve until `cancel` flips.
-// cm:guard REFUSE on a platform with no unix socket, never degrade to a daemon that starts without one. Turn boundaries are how everything on this box tells a working pane from a stopped one, and a daemon that came up with no socket would report healthy while every liveness reader on it went blind.
 #[cfg(not(unix))]
 pub async fn serve(
     _ctl: Arc<Control>,
@@ -158,7 +144,6 @@ pub async fn serve(
 }
 
 #[cfg(unix)]
-// cm:guard bind by REPLACING a stale socket file, never by refusing to start. A daemon killed by SIGKILL leaves the file behind, and a runner that then declines to listen is a box whose panes report nothing with nothing in its log naming the socket as the cause.
 pub async fn serve(
     ctl: Arc<Control>,
     mut cancel: tokio::sync::watch::Receiver<bool>,
@@ -206,7 +191,6 @@ async fn serve_one(ctl: Arc<Control>, stream: UnixStream) {
     }
     let reply = match serde_json::from_str::<Request>(&line) {
         Ok(req) => match ctl.tokens.session_for(req.token()) {
-            // cm:guard resolve the token ONCE, here, and pass the session id down. A handler that took the token and resolved it itself would be a second place the mapping can be got wrong, and the refusal below is the only thing standing between the socket and an unauthenticated caller.
             Some(session_id) => serve_request(&ctl, req, &session_id),
             None => ClaimReply::refused("unknown_token"),
         },
@@ -218,8 +202,6 @@ async fn serve_one(ctl: Arc<Control>, stream: UnixStream) {
 }
 
 /// Record one hook report and answer with the state it produced.
-// cm:guard synchronous and allocation-light on purpose: this runs on EVERY tool call of every pane on the box, and the hook that calls it is in the agent's critical path. A handler that awaited core here would put this daemon's network latency between an agent and its next tool.
-// cm:guard an unknown event NAME is refused rather than recorded as adjacent — a Claude Code release that renames an event must show up as a named refusal in the log, not as a pane that quietly stops reporting turn boundaries while every reader keeps trusting the last one.
 #[cfg(unix)]
 fn agent_event(
     ctl: &Arc<Control>,
@@ -243,7 +225,6 @@ fn agent_event(
     );
     bind_or_release(ctl, parsed, agent_id, session_id);
     note_master_pane(ctl, session_id, conversation_id);
-    // cm:guard a permission wait is the ONE state that leaves this box at WARN, because it is the only one nothing on the box can clear: a turn that runs ends, a turn that fails ends, and a question put to a human ends when a human answers it. Measured forge-vm 2026-09-10: one run pane sat on a dangerous-command prompt for hours while every liveness reader called it healthy, because the pane emitted no boundary anything here could hear.
     match after.doing() {
         crate::daemon::agent_activity::Doing::AwaitingPermission => tracing::warn!(
             "[control] session {session_id} is stopped on a question only a human can answer"
@@ -260,17 +241,11 @@ fn agent_event(
 }
 
 /// The three words a resumed master may write about a run it inherited.
-// cm:guard a CLOSED set, refused by name. The master is handed raw fields and asked to judge; the
-// judgement is its own, but the vocabulary is not, because a gate that accepts any string cannot
-// tell a decision from a typo and would let "contineu" satisfy it silently (ISS-1050 criterion 29).
 pub const RESUME_CHOICES: &[&str] = &["continue", "restart", "leave"];
 
 /// Record what a resumed master decided about one run it inherited.
 ///
 /// Writes a word and a reason. Starts nothing, kills nothing, reopens nothing.
-// cm:guard the reason is REQUIRED and is not checked for content. Criterion 29 asks for the choice
-// AND why; a choice with an empty reason is a record nobody can act on six hours later, and a box
-// that judged the prose would be marking the master's homework.
 fn run_choice(
     ctl: &Arc<Control>,
     run_id: &str,
@@ -315,7 +290,6 @@ fn run_choice(
 ///
 /// Writes a row and answers its id. Starts nothing, selects nothing, and moves
 /// no issue's status.
-// cm:guard the project is CHECKED and never derived, and an unknown pane is refused rather than served. `Masters` is an in-process optimisation and a daemon restart empties it while every master is still running, so a declaration in that window must be told this box does not yet know which project its pane serves — the next sweep re-adopts the pane and restores the answer. Serving it anyway, from the frame's own claim or from the only entry present, is how a pane on one project opens a run over another's issue (ISS-1050 criterion 7).
 #[cfg(unix)]
 fn run_declare(
     ctl: &Arc<Control>,
@@ -334,13 +308,6 @@ fn run_declare(
             "this pane is the master for {serves} and cannot declare a run for {project_id}"
         ));
     }
-    // cm:guard the keys are checked for SHAPE before a row exists, because criterion 7 says a refused
-    // declaration writes nothing and the ledger row is written before core is ever asked. A key core
-    // cannot resolve is refused at `POST /me/run-sessions` — by which time this box is holding a
-    // declared run over it, retried by `open_declared_runs` every sweep for the life of the boot,
-    // pinning the worktree it names (ISS-1050 finding F12). What this CANNOT answer is whether a
-    // well-formed key exists in this project: that mapping is core's alone, and a box that guessed
-    // at it would be inventing the answer it is refusing to guess.
     if let Some(bad) = issue_keys.iter().find(|k| !is_issue_key(k)) {
         return ClaimReply::refused(format!(
             "`{bad}` is not an issue reference — a declaration takes one per issue the subagent is being given, each a display id such as `ISS-42` or your project's own prefix, or the bare number. Nothing was recorded"
@@ -351,13 +318,6 @@ fn run_declare(
     let Some(led) = held.as_mut() else {
         return ClaimReply::refused("this daemon has no ledger open, so it can record nothing");
     };
-    // cm:guard the gate for criterion 29, and it is a REFUSAL rather than a reminder. A resumed
-    // pane is handed the runs it inherited and asked to say what happens to each; a brief that only
-    // asks is one a master can read past, and the issues under those runs then sit claimed by work
-    // nobody decided to continue while the pane starts something new. Refusing the next declaration
-    // is the only place that can be made to hold.
-    // cm:guard it names the runs and the three words rather than saying "answer first". A refusal
-    // that does not say what it wants is one the caller retries.
     match led.runs_awaiting_choice(session_id, &ctl.boot_id) {
         Ok(pending) if !pending.is_empty() => {
             let names: Vec<String> = pending
@@ -408,21 +368,11 @@ fn run_declare(
                 reason: None,
             }
         }
-        // cm:guard the ledger's own refusal text is passed through WHOLE. Each of the three names what a master has to do next — which issue collided, which tree is held, which declared row to close — and a handler that replaced them with one word of its own would take that away.
         Err(e) => ClaimReply::refused(e.to_string()),
     }
 }
 
 /// Whether a string is shaped like an issue reference core will parse.
-// cm:guard SHAPE only, and deliberately no more. Whether a well-formed reference names a real issue
-// in this project is a question only core can answer — the key is a per-project sequence and the box
-// holds no index of them — and the refusal that matters there is core's own. Widening this to guess
-// would be the second live path this repository refuses everywhere else.
-// cm:edge contract -> packages/core/src/lib/issue-ref.ts — `REF_SHAPE` is the rule this mirrors:
-// an OPTIONAL prefix of two to six alphanumerics, then a sequence number. The prefix is optional
-// because a bare number is a reference core accepts, and it is not fixed to `ISS` because a project
-// answers to its own prefix as well as the legacy one — a check spelling `ISS-` into the box would
-// refuse `FD-977` here and be told it was valid one process away (ISS-1050 finding F12).
 fn is_issue_key(s: &str) -> bool {
     let body = match s.split_once('-') {
         Some((prefix, rest)) => {
@@ -445,7 +395,6 @@ fn is_issue_key(s: &str) -> bool {
 }
 
 /// Record that a declared run is over, whether it ran or never started.
-// cm:guard the run must belong to THIS session. A close keyed on the run id alone would let any pane on the box end another master's run, and the close is what releases the issues.
 #[cfg(unix)]
 fn run_close(
     ctl: &Arc<Control>,
@@ -483,8 +432,6 @@ fn run_close(
 /// claimed; `SubagentStop` ends the row that child was bound to. Both are ledger
 /// writes and neither reaches core — the core-side close is the daemon's own
 /// pass, which has a client.
-// cm:guard this runs INSIDE the hook path and must never fail it: every branch is a log line, because a pane whose bind was refused must keep reporting its turn boundaries. The cost of a missed bind is a row core's reaper returns in ten minutes, which is the same safe direction as a master that died between declaring and dispatching (ISS-1050 criterion 13).
-// cm:guard `SubagentStop` ends the row rather than releasing anything here. The ledger says the run is over; the leases and core's session are closed by the pass that owns them, so there is exactly one writer of each.
 #[cfg(unix)]
 fn bind_or_release(
     ctl: &Arc<Control>,
@@ -500,26 +447,20 @@ fn bind_or_release(
     let mut held = ctl.ledger.lock().expect("ledger poisoned");
     let Some(led) = held.as_mut() else { return };
     match event {
-        Event::SubagentStarted => {
-            match led.unbound_run_for_master(session_id, &ctl.boot_id) {
-                Ok(Some(run)) => match led.bind_agent(&run.run_id, child) {
-                    Ok(true) => tracing::info!("[control] run {} is subagent {child}", run.run_id),
-                    Ok(false) => tracing::debug!(
-                        "[control] run {} was already bound when {child} started",
-                        run.run_id
-                    ),
-                    Err(e) => tracing::warn!("[control] cannot bind {child}: {e}"),
-                },
-                // cm:guard NOT a warning. A master runs subagents this box knows nothing about — a
-                // search, a review, anything it dispatches without declaring — and every one of
-                // them arrives here. Only a declared run has a row, and a child with none is the
-                // ordinary case rather than a fault.
-                Ok(None) => {
-                    tracing::debug!("[control] subagent {child} answers to no declared run")
-                }
-                Err(e) => tracing::warn!("[control] cannot read declared runs: {e}"),
+        Event::SubagentStarted => match led.unbound_run_for_master(session_id, &ctl.boot_id) {
+            Ok(Some(run)) => match led.bind_agent(&run.run_id, child) {
+                Ok(true) => tracing::info!("[control] run {} is subagent {child}", run.run_id),
+                Ok(false) => tracing::debug!(
+                    "[control] run {} was already bound when {child} started",
+                    run.run_id
+                ),
+                Err(e) => tracing::warn!("[control] cannot bind {child}: {e}"),
+            },
+            Ok(None) => {
+                tracing::debug!("[control] subagent {child} answers to no declared run")
             }
-        }
+            Err(e) => tracing::warn!("[control] cannot read declared runs: {e}"),
+        },
         Event::SubagentStopped => match led.run_for_agent(child) {
             Ok(Some(run)) => match led.end_run(&run.run_id, "subagent", "the subagent finished") {
                 Ok(()) => tracing::info!("[control] run {} ended with {child}", run.run_id),
@@ -536,17 +477,6 @@ fn bind_or_release(
 ///
 /// This is the only writer of that row, and what it stores is what a rebuilt
 /// pane is resumed from.
-// cm:guard runs INSIDE the hook path and must never fail it, exactly as `bind_or_release` above:
-// every branch is a log line at worst. A pane whose row could not be written still reports its turn
-// boundaries; the cost is a cold start later, which `ensure_master` says out loud.
-// cm:guard written only for a session the registry knows is a MASTER. `project_for_session` answers
-// `None` for anything else, and a row minted for a subagent's session would name a pane no resume
-// can address.
-// cm:guard a `None` conversation is passed THROUGH rather than skipped, because `note_master`'s
-// `COALESCE` is what keeps the stored handle alive across events that carry none — and the pane
-// name and `last_seen_at` still need refreshing on those events. Guarding the call on a present
-// conversation would leave the row's pane name stale for the whole life of a pane whose hooks
-// mostly fire without one.
 #[cfg(unix)]
 fn note_master_pane(ctl: &Arc<Control>, session_id: &str, conversation_id: Option<&str>) {
     let Some(project_id) = ctl.masters.project_for_session(session_id) else {
@@ -706,7 +636,6 @@ async fn ask(path: &std::path::Path, body: serde_json::Value) -> std::io::Result
 mod tests {
     use super::*;
 
-    // cm:guard a refusal must serialise WITHOUT the success fields rather than with nulls — the caller reads this JSON, and a `jobId: null` beside `ok: false` reads as a job that exists and failed rather than a report that never landed.
     #[test]
     fn a_refusal_carries_a_reason_and_no_job() {
         let out = serde_json::to_string(&ClaimReply::refused("unknown_event: Nope")).unwrap();
@@ -715,7 +644,6 @@ mod tests {
         assert!(out.contains("\"ok\":false"));
     }
 
-    // cm:guard the frame is the one the CLI actually sends, byte for byte: the enum's `rename_all` renames VARIANTS and not fields, so without the field-level rename `atMs` decodes as absent and — worse in this direction — a typo in the op name makes every hook report on the box an "undecodable request" that nothing on either side is watching for.
     #[test]
     fn a_hook_frame_from_the_cli_decodes_with_its_event_and_optional_timestamp() {
         let frame = r#"{"op":"agent_event","token":"t1","event":"Stop","atMs":1700}"#;
@@ -767,7 +695,6 @@ mod tests {
     }
 
     /// The `Request` enum's body, as source text.
-    // cm:guard normalise CRLF and use `split_once`, because BOTH halves were silent failures. `str::split(..).next()` never answers `None`, so a delimiter that did not match returned the whole rest of the file and the scan below passed over `fn agent_event(.., session_id: &str)` instead of over the enum — a test that cannot fail. It only surfaced when a runner change made ci.yml's windows leg run at all; the path filter had been skipping it, and skipped is a pass to `ci-passed`.
     /// A `Control` whose ledger is in memory, so a declaration writes nowhere real.
     fn declaring_control(session_id: &str, project_id: &str) -> (Arc<Control>, String) {
         let dir = std::env::temp_dir().join(format!("ct-decl-{}", uuid::Uuid::new_v4()));
@@ -789,9 +716,6 @@ mod tests {
         )
     }
 
-    // cm:guard the frame is the one the CLI actually sends, byte for byte, and the op name is
-    // `run_declare` rather than `run_open`: the pool's verb had that name, and a mismatch here is a
-    // master whose every declaration comes back "undecodable request" (ISS-1050 criterion 1).
     #[test]
     fn a_declaration_frame_from_the_cli_decodes_with_its_project_and_group() {
         let frame = r#"{"op":"run_declare","token":"t1","projectId":"p1","issueKeys":["ISS-1","ISS-2"],"worktreePath":"/w/one"}"#;
@@ -825,7 +749,6 @@ mod tests {
             .to_string()
     }
 
-    // cm:guard scans the source rather than the types, because the claim is about what CANNOT be written: a variant that reintroduces `session_id` compiles, passes every behavioural test, and silently restores the weakness (ISS-964 criterion 31).
     #[test]
     fn no_frame_declares_a_session_and_every_frame_carries_a_token() {
         let body = request_enum_body();
@@ -841,8 +764,6 @@ mod tests {
         );
     }
 
-    // cm:guard the seven names below are the POOL's, and none of them may come back. `RunOpen` is on that list and stays on it: ISS-1050 added a declaration to this socket and deliberately did not call it that, because the pool's `run_open` took a job from a queue and started a process while this one writes a row and starts nothing, and two different things under one name is how the distinction gets lost by the next reader rather than by this one.
-    // cm:guard what this test asserts is the absence of a QUEUE verb, not the absence of a second variant. The premise it used to rest on — that the lease on the issue is the whole record of a run — was false from 2026-09-13 and is what ISS-1050 exists to fix; the caution it encodes is not, and is kept.
     #[test]
     fn the_socket_offers_no_verb_that_acts_on_work() {
         let body = request_enum_body();
@@ -858,24 +779,10 @@ mod tests {
 
     /// The half of this socket that only exists on a unix box.
     ///
-    // cm:guard gated `unix`, matching the `#[cfg(unix)]` on the functions under test rather than
-    // on `cfg(test)` alone. `serve`, `agent_event`, `run_declare`, `run_close` and
-    // `bind_or_release` are all unix-only — the control socket is a `UnixListener` — so on Windows
-    // the items these tests call are simply absent and the lib test target fails to COMPILE, which
-    // is a red CI leg rather than a failing assertion. `cargo test` on a unix box can never catch
-    // it, because `cfg(unix)` is true there: the windows leg is the only thing that reads this, and
-    // this is the second landing to meet it (see the CRLF guard on `request_enum_body`).
-    // cm:guard the gate is drawn as tightly as it can be. Everything in the PARENT module —
-    // the frame decoding, the `ClaimReply` shape, the choice refusals and the three source-text
-    // scans over this file — is platform-independent and keeps compiling on both, because the
-    // scans in particular are the ones that hold the socket's shape and they are worth strictly
-    // more on the leg that has historically been skipped.
     #[cfg(unix)]
     mod unix {
         use super::*;
 
-        // cm:guard the vocabulary is closed and refused BY NAME. A gate that accepted any string could
-        // not tell a decision from a typo, and `contineu` would satisfy it silently.
         #[test]
         fn a_choice_outside_the_three_words_is_refused_naming_them() {
             let (ctl, _t) = declaring_control("sess-a", "proj-1");
@@ -890,8 +797,6 @@ mod tests {
             }
         }
 
-        // cm:guard the reason is required, because a choice with no reason is a record nobody can act
-        // on six hours later — which is the silence this whole issue is about, one level up.
         #[test]
         fn a_choice_with_no_reason_is_refused() {
             let (ctl, _t) = declaring_control("sess-a", "proj-1");
@@ -902,8 +807,6 @@ mod tests {
             assert!(!reply.ok, "a choice needs its reason");
         }
 
-        // cm:guard a pane may only answer for runs IT inherited. Without the scope a master on one
-        // project could satisfy another project's gate.
         #[test]
         fn a_pane_cannot_answer_for_a_run_it_did_not_inherit() {
             let (ctl, _t) = declaring_control("sess-a", "proj-1");
@@ -949,9 +852,6 @@ mod tests {
                 ["ISS-1"]
             );
         }
-        // cm:guard the refusal must name the project this pane ACTUALLY serves. A master that typed the
-        // wrong project is the only caller that ever sees this, and what it needs is the right answer
-        // rather than a rejection (ISS-1050 criterion 7).
         #[test]
         fn a_declaration_for_a_project_this_pane_is_not_master_of_is_refused_and_writes_nothing() {
             let (ctl, _t) = declaring_control("sess-a", "proj-1");
@@ -974,10 +874,6 @@ mod tests {
                 "a refused declaration writes no row"
             );
         }
-        // cm:guard `Masters` is an in-process optimisation and a daemon restart empties it while every
-        // master is still running, so a declaration in that window has to be REFUSED and told the
-        // window closes on its own. Serving it from the frame's own claim would let a pane on one
-        // project open a run over another's issue (ISS-1050 criterion 7).
         #[test]
         fn a_pane_this_daemon_has_not_yet_adopted_is_refused_and_told_the_window_closes_itself() {
             let (ctl, _t) = declaring_control("sess-a", "proj-1");
@@ -989,9 +885,6 @@ mod tests {
                 "a master told only `refused` would stop declaring; it has to know the next sweep fixes this: {why}"
             );
         }
-        // cm:guard the ledger's own refusal text reaches the master WHOLE. It names the row to close,
-        // and a handler that replaced it with one word of its own would leave the pane with a refusal
-        // it cannot act on (ISS-1050 criterion 2).
         #[test]
         fn a_second_declaration_while_one_is_unbound_is_refused_naming_the_pending_row() {
             let (ctl, _t) = declaring_control("sess-a", "proj-1");
@@ -1014,8 +907,6 @@ mod tests {
             let again = run_declare(&ctl, "proj-1", &["ISS-2".into()], "/w/two", "sess-a");
             assert!(again.ok, "{:?}", again.reason);
         }
-        // cm:guard a close keyed on the run id ALONE would let any pane on this box end another
-        // master's run, and the close is what releases its issues.
         #[test]
         fn one_master_cannot_close_another_masters_run() {
             let (ctl, _t) = declaring_control("sess-a", "proj-1");
@@ -1054,10 +945,6 @@ mod tests {
             led.owe_resume_choices(session_id, &ctl.boot_id).unwrap();
             run_id
         }
-        // cm:guard a declaration that is refused must leave the ledger EXACTLY as it found it —
-        // criterion 7 — and the row here is written before core is ever asked, so a key core will
-        // reject is a row nothing can close and a worktree nothing can release. The shape is the
-        // only half a box can answer on its own (ISS-1050 finding F12).
         #[test]
         fn a_key_that_is_not_an_issue_key_is_refused_by_name_and_writes_no_row() {
             let (ctl, _t) = declaring_control("sess-a", "proj-1");
@@ -1091,10 +978,6 @@ mod tests {
             );
         }
 
-        // cm:guard the shapes core's own parser ACCEPTS are not refused here, and this is the half of
-        // the check that costs something to get wrong: a box that refused `FD-977` would be refusing
-        // a reference core resolves, one process away, with no way for the master to tell which end
-        // was wrong. The prefix is a project's, not a constant (ISS-1050 finding F12).
         #[test]
         fn a_project_own_prefix_and_a_bare_number_are_references_the_box_does_not_refuse() {
             for good in ["ISS-42", "FD-977", "42", "ab-1"] {
@@ -1117,9 +1000,6 @@ mod tests {
             }
         }
 
-        // cm:guard criterion 29's gate. A brief that only ASKS is one a master can read past, and the
-        // issues under those runs then sit claimed by work nobody decided to continue while the pane
-        // starts something new. The refusal is the only place this can be made to hold.
         #[test]
         fn a_resumed_pane_cannot_declare_new_work_before_answering_for_what_it_inherited() {
             let (ctl, _t) = declaring_control("sess-a", "proj-1");
@@ -1154,9 +1034,6 @@ mod tests {
             let reply = run_declare(&ctl, "proj-1", &["ISS-8".into()], "/w/eight", "sess-a");
             assert!(reply.ok, "{:?}", reply.reason);
         }
-        // cm:guard a pane's OWN fresh declarations owe nothing. Keyed on "no choice yet" alone, the
-        // second declaration of every ordinary pass would be refused — measured, that is exactly what
-        // happened before the obligation was written by the resume instead.
         #[test]
         fn a_pane_that_was_never_resumed_declares_freely() {
             let (ctl, _t) = declaring_control("sess-a", "proj-1");
@@ -1173,11 +1050,6 @@ mod tests {
 
             assert!(second.ok, "{:?}", second.reason);
         }
-        // cm:guard criterion 14 is about the LEDGER, not the in-process registry, and this is the test
-        // that tells them apart. `note_master` and `master_for_project` had no production caller at all
-        // when the table was added: the row existed, nothing wrote it, and a resume would have had
-        // nothing to read. Asserting through `master_for_project` — a reader, on a fresh handle to the
-        // same ledger — is what makes this about the stored row rather than about the call (ISS-1050).
         #[test]
         fn a_master_pane_event_puts_that_pane_and_its_conversation_in_the_ledger() {
             let (ctl, _t) = declaring_control("sess-a", "proj-1");
@@ -1194,9 +1066,6 @@ mod tests {
             assert_eq!(row.pane_name, "pane-1");
             assert_eq!(row.conversation_id.as_deref(), Some("conv-abc"));
         }
-        // cm:guard an event carrying NO conversation must not erase the one stored. Most hook events
-        // carry none, so an overwrite would empty the row within seconds of it being written and the
-        // resume would find nothing — the same silence as never writing it.
         #[test]
         fn an_event_without_a_conversation_leaves_the_stored_one_alone() {
             let (ctl, _t) = declaring_control("sess-a", "proj-1");
@@ -1217,9 +1086,6 @@ mod tests {
                 "the only thing a resume can be built from may not be erased by an event that carries none"
             );
         }
-        // cm:guard a session the registry does not know as a master writes NOTHING. A row minted for a
-        // subagent's session would name a pane no resume can address, and `masters` is keyed by project
-        // so it would also displace the real master's row for that project.
         #[test]
         fn a_session_that_is_not_a_registered_master_writes_no_row() {
             let (ctl, _t) = declaring_control("sess-a", "proj-1");
@@ -1282,14 +1148,6 @@ mod tests {
                 .unwrap();
             assert_eq!(run.ended_by.as_deref(), Some("subagent"));
         }
-        // cm:guard a master dispatches subagents this box knows nothing about — a search, a review,
-        // anything it did not declare — and every one of them reaches this path. None may bind a row
-        // and none may end one, and none may fail the hook that carried it.
-        // cm:guard the harness makes no promise that a `SubagentStart` is delivered once, and this is
-        // what a replay costs if nothing refuses it: the replayed child binds the row its master
-        // declared for the NEXT subagent, its own `SubagentStop` then ends a run whose subagent is
-        // still working, and the real child of that row finds nothing pending to bind (ISS-1050
-        // criterion 1).
         #[test]
         fn a_replayed_start_from_a_child_already_bound_never_takes_the_next_row() {
             let (ctl, _t) = declaring_control("sess-a", "proj-1");
@@ -1314,8 +1172,6 @@ mod tests {
             );
             assert_eq!(led.run_for_agent("child-a").unwrap().unwrap().run_id, run_a);
         }
-        // cm:guard an ENDED run still holds its child's name, so a start replayed after that run closed
-        // must not reach into the next row either. The `NOT EXISTS` looks at every run for this reason.
         #[test]
         fn a_start_replayed_after_its_own_run_ended_takes_no_other_row() {
             let (ctl, _t) = declaring_control("sess-a", "proj-1");

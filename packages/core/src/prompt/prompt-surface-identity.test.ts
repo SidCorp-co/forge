@@ -21,10 +21,6 @@
 //     is the defect ISS-1046 exists to remove. The fixture's integrations string
 //     also reads `[Live]` rather than `[production]`, a scope the renderer can no
 //     longer produce.
-// cm:guard the digests are EVIDENCE, not a target — re-recording one to make this
-// green is the whole of what this test exists to stop. A deliberate change to what
-// a drive or release_batch job is told re-takes them in the same commit that
-// changes the text, and says so in that commit.
 import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -70,10 +66,6 @@ function fixedInputs(): Inputs {
   };
 }
 
-// cm:guard one entry per CLAIMABLE job type, and the keys are checked against
-// `RUNNER_CAPABILITIES` below rather than trusted: pinning only `drive` and `release_batch` would
-// leave a fact scoped to `smoke`, `reconcile` or `verify_skill` changing a working job's prompt
-// with every digest here still green, which is the hole this table had when it was first written.
 const AT_ISS_1046: Record<string, { pipelineRules: string; toolReference: string; facts: string }> =
   {
     drive: {
@@ -108,9 +100,6 @@ const RELEASE_BATCH_STATE_PROMPT_AT_34D43E83 = '8ea75419bba908b9a137c43c012ec3f9
 describe('the prompt a claimable job receives is pinned to bytes', () => {
   const claimable = [...new Set(Object.values(RUNNER_CAPABILITIES).flat())].sort();
 
-  // cm:guard without this, a job type ADDED to RUNNER_CAPABILITIES gets no digest and the suite
-  // stays green while saying it covers every claimable job — the table would silently stop being
-  // the thing its own name claims.
   it('pins exactly the job types a runner can claim', () => {
     expect(Object.keys(AT_ISS_1046).sort()).toEqual(claimable);
   });

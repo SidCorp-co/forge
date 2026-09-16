@@ -8,7 +8,6 @@ export type IntegrationProvider =
   | 'rocketchat'
   | 'github'
   | 'google'
-  // cm:why `agent` has no adapter on purpose — nothing is integrated. It is a release CHANNEL declaration (which box may ship, how to prove it shipped, how to undo it), and the deploy itself is the project's own script run by the release session. Every adapter lookup already guards `if (!adapter)`, so the absence is a supported shape, not a gap.
   | 'agent';
 
 /** Runtime form of {@link IntegrationProvider} — for validating caller-supplied strings. */
@@ -27,13 +26,6 @@ export const INTEGRATION_PROVIDERS = [
  * The providers Forge can push code or content TO, and therefore the only ones a binding may take
  * `role: 'deploy'` on.
  */
-// cm:guard this is a CAPABILITY list and NOT a release-gate discriminator, and the direction is what
-// keeps it on the right side of `release-batch/gate.ts`'s prohibition: that guard forbids provider
-// identity from making a binding a release target, and this list only refuses one that could never be.
-// A sentry binding is not a place code goes on ANY project, so `role: 'deploy'` on it is a caller
-// error to be named rather than a declaration to store. What it must never grow into is a rule saying
-// an epodsystem binding IS a deploy — that is the project owner's declaration, and forge-dev carries
-// one purely to hand agents the storefront MCP.
 export const DEPLOY_CAPABLE_PROVIDERS = [
   'coolify',
   'epodsystem',
@@ -44,7 +36,6 @@ export function providerCanDeploy(provider: string): boolean {
   return (DEPLOY_CAPABLE_PROVIDERS as readonly string[]).includes(provider);
 }
 
-// cm:guard adding a provider to the union above without adding it here fails this line — keep both in lockstep rather than letting the runtime list silently lag the type
 const _providersExhaustive: IntegrationProvider =
   null as unknown as (typeof INTEGRATION_PROVIDERS)[number];
 void _providersExhaustive;
@@ -82,7 +73,6 @@ export interface AdapterContext<
  *
  * `error` covers transient and other failures.
  */
-// cm:guard 401 and 403 are different verdicts and must never be collapsed into one — a 403 mapped to `needs_reauth` sends the operator to replace a credential that works, and re-entering it reproduces the state exactly (ISS-924)
 export type HealthStatus = 'ok' | 'degraded' | 'error' | 'needs_reauth' | 'needs_scope';
 
 export interface HealthCheckResult {

@@ -68,15 +68,12 @@ impl Drop for InflightGuard {
 /// can't pin a runner on a stale binary forever. The binary is already swapped
 /// on disk by `apply()`, so giving up this cycle just defers the restart to the
 /// next idle window or the next 6h tick.
-// cm:guard sized off MEASURED session length, not taste: 879 completed sessions since 2026-09-01 run p50 under a minute, p90 45 minutes, max 35 hours. At the old 30 minutes a tenth of all work was longer than the ceiling, so the update either waited out the drain and gave up, or — before the ledger was counted below — read idle and restarted through it. Two hours clears p90 with room and still refuses to be pinned by the 35-hour tail, which `recovery::reconcile` and core's reaper own instead.
 const DRAIN_TIMEOUT_SECS: u64 = 2 * 3600;
 /// Per-session ceiling on the checkpoint turn a restart asks for.
-// cm:guard bounded, and a session that overruns is closed anyway. The daemon is exiting either way, and holding it open for an agent that will not answer leaves a `setsid`-detached child on the worktree the relaunched daemon is about to hand to a second agent.
 const CHECKPOINT_BUDGET: std::time::Duration = std::time::Duration::from_secs(120);
 const DRAIN_POLL_SECS: u64 = 30;
 
 /// How often the box republishes its session registry.
-// cm:guard the read surface's freshness IS this number — a reader has no other clock on a box, so a period longer than a person's patience makes a live run look abandoned. Keep it comfortably under core's own staleness reads (ISS-934 criterion 3).
 const SESSION_LEDGER_INTERVAL: std::time::Duration = std::time::Duration::from_secs(20);
 
 /// Run sessions this box is still running, counted from the LEDGER.
@@ -84,9 +81,6 @@ const SESSION_LEDGER_INTERVAL: std::time::Duration = std::time::Duration::from_s
 /// `InflightGuard` cannot see them: a run session is a pane and a worktree with
 /// no `jobs` row, and `control.rs` opens one without entering the counter at
 /// all. So the counter reads zero while the box is at capacity.
-// cm:guard the ledger is the ONLY source that knows a run session exists, and this call is what stops `drain_to_idle` reporting idle over a full box. Measured forge-vm 2026-09-09 23:07:53Z: the update drain answered idle 0.7ms after `apply()` while 26 panes were live, and systemd's `KillMode=control-group` took the tmux server with the daemon — 22 sessions across 5 projects ended `runner_unreachable`.
-// cm:guard a PARK is not in-flight and must not be counted: it holds no process by design (ISS-964), so counting it would defer every restart until a human answered — the failure the ceiling above exists to prevent, arriving from the other side.
-// cm:guard an unreadable ledger answers ZERO, never a guess. This runs on the restart path: a positive number no reader can justify would pin the box on a stale binary with nothing reporting why, and the sweep that owns closing dead runs is `recovery::reconcile`, not this counter.
 fn live_run_sessions() -> usize {
     let Ok(led) = crate::runner::ledger::Ledger::default_path()
         .and_then(|p| crate::runner::ledger::Ledger::open(&p))
@@ -101,24 +95,6 @@ fn live_run_sessions() -> usize {
 }
 
 /// The predicate half, with the ledger and the process table passed in.
-// cm:guard split from `live_run_sessions` so the RULE is testable without a box: the I/O half resolves a path this process does not choose, and a rule reachable only through it is a rule no test can plant a counter-example for.
-// cm:guard the question is `Ledger::liveness`'s and NOT the pid's, and this is the whole of ISS-1050
-// finding F11. A run is a subagent inside its master's session (`ddabc1f2b`), so it has no process
-// of its own and `runs.pid` has no production writer at all — `attach_pid` is `#[cfg(test)]` below
-// for exactly that reason. Keyed on `pid.is_some_and(alive)` this counted 0 over a box carrying ten
-// live runs: measured forge-vm 2026-09-16 13:30Z, 300 rows, all 13 written since the 12:31Z restart
-// with a NULL pid and 8 of them still open across 4 projects. That is the 2026-09-09 incident in the
-// guard above arriving through the one term nothing had re-read after the model changed.
-// cm:guard only a POSITIVE refutation removes a run from the count: `Alive` and `Unknown` both hold
-// the restart and only `Dead` — an `Exited` incarnation, or a pid this boot's process table denies —
-// releases it. `Unknown` is the subagent shape, so reading it as idle is the failure above; reading
-// `Dead` as busy would pin the box on a stale binary, which `recovery::reconcile` owns instead.
-// cm:guard this REVERSES `a_run_that_never_spawned_holds_nothing`, which asserted `pid: None`
-// counted zero. That test was true of the model where a pid arrived milliseconds later and is false
-// of the one that shipped: the declared-and-not-yet-bound window now reads as busy. Priced — an
-// unbound row defers a restart for up to `DRAIN_TIMEOUT_SECS` per attempt, never forever — and
-// bounded by `create_run_group`, which refuses a master a second unbound row, and by
-// `recovery::reconcile`, which closes the row when its master goes.
 fn count_live_runs(
     runs: &[crate::runner::ledger::Run],
     this_boot: &str,
@@ -136,7 +112,6 @@ fn count_live_runs(
 }
 
 /// Whether a pid is still on this box. Only a positive refutation counts as gone.
-// cm:guard `EPERM` means the process EXISTS and belongs to somebody else, so only `ESRCH` may read as dead — the same rule `recovery_ports.rs::SignalProbe` states, and for the opposite consequence: there a wrong `dead` releases a live worktree, here a wrong `dead` restarts over a live agent.
 #[cfg(unix)]
 fn pid_alive(pid: u32) -> bool {
     use nix::errno::Errno;
@@ -162,10 +137,6 @@ fn pid_alive(_pid: u32) -> bool {
 /// survives and keeps writing the worktree while the relaunched daemon may
 /// start a second one on the same checkout.
 ///
-// cm:guard both restart paths MUST route their exit through this return value — the update path re-checked and the credential path did not, and one bug in one of two copies of the same loop is exactly what this function exists to make impossible.
-// cm:guard the ceiling bounds TURNS, never the park: a session parked at `awaiting_input` is not in-flight (`InflightGuard` is scoped to the frame task), so it reads as idle here and no amount of waiting would ever close it. `close_parked` is what ends it, and it runs ONLY after the drain succeeds — closing a park while a turn is still generating would drop that turn's result into a receiver the exiting daemon no longer reads.
-// cm:edge protocol -> packages/runner/crates/forge-runner-core/src/runner/claude_code.rs — `checkpoint_and_close` is both halves: each resident session is asked to record where it is and given `CHECKPOINT_BUDGET` to answer before EOF. The alternative both replace is exit(0) leaving a setsid-detached child writing the worktree the relaunched daemon is about to hand to a second agent.
-// cm:guard the run-session count is a PORT and not a call, for the same reason `count_live_runs` was split out below it: read directly, this function resolves `Ledger::default_path()` — a real file in the home of whoever runs the suite — so its verdict depends on rows some other run left there. Measured 2026-09-11: four drain tests went red on a dev box because two stale ledger rows named pids the OS had since handed to unrelated processes.
 async fn drain_to_idle<F, Fut>(
     inflight: &Arc<AtomicUsize>,
     what: &str,
@@ -198,7 +169,6 @@ where
 }
 
 /// Checkpoint every resident session, then close it and tell core it is gone.
-// cm:guard the report is the runner's to make, not this function's: a pipeline session is keyed by `job_id`, which `/api/agent-sessions/:id` 404s on, and only the runner holds the job channel that serves it. This once PATCHed every id and silently reported nothing for exactly the sessions the park machinery is built for — a park that is closed but still reads `awaiting_input` in core is exempt from the quiet clock, so only the residency backstop would ever reap it.
 async fn close_parked_sessions(runner: &Arc<ClaudeCodeRunner>) -> usize {
     runner.checkpoint_and_close(CHECKPOINT_BUDGET).await.len()
 }
@@ -304,12 +274,6 @@ pub async fn run(
     }
 
     // The box's session registry, published on that same socket (ISS-934).
-    // cm:guard this task holds NO ledger handle between ticks. `rusqlite::Connection` is not `Sync`
-    // and a handle kept open here would sit on the SQLite file while a `run open` needs it; the
-    // daemon's own run path opens per call for exactly this reason.
-    // cm:guard it publishes on EVERY tick, unchanged or not. The value core stores carries the time
-    // the box said it, so a snapshot that stops arriving is how a reader learns the box is gone —
-    // suppressing an identical frame would make a silent box indistinguishable from a steady one.
     {
         let mut cancel_rx = cancel_rx.clone();
         tokio::spawn(async move {
@@ -520,9 +484,6 @@ pub async fn run(
     // `workspace::worktree` nor any skill has ever removed one, and they
     // accumulate until the disk fills — ubuntu6 hit 100% (342M free) on
     // 2026-08-20 with 29G of them, which fails every job on the box.
-    // cm:guard runs on the bound repos only, never a scan of the filesystem — the
-    // reaper deletes checkouts, so the set it can even consider must come from
-    // config, not from whatever a walk happens to find under a similar name
     {
         let cfg = cfg.clone();
         let mut cancel_rx = cancel_rx.clone();
@@ -531,7 +492,6 @@ pub async fn run(
             loop {
                 tokio::select! {
                     _ = tick.tick() => {
-                        // cm:guard the snapshot is taken per TICK and a failure to take it SKIPS the sweep entirely — it does not fall through to a shape-only judgement. `Connection` is not `Send`, so the ledger is read and dropped here rather than held across the `git` awaits below (ISS-964 criterion 25).
                         let held_by = crate::runner::ledger::Ledger::default_path()
                             .and_then(|p| crate::runner::ledger::Ledger::open(&p))
                             .and_then(|l| crate::workspace::worktree_reap::HeldTrees::from_ledger(&l));
@@ -618,33 +578,16 @@ pub async fn run(
         });
     }
 
-    // cm:guard ONE registry, shared by the master loop and the inbox arm. The loop is what learns a session's pane name and the inbox is what needs it, so two registries would leave every `session.send` to a master acked `gone` while the master sat there alive.
     let masters = Arc::new(master::Masters::new());
 
-    // cm:guard ONE map, shared by the socket that records and every reader that acts on it. A second instance would give the control socket somewhere to write that no liveness reader ever looks at, which is the shape of the bug this whole channel exists to close.
     let activity = Arc::new(agent_activity::Activities::new());
-    // cm:guard the whole control-socket arm is gated `unix`, because the socket IS a
-    // `UnixListener`: `control::serve` and every verb it dispatches are `#[cfg(unix)]`, so calling
-    // it unconditionally here fails to COMPILE on windows rather than failing at run time. A unix
-    // box can never catch that — `cfg(unix)` is true there — and ci.yml's windows leg is the only
-    // reader. On windows the daemon runs without the control socket, which is what it already did:
-    // there is no second path to add, only a call that must not be made.
     #[cfg(unix)]
     {
-        // cm:guard refuse to serve the socket with no token map rather than serving it unauthenticated. The one verb on this socket describes a session by capability, and a daemon that could not resolve the map would either refuse every frame or, worse, be tempted back to the declared id (ISS-964 criterion 29).
         let Some(tokens_path) = session_tokens::default_path() else {
             return Err(crate::error::Error::Other(
                 "cannot resolve the control token map path".into(),
             ));
         };
-        // cm:guard the control socket opens its OWN ledger connection rather than sharing the
-        // sweep's, because `rusqlite::Connection` is not `Sync` and the sweep holds its own for the
-        // length of a sweep. Both carry `PRAGMA busy_timeout`, which is what keeps a declaration
-        // arriving mid-sweep from being refused `database is locked` (ISS-1050).
-        // cm:guard a ledger that will not open leaves this `None` and the socket REFUSES a
-        // declaration by name, rather than the daemon declining to start: turn boundaries are the
-        // other half of this socket and a box that reported none of them would go blind to every
-        // liveness reader on it.
         let ctl_ledger = Arc::new(std::sync::Mutex::new(
             match crate::runner::ledger::Ledger::default_path()
                 .and_then(|p| crate::runner::ledger::Ledger::open(&p))
@@ -672,7 +615,6 @@ pub async fn run(
             }
         });
     }
-    // cm:guard the wake sender and the master loop are created TOGETHER, and a daemon that starts the loop without wiring the sender is one that silently reverts to poll-only: nothing fails, nothing logs, and the only symptom is that every issue waits up to a full `POLL_INTERVAL` for a box that was told about it immediately.
     let (wake_tx, wake_rx) = master::wake_channel();
     {
         let (client, cfg) = ((*client).clone(), (*cfg).clone());
@@ -700,7 +642,6 @@ pub async fn run(
                             // on the ack POST.
                             let (client, runner) = (client.clone(), runner.clone());
                             tokio::spawn(async move {
-                                // cm:guard an `abort` error means this daemon has no SESSION for the job, which is not the same as there being no PROCESS — the agent child is setsid-detached and outlives a daemon restart. Answering `not_found` from an empty map told core the process was dead and it retried a second agent onto the same worktree (ISS-837). Ask the on-disk record instead.
                                 let outcome = match runner.abort(&jid).await {
                                     Ok(_) => {
                                         inflight::forget(&jid);
@@ -736,7 +677,6 @@ pub async fn run(
                             }
                         });
                     }
-                    // cm:edge protocol -> packages/core/src/agent-sessions/session-send.ts — the durable half. Core stamps an episode and publishes; this arm is what makes silence mean something, so an arm that panics or returns early without acking is indistinguishable to core from a runner that is gone.
                     "session.send" => {
                         let (client, runner, masters) =
                             (client.clone(), runner.clone(), masters.clone());
@@ -771,19 +711,16 @@ pub async fn run(
                             }
                         });
                     }
-                    // cm:edge contract -> packages/core/src/ws/master-wake.ts — core publishes this on the device room when an issue reaches `open`, `draft` or `awaiting_release`. The event NAME and the optional `projectId` are the whole contract; the frame carries no work, so nothing here reads anything else off it.
                     "master.wake" => {
                         let project_id = frame
                             .data
                             .get("projectId")
                             .and_then(|v| v.as_str())
                             .map(str::to_string);
-                        // cm:guard `try_send` and never `send().await`, because this arm runs on the ONE frame loop that also carries `job.cancel`. Awaiting a full wake channel would stall cancellation behind a sweep that is already covering this wake anyway — a dropped frame costs nothing, a blocked frame loop costs a kill that never arrives.
                         if wake_tx.try_send(master::Wake::Core { project_id }).is_err() {
                             tracing::debug!("[ws] master.wake coalesced — a sweep is already pending");
                         }
                     }
-                    // cm:guard this is the runner's OWN observation, not a core event, and it is the other half of the dropped-wake defence. `ws/rooms.ts:publish` has no buffer and no replay, so every `master.wake` published while this socket was down is gone with nothing recording it; one pool read on the way back up is what turns that from work-lost into latency. It is the same wake path with a different trigger, deliberately, so there is no second dispatcher to keep in step.
                     "ws.connected" => {
                         if wake_tx.try_send(master::Wake::Reconnect).is_err() {
                             tracing::debug!("[ws] catch-up read coalesced — a sweep is already pending");
@@ -884,7 +821,6 @@ mod tests {
         }
     }
 
-    // cm:guard THE regression, and it is measured rather than imagined: forge-vm 2026-09-09 23:07:53Z answered idle 0.7ms into an update drain with 26 panes live, because a run session is a pane and a worktree with no `jobs` row and `control.rs` opens one without entering `InflightGuard`. 22 sessions across 5 projects ended `runner_unreachable` when systemd took the tmux server with the daemon.
     #[test]
     fn a_box_full_of_run_sessions_is_not_idle() {
         let mut led = Ledger::open_in_memory().unwrap();
@@ -898,7 +834,6 @@ mod tests {
         );
     }
 
-    // cm:guard a park holds NO process by design (ISS-964), so counting it would defer every restart until a human answered — the ceiling's own failure arriving from the other side.
     #[test]
     fn a_park_does_not_hold_the_restart() {
         let mut led = Ledger::open_in_memory().unwrap();
@@ -914,7 +849,6 @@ mod tests {
         );
     }
 
-    // cm:guard a row from ANOTHER boot names a pid the kernel has since reused, so asking whether it is alive is asking about a stranger — and answering `busy` there would pin the box forever on rows nothing can ever close.
     #[test]
     fn a_row_from_a_previous_boot_holds_nothing() {
         let mut led = Ledger::open_in_memory().unwrap();
@@ -923,7 +857,6 @@ mod tests {
         assert_eq!(count_live_runs(&runs, "boot-new", |_| true), 0);
     }
 
-    // cm:guard a dead pid is a run `recovery::reconcile` will close, NOT work to wait for. Counting it would make the 19-of-22 dead-pid state measured on forge-vm 2026-09-09 into a permanent block on every update.
     #[test]
     fn a_dead_pid_is_not_work() {
         let mut led = Ledger::open_in_memory().unwrap();
@@ -937,11 +870,6 @@ mod tests {
         );
     }
 
-    // cm:guard THE production shape, and the counter-example this file could not state before: a run
-    // is a SUBAGENT inside its master's session and has no process of its own, so `runs.pid` is
-    // NULL for every row this box writes. Measured forge-vm 2026-09-16 13:30Z — 300 rows, the 287
-    // written before the subagent model carrying a pid and all 13 written after it carrying none,
-    // 8 of those still open across 4 projects. A count keyed on the pid answers 0 over a full box.
     #[test]
     fn a_subagent_run_with_no_pid_is_work_in_flight() {
         let mut led = Ledger::open_in_memory().unwrap();
@@ -954,10 +882,6 @@ mod tests {
         );
     }
 
-    // cm:guard the OTHER side of the same reversal, and the term that keeps the count from pinning
-    // the box: a subagent that stopped has no pid either, so `Exited` is the only thing separating a
-    // finished run from a working one. Counting it would make every completed run defer the next
-    // restart forever, which is the failure `DRAIN_TIMEOUT_SECS` exists to bound arriving from inside.
     #[test]
     fn a_subagent_that_stopped_does_not_hold_the_restart() {
         let mut led = Ledger::open_in_memory().unwrap();
@@ -972,7 +896,6 @@ mod tests {
         );
     }
 
-    // cm:guard with every test passing `|| 0`, nothing else would notice the term being deleted — and deleting it is exactly the bug 0.12.5 fixed: the drain answered idle 0.7ms after `apply()` while 26 panes were live, and the restart took the tmux server with it.
     #[tokio::test(start_paused = true)]
     async fn a_box_whose_run_sessions_are_live_defers_even_with_nothing_in_flight() {
         let inflight = Arc::new(AtomicUsize::new(0));
@@ -999,7 +922,6 @@ mod tests {
         assert!(drain_to_idle(&inflight, "test", || 0, close).await);
     }
 
-    // cm:guard a park is NOT in-flight, so an idle drain is exactly when a resident session is still alive and holding the worktree. Skipping the close here is the exit(0)-with-a-detached-survivor that invariant 4 exists to prevent.
     #[tokio::test(start_paused = true)]
     async fn an_idle_drain_still_closes_the_parked_sessions() {
         let inflight = Arc::new(AtomicUsize::new(0));
@@ -1008,7 +930,6 @@ mod tests {
         assert_eq!(calls.load(Ordering::Acquire), 1);
     }
 
-    // cm:guard the close must NOT run when the drain refuses — the restart is deferred, the daemon keeps living, and closing a park there would end a session nobody asked to end while its human is still composing an answer.
     #[tokio::test(start_paused = true)]
     async fn a_refused_drain_closes_nothing() {
         let inflight = Arc::new(AtomicUsize::new(1));
@@ -1017,7 +938,6 @@ mod tests {
         assert_eq!(calls.load(Ordering::Acquire), 0);
     }
 
-    // cm:guard the close runs AFTER the wait, never before: EOF on a session whose turn is still generating drops that turn's result into a receiver the exiting daemon no longer reads.
     #[tokio::test(start_paused = true)]
     async fn the_close_waits_for_the_turn_to_finish() {
         let inflight = Arc::new(AtomicUsize::new(1));
@@ -1062,7 +982,6 @@ mod tests {
         assert!(started.elapsed().as_secs() <= DRAIN_TIMEOUT_SECS + DRAIN_POLL_SECS);
     }
 
-    // cm:guard measured against the FRESHNESS THIS SURFACE PROMISES (30s), not against itself. A reader off the box has no other clock, so lengthening the period past that makes a live run look abandoned (ISS-934 criterion 3).
     #[test]
     fn the_registry_is_republished_well_inside_the_freshness_this_surface_promises() {
         assert!(

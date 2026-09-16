@@ -195,11 +195,6 @@ describe('what a dead run left, written onto its issues', () => {
     ).toBeGreaterThan(3);
   });
 
-  // cm:guard whitespace is NOT nothing, which is ISS-1050 finding F5. Criterion 24 says the run's own
-  // text appears byte for byte and nowhere else, and `next.trim() === ''` answered for a run that
-  // wrote spaces with this module's sentence instead — a substitution on the one surface built to
-  // keep what the box read apart from what the run said. Only a lease with no text at all earns the
-  // empty block.
   it('prints whitespace the run wrote rather than calling it nothing written', async () => {
     const said = '   \n\t ';
     const { device, issueIds, session } = await aRunOver([9], said);

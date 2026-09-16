@@ -137,10 +137,6 @@ describe("GitHubSection", () => {
     expect(connectMutate).not.toHaveBeenCalled();
   });
 
-  // cm:guard github binds as `service` and offers no stage choice, because
-  // `providerCanDeploy('github')` is false. A screen that offered one would be
-  // an affordance defect: the create schema refuses `role: 'deploy'` on github
-  // by name, so the operator would fill in a field the server then rejects.
   it("offers no stage choice, because github declares canDeploy false", () => {
     connectionItems.mockReturnValue([{ id: "conn-1", provider: "github", active: true }]);
     render(<GitHubSection projectId="proj-1" />);

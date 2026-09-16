@@ -91,11 +91,6 @@ function reconstructionBlock(cp: RunCheckpoint): string {
   return lines.join('\n');
 }
 
-// cm:guard `''` is nothing written and whitespace is NOT, which is ISS-1050 finding F5. Criterion 24
-// says the run's own text appears byte for byte, and `next.trim() === ''` classified a run that
-// wrote spaces or a newline as one that wrote nothing at all — a substitution of this module's
-// words for the run's, on the one surface built to keep the two apart. What a whitespace-only
-// testimony looks like to a reader is the fence with nothing visible inside it, which is the truth.
 function testimonyBlock(next: string | null): string {
   const head = '### What the run said about itself';
   if (next === null || next === '') {
@@ -263,18 +258,6 @@ async function runIssuesWithTestimony(
 /**
  * Post one comment onto an issue, once, however many callers race to post it.
  */
-// cm:guard the marker is an EXACTLY-ONCE key and a select followed by an insert is not one, which is
-// ISS-1050 finding F4. All three writers below are retried — the box reports a checkpoint on every
-// sweep until core takes it, and the held-worktree pass every thirty seconds — so two retries in
-// flight together both read no comment and both insert, and the issue carries the same block twice.
-// `openRunSession` had already met this exact shape and closed it with `pg_advisory_xact_lock`; this
-// is that lesson carried the three functions over it had not reached.
-// cm:guard the lock is TRANSACTION-scoped and its key is derived from the issue and the marker, so
-// nothing has to be cleaned up and two different markers on one issue never wait for each other.
-// The `run-evidence:` prefix is there because advisory keys share one namespace database-wide.
-// cm:guard the re-read happens INSIDE the transaction, after the lock. The read before it would be
-// the same defect with a lock next to it: what makes the key hold is that the loser blocks until
-// the winner commits and then sees the winner's row.
 async function insertCommentOnce(args: {
   issueId: string;
   marker: string;

@@ -167,10 +167,6 @@ describe('syncRepoUrlFromGitHubBinding', () => {
     expect(await storedRepoUrl()).toBe(other);
   });
 
-  // cm:guard the rule is `role === 'service'`, and it stays asserted even though
-  // `providerCanDeploy('github')` makes every github binding service today: it says WHICH
-  // binding may repoint a project's git if the capability list ever widens. The rule it
-  // replaced was `environment !== 'prod'` and refused a fork bound as `staging`.
   it('never lets a deploy binding drive the project-tier URL', async () => {
     const out = await mods.syncRepoUrlFromGitHubBinding({
       projectId,

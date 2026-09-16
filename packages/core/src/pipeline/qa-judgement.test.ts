@@ -3,10 +3,11 @@
  * are written, and this is the gate that goes red when a reader in this repository stops matching
  * it.
  *
- * It exists because two `cm:guard`s already claimed it did. `qa-judgement.ts` said "every reader
+ * It exists because two annotations already claimed it did — `qa-judgement.ts` said "every reader
  * here matches this constant, which `qa-judgement.test.ts` does" and `pipeline-config-schema.ts`
- * named a `qa-key.test.ts`; neither file was in the tree. A guard asserting a gate that does not
- * exist is worse than no guard, because the next reader stops looking.
+ * named a `qa-key.test.ts`; neither file was in the tree. Both annotations left with ISS-1049 and
+ * this gate is what remains of them, which is the right way round: a claim asserting a gate that
+ * does not exist is worse than no claim, because the next reader stops looking.
  *
  * What this repo can hold is ITS OWN readers. The other half of the coupling is
  * `judgementOf()` in `plugin/src/tracker/project-config.mjs`
@@ -53,10 +54,6 @@ describe('the qa judgement key is spelled in exactly one place', () => {
     expect([...QA_JUDGEMENT_MODES]).toEqual(['independent', 'builder']);
   });
 
-  // cm:guard the scan is the criterion. A second reader that hardcodes `'builder'` keeps working
-  // until somebody renames the mode, and then it keeps working WRONGLY — reading a value the
-  // schema no longer stores, with nothing to say so. The whole defect this key comes from is a
-  // value that was unreadable for four weeks with every gate green.
   it('is spelled nowhere else in this package', () => {
     const offenders: string[] = [];
     for (const file of walk(SRC_ROOT)) {
@@ -89,10 +86,6 @@ describe('the qa judgement key is spelled in exactly one place', () => {
 });
 
 describe('pipelineConfig stores the qa judgement, and refuses anything else', () => {
-  // cm:guard this schema STRIPS what it does not declare, so before the key was added a PATCH
-  // carrying it answered 200 and wrote nothing. A parse that returns the value is the difference
-  // between a stored answer and a silent discard — which is why the assertion is on the OUTPUT and
-  // never on the absence of an error.
   it('keeps a declared mode through a parse', () => {
     for (const mode of QA_JUDGEMENT_MODES) {
       const out = pipelineConfigSchema.parse({ [QA_JUDGEMENT_KEY]: mode }) as Record<
@@ -108,9 +101,6 @@ describe('pipelineConfig stores the qa judgement, and refuses anything else', ()
     expect(bad.success).toBe(false);
   });
 
-  // cm:guard the round trip, at the layer both transports share: `PATCH /pipeline-config` and
-  // `forge_config action=update` both reach the stored document through `mergePipelineConfig`, so
-  // a value that survives a merge onto an existing document is a value the next read returns.
   it('stores a mode onto an existing document and returns it on the next read', () => {
     const stored = { enabled: true, maxResumeTokens: 150_000 };
     const merged = mergePipelineConfig(stored, { [QA_JUDGEMENT_KEY]: 'independent' }) as Record<

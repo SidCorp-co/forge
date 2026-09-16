@@ -54,8 +54,6 @@ describe('a status card names one binding and no other', () => {
     expect(keys).toEqual(['coolify:preview', 'coolify:live']);
   });
 
-  // cm:guard the defect this file exists for. Two bindings serving the SAME stage collide on the
-  // stage-keyed spelling, and the card set then has two members the screen cannot tell apart.
   it('keys two same-stage bindings apart rather than minting the same key twice', () => {
     const keys = cards([row({ id: 'b1' }), row({ id: 'b2' })]).map((c) => c.key);
     expect(new Set(keys).size).toBe(2);

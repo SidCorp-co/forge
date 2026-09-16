@@ -56,16 +56,10 @@ export async function projectAutoProdDeploy(projectId: string): Promise<boolean>
  * deploy is run-keyed and a run-less action has no gate to release. The
  * project can opt out wholesale with `pipelineConfig.autoProdDeploy`.
  */
-// cm:edge contract -> packages/core/src/integrations/coolify/controls.ts — cancel and rollback change production exactly as a deploy does (ISS-925), so they ask THIS function rather than restating the branch; a second copy is how one of the three ends up with a weaker gate than the other two.
 export async function liveActionNeedsHumanConfirm(
   projectId: string,
   stages: readonly string[],
 ): Promise<boolean> {
-  // cm:guard the `live` STAGE, not a `prod` environment: this gate is "is a real user about to see
-  // the result", and until ISS-1046 it asked a column that seven of eight providers filled with
-  // `'prod'` because they had to write something. A preview-only binding is dispatched unasked; a
-  // binding serving BOTH stages (one epodsystem store, whose live theme is its published one) is
-  // gated, because publishing it reaches the live audience whatever else it also reaches.
   if (!stages.includes('live')) return false;
   return !(await projectAutoProdDeploy(projectId));
 }
@@ -78,7 +72,6 @@ export async function liveActionNeedsHumanConfirm(
  * (measured 2026-09-06). The deploy still happens; what stops is the pretence
  * that the run witnesses it.
  */
-// cm:why ISS-922 requirement 3 — this log line is the whole of "be loud when it sees a deployment it cannot place", and it is an ERROR because a run that cannot witness its own deploy is a hole in the evidence chain, not a curiosity.
 function reportUnwitnessedDeploy(runId: string, issueId: string | null, bindingId?: string): void {
   logger.error(
     { runId, issueId, ...(bindingId ? { bindingId } : {}) },
@@ -86,7 +79,6 @@ function reportUnwitnessedDeploy(runId: string, issueId: string | null, bindingI
   );
 }
 
-// cm:guard the check at dispatch entry and the refused-hold check are BOTH needed: this one names the common case before any work happens, and the hold's own return value catches the run that closes in the window between them. Drop either and a deploy goes unwitnessed in silence, which is the defect ISS-922 exists to end.
 async function warnIfRunAlreadyTerminal(runId: string, issueId: string | null): Promise<void> {
   const [row] = await db
     .select({ status: pipelineRuns.status })
@@ -121,9 +113,6 @@ export async function tryDispatchCoolifyRelease(args: {
 }): Promise<DispatchOutcome> {
   const { projectId, issueId, runId, integrationId, allowLive = true } = args;
   await warnIfRunAlreadyTerminal(runId, issueId);
-  // cm:guard DEPLOY bindings only. A `service` coolify binding is a facility the project
-  // uses, not somewhere Forge pushes to, and enqueueing a release against one is the retired
-  // model reappearing under a new column name.
   let pairs = await listActiveDeployBindingsForProvider(projectId, 'coolify');
   if (integrationId) pairs = pairs.filter((p) => p.binding.id === integrationId);
   if (!allowLive) pairs = pairs.filter((p) => !(p.binding.stages ?? []).includes('live'));
@@ -163,7 +152,6 @@ export async function tryDispatchCoolifyRelease(args: {
     const requestId = `${runId}:${binding.id}:${Date.now()}-${randomUUID().slice(0, 8)}`;
 
     await setCurrentStep(runId, RELEASE_DEPLOY_IN_FLIGHT_STEP);
-    // cm:edge ordering -> packages/core/src/pipeline/deploy-confirmations.ts — the hold is opened BEFORE the enqueue, never after: between enqueueing a deploy and the adapter learning its deployment_uuid the run can close, and a hold written after that window lands on a terminal run and is dropped.
     const held = await openDeployDispatchHold({
       runId,
       bindingId: binding.id,
@@ -226,8 +214,6 @@ export async function dispatchCoolifyDeployDirect(args: {
   integrationId: string;
 }): Promise<DispatchOutcome> {
   const { projectId, integrationId } = args;
-  // cm:guard `integrationId` here is a BINDING id, not a connection id — the MCP tool passes binding ids and both id spaces are uuids, so a mix-up resolves to some other project's deploy target rather than failing.
-  // cm:guard DEPLOY bindings only — same rule as the release path above.
   const pairs = await listActiveDeployBindingsForProvider(projectId, 'coolify');
   const pair = pairs.find((p) => p.binding.id === integrationId);
   if (!pair) {

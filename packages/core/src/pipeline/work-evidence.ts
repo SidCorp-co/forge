@@ -21,8 +21,6 @@ import { WORK_EVIDENCE_WAIVER_KIND } from '../issues/dependency-effects.js';
 import { logger } from '../logger.js';
 import { readableLiveBranch } from '../projects/release-model.js';
 
-// cm:guard `drive` belongs in this list for the same reason `code` and `fix` do: it is a step that WRITES CODE, and its handoff schema carries `commitSha` — one of the two fields `hasCodeEvidence` reads (`drive` has no `filesModified`; `code` and `fix` carry both). It was absent until 2026-09-02, so an autonomous driver that merged its branch and wrote a correct handoff had no evidence at all: `applyMergeMarker` refused its own `POST /api/issues/:id/merge` with NO_WORK_EVIDENCE, and the close-stamp audit comment told every reader "no branch, commit or code handoff is recorded" on work that had all three. Measured the same day on forge-beta: 7 `drive` handoffs stored, 7 of them carrying a `commitSha`, 0 counted here.
-// cm:edge lockstep -> packages/core/src/prompt/facts/registry.ts#HANDOFF_KEYS — a step whose handoff schema gains `commitSha`/`filesModified` is evidence of code and belongs here; one that loses them stops being evidence and must leave.
 const IMPLEMENTATION_STEPS = ['code', 'fix', 'drive'] as const;
 
 const JOB_SCAN_LIMIT = 50;
@@ -89,17 +87,10 @@ export async function collectWorkEvidence(
   }
 
   const sessionContext = issueRows[0]?.sessionContext as Record<string, unknown> | null | undefined;
-  // cm:guard BOTH spellings, because the branch is recorded in one of them and read from the other: `sessionContext.branch` is what a pipeline-driven run writes, and `sessionContext.worklog.branch` is what `forge claim --pushed` writes for a run driven by hand — read from git at that moment, so it is the stronger of the two. Read only the first and the gate answers "no branch, commit or code handoff is recorded" about an issue whose branch it is holding, which is the silence this repo owns rather than the caller's mistake. Invisible until ISS-1003, because a person-owned PAT skipped this gate entirely and a hand-driven run is exactly what holds a worklog and no jobs.
   const worklog = sessionContext?.worklog as Record<string, unknown> | null | undefined;
   const named = [sessionContext?.branch, worklog?.branch].find(
     (v): v is string => typeof v === 'string' && v.length > 0,
   );
-  // cm:guard the project's OWN base or production branch is not evidence of work on THIS issue — it names where work lands, not that any happened, and it is the one string an agent can write truthfully while having done nothing. Measured on forge-dev 2026-09-02: 2 issues carried `branch: 'main'` (base AND production) with zero `code`/`fix`/`drive` jobs, satisfying the gate ISS-786 built to stop exactly that claim. 17 of the 112 issues holding a branch fleet-wide named their base or production branch.
-  // cm:guard the base/production exclusion applies to whichever spelling won, unchanged: the point of ISS-786's rule is that naming where work LANDS is not evidence that work happened, and that holds identically for a branch read out of the worklog.
-  // cm:guard the live-branch exclusion applies ONLY under `promote`. A `none` or `publish` project
-  // may carry a stale live branch nothing promotes to (25 of 32 do), and excluding a name that
-  // matches it would discard real branch evidence and refuse the issue with NO_WORK_EVIDENCE for a
-  // string that names nothing on that project. Reading the column without the model is the defect.
   const projectRow = issueRows[0];
   const excludedLive = projectRow ? readableLiveBranch(projectRow) : null;
   const branch =
@@ -121,7 +112,6 @@ export function hasCodeEvidence(evidence: WorkEvidence): boolean {
   );
 }
 
-// cm:edge lockstep -> packages/core/src/issues/dependency-effects.ts — the kind read here IS the waiver, and every agent-facing surface renders that module's note; a literal here instead of the constant puts the claim and the behaviour back out of reach of each other
 export async function hasChildIssues(
   issueId: string,
   executor: EvidenceExecutor = db,
@@ -140,7 +130,6 @@ export async function hasChildIssues(
   return row != null;
 }
 
-// cm:guard the message names BOTH branch spellings because `collectWorkEvidence` reads both, and a refusal that names one of the two fields that count sends a run to change the field it already filled. A run driven by hand records its branch at `sessionContext.worklog.branch` and reads this string as saying that spelling does not count.
 export const NO_WORK_EVIDENCE_DETAIL =
   'no branch, commit or code handoff is recorded for this issue — record the branch in ' +
   'sessionContext.branch or sessionContext.worklog.branch, or write the implementation step ' +
@@ -149,7 +138,6 @@ export const NO_WORK_EVIDENCE_DETAIL =
   '`promote`: both name where work lands, not that any happened. On a `none` or `publish` ' +
   'project the live branch is not read at all, so a branch of that name counts like any other';
 
-// cm:guard fails OPEN on any internal error — a broken evidence check must never freeze a legitimate advance
 export async function findMissingWorkEvidence(
   issueId: string,
   executor: EvidenceExecutor = db,

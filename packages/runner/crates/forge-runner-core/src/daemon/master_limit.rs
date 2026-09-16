@@ -30,30 +30,23 @@ use super::master::{LIMITED_POLL_INTERVAL, NUDGE_REFRESH};
 /// master may go un-prompted while the pool is unchanged — so their sum is the
 /// longest gap between two chances to observe a refusal, and the same again is
 /// the margin. Moving either constant moves this one.
-// cm:guard this bound exists because the ledger's stored conversation id lags a COLD START by a turn: `note_master` learns the new id from the first hook event, so a sweep in between resolves the PREDECESSOR pane's file. Without a freshness bound the box would stamp today off yesterday's refusal, and — worse in the other direction — clear a limit the job lane had just stamped for real, off a success that happened before the pane was replaced.
-// cm:why the boundary is INCLUSIVE — a record exactly `FRESH_WITHIN` old is still fresh — because the failure it guards is a record from another pane's lifetime, which is orders of magnitude older, and a strict comparison would make a test at the exact edge assert arithmetic rather than behaviour.
 pub(crate) const FRESH_WITHIN: Duration =
     Duration::from_secs(2 * (LIMITED_POLL_INTERVAL.as_secs() + NUDGE_REFRESH.as_secs()));
 
 /// How near to now a successful turn must sit before it may LIFT a limit.
 ///
 /// Tighter than [`FRESH_WITHIN`], and the asymmetry is the point.
-// cm:guard reporting a cap and lifting one are not equally safe, so they do not get the same bound. A late report costs a few wasted turns; a late CLEAR re-opens this box to dispatch against an account that is still refusing. The box cannot see WHEN core's stamp was written — `/me/runners` carries the remaining seconds and not the instant — so a stamp the job lane made two minutes ago is indistinguishable here from one made an hour ago, and a success older than it would lift it.
 // cm:hack ISS-1060 until:`/me/runners` carries the instant a limit was stamped — the residual race is priced rather than closed. A job-lane or chat-lane stamp written inside the last `CLEAR_WITHIN` can still be lifted by a master turn that succeeded just before it, and what that costs is up to one nudge period of dispatch into a capped account before either lane observes the refusal again and re-stamps. Closing it properly means a new field on core's runner row and a conditional `clearMasterLimit`, which is the job lane this issue puts out of scope. This bound is what keeps the window at one nudge period instead of `FRESH_WITHIN`'s twenty minutes.
-// cm:why `NUDGE_REFRESH` exactly: it is the longest a live master may go un-prompted, so a success inside it is one the pane is still producing, and anything older is a pane that has stopped answering rather than an account that has recovered.
 pub(crate) const CLEAR_WITHIN: Duration = NUDGE_REFRESH;
 
 /// How much of a conversation's tail one sweep reads.
-// cm:why bounded and read from the END because a master's conversation reaches hundreds of megabytes over a pane's life, and the scan below parses BACKWARDS and stops at the first record that classifies — so the common sweep parses one line and this is a ceiling on the pathological one, not the usual cost.
 pub(crate) const TAIL_BYTES: u64 = 512 * 1024;
 
 /// Longest `detail` core's route accepts, in UTF-16 units — `z.string().max(200)`
 /// counts what JavaScript counts, not what Rust does.
-// cm:edge contract -> packages/core/src/devices/pool-routes.ts — `masterLimitSchema` is the validator this bound answers to; a body over it is refused whole, so the box would report nothing rather than report a long reason.
 const DETAIL_MAX_UTF16: usize = 200;
 
 /// Why the account refused, in core's own vocabulary.
-// cm:edge contract -> packages/core/src/db/schema.ts — `runnerLimitReasons` is the enum these three strings must stay a subset of; a member added there that this never sends is a cap the master can see and cannot report, and a string sent from here that is not there is a 400 on every report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Reason {
     /// An account-level quota window: the 5-hour or 7-day limit.
@@ -89,7 +82,6 @@ pub(crate) struct Refusal {
 impl Refusal {
     /// The only constructor, because the one pairing core refuses by name is
     /// dropped HERE rather than at each call site.
-    // cm:guard `auth` carries NO reset, and this is where that is enforced rather than in the classifier's arms. Core answers `AUTH_LIMIT_HAS_NO_RESET` 400 to the pair, so a caller that built one by hand would silently report nothing at all; and an auth limit given a reset would hand an auth-dead box a self-healing window it does not have.
     fn new(reason: Reason, resets_in_seconds: Option<u64>, detail: String) -> Self {
         Self {
             reason,
@@ -110,7 +102,6 @@ pub(crate) enum Verdict {
     /// The account answered this turn, which is the only proof a window ended.
     Worked,
     /// An API error this binary has not been taught to read.
-    // cm:guard this is a DECISIVE answer and not a skip. A scan that walked past it would reach an older refusal and report that instead — a stale classification wearing a fresh one's clothes, and a Claude Code release that renamed a field would show up as a box quietly reporting yesterday's cap rather than as a named line in the log.
     Unreadable(String),
 }
 
@@ -120,7 +111,6 @@ pub(crate) struct Decisive {
     /// Unix seconds, off the record's own `timestamp`.
     pub at: i64,
     /// The `.fff` of that same timestamp, 0 where the record carries none.
-    // cm:guard ordering needs this and the freshness bounds do not, which is why it is a field beside `at` rather than a finer `at`. Two masters on one box refuse within the same second routinely — the whole failure this issue was filed for is five of six panes hitting one account at once — and without the fraction the tie-break falls to the `uuid`, which is arbitrary. A success at `.100` whose uuid sorts high would then beat a refusal at `.900` whose uuid sorts low, and the box would lift a limit off evidence it had just read something newer than.
     pub millis: u32,
     /// The record's own `uuid` — what a report is memoised against, so one
     /// refusal is sent once however many sweeps read it.
@@ -145,7 +135,6 @@ pub(crate) enum Action {
 /// The STATUS is read before the `error` slug, deliberately: a status is an HTTP
 /// code and a slug is a name a release may change, so `401` stays `auth` under
 /// any future spelling of why.
-// cm:guard every field read here is read off the PARSED object's top level. The same refusal wording appears inside `message.content[].text` whenever an issue body quoting it reaches a master's pane, and a substring search over the line would classify that as a cap — which is exactly how anyone who can write an issue would hard-exclude a box from dispatch.
 pub(crate) fn classify(record: &Value, now_unix: i64) -> Option<Verdict> {
     if record.get("isApiErrorMessage").and_then(Value::as_bool) != Some(true) {
         return worked(record).then_some(Verdict::Worked);
@@ -168,7 +157,6 @@ pub(crate) fn classify(record: &Value, now_unix: i64) -> Option<Verdict> {
 
 /// A 429: an account quota window when the record carries one, a bare provider
 /// throttle when it does not.
-// cm:why `quotaLimits.status == "rejected"` is what separates the two, and it is the same line core's own `detectRunnerLimit` draws: a 5-hour or 7-day window is `usage_limit` and carries a reset core can wait out, while a throttle with no window behind it is `rate_limit`. Reading the `rateLimitType` name instead would make every future window name an unclassified record.
 fn quota(record: &Value, detail: String, now_unix: i64) -> Refusal {
     let limits = record.get("quotaLimits");
     let rejected = limits
@@ -186,7 +174,6 @@ fn quota(record: &Value, detail: String, now_unix: i64) -> Refusal {
 }
 
 /// Whether this record is the account answering.
-// cm:guard a `<synthetic>` model is NOT an answer: Claude Code writes that on every record it generated itself, including the refusals above, so treating it as a turn would make each cap clear the limit it had just reported.
 fn worked(record: &Value) -> bool {
     if record.get("type").and_then(Value::as_str) != Some("assistant") {
         return false;
@@ -221,7 +208,6 @@ fn detail_of(record: &Value, slug: &str) -> String {
 fn clamp_detail(detail: &str, reason: Reason) -> String {
     let mut out = String::new();
     let mut units = 0usize;
-    // cm:guard TRIMMED here and not only in `detail_of`, because this constructor is what every arm goes through and a blank string is a body core refuses whole (`min(1)`) — a report with nothing to say would then record nothing at all rather than record the reason.
     for c in detail.trim().chars() {
         let w = c.len_utf16();
         if units + w > DETAIL_MAX_UTF16 {
@@ -243,7 +229,6 @@ fn clamp_detail(detail: &str, reason: Reason) -> String {
 /// usual sweep parses one line. A record that is `Unreadable` stops the scan
 /// with that answer, and one [`FRESH_WITHIN`] away from now in EITHER direction
 /// stops it with none.
-// cm:why the window is a distance and not an age. Older than the bound stops the scan because everything before it is older still; dated AHEAD of it stops the scan because a clock that ran forward is not one this box may then trust backwards either, and the safe half is to answer nothing and keep sweeping. Read as a signed age instead, a future record is not merely fresh but fresher than anything real, and it wins every ranking `decide` makes.
 pub(crate) fn newest_decisive(tail: &str, now_unix: i64) -> Option<Decisive> {
     for line in tail.lines().rev() {
         let Ok(record) = serde_json::from_str::<Value>(line) else {
@@ -252,8 +237,6 @@ pub(crate) fn newest_decisive(tail: &str, now_unix: i64) -> Option<Decisive> {
         let Some(verdict) = classify(&record, now_unix) else {
             continue;
         };
-        // cm:guard the timestamp and the freshness bound are read for EVERY verdict, the unreadable one included, and it carries the record's own instant rather than `now`. Across a box the decision is taken on the newest verdict of ALL projects, so an unreadable record stamped `now` would outrank every real refusal on the box, while one dated `0` would rank under every one of them and let a project whose protocol moved be answered by another project's older classification.
-        // cm:guard a record this cannot DATE ends the scan with nothing, and does not fall through to the record below it. Everything here rests on knowing when a thing was said: an undatable refusal cannot be tested for freshness and cannot be ranked against another project's, so reporting it would be a claim about now made from a record with no now in it. Answering nothing is the safe half — the box stays unstamped and keeps sweeping.
         let at = record
             .get("timestamp")
             .and_then(Value::as_str)
@@ -286,7 +269,6 @@ pub(crate) fn newest_decisive(tail: &str, now_unix: i64) -> Option<Decisive> {
 ///
 /// `None` for a path that is not there, which is the normal state of a pane
 /// whose first hook event has not landed yet.
-// cm:guard the leading partial line is DROPPED rather than parsed. A read that starts mid-line hands `serde_json` a fragment, and a fragment that happens to parse is a record with most of its fields missing — which classifies as nothing, quietly, exactly where a refusal was.
 pub(crate) fn read_tail(path: &std::path::Path) -> Option<String> {
     use std::io::{Read, Seek, SeekFrom};
     let mut file = std::fs::File::open(path).ok()?;
@@ -309,8 +291,6 @@ pub(crate) fn read_tail(path: &std::path::Path) -> Option<String> {
 ///
 /// One decision for the device, not one per project, because both sides of
 /// core's route fan out to every runner binding of the device.
-// cm:guard the newest verdict wins across ALL projects and the tie-break is total, because `recordMasterLimit` and `clearMasterLimit` are device-wide: decided per project, an older success on one would delete the stamp a newer refusal on another had just written, and which one won would depend on the order `/me/runners` happened to return the rows in. The `(at, uuid)` key is what makes the answer the same in every order.
-// cm:guard the CLEAR is gated on what core reports, never on a memo of our own. A memo is empty after a daemon restart and core's column is not, so a box whose account recovered while it was being deployed would otherwise sit stamped until an operator lifted it by hand.
 pub(crate) fn decide(
     seen: &[Decisive],
     core_limited: bool,
@@ -332,8 +312,6 @@ pub(crate) fn decide(
                 Action::Report(r.clone(), newest.uuid.clone())
             }
         }
-        // cm:guard the CLEAR carries its own, tighter bound, and the report does not. See `CLEAR_WITHIN`: this box cannot see when core's stamp was written, so the only thing standing between a stale success and a limit another lane wrote seconds ago is how near to now the success itself sits.
-        // cm:why the age must be NON-NEGATIVE as well as small, and the scan's wider bound is a symmetric distance while this one is not. Read as a bare age, a success dated ahead of this box is negative and so inside every upper bound written as `<=` — it would be the one verdict that always clears. The forward half is refused outright rather than merely bounded because nothing legitimate needs it: `now_unix` truncates to whole seconds, so a turn that succeeded this instant reads as EQUAL, and a record claiming to be later than that is a clock this box will not lift a limit on.
         Verdict::Worked => {
             let age = now_unix.saturating_sub(newest.at);
             let fresh = (0..=CLEAR_WITHIN.as_secs() as i64).contains(&age);
@@ -349,7 +327,6 @@ pub(crate) fn decide(
 /// Seconds since the epoch for one `YYYY-MM-DDTHH:MM:SS[.fff]Z` instant.
 ///
 /// Claude Code writes exactly this shape and nothing else.
-// cm:guard hand-parsed rather than by a datetime crate, and that is a standing position rather than an oversight: `me-runners.ts` sends the runner REMAINING SECONDS instead of an instant precisely so this binary needs neither a parser nor a skew correction on the pacing path. This one parser exists because the freshness bound and the across-project ordering both need the record's own clock, and it is total over the WHOLE shape — the separators, every field as digits, the calendar, the clock ranges and the trailing `Z` — because three defects on this issue each lived in a case this sentence claimed was covered and was not.
 fn unix_seconds(ts: &str) -> Option<i64> {
     let bytes = ts.as_bytes();
     if bytes.len() < 20
@@ -361,7 +338,6 @@ fn unix_seconds(ts: &str) -> Option<i64> {
     {
         return None;
     }
-    // cm:guard every field is read as DIGITS ONLY, because `parse::<i64>` accepts a leading sign and the shape does not: `-123-01-01T00:00:00Z` lines its separators up exactly where this expects them, and would otherwise answer a real instant for a year no conversation has.
     let num = |a: usize, b: usize| {
         let field = ts.get(a..b)?;
         field
@@ -377,7 +353,6 @@ fn unix_seconds(ts: &str) -> Option<i64> {
     if hh > 23 || mm > 59 || ss > 59 {
         return None;
     }
-    // cm:guard the TAIL is checked too, so the shape this reads is the whole shape it declares. Without it `2026-09-16T12:00:00+07:00` parses, and the offset is silently dropped rather than applied — seven hours of error on a record that reads as perfectly well formed. Safe only by accident today, because `FRESH_WITHIN` is twenty minutes and every real offset is larger; a zone half an hour out would land inside the window and be believed.
     let frac = ts.get(19..).and_then(|rest| rest.strip_suffix('Z'))?;
     if !frac.is_empty() {
         let digits = frac.strip_prefix('.')?;
@@ -393,7 +368,6 @@ fn unix_seconds(ts: &str) -> Option<i64> {
 /// Separate from [`unix_seconds`] because the two answer different questions:
 /// that one decides whether a record may be read at all, this one only orders
 /// two that both may.
-// cm:guard a fraction this cannot read answers 0 rather than refusing the record, and that asymmetry is deliberate. A record whose SECOND is unreadable cannot be dated at all and ends the scan; a record whose fraction is unreadable is still dated to the second, and dropping it would lose a real refusal over a cosmetic field. Ordering degrades to the uuid tie-break for that one record, which is exactly where this started.
 fn subsecond_millis(ts: &str) -> u32 {
     let Some(frac) = ts.get(19..).and_then(|rest| rest.strip_prefix('.')) else {
         return 0;
@@ -411,7 +385,6 @@ fn subsecond_millis(ts: &str) -> u32 {
 }
 
 /// Length of one month, so a day past the end of it is refused not absorbed.
-// cm:why spelled out rather than taken from a crate for the same reason `days_from_civil` is: this file's whole datetime surface is these two functions, and both are exact for every year a conversation record can carry.
 fn days_in_month(y: i64, m: i64) -> i64 {
     match m {
         1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
@@ -450,7 +423,6 @@ mod tests {
 
     /// Refusal and success records captured verbatim off `forge-vm`, plus the two
     /// counterexamples no box has produced. Its first line names which is which.
-    // cm:guard a FILE rather than strings in this test, because a string written here to make an assertion pass proves only that the assertion and the string agree. These are what Claude Code actually wrote, and the header line says where each came from.
     const RECORDS: &str = include_str!("../../assets/master-limit-records.jsonl");
 
     fn header() -> Value {
@@ -469,7 +441,6 @@ mod tests {
                 return v;
             }
         }
-        // cm:why the record id is NOT printed here, though it is the obvious thing to reach for. CodeQL's `rust/cleartext-logging` reads a binding named `uuid` reaching a panic as a secret reaching a log sink and fails the build on it — high severity, and the only alert this change raised. It is wrong about the value: these are fixture record ids, sitting in plaintext in `master-limit-records.jsonl` two directories away. It is right about the shape, and the rule's own advice for a value that adds little is to omit it, so that is what this does rather than rename the binding to dodge a name-based query. The label is the key a reader needs; the id it maps to is one line away in the header.
         panic!("fixture labels {label} as a record id that is not in the file below it")
     }
 
@@ -568,7 +539,6 @@ mod tests {
         );
     }
 
-    // cm:guard the STATUS beats the slug, and this is the test that says so. A release renaming `authentication_failed` must not turn a 401 into an unclassified record — the box would then report nothing at all for a credential an operator has to fix.
     #[test]
     fn a_401_is_auth_however_the_release_spells_its_error() {
         assert_eq!(
@@ -604,7 +574,6 @@ mod tests {
         );
     }
 
-    // cm:guard the refusal wording inside a record's TEXT is not a refusal. This fixture line is a real tool result carrying this issue's own body, which quotes the banner verbatim — so a substring search over the line would classify it as a cap, and anyone who can write an issue could hard-exclude a box from dispatch.
     #[test]
     fn the_banner_quoted_inside_a_records_text_says_nothing_about_the_account() {
         let r = record("banner_in_text_only");
@@ -673,7 +642,6 @@ mod tests {
         assert!(matches!(d.verdict, Verdict::Refused(_)));
     }
 
-    // cm:guard the unreadable record STOPS the scan. Walking past it reaches the older refusal below it and reports that — a cap this binary no longer understands, announced as one it does, with nothing in the log saying the protocol moved.
     #[test]
     fn an_unreadable_record_stops_the_scan_over_an_older_refusal() {
         let t = tail(&["429_five_hour", "unrecognised_protocol"]);
@@ -702,7 +670,6 @@ mod tests {
         assert!(newest_decisive(&t, edge).is_some());
     }
 
-    // cm:guard the two bounds must not converge. The moment `CLEAR_WITHIN` reaches `FRESH_WITHIN` the asymmetry is gone and every success the scan will look at may also lift a stamp — which is the state this change deliberately left behind.
     #[test]
     fn lifting_a_limit_is_held_to_a_tighter_clock_than_reporting_one() {
         assert_eq!(
@@ -719,7 +686,6 @@ mod tests {
         assert!(newest_decisive(&t, inside).is_some());
     }
 
-    // cm:guard the window is DERIVED from the two constants that bound how long a box can go without a chance to see a refusal. A literal here would keep its value while someone widened `LIMITED_POLL_INTERVAL`, and every real cap would age out unseen.
     #[test]
     fn the_freshness_window_is_derived_from_the_intervals_that_bound_observation() {
         assert_eq!(
@@ -791,10 +757,6 @@ mod tests {
         assert_eq!(decide(&d, true, Some("u1"), 100), Action::Nothing);
     }
 
-    // cm:guard the memo is keyed on the RECORD's own id and never on the refusal it produced. The
-    // same line classified at two sweep times gives two different `resetsInSeconds`, because the
-    // reset is counted against the clock — so a memo keyed on the value would read each sweep's
-    // arithmetic as a new cap and POST the same refusal every thirty seconds forever.
     #[test]
     fn one_record_read_at_two_sweep_times_is_reported_once() {
         let t1 = at("429_five_hour") + 30;
@@ -820,7 +782,6 @@ mod tests {
         );
     }
 
-    // cm:guard a refusal core did NOT take is not memoised, so this is what makes the next sweep send it again. The caller records the id only after the POST succeeds; passing `None` here is that state, and it must still produce a report.
     #[test]
     fn a_refusal_core_never_took_is_sent_again() {
         let d = vec![seen("429_five_hour", 100, "u1")];
@@ -837,7 +798,6 @@ mod tests {
         assert_eq!(decide(&d, false, None, 100), Action::Nothing);
     }
 
-    // cm:guard BOTH orders, because this is the whole reason the decision is device-wide. Core's route fans out to every binding of the device, so a per-project decision would let the older success below delete the stamp the newer refusal had just written — and which one won would depend on the order `/me/runners` returned the rows in.
     #[test]
     fn an_older_success_on_one_project_cannot_lift_a_newer_refusal_on_another() {
         let older = seen("successful_turn", 100, "u-worked");
@@ -875,7 +835,6 @@ mod tests {
         );
     }
 
-    // cm:guard the clear's own bound, which the report does not share. A success older than `CLEAR_WITHIN` is a pane that stopped answering, not an account that recovered — and lifting a stamp off it re-opens this box to dispatch against an account that may still be refusing, including one the job lane stamped seconds ago out of evidence this box cannot see.
     #[test]
     fn a_success_too_old_to_speak_for_now_lifts_nothing() {
         let d = vec![seen("successful_turn", 100, "u2")];
@@ -888,7 +847,6 @@ mod tests {
         );
     }
 
-    // cm:guard a REFUSAL keeps the wider bound, which is what makes the asymmetry real rather than a constant nobody reads: the same age that refuses to clear still reports.
     #[test]
     fn a_refusal_older_than_the_clear_bound_is_still_reported() {
         let d = vec![seen("429_five_hour", 100, "u1")];
@@ -899,7 +857,6 @@ mod tests {
         );
     }
 
-    // cm:guard one project's unreadable record silences the WHOLE box while it is the newest thing said, in either sweep order. Without it, a project whose protocol moved is answered by another project's older classification — a cap reported under a name this binary no longer understands, with nothing in the log saying so.
     #[test]
     fn a_newer_unreadable_record_on_one_project_silences_an_older_refusal_on_another() {
         let older = seen("429_five_hour", 100, "u-refused");
@@ -944,7 +901,6 @@ mod tests {
     /// route.
     const WIRE: &str = include_str!("../../assets/master-limit-wire.json");
 
-    // cm:guard the set is compared WHOLE rather than "each of these is in there", because the failure this catches is a reason that exists on one side and not the other — in either direction. Core's own suite reads the same file against `runnerLimitReasons`, so a rename on either side stops matching one artifact instead of failing on a live box.
     #[test]
     fn the_reasons_this_binary_sends_are_the_set_both_sides_read() {
         let declared: Value = serde_json::from_str(REASONS).unwrap();
@@ -995,7 +951,6 @@ mod tests {
         at("429_five_hour") + 60
     }
 
-    // cm:guard this is the WHOLE producing chain — the captured record, the scan, the decision and the transport — landing on a file the receiving side reads off disk. Asserting the classifier and the serializer separately leaves every one of them green while the body core is handed is something neither test ever saw.
     #[tokio::test]
     async fn a_captured_refusal_reaches_core_as_the_bytes_both_languages_read() {
         let d = newest_decisive(&line_of("429_five_hour"), wire_now()).expect("a fresh refusal");
@@ -1020,7 +975,6 @@ mod tests {
         );
     }
 
-    // cm:guard the OTHER direction, replayed the same way. Without it the refusal wire test, the decision test and the route test can all be green while a successful turn stops classifying as one, the stamp never lifts, and the box paces itself at five minutes forever.
     #[tokio::test]
     async fn a_captured_successful_turn_reaches_core_as_the_delete_that_lifts_it() {
         let d = newest_decisive(&line_of("successful_turn"), at("successful_turn") + 60)
@@ -1085,7 +1039,6 @@ mod tests {
         assert_eq!(subsecond_millis(""), 0);
     }
 
-    // cm:guard the scan carries the record's OWN fraction through, rather than leaving every verdict at 0 and quietly restoring the uuid tie-break this exists to replace.
     #[test]
     fn the_scan_carries_the_records_own_fraction() {
         let d = newest_decisive(&tail(&["successful_turn"]), at("successful_turn")).unwrap();
@@ -1099,7 +1052,6 @@ mod tests {
         }
     }
 
-    // cm:guard a date or clock reading that cannot exist is REFUSED, never normalised into the neighbouring one. Arithmetic on `2026-02-31T25:61:61Z` lands days and an hour past where the string reads, which is how a record dates itself AHEAD of this box — and a verdict dated in the future outranks every real refusal on the box and passes both freshness bounds, because the age it computes is negative.
     #[test]
     fn an_impossible_date_or_clock_reading_is_refused_rather_than_normalised() {
         for bad in [
@@ -1136,7 +1088,6 @@ mod tests {
         }
     }
 
-    // cm:guard a record dated AHEAD of this box is out of the window exactly as an old one is, in both the scan and the decision. Read as a signed age it is not merely fresh but fresher than anything real, so a success from a clock that ran forward would lift a limit another lane had stamped seconds earlier.
     #[test]
     fn a_record_dated_ahead_of_this_box_cannot_lift_a_limit() {
         let ahead = seen("successful_turn", 10_000, "u-ahead");
@@ -1150,8 +1101,6 @@ mod tests {
         assert_eq!(newest_decisive(&t, behind), None);
     }
 
-    // cm:guard the CLEAR takes no forward tolerance at all, not even the one the scan takes. A whole-second `now` admits a record written in the same second as EQUAL, so nothing legitimate needs the future half — and anything that does need it is a clock this box should not be lifting a limit on.
-    // cm:guard the ordering must survive two records in the SAME SECOND, because the uuid tie-break is arbitrary by design and a second is an eternity when five masters hit one account at once. A success at `.100` whose uuid sorts high would otherwise beat a refusal at `.900` whose uuid sorts low, and the box would DELETE a limit off evidence it had just read a newer refusal than.
     #[test]
     fn a_refusal_later_in_the_same_second_beats_a_success_whose_uuid_sorts_higher() {
         let worked = Decisive {

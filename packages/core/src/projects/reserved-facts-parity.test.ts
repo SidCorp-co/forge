@@ -38,16 +38,11 @@ describe('the reserved project-fact keys, on both sides of the package boundary'
     expect(webKeys()).toEqual([...RESERVED_PROJECT_FACT_KEYS]);
   });
 
-  // cm:guard `live-branch` by name. It is the key ISS-1046 introduced, and the one the mirror
-  // was missing: a fact named `live-branch` passed the browser's inline validation and was then
-  // dropped by `mergeProjectFacts` without a word.
   it('reserves `live-branch` on both sides', () => {
     expect([...RESERVED_PROJECT_FACT_KEYS]).toContain('live-branch');
     expect(webKeys()).toContain('live-branch');
   });
 
-  // cm:guard `production-branch` stays reserved after the rename. The column is gone, but a fact
-  // by that name would read to an operator as the thing that sets it, so it is still refused.
   it('keeps the retired spelling reserved on both sides', () => {
     expect([...RESERVED_PROJECT_FACT_KEYS]).toContain('production-branch');
     expect(webKeys()).toContain('production-branch');

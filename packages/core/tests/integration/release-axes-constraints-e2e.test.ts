@@ -84,12 +84,6 @@ async function fleet() {
 }
 
 describe('0253 backward — the way back is a file that has been run', () => {
-  // cm:guard the forward map is NOT injective, which is the whole reason the down migration reads
-  // the declared table instead of deriving an inverse. Three epodsystem 'prod' rows became
-  // {preview,live} while three others became `service`, and getcontent's coolify 'staging' became
-  // {live} — so a rule reading `preview ∈ stages → 'staging'` restores the first three wrongly and
-  // `{live} → 'prod'` restores getcontent wrongly. A round trip over the WHOLE declared fleet is
-  // what separates reading the declaration back from computing it.
   it('restores every binding to the exact environment it came in with', async () => {
     const { db, bindings } = await fleet();
     try {
@@ -137,10 +131,6 @@ describe('0253 backward — the way back is a file that has been run', () => {
     }
   });
 
-  // cm:guard the rollback raises rather than guessing, in the same direction as the forward run.
-  // A binding created AFTER the cutover has no declared environment to restore, and the file must
-  // name it for a person rather than invent one — deleting the row or defaulting it is how a
-  // rollback quietly loses a production binding somebody made.
   it('aborts naming a binding created after the cutover, rather than guessing its environment', async () => {
     const { db, g, projects } = await fleet();
     try {
@@ -222,10 +212,6 @@ describe('0253 forward — the rules live in Postgres, and say no', () => {
     }
   });
 
-  // cm:guard THE counterexample for `cardinality` over `array_length`:
-  // `array_length('{}', 1)` is NULL, so the same rule written that way evaluates to
-  // NULL on the empty array and PASSES this row. This case is the only thing that
-  // separates the two spellings, and it goes green under the wrong one.
   it('refuses a deploy binding whose stage array is empty', async () => {
     const { db, g, projects } = await migrated();
     try {
@@ -384,9 +370,6 @@ describe('0253 forward — a project declares its release model, and Postgres ho
     }
   });
 
-  // cm:guard uniqueness survives for `service` rows ONLY. Both halves are asserted:
-  // dropping the index passes the first, and widening it to every row passes the
-  // second, so neither alone holds the rule the change actually made.
   it('holds one active service binding per project, provider and label — and no ceiling on deploy', async () => {
     const { db, g, projects } = await migrated();
     try {

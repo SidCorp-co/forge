@@ -28,15 +28,8 @@ export function RepoTab({ project, canEdit }: { project: ProjectDetail; canEdit:
     norm(baseBranch) !== (project.baseBranch ?? null) ||
     norm(liveBranch) !== (project.liveBranch ?? null);
 
-  // cm:guard the live branch is read ONLY under `promote`, so it is only editable there. 25 of 32
-  // fleet projects carried a production branch nothing ever promoted to, because this field asked
-  // for one from every project whatever its release was. Under `publish` the release is an act on a
-  // live binding and no ref moves; under `none` there is no release step at all.
   const promotes = project.releaseModel === "promote";
 
-  // cm:why one branch for both is a legal, deliberate configuration (owner decision 2026-08-13),
-  // so this states the consequence and never gates the save — a project whose base IS its live
-  // branch simply has no buffer between a merge and a deploy.
   const oneBranch =
     promotes && norm(baseBranch) !== null && norm(baseBranch) === norm(liveBranch);
 

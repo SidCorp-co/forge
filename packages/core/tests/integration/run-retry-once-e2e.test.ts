@@ -126,10 +126,6 @@ async function holding(key: string): Promise<{ release: () => Promise<void> }> {
 }
 
 /** Wait until Postgres itself says both reports are blocked on this issue's marker key. */
-// cm:why it asks the DATABASE what is happening rather than timing how long nothing happens, for the
-// reason `run-session-readback-e2e.test.ts` states at length: the assertion it feeds is an ABSENCE,
-// and an absence is satisfied by a busy pool or a worker the scheduler has not run. Two UNGRANTED
-// advisory locks on this exact key is a positive fact the unlocked code can never produce.
 async function bothAreWaitingOn(key: string): Promise<void> {
   const deadline = Date.now() + 10_000;
   let seen = -1;
@@ -155,17 +151,7 @@ async function bothAreWaitingOn(key: string): Promise<void> {
 }
 
 describe('a report that arrives twice', () => {
-  // cm:guard two sweeps in flight TOGETHER, which is ISS-1050 finding F4 and the case the sequential
-  // retry below cannot reach. The marker was a select followed by an insert with nothing serialising
-  // them, so both callers read no comment and both inserted; the box reports a checkpoint on every
-  // sweep until core takes it, so two in flight is the ordinary condition rather than a rare race.
   //
-  // cm:why the harness takes the writer's OWN key first and asserts both callers BLOCK on it, rather
-  // than firing two calls and counting the comments. Measured here: two concurrent calls against the
-  // UNLOCKED code still produced one comment, because the two awaits between the select and the
-  // insert let one finish before the other looked. A test that cannot fail proves nothing, and
-  // counting rows would have been exactly that. Two ungranted advisory locks on this key is a
-  // positive fact only the locking code can produce.
   it('makes two reports of one close wait on each other, and writes once', async () => {
     const { device, issueIds, session } = await aRunOver(9, 'twice at once');
     const issueId = issueIds[0] as string;
@@ -208,12 +194,6 @@ describe('a report that arrives twice', () => {
     ).toEqual([0, 1]);
   });
 
-  // cm:guard the retry ANNOUNCES the run it answers with, when nobody has, which is ISS-1050 finding
-  // F3. `announceOneShotRun` is a second write after the transaction commits, so an emit that throws
-  // fails the request with the run already created — and the retry then takes the idempotent fast path
-  // in `openRunSession` and answers with the committed session, announcing nothing, for good. The mark on the run is
-  // what lets the retry tell "already announced" from "announced by nobody"; clearing it here is
-  // exactly the state a failed emit leaves.
   it('announces a run whose open event never reached anyone, on the retry that answers with it', async () => {
     const user = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, user.id);
@@ -250,12 +230,6 @@ describe('a report that arrives twice', () => {
     ).not.toBeNull();
   });
 
-  // cm:guard the retry may FINISH a close, never REPLAY one, and this is the fence that separates the
-  // two. It is not a rare crash window: `close_loop::close` retries until core takes the marks, so a
-  // dead run's close arrives again and again while its issues are already back in the pool and
-  // another master may have claimed one. Status equality is idempotent only while nothing else
-  // moves; the next owner moving it to `in_progress` is exactly what makes a replay destructive, and
-  // the damage is this issue's own damage class arriving through its own repair.
   it('does not take an issue back from the run that claimed it after the first return', async () => {
     const user = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, user.id);

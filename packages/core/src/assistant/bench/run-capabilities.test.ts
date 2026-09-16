@@ -244,7 +244,6 @@ describe('memory cleanup', () => {
     expect(result.cleanup.memories).toEqual({ found: 4, deleted: 4, remaining: 0 });
     expect(fake.state.notes).toEqual(seeded);
     const lists = fake.state.requests.filter((r) => r.method === 'GET' && r.path === '/api/memory');
-    // cm:why 6 notes over pages of one is six reads plus the empty-check; listing twice (before and after) is what the read-back costs
     expect(lists.length).toBeGreaterThanOrEqual(8);
     expect(result.pass).toBe(true);
   });

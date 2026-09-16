@@ -31,7 +31,6 @@ import type { ReleaseNotes } from '../issues/release-notes.js';
 import { FAILURE_CAUSES, type FailureCause } from '../pipeline/failure-causes.js';
 import { activityLog, actorAgencies } from './schema-activity.js';
 
-// cm:edge naming -> packages/core/src/db/schema-activity.ts — re-exported so that `activity_log` moving out of this file is invisible to its ten importers. Drop this line and every one of them breaks at once; that is the only reason it is here, not a licence to grow it into a barrel.
 export {
   type ActorType,
   activityLog,
@@ -40,14 +39,12 @@ export {
   actorTypes,
 } from './schema-activity.js';
 
-// cm:guard an agent is a `users` row and NOT a table of its own, which is what keeps `effectiveProjectRole` (27 call sites) and the 173 `organization_members`/`project_members` reads unchanged — an agent is authorized because it IS a member, through the machinery that was already there. The flag is the seam: the day an agent needs its own table, every reader already asks through one column.
 export const userKinds = ['human', 'agent'] as const;
 export type UserKind = (typeof userKinds)[number];
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   email: text('email').notNull().unique(),
-  // cm:guard EVERY login entrance must refuse `agent`, and the column defaulting to `human` is why a new entrance is the dangerous one: an agent row carries a synthesized address it cannot receive mail at and a NULL `password_hash`, so a forgotten refusal turns creating an agent into creating an unapproved person's account with a live password-reset path. The refusals live in `auth/agent-account.ts` — `assertNotAgent` — and every entrance calls that, never its own check.
   kind: text('kind', { enum: userKinds }).notNull().default('human'),
   /**
    * The label a person reads, and NOTHING else (ISS-1003).
@@ -56,7 +53,6 @@ export const users = pgTable('users', {
    * an org admin sets an agent's. Null until somebody types one, which is what
    * every renderer's "or the email address" branch is for.
    */
-  // cm:guard NEVER read to decide anything: not a key, not an address, no part in resolving a mention. The precedent is `assistant_speaker_links` — a re-assignable name used as a key hands the next holder of that name the previous holder's authority — and the address that IS safe to resolve on is `organization_members.handle`, which is unique within its org. `db/display-name-readers.test.ts` names the modules allowed to read this column and fails on any other.
   displayName: text('display_name'),
   /**
    * Nullable since 0037: OAuth-only users have no local password. `/auth/local`
@@ -80,7 +76,6 @@ export const oauthAccounts = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    // cm:why text rather than a pg enum so adding a provider ('github' | 'google' | 'oidc' today) is not a migration
     provider: text('provider').notNull(),
     providerAccountId: text('provider_account_id').notNull(),
     email: text('email'),
@@ -95,7 +90,6 @@ export const oauthAccounts = pgTable(
   }),
 );
 
-// cm:guard this is the device-token mint (browser-approved, one per runner install); `pairingCodes` further down is the separate project binding. Folding the two tables together drops the distinction between "this machine may talk to Forge" and "this machine works on that project".
 export const deviceLoginCodes = pgTable(
   'device_login_codes',
   {
@@ -112,7 +106,6 @@ export const deviceLoginCodes = pgTable(
       onDelete: 'cascade',
     }),
     approvedAt: timestamp('approved_at', { withTimezone: true }),
-    // cm:guard the principal the BOX will act as, kept separate from `approved_user_id` which is the person who approved. Folding the two together is tempting and wrong twice: the approval event publishes to the approver's user room, which nobody watches if it becomes the agent's, and the audit answer to "who let this machine in" stops being a person (ISS-932).
     agentUserId: uuid('agent_user_id').references(() => users.id, { onDelete: 'cascade' }),
     consumedAt: timestamp('consumed_at', { withTimezone: true }),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
@@ -199,12 +192,10 @@ export const refreshTokens = pgTable(
   }),
 );
 
-// cm:guard org role does NOT imply project access on its own: owner/admin derive an implicit project `admin`, plain `member` derives nothing and still needs a `project_members` row. Resolve it through `lib/authz.ts effectiveProjectRole` — a second implementation grants or denies differently and nothing compares the two.
 
 export const orgMemberRoles = ['owner', 'admin', 'member'] as const;
 export type OrgMemberRole = (typeof orgMemberRoles)[number];
 
-// cm:guard a lens shapes ONLY how the interactive agent answers (altitude and voice) and NEVER permissions — it is orthogonal to `role`, so a gate that reads a lens grants access an org admin never assigned; empty means the default product voice, not the absence of a right
 export const memberLenses = ['technical', 'product'] as const;
 export type MemberLens = (typeof memberLenses)[number];
 
@@ -214,7 +205,6 @@ export const organizations = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     slug: text('slug').notNull().unique(),
     name: text('name').notNull(),
-    // cm:guard one per user, held by the partial unique index below and by nothing in the application — a second personal org for a user is an insert error, not a validation message, and code that creates orgs must be ready for that.
     isPersonal: boolean('is_personal').notNull().default(false),
     createdBy: uuid('created_by')
       .notNull()
@@ -238,18 +228,14 @@ export const organizationMembers = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     role: text('role', { enum: orgMemberRoles }).notNull().default('member'),
-    // cm:guard the column takes any text — the lens vocabulary is enforced by the route's zod alone (`memberLenses`, mirroring `apiKeys.scopes`), so a writer that bypasses that route stores a lens nothing reads
     lenses: text('lenses').array().notNull().default(sql`ARRAY[]::text[]`),
     /**
      * The address, the thing typed after `@`. Lowercase, no spaces,
      * machine-read, unique within this org (ISS-1003).
      */
-    // cm:guard it sits HERE and not on `users` because the rule is unique-per-org, and `(org_id, handle)` is a real unique index only on the table that holds both columns. A handle on `users` could be asserted unique-per-org by a writer and enforced by nothing — the same defect somewhere a reviewer would not look for it. Null for a person, who holds no handle yet; the partial index and the CHECK both admit null so that day needs no migration.
     handle: text('handle'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  // cm:guard every CHECK the migration creates is declared HERE too, because a drizzle snapshot
-  // records `checkConstraints` per table: one left in SQL alone is a constraint the snapshot denies
   (t) => ({
     pk: primaryKey({ columns: [t.orgId, t.userId] }),
     userIdIdx: index('organization_members_user_id_idx').on(t.userId),
@@ -271,7 +257,6 @@ export const orgInvitations = pgTable(
       .notNull()
       .references(() => organizations.id, { onDelete: 'cascade' }),
     email: text('email').notNull(),
-    // cm:guard an invite may NEVER carry `owner`, though the column's enum permits it: ownership is granted only by an explicit in-app act, so a writer that accepts this field from an invite payload hands the org away by email. Validated at the route, not by the type.
     role: text('role', { enum: orgMemberRoles }).notNull(),
     inviterId: uuid('inviter_id')
       .notNull()
@@ -303,9 +288,6 @@ export const organizationMembersRelations = relations(organizationMembers, ({ on
   user: one(users, { fields: [organizationMembers.userId], references: [users.id] }),
 }));
 
-// cm:guard a prefix is a claim on the whole deployment and is NEVER given up: this table is only ever inserted into, and `project_id` goes NULL when its project is deleted rather than the row going with it. Freeing a dead project's prefix would let a second project claim it and silently re-point every published `FD-977` at a different issue 977, which is the one failure ISS-992 exists to prevent.
-// cm:edge sideeffect -> packages/core/drizzle/migrations/0240_issue_prefix_search_path.sql — `issue_prefix_aliases_immutable_trg` refuses every DELETE, every prefix change, every owner change, and a `project_id` -> NULL written by ANYTHING but the project FK's own cascade, which it tells apart by whether the project row is still there. Drizzle cannot model a trigger, so this comment is the only place in TypeScript that says it exists.
-// cm:guard `prefix` is stored UPPER CASE and compared as stored — a `lower(prefix)` expression index cannot back a foreign key, and `projects.issue_prefix` needs one (see `projectsIssuePrefixFk`)
 export const issuePrefixAliases = pgTable(
   'issue_prefix_aliases',
   {
@@ -318,9 +300,7 @@ export const issuePrefixAliases = pgTable(
   },
   (t) => ({
     prefixUq: uniqueIndex('issue_prefix_aliases_prefix_uq').on(t.prefix),
-    // cm:guard the target of `projects_issue_prefix_fk`, so it is a UNIQUE CONSTRAINT and not an index — drop it and a project can be pointed at a prefix another project holds
     projectPrefixUq: unique('issue_prefix_aliases_project_prefix_uq').on(t.projectId, t.prefix),
-    // cm:edge contract -> packages/core/src/lib/issue-ref.ts#PREFIX_SHAPE — the same shape in two languages and nothing type-checks the pair: widen one and a value the parser accepts is refused by Postgres, or the reverse
     prefixShape: check(
       'issue_prefix_aliases_prefix_shape',
       sql`${t.prefix} ~ '^[A-Z][A-Z0-9]{1,5}$' AND ${t.prefix} <> 'ISS'`,
@@ -341,32 +321,17 @@ export const projects = pgTable(
     orgId: uuid('org_id')
       .notNull()
       .references(() => organizations.id, { onDelete: 'restrict' }),
-    // cm:guard audit-only, and it carries NO authz semantics. The creator is granted a `project_members` admin row at create time and the effective role is always resolved through `lib/authz.ts`, so reading permission off this column reaches a different answer than every other caller.
     createdBy: uuid('created_by')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
     description: text('description'),
-    // cm:guard free text gated by the `projectKinds` app enum and nothing else — a `website` project's source of truth is the store, so `repoPath` may legitimately be absent on one (ISS-387).
     kind: text('kind').notNull().default('standard'),
     repoPath: text('repo_path'),
     baseBranch: text('base_branch'),
-    // cm:guard read ONLY through `releaseModel`: 25 of 32 projects carry a value here that nothing
-    // promotes to, from the era when the column defaulted to 'main', and reading it without the model
-    // is how the old gate answered "this project promotes" for a project that promotes nothing.
-    // cm:edge contract -> packages/core/src/release-batch/gate.ts — `resolveReleaseDeclaration` is the one reader that decides whether this column means anything
     liveBranch: text('live_branch'),
-    // cm:guard DECLARED, never derived. butlocs, mowment, getcontent and forge-dev are identical on every
-    // other stored column, and three of them ship a storefront while the fourth only borrows the binding
-    // for MCP — no function can separate them, so nothing may try. A column and not a `pipelineConfig`
-    // key because the release gate decides whether an issue may reach `closed`, which makes it kernel.
     releaseModel: text('release_model', { enum: axes.releaseModels }).notNull().default('none'),
-    // cm:guard set exactly when `releaseModel` is `promote`, held by `projects_release_strategy_chk` in
-    // Postgres rather than in a validator. All four promote projects carry `merge-branch`.
     releaseStrategy: text('release_strategy', { enum: axes.releaseStrategies }),
-    // cm:guard SSH form, and set together with a project git credential or not at all: provision auto-clones from this and a URL with no credential fails on a box nobody is watching.
     repoUrl: text('repo_url'),
-    // cm:guard prose ON PURPOSE, and never executed as a command list: any project admin can write this, and the runner would be running it unreviewed on every box. NULL is not an error — it means the setup agent derives the procedure from the repo itself, at a paid model's rates, on every job that needs it.
-    // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/setup_agent.rs — this column plus the live findings ARE that agent's whole prompt
     workspaceSetup: text('workspace_setup'),
     defaultDeviceId: uuid('default_device_id').references((): AnyPgColumn => devices.id, {
       onDelete: 'set null',
@@ -375,9 +340,7 @@ export const projects = pgTable(
     previewDeploy: jsonb('preview_deploy'),
     webhookSecret: text('webhook_secret'),
     apiKey: text('api_key'),
-    // cm:guard the ACTIVE issue-reference prefix, and NULL is not "unset" but the legacy `ISS` every project answered to before ISS-992. It may only name a prefix this project already holds in `issue_prefix_aliases` — `projects_issue_prefix_fk` enforces that in Postgres, so a pointer the parser would reject is unrepresentable rather than merely checked.
     issuePrefix: text('issue_prefix'),
-    // cm:guard a soft archive that DESTROYS nothing: it hides the project from the default list and pauses auto-dispatch, and every archive is restorable (ISS-353).
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -387,7 +350,6 @@ export const projects = pgTable(
     apiKeyUq: uniqueIndex('projects_api_key_uq').on(t.apiKey).where(sql`api_key IS NOT NULL`),
     defaultDeviceIdx: index('projects_default_device_id_idx').on(t.defaultDeviceId),
     archivedAtIdx: index('projects_archived_at_idx').on(t.archivedAt),
-    // cm:edge lockstep -> packages/core/src/db/schema.ts#issuePrefixAliases — MATCH SIMPLE skips the check while `issue_prefix` is NULL, which is what leaves the legacy `ISS` default free; measured against Postgres 2026-09-13, seven probes
     issuePrefixFk: foreignKey({
       name: 'projects_issue_prefix_fk',
       columns: [t.id, t.issuePrefix],
@@ -403,7 +365,6 @@ export const projects = pgTable(
 export const projectKinds = ['standard', 'website'] as const;
 export type ProjectKind = (typeof projectKinds)[number];
 
-// cm:guard no `owner` here on purpose — project ownership is an ORG concern and org owner/admin derive an implicit project `admin`; `viewer` is read-only.
 export const projectMemberRoles = ['admin', 'member', 'viewer'] as const;
 export type ProjectMemberRole = (typeof projectMemberRoles)[number];
 
@@ -492,20 +453,13 @@ export const devices = pgTable(
     name: text('name').notNull(),
     platform: text('platform', { enum: devicePlatforms }).notNull(),
     agentVersion: text('agent_version'),
-    // cm:guard a `devices` row is a REGISTRY entry and no longer a credential (ISS-932) — it held `token_hash`/`token_prefix` and its own argon2 until this issue deleted them. What authenticates a box is a `personal_access_tokens` row carrying this row's id in `device_id`, so the box's identity is a token like every other and one revoke path covers it. Putting a secret back on this table restores a second credential species and, with it, the `device.ownerId` fiction that had a machine borrowing a person's identity.
     status: text('status', { enum: deviceStatuses }).notNull().default('offline'),
-    // cm:guard NULL means eligible, and this is ORTHOGONAL to heartbeat-driven `status` — a disabled device keeps heartbeating and reads online, so a pick that filters on `status` alone dispatches to a box the operator switched off. `lib/device-pool.ts` is the filter (`isNull(devices.disabledAt)`); the reversible switch is deliberately not `revoked`, which is one-way.
     disabledAt: timestamp('disabled_at', { withTimezone: true }),
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
     pairedAt: timestamp('paired_at', { withTimezone: true }).notNull().defaultNow(),
     capabilities: jsonb('capabilities'),
-    // cm:guard chat is NOT counted against this — it runs off the jobs table with its own budget on the runner (`[runner] chat_max_concurrent`) and never takes a `job.assigned` slot, so folding the two together would let a burst of chats starve the pipeline (ISS-321).
-    // cm:guard the unit is the DEVICE and must stay there: the resource a job consumes is one Claude process on one machine, so a box bound to 20 projects at cap 3 runs 3 jobs total, not 3 per project. It is compared against `countInFlightForDevice`, never against the per-binding count that feeds the load reports.
-    // cm:guard NOTHING IN CORE READS THIS. How many jobs a box may hold is the runner's decision (`[runner] duplex_max_sessions`, RAM, the repo-root lock in `daemon/repo_lock.rs`), and core deliberately stopped having an opinion when the master began claiming from the pool — `devices/claim.ts` carries the guard saying why. Wiring a reader back onto this column re-introduces the kernel ceiling that design removed, and a ceiling core cannot see the real value of can only be wrong.
     maxConcurrent: integer('max_concurrent').notNull().default(1),
-    // cm:guard a LABEL and never the credential — `git/provision-credential.ts` writes `https:<host>`, the token is handed to the runner once at poll time and stored nowhere, and a writer that puts the material here turns a column every project member can read (`integrations/status-service.ts` exposes it as `pushCredProvisioned`) into a secret leak. NULL means none provisioned (ISS-305).
     gitCredentialRef: text('git_credential_ref'),
-    // cm:guard the key that makes a re-pair ROTATE the existing row rather than insert a ghost device beside it, carrying the old row's runner bindings forward — NULL is the legacy client that sends none, and `devices/pair.ts` then falls back to always-insert, so a matcher that treats NULL as a value collapses every legacy box onto one row.
     machineId: text('machine_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -515,7 +469,6 @@ export const devices = pgTable(
   }),
 );
 
-// cm:guard the ONE credential table (ISS-150, ISS-932). A person's PAT, an agent's AAT, a job's or session's short-lived token and a paired box's token are all rows here, and a second credential species anywhere else is what this issue spent a migration removing — it is how a machine ends up borrowing a person's identity because its own row cannot express one.
 export const personalAccessTokens = pgTable(
   'personal_access_tokens',
   {
@@ -527,20 +480,15 @@ export const personalAccessTokens = pgTable(
     tokenHash: text('token_hash').notNull(),
     tokenPrefix: varchar('token_prefix', { length: 18 }).notNull(),
     scopes: text('scopes').array().notNull().default(sql`ARRAY['read','write']::text[]`),
-    // cm:guard NULL is the WIDER grant, not the narrower one: it inherits the user's project memberships, so a non-null array is a strict allowlist and emptying it back to NULL re-opens every project the owner can reach.
     projectIds: uuid('project_ids').array(),
-    // cm:guard NULL is user-level — the token reaches its owner's projects — and non-null binds it to exactly this one, serving as BOTH the slug-omitted default and the auth fence (ISS-497). Reading NULL as "no project set, so unrestricted" inverts the fence; it is the wider grant, not the absent one.
     boundProjectId: uuid('bound_project_id').references(() => projects.id, { onDelete: 'cascade' }),
-    // cm:guard the box this token was issued to, and it is what replaced the device credential (ISS-932): a `devices` row is a registry entry now, not a species of token, so `requireDevice` and `/ws` resolve the box from HERE. Non-null is the whole authority to speak as a device — a token without it is a valid credential on the wrong plane and those surfaces refuse it by name rather than reading `userId` and carrying on.
     deviceId: uuid('device_id').references(() => devices.id, { onDelete: 'cascade' }),
     expiresAt: timestamp('expires_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
     lastUsedIp: text('last_used_ip'),
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
-    // cm:guard NULL and `{}` BOTH mean every group, never no group — 26 active human tokens on production the day ISS-973 shipped, 25 of them immortal, and the migration writes no value into any of them, so reading an ungranted row as permissionless locks out every live integration on deploy. Narrowing is opt-in and a non-empty array is the only narrowing; the predicate is `auth/pat-permissions.ts:patGrantCovers`.
     permissions: text('permissions').array(),
-    // cm:why null is not "unlimited" but "take the operator's default" (`RULES.patRead` / `RULES.patWrite`); a number here is the ceiling of EACH class, not of the two together, because the three credentials that set one are single-session tokens whose 600 was sized as 6x that session's measured peak and that intent is per axis (ISS-961).
     rateLimitMax: integer('rate_limit_max'),
   },
   (t) => ({
@@ -563,7 +511,6 @@ export const mcpAuditLog = pgTable(
     tool: text('tool').notNull(),
     action: text('action'),
     projectId: uuid('project_id').references(() => projects.id, { onDelete: 'set null' }),
-    // cm:why 'ok' | 'forbidden' | 'not_found' | 'error' | 'revoked' | 'rate_limited' | http code
     resultCode: text('result_code').notNull(),
     requestId: text('request_id'),
     ip: text('ip'),
@@ -585,7 +532,6 @@ export const pairingCodes = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    // cm:why Nullable — user-scoped pairing codes leave this null. Set when the code is minted via `POST /api/projects/:id/devices/pairing-codes` so the redeemer can auto-bind the new device to the project.
     projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     usedAt: timestamp('used_at', { withTimezone: true }),
@@ -598,8 +544,6 @@ export const pairingCodes = pgTable(
   }),
 );
 
-// cm:guard `held` is NON-TERMINAL and slotless — a job blocked on a mechanical condition (no runner, provider quota, project budget) waits HERE, never on issues.status (RFC 0002); being absent from runner_load/running_ids is exactly what makes it slotless, but it MUST appear in both `jobs_active_unique` partial indexes below and in L1 issueBusyJob or a duplicate job is enqueued for the same issue
-// cm:edge lockstep -> packages/core/src/jobs/queued-gates.ts — `issueBusyJob` must list `held`; `runner_load` and `running_ids` must NOT
 export const jobStatuses = [
   'queued',
   'dispatched',
@@ -618,15 +562,12 @@ export const jobTypes = [
   'code',
   'review',
   'test',
-  // cm:guard a jobType that survives its ISSUE STATUS: `staging` and `pass` are retired from the issue lifecycle (docs/flows/lifecycle-pipeline.html), and this member stays only because historical `jobs` rows hold it and a client must still render one. Nothing dispatches it.
   'staging',
   'release',
   'fix',
   'custom',
   'pm',
-  // cm:guard the ONE job type that carries no issue: it runs on a 'system' pipeline_run and its PASS/FAIL IS its terminal status, so a reader that keys the outcome on anything else reads a canary that never reports (ISS-455)
   'smoke',
-  // cm:edge naming -> packages/core/src/release-batch/service.ts — a release_batch job's run has metadata.source==='release-batch', not type-checked
   'release_batch',
   'reconcile',
   'verify_skill',
@@ -637,8 +578,6 @@ export type JobType = (typeof jobTypes)[number];
 export const modelTiers = ['haiku', 'sonnet', 'opus'] as const;
 export type ModelTier = (typeof modelTiers)[number];
 
-// cm:guard the picker orders by `(priority, run.started_at, queued_at)`, so every job of the oldest run drains before a newer same-priority one — a run is the unit of fairness here, not a job (ISS-101).
-// cm:guard `pm`, `interactive` and `system` all keep `issueId` NULL, and the kind is what tells them apart: the NOT NULL FK on `jobs`/`agent_sessions` needs a run row to point at whether or not an issue exists, so collapsing them leaves `pipeline_runs.kind` unable to say which of the three a null-issue run was.
 export const pipelineRunKinds = ['issue', 'pm', 'interactive', 'system'] as const;
 export type PipelineRunKind = (typeof pipelineRunKinds)[number];
 
@@ -674,9 +613,7 @@ export const pipelineRuns = pgTable(
     projectStatusIdx: index('pipeline_runs_project_status_idx').on(t.projectId, t.status),
     issueIdx: index('pipeline_runs_issue_idx').on(t.issueId),
     projectStartedAtIdx: index('pipeline_runs_started_at_idx').on(t.projectId, t.startedAt),
-    // cm:guard ISS-1022 — named for the column it actually leads with, unlike its sibling above, whose name says `started_at` while its leading column is `project_id`. The cross-tenant readers (`/admin/overview`'s active-workspace count, `/admin/adoption`, `/admin/workspaces`) constrain `started_at` and nothing else.
     startedAtIdx: index('pipeline_runs_started_at_only_idx').on(t.startedAt),
-    // cm:guard at most one open issue-run per issue, mirroring the partial unique index in migration 0054 — `openIssueRun` relies on it for INSERT ... ON CONFLICT DO NOTHING, so widening the predicate here turns that conflict-free insert into a second live run for one issue
     issueOpenUq: uniqueIndex('pipeline_runs_issue_open_uq')
       .on(t.issueId)
       .where(sql`kind = 'issue' AND status IN ('running','paused')`),
@@ -691,12 +628,10 @@ export const jobs = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
     issueId: uuid('issue_id').references((): AnyPgColumn => issues.id, { onDelete: 'set null' }),
-    // cm:guard NOT NULL here and `restrict` on the reference are one decision, and they are what makes the run/job terminal invariant checkable in BOTH directions: a job with no run cannot be swept by the run-axis reaper, and a run deleted out from under its jobs would leave the inverse half — no run stays non-terminal once every child job is terminal — reading an empty set and closing. Every job belongs to a run: an issue-driven job shares its issue's, a PM job gets a one-shot `pm` run of its own. The column has been NOT NULL in the database since 0054 (ISS-101).
     pipelineRunId: uuid('pipeline_run_id')
       .notNull()
       .references(() => pipelineRuns.id, { onDelete: 'restrict' }),
     deviceId: uuid('device_id').references(() => devices.id, { onDelete: 'set null' }),
-    // cm:why nullable, and it stays nullable: the dispatcher writes `deviceId` and `runnerId` together, a device-bound runner mirrors its `runner.deviceId` here, and a remote runner has no device to mirror — so a NOT NULL would refuse exactly the remote case the column was added for (ISS-271).
     runnerId: uuid('runner_id').references((): AnyPgColumn => runners.id, { onDelete: 'set null' }),
     createdBy: uuid('created_by')
       .notNull()
@@ -706,7 +641,6 @@ export const jobs = pgTable(
     status: text('status', { enum: jobStatuses }).notNull().default('queued'),
     queuedAt: timestamp('queued_at', { withTimezone: true }).notNull().defaultNow(),
     dispatchedAt: timestamp('dispatched_at', { withTimezone: true }),
-    // cm:why stamped on the runner's explicit claim (POST /jobs/:id/ack), or failing that on its first job_event — the fallback is what makes the loop monitor's dispatch→ack hop able to reap a dispatched row that never got one (ISS-449).
     ackedAt: timestamp('acked_at', { withTimezone: true }),
     finishedAt: timestamp('finished_at', { withTimezone: true }),
     exitCode: integer('exit_code'),
@@ -714,11 +648,8 @@ export const jobs = pgTable(
     modelTier: text('model_tier', { enum: modelTiers }),
     attempts: integer('attempts').notNull().default(1),
     cancellationRequested: boolean('cancellation_requested').notNull().default(false),
-    // cm:guard never conflate with cancellationRequested — a reap kill must stay retryable once confirmed, unlike an operator cancel
-    // cm:edge contract -> packages/core/src/jobs/retry.ts — scheduleAutoRetryWithVerify short-circuits retry on cancellationRequested, not on killRequestedAt/killOutcome
     killRequestedAt: timestamp('kill_requested_at', { withTimezone: true }),
     killConfirmedAt: timestamp('kill_confirmed_at', { withTimezone: true }),
-    // cm:why plain text (no pg enum) — adding an outcome value is additive, no migration
     killOutcome: text('kill_outcome', {
       enum: ['killed', 'not_found', 'runner_gone', 'reported_terminal', 'never_claimed'],
     }),
@@ -727,11 +658,7 @@ export const jobs = pgTable(
     // retry_after_at. Written by the retry engine after a transient/timeout
     // failure with an optional provider Retry-After hint; NULL otherwise.
     retryAfterAt: timestamp('retry_after_at', { withTimezone: true }),
-    // cm:why a bare uuid with no foreign key, matching `notifications.agent_session_id`: the
-    // dispatcher writes the observability row, and adding the key later is additive (ISS-4).
     agentSessionId: uuid('agent_session_id'),
-    // cm:guard the master session holding this job. NULL means claimable; non-NULL means a master took it and is answerable for it. It MUST be released when that session dies — `devices/master-reaper.ts` is what does that, and without it a dead master's jobs are unclaimable forever with nothing reporting why.
-    // cm:edge lockstep -> packages/core/src/devices/pool.ts — `held_by IS NULL` is the pool's only exclusion, so a writer that sets this column without a matching release path silently shrinks the pool
     heldBy: uuid('held_by'),
     heldAt: timestamp('held_at', { withTimezone: true }),
     // Pipeline self-healing (Phase H, ISS-306; taxonomy rebuilt by ISS-450 /
@@ -743,7 +670,6 @@ export const jobs = pgTable(
     failureKind: text('failure_kind', {
       enum: ['code', 'infra', 'transient-cc', 'timeout'],
     }),
-    // cm:why ISS-823 — NULL on pre-existing rows; retry.ts falls back to deriveActionFromKind(failureKind) so historical behaviour is unchanged
     failureAction: text('failure_action', {
       enum: ['terminal', 'quarantine', 'failover', 'retry'],
     }),
@@ -763,7 +689,6 @@ export const jobs = pgTable(
     modelUsed: text('model_used'),
     promptBlocks: jsonb('prompt_blocks'),
     archivePath: text('archive_path'),
-    // cm:why runner-observed hashes at ACK time (job.ran.with), not intended — null for pre-0.7.0 runners or unseeded jobs
     skillsRanWith: jsonb('skills_ran_with'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -775,7 +700,6 @@ export const jobs = pgTable(
     runnerIdIdx: index('jobs_runner_id_idx').on(t.runnerId),
     retryOfIdx: index('jobs_retry_of_idx').on(t.retryOf),
     agentSessionIdIdx: index('jobs_agent_session_id_idx').on(t.agentSessionId),
-    // cm:why partial index keeps the kill-gate phase-2 scan off the hot unfiltered jobs table
     killRequestedAtIdx: index('jobs_kill_requested_at_idx')
       .on(t.status, t.killRequestedAt)
       .where(sql`kill_requested_at IS NOT NULL`),
@@ -821,7 +745,6 @@ export const jobEventKinds = [
   // is a plain text column, so this is additive with no migration; the
   // interventions metric (C6) counts rows with this kind.
   'intervention',
-  // cm:why audit row written by POST /jobs/:id/kill-ack (runner's answer to a job.cancel: outcome killed|not_found in data.outcome)
   'kill_ack',
 ] as const;
 export type JobEventKind = (typeof jobEventKinds)[number];
@@ -841,9 +764,7 @@ export const jobEvents = pgTable(
   (t) => ({
     jobIdSeqIdx: uniqueIndex('job_events_job_id_seq_idx').on(t.jobId, t.seq),
     tsIdx: index('job_events_ts_idx').on(t.ts),
-    // cm:guard ISS-1013 — `(job_id, seq)` above cannot answer `max(ts)` for one job: it orders by `seq`, so the planner reads that job's WHOLE event history and aggregates. This one lets the min/max transform take a single index-only tuple, which is what bounds the result hop's per-tick cost to the number of live jobs. Dropping it does not fail a test that only asks for the absence of a sequential scan — the planner falls back to scanning the other index end to end, which reads as an index scan in a plan and costs like a table scan.
     jobIdTsIdx: index('job_events_job_id_ts_idx').on(t.jobId, t.ts),
-    // cm:guard ISS-1013 — PARTIAL on `kind = 'result'`, which is what makes `resident-session.ts`'s `RESULT_EVENT_LATERAL` one index tuple per live job instead of a walk through that job's whole history looking for a result it usually has not written. The predicate is why this is nearly free on a write-heavy table: a non-result insert evaluates it and writes no entry.
     resultKindIdx: index('job_events_result_idx').on(t.jobId).where(sql`kind = 'result'`),
   }),
 );
@@ -872,7 +793,6 @@ export const kernelTransitions = pgTable(
     toStatus: text('to_status').notNull(),
     reason: text('reason'),
     actorType: text('actor_type', { enum: kernelTransitionActorTypes }).notNull(),
-    // cm:guard the SECOND actor axis, and it is not a refinement of the first. `actor_type` answers who OWNS the write (a job or session token transitions under its creator, so `user` is true); `actor_agency` answers who was at the keyboard. They disagree for exactly the rows the ISS-786/812 gates exist to catch, and nothing type-checks that a writer keeps them in step — `KernelActor.agency` is required for that reason, so the compiler names an omitting call site instead of letting it record the default. Same shape as `activity_log.actor_agency` (ISS-927 finished the axis that migration 0193 started).
     actorAgency: text('actor_agency', { enum: actorAgencies }).notNull().default('human'),
     actorId: uuid('actor_id'),
     source: text('source').notNull(),
@@ -962,7 +882,6 @@ export const runners = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
     type: text('type', { enum: runnerTypes }).notNull(),
-    // cm:guard every runner is a binding of a REAL paired device: the `host='remote'` lane and its `device_id IS NULL` rows were deleted 2026-09-04, so a null device is not a second shape to handle, it is corruption. Selection, dispatch and the limit scope all join through this column; leaving it nullable is what let those joins silently drop rows instead of failing.
     deviceId: uuid('device_id')
       .notNull()
       .references(() => devices.id, { onDelete: 'cascade' }),
@@ -978,12 +897,9 @@ export const runners = pgTable(
     status: text('status', { enum: runnerStatuses }).notNull().default('offline'),
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
     lastError: text('last_error'),
-    // cm:why rateLimitedUntil is NULL for reason='auth' (no parseable reset — needs a manual re-login); a non-null limitReason with a future rateLimitedUntil is the dispatcher's skip signal and the UI's "limited" badge source
-    // cm:edge sideeffect -> packages/core/src/agent-sessions/routes.ts — chat session completion also clears these fields, not only job lifecycle
     limitReason: text('limit_reason', { enum: runnerLimitReasons }),
     rateLimitedUntil: timestamp('rate_limited_until', { withTimezone: true }),
     limitDetail: text('limit_detail'),
-    // cm:why durable hard-exclusion alongside rateLimitedUntil so it survives a retry round wrapping (the rotation clears its exclude set there); self-heals on expiry, cleared on the next success
     quarantinedUntil: timestamp('quarantined_until', { withTimezone: true }),
     quarantineReason: text('quarantine_reason'),
     // Per (device × project) workspace provisioning state. NULL = not yet
@@ -1021,11 +937,9 @@ export const runnersRelations = relations(runners, ({ one, many }) => ({
   jobs: many(jobs),
 }));
 
-// cm:guard the two kinds are AUTHORED, never derived (RFC 0002 INV-5) — an agent or a human writes one alongside `status='waiting'`, and core has no writer of either. Adding a third kind means teaching the prompt, the guide and the UI copy in the same change, or agents author a value nothing renders.
 export const waitingKinds = ['needs_decision', 'needs_resource'] as const;
 export type WaitingKind = (typeof waitingKinds)[number];
 
-// cm:edge lockstep -> packages/web-v2/src/features/issues/derive.ts — STATUS_LABELS and STATUS_TO_STAGE are exhaustive `Record<IssueStatus, …>`, so a value added here without them fails the web-v2 build, which `pnpm verify` does not run (only CI's `web` job does): `dropped` reached a deploy through the same hole in the desktop map on 2026-08-20, before that client was deleted
 export const issueStatuses = [
   'open',
   'confirmed',
@@ -1037,7 +951,6 @@ export const issueStatuses = [
   'testing',
   'tested',
   'awaiting_release',
-  // cm:why ISS-897's release lane had no status for the MIDDLE: an issue stood at `released` while its batch ran and the in-flight fact lived only in `release_batch_run_id`, so one status read as both "waiting to be pressed" and "being released now" — 16 batch jobs, 4 failed and 2 cancelled, are where those diverge. Only `finish` and `abort` write out of it.
   'releasing',
   'closed',
   'reopen',
@@ -1046,7 +959,6 @@ export const issueStatuses = [
   'draft',
   'dropped',
 ] as const;
-// cm:why `pass`, `staging` and `deploying` are absent because one-shot migrations re-parked every row off them, so no row can hold them again. The block that used to sit here also called `tested` "the single production approval gate", which ISS-897 falsified — the gate is derived from the project (an active `prod` binding AND a production branch distinct from the base), and `release-batch/gate.ts` is where it is decided.
 export type IssueStatus = (typeof issueStatuses)[number];
 
 export const issuePriorities = ['critical', 'high', 'medium', 'low', 'none'] as const;
@@ -1061,7 +973,6 @@ export type IssueComplexity = (typeof issueComplexities)[number];
 export const issueSources = ['manual', 'github'] as const;
 export type IssueSource = (typeof issueSources)[number];
 
-// cm:why NEW column, not reused reportedBy — reportedBy is client-writable free text, so it can't carry a trusted label
 export const issueCreationChannels = ['web', 'mcp', 'pipeline', 'schedule', 'system'] as const;
 export type IssueCreationChannel = (typeof issueCreationChannels)[number];
 
@@ -1082,7 +993,6 @@ export const issues = pgTable(
     issSeq: integer('iss_seq').notNull().default(0),
     title: text('title').notNull(),
     description: text('description'),
-    // cm:why named `description_format` rather than a bare `format` (ISS-898) — `plan` and `acceptanceCriteria` sit in this same table, so an unqualified name would read as covering all three the moment one of them gains a format
     descriptionFormat: text('description_format', { enum: BODY_FORMATS })
       .notNull()
       .default('markdown'),
@@ -1091,22 +1001,17 @@ export const issues = pgTable(
     category: text('category'),
     // Set by webhook/MCP imports; NULL when `createdById` covers the actor.
     reportedBy: text('reported_by'),
-    // cm:guard never expose as client-settable on issueCreateSchema or the MCP create input
     createdVia: text('created_via', { enum: issueCreationChannels }),
-    // cm:guard at most one non-closed issue may carry a given detector key per project — enforced by partial unique index `issues_detector_key_live_uq` (migration 0158); claimDetectorKey() is the graceful path, the index is the backstop, do not drop it
     detectorKey: text('detector_key'),
     assigneeId: uuid('assignee_id').references(() => users.id, { onDelete: 'set null' }),
     createdById: uuid('created_by_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
-    // cm:guard ISS-232 — this is the Layer-2 dependency gate: NULL means the blocker has not landed, so every `kind=blocks` dependent stays ungated by the picker. It is CALLER-ASSERTED (`issues/merged-at.ts`, `POST /api/issues/:id/merge`, and the close stamp) — nothing checks git — so stamping it on an issue whose code never merged dispatches its dependents against absent code. The old comment here named `pipelineConfig.mergeStates.baseBranch`, a key ISS-897 deleted.
     mergedAt: timestamp('merged_at', { withTimezone: true }),
-    // cm:guard ISS-959 — the commit the mark was made at, and it is only ever written by the same conditional UPDATE that sets `merged_at` (`issues/merge-marker.ts`), so the pair is stamped together or not at all. A value here beside a NULL `merged_at` would claim a landing nothing released the dependents for; a NULL here beside a stamped `merged_at` is the old shape and stays legal, because the close stamp and the base-exit stamp know no commit.
     mergedCommitSha: text('merged_commit_sha'),
     // ISS-42 C2 — t-shirt sizing (xs/s/m/l/xl) for scoping. NULL = unsized.
     complexity: text('complexity', { enum: issueComplexities }),
     reopenCount: integer('reopen_count').notNull().default(0),
-    // cm:edge lockstep -> packages/core/src/issues/apply-transition.ts — set on entry to `waiting` and CLEARED on every exit; a stale kind on a non-waiting issue is a lie the UI renders as a live banner
     waitingKind: text('waiting_kind', { enum: waitingKinds }),
     source: text('source', { enum: issueSources }).notNull().default('manual'),
     externalId: text('external_id'),
@@ -1131,11 +1036,9 @@ export const issues = pgTable(
         } & Record<string, unknown>)
       | null
     >(),
-    // cm:guard claim release_batch_run_id only via the CAS UPDATE (WHERE release_batch_run_id IS NULL) in release-batch/service.ts — never write it directly
     releaseBatchRunId: uuid('release_batch_run_id').references(() => pipelineRuns.id, {
       onDelete: 'set null',
     }),
-    // cm:edge lockstep -> packages/core/src/issues/search-predicate.ts — `ISSUE_SEARCH_FIELDS` names these same four columns; widening one without the other makes the substring arm and the identifier arm disagree about which fields are searchable (ISS-960)
     identSearch: identSearchColumn(
       (): SQL =>
         sql`left(${issues.title} || ' ' || coalesce(${issues.description}, '') || ' ' || coalesce(${issues.plan}, '') || ' ' || coalesce(${issues.acceptanceCriteria}, ''), 100000)`,
@@ -1144,7 +1047,6 @@ export const issues = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    // cm:guard the sibling of `comments_format_chk`, for the same reason: `text(..., { enum })` is a TypeScript type and emits no constraint, so without this the column accepts any string and `create-service` is the only thing standing between a caller and a format no renderer knows
     descriptionFormatChk: check(
       'issues_description_format_chk',
       sql`${t.descriptionFormat} IN ('markdown', 'html')`,
@@ -1194,28 +1096,20 @@ export const comments = pgTable(
     authorId: uuid('author_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
-    // cm:why ISS-519 — `authorId` always points at the device's human owner (a NOT-NULL FK), so it cannot tell an agent's comment from one that owner typed. This column is the authoritative "posted by an agent" signal, and `set null` on device delete de-marks the comment back to its owner rather than blocking the delete.
-    // cm:guard NULL does not mean "a person" — it means "no device token was presented". A driver posting through the `forge` CLI or `POST /api/issues/:id/comments` authenticates with a person's PAT and lands here NULL (ISS-931 removed the synthetic device that used to fill it). ISS-932 wave 4 then made it the BOX a credential was issued to, so it answers *where*, never *who* — anything asking whether an agent wrote a comment reads `author_agency` below instead.
     authorDeviceId: uuid('author_device_id').references(() => devices.id, {
       onDelete: 'set null',
     }),
     body: text('body').notNull(),
-    // cm:edge contract -> packages/core/src/body/prepare.ts — ISS-898. `format` decides which renderer and which validator a body gets, and its DEFAULT is load-bearing: every pre-existing row and every shipped SKILL.md example omits it, so `markdown` is what keeps them all valid.
     format: text('format', { enum: BODY_FORMATS }).notNull().default('markdown'),
-    // cm:guard ISS-969 — the kernel status the issue was at when this comment was WRITTEN, which is what `pipelineConfig.states` keys a stage by. Stored rather than derived because the issue moves on: a drive comment is written at `open` and the issue is `closed` an hour later, so grouping the adoption metric by the issue's CURRENT status attributes every one of them to the wrong stage. NULL means written before this existed and stays unbackfilled. No CHECK, unlike the `format` sibling above: that guards a two-value set the renderer must know, this mirrors `issues.status`, whose set is open enough that a constraint would need migrating in lockstep with every status the lane gains.
     stage: text('stage'),
-    // cm:guard ISS-969 — who was at the keyboard, and NOT a rename of `author_device_id` two lines up: that column became the BOX a credential was issued to (ISS-932 wave 4) and every live `job:` token carries none, so a rule keyed on it fires for almost nobody while its number reads a confident zero. NULL is "written before this column existed" and is NOT 'human' — defaulting it would sweep 13,556 rows into the population the adoption fraction claims to describe, the same reason `stage` above has no backfill.
-    // cm:edge contract -> packages/core/src/middleware/require-pat.ts — derived there from the token OWNER's `users.kind`, in the ONE place a PAT principal is built; every door writing this passes that value through rather than re-deciding it.
     authorAgency: text('author_agency', { enum: actorAgencies }),
     parentId: uuid('parent_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    // cm:guard the CHECK is the backstop, not a duplicate of the TS enum: `text(..., { enum })` is a compile-time type only and emits no constraint, so the ~17 kernel paths that `db.insert(comments)` without going through `prepareBody` have nothing else stopping an unrenderable format. Same reason `issues_complexity_chk` exists.
     formatChk: check('comments_format_chk', sql`${t.format} IN ('markdown', 'html')`),
     issueIdx: index('comments_issue_id_idx').on(t.issueId),
-    // cm:guard ISS-1022 — the thread page reads one issue's comments in `(created_at, id)` order and pages on that exact pair (`comments/service.ts`); on `issue_id` alone the planner had to sort every comment of the issue before it could take a page.
     issueCreatedIdx: index('comments_issue_created_idx').on(t.issueId, t.createdAt, t.id),
     parentIdx: index('comments_parent_id_idx').on(t.parentId),
     parentFk: foreignKey({
@@ -1226,7 +1120,6 @@ export const comments = pgTable(
   }),
 );
 
-// cm:why ISS-593 — a module IS a label rather than a table of its own, so every path that already attaches, filters and lists labels carries modules for free; `kind` is the only thing that separates them.
 export const labelKinds = ['label', 'module'] as const;
 export type LabelKind = (typeof labelKinds)[number];
 
@@ -1239,13 +1132,9 @@ export const labels = pgTable(
       .references(() => projects.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     color: text('color').notNull(),
-    // cm:guard `text(col,{enum})` with a DEFAULT, matching `issues.status` — the default is load-bearing: every row that existed before ISS-593 and every insert that predates the widened schema must read back as a plain label, never as a module.
     kind: text('kind', { enum: labelKinds }).notNull().default('label'),
-    // cm:why modules only — a self-referencing parent gives the taxonomy its hierarchy without a second table. Cycle-freedom is NOT expressible here and is enforced in `labels/module-service.ts`; the FK only guarantees the parent exists.
     parentId: uuid('parent_id').references((): AnyPgColumn => labels.id, { onDelete: 'set null' }),
-    // cm:guard ISS-947 — the module's IDENTITY, and `name` is only its display. Derived from the name ONCE, on create or on promotion, and never recomputed after: a rename that moved the slug would orphan the knowledge node every later tier resolves through it, which is the failure the name-prefix convention had and this column exists to remove.
     slug: text('slug'),
-    // cm:why ISS-947 — the 1:1 binding to `module-<slug>`'s knowledge node, stored rather than derived. NULL is a legal state (a module may exist before anyone writes its node) and is what a deleted node leaves behind, which is why the FK is `set null` and not `cascade`: deleting a node must not delete the module.
     knowledgeEntryId: uuid('knowledge_entry_id').references(() => knowledgeEntries.id, {
       onDelete: 'set null',
     }),
@@ -1255,18 +1144,13 @@ export const labels = pgTable(
   (t) => ({
     projectNameUq: uniqueIndex('labels_project_id_name_uq').on(t.projectId, t.name),
     parentIdx: index('labels_parent_id_idx').on(t.parentId),
-    // cm:guard NULLs are distinct in a Postgres unique index, so this constrains modules and leaves every plain label's NULL slug uncounted — which is the whole reason `labels_slug_chk` has to exist separately to force a module to HAVE one.
     projectSlugUq: uniqueIndex('labels_project_id_slug_uq').on(t.projectId, t.slug),
-    // cm:guard the 1:1 half SQL can hold — two modules naming the same knowledge node is the state every later tier's "which module owns this node" read would answer twice. NULLs distinct again, so any number of unbound modules coexist.
     knowledgeEntryUq: uniqueIndex('labels_knowledge_entry_id_uq').on(t.knowledgeEntryId),
-    // cm:guard the literals live INSIDE the sql template — a `${CONST}` here serialises as a `$1` bind placeholder into the migration and the container then fails at start on DDL that passed every gate (ISS-654).
     slugChk: check('labels_slug_chk', sql`(${t.kind} = 'module') = (${t.slug} IS NOT NULL)`),
-    // cm:guard a plain label carries NEITHER field, at the database and not only in the service — `kind` is the only thing separating the two rows, so a label holding a module's binding is a row no projection can render honestly.
     nodeChk: check(
       'labels_knowledge_entry_chk',
       sql`${t.kind} = 'module' OR ${t.knowledgeEntryId} IS NULL`,
     ),
-    // cm:guard the CHECK is the backstop, not a duplicate of the TS enum: `text(..., { enum })` is compile-time only and emits no constraint, so any path that inserts a label without going through `labels/routes.ts` can write a kind that is neither — and such a row filters as no module and renders as no label. Same reason `comments_format_chk` and `issues_complexity_chk` exist.
     kindChk: check('labels_kind_chk', sql`${t.kind} IN ('label', 'module')`),
   }),
 );
@@ -1280,13 +1164,11 @@ export const issueLabels = pgTable(
     labelId: uuid('label_id')
       .notNull()
       .references(() => labels.id, { onDelete: 'cascade' }),
-    // cm:why ISS-593 — the issue's PRIMARY module, and the single source of truth for it: no column on `issues`, no second table. A plain label is never primary; that half is the service layer's, because SQL cannot see `labels.kind` from this row.
     isPrimary: boolean('is_primary').notNull().default(false),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.issueId, t.labelId] }),
     labelIdx: index('issue_labels_label_id_idx').on(t.labelId),
-    // cm:guard the DB backstop for "at most one primary module per issue" — the service layer enforces the same rule with a typed error, and this index is what holds when a writer bypasses it. Partial, so the false rows (all of them, by default) are not indexed.
     primaryUq: uniqueIndex('issue_labels_primary_uq').on(t.issueId).where(sql`is_primary = true`),
   }),
 );
@@ -1450,11 +1332,8 @@ export const skills = pgTable(
     files: jsonb('files').notNull().default([]),
     changelog: jsonb('changelog').notNull().default([]),
     localGuide: text('local_guide'),
-    // cm:why lineage only — which template this copy came from and at which version. Nothing compares the two any more: the rebase lane that did was deleted with the staged pipeline, so a NULL version here is an unknown adoption, not a signal.
-    // cm:guard plain uuid, deliberately NO foreign key — deleting a global template must not cascade into the project copies that were adopted from it, which is the whole reason a copy exists.
     basedOnGlobalSkillId: uuid('based_on_global_skill_id'),
     basedOnGlobalVersion: integer('based_on_global_version'),
-    // cm:why a deliberate, queryable divergence from the template — the only reason left to record one, now that the version-lag signal it used to suppress is gone with the rebase lane
     pinned: boolean('pinned').notNull().default(false),
     pinnedReason: text('pinned_reason'),
     pinnedBy: text('pinned_by'),
@@ -1499,8 +1378,6 @@ export const skillRegistrations = pgTable(
   }),
 );
 
-// cm:guard `outdated` is derived by comparing installedHash against the project's effective hash (hashSkillBody) — never stored, always recomputed
-// cm:guard status is `synced` only when observed_sha equals installed_hash; otherwise shadowed/stale/unknown — never derive synced from installed_hash alone
 export const deviceSkills = pgTable(
   'device_skills',
   {
@@ -1517,7 +1394,6 @@ export const deviceSkills = pgTable(
     installedHash: text('installed_hash').notNull(),
     installedVersion: integer('installed_version'),
     syncedAt: timestamp('synced_at', { withTimezone: true }).notNull(),
-    // cm:why null for pre-0.7.0 runners predating observation support
     observedSha: text('observed_sha'),
     shadowedBy: text('shadowed_by'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1532,8 +1408,6 @@ export const deviceSkills = pgTable(
   }),
 );
 
-// cm:guard append-only, distinct from `activity_log` above: a poller confirming a hash is unchanged must NOT insert a row here — touch a `last_verified_at` column on the owning skill/device_skills row instead (Update Pipeline §7 principle 1, epic ISS-795).
-// cm:why packetId is a plain string with no FK — it correlates one row across all five stages of an Update Packet, whose own table is owned by ISS-799 (not yet built).
 export const skillActivityEventTypes = [
   'packet.published',
   'policy.landed',
@@ -1554,7 +1428,6 @@ export const skillActivityEventTypes = [
   'charter.changed',
   'reconcile.acknowledged',
 ] as const;
-// cm:why 'body.reverted' removed — no revert action exists to emit it; re-add when one ships.
 export type SkillActivityEventType = (typeof skillActivityEventTypes)[number];
 
 export const skillActivityTriggers = [
@@ -1580,7 +1453,6 @@ export const skillActivityEvents = pgTable(
     skillId: uuid('skill_id').references(() => skills.id, { onDelete: 'cascade' }),
     deviceId: uuid('device_id').references(() => devices.id, { onDelete: 'cascade' }),
     eventType: text('event_type', { enum: skillActivityEventTypes }).notNull(),
-    // cm:why free text, not an enum: `human:<user>` | `agent:master` | `system:seeder` | `runner:<device>`.
     actor: text('actor').notNull(),
     trigger: text('trigger', { enum: skillActivityTriggers }).notNull(),
     beforeHash: text('before_hash'),
@@ -1610,10 +1482,8 @@ export const updatePackets = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     change: text('change').notNull(),
-    // cm:guard a packet with no story must never be issued (Update Pipeline §3) — enforce in createUpdatePacket() too, this CHECK is only the last-resort backstop
     story: text('story').notNull(),
     intentClass: text('intent_class', { enum: updatePacketIntentClasses }).notNull(),
-    // cm:why no FK — a packet's target may be a global skill name with no per-project row
     appliesTo: text('applies_to').notNull(),
     provenance: jsonb('provenance').notNull().default({}).$type<UpdatePacketProvenance>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1661,7 +1531,6 @@ export const memories = pgTable(
     // Soft delete for decay/consolidation. Archived rows are excluded from
     // every read surface; hard purge happens after a further grace period.
     archivedAt: timestamp('archived_at', { withTimezone: true }),
-    // cm:guard `chunk_generation` is bumped and `chunked_at` nulled on EVERY write to a chunked-project row, inside the parent upsert's transaction (memory/chunk-writer.ts:invalidateChunks) — the chunk arm of search joins `memory_chunks.generation = chunk_generation` AND `chunked_at IS NOT NULL`, and that join is the only thing keeping a superseded chunk set unreachable when the re-embed of the new text fails (docs/proposals/retrieval-v3-rerank-chunks.md, phase 2)
     chunkGeneration: integer('chunk_generation').notNull().default(0),
     chunkedAt: timestamp('chunked_at', { withTimezone: true }),
     // memory-v2 phase 1 keyword retrieval. GENERATED ALWAYS in Postgres
@@ -1820,7 +1689,6 @@ export type ScheduleStatus = (typeof scheduleStatuses)[number];
 export const scheduleModes = ['propose', 'auto'] as const;
 export type ScheduleMode = (typeof scheduleModes)[number];
 
-// cm:why `kind` is a plain text column with a TS-only enum, so adding a kind costs no migration — only every reader that switches on it. `prompt` dispatches a Claude agent session; `script` (ISS-618) and `release_batch` run in core with no session, no device and no runner.
 export const scheduleKinds = ['prompt', 'script', 'release_batch'] as const;
 export type ScheduleKind = (typeof scheduleKinds)[number];
 
@@ -1943,14 +1811,12 @@ export const usageRecords = pgTable(
     requestCount: integer('request_count').notNull().default(1),
     sessionId: text('session_id'),
     projectName: text('project_name'),
-    // cm:guard the partial unique index below makes this column the idempotency key: a job's usage row is inserted ON CONFLICT DO NOTHING, so a retry, a sweeper-reaped terminal or a re-run of the backfill can never double-count. Bare uuid, no FK (mirroring `jobs.agent_session_id`), so job retention cannot cascade-delete cost history (ISS-439).
     jobId: uuid('job_id'),
     recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     projectRecordedIdx: index('usage_records_project_recorded_idx').on(t.projectId, t.recordedAt),
-    // cm:guard ISS-1022 — the admin spend readers (`admin/aggregate-routes.ts`, `admin/metric-series.ts`, `admin/alert-queries.ts` A4) are cross-tenant and constrain `recorded_at` alone, which leaves the composite above with an unbound leading column: Postgres then scans the whole of it (cost 1,010 on beta, 2026-09-15) instead of a range. A4 runs on the 5-minute sweeper as well as the GET.
     recordedAtIdx: index('usage_records_recorded_at_idx').on(t.recordedAt),
     sessionIdIdx: index('usage_records_session_id_idx').on(t.sessionId),
     jobIdUq: uniqueIndex('usage_records_job_id_key').on(t.jobId).where(sql`job_id IS NOT NULL`),
@@ -1964,12 +1830,10 @@ export const usageRecordsRelations = relations(usageRecords, ({ one }) => ({
 export const qaRatings = ['good', 'bad', 'flagged'] as const;
 export type QaRating = (typeof qaRatings)[number];
 
-// cm:guard `chat_logs` keeps the `chat` name the module dropped in ISS-979, and ISS-1001's migration wave — which replaced `chat_sessions` with `conversations` — deliberately did NOT take it: this is a per-turn QA audit keyed by `project_slug`, not a conversation, and renaming it moves the admin QA screens for no gain to the model. Cost: a reader meets `conversations/` and `chat_logs` in one file. Ends when a wave has a reason to touch the QA surface.
 export const chatLogs = pgTable(
   'chat_logs',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    // cm:guard nullable since ISS-1001, and the null is a FACT rather than a gap: a one-shot relay turn — the escalation bridge's synthesis — belongs to no conversation, and it used to be given a throwaway `chat_sessions` row so this column could be filled. A reader must treat null as "this turn was not part of a room".
     sessionId: text('session_id'),
     projectSlug: text('project_slug').notNull(),
     userKey: text('user_key'),
@@ -1997,7 +1861,6 @@ export const chatLogs = pgTable(
   }),
 );
 
-// cm:edge lockstep -> packages/contracts/src/notifications.ts — NOTIFICATION_TYPES + NOTIFICATION_CONTRACT carry the same taxonomy; core validates the column against THIS list while every emitter is typed against the contracts one, so a value added here alone is insertable but untyped, and one added there alone typechecks then fails at the column
 export const notificationTypes = [
   'issue_status_changed',
   'comment_added',
@@ -2015,7 +1878,6 @@ export const notificationTypes = [
   // owner (report/API-check results with no LLM involved).
   'schedule_report',
   'reconcile_gate_pending',
-  // cm:why ISS-762 — `waiting` + merged code is the one issue state that contradicts itself, and nothing else surfaces it
   'issue_stranded',
   'retry_rescue_threshold',
   'ops_alert',
@@ -2037,7 +1899,6 @@ export const notifications = pgTable(
     // ISS-510 — per-event severity (from the `@forge/contracts` notification
     // contract) drives toast tone + bell hue. Nullable: legacy rows predate it.
     severity: text('severity'),
-    // cm:guard `resolvedAt IS NULL` is what "still happening" means, and every reader must use it — NOT `read = false`, which only says whether a human has looked. resolveNotifications clears by key on that predicate alone (this comment claimed "unread" until main corrected the code); an ops_alert additionally has a partial unique index over the same predicate, so a row left unstamped blocks its own recurrence forever.
     resolutionKey: text('resolution_key'),
     resolvedAt: timestamp('resolved_at', { withTimezone: true }),
     issueId: uuid('issue_id').references(() => issues.id, { onDelete: 'set null' }),
@@ -2050,7 +1911,6 @@ export const notifications = pgTable(
     }),
     agentSessionId: uuid('agent_session_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    // cm:why ISS-849 redelivery guard (`transition:<outboxId>`) — deliberately NOT `resolutionKey`, which answers "is the condition still true"; one key says do-not-send-twice, the other says the incident is over, and collapsing them would resolve an alert the moment it was redelivered
     dedupeKey: text('dedupe_key'),
   },
   (t) => ({
@@ -2059,12 +1919,10 @@ export const notifications = pgTable(
       t.read,
       t.createdAt,
     ),
-    // cm:guard ISS-1022 — NOT a narrowing of `notifications_user_read_created_idx` above: `read` sits between the two columns the unfiltered bell list uses, so that index answers the `user_id` lookup and then leaves the `ORDER BY created_at DESC` to a sort. This one serves the list route's default (every notification of one user, newest first) and `read` stays for the unread-only arm.
     userCreatedIdx: index('notifications_user_created_idx').on(t.userId, t.createdAt),
     projectCreatedIdx: index('notifications_project_created_idx').on(t.projectId, t.createdAt),
     // ISS-510 — resolver lookup: unread rows for a given resolution key.
     resolutionKeyIdx: index('notifications_resolution_key_read_idx').on(t.resolutionKey, t.read),
-    // cm:guard alert-sweeper.ts's `INSERT ... ON CONFLICT (user_id, resolution_key) WHERE ...` infers THIS index, so its predicate must match verbatim or the insert throws; and the `type = 'ops_alert'` scope must stay, because notify-transitions.ts legitimately leaves several active rows under one `issue:<id>:status` key (waiting + reopen) that an unscoped unique index would refuse to create over and then silently drop
     opsAlertActiveUq: uniqueIndex('notifications_ops_alert_active_uq')
       .on(t.userId, t.resolutionKey)
       .where(sql`resolved_at IS NULL AND resolution_key IS NOT NULL AND type = 'ops_alert'`),
@@ -2139,19 +1997,14 @@ export const agentSessionStatuses = [
 ] as const;
 export type AgentSessionStatus = (typeof agentSessionStatuses)[number];
 
-// cm:guard the statuses after which NOTHING more can happen in the session. `resolveSessionSend` reads this to decide a queued message can never be consumed, and `lifecycle/transition.ts` restricts its `to` to it — a status added here that is not in fact terminal would let a send resolve `gone` against a session still running, which is the second-agent-on-one-worktree race RFC 0003 exists to avoid.
 export const terminalAgentSessionStatuses = [
   'completed',
   'failed',
   'completed_via_recovery',
   'cancelled_stale',
-  // cm:guard `cancelled` is a PERSON stopping this session and `cancelled_stale` is a reaper finding it abandoned; they are not interchangeable and neither may be written for the other. An operator reading `cancelled_stale` on a session they stopped themselves is told their own action was a cleanup (ISS-964 criterion 17).
   'cancelled',
 ] as const satisfies readonly AgentSessionStatus[];
 
-// cm:guard `status` and `runtimeState` answer different questions and must never be collapsed: `status` is the JOB's lifecycle (a `running` session may be mid-turn or parked on stdin), `runtimeState` is the PROCESS's, and it is the only one that distinguishes a session waiting for input from one still working. Print-mode sessions leave it NULL — a NULL here means "this runner never reported, infer nothing", which is not the same as `working`.
-// cm:guard `awaiting_input` is exempt from the loop-monitor QUIET-TIMEOUT only, and for a BOUNDED wait it still holds its runner slot exactly like `working`, with the residency window as the only bound. Reading that as slot-exempt is the misreading that leaks a duplex session permanently: `duplex_max_sessions` is 3 by default and core enforces no ceiling of its own.
-// cm:edge contract -> packages/core/src/jobs/park-deadline.ts — a wait whose open question carries `blocker_kind = 'human'` is the ONE exception to the guard above and neither half of it applies: `park_for_human` releases the process outright, so there is no permit to hold, and `reapUnansweredParks` bounds it, so residency is not the only clock. Read as "every park keeps its slot until residency" this reaps the park ISS-964 exists to protect.
 export const sessionRuntimeStates = [
   'starting',
   'working',
@@ -2161,8 +2014,6 @@ export const sessionRuntimeStates = [
 ] as const;
 export type SessionRuntimeState = (typeof sessionRuntimeStates)[number];
 
-// cm:edge contract -> packages/contracts/src/failure-causes.ts — ISS-877 made that module the single taxonomy for core, web-v2 and the MCP metric; this alias exists so the schema keeps naming its own column's vocabulary, not so a second list can grow here
-// cm:guard dispatcher gate skips (issue_busy / waiting_on_dep / project_full / manual_hold) are NOT members and must never be added — ISS-162 made them stateless, recomputed by the picker every tick, so persisting one on the session row revives a gate state that goes stale the moment the condition clears
 export const agentSessionFailureReasons = FAILURE_CAUSES;
 export type AgentSessionFailureReason = FailureCause;
 
@@ -2196,15 +2047,12 @@ export const agentSessions = pgTable(
     pipelineHealth: jsonb('pipeline_health').$type<
       import('../agent-sessions/pipeline-control-types.js').PipelineHealth | null
     >(),
-    // cm:guard ISS-34 zombie-fix stamps, and each marks a DIFFERENT moment: `dispatchedAt` when the pipeline enqueues, `startedAt` only when a worker CAS-claims queued→running, `lastHeartbeatAt` on EVERY worker write (message append, claudeSessionId set, status patch). The heartbeat reaper reads the third; widening what bumps it, or bumping it from a core-side write, makes a dead runner look alive.
     dispatchedAt: timestamp('dispatched_at', { withTimezone: true }),
     startedAt: timestamp('started_at', { withTimezone: true }),
     lastHeartbeatAt: timestamp('last_heartbeat_at', { withTimezone: true }),
-    // cm:guard ISS-877 — the `{ enum }` here is the ONLY thing stopping free text returning to this column, so removing it is not a typing detail: `agent-sessions/session-failure.ts` used to write a classifier SENTENCE where `queue_timeout` writes a token, and 55 live rows ended up holding prose, 9 of them the agent's own prompt. There is no CHECK constraint on purpose — migration 0180 measured what one costs here, where a missed writer turns every INSERT into a 23514 — so the compile error is the whole enforcement, and the human sentence goes to `failureDetail`.
     failureReason: text('failure_reason', { enum: agentSessionFailureReasons }),
     failureDetail: text('failure_detail'),
     runtimeState: text('runtime_state', { enum: sessionRuntimeStates }),
-    // cm:guard the HIGHEST inbox seq core has ALLOCATED for this session, not the highest the runner applied — the runner reports what it applied and core never back-fills this from it. Allocate with `UPDATE ... SET last_inbox_seq = last_inbox_seq + 1 RETURNING`, never a read-then-write: two concurrent sends that both read N and both send N+1 end with one written and the other dropped-and-acked-delivered, which is a silent message loss the ack contract says cannot happen.
     lastInboxSeq: integer('last_inbox_seq').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -2317,8 +2165,6 @@ export const sessionAttachmentsRelations = relations(sessionAttachments, ({ one 
   }),
 }));
 
-// cm:guard `app_config` is keyed one row PER PROJECT — fleet-wide operator policy has no row here and belongs in `admin_thresholds` instead (ISS-654)
-// cm:guard `chatProviderId` is free-form text with no registry validating it, so every consumer must fall back to the env default on an unknown provider rather than trusting the column (ISS-270)
 export const memoryModels = ['flat', 'chunked'] as const;
 export type MemoryModel = (typeof memoryModels)[number];
 
@@ -2334,7 +2180,6 @@ export const appConfig = pgTable('app_config', {
   chatModelByKind: jsonb('chat_model_by_kind').notNull().default(sql`'{}'::jsonb`),
   retrievalTopK: integer('retrieval_top_k').notNull().default(10),
   retrievalMinScore: real('retrieval_min_score').notNull().default(0),
-  // cm:guard the four retrieval-v3 flags default to today's behaviour (off / flat / off / {}) and NOTHING reads them until its phase ships — docs/proposals/retrieval-v3-rerank-chunks.md; `memoryReindex` is written only by the phase-2 reindex job, never by PUT /api/app-config, so a stale client PUT cannot erase a running migration's state
   retrievalRerank: boolean('retrieval_rerank').notNull().default(false),
   memoryModel: text('memory_model', { enum: memoryModels }).notNull().default('flat'),
   retrievalExpandRelations: boolean('retrieval_expand_relations').notNull().default(false),
@@ -2399,9 +2244,14 @@ export const retrievalAnalyticsRelations = relations(retrievalAnalytics, ({ one 
   project: one(projects, { fields: [retrievalAnalytics.projectId], references: [projects.id] }),
 }));
 
-// cm:guard only `kind='blocks'` gates dispatch: an edge (from=A, to=B, 'blocks') means A must reach a terminal status before B may dispatch, and cross-project edges are legal. `relates`, `duplicates` and `parent` are PM/UX metadata no pipeline path may read.
-// cm:guard `decomposes` (epic→child) is the ONE exception, and it is not metadata: `pipeline/work-evidence.ts#hasChildIssues` reads it, so one live outgoing edge waives the ISS-786 work-evidence gate for the `from` issue. Ordering under an epic still needs its own `blocks` edge; the parent lifecycle this kind once drove was removed 2026-09-03. Three agent-facing documents called it inert until ISS-935 — the waiver text is `issues/dependency-effects.ts#WORK_EVIDENCE_WAIVER_NOTE` and every surface renders it from there.
 
+/**
+ * One live outgoing `decomposes` edge waives the ISS-786 work-evidence gate for the `from` issue, which `pipeline/work-evidence.ts#hasChildIssues` is what reads.
+ *
+ * Ordering under an epic still needs its own `blocks` edge. The sentence above is read back out
+ * of this file by `issues/dependency-effects.test.ts`, which is what keeps it in step with
+ * `WORK_EVIDENCE_WAIVER_KIND` rather than leaving it as prose nothing checks.
+ */
 export const issueDependencyKinds = [
   'blocks',
   'relates',
@@ -2787,15 +2637,7 @@ export const integrationBindings = pgTable(
     // Denormalized from the connection so the inbound router + unique index work
     // without a join. Always equals the parent connection's provider.
     provider: text('provider').notNull(),
-    // cm:guard `role` and `stages` replaced one `environment` column answering three questions at once
-    // (ISS-1046): which stage a deploy target serves, whether this binding ships the project, and — for
-    // 12 of 34 fleet bindings — nothing, because the column demanded a value seven of eight providers
-    // had no meaning for. That filler was then read as the answer to the second question, which handed
-    // the release agent a Sentry project on one project and a Rocket.Chat room on another.
     role: text('role', { enum: axes.bindingRoles }).notNull(),
-    // cm:guard a SET, not a single value: one epodsystem store IS both stages (preview = draft theme,
-    // live = published), while Coolify is two applications and so two bindings of one stage each. Empty
-    // exactly when `role = 'service'`, held by `integration_bindings_role_stages_chk`.
     stages: text('stages').array().notNull().default(sql`'{}'::text[]`),
     // Per-binding overrides (e.g. coolify `targets[]` deploy apps). Overlaid on
     // top of connection.config at dispatch time.
@@ -2810,7 +2652,6 @@ export const integrationBindings = pgTable(
     // (project, provider) for sentry/rocketchat/github/postman/google.
     label: text('label').notNull().default(''),
     active: boolean('active').notNull().default(true),
-    // cm:guard NEVER put a credential here — this text is rendered verbatim into every agent prompt for the project, so anything stored is effectively published to the model
     instructions: text('instructions'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -2821,11 +2662,6 @@ export const integrationBindings = pgTable(
       t.projectId,
       t.provider,
     ),
-    // cm:guard uniqueness survives for `service` rows ONLY, and its absence on `deploy` rows is the fix
-    // rather than an oversight: a stage may hold more than one deploy binding and core never picks among
-    // them (ISS-1046 rule 3), so uniqueness there would re-encode "core chooses" — the defect
-    // `bindings[0]` was. Eight fleet projects already carry two coolify bindings at `label = ''`.
-    // cm:edge contract -> packages/core/src/integrations/route-helpers.ts — `assertNoActiveBindingClash` is this index read in application code, and the two must admit the same rows
     serviceUq: uniqueIndex('integration_bindings_service_uq')
       .on(t.projectId, t.provider, t.label)
       .where(axes.SERVICE_ROLE_PRED),
@@ -2984,7 +2820,6 @@ export const runnerEvents = pgTable(
   }),
 );
 
-// cm:guard append-only — nothing in this schema enforces it, and the feed is evidence: an agent's report is what it said at the time, so correct it with a NEW row rather than an UPDATE (ISS-552)
 export const feedbackKinds = [
   'friction',
   'bug',
@@ -3125,7 +2960,6 @@ export const uxContractRules = pgTable(
     source: text('source', { enum: uxRuleSources }).notNull().default('manual'),
     status: text('status', { enum: uxRuleStatuses }).notNull().default('active'),
     evidenceIssueIds: jsonb('evidence_issue_ids').notNull().default([]),
-    // cm:guard ISS-579 — a `proposed` row pointing here REPLACES its target on approval; the PATCH route retires the target in the same request. compileUxContract renders only `text`, so without this link an approved should→must strengthen would leave BOTH rules active and the prose would carry the rule twice.
     supersedesRuleId: uuid('supersedes_rule_id').references((): AnyPgColumn => uxContractRules.id, {
       onDelete: 'set null',
     }),
@@ -3175,7 +3009,6 @@ export const uxFindingsRelations = relations(uxFindings, ({ one }) => ({
   pipelineRun: one(pipelineRuns, { fields: [uxFindings.runId], references: [pipelineRuns.id] }),
 }));
 
-// cm:why keyed by provider, not slug — the guide documents a SERVICE, so one row per integration per org; the slug is derived, which is what lets a single lookup reach either this tier or the code registry
 export const integrationGuides = pgTable(
   'integration_guides',
   {
@@ -3187,7 +3020,6 @@ export const integrationGuides = pgTable(
     title: text('title').notNull(),
     summary: text('summary').notNull(),
     body: text('body').notNull(),
-    // cm:guard bump on every body edit — readers cache by (slug, version), so an edit that leaves this alone serves stale bytes
     version: integer('version').notNull().default(1),
     updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -3205,7 +3037,6 @@ export const integrationGuidesRelations = relations(integrationGuides, ({ one })
   }),
 }));
 
-// cm:why the unguessable id IS the credential (mirror of `upload_tickets`) — the bearer-guarded download route 401s for a device token, a PAT and no-auth alike, so nothing on a runner, and no third-party told to fetch the URL, could ever obtain an attachment's bytes
 export const downloadTickets = pgTable(
   'download_tickets',
   {
@@ -3219,7 +3050,6 @@ export const downloadTickets = pgTable(
     issuedToDeviceId: uuid('issued_to_device_id').references(() => devices.id, {
       onDelete: 'set null',
     }),
-    // cm:guard NOT single-use — a third-party fetcher retries, and burning the ticket on the first attempt reintroduces the "cannot get the bytes" dead end. The short TTL is the containment, not a use counter.
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     fetchCount: integer('fetch_count').notNull().default(0),
     lastFetchedAt: timestamp('last_fetched_at', { withTimezone: true }),
@@ -3231,8 +3061,6 @@ export const downloadTickets = pgTable(
   }),
 );
 
-// cm:why divergence_charters is item 7 in the Master agent's context bundle (ISS-795 §4 / Update Pipeline §5).
-// cm:guard Charter mutations MUST emit `charter.changed` into `skill_activity_events` in the same transaction (invariant §9.11).
 
 export const divergenceCharters = pgTable(
   'divergence_charters',
@@ -3242,7 +3070,6 @@ export const divergenceCharters = pgTable(
       .notNull()
       .unique()
       .references(() => projects.id, { onDelete: 'cascade' }),
-    // cm:why jsonb array — each element is a DivergenceCharterEntry (see contracts/divergence-charters.ts); append-only in practice, agent never deletes individual entries.
     entries: jsonb('entries').notNull().default([]),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -3273,8 +3100,6 @@ export type ReconcileRunStatus = (typeof reconcileRunStatuses)[number];
 export const reconcileGates = ['auto', 'human'] as const;
 export type ReconcileGate = (typeof reconcileGates)[number];
 
-// cm:edge contract -> packages/core/src/guides/registry.ts#update-pipeline-reconcile — that guide is the field-by-field reference the reconcile agents are pointed at; adding or renaming a key here without updating it teaches them about a field that does not exist, or hides one that does
-// cm:why `sources` labels each key's provenance per C3.
 export interface ReconcileBundleSnapshot {
   readAt: string;
   change: string;
@@ -3301,8 +3126,6 @@ export interface ReconcileVerifierVote {
   decidedAt: string;
 }
 
-// cm:guard any update to reconcile_runs.status must emit the matching event into skill_activity_events in the same transaction (ISS-795 §9.11/§9.7).
-// cm:guard reconcile_runs_active_project_uq serializes per-project — insert only via spawnReconcileRun, which turns the unique-violation into 'already-active'.
 
 export const reconcileRuns = pgTable(
   'reconcile_runs',
@@ -3328,18 +3151,15 @@ export const reconcileRuns = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
-    // cm:why acknowledgedAt/By (ISS-807) resolve an escalated run's attention item — orthogonal to `status`, which stays the run's terminal state.
     acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }),
     acknowledgedBy: uuid('acknowledged_by').references(() => users.id, { onDelete: 'set null' }),
   },
   (t) => ({
-    // cm:guard partial unique index — enforces at most one active run per project; includes 'decided' so a run awaiting the human gate also blocks a new trigger (MINOR G, ISS-801 review).
     activeProjectUq: uniqueIndex('reconcile_runs_active_project_uq')
       .on(t.projectId)
       .where(sql`status IN ('pending','running','verifying','decided')`),
     projectCreatedIdx: index('reconcile_runs_project_created_idx').on(t.projectId, t.createdAt),
     packetIdx: index('reconcile_runs_packet_idx').on(t.packetId),
-    // cm:edge contract -> packages/core/src/me/attention-buckets.ts — the pendingSkillUpdates bucket's escalated-run clause mirrors this predicate; keep both in sync.
     pendingGateIdx: index('reconcile_runs_pending_gate_idx')
       .on(t.projectId)
       .where(
@@ -3369,21 +3189,17 @@ export type AttributeWriter = (typeof attributeWriters)[number];
 
 export const attributeCardinalities = ['one', 'many'] as const;
 
-// cm:why The registry half of the EAV pair: an open set of keys with a closed set of shapes. A key costs a row here rather than a migration, and without this row there is no shape to refuse a bad write against — an unregistered EAV is prose with commas (ISS-1010).
 export const issueAttributeDefs = pgTable('issue_attribute_defs', {
   key: text('key').primaryKey(),
   label: text('label').notNull(),
   valueType: text('value_type').notNull(),
   cardinality: text('cardinality').notNull().default('one'),
   writtenBy: text('written_by').notNull(),
-  // cm:why Which read surfaces consume the key, so a surface can ask the registry what it needs instead of hard-coding a list that drifts.
   surfaces: jsonb('surfaces').notNull().default([]),
   required: boolean('required').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-// cm:guard Exactly one value_* column is non-null, and it is the one the key's def names. A single text column would take any of them, which is the failure this table exists to avoid — enforced at the write in attributes/write.ts, not here.
-// cm:edge contract -> packages/core/src/issues/attributes/write.ts — the value column chosen from `valueType` is the whole typing; the pair must move together.
 export const issueAttributes = pgTable(
   'issue_attributes',
   {
@@ -3399,7 +3215,6 @@ export const issueAttributes = pgTable(
     valueBool: boolean('value_bool'),
     valueTs: timestamp('value_ts', { withTimezone: true }),
     valueRef: uuid('value_ref'),
-    // cm:why Provenance is the whole point of the machine rail: a person drilling in lands on the record that produced the line, never on the thread.
     sourceCommentId: uuid('source_comment_id').references(() => comments.id, {
       onDelete: 'set null',
     }),

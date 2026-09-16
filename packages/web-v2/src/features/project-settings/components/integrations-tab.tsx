@@ -71,11 +71,6 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
   const canDeploy = provider === undefined ? true : providerCanDeploy(provider);
   const providerName = provider ? (PROVIDER_LABEL[provider] ?? provider) : "this provider";
 
-  // cm:guard the role picker CLEARS the stages it hides rather than leaving them in
-  // state: a hidden control whose value still submits is how a service binding
-  // reaches the server carrying a stage, which the database refuses by constraint
-  // (`integration_bindings_role_stages_chk`) — a 500 where the form could have
-  // simply not sent it.
   function chooseRole(next: BindingRole) {
     setRole(next);
     setFormError(null);
@@ -89,11 +84,6 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
 
   function submit() {
     if (!connectionId) return;
-    // cm:guard both refusals are the FORM's, and neither is the check. The server
-    // refuses a deploy role on a provider with no deploy adapter
-    // (`integrations/connection-routes.ts`) and the database refuses a deploy
-    // binding with no stage; these two say so before the round trip, and say which
-    // provider, because "400 Bad Request" names neither.
     if (role === "deploy" && !canDeploy) {
       setFormError(
         `Forge cannot deploy to ${providerName} — it has no deploy adapter. Share it as a service, or pick a connection Forge can deploy to.`,

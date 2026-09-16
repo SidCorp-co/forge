@@ -82,10 +82,6 @@ async function fleet() {
 }
 
 describe('0253 forward — a row it cannot map stops the deploy', () => {
-  // cm:guard the refusal is the deliverable. A binding created after the fleet was
-  // measured carries an `environment` that meant one of three different things, and
-  // only its owner knows which — so the migration names it and applies nothing,
-  // rather than defaulting it to the reading that happens to be commonest.
   it('aborts naming the binding its declared table does not cover, and applies nothing', async () => {
     const { db, g, projects } = await fleet();
     try {
@@ -113,10 +109,6 @@ describe('0253 forward — a row it cannot map stops the deploy', () => {
     }
   });
 
-  // cm:guard the binding table cannot see a project that has no bindings — 20 of the
-  // 32 are invisible to it — so release_model gets a coverage assertion of its own.
-  // Without it an unlisted project reaches SET NOT NULL and fails with Postgres's
-  // generic message instead of naming the project a person has to decide about.
   it('aborts naming a project its declared table does not cover, even with no bindings', async () => {
     const { db, g } = await fleet();
     try {
@@ -165,12 +157,6 @@ describe('0253 forward — a row it cannot map stops the deploy', () => {
     }
   });
 
-  // cm:guard the coverage checks ask "is every row declared". They cannot ask "is each row
-  // declared as ITSELF": the VALUES lists were transcribed by hand, and a line pasted against
-  // the wrong binding id would backfill another row's role and then have the rollback restore
-  // another row's environment, with nothing downstream able to tell. `provider`, `environment`
-  // and the project slug are the database's OWN reading of the same rows, which is what makes
-  // this an independent check rather than a second copy of the same claim.
   it('aborts when a declared binding does not match the row its id points at', async () => {
     const { db } = await fleet();
     try {
@@ -253,11 +239,6 @@ describe('0253 forward — the declaration reaches every row', () => {
     }
   });
 
-  // cm:guard 34 rows in, 34 rows out. The issue's own Outcome sentence said the three
-  // duplicate coolify pairs merge to one `live` binding each; the correction of
-  // 2026-09-16 resolved that against its Rules, which forbid dropping a row to tidy
-  // the model. A migration that deleted one of each pair would still pass every
-  // assertion above, because it would delete rows the declaration also covers.
   it('drops no binding row, leaving each duplicate coolify pair as preview beside live', async () => {
     const { db, bindings } = await fleet();
     try {

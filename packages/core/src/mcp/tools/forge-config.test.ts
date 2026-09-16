@@ -317,10 +317,6 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
  * layering above, and because the enclosing callback there is already at its frozen length.
  */
 describe('forge_config tool — the live branch under the release model', () => {
-  // cm:guard the column is deliberately NOT nulled for non-`promote` projects — 25 of 32 in the
-  // fleet carry a branch nothing promotes to — so the ONLY thing stopping an agent acting on one is
-  // that every reader asks the model first. This tool's own description promises "non-null only
-  // under `promote`"; without this case that promise is prose and the code returned the value.
   it('returns no live branch for a `publish` project that still carries one', async () => {
     const tool = forgeConfigTool({
       principal: fakePrincipal,

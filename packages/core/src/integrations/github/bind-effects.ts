@@ -19,8 +19,6 @@ import type { GitHubConfig, GitHubSecrets } from './types.js';
  * The inbound HMAC secret a GitHub binding must carry: the App's own, never a
  * minted one.
  */
-// cm:guard GitHub signs every delivery with the secret it generated when the App was created, so a binding that mints its own fails EVERY signature check while the hub renders it as configured — no delivery row, no error anyone sees. `adapter.handleInbound` verifies against `ctx.integrationSecret`, which is this value.
-// cm:edge lockstep -> packages/core/src/integrations/github/connect-routes.ts — the manifest flow sets the same secret on the binding it creates; both entry points must agree or the second repository bound to an App is silently deaf.
 export function githubInboundSecret(connection: IntegrationConnectionRow): string | null {
   const secrets = decryptConnectionSecrets<GitHubSecrets>(connection);
   return secrets.webhookSecret ?? null;
@@ -50,8 +48,6 @@ export type RepoUrlOutcome =
  * Fill `projects.repo_url` from the repository just bound, so it is chosen once
  * in the picker rather than retyped in project settings.
  */
-// cm:guard FILL an empty repo URL, never overwrite one — the stored URL is what every runner already clones and may carry a transport and a host this binding knows nothing about (a GitLab mirror, an SSH remote with a deploy key). Report the disagreement to the caller instead; a bind is about webhooks and must not be able to repoint a project's git.
-// cm:guard only a `service` github binding may drive it, which is every github binding: `providerCanDeploy('github')` is false, so a github binding cannot be `role: 'deploy'` at all. The rule this replaced was `environment !== 'prod'`, and it was doing the same job for a different reason — a `staging` github binding legitimately named a fork, and `projects.repo_url` is project-tier with nowhere to put a second one. The role test is kept rather than dropped as always-true, because it says WHICH binding may repoint a project's git if the capability list ever widens.
 export async function syncRepoUrlFromGitHubBinding(args: {
   projectId: string;
   role: BindingRole;

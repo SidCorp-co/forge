@@ -41,7 +41,6 @@ const REQUIRED_SCOPES = ["products:write", "webstore:write", "settings:write"];
 // Kebab-case label: starts with alphanumeric, followed by alphanumeric or dashes.
 const LABEL_REGEX = /^[a-z0-9][a-z0-9-]*$/;
 
-// cm:edge contract -> packages/web-v2/src/features/project-settings/components/integrations-tab.tsx — the same two declarations, worded the same way, because the two create forms reach the same columns
 const ROLE_SELECT_OPTIONS: SelectOption[] = [
   { value: "service", label: "Service — a project-wide facility" },
   { value: "deploy", label: "Deploy target — somewhere Forge deploys to" },
@@ -361,10 +360,6 @@ function AddEpodsystemForm({
     (!hasDefault || (label.trim().length > 0 && !labelError)) &&
     !create.isPending;
 
-  // cm:guard the role picker CLEARS the stages it hides. A hidden control whose value
-  // still submits is how a service binding reaches the server carrying a stage, which
-  // the database refuses by constraint (`integration_bindings_role_stages_chk`) — a 500
-  // where the form could simply not have sent it.
   function chooseRole(next: BindingRole) {
     setRole(next);
     setError(null);
@@ -380,9 +375,6 @@ function AddEpodsystemForm({
 
   async function handleCreate() {
     setError(null);
-    // cm:guard this refusal is the FORM's, said before the round trip and naming the
-    // remedy: the database refuses a deploy binding with no stage, and "400 Bad Request"
-    // names neither the field nor what a valid value looks like.
     if (role === "deploy" && stages.length === 0) {
       setError(
         "Choose at least one stage — a deploy target has to serve Preview, Live or both.",

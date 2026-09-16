@@ -137,8 +137,6 @@ describe('a release job is offered only to the release pool', () => {
     expect(await poolIds(w)).toEqual([w.jobId]);
   });
 
-  // cm:guard this is the case the whole module exists for: before ISS-1042 the pool returned this
-  // row, a master claimed it, and the production deploy ran on a box with no credential.
   it('does not offer a release job to a box that carries no label', async () => {
     const w = await seed({
       type: 'release_batch',
@@ -159,8 +157,6 @@ describe('a release job is offered only to the release pool', () => {
     expect(await poolIds(w)).toEqual([]);
   });
 
-  // cm:guard the narrowing is for `release_batch` and nothing else. A predicate that read every job
-  // type would empty the pool of the whole fleet the moment one project declared a label.
   it('goes on offering every other job type to an unlabelled box', async () => {
     const w = await seed({
       type: 'code',
@@ -171,10 +167,6 @@ describe('a release job is offered only to the release pool', () => {
     expect(await poolIds(w)).toEqual([w.jobId]);
   });
 
-  // cm:guard a release job whose project declares NO label matches nobody, and that refusal is the
-  // point: `createReleaseBatch` throws RELEASE_RUNNER_UNDECLARED before such a job can be made, so
-  // the only way to hold one is to have unset the label after the cut. Widening to the fleet there
-  // lands the deploy on a box with no credential, with the merge already pushed.
   it('offers a release job to nobody when the project declares no label', async () => {
     const w = await seed({ type: 'release_batch', labels: [LABEL], bindingConfig: {} });
 
@@ -207,8 +199,6 @@ describe('the claim answers the same question by name', () => {
     expect(res).toEqual({ ok: false, reason: 'release_label_missing' });
   });
 
-  // cm:guard the refusal must land BEFORE the hold — a refused claim that left `held_by` set would
-  // park the release behind the three-minute reaper on every poll of every box in the fleet.
   it('leaves the refused job unheld and claimable', async () => {
     const w = await seed({
       type: 'release_batch',
@@ -224,10 +214,6 @@ describe('the claim answers the same question by name', () => {
     expect(rows[0]).toMatchObject({ held_by: null, status: 'queued' });
   });
 
-  // cm:guard a job that does not exist is NOT a label verdict. `prepareJobForMaster` owns
-  // `not_found` and must stay the one that says it — a label check answering first would tell a
-  // master its box is wrong for a job that is simply gone, which is a box an operator then goes
-  // and relabels for nothing.
   it('leaves a job that does not exist to not_found, never to the label', async () => {
     const w = await seed({
       type: 'release_batch',
@@ -261,10 +247,6 @@ describe('the claim answers the same question by name', () => {
   });
 });
 
-// cm:guard the two readings of "which box releases" have to be ONE reading. `resolveReleaseChannels`
-// overlays the connection's config with the binding's by spreading, so a binding that sets the key
-// to null HIDES the connection's value — a COALESCE in the pool's SQL would not, and the pool would
-// then offer a release to a box the release itself refuses.
 describe('the pool reads the label the release path reads', () => {
   it('takes the connection-level label where the binding names none', async () => {
     const w = await seed({
@@ -278,11 +260,6 @@ describe('the pool reads the label the release path reads', () => {
     expect(await poolIds(w)).toEqual([w.jobId]);
   });
 
-  // cm:guard the pool and the claim run at EVERY poll, long after `createReleaseBatch` refused
-  // two disagreeing labels — a second live deploy binding can be activated or relabelled in
-  // between. `LIMIT 1` picked arbitrarily among the survivors here, so the pool offered, and the
-  // claim granted, a release to a box the plan resolver refuses outright. Both readers must
-  // answer the same "there is no one box" and stop.
   it('offers a release job to nobody when two live bindings name different labels', async () => {
     const w = await seed({
       type: 'release_batch',

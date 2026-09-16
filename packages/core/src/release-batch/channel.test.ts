@@ -76,11 +76,6 @@ describe('resolveReleaseChannels', () => {
     expect(channels[0]?.instructions).toBe('ship the frontend WITH varnish');
   });
 
-  // cm:guard the SET, not its first member. This is the defect the whole change is named for: the
-  // previous shape took `bindings[0]` off a query ordered `created_at ASC`, so on getcontent the
-  // release agent was handed the Rocket.Chat room because it was created before the storefront, and
-  // on the archived dodgeprint-api it was handed a Sentry project. A uniqueness constraint would not
-  // have fixed that — the fault was core choosing at all.
   it('returns every live deploy binding with its own instructions, in order', async () => {
     listBindings.mockResolvedValue([
       binding({ provider: 'coolify', instructions: 'deploy the app' }),
@@ -118,9 +113,6 @@ describe('resolveReleaseChannels', () => {
 });
 
 describe('releaseRunnerLabelOf', () => {
-  // cm:guard the ONE axis on which the set still collapses to a single answer, because it names a
-  // MACHINE. Returning the set here and letting a caller take `[0]` would put back the silent pick
-  // `resolveReleaseChannels` exists to remove, one layer up.
   it('refuses by name when two live bindings declare different labels', () => {
     const channels = [
       { releaseRunnerLabel: 'release' },
@@ -138,9 +130,6 @@ describe('releaseRunnerLabelOf', () => {
     expect(() => releaseRunnerLabelOf(PROJECT_ID, channels)).toThrow(/release[\s\S]*epod-prod/);
   });
 
-  // cm:guard an UNLABELLED binding beside a labelled one is not a disagreement: home-kieutrung
-  // carries a coolify binding and an epodsystem one at live, and only one of them has any reason to
-  // name the box. Refusing this pair would make a two-endpoint project undeclarable.
   it('accepts one label beside any number of unlabelled bindings', () => {
     const channels = [
       { releaseRunnerLabel: null },

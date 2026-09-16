@@ -23,9 +23,6 @@ export const stagesSchema = z.array(z.enum(deployStages)).min(1).max(2);
  * a better name: a storefront binding that silently became `service` would take its project's release
  * gate away without a word.
  */
-// cm:guard `stages` is REFUSED on a `service` binding rather than ignored, and required on a `deploy`
-// one rather than defaulted — `integration_bindings_role_stages_chk` holds the same rule in Postgres,
-// and a schema that merely stripped the extra key would let a caller believe it had declared a stage.
 export const bindingShapeFields = {
   role: roleSchema,
   stages: stagesSchema.optional(),
@@ -51,10 +48,6 @@ export function checkRoleStagesPairing(
     return;
   }
   if (value.role !== 'deploy') return;
-  // cm:guard a duplicate is REFUSED, never de-duplicated. `stages` is a set, and a caller who sent
-  // `["live","live"]` either believes a stage can be declared twice or built the list from something
-  // that repeated — silently collapsing it to `["live"]` answers 201 to both and tells neither which
-  // one happened. `integration_bindings_role_stages_chk` holds the same rule in Postgres.
   if (value.stages && new Set(value.stages).size !== value.stages.length) {
     ctx.addIssue({
       code: 'custom',

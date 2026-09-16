@@ -53,9 +53,6 @@ pub struct Forced {
 }
 
 /// Which verb this run's state admits, or why neither does.
-// cm:guard the verb follows from `incarnation` and a caller cannot pass one: `Abandon` over a live process leaves an agent writing git into a tree the record has released, and that is the one outcome neither verb may produce (criterion 32).
-// cm:guard a LIVE row from another boot is `Unknown`, not `Abandon`, and it is refused by name — criterion 35 permits no reclamation from unknown. Its pid means nothing after a reboot, so killing it could signal a stranger's process, while abandoning it would release a worktree on a claim nobody checked. `daemon/recovery.rs` resolves the boot first.
-// cm:guard the parked state is `Incarnation::Exited`, which is what ISS-964's criteria call `none` — `declare_parked_human` writes `exited` and the ledger's enum has no `none` at all. Anything written here against the criteria's word instead of the column's would match no run on any box.
 pub fn verb_for(run: &Run, this_boot: &str) -> Result<Verb> {
     match run.incarnation {
         Incarnation::Exited => Ok(Verb::Abandon),
@@ -69,7 +66,6 @@ pub fn verb_for(run: &Run, this_boot: &str) -> Result<Verb> {
 }
 
 /// The branch the worktree is on, asked of the worktree itself.
-// cm:guard read from git, never derived from the path: `workspace::worktree::path` SANITIZES the branch into the directory name, so a branch containing a character sanitize rewrites would produce a name `salvage::pick_target` matches against nothing — and pick_target matching nothing reports `refused`, which this module turns into a refusal of the whole verb.
 async fn branch_of(worktree: &Path) -> Option<String> {
     let out = tokio::process::Command::new("git")
         .args(["symbolic-ref", "--short", "HEAD"])
@@ -85,17 +81,6 @@ async fn branch_of(worktree: &Path) -> Option<String> {
     (!name.is_empty()).then_some(name)
 }
 
-// cm:guard this answers ONE question — did salvage get the uncommitted diff into a commit — and it
-// deliberately no longer answers whether that commit is safe. It used to: `committed_not_pushed`
-// counted as preserved because `git worktree remove` leaves the branch ref and its objects in the
-// shared `.git`, so the commits outlive the checkout. That is true and is still true, and it is
-// about THIS box. ISS-1050 is about the commit being lost WITH the box — a master's death taking
-// its issues with it is the whole subject — and a commit no remote has is exactly the record that
-// dies with the machine. Durability is now asked separately, of the remote, by
-// `publication_of` below, and this predicate is only the first half of the answer.
-// cm:guard `none` still does not count: it is reachable here only when salvage found nothing to
-// commit in a tree `holds_work` had just said was holding some, which is a disagreement between two
-// readers and no basis for deleting anything.
 fn committed(outcome: Outcome) -> bool {
     matches!(outcome, Outcome::Pushed | Outcome::CommittedNotPushed)
 }
@@ -103,17 +88,6 @@ fn committed(outcome: Outcome) -> bool {
 /// Put this checkout's commits somewhere other than this box, or refuse the release.
 ///
 /// Answers `Ok(())` only when a fresh fetch says every commit here is on a remote.
-// cm:guard the refusal leaves the tree, leaves the run non-terminal, and names the commits at
-// risk. That is a real cost — the issue stays unavailable to every box until somebody acts — and it
-// is taken deliberately: releasing instead declares the run over while its only copy is on one
-// machine, and the next box picks the issue up with none of the work. The cost is bounded by the
-// two things that make this different from a silent hold: the master sweep retries it every thirty
-// seconds, so a network that comes back releases the tree with no human at all, and the box-side
-// report puts the held tree and this message on the issue, so a network that does not come back is
-// somebody's to see rather than nobody's.
-// cm:guard `Unknown` refuses too. A box that cannot reach its remote has not learned that its work
-// is safe; it has learned nothing, and releasing on nothing is the same act as releasing on a
-// commit only that box can see.
 async fn publish_before_release(
     run_id: &str,
     verb: Verb,
@@ -142,9 +116,6 @@ async fn publish_before_release(
 }
 
 /// Force a run terminal from outside it.
-// cm:guard the ORDER is preserve → release the worktree → close the marks → `end_run`, and `end_run` is last because it is what un-holds the tree: `Ledger::held_worktrees` is `ended_by IS NULL`, so writing it earlier lets a worktree-reap tick delete, inside that window, exactly the diff criterion 33 says must survive. Every test here would still pass, because none of them runs a reaper between two writes.
-// cm:guard a preserve that was REFUSED or FAILED aborts before the worktree is touched, and the run stays non-terminal on purpose: a partial abandon that released anyway is a lost diff wearing a success, and the operator can retry this verb once the fault salvage named is fixed.
-// cm:guard the three marks are `close_loop::close`'s to set and are NOT written here — each is set by reading the world back, so a verb that stamped them would be the master's declaration this repo replaced (ISS-933 criterion 13, criterion 37's one writer per resource).
 pub async fn force_terminal(
     ledger: &mut Ledger,
     run_id: &str,
@@ -163,7 +134,6 @@ pub async fn force_terminal(
     }
 
     let worktree = Path::new(&run.worktree_path);
-    // cm:guard the run's OWN tree is probed first, with the reaper's own reader, and salvage is called only when that says there is something to lose. Handing every abandon to salvage looked equivalent and is not: `pick_target` answers `refused` when it finds dirt it cannot attribute, so a CLEAN park would have been refused because some stranger's worktree on the same box was dirty.
     let salvage = if worktree.exists()
         && crate::workspace::worktree_reap::holds_work(worktree).await
     {
@@ -183,7 +153,6 @@ pub async fn force_terminal(
             failure: what.reason,
         })
         .await;
-        // cm:guard the refusal is conditioned on the tree STILL holding uncommitted work, asked of that tree directly. Salvage answers `none` both when it could not preserve a diff and when there was no diff to preserve — a clean checkout carrying commits of its own arrives as the second, and reading it as the first refuses the release forever: the tree stays, the run never reaches terminal, and its issue is unavailable to every box. Measured on forge-vm 2026-09-11, six runs sat there. A removal cannot lose a commit, so a clean tree is safe to release whatever salvage made of it.
         if !committed(report.outcome)
             && crate::workspace::worktree_reap::has_unsaved_changes(worktree).await
         {
@@ -197,18 +166,6 @@ pub async fn force_terminal(
         crate::workspace::worktree::remove_at(&what.repo_root.to_string_lossy(), worktree).await?;
         Some(report)
     } else {
-        // cm:guard a tree holding nothing UNCOMMITTED is still asked whether what it holds is
-        // published, and this is where the real hole was. An agent that committed its work and
-        // never pushed leaves a CLEAN checkout, so `holds_work` is false, salvage never runs, no
-        // push is ever attempted, and the tree was removed as though the work had been published.
-        // The commits did survive on this box, which is what the old reading was right about — and
-        // nothing ever put them anywhere else.
-        // cm:guard the SAME `None` as the salvage path thirty lines above, and it is a refusal here
-        // for the same reason: a branch this box cannot read is a checkout whose publication cannot
-        // be asked about, and removing it anyway spends the one thing `publish_before_release`
-        // exists to check. It read `if let Some(branch)` until ISS-1050 finding F9 — the publish was
-        // skipped and the removal happened regardless, silently, on a path whose whole subject is
-        // work that only looks published because `@{u}` is a local memory of a push.
         if worktree.exists() {
             let branch = branch_of(worktree).await.ok_or_else(|| {
                 Error::Other(format!(
@@ -392,7 +349,6 @@ mod tests {
         }
     }
 
-    // cm:guard the verb is derived, and these four cases are the four states criterion 32 names. A caller-chosen verb is what this refuses to allow, so the mapping is asserted directly rather than only through `force_terminal`.
     #[test]
     fn the_verb_follows_from_the_state_and_never_from_the_caller() {
         let mut led = Ledger::open_in_memory().unwrap();
@@ -416,7 +372,6 @@ mod tests {
         assert_eq!(verb_for(&parked, "boot-b").unwrap(), Verb::Abandon);
     }
 
-    // cm:guard a LIVE row from a FOREIGN boot is refused by name rather than being read as either verb: its pid names whatever the kernel has since reused, so `Kill` could signal a stranger and `Abandon` would release a worktree on a claim nobody checked (criterion 35).
     #[test]
     fn a_live_run_from_another_boot_admits_neither_verb() {
         let mut led = Ledger::open_in_memory().unwrap();
@@ -440,7 +395,6 @@ mod tests {
     #[tokio::test]
     async fn abandon_preserves_the_diff_then_releases_the_worktree() {
         let (root, wt) = repo("abandon").await;
-        // cm:guard the diff is STAGED, because that is what makes this tree hold work under the one definition both readers share: an untracked file does not, or every build artifact would pin a checkout forever. Until 2026-09-11 this test reached salvage through the branch having no upstream instead, which is not what it is about.
         git(&wt, &["add", "work.txt"]).await;
         let mut led = ledger_for(&wt, Incarnation::Exited, "boot-a");
         let (p, s, l) = (
@@ -459,7 +413,6 @@ mod tests {
         .unwrap();
 
         assert_eq!(out.verb, Verb::Abandon);
-        // cm:guard no process is signalled on the abandon path — there is none by definition, and a kill here would mean the verb was chosen without reading the state.
         assert!(p.0.lock().unwrap().is_empty(), "{:?}", p.0.lock().unwrap());
         assert!(!wt.exists(), "the worktree must be released");
         assert!(out.close.is_closed(), "{:?}", out.close);
@@ -491,11 +444,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    // cm:guard the file `git has never been told about`, which is the case ISS-1050 criterion 19
-    // names and finding F8 found open. The fixture deliberately does NOT stage `work.txt`: an
-    // agent's new file is untracked until somebody adds it, and `--untracked-files=no` made
-    // `holds_work` answer false over it, so salvage never ran and `remove_at` took the only copy.
-    // The sibling test above reaches salvage by staging first, which is why this one had to exist.
     #[tokio::test]
     async fn an_untracked_file_is_work_and_is_preserved_before_the_checkout_goes() {
         let (root, wt) = repo("untracked").await;
@@ -542,12 +490,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    // cm:guard the SILENT half of the same door, and it is finding F9. Thirty lines apart the same
-    // `None` from `branch_of` was a hard refusal naming the tree on the salvage path and a skipped
-    // publish on the clean one. The clean path is where it costs the most: `holds_work` is false
-    // because `@{u}` and the remote-tracking refs are a MEMORY of a push, and the fresh fetch inside
-    // `publish_before_release` is the only thing that re-asks — so skipping it removed the checkout
-    // on the strength of the very memory the publication check exists to distrust.
     #[tokio::test]
     async fn a_clean_checkout_whose_branch_cannot_be_read_is_refused_by_name() {
         let (root, wt) = repo("nobranch").await;
@@ -596,7 +538,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    // cm:guard THE ordering hazard    // cm:guard THE ordering hazard, and it cannot be caught by any assertion on the end state: `held_worktrees` is `ended_by IS NULL`, so a reap tick between `end_run` and the release would delete the diff. Read from the SOURCE because what is under test is the order of two statements, and both orders produce the same final row.
     #[test]
     fn the_release_is_written_before_the_run_is_ended() {
         let body = SOURCE
@@ -616,7 +557,6 @@ mod tests {
         );
     }
 
-    // cm:guard a preserve that FAILED must abort the verb before the worktree is touched, asserted with no branching on the outcome: the earlier version of this test accepted either answer, which made it a test that could not fail — a mutation widening `preserved` to admit `refused` left it green.
     #[tokio::test]
     async fn a_diff_that_could_not_be_preserved_refuses_the_whole_verb() {
         let (root, wt) = repo("refuse").await;
@@ -653,7 +593,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    // cm:guard a CLEAN park is released, and this is the case that caught a real defect: handing every abandon to salvage looked equivalent, but `pick_target` answers `refused` on dirt it cannot attribute, so a clean park was refused because a STRANGER's worktree on the same box was dirty.
     #[tokio::test]
     async fn a_clean_park_is_released_even_with_a_strangers_dirty_tree_on_the_box() {
         let (root, wt) = repo("clean").await;
@@ -722,7 +661,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    // cm:guard a run whose worktree is already off the disk must still reach terminal, and with no salvage attempted — that is the shape a box comes back to after someone removed a tree by hand, and a verb that needed the tree to exist would leave the run open forever.
     #[tokio::test]
     async fn a_run_whose_tree_is_already_gone_still_reaches_terminal() {
         let gone = std::env::temp_dir().join("forge-terminate-absent-by-construction");
@@ -748,7 +686,6 @@ mod tests {
         assert!(led.run("run-1").unwrap().unwrap().ended_by.is_some());
     }
 
-    // cm:guard the marks are `close_loop`'s and this verb writes none of them itself. A verb that stamped `session_terminal_at` would be exactly the master's declaration ISS-933 replaced with a read-back.
     #[test]
     fn the_verb_stamps_no_mark_of_its_own() {
         let body = SOURCE
@@ -767,7 +704,6 @@ mod tests {
         }
     }
     /// The forge-vm shape: the checkout's directory and its branch had diverged.
-    // cm:guard released by the PATH the ledger recorded. A path rebuilt from the branch made git answer `is not a working tree`, the release errored, and the run stayed open forever — three of them on forge-vm on 2026-09-11, one `.worktrees/ISS-972` carrying branch `ISS-972-uploads-inertness-claim`.
     #[tokio::test]
     async fn a_checkout_whose_directory_is_not_named_after_its_branch_is_still_released() {
         let (root, _other) = repo("renamed").await;
@@ -811,12 +747,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
     /// A checkout that believes it pushed, over a remote that no longer has the ref.
-    // cm:guard this is the ONLY state that reaches the clean-checkout branch of the release, and
-    // building it took a planted counterexample that passed to notice. `holds_work` already asks
-    // whether HEAD is on a remote, so a clean tree with plainly unpushed commits goes down the
-    // salvage path instead — the clean branch is reached only when the box's own refs SAY the work
-    // is published. That is precisely the case a push exit code cannot be trusted for, and it is
-    // why the check fetches with `--prune` rather than reading what this box last saw.
     #[tokio::test]
     async fn a_ref_this_box_remembers_pushing_is_not_taken_as_a_ref_the_remote_has() {
         let (root, wt) = repo("stale").await;
@@ -855,10 +785,6 @@ mod tests {
     }
 
     /// A remote that refuses the push: the tree stays, and the run stays open.
-    // cm:guard this is the case the release rule exists for, and it costs something real — the
-    // issue is unavailable to every box until somebody acts. That is deliberate. Releasing instead
-    // declares the run over while its only copy is on this machine, and the next box picks the
-    // issue up with none of the work and no way to know any existed (ISS-1050 criterion 21).
     #[tokio::test]
     async fn a_push_the_remote_refuses_leaves_the_worktree_held_and_the_run_open() {
         let (root, wt) = repo("refused").await;
@@ -896,9 +822,6 @@ mod tests {
     }
 
     /// A remote this box cannot reach at all: the same refusal, for a different reason.
-    // cm:guard not knowing is NOT the same as knowing the work is safe, and the two must not
-    // collapse into one another. A box whose network is down has learned nothing about durability;
-    // releasing on that is releasing on a commit only this box can see, by a longer road.
     #[tokio::test]
     async fn a_remote_this_box_cannot_reach_is_not_read_as_work_that_is_safe() {
         let (root, wt) = repo("unreachable").await;
@@ -937,15 +860,6 @@ mod tests {
     }
 
     /// A clean checkout carrying commits no remote had: PUBLISHED, then released.
-    // cm:guard salvage reports `none` for this tree because there was nothing uncommitted to
-    // commit, and until 2026-09-11 that was read as a failed preserve and refused forever — six
-    // runs on forge-vm. Releasing it is still right and this test still asserts it.
-    // cm:guard what changed in ISS-1050 is the last assertion, and the old version of this test did
-    // not make it: it proved the commit was still reachable on the branch IN THIS REPO after the
-    // checkout was gone, which is a fact about this box. Nothing here ever pushed, so a clean
-    // checkout whose work had never been published was released as though it had been — the
-    // commits survived exactly as long as the machine did. The release now publishes first, and the
-    // assertion is against the REMOTE.
     #[tokio::test]
     async fn a_clean_checkout_whose_commits_are_only_local_is_released_and_keeps_them() {
         let (root, wt) = repo("localonly").await;

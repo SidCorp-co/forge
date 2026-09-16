@@ -84,10 +84,6 @@ describe('integration adapter capabilities', () => {
       if (c.liveConfirmGate) {
         expect(c.canDeploy).toBe(true);
       }
-      // cm:guard the capability and the create schema must agree. The UI offers
-      // `role: 'deploy'` on the strength of `canDeploy`; `createSchema` refuses it
-      // on the strength of `providerCanDeploy`. Two answers to one question is an
-      // affordance defect — the operator fills in a form the server then rejects.
       expect(c.canDeploy).toBe(providerCanDeploy(provider));
     });
   }

@@ -24,10 +24,6 @@ interface BuildReleaseBatchPromptArgs {
   plan: ReleasePlan;
 }
 
-// cm:guard the live-branch line is printed only under `promote`, for the same reason
-// `prompt/system.ts` prints it only there: a `publish` project's release moves no ref (pixelight
-// publishes a theme), so naming one states a promotion nobody makes. The deploy channels are a LIST
-// rather than one line — core returns the whole live set and never picks (ISS-1046).
 export function buildReleaseBatchPrompt(args: BuildReleaseBatchPromptArgs): string {
   const { runId, projectId, baseBranch, liveBranch, releaseModel, releaseStrategy, issues, plan } =
     args;
@@ -66,8 +62,6 @@ Start by reading the batch context: \`forge-runner api projects/${projectId}/rel
  * nothing while reading like a designation (ISS-1042). The name reaching the
  * agent is what makes it true.
  */
-// cm:edge lockstep -> packages/core/src/release-batch/service.ts — `insertAndEnqueueJob` stamps `skillName: RELEASE_BATCH_SKILL` from this same constant. Two literals is how the job comes to name one skill while the prompt asks for another, and nothing anywhere would say so.
-// cm:guard CROSS-REPO coupling, so no `cm:edge` can hold it: the skill itself is `plugin/skills/release-flow` in github.com/SidCorp-co/forge-plugin (ISS-1521) and reaches a box through its plugin designation. Until that lands the invocation finds nothing, which is why the line below says what to do when it does not load rather than assuming it did.
 function renderMethod(): string {
   return `
 ### Your method
@@ -83,7 +77,6 @@ If the skill does not load, announce THAT — do not improvise a release out of 
  * an instruction, which is the opposite of an issue title arriving from a
  * stranger.
  */
-// cm:guard the heading must say WHICH procedure the agent got. "Forge default" vs "this project's" is the difference between a step it may adapt and a step an operator wrote on purpose, and the agent has no other way to tell.
 function renderProcedure(
   plan: ReleasePlan,
   releaseModel: ReleaseModel,
@@ -96,8 +89,6 @@ function renderProcedure(
           { releaseModel, releaseStrategy, channels: plan.channels },
         )}`,
   ];
-  // cm:guard ONE block per channel, each naming its own binding. Folding the set into one block is
-  // how an agent handed two endpoints reads one set of instructions and deploys half the project.
   for (const channel of plan.channels) {
     if (!channel.instructions) continue;
     const named = channel.label ? `${channel.provider} [${channel.label}]` : channel.provider;
@@ -128,8 +119,6 @@ function renderProcedure(
  * deciding to roll back wants to read it. It is quoted as a human's option and
  * never as this agent's step.
  */
-// cm:guard the declared text must never appear under an instruction to follow it. `classifyRollback` keeps `manual` / `coolify-image` / `unrepresentable` apart for the operator routes and the settings screen, and quoting any of them here as a step is the substitution this block removed.
-// cm:edge lockstep -> packages/core/src/integrations/coolify/health-gate.ts — the same rule on the other path. The gate stopped restoring the previous image in the same change, so an unhealthy deploy now pages on both routes rather than being answered automatically on one of them.
 function renderRepairForward(plan: ReleasePlan): string {
   const texts = plan.channels
     .map((c) => c.rollback)

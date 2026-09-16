@@ -59,9 +59,6 @@ describe('the shapes it refuses by name', () => {
     expect(pairing.safeParse({ role: 'deploy' }).success).toBe(false);
   });
 
-  // cm:guard the refusal must NAME the duplicate rather than collapse it: `["live","live"]` and
-  // `["live"]` are different claims about what the caller believes, and answering 201 to both
-  // tells neither of them which one landed.
   it('refuses a duplicated stage rather than de-duplicating it', () => {
     const msg = refusal(pairing.safeParse({ role: 'deploy', stages: ['live', 'live'] }));
     expect(msg).toContain('is a set');

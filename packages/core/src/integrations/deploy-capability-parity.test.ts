@@ -21,9 +21,6 @@ describe('the deploy capability is the same list on both sides of the package bo
     expect([...CONTRACT_LIST]).toEqual([...DEPLOY_CAPABLE_PROVIDERS]);
   });
 
-  // cm:guard the predicate and not only the array: a copy that kept the list and inverted the
-  // membership test would pass the case above, and the screen would then refuse `deploy` on
-  // exactly the providers that support it.
   it('answers the same way for a provider on the list and one off it', () => {
     for (const provider of DEPLOY_CAPABLE_PROVIDERS) {
       expect(providerCanDeploy(provider), provider).toBe(true);

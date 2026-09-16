@@ -131,7 +131,6 @@ beforeEach(() => {
   projectSelectLimit.mockReset();
   listBindings.mockReset();
   listBindings.mockResolvedValue([]);
-  // cm:edge contract -> packages/core/src/issues/release-record-required.ts — that rule reads through this same channel on every device close, so the fallback row carries a release note: without one every close here would be refused for a reason this file is not about, and with an EMPTY fallback it would pass for the equally wrong reason that the rule found no row
   projectSelectLimit.mockResolvedValue([{ id: ISSUE_ID, releaseNotes: { section: 'Skip' } }]);
   updateReturning.mockReset();
   updateReturning.mockResolvedValue([]);
@@ -148,7 +147,6 @@ describe('an agent closing on a project that declared a release gate', () => {
     expect(result.status).toBe('awaiting_release');
   });
 
-  // cm:guard the merge stamp must survive the hold or the gate stops a false "shipped" by stalling every dependent instead — `merged_at` means "on the base branch", which a held issue is
   it('still stamps `merged_at`, because the branch did land', async () => {
     gated();
     queueUpdate('awaiting_release');
@@ -181,8 +179,6 @@ describe('an agent closing on a project that declared a release gate', () => {
     expect(body).toContain('merged, not shipped');
   });
 
-  // cm:guard `dropped` means "this was not work" — holding it for a release it will never be part of parks it forever, and it is the one close that deliberately does not stamp
-  // cm:guard the gate's own signal is `listBindings`, not the project read: since ISS-959 every actor-chosen transition reads `pipelineConfig` once for declared entry criteria, so "the gate did not run" is one project read and zero binding reads — asserting zero project reads here would go red on a change that never touched this gate
   it('lets `dropped` through the gate untouched', async () => {
     queueUpdate('dropped');
 
@@ -205,7 +201,6 @@ describe('who may still write `closed`', () => {
     expect(dbSelect).toHaveBeenCalledTimes(1);
   });
 
-  // cm:guard this is the flag `release_batch finish` passes; if it ever stopped working the release would rewrite its own close back to the gate and no issue would ever close again
   it('the release path itself', async () => {
     gated();
     queueUpdate('closed');
@@ -217,10 +212,6 @@ describe('who may still write `closed`', () => {
     expect(result.status).toBe('closed');
   });
 
-  // cm:guard `none` is a DECLARATION, not an inference. 25 of 32 fleet projects carry a production
-  // branch nothing promotes to and 7 carry a deploy binding, so every branch-shaped or provider-shaped
-  // test of "does this project release?" answered for a different project than the one it was asked
-  // about. The only ungated project is one that says so.
   it('an agent on a project that declares `releaseModel: none`', async () => {
     ungated();
     queueUpdate('closed');
@@ -234,9 +225,6 @@ describe('who may still write `closed`', () => {
   });
 });
 
-// cm:guard the loud break. Before ISS-1046 this shape answered `null` — indistinguishable from a
-// project that had declared it ships nothing — and the issue closed as shipped against a release
-// that never ran. It must REFUSE, and the refusal must name the project and what is missing.
 describe('a project that declares a release it cannot land', () => {
   it('refuses the close by name instead of letting it through', async () => {
     undeclaredTarget();

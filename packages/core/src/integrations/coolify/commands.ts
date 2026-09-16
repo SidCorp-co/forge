@@ -39,10 +39,6 @@ export class CoolifyCommandError extends Error {
  * connection⊕binding overlay. `pair` is retained for the log commands.
  */
 export async function activeCoolifyIntegrations(projectId: string) {
-  // cm:guard DEPLOY bindings only. Deploy, cancel and rollback all resolve through here, and
-  // `resolveIntegrationRow` refuses an ambiguous set — so a project carrying a coolify service
-  // binding beside its deploy one would make every ordinary control ambiguous, and naming the
-  // service binding explicitly would run a control against a row declared not to deploy.
   const pairs = await listActiveDeployBindingsForProvider(projectId, 'coolify');
   return pairs.map((pair) => ({
     id: pair.binding.id,
@@ -103,7 +99,6 @@ const shape = (outcome: DispatchOutcome) => ({
   ...(outcome.reason ? { reason: outcome.reason } : {}),
 });
 
-// cm:guard the three branches decide whether PROD may dispatch, and each earns its `allowLive` differently: a bare `pipelineRunId` is trusted ONLY after `isOpenReleaseBatchRun` proves it is this project's own open release-batch run, an `issueId` earns it only by having reached the release stage, and the run-less branch never asks for it at all (`dispatchCoolifyDeployDirect` refuses prod on its own unless the project opted into autoProdDeploy). Never widen the first branch to an arbitrary run id — that is a prod deploy dispatched on a caller-supplied uuid.
 export async function runCoolifyDeploy(input: {
   projectId: string;
   issueId?: string | undefined;
