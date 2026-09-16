@@ -24,7 +24,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { extname, join, relative } from 'node:path';
 
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url)).replace(/\/$/, '');
 const JSON_OUT = process.argv.includes('--json');
@@ -68,6 +68,10 @@ const ALLOW = [
   // scan evaded on purpose, which is worse than an exemption that says what it is. Named one by
   // one, for the same reason as the three above.
   /^packages\/core\/src\/prompt\/system\.release-model\.test\.ts$/,
+  // cm:guard this checker's OWN test. Every fixture in it is a retired reader on purpose — that is
+  // what it asserts the rules match — so the audit scanning it would report its own evidence as the
+  // defect. The file holds fixture strings and nothing else.
+  /^packages\/core\/src\/db\/retired-model-audit\.test\.ts$/,
   // CHANGELOG records what shipped, including the names that stopped existing.
   /^CHANGELOG\.md$/,
   // This checker names what it hunts.
@@ -75,7 +79,12 @@ const ALLOW = [
 ];
 
 /** The patterns, each with the sentence a reader gets when it fires. */
-const RULES = [
+// cm:why RULES and `stripComments` are exported: a checker whose own behaviour nothing asserts
+// prints the same "no retired reader survives" whether it is working or broken, which is the
+// failure mode conformance rule R7 exists to catch one level up. Exercised by
+// `packages/core/src/db/retired-model-audit.test.ts` — core is where the suites actually run;
+// `scripts/` has a lint gate and no test runner.
+export const RULES = [
   {
     id: 'binding-environment-sql',
     // `b.environment`, `integration_bindings.environment`, `"environment" text` in a sql template
@@ -137,7 +146,7 @@ function walk(dir, out) {
  * `i + 1` as the line number, and a multi-line block comment replaced by one space renumbers
  * every finding below it — wrong, and wrong in silence.
  */
-function stripComments(src) {
+export function stripComments(src) {
   let out = '';
   let i = 0;
   // 'code' | 'line' | 'block' | "'" | '"' | '`'
@@ -251,4 +260,6 @@ function main() {
   process.exit(findings.length === 0 ? 0 : 1);
 }
 
-main();
+// cm:guard `main()` runs only when this file IS the command. Without the test, importing it to
+// assert its rules would scan the tree and call `process.exit`.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
