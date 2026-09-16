@@ -298,6 +298,7 @@ fn ensure_git_excluded(repo_path: &Path, entry: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::auth::cred_store::ScopedVar;
 
     fn tmp_repo(tag: &str) -> PathBuf {
         let dir =
@@ -487,7 +488,9 @@ mod tests {
         let _env = crate::auth::cred_store::ENV_TEST_LOCK
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        std::env::set_var("FORGE_PAT", "forge_pat_dev_operator");
+        // cm:guard RAII, so a panic below does not hand the next test in this
+        // process a config dir that is not the box's own (ISS-1044).
+        let pat = ScopedVar::set("FORGE_PAT", "forge_pat_dev_operator");
 
         // -- the provisioned folder is authed by the operator's PAT --
         let repo = tmp_repo("fresh");
@@ -581,12 +584,12 @@ mod tests {
         //    sibling overrides still come through. Writing an unusable bearer
         //    would buy a 401 at the first tool call with nothing naming the
         //    writer; the provisioned folder likewise keeps whatever was there.
-        std::env::set_var("FORGE_PAT", "");
-        std::env::set_var("FORGE_RUNNER_CRED_STORE", "file");
+        pat.move_to("");
+        let _store = ScopedVar::set("FORGE_RUNNER_CRED_STORE", "file");
         let empty = std::env::temp_dir().join(format!("forge-mcp-nocred-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&empty);
         std::fs::create_dir_all(&empty).unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", &empty);
+        let _xdg = ScopedVar::set("XDG_CONFIG_HOME", &empty);
 
         let overrides = serde_json::json!({
             "playwright": { "type": "stdio", "command": "npx" },
@@ -619,8 +622,5 @@ mod tests {
         let _ = std::fs::remove_dir_all(&repo);
 
         let _ = std::fs::remove_dir_all(&empty);
-        std::env::remove_var("FORGE_PAT");
-        std::env::remove_var("XDG_CONFIG_HOME");
-        std::env::remove_var("FORGE_RUNNER_CRED_STORE");
     }
 }
