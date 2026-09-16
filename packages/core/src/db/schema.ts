@@ -2093,6 +2093,21 @@ export const notifications = pgTable(
     dedupeKeyIdx: index('notifications_dedupe_key_idx').on(t.dedupeKey),
     groupKeyIdx: index('notifications_group_key_idx').on(t.groupKey),
     stateIdx: index('notifications_kind_state_idx').on(t.kind, t.state),
+    // cm:guard these four are what make a kind MEAN something rather than label something.
+    // A signal with a resolution key is the exact defect ISS-1063 was filed about — 1771
+    // `issue_status_changed` rows carried one — and a message in a code path only stops the
+    // code paths that go through it. The constraint stops every writer, including a hand-run
+    // UPDATE.
+    signalHasNoResolveState: check(
+      'notifications_signal_has_no_resolve_state',
+      sql`kind <> 'signal' OR (resolution_key IS NULL AND resolved_at IS NULL)`,
+    ),
+    stateBelongsToKind: check(
+      'notifications_state_belongs_to_kind',
+      sql`(kind = 'signal' AND state IN ('emitted','expired')) OR (kind = 'condition' AND state IN ('pending','firing','inhibited','resolved')) OR (kind = 'task' AND state IN ('open','acknowledged','done','dismissed'))`,
+    ),
+    kindIsKnown: check('notifications_kind_is_known', sql`kind IN ('signal','condition','task')`),
+    tierIsKnown: check('notifications_tier_is_known', sql`tier IN ('page','ticket','log')`),
   }),
 );
 

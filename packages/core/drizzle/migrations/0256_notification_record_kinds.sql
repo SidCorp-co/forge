@@ -20,7 +20,7 @@ CREATE TABLE "notification_deliveries" (
 CREATE TABLE "notification_delivery_members" (
   "delivery_id" uuid NOT NULL REFERENCES "notification_deliveries"("id") ON DELETE cascade,
   "notification_id" uuid NOT NULL REFERENCES "notifications"("id") ON DELETE cascade,
-  CONSTRAINT "notification_delivery_members_pk" PRIMARY KEY ("delivery_id", "notification_id")
+  CONSTRAINT "notification_delivery_members_delivery_id_notification_id_pk" PRIMARY KEY ("delivery_id", "notification_id")
 );
 --> statement-breakpoint
 CREATE TABLE "notification_silences" (

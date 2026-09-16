@@ -12,6 +12,10 @@
 --   * `resolution_key` and `resolved_at` cleared on signal rows during 0256 stay cleared.
 --     This is the one loss that applies even to a database nothing has written to since,
 --     and it is what the pre-migration snapshot exists for.
+--   * a re-expanded recipient copy carries the SURVIVOR's created_at, not its own. The
+--     copies were written milliseconds apart inside one loop, so the drift is that loop's
+--     width. Measured on a rehearsal against the replica's own 11202 rows: recipient, type,
+--     title and read restore with ZERO differences; 2593 rows differ on created_at alone.
 --   * re-expanded rows other than the first carry NEW ids. Nothing references
 --     `notifications.id`: `select conrelid::regclass from pg_constraint where confrelid =
 --     'notifications'::regclass` returns no rows, and `issue_intervention_events` joins on
@@ -37,12 +41,14 @@ UPDATE notifications n SET user_id = first.user_id, read = (first.read_at IS NOT
  WHERE n.id = first.notification_id;
 
 -- Every OTHER delivery becomes its own row again, which is what the old schema meant.
+-- kind/tier/state are still NOT NULL here and are dropped further down, so the copies
+-- carry the survivor's values rather than tripping the constraint on their way out.
 INSERT INTO notifications (project_id, type, title, body, read, severity, resolution_key,
                            resolved_at, issue_id, secondary_issue_id, agent_session_id,
-                           created_at, dedupe_key, user_id)
+                           created_at, dedupe_key, user_id, kind, tier, state)
 SELECT n.project_id, n.type, n.title, n.body, (d.read_at IS NOT NULL), n.severity,
        n.resolution_key, n.resolved_at, n.issue_id, n.secondary_issue_id, n.agent_session_id,
-       n.created_at, n.dedupe_key, d.user_id
+       n.created_at, n.dedupe_key, d.user_id, n.kind, n.tier, n.state
   FROM notification_delivery_members m
   JOIN notification_deliveries d ON d.id = m.delivery_id
   JOIN notifications n ON n.id = m.notification_id
