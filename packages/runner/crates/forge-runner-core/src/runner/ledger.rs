@@ -1195,6 +1195,14 @@ mod tests {
             DECISION_COLUMNS.iter().map(|s| (*s).to_string()).collect();
         declared_decisions.sort();
         assert_eq!(columns(&led, "decisions"), declared_decisions);
+        let mut declared_masters: Vec<String> =
+            MASTER_COLUMNS.iter().map(|s| (*s).to_string()).collect();
+        declared_masters.sort();
+        assert_eq!(
+            columns(&led, "masters"),
+            declared_masters,
+            "the `masters` table has a column the declared registry does not name — this table holds what a box knows about a pane, and a column beyond that is the ledger growing a second purpose (ISS-933 criterion 10, ISS-1050)"
+        );
 
         for banned in ["cursor", "last_event", "offset", "wake", "processed", "seq"] {
             assert!(
@@ -1742,8 +1750,6 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
-    // cm:guard the migration is the reason a box that parked yesterday can be read today: `CREATE TABLE IF NOT EXISTS` adds no column, so without the ALTER pass every statement naming a new column fails at RUNTIME on the live ledger that already exists on forge-vm.
-    #[test]
     /// A second declaration under one master, while the first has no subagent.
     // cm:guard the assertion is on the MESSAGE naming the pending run, not merely on `is_err`. The refusal's whole value to a master is that it says which row to close, and an error whose text said only "refused" would leave the pane guessing (ISS-1050 criterion 2).
     #[test]
@@ -1951,6 +1957,7 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    // cm:guard the migration is the reason a box that parked yesterday can be read today: `CREATE TABLE IF NOT EXISTS` adds no column, so without the ALTER pass every statement naming a new column fails at RUNTIME on the live ledger that already exists on forge-vm.
     #[test]
     fn a_ledger_written_by_an_earlier_build_gains_the_new_columns_on_open() {
         let dir = std::env::temp_dir().join(format!("forge-ledger-old-{}", std::process::id()));

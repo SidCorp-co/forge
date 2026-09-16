@@ -2843,6 +2843,18 @@
   organisation, the store, the theme, the domain — and leaves every project's own settings where
   they belong.
 
+- **A box now keeps a record of the work it hands out, so that work can be found again if the
+  machine handing it out stops.** Every piece of work a box takes on is handed to a helper, and
+  since 13 September the box had been keeping no note of which helper had been given what. Nothing
+  broke while everything ran, but if the thing handing out the work stopped — killed, crashed, out
+  of memory, machine restarted — the work it had handed out stayed marked as being worked on, with
+  nobody working on it, and there was nothing to read that could put it back. The note is kept
+  again, and it now also records which helper each piece of work went to and, for each project, the
+  conversation its dispatcher is having, so a dispatcher that is restarted can pick up where it
+  left off instead of starting from nothing. Registries that were written before this change are
+  read and added to as they are, so a machine that has been running for weeks loses nothing and
+  nothing about its existing notes is rewritten or invented.
+
 - **A conversation you archive from the all-projects Conversations page can now be found and
   brought back there.** Every room in that page's sidebar offered to archive it, and archiving
   worked — the room left the list. Nothing on the page then showed the archived ones, so the only
