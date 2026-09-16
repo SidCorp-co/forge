@@ -1,6 +1,7 @@
 import {
   FILTERED,
   PAT_STRING_PATTERN,
+  scrubBodyKeys,
   scrubLogText,
   scrubPatInString,
   scrubSentryEvent,
@@ -228,5 +229,99 @@ describe('testCredentials scrubbing (ISS-225)', () => {
       testCredentials: unknown;
     };
     expect(parsed.testCredentials).toBe(FILTERED);
+  });
+});
+
+// ISS-1036 — the two shapes a Google service account puts into a log. Neither
+// was covered before: `privateKey` was not a scrubbed key name, and a PEM block
+// has no token-shaped signature the per-line value rules can find — the value
+// match stops at the first space, which in `-----BEGIN PRIVATE KEY-----` comes
+// before any key material. The same gap covered GitHub's App PEM, which this
+// repo has stored since ISS-946.
+const PEM = [
+  '-----BEGIN PRIVATE KEY-----',
+  'MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDexampleexample',
+  'c2VjcmV0IGtleSBtYXRlcmlhbCB0aGF0IG11c3QgbmV2ZXIgcmVhY2ggYSBsb2c=',
+  '-----END PRIVATE KEY-----',
+].join('\n');
+const PEM_ESCAPED = PEM.split('\n').join('\\n');
+const GOOGLE_TOKEN = 'ya29.a0AfB_byC3xampleTokenMaterial-_0123456789';
+
+describe('a PEM private key (ISS-1036)', () => {
+  it('is redacted whole, across the lines it spans', () => {
+    const out = scrubLogText(`starting up\n${PEM}\ndone`);
+    expect(out).not.toContain('c2VjcmV0IGtleSBtYXRlcmlhbA');
+    expect(out).not.toContain('MIIEvQIBADANBgkqhkiG9w0');
+    expect(out).toContain(FILTERED);
+  });
+
+  it('is redacted in the \\n-escaped form a service-account key file carries', () => {
+    const line = `{"type":"service_account","private_key":"${PEM_ESCAPED}"}`;
+    const out = scrubLogText(line);
+    expect(out).not.toContain('MIIEvQIBADANBgkqhkiG9w0');
+  });
+
+  it('is redacted even when the log was cut before the END marker', () => {
+    const truncated = PEM.split('\n').slice(0, 2).join('\n');
+    const out = scrubLogText(`${truncated}`);
+    expect(out).not.toContain('MIIEvQIBADANBgkqhkiG9w0');
+  });
+
+  // cm:guard the case the `{16,}` bound in PEM_PRIVATE_KEY_HEAD_PATTERN exists for. With the loose `[A-Za-z0-9+/=\\s]*` continuation this goes red: the unterminated marker swallows every word after it, and a build log with one truncated key comes back with its error message redacted.
+  it('a truncated key does not swallow the build output after it', () => {
+    const truncated = PEM.split('\n').slice(0, 2).join('\n');
+    const out = scrubLogText(`${truncated}\nerror: Cannot find module '@codemirror/state'`);
+    expect(out).not.toContain('MIIEvQIBADANBgkqhkiG9w0');
+    expect(out).toContain("Cannot find module '@codemirror/state'");
+  });
+
+  it('leaves the diagnostic around it alone — this is not whole-line masking', () => {
+    const out = scrubLogText(`error: Cannot find module '@codemirror/state'\n${PEM}`);
+    expect(out).toContain("Cannot find module '@codemirror/state'");
+  });
+
+  it('is redacted by key name in a structured payload too', () => {
+    const body: Record<string, unknown> = {
+      privateKey: PEM,
+      private_key: PEM,
+      serviceAccountJson: '{"private_key":"x"}',
+      clientEmail: 'forge@forge-sheets-1.iam.gserviceaccount.com',
+    };
+    scrubBodyKeys(body);
+    expect(body.privateKey).toBe(FILTERED);
+    expect(body.private_key).toBe(FILTERED);
+    expect(body.serviceAccountJson).toBe(FILTERED);
+    // Identity is not a secret and must survive — a card that cannot name the
+    // account is a card an operator cannot act on.
+    expect(body.clientEmail).toBe('forge@forge-sheets-1.iam.gserviceaccount.com');
+  });
+
+  it('is redacted inside a Sentry event body', () => {
+    const event = {
+      request: { data: { secrets: { privateKey: PEM } } },
+    };
+    const out = scrubSentryEvent(event);
+    expect(JSON.stringify(out)).not.toContain('MIIEvQIBADANBgkqhkiG9w0');
+  });
+});
+
+describe('a minted Google access token (ISS-1036)', () => {
+  it('is redacted in free-form log text', () => {
+    const out = scrubLogText(`GET /v4/spreadsheets with Bearer ${GOOGLE_TOKEN}`);
+    expect(out).not.toContain('a0AfB_byC3xampleTokenMaterial');
+  });
+
+  it('is redacted wherever it turns up, not only after a key name', () => {
+    expect(scrubPatInString(`token is ${GOOGLE_TOKEN} ok`)).toBe(`token is ${FILTERED} ok`);
+  });
+
+  it('is redacted inside nested event values', () => {
+    const obj: Record<string, unknown> = { a: { b: [GOOGLE_TOKEN] } };
+    scrubStringValues(obj);
+    expect(JSON.stringify(obj)).not.toContain('a0AfB_byC3xampleTokenMaterial');
+  });
+
+  it('does not eat an ordinary word that merely starts with ya', () => {
+    expect(scrubLogText('yarn install finished')).toBe('yarn install finished');
   });
 });

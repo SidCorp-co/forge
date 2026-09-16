@@ -203,7 +203,7 @@ describe('what the tool tells a model', () => {
 
   it('states that update overwrites and append adds', () => {
     expect(tool().description).toContain('OVERWRITES');
-    expect(tool().description).toContain('after the last non-empty row');
+    expect(tool().description).toContain('AFTER the last non-empty row');
   });
 
   it('states that a call with no sheet resolved is refused rather than guessed', () => {

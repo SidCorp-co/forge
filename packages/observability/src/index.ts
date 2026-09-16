@@ -66,8 +66,9 @@ export const PEM_PRIVATE_KEY_PATTERN =
   /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g;
 
 // cm:guard this second pattern is not redundant with the paired one above and must run after it: a log cut mid-key has a BEGIN marker and no END, which the paired pattern does not match at all — and an unmatched truncated key is a whole credential printed in the clear, because the truncation takes the tail and not the head.
+// cm:guard the continuation is runs of at least 16 base64 characters, NOT `[A-Za-z0-9+/=\s]*`. The loose form also matches ordinary prose — every word after an unterminated BEGIN marker is letters and spaces — so a log with one truncated key came back with the rest of the build output redacted, which is the diagnostic loss ISS-277 spent a day on.
 export const PEM_PRIVATE_KEY_HEAD_PATTERN =
-  /-----BEGIN [A-Z ]*PRIVATE KEY-----(?:\\n|[A-Za-z0-9+/=\s])*/g;
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----(?:(?:\\n|\s)*[A-Za-z0-9+/=]{16,})*/g;
 
 /**
  * ISS-1036 — a Google OAuth2 access token, the thing Forge mints from a
@@ -112,7 +113,7 @@ export function scrubStringValues(obj: unknown, depth = 0): void {
   if (Array.isArray(obj)) {
     for (let i = 0; i < obj.length; i++) {
       const v = obj[i];
-      if (typeof v === 'string') obj[i] = v.replace(PAT_STRING_PATTERN, FILTERED);
+      if (typeof v === 'string') obj[i] = scrubPatInString(v);
       else scrubStringValues(v, depth + 1);
     }
     return;
@@ -120,7 +121,7 @@ export function scrubStringValues(obj: unknown, depth = 0): void {
   const rec = obj as Record<string, unknown>;
   for (const k of Object.keys(rec)) {
     const v = rec[k];
-    if (typeof v === 'string') rec[k] = v.replace(PAT_STRING_PATTERN, FILTERED);
+    if (typeof v === 'string') rec[k] = scrubPatInString(v);
     else scrubStringValues(v, depth + 1);
   }
 }
@@ -217,6 +218,7 @@ export function scrubLogText(text: string, extraSecrets: string[] = []): string 
   // cm:guard the PEM pass runs over the WHOLE text and before the split — a key with real newlines in it is several lines, and every per-line rule below is blind to it by construction
   return text
     .replace(PEM_PRIVATE_KEY_PATTERN, FILTERED)
+    .replace(PEM_PRIVATE_KEY_HEAD_PATTERN, FILTERED)
     .split('\n')
     .map((line) => {
       let out = scrubPatInString(scrubUrl(line));
