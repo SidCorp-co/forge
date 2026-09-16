@@ -227,6 +227,7 @@ fn agent_event(
         },
     );
     bind_or_release(ctl, parsed, agent_id, session_id);
+    note_master_pane(ctl, session_id, conversation_id);
     // cm:guard a permission wait is the ONE state that leaves this box at WARN, because it is the only one nothing on the box can clear: a turn that runs ends, a turn that fails ends, and a question put to a human ends when a human answers it. Measured forge-vm 2026-09-10: one run pane sat on a dangerous-command prompt for hours while every liveness reader called it healthy, because the pane emitted no boundary anything here could hear.
     match after.doing() {
         crate::daemon::agent_activity::Doing::AwaitingPermission => tracing::warn!(
@@ -383,6 +384,36 @@ fn bind_or_release(
             Err(e) => tracing::warn!("[control] cannot read the run for {child}: {e}"),
         },
         _ => {}
+    }
+}
+
+/// Keep the ledger's `masters` row current for the pane this event came from.
+///
+/// This is the only writer of that row, and what it stores is what a rebuilt
+/// pane is resumed from.
+// cm:guard runs INSIDE the hook path and must never fail it, exactly as `bind_or_release` above:
+// every branch is a log line at worst. A pane whose row could not be written still reports its turn
+// boundaries; the cost is a cold start later, which `ensure_master` says out loud.
+// cm:guard written only for a session the registry knows is a MASTER. `project_for_session` answers
+// `None` for anything else, and a row minted for a subagent's session would name a pane no resume
+// can address.
+// cm:guard a `None` conversation is passed THROUGH rather than skipped, because `note_master`'s
+// `COALESCE` is what keeps the stored handle alive across events that carry none — and the pane
+// name and `last_seen_at` still need refreshing on those events. Guarding the call on a present
+// conversation would leave the row's pane name stale for the whole life of a pane whose hooks
+// mostly fire without one.
+#[cfg(unix)]
+fn note_master_pane(ctl: &Arc<Control>, session_id: &str, conversation_id: Option<&str>) {
+    let Some(project_id) = ctl.masters.project_for_session(session_id) else {
+        return;
+    };
+    let Some(pane) = ctl.masters.pane_for_session(session_id) else {
+        return;
+    };
+    let mut held = ctl.ledger.lock().expect("ledger poisoned");
+    let Some(led) = held.as_mut() else { return };
+    if let Err(e) = led.note_master(&project_id, &pane, conversation_id, &ctl.boot_id) {
+        tracing::warn!("[control] cannot record {project_id}'s master pane: {e}");
     }
 }
 
@@ -755,6 +786,76 @@ mod tests {
                 .ended_by
                 .is_none(),
             "a refused close ends nothing"
+        );
+    }
+
+    // cm:guard criterion 14 is about the LEDGER, not the in-process registry, and this is the test
+    // that tells them apart. `note_master` and `master_for_project` had no production caller at all
+    // when the table was added: the row existed, nothing wrote it, and a resume would have had
+    // nothing to read. Asserting through `master_for_project` — a reader, on a fresh handle to the
+    // same ledger — is what makes this about the stored row rather than about the call (ISS-1050).
+    #[test]
+    fn a_master_pane_event_puts_that_pane_and_its_conversation_in_the_ledger() {
+        let (ctl, _t) = declaring_control("sess-a", "proj-1");
+
+        agent_event(&ctl, "Stop", None, None, Some("conv-abc"), "sess-a");
+
+        let held = ctl.ledger.lock().unwrap();
+        let row = held
+            .as_ref()
+            .unwrap()
+            .master_for_project("proj-1")
+            .unwrap()
+            .expect("the master row a resume reads");
+        assert_eq!(row.pane_name, "pane-1");
+        assert_eq!(row.conversation_id.as_deref(), Some("conv-abc"));
+    }
+
+    // cm:guard an event carrying NO conversation must not erase the one stored. Most hook events
+    // carry none, so an overwrite would empty the row within seconds of it being written and the
+    // resume would find nothing — the same silence as never writing it.
+    #[test]
+    fn an_event_without_a_conversation_leaves_the_stored_one_alone() {
+        let (ctl, _t) = declaring_control("sess-a", "proj-1");
+
+        agent_event(&ctl, "Stop", None, None, Some("conv-abc"), "sess-a");
+        agent_event(&ctl, "Stop", None, None, None, "sess-a");
+
+        let held = ctl.ledger.lock().unwrap();
+        let row = held
+            .as_ref()
+            .unwrap()
+            .master_for_project("proj-1")
+            .unwrap()
+            .expect("the master row");
+        assert_eq!(
+            row.conversation_id.as_deref(),
+            Some("conv-abc"),
+            "the only thing a resume can be built from may not be erased by an event that carries none"
+        );
+    }
+
+    // cm:guard a session the registry does not know as a master writes NOTHING. A row minted for a
+    // subagent's session would name a pane no resume can address, and `masters` is keyed by project
+    // so it would also displace the real master's row for that project.
+    #[test]
+    fn a_session_that_is_not_a_registered_master_writes_no_row() {
+        let (ctl, _t) = declaring_control("sess-a", "proj-1");
+
+        agent_event(
+            &ctl,
+            "Stop",
+            None,
+            None,
+            Some("conv-zzz"),
+            "some-other-session",
+        );
+
+        let held = ctl.ledger.lock().unwrap();
+        let row = held.as_ref().unwrap().master_for_project("proj-1").unwrap();
+        assert!(
+            row.is_none(),
+            "an unregistered session is not a master pane: {row:?}"
         );
     }
 
