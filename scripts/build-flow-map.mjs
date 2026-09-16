@@ -3,6 +3,8 @@ import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { unesc } from './lib/html-entities.mjs';
+
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const flowsDir = join(root, 'docs/flows');
 const check = process.argv.includes('--check');
@@ -14,13 +16,6 @@ const parentOf = new Map(contains.map((e) => [e.to, e.from]));
 
 const meta = (src, name) =>
   src.match(new RegExp(`<meta name="${name}" content="([^"]*)"`))?.[1] ?? '';
-const unesc = (s) =>
-  s
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
 
 const TEMPLATE = `<!doctype html>
 <meta charset="utf-8">
