@@ -124,7 +124,7 @@ export async function loadActiveIntegrationRows(
   return active.map((p) => ({
     provider: p.binding.provider,
     role: p.binding.role,
-    stages: (p.binding.stages ?? []) as string[],
+    stages: (p.binding.stages ?? []) as DeployStage[],
     lastHealthStatus: p.connection.lastHealthStatus,
     instructions: p.binding.instructions ?? null,
     hasOrgGuide: orgGuides.has(p.binding.provider),

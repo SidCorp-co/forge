@@ -33,7 +33,7 @@ let harness: TestDatabase;
 let mods: {
   readPool: typeof import('../../src/devices/pool.js').readPool;
   prepareJobForMaster: typeof import('../../src/devices/claim.js').prepareJobForMaster;
-  resolveReleaseChannel: typeof import('../../src/release-batch/channel.js').resolveReleaseChannel;
+  resolveReleasePlan: typeof import('../../src/release-batch/channel.js').resolveReleasePlan;
 };
 
 beforeAll(async () => {
@@ -45,8 +45,7 @@ beforeAll(async () => {
   mods = {
     readPool: (await import('../../src/devices/pool.js')).readPool,
     prepareJobForMaster: (await import('../../src/devices/claim.js')).prepareJobForMaster,
-    resolveReleaseChannel: (await import('../../src/release-batch/channel.js'))
-      .resolveReleaseChannel,
+    resolveReleasePlan: (await import('../../src/release-batch/channel.js')).resolveReleasePlan,
   };
 }, 60_000);
 
@@ -262,7 +261,7 @@ describe('the claim answers the same question by name', () => {
   });
 });
 
-// cm:guard the two readings of "which box releases" have to be ONE reading. `resolveReleaseChannel`
+// cm:guard the two readings of "which box releases" have to be ONE reading. `resolveReleaseChannels`
 // overlays the connection's config with the binding's by spreading, so a binding that sets the key
 // to null HIDES the connection's value — a COALESCE in the pool's SQL would not, and the pool would
 // then offer a release to a box the release itself refuses.
@@ -275,7 +274,7 @@ describe('the pool reads the label the release path reads', () => {
       connectionConfig: { releaseRunnerLabel: LABEL },
     });
 
-    expect((await mods.resolveReleaseChannel(w.projectId)).releaseRunnerLabel).toBe(LABEL);
+    expect((await mods.resolveReleasePlan(w.projectId)).releaseRunnerLabel).toBe(LABEL);
     expect(await poolIds(w)).toEqual([w.jobId]);
   });
 
@@ -287,7 +286,7 @@ describe('the pool reads the label the release path reads', () => {
       connectionConfig: { releaseRunnerLabel: LABEL },
     });
 
-    expect((await mods.resolveReleaseChannel(w.projectId)).releaseRunnerLabel).toBeNull();
+    expect((await mods.resolveReleasePlan(w.projectId)).releaseRunnerLabel).toBeNull();
     expect(await poolIds(w)).toEqual([]);
   });
 });

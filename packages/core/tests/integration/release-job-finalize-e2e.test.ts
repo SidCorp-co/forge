@@ -125,7 +125,7 @@ describe('release deploy dispatch and job finalize E2E', () => {
         projectId,
         issueId: null,
         runId,
-        allowProd: false,
+        allowLive: false,
       });
 
       expect(outcome.reason).toBe('no-integration');

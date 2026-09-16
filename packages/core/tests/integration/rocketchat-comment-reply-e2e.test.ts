@@ -126,7 +126,7 @@ async function bindRoom(rid = 'room-1'): Promise<string> {
     connectionId: connection.id,
     projectId,
     provider: 'rocketchat',
-    environment: 'prod',
+    role: 'service',
     config: { rids: [rid] },
   });
   return connection.id;

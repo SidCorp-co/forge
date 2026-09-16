@@ -201,7 +201,9 @@ describe('POST /api/projects', () => {
       createdBy: 'uuid-owner',
     });
 
-    expect(txInsertProjectValues.mock.calls[0]?.[0]).not.toHaveProperty('liveBranch');
+    expect(txInsertProjectValues).toHaveBeenCalledWith(
+      expect.not.objectContaining({ liveBranch: expect.anything() }),
+    );
     expect(txInsertProjectValues).toHaveBeenCalledWith(
       expect.objectContaining({
         slug: 'my-proj',
