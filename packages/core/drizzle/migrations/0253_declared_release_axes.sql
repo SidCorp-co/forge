@@ -32,6 +32,16 @@
 -- abort is to add the named row to the VALUES list and redeploy — never to widen
 -- a fallback.
 --
+-- TWO ROWS ARE EXEMPT, AND ONLY BECAUSE THEY CARRY NO JUDGEMENT. Section 4 below
+-- forces a value where the vocabulary leaves exactly one, and announces each row
+-- it touches by NOTICE: a binding whose provider has no deploy adapter can only be
+-- `service`, and a project created inside the deploy window carrying no
+-- deploy-capable binding can only be `none`. Everything else still aborts. The
+-- reason those two exist at all is measured rather than supposed: two google
+-- bindings appeared four minutes apart while this file was being prepared, so a
+-- transcription is never complete at boot and the strict rule alone would make an
+-- unattended deploy a race it can lose.
+--
 -- BEHAVIOUR-PRESERVING at the gate. The four projects gated today (anhome,
 -- portal-lighthuman, sid-desk, sidpeak) get `promote` and stay gated; every
 -- other project keeps closing its own issues. The three storefronts get
@@ -110,7 +120,27 @@ INSERT INTO iss1046_projects (project_id, slug, release_model, release_strategy)
   ('7dca1ad6-ab90-443f-a188-98f3e770265b', 'dodgeprint-api', 'none', NULL),
   ('dc99f7e0-498b-4eed-8397-2c18c1e624ab', 'dodgeprint-fe', 'none', NULL),
   ('fc06ff89-3235-4f6b-a9c0-f8c519cf3913', 'dodgeprint-ui-v2', 'none', NULL),
-  ('e8660972-6283-4104-8dba-6aee4983840a', 'forge-redesign', 'none', NULL);--> statement-breakpoint
+  ('e8660972-6283-4104-8dba-6aee4983840a', 'forge-redesign', 'none', NULL),
+  -- The twelve this migration could not see when its list was written: QA fixtures, an
+  -- issue's control row, throwaways and demo boards. They existed in `projects` and were
+  -- absent from the VALUES list, so the assertion below fired on every container boot and
+  -- held the deploy for 36 minutes on 2026-09-17. `none` here is the owner's declaration,
+  -- given while that deploy was down, and not a default this migration chose: each ships
+  -- nothing, reads no branch and needs no live target.
+  -- The lesson is the list's, not the assertion's: a roster measured when a migration is
+  -- written is not the roster it meets when it runs.
+  ('cac01f47-6292-469e-9e71-5da20dabe217', 'client-work-tracker', 'none', NULL),
+  ('7e7e3f09-a0ab-459a-a74c-ce4447f7963e', 'iss-1422-control', 'none', NULL),
+  ('9e1dd801-af72-4459-bee9-d14904d3eda1', 'iss-702-throwaway', 'none', NULL),
+  ('f1b91354-d701-4dca-8161-c3df83207492', 'lego-guide', 'none', NULL),
+  ('0a47ec80-8659-432b-9180-4c58ec95911d', 'linh-design-studio', 'none', NULL),
+  ('c7caf56b-6128-4bab-9270-192611f2fe83', 'linh-studio-q3-projects', 'none', NULL),
+  ('4473d199-d965-415d-b5ba-021a4f03a7f1', 'linh-studio-web', 'none', NULL),
+  ('2b3872c5-9ea3-464d-9773-9339629f7e97', 'qa-iss319-create-verify', 'none', NULL),
+  ('f9601fc8-9152-4d19-9dd2-6810c4fe8539', 'qa-project-available-for-testing', 'none', NULL),
+  ('3fee0966-58b3-4ee4-84ad-8c6d7aef7fdc', 'sid-hrm-v2', 'none', NULL),
+  ('0149a933-4034-411f-bbe4-f614b9ea6280', 'studio-brand-refresh', 'none', NULL),
+  ('fdc2748b-cd42-491b-a56c-c077f51da68b', 'summer-client-projects', 'none', NULL);--> statement-breakpoint
 
 -- === 3. the declared binding table ========================================
 -- `old_environment` is carried so 0253_down.sql restores the exact value rather
@@ -172,6 +202,96 @@ INSERT INTO iss1046_bindings (binding_id, slug, provider, old_environment, role,
   ('4e11a87b-e739-4a26-8fc0-cd1a33dab313', 'dodgeprint-api', 'rocketchat', 'prod', 'service', '{}'::text[]);--> statement-breakpoint
 
 -- === 4. coverage, BEFORE anything is dropped ==============================
+--
+-- 4·0. THE ROWS WHOSE ROLE IS FORCED RATHER THAN CHOSEN.
+--
+-- The fleet is written to while this migration is being prepared: two google bindings appeared
+-- four minutes apart on 2026-09-16 between one measurement and the next. A transcription can
+-- never be complete at boot, so the list alone would make an unattended deploy a race, and a
+-- lost race aborts the container's boot.
+--
+-- But not every unmapped row is ambiguous. `role: 'deploy'` is refused by the server for a
+-- provider with no deploy adapter (`contracts/deploy-capability.ts`, `integrations/binding-shape.ts`,
+-- `integrations/connection-routes.ts`), so for sentry, rocketchat, github, google and postman
+-- `service` is the ONLY value the row may legally hold. That is forced by the vocabulary, not
+-- guessed from what is commonest — the property this migration refuses to take is a JUDGEMENT,
+-- and there is no judgement here to take.
+--
+-- A deploy-capable provider is a different row: coolify's 'staging' meant `{preview}` on seven
+-- projects and `{live}` on getcontent, and only its owner knows which. Those still abort by name
+-- below, which is why this block names the providers it covers rather than the ones it does not.
+--
+-- Each row taken this way is announced by NOTICE in the deploy log. A rule applied in silence is
+-- the same defect as a default applied in silence.
+DO $$
+DECLARE forced text; n int;
+BEGIN
+  SELECT string_agg(format('%s (project %s, provider %s, environment %s)', b.id, p.slug, b.provider, b.environment), ', ' ORDER BY b.id), count(*)
+    INTO forced, n
+    FROM integration_bindings b
+    JOIN projects p ON p.id = b.project_id
+    LEFT JOIN iss1046_bindings d ON d.binding_id = b.id
+   WHERE d.binding_id IS NULL
+     AND b.provider NOT IN ('coolify', 'epodsystem', 'agent');
+  IF forced IS NOT NULL THEN
+    RAISE NOTICE 'ISS-1046: % binding(s) created after the fleet was measured take role=service by '
+      'force rather than by declaration, because their provider has no deploy adapter and the '
+      'server refuses role=deploy on it: %', n, forced;
+  END IF;
+END $$;--> statement-breakpoint
+
+INSERT INTO iss1046_bindings (binding_id, slug, provider, old_environment, role, stages)
+SELECT b.id, p.slug, b.provider, b.environment, 'service', '{}'::text[]
+  FROM integration_bindings b
+  JOIN projects p ON p.id = b.project_id
+  LEFT JOIN iss1046_bindings d ON d.binding_id = b.id
+ WHERE d.binding_id IS NULL
+   AND b.provider NOT IN ('coolify', 'epodsystem', 'agent');--> statement-breakpoint
+
+-- 4·1. AND THE SAME, ONE AXIS UP, FOR A PROJECT CREATED INSIDE THE DEPLOY WINDOW.
+--
+-- Narrower than the binding rule, because `release_model` IS the judgement this migration exists
+-- to collect. Two conditions together, and both are required:
+--
+--   * created AFTER the measurement below — so every project that existed when a person read the
+--     fleet is declared by name, and only the window between that reading and this boot is
+--     covered; and
+--   * carrying no binding at all on a provider Forge can deploy to — so it cannot be a project
+--     whose release anybody is relying on. The old gate could fire on a NON-deploy binding, which
+--     is the defect in this issue's own description, but it could not fire on no binding at all.
+--
+-- A project matching both had no release under the retired model and gets none under the declared
+-- one: `none` here is the same value every project created one minute after this migration takes
+-- from the column's own DEFAULT. A project created in the window that DOES carry a deploy binding
+-- is a judgement nobody made, and still aborts by name below.
+DO $$
+DECLARE forced text; n int;
+BEGIN
+  SELECT string_agg(format('%s (%s, created %s)', p.id, p.slug, p.created_at), ', ' ORDER BY p.slug), count(*)
+    INTO forced, n
+    FROM projects p
+    LEFT JOIN iss1046_projects d ON d.project_id = p.id
+   WHERE d.project_id IS NULL
+     AND p.created_at > TIMESTAMPTZ '2026-09-16 17:26:00+00'
+     AND NOT EXISTS (
+       SELECT 1 FROM integration_bindings b
+        WHERE b.project_id = p.id AND b.provider IN ('coolify', 'epodsystem', 'agent'));
+  IF forced IS NOT NULL THEN
+    RAISE NOTICE 'ISS-1046: % project(s) created after the fleet was measured and carrying no '
+      'deploy-capable binding take release_model=none by force rather than by declaration: %', n, forced;
+  END IF;
+END $$;--> statement-breakpoint
+
+INSERT INTO iss1046_projects (project_id, slug, release_model, release_strategy)
+SELECT p.id, p.slug, 'none', NULL
+  FROM projects p
+  LEFT JOIN iss1046_projects d ON d.project_id = p.id
+ WHERE d.project_id IS NULL
+   AND p.created_at > TIMESTAMPTZ '2026-09-16 17:26:00+00'
+   AND NOT EXISTS (
+     SELECT 1 FROM integration_bindings b
+      WHERE b.project_id = p.id AND b.provider IN ('coolify', 'epodsystem', 'agent'));--> statement-breakpoint
+
 -- Two assertions, not one: the binding table cannot see a project that has no
 -- bindings, so 18 of the 36 projects are invisible to it.
 DO $$
