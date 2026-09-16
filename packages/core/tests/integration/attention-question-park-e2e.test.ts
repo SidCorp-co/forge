@@ -40,7 +40,6 @@ vi.mock('../../src/notifications/emission-switch.js', () => ({
   noteSuppressed: () => {},
 }));
 
-
 const JWT_SECRET = 'test-secret-at-least-32-chars-long-abcdef-123456';
 
 // cm:guard ONE harness for the whole file. `db/client.ts` binds to DATABASE_URL at import time, so a second setupTestDatabase() puts the fixtures on one database and everything the code under test writes on another — the tests then read empty tables and fail for a reason that has nothing to do with the code.

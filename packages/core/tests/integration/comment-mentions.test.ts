@@ -22,7 +22,6 @@ vi.mock('../../src/notifications/emission-switch.js', () => ({
   noteSuppressed: () => {},
 }));
 
-
 type RoutesModule = typeof import('../../src/issues/routes.js');
 type JwtModule = typeof import('../../src/auth/jwt.js');
 type ErrorModule = typeof import('../../src/middleware/error.js');

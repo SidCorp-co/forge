@@ -31,7 +31,6 @@ vi.mock('../../src/notifications/emission-switch.js', () => ({
   noteSuppressed: () => {},
 }));
 
-
 type Mods = {
   emitPipelineWedge: typeof import('../../src/pipeline/wedge.js').emitPipelineWedge;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)

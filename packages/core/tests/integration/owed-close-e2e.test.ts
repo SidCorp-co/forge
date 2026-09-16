@@ -37,7 +37,6 @@ vi.mock('../../src/notifications/emission-switch.js', () => ({
   noteSuppressed: () => {},
 }));
 
-
 describe('ISS-940 shipped-but-never-closed (real Postgres)', () => {
   let harness: TestDatabase;
   let userId: string;

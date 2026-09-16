@@ -37,7 +37,6 @@ vi.mock('../../src/notifications/emission-switch.js', () => ({
   noteSuppressed: () => {},
 }));
 
-
 type Mods = {
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   detectStrandedIssues: typeof import('../../src/pipeline/stranded-issues.js').detectStrandedIssues;

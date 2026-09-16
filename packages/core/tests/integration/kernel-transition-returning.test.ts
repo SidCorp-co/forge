@@ -61,7 +61,6 @@ vi.mock('../../src/notifications/emission-switch.js', () => ({
   noteSuppressed: () => {},
 }));
 
-
 let harness: TestDatabase;
 let projectId: string;
 let ownerId: string;
