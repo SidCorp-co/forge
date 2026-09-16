@@ -2,7 +2,6 @@ import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { knowledgeEntries, type knowledgeKinds } from '../db/schema.js';
-import { EmbeddingUnavailableError, embedBatch } from '../embeddings/index.js';
 import { logger } from '../logger.js';
 
 const MAX_EMBED_CHARS = 8192;
@@ -117,9 +116,16 @@ export async function upsertKnowledgeEntries(
     );
   }
 
+  // cm:guard `embeddings/index.js` is imported HERE and not at the top of the file. It imports
+  // `config/env.js`, which validates the WHOLE environment at module evaluation, so a static import
+  // made every module that merely READS this store fail to load without DATABASE_URL, JWT_SECRET and
+  // DEVICE_TOKEN_PEPPER — six of them appeared at once when ISS-1048 moved project prose in here.
+  // The error class is resolved the same way, from the same module, so a test that substitutes it by
+  // mocking `embeddings/index.js` still controls both halves of this path.
   let vectors: Array<number[] | null> = entries.map(() => null);
   let degraded = false;
   try {
+    const { embedBatch } = await import('../embeddings/index.js');
     const embedded = await embedBatch(entries.map((e) => knowledgeEmbedInput(e.title, e.body)));
     // cm:guard a short answer is REFUSED by name rather than spread over the rows: the missing slots would be written as `excluded.embedding = NULL` on a batch this path calls healthy, which overwrites good stored vectors with nothing and leaves the backfill no null to find.
     if (embedded.length !== embedTexts.length) {
@@ -129,6 +135,7 @@ export async function upsertKnowledgeEntries(
     }
     vectors = embedded;
   } catch (err) {
+    const { EmbeddingUnavailableError } = await import('../embeddings/index.js');
     if (!(err instanceof EmbeddingUnavailableError)) throw err;
     degraded = true;
     logger.warn(

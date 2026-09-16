@@ -7,11 +7,6 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// cm:why `knowledge/service.js` reaches `embeddings/index.js`, which validates the whole
-// environment at import. This file reads the knowledge store and never embeds anything, so
-// it mocks env rather than declaring three secrets it has no use for.
-vi.mock('../config/env.js', () => ({ env: {} }));
-
 const listBindings = vi.fn(async () => [] as unknown[]);
 const selectLimit = vi.fn(async () => [] as unknown[]);
 
