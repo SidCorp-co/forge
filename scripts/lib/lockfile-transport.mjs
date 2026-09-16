@@ -20,12 +20,13 @@
 // cm:guard a bracketed IPv6 literal is a host too, and its own colons are why it needs its own branch
 // cm:guard `@host:1234/path` is a URL port to the general form and skipped, so a remote whose first
 // path segment is all digits reaches the `repo:` branch below instead, which has no such doubt
-// cm:guard the `repo:` branch drops the port lookahead because pnpm writes that field for a `type: git` resolution and nothing else — its value is always a bare remote, never a URL carrying userinfo, so there is no port to mistake a path for
-const HOST = String.raw`(?:\[[0-9a-fA-F:]+\]|[\w.-]+)`;
+// cm:guard the `repo:` branch drops both the port lookahead and the `/` the general form needs, because pnpm writes that field for a `type: git` resolution and nothing else — its value is always a bare remote, so there is no port to mistake a path for and `host:repo.git` with no slash is one too
+// cm:guard the bracketed host admits dots for the embedded-IPv4 form `[::ffff:192.0.2.1]`, which is a literal address and not a hostname
+const HOST = String.raw`(?:\[[0-9a-fA-F:.]+\]|[\w.-]+)`;
 const SSH_FORMS = [
   /\bssh:\/\//,
   new RegExp(String.raw`[\w.~-]+@${HOST}:(?!//)(?!\d+/)[^\s,}]*/[^\s,}]*`),
-  new RegExp(String.raw`\brepo:\s*[\w.~-]+@${HOST}:(?!//)[^\s,}]*/[^\s,}]*`),
+  new RegExp(String.raw`\brepo:\s*[\w.~-]+@${HOST}:(?!//)[^\s,}]+`),
 ];
 
 // cm:guard the strip takes only a `#` that follows whitespace, so it removes as little as it can — a

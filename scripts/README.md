@@ -442,13 +442,14 @@ stop every install in every job:
 - a comment goes before the forms run, or a comment quoting the old remote is an offender. Only a
   `#` that follows whitespace: a git resolution's `…/repo.git#<sha>` is a fragment, not a comment.
 
-A bracketed IPv6 literal is read as a host, since its own colons need their own branch.
+A bracketed IPv6 literal is read as a host, since its own colons need their own branch; the brackets
+admit dots for the embedded-IPv4 form `[::ffff:192.0.2.1]`.
 
-`@host:1234/path` is a URL port to that general form, so a remote whose first path segment is
-entirely numeric is not read there — it is read by a third form scoped to a `repo:` field, which
-drops the port doubt because pnpm writes that field for a `type: git` resolution and nothing else:
-its value is always a bare remote, never a URL carrying userinfo. The two together report the
-numeric remote and still leave `https://user@host:8080/path/pkg.tgz` alone.
+Those three narrowings cost the general form two shapes — `@host:1234/path`, which it reads as a
+port, and `host:repo.git` with no slash in the path at all. Both are read by a third form scoped to
+a `repo:` field, which needs neither narrowing: pnpm writes that field for a `type: git` resolution
+and nothing else, so its value is always a bare remote and never a URL carrying userinfo. The forms
+together report both, and still leave `https://user@host:8080/path/pkg.tgz` alone.
 
 Both real lockfiles this was measured against agree: 948 resolutions on `main` clean, and the four
 offending lines on the Dependabot pull request that caused this named by package.

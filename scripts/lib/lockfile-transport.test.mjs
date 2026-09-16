@@ -150,6 +150,22 @@ snapshots:
     expect(sshResolutions(numeric).offenders.map((o) => o.owner)).toContain('private-pkg@1.0.0');
   });
 
+  it('reads a `repo:` remote whose path carries no slash at all', () => {
+    const flat = DEPENDABOT.replace(
+      'hono@4.13.5:\n    resolution: {integrity: sha512-deadbeef}',
+      'private-pkg@1.0.0:\n    resolution: {repo: deploy@gitlab:private-pkg.git, type: git}',
+    );
+    expect(sshResolutions(flat).offenders.map((o) => o.owner)).toContain('private-pkg@1.0.0');
+  });
+
+  it('reads an IPv6 literal carrying an embedded IPv4 tail', () => {
+    const mapped = DEPENDABOT.replace(
+      'hono@4.13.5:\n    resolution: {integrity: sha512-deadbeef}',
+      'private-pkg@1.0.0:\n    resolution: {repo: git@[::ffff:192.0.2.1]:team/private-pkg.git, type: git}',
+    );
+    expect(sshResolutions(mapped).offenders.map((o) => o.owner)).toContain('private-pkg@1.0.0');
+  });
+
   it('reads a port as a port outside a `repo:` field, so a registry URL still installs', () => {
     const registry = `packages:
 
