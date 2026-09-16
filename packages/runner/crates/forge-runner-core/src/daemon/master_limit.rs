@@ -349,7 +349,7 @@ pub(crate) fn decide(
 /// Seconds since the epoch for one `YYYY-MM-DDTHH:MM:SS[.fff]Z` instant.
 ///
 /// Claude Code writes exactly this shape and nothing else.
-// cm:guard hand-parsed rather than by a datetime crate, and that is a standing position rather than an oversight: `me-runners.ts` sends the runner REMAINING SECONDS instead of an instant precisely so this binary needs neither a parser nor a skew correction on the pacing path. This one parser exists because the freshness bound and the across-project ordering both need the record's own clock, and it is total — anything that is not that shape answers `None` and the record is skipped.
+// cm:guard hand-parsed rather than by a datetime crate, and that is a standing position rather than an oversight: `me-runners.ts` sends the runner REMAINING SECONDS instead of an instant precisely so this binary needs neither a parser nor a skew correction on the pacing path. This one parser exists because the freshness bound and the across-project ordering both need the record's own clock, and it is total over the WHOLE shape — the separators, every field as digits, the calendar, the clock ranges and the trailing `Z` — because three defects on this issue each lived in a case this sentence claimed was covered and was not.
 fn unix_seconds(ts: &str) -> Option<i64> {
     let bytes = ts.as_bytes();
     if bytes.len() < 20
@@ -376,6 +376,14 @@ fn unix_seconds(ts: &str) -> Option<i64> {
     }
     if hh > 23 || mm > 59 || ss > 59 {
         return None;
+    }
+    // cm:guard the TAIL is checked too, so the shape this reads is the whole shape it declares. Without it `2026-09-16T12:00:00+07:00` parses, and the offset is silently dropped rather than applied — seven hours of error on a record that reads as perfectly well formed. Safe only by accident today, because `FRESH_WITHIN` is twenty minutes and every real offset is larger; a zone half an hour out would land inside the window and be believed.
+    let frac = ts.get(19..).and_then(|rest| rest.strip_suffix('Z'))?;
+    if !frac.is_empty() {
+        let digits = frac.strip_prefix('.')?;
+        if digits.is_empty() || !digits.bytes().all(|c| c.is_ascii_digit()) {
+            return None;
+        }
     }
     Some(days_from_civil(y, m, d) * 86_400 + hh * 3_600 + mm * 60 + ss)
 }
@@ -1104,6 +1112,10 @@ mod tests {
             "-123-01-01T00:00:00.000Z",
             "+026-09-16T12:00:00.000Z",
             "2026-09-16T+2:00:00.000Z",
+            "2026-09-16T12:00:00+07:00",
+            "2026-09-16T12:00:00",
+            "2026-09-16T12:00:00.000",
+            "2026-09-16T12:00:00.00zZ",
         ] {
             assert_eq!(unix_seconds(bad), None, "parsed {bad:?}");
         }
