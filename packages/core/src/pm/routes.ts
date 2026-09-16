@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, count, desc, eq, sql } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -7,6 +7,8 @@ import { db } from '../db/client.js';
 import {
   comments,
   issues,
+  notificationDeliveries,
+  notificationDeliveryMembers,
   notifications,
   pmConfig,
   pmDecisions,
@@ -206,20 +208,43 @@ pmRoutes.post(
       });
     }
 
-    const readRows = await db
+    // cm:why ISS-1063 — answering the escalation CLOSES the task, where this used to mark
+    // it read. `pm_escalation` is a task: it needed a person, a person acted, and the work
+    // is done. Marking it read said only that somebody had looked, which left it in the
+    // open count for ever and is the confusion this issue exists to end. The deliveries
+    // are marked read too, because the person who answered has plainly seen it.
+    const closed = await db
       .update(notifications)
-      .set({ read: true })
+      .set({ state: 'done', resolvedAt: new Date() })
       .where(
         and(
           eq(notifications.type, 'pm_escalation'),
           eq(notifications.projectId, projectId),
-          eq(notifications.read, false),
+          isNull(notifications.resolvedAt),
           sql`(${notifications.body}::jsonb->>'decisionId') = ${decisionId}`,
         ),
       )
-      .returning({ id: notifications.id, userId: notifications.userId });
-    for (const row of readRows) {
-      await hooks.emit('notificationRead', { notificationId: row.id, userId: row.userId });
+      .returning({ id: notifications.id });
+    for (const row of closed) {
+      const told = await db
+        .update(notificationDeliveries)
+        .set({ readAt: new Date() })
+        .where(
+          and(
+            isNull(notificationDeliveries.readAt),
+            inArray(
+              notificationDeliveries.id,
+              db
+                .select({ id: notificationDeliveryMembers.deliveryId })
+                .from(notificationDeliveryMembers)
+                .where(eq(notificationDeliveryMembers.notificationId, row.id)),
+            ),
+          ),
+        )
+        .returning({ userId: notificationDeliveries.userId });
+      for (const t of told) {
+        await hooks.emit('notificationRead', { notificationId: row.id, userId: t.userId });
+      }
     }
 
     const spawn = await spawnPmSession({

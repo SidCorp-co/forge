@@ -18,6 +18,8 @@ import {
   comments,
   issues,
   jobs,
+  notificationDeliveries,
+  notificationDeliveryMembers,
   notifications,
   organizationMembers,
   projectMembers,
@@ -338,37 +340,49 @@ export function selectUnseenDraftCount(userId: string): Promise<{ total: number 
 }
 
 export function selectMentions(userId: string): Promise<AttentionMentionRow[]> {
-  return db
-    .select({
-      notificationTitle: notifications.title,
-      mentionedAt: commentMentions.createdAt,
-      issueDocId: issues.id,
-      issSeq: issues.issSeq,
-      issuePrefix: projects.issuePrefix,
-      projectSlug: projects.slug,
-      projectName: projects.name,
-    })
-    .from(commentMentions)
-    .innerJoin(comments, eq(comments.id, commentMentions.commentId))
-    .innerJoin(issues, eq(issues.id, comments.issueId))
-    .innerJoin(projects, eq(projects.id, issues.projectId))
-    .leftJoin(
-      notifications,
-      and(
-        eq(notifications.userId, commentMentions.userId),
-        eq(notifications.type, 'mention'),
-        eq(notifications.issueId, comments.issueId),
-      ),
-    )
-    .where(
-      and(
-        eq(commentMentions.userId, userId),
-        // cm:why the NULL branch is deliberate, not a missing join: a mention predating the notify-mentions subscriber has no notification row at all, and dropping it would silence the oldest mentions forever.
-        sql`(${notifications.read} IS NULL OR ${notifications.read} = false)`,
-      ),
-    )
-    .orderBy(desc(commentMentions.createdAt))
-    .limit(PER_BUCKET) as Promise<AttentionMentionRow[]>;
+  return (
+    db
+      .select({
+        notificationTitle: notifications.title,
+        mentionedAt: commentMentions.createdAt,
+        issueDocId: issues.id,
+        issSeq: issues.issSeq,
+        issuePrefix: projects.issuePrefix,
+        projectSlug: projects.slug,
+        projectName: projects.name,
+      })
+      .from(commentMentions)
+      .innerJoin(comments, eq(comments.id, commentMentions.commentId))
+      .innerJoin(issues, eq(issues.id, comments.issueId))
+      .innerJoin(projects, eq(projects.id, issues.projectId))
+      // cm:why ISS-1063 — the join is now record → delivery → this user, because the record
+      // no longer carries a recipient. The shape of the question is unchanged: has THIS user
+      // seen a mention notification for THIS issue.
+      .leftJoin(
+        notifications,
+        and(eq(notifications.type, 'mention'), eq(notifications.issueId, comments.issueId)),
+      )
+      .leftJoin(
+        notificationDeliveryMembers,
+        eq(notificationDeliveryMembers.notificationId, notifications.id),
+      )
+      .leftJoin(
+        notificationDeliveries,
+        and(
+          eq(notificationDeliveries.id, notificationDeliveryMembers.deliveryId),
+          eq(notificationDeliveries.userId, commentMentions.userId),
+        ),
+      )
+      .where(
+        and(
+          eq(commentMentions.userId, userId),
+          // cm:why the NULL branch is deliberate, not a missing join: a mention predating the notify-mentions subscriber has no notification row at all, and dropping it would silence the oldest mentions forever. ISS-1063 moved the column it reads from the record to the delivery; the NULL branch now also covers a record nobody was delivered.
+          sql`${notificationDeliveries.readAt} IS NULL`,
+        ),
+      )
+      .orderBy(desc(commentMentions.createdAt))
+      .limit(PER_BUCKET) as Promise<AttentionMentionRow[]>
+  );
 }
 
 export function selectFailedJobs(userId: string): Promise<AttentionFailedJobRow[]> {

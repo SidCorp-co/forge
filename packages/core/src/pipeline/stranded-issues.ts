@@ -12,7 +12,7 @@
 // decision, and a close is a claim about shipped work that a pass which
 // cannot read the repository must not make.
 
-import { and, eq, gte, isNotNull, isNull, lt, notInArray, or, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNotNull, isNull, lt, notInArray, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueStatuses, issues, notifications, projects } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -54,6 +54,18 @@ export function strandedResolutionKey(issueId: string): string {
   return `issue:${issueId}:stranded`;
 }
 
+/**
+ * ISS-1063 — the grouping key: one evaluation of one detector.
+ *
+ * Alertmanager's `group_by`. Every strand this sweep tick finds shares it, so a reader is
+ * told once about the sweep rather than once per issue it named. The tick is truncated to
+ * the evaluation interval so the passes inside one `runPipelineSweep` agree on it without
+ * having to pass a value between them.
+ */
+export function sweepGroupKey(detector: string, now: Date): string {
+  return `sweep:${detector}:${Math.floor(now.getTime() / 60_000)}`;
+}
+
 // cm:edge lockstep -> packages/core/src/notifications/notify-transitions.ts — the key is cleared when the issue reaches a terminal placement, and a key nothing clears is an alarm that stays lit after the close it asked for
 export function owedCloseResolutionKey(issueId: string): string {
   return `issue:${issueId}:owed-close`;
@@ -66,7 +78,7 @@ export function owedCloseResolutionKey(issueId: string): string {
  * `notified` count of zero cannot distinguish from "nothing to say".
  */
 // cm:guard `resolved_at IS NULL` is the OUTER condition and must stay outside the `or` — it is what "this strand is still the one we alarmed about" means (db/schema.ts says every reader owes this column, never `read`). A resolved row is a strand that ENDED: the condition cleared and `notifications/auto-resolve.ts` stamped it. Suppressing on that row would mute a genuine RE-strand for the rest of the window — ~16h of silence indistinguishable from no strand, in the module whose whole job is breaking silence.
-// cm:guard inside the `or`, unread **or** recently sent, never existence alone — existence alone surfaces a strand once and never again, and unread alone re-pings every 60s tick from the moment a human reads it. Reading means "seen", not "resolved", so it stops suppressing; {@link STRANDED_RENOTIFY_MS} is what stops "seen" meaning "tell me again this minute".
+// cm:guard ISS-1063 replaced `read = false` in the `or` with `state <> 'resolved'` and it is NOT the same predicate weakened — it is the predicate this always meant. `read` said "a human has looked", which stopped suppressing the moment somebody glanced, so the second arm of the `or` and {@link STRANDED_RENOTIFY_MS} existed purely to stop a glance meaning "tell me again this minute". Read state is not on this table any more and a condition's own state is, so the window is now the whole of the re-notify rule and the first arm is what keeps a still-firing strand from being raised twice.
 async function surfaceOnce(args: {
   now: Date;
   projectId: string;
@@ -74,6 +86,8 @@ async function surfaceOnce(args: {
   resolutionKey: string;
   title: string;
   body: string;
+  groupKey: string;
+  groupTitle: string;
 }): Promise<number> {
   const [existing] = await db
     .select({ id: notifications.id })
@@ -84,7 +98,7 @@ async function surfaceOnce(args: {
         eq(notifications.resolutionKey, args.resolutionKey),
         isNull(notifications.resolvedAt),
         or(
-          eq(notifications.read, false),
+          inArray(notifications.state, ['pending', 'firing', 'inhibited']),
           gte(notifications.createdAt, new Date(args.now.getTime() - STRANDED_RENOTIFY_MS)),
         ),
       ),
@@ -94,17 +108,22 @@ async function surfaceOnce(args: {
 
   const adminIds = await projectAdminUserIds(args.projectId);
   if (adminIds.length === 0) return -1;
-  for (const userId of adminIds) {
-    await emitNotification({
-      userId,
-      projectId: args.projectId,
-      issueId: args.issueId,
-      type: 'issue_stranded',
-      title: args.title,
-      body: args.body,
-      resolutionKey: args.resolutionKey,
-    });
-  }
+  // cm:why ISS-1063 — ONE record, a delivery per admin, where this used to write one row
+  // per admin: 2997 `issue_stranded` rows on the replica were 545 conditions wearing
+  // their recipients' names. The `groupKey` is the sweep tick, so every strand one
+  // evaluation finds reaches each admin as one notification naming the cause — the 11:21
+  // burst of 2026-09-16 was 15 conditions and the owner was told fifteen times.
+  await emitNotification({
+    recipients: adminIds,
+    projectId: args.projectId,
+    issueId: args.issueId,
+    type: 'issue_stranded',
+    title: args.title,
+    body: args.body,
+    resolutionKey: args.resolutionKey,
+    groupKey: args.groupKey,
+    groupTitle: args.groupTitle,
+  });
   return adminIds.length;
 }
 
@@ -155,6 +174,8 @@ export async function detectStrandedIssues(
 
       const sent = await surfaceOnce({
         now,
+        groupKey: sweepGroupKey('stranded', now),
+        groupTitle: 'Issues are parked with nothing coming for them',
         projectId: row.projectId,
         issueId: row.id,
         resolutionKey: strandedResolutionKey(row.id),
@@ -234,6 +255,8 @@ export async function detectOwedCloses(
       const age = days >= 1 ? `${days} day${days === 1 ? '' : 's'}` : 'hours';
       const sent = await surfaceOnce({
         now,
+        groupKey: sweepGroupKey('owed-close', now),
+        groupTitle: 'Issues whose code shipped and whose close was never written',
         projectId: row.projectId,
         issueId: row.id,
         resolutionKey: owedCloseResolutionKey(row.id),
