@@ -15,7 +15,7 @@
 import { handleGitHubEvent } from '../../webhooks/github-adapter.js';
 import { verifyHmacSignature } from '../../webhooks/hmac.js';
 import { recordDelivery } from '../deliveries.js';
-import { updateConnection } from '../store.js';
+import { type IntegrationConnectionRow, updateConnection } from '../store.js';
 import {
   type AdapterContext,
   declareIntegration,
@@ -30,11 +30,21 @@ import {
   githubSecretsSchema,
 } from './schemas.js';
 import { GitHubAuthError, installationToken } from './app-auth.js';
+import { githubInboundSecret, syncRepoUrlFromGitHubBinding } from './bind-effects.js';
+import type { BindingRole } from '../../db/schema.js';
 import { GITHUB_API_BASE, type GitHubConfig, type GitHubSecrets } from './types.js';
 
 const PROBE_TIMEOUT_MS = 8000;
 
 const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecrets> = {
+  inboundSecret: (connection) => githubInboundSecret(connection as IntegrationConnectionRow),
+  onBindingCreated: async ({ projectId, role, config }) => ({
+    repoUrl: await syncRepoUrlFromGitHubBinding({
+      projectId,
+      role: role as BindingRole,
+      config: config as GitHubConfig,
+    }),
+  }),
 
   // cm:guard 403 is NOT `needs_reauth` — GitHub answers 401 for a credential it does not recognise and 403 for one it does recognise and refuses (permission not granted to the App, SSO not authorised). Collapsing them tells the operator to reconnect when what they must do is grant a permission, and reconnecting reproduces the state exactly. This is the mislabel ISS-924 files against the coolify adapter; do not reproduce it here.
   async healthcheck(ctx: AdapterContext<GitHubConfig, GitHubSecrets>): Promise<HealthCheckResult> {
@@ -168,6 +178,8 @@ export const githubIntegration = declareIntegration<GitHubConfig, GitHubSecrets>
     liveConfirmGate: false,
     hasDeliveryLog: true,
     multiBinding: false,
+    webhookHeader: 'x-github-event',
+    structuredRollback: false,
     agentPath: { kind: 'none' },
   },
   schemas: {

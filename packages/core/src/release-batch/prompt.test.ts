@@ -12,6 +12,13 @@ import {
 } from './plan.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
 
+// `prompt.ts` asks the registry what a provider DECLARES (its release step, its rollback representability,
+// its webhook header) rather than naming providers (ISS-1071). Reading an empty registry throws
+// rather than answering "no provider declares anything", which is the answer that would have made
+// these assertions pass while describing a deployment with no integrations in it.
+const { registerAllIntegrations } = await import('../integrations/register-all.js');
+registerAllIntegrations();
+
 const BASE = {
   runId: 'run-1',
   projectId: 'proj-1',

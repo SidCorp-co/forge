@@ -407,7 +407,7 @@ describe('the agent-access gate on a core-mediated provider', () => {
     listBindingsForProjectMock.mockResolvedValueOnce([row({ agentAccess: 'none' })]);
     await expect(resolveGoogleBinding(PROJECT)).rejects.toMatchObject({ code: 'NOT_GRANTED' });
     listBindingsForProjectMock.mockResolvedValueOnce([row({ agentAccess: 'none' })]);
-    const err = await resolveGoogleBinding(PROJECT).catch((e: Error) => e);
+    const err = (await resolveGoogleBinding(PROJECT).catch((e: Error) => e)) as Error;
     expect(err.message).toContain('bind-1');
     expect(err.message).toContain('Settings → Integrations');
     // NOT a credential or health complaint — that is the misreading the sentence exists to prevent.

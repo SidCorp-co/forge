@@ -163,6 +163,7 @@ export const postmanIntegration = declareIntegration<PostmanConfig, PostmanSecre
     liveConfirmGate: false,
     hasDeliveryLog: false,
     multiBinding: false,
+    structuredRollback: false,
     agentPath: {
       kind: 'direct-mcp',
       tools: [],

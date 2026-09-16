@@ -12,6 +12,9 @@ export default defineConfig({
       '../../scripts/**/*.test.mjs',
     ],
     environment: 'node',
+    // See vitest.setup.ts — the three required env vars, so a unit test whose subject is a pure
+    // function does not have to mock the env module to reach a populated integration registry.
+    setupFiles: ['./vitest.setup.ts'],
     hookTimeout: 60_000,
     // cm:why vitest's 5s default assumes a test body does only assertions; here a test's first touch of a mocked module pays the module-graph load, and under 8-way parallelism on a loaded box that crossed 5s — the sole cause of the two long-standing "flaky" files
     testTimeout: 20_000,

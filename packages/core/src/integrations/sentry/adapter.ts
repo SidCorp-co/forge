@@ -189,6 +189,7 @@ export const sentryIntegration = declareIntegration<SentryConfig, SentrySecrets>
     liveConfirmGate: false,
     hasDeliveryLog: false,
     multiBinding: false,
+    structuredRollback: false,
     agentPath: {
       kind: 'direct-mcp',
       tools: [],

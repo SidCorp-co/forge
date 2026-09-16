@@ -29,6 +29,14 @@ const unsupported = (op: string): never => {
 };
 
 const rocketChatAdapterMethods: IntegrationAdapterMethods<RocketChatConfig, RocketChatSecrets> = {
+  // cm:edge lockstep -> packages/core/src/integrations/route-helpers.ts — every connection write
+  // calls this through `notifyConnectionChanged`; it was an `if (provider !== 'rocketchat') return`
+  // in that generic helper until ISS-1071.
+  onConnectionChanged: (connectionId) => {
+    void import('./connection-manager.js')
+      .then((m) => m.requestRocketChatReload(connectionId))
+      .catch(() => {});
+  },
 
   async healthcheck(
     ctx: AdapterContext<RocketChatConfig, RocketChatSecrets>,
@@ -90,6 +98,7 @@ export const rocketchatIntegration = declareIntegration<RocketChatConfig, Rocket
     liveConfirmGate: false,
     hasDeliveryLog: false,
     multiBinding: false,
+    structuredRollback: false,
     agentPath: { kind: 'none' },
   },
   schemas: {

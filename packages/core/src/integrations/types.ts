@@ -198,6 +198,21 @@ export interface IntegrationCapabilities {
    * binding wins the one slot and the rest are shadowed.
    */
   multiBinding: boolean;
+  /**
+   * The request header that identifies an inbound webhook as this provider's.
+   *
+   * Declared rather than mapped, because the map it replaced lived in
+   * `webhooks/inbound-routes.ts` — a file with no other reason to know a provider exists, and one
+   * that would keep routing correctly for the providers it already listed while silently dropping a
+   * new one on the floor. Only meaningful where `canReceiveWebhook` is true.
+   */
+  webhookHeader?: string;
+  /**
+   * True where this provider's API can express a rollback as a structured action rather than as
+   * prose for a human to carry out. Read by `release-batch/channel.ts`, which classified it with
+   * `provider === 'coolify'` until ISS-1071.
+   */
+  structuredRollback: boolean;
   /** How an agent reaches this provider, and at whose risk. */
   agentPath: AgentPath;
 }
@@ -256,6 +271,11 @@ export interface IntegrationPresentation {
 }
 
 /** The short router hint and forward pointer injected into the preamble when this is reachable. */
+/** The connection row shape `inboundSecret` reads — kept structural so `types.ts` imports no db. */
+export interface IntegrationConnectionLike {
+  secretsEnc: Buffer | null;
+}
+
 export interface IntegrationUsage {
   /**
    * One to three lines: which entry tool to reach for plus one cardinal rule. Omitted where the
@@ -284,6 +304,37 @@ export interface IntegrationAdapterMethods<
   TConfig extends Record<string, unknown> = Record<string, unknown>,
   TSecrets extends Record<string, unknown> = Record<string, unknown>,
 > {
+  /**
+   * The signing secret this provider will actually use for inbound deliveries, when it is the
+   * provider — not Forge — that generated it.
+   *
+   * GitHub signs every delivery with the secret created with the App, so a binding that mints its
+   * own fails EVERY signature check while the hub renders it configured: no delivery row, no error
+   * anyone sees. Absent = Forge mints one, which is the normal case.
+   */
+  inboundSecret?(connection: IntegrationConnectionLike): string | null;
+  /**
+   * Called after this provider's CONNECTION is created or changed, for a provider holding a live
+   * process that must be rebuilt against the new credential.
+   *
+   * Rocket.Chat is the only one: it keeps a realtime socket per connection. Declared here so the
+   * generic route helper does not carry `if (provider !== 'rocketchat') return`, which is a line
+   * that stays correct for rocketchat and silently does nothing for the next provider that needs it.
+   */
+  onConnectionChanged?(connectionId: string): void;
+  /**
+   * What this provider does once a binding of it is created on a project, and what the response
+   * should carry about it.
+   *
+   * GitHub is the only one: binding a repository syncs `projects.repoPath`, and the caller is told
+   * whether that changed. Declared so the generic bind door does not carry `provider === 'github'`,
+   * which is a branch that keeps working for github and quietly does nothing for anyone else.
+   */
+  onBindingCreated?(args: {
+    projectId: string;
+    role: string;
+    config: Record<string, unknown>;
+  }): Promise<Record<string, unknown>>;
   healthcheck(ctx: AdapterContext<TConfig, TSecrets>): Promise<HealthCheckResult>;
   dispatchOutbound(
     ctx: AdapterContext<TConfig, TSecrets>,
@@ -311,6 +362,16 @@ export interface IntegrationDeclaration<
   readonly usage: IntegrationUsage | null;
   /** Null where the provider renders no status card of its own. */
   readonly presentation: IntegrationPresentation | null;
+  /**
+   * The release-step instruction a project releasing through this provider is given, or absent
+   * where Forge has no default step for it.
+   *
+   * `release-batch/plan.ts` used to filter `c.provider === 'coolify'` and inline Coolify's polling
+   * protocol. Its own `cm:guard` says a step must be emitted only for a provider that HAS one — and
+   * the way to keep that true as providers are added is for the provider to carry its own step,
+   * rather than for the planner to hold a list it is not reminded to update.
+   */
+  readonly releaseStep?: (namedChannels: string) => string;
   /** Absent exactly where nothing is integrated. */
   readonly adapter?: IntegrationAdapterMethods<TConfig, TSecrets>;
 }

@@ -31,6 +31,7 @@ export const agentIntegration = declareIntegration({
     liveConfirmGate: false,
     hasDeliveryLog: false,
     multiBinding: false,
+    structuredRollback: false,
     agentPath: { kind: 'none' },
   },
   schemas: {

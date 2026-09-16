@@ -50,7 +50,7 @@ import {
   defaultConnectionDisplayName,
   forbidden,
   notFound,
-  reloadRocketChatIfNeeded,
+  notifyConnectionChanged,
   summarizeBinding,
 } from './route-helpers.js';
 import { buildIntegrationsStatusCards } from './status-service.js';
@@ -196,7 +196,7 @@ integrationsRoutes.post(
       }
       throw err;
     }
-    reloadRocketChatIfNeeded(body.provider, connection.id);
+    notifyConnectionChanged(body.provider, connection.id);
     // Probe immediately so the new integration starts with real health (and
     // epodsystem store identity) instead of an unverified card (ISS-429).
     return c.json(
@@ -304,7 +304,7 @@ integrationsRoutes.patch(
     const refreshed = await findBindingWithConnectionById(id);
     if (!refreshed) throw notFound();
     broadcastIntegrationChanged(projectId, { bindingId: id, connectionId: connection.id });
-    reloadRocketChatIfNeeded(binding.provider, connection.id);
+    notifyConnectionChanged(binding.provider, connection.id);
     return c.json({ integration: summarizeBinding(refreshed) });
   },
 );
@@ -327,7 +327,7 @@ integrationsRoutes.delete('/:projectId/integrations/:id', async (c) => {
     bindingId: id,
     connectionId: existing.connection.id,
   });
-  reloadRocketChatIfNeeded(existing.binding.provider, existing.connection.id);
+  notifyConnectionChanged(existing.binding.provider, existing.connection.id);
   return c.json({ ok: true });
 });
 

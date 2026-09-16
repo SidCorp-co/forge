@@ -16,8 +16,19 @@ vi.mock('../db/client.js', () => ({
 
 const handleInboundMock = vi.fn(async () => ({ deliveryId: 'del-1', actions: 1 }));
 const getAdapterMock = vi.fn(() => ({ provider: 'github', handleInbound: handleInboundMock }));
+// ISS-1071 — the router derives its header→provider map from the DECLARATIONS rather than holding a
+// literal array, so this mock has to answer `listIntegrations` too. Declaring github's webhook header
+// here is the point of the test: if the route stopped reading `capabilities.webhookHeader`, or a
+// provider declared one without `canReceiveWebhook`, the derived map would change and these
+// signature tests would go red rather than routing to nobody in silence.
 vi.mock('../integrations/registry.js', () => ({
   getAdapter: (...a: unknown[]) => getAdapterMock(...(a as [])),
+  listIntegrations: () => [
+    {
+      provider: 'github',
+      capabilities: { canReceiveWebhook: true, webhookHeader: 'x-github-event' },
+    },
+  ],
 }));
 
 const listBindingsMock = vi.fn(async () => [

@@ -111,17 +111,25 @@ function deployStep(channels: ReleaseChannel[]): string {
    and stop — a human takes it from there. Do NOT reach for a deploy tool you have seen in another
    prompt; this project has not declared one.`;
   }
-  const coolify = channels.filter((c) => c.provider === 'coolify').map(namedChannel);
-  const named = coolify.join(', ');
-  return `Deploy the coolify channel(s) — ${named} — with \`forge_coolify_deploy { action:'deploy', pipelineRunId: runId }\`.
-   Poll \`forge_coolify_deploy { action:'status' }\` in the FOREGROUND until every target is
-   'ok' or 'failed' — never end the turn while polling. pendingHumanConfirm:true → abort.
-   Any 'failed' → abort.`;
+  // One step per provider that DECLARES one, in registry order. A provider declaring none is
+  // refused by `foreignChannelRefusal` instead of this step, never beside it.
+  const steps: string[] = [];
+  for (const decl of listIntegrations()) {
+    if (!decl.releaseStep) continue;
+    const mine = channels.filter((c) => c.provider === decl.provider).map(namedChannel);
+    if (mine.length === 0) continue;
+    steps.push(decl.releaseStep(mine.join(', ')));
+  }
+  return steps.join('\n\n');
 }
 
 /** Every declared channel Forge has no default deploy step for, named, each one once. */
 function undeployableChannels(channels: ReleaseChannel[]): string[] {
-  return [...new Set(channels.filter((c) => c.provider !== 'coolify').map(namedChannel))];
+  return [
+    ...new Set(
+      channels.filter((c) => !getIntegration(c.provider)?.releaseStep).map(namedChannel),
+    ),
+  ];
 }
 
 function foreignChannelRefusal(foreign: string[]): string {
@@ -148,6 +156,7 @@ const CHANGELOG_STEP = `Append ONE line under \`## [Unreleased]\` in CHANGELOG.m
    Commit message: \`docs(changelog): batch release <runId first 8> (<n> issues)\`.`;
 
 import { type ProjectLike, resolveIssueBranches } from '../branches/resolve.js';
+import { getIntegration, listIntegrations } from '../integrations/registry.js';
 import type { ReleaseModel, ReleaseStrategy } from '../db/schema.js';
 import type { VerifyConfig } from './verify.js';
 

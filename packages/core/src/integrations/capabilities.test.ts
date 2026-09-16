@@ -60,6 +60,7 @@ describe('declareIntegration', () => {
       liveConfirmGate: false,
       hasDeliveryLog: false,
       multiBinding: false,
+      structuredRollback: false,
     });
     expect(decl.capabilities.agentPath).toEqual(CORE_MEDIATED_BY_DEFAULT);
   });
@@ -72,6 +73,7 @@ describe('declareIntegration', () => {
       liveConfirmGate: false,
       hasDeliveryLog: false,
       multiBinding: false,
+      structuredRollback: false,
       agentPath: { kind: 'none' },
     });
     expect(decl.capabilities.agentPath).toEqual({ kind: 'none' });
@@ -88,6 +90,7 @@ describe('providerCanDeploy / deployCapableProviders', () => {
         liveConfirmGate: false,
         hasDeliveryLog: false,
         multiBinding: false,
+        structuredRollback: false,
       }),
     );
     registerIntegration(
@@ -98,6 +101,7 @@ describe('providerCanDeploy / deployCapableProviders', () => {
         liveConfirmGate: false,
         hasDeliveryLog: false,
         multiBinding: false,
+        structuredRollback: false,
       }),
     );
 
@@ -118,6 +122,7 @@ describe('directMcpIntegrations', () => {
         liveConfirmGate: false,
         hasDeliveryLog: false,
         multiBinding: false,
+        structuredRollback: false,
         agentPath: { kind: 'none' },
       }),
     );
@@ -129,6 +134,7 @@ describe('directMcpIntegrations', () => {
         liveConfirmGate: false,
         hasDeliveryLog: false,
         multiBinding: false,
+        structuredRollback: false,
         agentPath: {
           kind: 'direct-mcp',
           tools: [],
@@ -154,6 +160,7 @@ describe('directMcpIntegrations', () => {
         liveConfirmGate: false,
         hasDeliveryLog: false,
         multiBinding: false,
+        structuredRollback: false,
         agentPath: { kind: 'core-mediated', tools: ['some_tool'] },
       }),
     );

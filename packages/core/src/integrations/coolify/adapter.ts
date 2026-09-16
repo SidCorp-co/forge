@@ -368,6 +368,9 @@ export const coolifyIntegration = declareIntegration<CoolifyConfig, CoolifySecre
     liveConfirmGate: true,
     hasDeliveryLog: true,
     multiBinding: false,
+    // Coolify's API has a rollback endpoint, so a rollback here is an ACTION and not a note for a
+    // human — which is why the release batch refuses free text on a coolify channel.
+    structuredRollback: true,
     agentPath: { kind: 'core-mediated', tools: ['forge_coolify_deploy'] },
   },
   schemas: {
@@ -385,6 +388,16 @@ export const coolifyIntegration = declareIntegration<CoolifyConfig, CoolifySecre
     hint: 'Deploy / redeploy and poll deployment status via the `forge_coolify_deploy` tool.',
     guideSlug: 'deploy-safety',
   },
+  // cm:guard emitted ONLY for a channel whose provider declares it. `release-batch/gate.ts` forbids
+  // reading a provider name to decide what a binding is FOR; this is the same rule for what a step
+  // DOES, and the text this replaced broke it for four fleet projects by telling an epodsystem
+  // project to release through Coolify. A provider with no step here is REFUSED by name instead of
+  // being given this one.
+  releaseStep: (namedChannels) =>
+    `Deploy the coolify channel(s) — ${namedChannels} — with \`forge_coolify_deploy { action:'deploy', pipelineRunId: runId }\`.
+   Poll \`forge_coolify_deploy { action:'status' }\` in the FOREGROUND until every target is
+   'ok' or 'failed' — never end the turn while polling. pendingHumanConfirm:true → abort.
+   Any 'failed' → abort.`,
   presentation: {
     label: 'Coolify',
     // Coolify is stage-split by design, so even a single binding keys by stage.

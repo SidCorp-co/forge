@@ -54,7 +54,7 @@ import {
   defaultConnectionDisplayName,
   forbidden,
   notFound,
-  reloadRocketChatIfNeeded,
+  notifyConnectionChanged,
   summarizeBinding,
   summarizeConnection,
   summarizeConnectionWithUsage,
@@ -150,7 +150,7 @@ integrationConnectionsRoutes.post(
       config: body.config,
       secrets: body.secrets,
     });
-    reloadRocketChatIfNeeded(body.provider, connection.id);
+    notifyConnectionChanged(body.provider, connection.id);
     return c.json({ connection: summarizeConnection(connection) }, 201);
   },
 );
@@ -240,9 +240,11 @@ integrationConnectionsRoutes.post(
       }
     }
 
-    // cm:why minted per binding, except where the provider signs with a secret of its own — see `githubInboundSecret`
+    // cm:why minted per binding, except where the provider DECLARES that it signs with a secret of its
+    // own (`adapter.inboundSecret`). GitHub does: it signs every delivery with the secret created with
+    // the App, so a binding minting its own fails every signature check while reading as configured.
     const integrationSecret =
-      (provider === 'github' ? githubInboundSecret(connection) : null) ??
+      (getAdapter(provider)?.inboundSecret?.(connection) ?? null) ??
       `whsec_${randomBytes(24).toString('hex')}`;
     let binding: Awaited<ReturnType<typeof createBinding>>;
     try {
@@ -262,21 +264,21 @@ integrationConnectionsRoutes.post(
       if (isUniqueViolation(err)) throw alreadyExists();
       throw err;
     }
-    const repoUrl =
-      provider === 'github'
-        ? await syncRepoUrlFromGitHubBinding({
-            projectId: body.projectId,
-            role: body.role,
-            config: bindingConfig as GitHubConfig,
-          })
-        : { kind: 'unchanged' as const };
-    reloadRocketChatIfNeeded(provider, id);
+    // Whatever this provider declares it does on bind, and whatever it says the response should
+    // carry about it. A provider declaring nothing adds nothing — there is no default to guess at.
+    const bindEffects =
+      (await getAdapter(provider)?.onBindingCreated?.({
+        projectId: body.projectId,
+        role: body.role,
+        config: bindingConfig as Record<string, unknown>,
+      })) ?? {};
+    notifyConnectionChanged(provider, id);
     // Re-probe on bind so the target project starts from current health rather
     // than whatever the connection last recorded (ISS-429).
     return c.json(
       {
         ...(await buildCreatedBindingResponse({ binding, connection }, integrationSecret)),
-        repoUrl,
+        ...bindEffects,
       },
       201,
     );
@@ -368,7 +370,7 @@ integrationConnectionsRoutes.patch(
 
     const updated = await updateConnection(id, connPatch);
     if (!updated) throw notFound('connection');
-    reloadRocketChatIfNeeded(existing.provider, id);
+    notifyConnectionChanged(existing.provider, id);
     return c.json({ connection: summarizeConnection(updated) });
   },
 );
@@ -381,6 +383,6 @@ integrationConnectionsRoutes.delete('/:id', async (c) => {
   // only soft-delete here (active=false) so existing bindings stop resolving via
   // findActiveBinding's `connection.active` filter without dropping audit rows.
   await softDeleteConnection(id);
-  reloadRocketChatIfNeeded(existing.provider, id);
+  notifyConnectionChanged(existing.provider, id);
   return c.json({ ok: true });
 });

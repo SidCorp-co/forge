@@ -83,17 +83,15 @@ export async function assertNoActiveBindingClash(
     );
 }
 
-/** ISS-609 — apply rocketchat connection/binding CRUD to the live bot socket
- *  (dial / teardown / re-subscribe) without a core restart. Fire-and-forget;
- *  goes via pg NOTIFY so the instance owning the socket reloads even when it
- *  isn't the one that served this request. Lazily imported: the connection
- *  manager reads env at module scope, and this fire-and-forget hop is the
- *  routers' only dependency on it. */
-export function reloadRocketChatIfNeeded(provider: string, connectionId: string): void {
-  if (provider !== 'rocketchat') return;
-  void import('./rocketchat/connection-manager.js')
-    .then((m) => m.requestRocketChatReload(connectionId))
-    .catch(() => {});
+/**
+ * Tell a provider its connection changed, where the provider declares that it cares.
+ *
+ * Rocket.Chat is the only one today — it holds a realtime socket that must be rebuilt against the
+ * new credential — but this names no provider: the hook is an adapter method, so the next provider
+ * with a live process declares it in its own directory and this helper is not edited at all.
+ */
+export function notifyConnectionChanged(provider: string, connectionId: string): void {
+  getAdapter(provider)?.onConnectionChanged?.(connectionId);
 }
 
 export async function assertProjectMember(

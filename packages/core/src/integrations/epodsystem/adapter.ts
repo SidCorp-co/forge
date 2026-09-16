@@ -292,6 +292,7 @@ export const epodsystemIntegration = declareIntegration<EpodsystemConfig, Epodsy
     liveConfirmGate: false,
     hasDeliveryLog: false,
     multiBinding: true,
+    structuredRollback: false,
     agentPath: {
       kind: 'direct-mcp',
       tools: [],

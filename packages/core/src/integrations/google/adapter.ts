@@ -224,6 +224,7 @@ export const googleIntegration = declareIntegration<GoogleConfig, GoogleSecrets>
     liveConfirmGate: false,
     hasDeliveryLog: false,
     multiBinding: false,
+    structuredRollback: false,
     agentPath: { kind: 'core-mediated', tools: ['forge_google_sheets'] },
   },
   schemas: {
