@@ -32,6 +32,7 @@ let mods: {
   writeRunEvidence: typeof import('../../src/devices/run-evidence.js').writeRunEvidence;
   runEvidenceMarker: typeof import('../../src/devices/run-evidence.js').runEvidenceMarker;
   openRunSession: typeof import('../../src/devices/run-session.js').openRunSession;
+  closeRunSession: typeof import('../../src/devices/run-session.js').closeRunSession;
 };
 
 beforeAll(async () => {
@@ -46,6 +47,7 @@ beforeAll(async () => {
     writeRunEvidence: evidence.writeRunEvidence,
     runEvidenceMarker: evidence.runEvidenceMarker,
     openRunSession: runSession.openRunSession,
+    closeRunSession: runSession.closeRunSession,
   };
 });
 
@@ -246,5 +248,63 @@ describe('a report that arrives twice', () => {
       await announcedAt(),
       'the retry is the only thing that will ever announce this run, and it answered without doing so',
     ).not.toBeNull();
+  });
+
+  // cm:guard the retry may FINISH a close, never REPLAY one, and this is the fence that separates the
+  // two. It is not a rare crash window: `close_loop::close` retries until core takes the marks, so a
+  // dead run's close arrives again and again while its issues are already back in the pool and
+  // another master may have claimed one. Status equality is idempotent only while nothing else
+  // moves; the next owner moving it to `in_progress` is exactly what makes a replay destructive, and
+  // the damage is this issue's own damage class arriving through its own repair.
+  it('does not take an issue back from the run that claimed it after the first return', async () => {
+    const user = await createTestUser(harness.db);
+    const project = await createTestProject(harness.db, user.id);
+    const deviceA = await createTestDevice(harness.db, user.id);
+    const deviceB = await createTestDevice(harness.db, user.id);
+    const issueId = await anIssue(project.id, user.id, 7, 'A was working');
+    await harness.db.execute(sql`UPDATE issues SET status = 'open' WHERE id = ${issueId}`);
+
+    const runA = await mods.openRunSession({
+      deviceId: deviceA.id,
+      projectId: project.id,
+      issueKeys: ['ISS-7'],
+      name: 'run-a',
+    });
+    await harness.db.execute(sql`UPDATE issues SET status = 'in_progress' WHERE id = ${issueId}`);
+
+    const firstClose = await mods.closeRunSession({
+      deviceId: deviceA.id,
+      sessionId: runA.sessionId,
+      outcome: 'died',
+      detail: 'A died',
+    });
+    expect(firstClose?.returned, 'the dead run gives its issue back').toEqual(['ISS-7']);
+
+    // B picks the issue up out of the pool, exactly as the next master would.
+    const runB = await mods.openRunSession({
+      deviceId: deviceB.id,
+      projectId: project.id,
+      issueKeys: ['ISS-7'],
+      name: 'run-b',
+    });
+    await harness.db.execute(sql`UPDATE issues SET status = 'in_progress' WHERE id = ${issueId}`);
+
+    const retry = await mods.closeRunSession({
+      deviceId: deviceA.id,
+      sessionId: runA.sessionId,
+      outcome: 'died',
+      detail: 'A died',
+    });
+
+    expect(retry?.alreadyTerminal, "A's session was already closed").toBe(true);
+    expect(retry?.returned, 'and there was nothing left for it to give back').toEqual([]);
+    const status = (await harness.db.execute(
+      sql`SELECT status FROM issues WHERE id = ${issueId}`,
+    )) as unknown as { status: string }[];
+    expect(
+      status[0]?.status,
+      "B is working this issue; A's retried close must not pull it back into the pool",
+    ).toBe('in_progress');
+    expect(runB.sessionId).not.toBe(runA.sessionId);
   });
 });

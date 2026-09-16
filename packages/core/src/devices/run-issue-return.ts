@@ -18,12 +18,16 @@
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, issues } from '../db/schema.js';
+import { type IssueStatus, issues, terminalAgentSessionStatuses } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
-import { RUN_ISSUE_STATUSES_METADATA_KEY, RUN_ISSUES_METADATA_KEY } from './run-session.js';
+import {
+  RUN_ISSUE_STATUSES_METADATA_KEY,
+  RUN_ISSUES_METADATA_KEY,
+  RUN_SESSION_TYPE,
+} from './run-session.js';
 
 /**
  * Statuses a person parks an issue at, which outrank an automatic restore.
@@ -74,9 +78,38 @@ async function readRun(runId: string): Promise<RunRow | null> {
 }
 
 /**
+ * Which of this project's issue keys a live run session OTHER than this one is holding.
+ */
+// cm:guard non-terminal sessions only, and `r.id <> runId` so the run being closed never fences
+// itself. Project-scoped rather than device-scoped: the next master to claim the issue may be on a
+// different box entirely, which is the ordinary case on a fleet and the one a device-scoped read
+// would miss.
+// cm:edge lockstep -> packages/core/src/devices/run-session.ts#RUN_ISSUES_METADATA_KEY — the same
+// jsonb array `isIssueLeaseHeld` matches on; a reshape of it makes this read nothing and fail OPEN,
+// which is why it is spelled as containment over the same key rather than parsed.
+async function keysHeldByAnotherLiveRun(runId: string, projectId: string): Promise<Set<string>> {
+  const rows = (await db.execute(sql`
+    SELECT DISTINCT k AS issue_key
+      FROM agent_sessions s
+      JOIN pipeline_runs r ON r.id = s.pipeline_run_id
+      CROSS JOIN LATERAL jsonb_array_elements_text(
+             COALESCE(r.metadata -> ${RUN_ISSUES_METADATA_KEY}, '[]'::jsonb)) AS k
+     WHERE r.project_id = ${projectId}
+       AND r.id <> ${runId}
+       AND s.metadata->>'type' = ${RUN_SESSION_TYPE}
+       AND s.status NOT IN (${sql.join(
+         terminalAgentSessionStatuses.map((v) => sql`${v}`),
+         sql`, `,
+       )})
+  `)) as unknown as Array<{ issue_key: string }>;
+  return new Set(rows.map((r) => String(r.issue_key)));
+}
+
+/**
  * Return every issue this run still holds to the status it was claimed from.
  *
- * Safe to call twice: an issue already back at its opening status is a no-op.
+ * Safe to call twice: an issue already back at its opening status is a no-op, and one a LIVE run
+ * session other than this one now holds is left where it is.
  */
 // cm:guard called ONLY on a failing outcome. A run whose agent finished moved these issues deliberately — `developed`, `tested`, `closed` — and restoring those would undo the work's own record and hand the issue to the next master as unstarted.
 // cm:edge protocol -> packages/core/src/devices/run-session-reaper.ts — the reaper is the other caller and the two must stay in step: it had the issue keys in hand and returned nothing, which is the defect this module exists to close.
@@ -95,6 +128,7 @@ export async function returnIssuesForRun(
     .filter((n) => Number.isInteger(n));
   if (seqs.length === 0) return [];
 
+  const heldElsewhere = await keysHeldByAnotherLiveRun(runId, run.projectId);
   const rows = await db
     .select({
       id: issues.id,
@@ -116,6 +150,20 @@ export async function returnIssuesForRun(
     const key = canonicalIssueKey(issue.issSeq);
     const target = run.statuses[key] as IssueStatus | undefined;
     if (!target) continue;
+    // cm:guard a NEWER owner outranks this run's memory of the issue, and this is the fence that
+    // makes calling this twice safe in the sense the header claims. Status equality alone is only
+    // idempotent while nothing else moves: a dead run's close is retried by the box until core
+    // takes the marks, so between the first return and a later attempt another master can claim the
+    // issue and move it to `in_progress` — and without this the retry would pull it straight back
+    // to `open` from under a run that is working, which is the damage class this whole module
+    // exists to end, arriving through its own repair (ISS-1050, the review of the F7 fix).
+    if (heldElsewhere.has(key)) {
+      logger.info(
+        { runId, issueKey: key, status: issue.status },
+        'run-issue-return: left an issue a live run session now holds',
+      );
+      continue;
+    }
     if (issue.status === target) {
       // cm:guard this branch carries TWO facts and used to report neither: "the run moved nothing, all well", and "this run opened over a rung that already asserted work nobody was doing, so the floor is the defect and no return can reach it". The second is ISS-457's shape standing on a rung `RETURNABLE_FROM` names — reachable because `testing` is backlog-admissible (`REGISTRY_BACKLOG_ADMISSIBLE_STATUSES`), so a master may legitimately open a run over it and re-record it as the floor every time. Counting it is what makes the rate knowable; healing it is NOT this module's to do, because the floor is by construction the status the master claimed from.
       if (RETURNABLE_FROM.includes(issue.status as IssueStatus)) {
