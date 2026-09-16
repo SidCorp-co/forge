@@ -63,13 +63,13 @@ export const PAT_STRING_PATTERN = /forge_pat_(?:dev|stg|prd)_[A-Fa-f0-9]+/g;
  * `\n`-escaped single line of a service-account JSON file.
  */
 export const PEM_PRIVATE_KEY_PATTERN =
-  /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g;
+  /-----BEGIN (?:[A-Z]{1,12} ){0,3}PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z]{1,12} ){0,3}PRIVATE KEY-----/g;
 
 // cm:guard this second pattern is not redundant with the paired one above and must run after it: a log cut mid-key has a BEGIN marker and no END, which the paired pattern does not match at all — and an unmatched truncated key is a whole credential printed in the clear, because the truncation takes the tail and not the head.
-// cm:guard the separator between two base64 runs is REQUIRED (`+`, not `*`), and this shape is not interchangeable with the shorter `(?:(?:\\n|\s)*[A-Za-z0-9+/=]{16,})*` it replaced. There the separator could match empty at a run boundary, so one base64 line had a partition for every way of cutting it into chunks of 16 — CodeQL `js/polynomial-redos`, high, on PR 430, against input that is a build log nobody controls. The two forms accept exactly the same strings, so NO unit test can tell them apart and none pretends to: the evidence is that alert, red on the old pattern and clear on this one.
+// cm:guard two things here are de-ambiguations and not behaviour changes, and both answer CodeQL `js/polynomial-redos` (high, PR 430) against input that is a build log, a runner's stdout, a Sentry body — text nobody controls. First, the label is BOUNDED: `[A-Z ]*` overlapped the literal `PRIVATE KEY` after it, so many `-----BEGIN ` markers made the engine walk the class back a character at a time at each one. Second, the separator between two base64 runs is REQUIRED (`+`, not `*`): written `(?:(?:\\n|\s)*[A-Za-z0-9+/=]{16,})*` it could match empty at a run boundary, giving one base64 line a partition for every way of cutting it into chunks of 16. Each rewrite accepts the same strings the loose form did for every label and key shape that exists, so NO unit test can fail on either and none pretends to — the case below defends the COVERAGE the bound must not lose, and the alert clearing is the evidence for the bound itself.
 // cm:guard the continuation is runs of at least 16 base64 characters, NOT `[A-Za-z0-9+/=\s]*`. The loose form also matches ordinary prose — every word after an unterminated BEGIN marker is letters and spaces — so a log with one truncated key came back with the rest of the build output redacted, which is the diagnostic loss ISS-277 spent a day on.
 export const PEM_PRIVATE_KEY_HEAD_PATTERN =
-  /-----BEGIN [A-Z ]*PRIVATE KEY-----(?:\\n|\s)*(?:[A-Za-z0-9+/=]{16,}(?:(?:\\n|\s)+[A-Za-z0-9+/=]{16,})*)?/g;
+  /-----BEGIN (?:[A-Z]{1,12} ){0,3}PRIVATE KEY-----(?:\\n|\s)*(?:[A-Za-z0-9+/=]{16,}(?:(?:\\n|\s)+[A-Za-z0-9+/=]{16,})*)?/g;
 
 /**
  * ISS-1036 — a Google OAuth2 access token, the thing Forge mints from a
