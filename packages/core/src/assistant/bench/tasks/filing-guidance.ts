@@ -3,6 +3,7 @@ import type { Task } from '../task.js';
 /** Asked how to file, the assistant explains and does not file: a `forge new` call is the regression. */
 export const filingGuidance: Task = {
   id: 'filing-guidance',
+  intent: 'Explain how to file a bug in this project without filing one.',
   budgetSeconds: 90,
   turns: [
     {

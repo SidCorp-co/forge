@@ -20,6 +20,10 @@ export interface CliDeps {
   fetch: FetchLike;
   readFile: (path: string) => Promise<string>;
   writeFile: (path: string, text: string) => Promise<void>;
+  /** Create a directory and its parents; harvest writes its candidates under one. */
+  mkdir: (path: string) => Promise<void>;
+  /** Write a file that must not exist yet; rejects with `code: 'EEXIST'` where it does (harvest never overwrites a candidate). */
+  writeNew: (path: string, text: string) => Promise<void>;
   stdout: (line: string) => void;
   stderr: (line: string) => void;
   now: () => Date;
@@ -261,7 +265,7 @@ export async function main(argv: string[], env: Env, deps: CliDeps): Promise<num
     if (verb === 'compare') return await compareFiles(rest, deps);
     if (verb === 'ladder') return await ladder(rest, deps);
     if (verb === 'advise') return await adviseFile(rest, deps);
-    if (verb === 'history' || verb === 'compare-history')
+    if (verb === 'history' || verb === 'compare-history' || verb === 'harvest')
       return await historyMain(verb, rest, env, deps);
     throw new Refusal(USAGE.join('\n'));
   } catch (err) {

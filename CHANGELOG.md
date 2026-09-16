@@ -113,6 +113,11 @@
 
 
 ### Added
+- `bench:assistant harvest <history.json> --out <dir>` writes one candidate task module per
+  judged row the judge called `no` or `partial` whose intent no shipped task covers, with the
+  scrubbed real query, the judge's intent, the provenance and `checks: []` for a person to fill;
+  `history --judge` now records `query` and `askedBy` per judged row, and every task carries an
+  `intent` line. Reads a file, writes files, asks no model. (ISS-1055)
 - Every `bench:assistant compare` and `compare-history` ends with an `advice:` block, and
   `bench:assistant advise <file>` prints it for one file: one line per failure pattern over its
   threshold, naming the count, the bar and the harness surface (`file.ts:symbol`) it points at;

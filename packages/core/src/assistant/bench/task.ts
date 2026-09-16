@@ -81,6 +81,8 @@ export interface TaskPreference {
 
 export interface Task {
   id: string;
+  /** One plain-English sentence: what the person wants from the turn(s). `harvest.ts` reads it for coverage. */
+  intent: string;
   budgetSeconds: number;
   fixtures?: FixtureName[];
   preference?: TaskPreference;
@@ -119,6 +121,7 @@ export function validateTasks(list: readonly Task[]): Task[] {
   for (const task of list) {
     if (seen.has(task.id)) throw new TaskLoadError(`task id ${task.id} appears twice`);
     seen.add(task.id);
+    if (!task.intent?.trim()) throw new TaskLoadError(`task ${task.id} carries no intent line`);
     if (!(task.budgetSeconds > 0))
       throw new TaskLoadError(`task ${task.id} names no budget in seconds`);
     if (task.turns.length === 0) throw new TaskLoadError(`task ${task.id} has no turn`);

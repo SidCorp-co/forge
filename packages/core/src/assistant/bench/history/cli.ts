@@ -7,8 +7,10 @@
 import type { CliDeps, Env } from '../cli.js';
 import { type BenchClient, createClient } from '../client.js';
 import { extractIssueLinks, type LinkOutcome } from '../grade.js';
+import { harvest, harvestLines } from '../harvest.js';
 import { agreement, callLines, type Judge, judgeFromEnv, tally, tallyLine } from '../judge.js';
 import { readResult } from '../result.js';
+import { loadTasks } from '../tasks/index.js';
 import { readAttempt } from '../trail.js';
 import { compareHistory, compareHistoryLines } from './compare.js';
 import { type GradeRowOptions, gradeRow } from './grade-row.js';
@@ -26,6 +28,7 @@ import { type Graded, NONE, summarize } from './summarize.js';
 export const HISTORY_USAGE = [
   'bench:assistant history --api <url> --project <slug> --from <date> --to <date> --out <file> [--source s] [--resolve] [--budget-seconds 60] [--max-iterations 8] [--exclude run.json]... [--judge <model> [--judge-sample 40]]',
   'bench:assistant compare-history <before.json> <after.json>',
+  'bench:assistant harvest <history.json> --out <dir>',
 ];
 
 export class HistoryRefusal extends Error {}
@@ -105,6 +108,8 @@ async function judgeHistory(
       source: row.source ?? NONE,
       modes: grade.modes,
       judge: result,
+      query: row.query ?? '',
+      askedBy: row.userKey ?? null,
     });
   }
   const keys = [...new Set(rows.map((r) => `${r.model}\u0000${r.source}`))];
@@ -252,6 +257,34 @@ async function history(argv: string[], env: Env, deps: CliDeps): Promise<number>
   return 0;
 }
 
+/** Candidates from a judged history file, written under --out; the file is the only input. */
+async function harvestFile(argv: string[], deps: CliDeps): Promise<number> {
+  const [file, ...rest] = argv;
+  if (!file || file.startsWith('--'))
+    throw new HistoryRefusal(`harvest needs a history file\n${HISTORY_USAGE.join('\n')}`);
+  const f = flags(rest);
+  const dir = f.values.out;
+  if (!dir) throw new HistoryRefusal(`--out is required\n${HISTORY_USAGE.join('\n')}`);
+  const result = readHistoryResult(await deps.readFile(file), file);
+  const out = harvest(result, loadTasks(), file);
+  await deps.mkdir(dir);
+  // cm:why a candidate is written once and never over: a person who filled in its checks and harvests the same window again would otherwise get checks: [] back in silence (codex F1)
+  for (const c of out.candidates) {
+    const path = `${dir.replace(/\/+$/, '')}/${c.file}`;
+    try {
+      await deps.writeNew(path, c.source);
+    } catch (err) {
+      if ((err as { code?: string }).code === 'EEXIST')
+        throw new HistoryRefusal(
+          `${path} exists and a candidate is never overwritten; move or delete it first (nothing after it was written)`,
+        );
+      throw err;
+    }
+  }
+  for (const line of harvestLines(out, dir)) deps.stdout(line);
+  return 0;
+}
+
 async function compareFiles(argv: string[], deps: CliDeps): Promise<number> {
   const [before, after] = argv;
   if (!before || !after)
@@ -274,6 +307,7 @@ export async function historyMain(
   try {
     if (verb === 'history') return await history(rest, env, deps);
     if (verb === 'compare-history') return await compareFiles(rest, deps);
+    if (verb === 'harvest') return await harvestFile(rest, deps);
     throw new HistoryRefusal(HISTORY_USAGE.join('\n'));
   } catch (err) {
     deps.stderr(err instanceof Error ? err.message : String(err));

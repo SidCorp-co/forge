@@ -3,6 +3,7 @@ import type { Task } from '../task.js';
 /** The ISS-1041 walk: every link is a documentId under the project, and every one resolves. */
 export const openIssuesLinked: Task = {
   id: 'open-issues-linked',
+  intent: 'List all open issues in the project, one line each, with a link to each issue.',
   budgetSeconds: 120,
   fixtures: ['firstOpenIssue'],
   turns: [
