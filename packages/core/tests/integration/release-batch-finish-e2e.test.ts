@@ -146,6 +146,8 @@ describe('release batch finish E2E', () => {
       const err = await finishReleaseBatch(runId, actor()).catch((e: unknown) => e);
 
       expect(err).toBeInstanceOf(ReleaseNotVerifiedError);
+      // cm:guard the run stays `running` on a refusal, and that is not the same claim as the issues staying `releasing`: ISS-1032 made a finish take its run terminal, and a refused finish must not reach that close — the batch is still in flight and `finish` may be retried.
+      expect(await runStatus(runId)).toBe('running');
       for (const id of [a, b]) {
         const after = await stored(id);
         // cm:guard `releasing` and NOT the gate status: a refused verification leaves the batch IN FLIGHT — the claim is still held and `finish` may be retried — so the status must keep saying so. Asserting the gate status here would pass equally if the claim had been silently rolled back.
