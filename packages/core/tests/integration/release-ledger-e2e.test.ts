@@ -121,6 +121,30 @@ function call(path: string, token: string, init: RequestInit = {}) {
 
 const base = (w: World) => `/api/projects/${w.projectId}/release-batches/${w.runId}`;
 
+/**
+ * The shape of `GET .../state`, named so a case reads a field rather than an
+ * index into an untyped bag.
+ */
+// cm:guard written out rather than imported from `state.ts`: what these cases assert is what the
+// route SERIALISES, and typing them by the server's own interface would make a field the JSON does
+// not carry a type error nowhere — the assertion would then be about the import, not the wire.
+interface StateBody {
+  roster: unknown;
+  attempts: Array<{
+    account: string | null;
+    verdict: string | null;
+    health: string | null;
+    identity: string | null;
+  }>;
+  live: { health: string; identity: string | null } | null;
+  bounds: { holding: boolean; crossedNames: string[]; bounds: Array<{ name: string }> };
+  method: { loaded: boolean; detail: string | null } | null;
+  methodUnloaded: boolean;
+}
+
+const state = async (w: World): Promise<StateBody> =>
+  (await (await call(`${base(w)}/state`, w.token)).json()) as StateBody;
+
 const openAttempt = (w: World, body: Record<string, unknown>) =>
   call(`${base(w)}/attempts`, w.token, { method: 'POST', body: JSON.stringify(body) });
 
@@ -333,7 +357,7 @@ describe('the state route answers from the world', () => {
     const res = await call(`${base(w)}/state`, w.token);
 
     expect(res.status).toBe(200);
-    const body = (await res.json()) as Record<string, any>;
+    const body = (await res.json()) as StateBody;
     expect(body.roster).toBeDefined();
     expect(body.attempts).toHaveLength(1);
     expect(body.attempts[0]).toMatchObject({
@@ -343,11 +367,7 @@ describe('the state route answers from the world', () => {
       identity: 'commit-after',
     });
     expect(body.live).toMatchObject({ health: 'up', identity: 'commit-after' });
-    expect(body.bounds.bounds.map((b: { name: string }) => b.name)).toEqual([
-      'total',
-      'stall',
-      'regression',
-    ]);
+    expect(body.bounds.bounds.map((b) => b.name)).toEqual(['total', 'stall', 'regression']);
   });
 
   // cm:guard the live reading moves and the ledger does not. Without this the two could be one
@@ -359,10 +379,10 @@ describe('the state route answers from the world', () => {
     await postAccount(w, 'promote-1', { account: 'deployed' });
     served = 'commit-somebody-else-pushed';
 
-    const body = (await (await call(`${base(w)}/state`, w.token)).json()) as Record<string, any>;
+    const body = await state(w);
 
-    expect(body.attempts[0].identity).toBe('commit-at-the-act');
-    expect(body.live.identity).toBe('commit-somebody-else-pushed');
+    expect(body.attempts[0]?.identity).toBe('commit-at-the-act');
+    expect(body.live?.identity).toBe('commit-somebody-else-pushed');
   });
 
   // cm:guard criterion 23. `holding` alone would tell an operator to look without saying at what.
@@ -373,7 +393,7 @@ describe('the state route answers from the world', () => {
       UPDATE release_attempts SET started_at = now() - interval '4 hours' WHERE run_id = ${w.runId}
     `);
 
-    const body = (await (await call(`${base(w)}/state`, w.token)).json()) as Record<string, any>;
+    const body = await state(w);
 
     expect(body.bounds.holding).toBe(true);
     expect(body.bounds.crossedNames).toEqual(['total', 'stall']);
@@ -505,7 +525,7 @@ describe('a release run says what method it is working from', () => {
       detail: 'no such skill on this box',
     });
 
-    const body = (await (await call(`${base(w)}/state`, w.token)).json()) as Record<string, any>;
+    const body = await state(w);
 
     expect(body.methodUnloaded).toBe(true);
     expect(body.method).toMatchObject({ loaded: false, detail: 'no such skill on this box' });

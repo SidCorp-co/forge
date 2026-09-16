@@ -32,7 +32,7 @@ import { cancelConcludedRun, closeRunIfOneShot, openOneShotRun } from '../pipeli
 import { readProjectBranches } from '../projects/service.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import { resolveReleaseChannel, resolveReleaseDeviceIds, resolveReleasePlan } from './channel.js';
-import { RELEASE_GATE_STATUS, resolveReleaseGate } from './gate.js';
+import { resolveReleaseGate } from './gate.js';
 import { assertMethodFor, readMethod } from './method.js';
 import { RELEASE_BATCH_SKILL, ReleaseBranchesUndeclaredError, releaseBranches } from './plan.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
@@ -307,79 +307,6 @@ export async function createReleaseBatch(
   return { runId: run.id, jobId, issueIds, gateStatus };
 }
 
-export interface ReleaseBatchIssue {
-  id: string;
-  displayId: string;
-  title: string;
-  releaseNotes: unknown;
-  status: IssueStatus;
-}
-
-export interface ReleaseBatchContext {
-  runId: string;
-  projectId: string;
-  gateStatus: IssueStatus;
-  baseBranch: string;
-  productionBranch: string;
-  deployPlanned: boolean;
-  productionMergePlanned: boolean;
-  issues: ReleaseBatchIssue[];
-}
-
-export async function loadReleaseBatchContext(runId: string): Promise<ReleaseBatchContext | null> {
-  const [run] = await db
-    .select({
-      id: pipelineRuns.id,
-      projectId: pipelineRuns.projectId,
-      metadata: pipelineRuns.metadata,
-    })
-    .from(pipelineRuns)
-    .where(eq(pipelineRuns.id, runId))
-    .limit(1);
-
-  if (!run) return null;
-  const meta = (run.metadata ?? {}) as Record<string, unknown>;
-  if (meta.source !== 'release-batch') return null;
-
-  // cm:guard the fallback is the CURRENT gate status. It read `'tested'` until ISS-897 — a rung of the deleted staged ladder that no issue is at any more and no project declares — so a run whose metadata predates `gateStatus` would have been reconstructed against a status the batch could never match.
-  const gateStatus = (meta.gateStatus as IssueStatus | undefined) ?? RELEASE_GATE_STATUS;
-  const deployPlanned = (meta.deployPlanned as boolean | undefined) ?? false;
-  const productionMergePlanned = (meta.productionMergePlanned as boolean | undefined) ?? false;
-
-  const { baseBranch, productionBranch } = releaseBranches(
-    (await readProjectBranches(run.projectId)) ?? { baseBranch: null, productionBranch: null },
-  );
-
-  const claimedIssues = await db
-    .select({
-      id: issues.id,
-      issSeq: issues.issSeq,
-      title: issues.title,
-      releaseNotes: issues.releaseNotes,
-      status: issues.status,
-    })
-    .from(issues)
-    .where(eq(issues.releaseBatchRunId, runId));
-
-  const claimedPrefix = await activeIssuePrefix(run.projectId);
-  return {
-    runId,
-    projectId: run.projectId,
-    gateStatus,
-    baseBranch,
-    productionBranch,
-    deployPlanned,
-    productionMergePlanned,
-    issues: claimedIssues.map((r) => ({
-      id: r.id,
-      displayId: r.issSeq != null ? formatIssueRef(claimedPrefix, r.issSeq) : r.id,
-      title: r.title ?? '(untitled)',
-      releaseNotes: r.releaseNotes,
-      status: r.status,
-    })),
-  };
-}
-
 export interface FinishReleaseBatchResult {
   closed: string[];
   failed: Array<{ id: string; reason: string }>;
@@ -574,7 +501,10 @@ export {
   findReleaseBatchRun,
   getActiveReleaseBatch,
   isOpenReleaseBatchRun,
+  loadReleaseBatchContext,
   loadReleaseRoster,
+  type ReleaseBatchContext,
+  type ReleaseBatchIssue,
   type ReleaseRoster,
   type ReleaseRosterEntry,
 } from './queries.js';

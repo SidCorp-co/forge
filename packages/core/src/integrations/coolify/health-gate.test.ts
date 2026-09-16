@@ -55,13 +55,8 @@ vi.mock('../../logger.js', () => ({
   },
 }));
 
-const {
-  HEALTH_GRACE_MS,
-  HEALTH_MIN_WINDOW_MS,
-  HEALTH_WINDOW_MS,
-  healthGateFor,
-  probeHealth,
-} = await import('./health-gate.js');
+const { HEALTH_GRACE_MS, HEALTH_MIN_WINDOW_MS, HEALTH_WINDOW_MS, healthGateFor, probeHealth } =
+  await import('./health-gate.js');
 const NOW = 1_800_000_000_000;
 
 beforeEach(() => {
