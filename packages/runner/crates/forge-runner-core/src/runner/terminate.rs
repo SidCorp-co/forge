@@ -515,7 +515,14 @@ mod tests {
         .await
         .expect("a tree holding an untracked file must reach terminal, not refuse");
 
-        assert!(!wt.exists(), "the worktree must still be released once it is safe");
+        assert!(
+            committed(out.salvage.expect("salvage ran").outcome),
+            "salvage must have RUN and committed — a release that reached the clean branch never looked at the file"
+        );
+        assert!(
+            !wt.exists(),
+            "the worktree must still be released once it is safe"
+        );
         let log = tokio::process::Command::new("git")
             .args([
                 "log",
@@ -578,7 +585,10 @@ mod tests {
             said.contains(&wt.to_string_lossy().to_string()),
             "the refusal must name the tree it is refusing, or an operator cannot act on it: {said}"
         );
-        assert!(wt.exists(), "the checkout must still be there after the refusal");
+        assert!(
+            wt.exists(),
+            "the checkout must still be there after the refusal"
+        );
         assert!(
             led.run("run-1").unwrap().unwrap().ended_by.is_none(),
             "a run whose tree was not released has not ended"

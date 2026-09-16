@@ -165,7 +165,7 @@ describe('a report that arrives twice', () => {
   // counting rows would have been exactly that. Two ungranted advisory locks on this key is a
   // positive fact only the locking code can produce.
   it('makes two reports of one close wait on each other, and writes once', async () => {
-    const { device, issueIds, session } = await aRunOver([9], 'twice at once');
+    const { device, issueIds, session } = await aRunOver(9, 'twice at once');
     const issueId = issueIds[0] as string;
     const key = `run-evidence:${issueId}:${mods.runEvidenceMarker(session.sessionId)}`;
 

@@ -343,7 +343,7 @@ fn run_declare(
     // at it would be inventing the answer it is refusing to guess.
     if let Some(bad) = issue_keys.iter().find(|k| !is_issue_key(k)) {
         return ClaimReply::refused(format!(
-            "`{bad}` is not an issue key — a declaration takes keys shaped `ISS-<number>`, one per issue the subagent is being given, and nothing was recorded"
+            "`{bad}` is not an issue reference — a declaration takes one per issue the subagent is being given, each a display id such as `ISS-42` or your project's own prefix, or the bare number. Nothing was recorded"
         ));
     }
     let run_id = uuid::Uuid::new_v4().to_string();
@@ -413,14 +413,35 @@ fn run_declare(
     }
 }
 
-/// Whether a string is shaped like an issue key this tracker mints.
-// cm:guard SHAPE only, and deliberately no more. `ISS-<number>` is what every key in this system is
-// spelled as; whether that number names a real issue in this project is a question only core can
-// answer, and the refusal that matters there is core's own. Widening this to guess would be the
-// second live path this repository refuses everywhere else.
+/// Whether a string is shaped like an issue reference core will parse.
+// cm:guard SHAPE only, and deliberately no more. Whether a well-formed reference names a real issue
+// in this project is a question only core can answer — the key is a per-project sequence and the box
+// holds no index of them — and the refusal that matters there is core's own. Widening this to guess
+// would be the second live path this repository refuses everywhere else.
+// cm:edge contract -> packages/core/src/lib/issue-ref.ts — `REF_SHAPE` is the rule this mirrors:
+// an OPTIONAL prefix of two to six alphanumerics, then a sequence number. The prefix is optional
+// because a bare number is a reference core accepts, and it is not fixed to `ISS` because a project
+// answers to its own prefix as well as the legacy one — a check spelling `ISS-` into the box would
+// refuse `FD-977` here and be told it was valid one process away (ISS-1050 finding F12).
 fn is_issue_key(s: &str) -> bool {
-    s.strip_prefix("ISS-")
-        .is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
+    let body = match s.split_once('-') {
+        Some((prefix, rest)) => {
+            let len = prefix.chars().count();
+            if !(2..=6).contains(&len) || !prefix.chars().all(|c| c.is_ascii_alphanumeric()) {
+                return false;
+            }
+            if !prefix
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_alphabetic())
+            {
+                return false;
+            }
+            rest
+        }
+        None => s,
+    };
+    !body.is_empty() && body.len() <= 10 && body.chars().all(|c| c.is_ascii_digit())
 }
 
 /// Record that a declared run is over, whether it ran or never started.
@@ -1049,7 +1070,10 @@ mod tests {
                 "sess-a",
             );
 
-            assert!(!reply.ok, "a declaration carrying a non-key must be refused");
+            assert!(
+                !reply.ok,
+                "a declaration carrying a non-key must be refused"
+            );
             let reason = reply.reason.unwrap_or_default();
             assert!(
                 reason.contains("the whole backlog"),
@@ -1065,6 +1089,32 @@ mod tests {
                 led.unclosed_runs().unwrap().is_empty(),
                 "a refused declaration writes nothing, or the box holds a run core will never open"
             );
+        }
+
+        // cm:guard the shapes core's own parser ACCEPTS are not refused here, and this is the half of
+        // the check that costs something to get wrong: a box that refused `FD-977` would be refusing
+        // a reference core resolves, one process away, with no way for the master to tell which end
+        // was wrong. The prefix is a project's, not a constant (ISS-1050 finding F12).
+        #[test]
+        fn a_project_own_prefix_and_a_bare_number_are_references_the_box_does_not_refuse() {
+            for good in ["ISS-42", "FD-977", "42", "ab-1"] {
+                assert!(
+                    super::is_issue_key(good),
+                    "`{good}` is a reference core resolves, so the box may not refuse it"
+                );
+            }
+            for bad in [
+                "",
+                "-1",
+                "ISS-",
+                "ISS-x",
+                "the whole backlog",
+                "a-1",
+                "TOOLONGP-1",
+                "ISS-12345678901",
+            ] {
+                assert!(!super::is_issue_key(bad), "`{bad}` is not a reference");
+            }
         }
 
         // cm:guard criterion 29's gate. A brief that only ASKS is one a master can read past, and the
