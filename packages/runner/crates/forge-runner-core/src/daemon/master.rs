@@ -25,6 +25,7 @@ use std::time::{Duration, Instant};
 
 use crate::config::Config;
 use crate::daemon::agent_activity;
+use crate::daemon::checkpoint;
 use crate::daemon::dispatch::resolve_repo;
 use crate::daemon::master_exit::{self, Verdict};
 use crate::daemon::recovery;
@@ -34,7 +35,7 @@ use crate::daemon::run_record;
 use crate::daemon::session_tokens;
 use crate::daemon::terminal;
 use crate::runner::close_loop;
-use crate::runner::ledger::Ledger;
+use crate::runner::ledger::{Ledger, Run};
 use crate::runner::terminate;
 use crate::transport::admissible::{self, AdmissibleIssue};
 use crate::transport::{master as master_api, mcp_servers, runners, CoreClient};
@@ -602,9 +603,25 @@ async fn release_held_tree(
 /// Tell core a run's process is gone, so its session stops being guessed at.
 // cm:guard `Died` is the outcome, and `closeRunSession` returns this run's issues to the status they were claimed from on exactly that value — which is the point: the work stopped mid-turn, so leaving the issues at `in_progress` strands them behind a run nothing is doing (ISS-457 stood there 18 hours).
 // cm:guard this sets NO local mark. `session_terminal` is still earned by `close_loop` reading core's row back on the next sweep, so a report whose response was dropped and one that never landed are indistinguishable here, as criterion 13 requires.
-async fn report_run_death(r: &recovery::Recovered, world: &Reclaim<'_>) {
+// cm:guard the checkpoint is built HERE, on the death report, because this is the case the evidence
+// exists for: the run died mid-turn and its own testimony is whatever it managed to write before it
+// stopped. A `Died` close that carried no reconstruction would leave the only copy of what the run
+// left on a disk nobody reads (ISS-1050).
+// cm:guard a run the ledger can no longer name still gets its close, carrying no checkpoint. The
+// close is what stops core guessing at the session from silence, and trading that away for the
+// evidence would leave the issues held for the full ten minutes to save a block nobody could have
+// filled anyway.
+// cm:guard the run row is looked up by the CALLER and handed in owned, never `&Ledger`. `Ledger`
+// wraps a `rusqlite` connection behind a `RefCell` and is therefore not `Sync`, so a reference held
+// across the `.await` below makes the whole master future non-`Send` and `tokio::spawn` refuses it
+// — at the spawn site in `daemon/mod.rs`, hundreds of lines from the cause.
+async fn report_run_death(run: Option<Run>, r: &recovery::Recovered, world: &Reclaim<'_>) {
     let Some(session_id) = r.session_id.as_deref() else {
         return;
+    };
+    let checkpoint = match run {
+        Some(run) => Some(checkpoint::reconstruct_within_budget(&run).await.to_json()),
+        None => None,
     };
     if let Err(e) = world
         .closer
@@ -612,6 +629,7 @@ async fn report_run_death(r: &recovery::Recovered, world: &Reclaim<'_>) {
             session_id,
             close_loop::Outcome::Died,
             "the run's process is gone from this box",
+            checkpoint,
         )
         .await
     {
@@ -665,6 +683,7 @@ async fn end_idle_run(led: &mut Ledger, run_id: &str, world: &Reclaim<'_>) {
             session_id,
             close_loop::Outcome::KilledIdle,
             "idle past the run's exit boundary; the box ended it",
+            Some(checkpoint::reconstruct_within_budget(&run).await.to_json()),
         )
         .await
     {
@@ -702,7 +721,7 @@ async fn give_back_lost_runs(
                 }
                 // cm:guard reported BEFORE the release is attempted and WITHOUT a `continue`: `owed_release` needs `session_terminal`, core alone writes that mark, and until this report lands the only writer is core's ten-minute silence sweep — so every orphan on this box waited it out and landed in `runner_unreachable` whether or not the box was reachable (forge-vm 2026-09-12, ~95% of 203 sessions over 7 days on two projects). The release still waits for the next sweep to read the row back, which is criterion 13 and not a delay worth trading away.
                 if r.owed_death_report {
-                    report_run_death(&r, world).await;
+                    report_run_death(led.run(&r.run_id).ok().flatten(), &r, world).await;
                 }
                 // cm:guard the release is attempted BEFORE the report and its result decides whether one is printed, because a run recovery just reclaimed is not a run an operator has anything to do about. Report first and every reclaimed run also files a complaint about the state it was reclaimed out of.
                 if r.owed_release
@@ -1579,7 +1598,7 @@ mod give_back_tests {
     }
 
     #[derive(Default)]
-    struct Closes(Mutex<Vec<(String, close_loop::Outcome)>>);
+    struct Closes(Mutex<Vec<(String, close_loop::Outcome, Option<serde_json::Value>)>>);
     #[async_trait::async_trait]
     impl close_loop::RunCloser for Closes {
         async fn close(
@@ -1587,11 +1606,12 @@ mod give_back_tests {
             agent_session_id: &str,
             outcome: close_loop::Outcome,
             _detail: &str,
+            checkpoint: Option<serde_json::Value>,
         ) -> R<()> {
             self.0
                 .lock()
                 .unwrap()
-                .push((agent_session_id.to_string(), outcome));
+                .push((agent_session_id.to_string(), outcome, checkpoint));
             Ok(())
         }
     }
@@ -1657,10 +1677,19 @@ mod give_back_tests {
         )
         .await;
 
+        let seen = closes.0.lock().unwrap();
+        let (sess, outcome, checkpoint) = seen.first().expect("one close");
         assert_eq!(
-            closes.0.lock().unwrap().as_slice(),
-            &[("core-sess-1".to_string(), close_loop::Outcome::KilledIdle)],
+            (sess.as_str(), *outcome),
+            ("core-sess-1", close_loop::Outcome::KilledIdle),
             "an idle reap must reach core as its own outcome, not as silence"
+        );
+        // cm:guard the checkpoint RIDES the close. Without it the only copy of what the run left is
+        // on a disk nobody reads, which is the whole failure this issue exists to end (ISS-1050).
+        assert_eq!(
+            checkpoint.as_ref().and_then(|c| c["source"].as_str()),
+            Some("reconstructed_from_box"),
+            "the close must carry the box's half, labelled as reconstruction: {checkpoint:?}"
         );
         assert_eq!(killed.0.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
@@ -1881,10 +1910,32 @@ mod give_back_tests {
         )
         .await;
 
+        let seen = closes.0.lock().unwrap();
+        let (sess, outcome, checkpoint) = seen.first().expect("one close");
         assert_eq!(
-            closes.0.lock().unwrap().as_slice(),
-            &[("core-sess-1".to_string(), close_loop::Outcome::Died)],
+            (sess.as_str(), *outcome),
+            ("core-sess-1", close_loop::Outcome::Died),
             "a run whose process this box refuted must reach core as a death, from the box, now"
+        );
+        // cm:guard a DEATH is the case the evidence exists for, so this is the close that must
+        // never lose it.
+        let cp = checkpoint.as_ref().expect("a death carries the box's half");
+        assert_eq!(cp["source"].as_str(), Some("reconstructed_from_box"));
+        // cm:guard the branch asserted is the RUN's worktree branch and deliberately not the one
+        // this test process is standing in. Every `git` in `checkpoint.rs` runs with
+        // `current_dir(worktree)`, so a relative or empty path resolves against the daemon's own
+        // cwd and the payload would confidently describe a different checkout entirely — which an
+        // equality on `source` alone would not catch. This fixture's branch differs from the
+        // repository this suite runs inside, which is what makes the assertion mean anything.
+        assert_eq!(
+            cp["branch"].as_str(),
+            Some("ISS-957"),
+            "the reconstruction must be of the run's own worktree: {cp}"
+        );
+        let unread = cp["unread"].as_array().expect("unread is a list");
+        assert!(
+            unread.is_empty(),
+            "a worktree that is still on disk reconstructs completely: {cp}"
         );
         let _ = std::fs::remove_dir_all(&repo);
         let _ = std::fs::remove_dir_all(repo.with_extension("remote.git"));

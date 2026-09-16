@@ -13,6 +13,7 @@
 //! opened. None of that machinery is new — it ran 358 times out of 358 before
 //! 2026-09-13 and has had nothing to read since.
 
+use crate::daemon::checkpoint;
 use crate::runner::ledger::Ledger;
 use crate::transport::{run_sessions, CoreClient};
 
@@ -143,7 +144,15 @@ pub async fn close_ended_runs(
             continue;
         };
         let detail = run.ended_reason.clone().unwrap_or_default();
-        match closer.close(&session_id, &detail).await {
+        // cm:guard reconstructed HERE, at the close, and not when the run ended. The worktree is
+        // the evidence and it is still on disk at this moment; a checkpoint taken at
+        // `SubagentStop` and stored would be a second copy of a fact the disk already holds, and
+        // the two would disagree the first time a salvage committed after the stop.
+        // cm:edge contract -> packages/core/src/devices/run-evidence.ts — that module prints this
+        // payload under "reconstructed from the box" and refuses one that does not declare its
+        // `source`.
+        let checkpoint = Some(checkpoint::reconstruct_within_budget(&run).await.to_json());
+        match closer.close(&session_id, &detail, checkpoint).await {
             Ok(()) => match led.mark_session_terminal_observed(&run.run_id) {
                 Ok(()) => {
                     tracing::info!("[run-record] run {} is closed at core", run.run_id);
@@ -166,16 +175,27 @@ pub async fn close_ended_runs(
 /// What closing a run needs of core.
 #[allow(async_fn_in_trait)]
 pub trait SessionCloser {
-    async fn close(&self, session_id: &str, detail: &str) -> crate::error::Result<()>;
+    async fn close(
+        &self,
+        session_id: &str,
+        detail: &str,
+        checkpoint: Option<serde_json::Value>,
+    ) -> crate::error::Result<()>;
 }
 
 impl SessionCloser for CoreSessions<'_> {
-    async fn close(&self, session_id: &str, detail: &str) -> crate::error::Result<()> {
+    async fn close(
+        &self,
+        session_id: &str,
+        detail: &str,
+        checkpoint: Option<serde_json::Value>,
+    ) -> crate::error::Result<()> {
         run_sessions::close(
             self.0,
             session_id,
             run_sessions::Outcome::Ended,
             Some(detail),
+            checkpoint,
         )
         .await
     }
@@ -324,13 +344,20 @@ mod tests {
     struct Closer {
         answer: Result<(), &'static str>,
         seen: RefCell<Vec<(String, String)>>,
+        checkpoints: RefCell<Vec<Option<serde_json::Value>>>,
     }
 
     impl SessionCloser for Closer {
-        async fn close(&self, session_id: &str, detail: &str) -> crate::error::Result<()> {
+        async fn close(
+            &self,
+            session_id: &str,
+            detail: &str,
+            checkpoint: Option<serde_json::Value>,
+        ) -> crate::error::Result<()> {
             self.seen
                 .borrow_mut()
                 .push((session_id.to_string(), detail.to_string()));
+            self.checkpoints.borrow_mut().push(checkpoint);
             self.answer
                 .map_err(|e| crate::error::Error::Other(e.into()))
         }
@@ -340,6 +367,7 @@ mod tests {
         Closer {
             answer,
             seen: RefCell::new(Vec::new()),
+            checkpoints: RefCell::new(Vec::new()),
         }
     }
 

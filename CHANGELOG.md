@@ -2843,6 +2843,21 @@
   organisation, the store, the theme, the domain — and leaves every project's own settings where
   they belong.
 
+- **When work stops part-way, the issue now says what was left behind and what the work itself
+  said last.** Before, a run that was cut off — the machine restarted, the account it was using
+  stopped answering, the process killed — left nothing anybody could read. The branch was on a disk
+  somewhere and whatever the work had said about where it had got to was gone with it, so picking
+  it up again meant guessing, or starting over. The issue now carries two records, kept apart on
+  purpose: what the machine could see for itself (the branch, what changed, how much of it had been
+  saved anywhere else, whether anything was still uncommitted) and, separately, the last thing the
+  work said about where it had got to, in its own words and untouched. If it said nothing before it
+  stopped, that half says so plainly rather than being filled in from the other one — a guess
+  printed where a statement should be is worse than an empty space, because you cannot tell them
+  apart afterwards. Neither record recommends anything. Whether to carry on or start again is a
+  judgement for whoever picks it up, and the point of writing both down is that they can make it
+  with the facts instead of without them. Reported once however many times the machine retries, and
+  recorded even for work the system had already given up on — which is the case it matters most in.
+
 - **An issue that says work is in progress with nothing actually working it is now named, and
   nothing about it is moved.** Two records have to agree for the product to be telling you the
   truth: the issue's status, which says somebody is on it, and the machine's own record of what it

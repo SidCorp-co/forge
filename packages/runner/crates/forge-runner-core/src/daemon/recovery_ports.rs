@@ -76,8 +76,21 @@ impl SessionReader for CoreRunState<'_> {
 
 #[async_trait::async_trait]
 impl RunCloser for CoreRunState<'_> {
-    async fn close(&self, agent_session_id: &str, outcome: Outcome, detail: &str) -> Result<()> {
-        run_sessions::close(self.client, agent_session_id, outcome, Some(detail)).await
+    async fn close(
+        &self,
+        agent_session_id: &str,
+        outcome: Outcome,
+        detail: &str,
+        checkpoint: Option<serde_json::Value>,
+    ) -> Result<()> {
+        run_sessions::close(
+            self.client,
+            agent_session_id,
+            outcome,
+            Some(detail),
+            checkpoint,
+        )
+        .await
     }
 }
 

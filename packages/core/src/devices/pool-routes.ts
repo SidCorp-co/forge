@@ -46,6 +46,7 @@ import { readDeviceLoad, readFleetLoad, readProjectLoad } from './load.js';
 import { clearMasterLimit, recordMasterLimit } from './master-limit.js';
 import { closeMasterSession, ensureMasterSession } from './master-session.js';
 import { readPool } from './pool.js';
+import { runCheckpointSchema, writeRunEvidence } from './run-evidence.js';
 import {
   closeRunSession,
   isIssueLeaseHeld,
@@ -135,6 +136,15 @@ const sessionParamsSchema = z.object({ sessionId: z.string().uuid() });
 const closeBodySchema = z.object({
   outcome: z.enum(['ended', 'killed_idle', 'died']),
   detail: z.string().max(500).optional(),
+  // cm:guard OPTIONAL, because a box one version behind sends no checkpoint and its close must
+  // still work: the close is how a run session reaches terminal by being reported, and making the
+  // evidence mandatory would turn every older box's close into a 400 and leave its issues held for
+  // the reaper's ten minutes instead (ISS-1050).
+  // cm:guard `.strict()` on the object and `source` REQUIRED. The payload declares what it is, and
+  // a checkpoint that does not is refused by name rather than labelled by this end — printing an
+  // undeclared payload under "reconstructed from the box" is the kernel vouching for something it
+  // did not read.
+  checkpoint: runCheckpointSchema.optional(),
 });
 
 // cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/run_sessions.rs — `close` is this route's only caller. It is what lets a run session reach terminal by being REPORTED rather than by going silent for ten minutes, which is the difference between a box that died, a pane that crashed and a pane that finished — three facts the reaper's one `runner_unreachable` could not tell apart.
@@ -150,6 +160,18 @@ devicePoolRoutes.post(
   async (c) => {
     const { sessionId } = c.req.valid('param');
     const body = c.req.valid('json');
+    // cm:guard the evidence is written BEFORE the close and not after it, because the close is
+    // allowed to answer `alreadyTerminal` — a box whose run core already reaped still has the only
+    // copy of what that run left, and that is the case the evidence exists for. Both halves are
+    // idempotent, so a retry of either order is a no-op; only this order writes the evidence for a
+    // run core has given up on.
+    if (body.checkpoint) {
+      await writeRunEvidence({
+        deviceId: c.get('device').id,
+        sessionId,
+        checkpoint: body.checkpoint,
+      });
+    }
     const closed = await closeRunSession({
       deviceId: c.get('device').id,
       sessionId,

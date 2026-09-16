@@ -173,6 +173,20 @@ pub async fn reconstruct(run: &Run) -> Reconstructed {
         ..Default::default()
     };
 
+    // cm:guard a RELATIVE path is refused by name and nothing is read, because every `git` below
+    // runs with `current_dir(dir)` and a relative path resolves against the daemon's own cwd — so a
+    // run whose worktree path is empty or relative would be reported with the branch, head and base
+    // of whatever checkout the daemon happens to be standing in. Measured: a fixture whose run
+    // carried a bare path came back claiming branch `ISS-957` off the live forge-dev repo. That is
+    // not a missing field, it is a confident wrong answer about some other run's work, and it is
+    // the one failure mode a reconstruction must not have.
+    if !dir.is_absolute() {
+        out.unread.push(format!(
+            "the worktree path `{}` is not absolute, so nothing was read: a relative path resolves against the daemon's own directory and would describe some other checkout",
+            dir.display()
+        ));
+        return out;
+    }
     if !dir.exists() {
         out.unread.push(format!(
             "the worktree {} is no longer on this box",
