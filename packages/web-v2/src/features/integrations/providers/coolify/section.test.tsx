@@ -16,6 +16,7 @@ const listRefetch = vi.fn();
 let existing: IntegrationSummary | undefined;
 
 vi.mock("../../hooks", () => ({
+  useIsOrgAdmin: () => true,
   useIntegrationsList: () => ({
     data: { items: existing ? [existing] : [] },
     refetch: listRefetch,

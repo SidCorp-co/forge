@@ -24,6 +24,7 @@ const listIsError = vi.fn<() => boolean>();
 const listRefetch = vi.fn();
 
 vi.mock("../../hooks", () => ({
+  useIsOrgAdmin: () => true,
   useIntegrationsList: () => ({
     data: listIsError() ? undefined : { items: listItems() },
     isLoading: false,

@@ -33,7 +33,7 @@ import type {
 import {
   AGENT_ACCESS_CLOSED,
   AgentAccessChoice,
-  AgentAccessControl, agentAccessBody, agentAccessDeniedReason} from "../../components/agent-access-control";
+  AgentAccessControl, agentAccessBody, agentAccessDeniedReason, mayWriteAgentAccess} from "../../components/agent-access-control";
 import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { postman } from "./index";
@@ -290,7 +290,7 @@ export function PostmanSection({ projectId }: { projectId: string }) {
             <AgentAccessControl
               projectId={projectId}
               binding={existing}
-              canEdit={isOrgAdmin}
+              canEdit={true}
               disabledReason={agentAccessDeniedReason("direct-mcp")}
             />
           ) : (
@@ -298,7 +298,7 @@ export function PostmanSection({ projectId }: { projectId: string }) {
               value={agentAccess}
               onChange={setAgentAccess}
               pathKind={postman.agentPathKind}
-              canEdit={isOrgAdmin}
+              canEdit={mayWriteAgentAccess(postman.agentPathKind, { canEditProject: true, isOrgAdmin })}
               disabledReason={agentAccessDeniedReason("direct-mcp")}
             />
           )}

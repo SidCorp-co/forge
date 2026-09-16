@@ -102,6 +102,12 @@ END $$;
 -- builds `iss1071_provider_agent_path` and DROPS it at the end, so it is not here to read, and
 -- this file is a photograph pinned to that migration — a provider added later is not one 0255
 -- ever classified, and falls to the `IS NULL` arm, which refuses rather than assumes.
+--
+-- `b.active` is part of the predicate, not an oversight: an inactive binding injects nothing and
+-- answers nothing, so going back adds no access to it and there is nothing to refuse. It is also
+-- what makes "deactivate it" a way out this message can honestly offer — and a refusal whose
+-- advertised escape does not clear it is the affordance defect that teaches operators to reach
+-- for the one escape that always works, which is deleting the check.
 DO $$
 DECLARE denied text; n int;
 BEGIN
@@ -118,6 +124,7 @@ BEGIN
       ('rocketchat', 'none'), ('github', 'none'), ('agent', 'none')
     ) AS k(provider, kind) ON k.provider = b.provider
    WHERE a.binding_id IS NULL
+     AND b.active
      AND b.agent_access = 'none'
      AND k.kind IS DISTINCT FROM 'none';
   IF denied IS NOT NULL THEN
@@ -126,10 +133,14 @@ BEGIN
       'provider per PROJECT, through an mcpServers sentinel, and does not gate a core-mediated '
       'one at all — so dropping the column would hand agents access somebody deliberately '
       'withheld, silently and with nothing left to show it was ever withheld. Nothing has been '
-      'changed. For each row: delete or deactivate the binding if the denial must hold, or set '
-      'its agent_access to ''all'' if it may be reached, and re-run this file. A provider '
-      'reported UNKNOWN to 0255 was added after this migration and must be decided the same '
-      'way, by hand.', n, denied;
+      'changed. Two ways out per row, and BOTH of them work — delete the binding, or set '
+      'active = false on it, either of which leaves nothing for an agent to reach. If instead it '
+      'may be reached after the rollback, say so where this file reads decisions from: INSERT it '
+      'into iss1071_agent_access_set (binding_id, project_slug, provider, agent_access, forced) '
+      'with agent_access ''all'', and set the column to ''all'' to match. Setting the column '
+      'ALONE does not work and is not a way out: section 1 then refuses it as a grant that moved '
+      'away from the image. A provider reported UNKNOWN to 0255 was added after this migration '
+      'and must be decided the same way, by hand.', n, denied;
   END IF;
 END $$;
 

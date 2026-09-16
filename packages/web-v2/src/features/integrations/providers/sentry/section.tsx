@@ -32,7 +32,7 @@ import type {
 import {
   AGENT_ACCESS_CLOSED,
   AgentAccessChoice,
-  AgentAccessControl, agentAccessBody, agentAccessDeniedReason} from "../../components/agent-access-control";
+  AgentAccessControl, agentAccessBody, agentAccessDeniedReason, mayWriteAgentAccess} from "../../components/agent-access-control";
 import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { sentry } from "./index";
@@ -422,7 +422,7 @@ export function SentrySection({ projectId }: { projectId: string }) {
             <AgentAccessControl
               projectId={projectId}
               binding={existing}
-              canEdit={isOrgAdmin}
+              canEdit={true}
               disabledReason={agentAccessDeniedReason("direct-mcp")}
             />
           ) : (
@@ -430,7 +430,7 @@ export function SentrySection({ projectId }: { projectId: string }) {
               value={agentAccess}
               onChange={setAgentAccess}
               pathKind={sentry.agentPathKind}
-              canEdit={isOrgAdmin}
+              canEdit={mayWriteAgentAccess(sentry.agentPathKind, { canEditProject: true, isOrgAdmin })}
               disabledReason={agentAccessDeniedReason("direct-mcp")}
             />
           )}

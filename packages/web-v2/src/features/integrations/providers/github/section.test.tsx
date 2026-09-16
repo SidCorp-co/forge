@@ -22,6 +22,7 @@ const connectionItems = vi.fn<() => Array<Record<string, unknown>>>();
 const repoData = vi.fn<() => Record<string, unknown> | undefined>();
 
 vi.mock("../../hooks", () => ({
+  useIsOrgAdmin: () => true,
   useIntegrationsList: () => ({ data: { items: listItems() } }),
   useConnections: () => ({ data: { items: connectionItems() } }),
   useGitHubRepositories: () => ({ data: repoData(), isLoading: false, isError: false }),

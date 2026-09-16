@@ -282,6 +282,35 @@ describe('0255_down.sql — the way back', () => {
     120_000,
   );
 
+  // The refusal advertises two ways out, so both are walked: a refusal whose escape does not clear
+  // it teaches an operator to reach for the escape that always works, which is deleting the check.
+  it('clears once the denied binding is deactivated, which is what it tells you to do', async () => {
+    const f = await fresh();
+    try {
+      const g = await ground(f.sql);
+      const projectId = await plantProject(f.sql, g, 'deactivated', config({ postman: true }));
+      await plantBinding(f.sql, g, { projectId, provider: 'postman' });
+      await runForward(f.sql);
+      const lateId = await plantBinding(f.sql, g, { projectId, provider: 'google' });
+
+      const refused = await runDown(f.sql).then(
+        () => null,
+        (e: unknown) => (e instanceof Error ? e.message : String(e)),
+      );
+      expect(refused).toMatch(new RegExp(lateId));
+
+      await f.sql.unsafe(`UPDATE integration_bindings SET active = false WHERE id = $1`, [lateId]);
+
+      await runDown(f.sql);
+      const cols = await f.sql.unsafe(
+        `SELECT column_name FROM information_schema.columns WHERE table_name = 'integration_bindings'`,
+      );
+      expect(cols.map((c) => c.column_name as string)).not.toContain('agent_access');
+    } finally {
+      await f.drop();
+    }
+  }, 120_000);
+
   // A provider with no agent path at all was never reachable, so going back grants it nothing and
   // 1b must let it through — otherwise the refusal is a blanket "any new binding" and an operator
   // learns to wave it away, which is how a real denial gets waved away with it.

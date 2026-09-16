@@ -25,6 +25,7 @@ const updateMutate =
   >();
 
 vi.mock("../hooks", () => ({
+  useIsOrgAdmin: () => true,
   useUpdateProviderIntegration: () => ({ mutate: updateMutate }),
 }));
 

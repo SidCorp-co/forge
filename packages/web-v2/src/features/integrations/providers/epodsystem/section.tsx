@@ -36,7 +36,7 @@ import type { EpodsystemReadConfig } from "./config";
 import {
   AGENT_ACCESS_CLOSED,
   AgentAccessChoice,
-  AgentAccessControl, agentAccessBody, agentAccessDeniedReason} from "../../components/agent-access-control";
+  AgentAccessControl, agentAccessBody, agentAccessDeniedReason, mayWriteAgentAccess} from "../../components/agent-access-control";
 import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { epodsystem } from "./index";
@@ -184,7 +184,6 @@ function EpodsystemBindingRow({
   const remove = useDeleteProviderIntegration(projectId);
   const list = useIntegrationsList(projectId);
   const orgLocked = useOrgConnectionLocked(projectId, binding.connectionId);
-  const isOrgAdmin = useIsOrgAdmin(projectId);
 
   const [apiKey, setApiKey] = useState("");
   const [testResult, setTestResult] = useState<IntegrationTestResult | null>(null);
@@ -330,7 +329,7 @@ function EpodsystemBindingRow({
       <AgentAccessControl
         projectId={projectId}
         binding={binding}
-        canEdit={isOrgAdmin}
+        canEdit={true}
         disabledReason={agentAccessDeniedReason("direct-mcp")}
       />
 
@@ -517,7 +516,7 @@ function AddEpodsystemForm({
         value={agentAccess}
         onChange={setAgentAccess}
         pathKind={epodsystem.agentPathKind}
-        canEdit={isOrgAdmin}
+        canEdit={mayWriteAgentAccess(epodsystem.agentPathKind, { canEditProject: true, isOrgAdmin })}
       />
 
       {error && <Banner tone="danger">{error}</Banner>}

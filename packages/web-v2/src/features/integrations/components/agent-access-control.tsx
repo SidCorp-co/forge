@@ -11,7 +11,7 @@ import { useState } from "react";
 import type { AgentAccess, AgentPathKind } from "@forge/contracts";
 import { Toggle } from "@/design";
 import { formatApiError } from "@/lib/api/error";
-import { useUpdateProviderIntegration } from "../hooks";
+import { useIsOrgAdmin, useUpdateProviderIntegration } from "../hooks";
 import type { IntegrationSummary } from "../types";
 
 /** The closed answer, and what a binding gets for not choosing. */
@@ -71,7 +71,12 @@ export function mayWriteAgentAccess(
   perms: { canEditProject: boolean; isOrgAdmin: boolean },
 ): boolean {
   if (pathKind === "none") return false;
-  return pathKind === "direct-mcp" ? perms.isOrgAdmin : perms.canEditProject;
+  // Both hold, and the org-admin arm does NOT replace the project one: being an org admin is an
+  // ESCALATION on top of editing this project's integrations, not a way around it. Dropping the
+  // first half let a read-only member's switch render enabled, which the existing
+  // `AgentAccessControl` case caught.
+  if (!perms.canEditProject) return false;
+  return pathKind === "direct-mcp" ? perms.isOrgAdmin : true;
 }
 
 /** Who the caller has to be, said in the same terms the server refuses in. */
@@ -151,19 +156,30 @@ export function AgentAccessControl({
 }: {
   projectId: string;
   binding: Pick<IntegrationSummary, "id" | "agentAccess" | "agentPathKind">;
+  /** May the caller edit this project's integrations at all. The GRANT's own tier is applied here. */
   canEdit: boolean;
   disabledReason?: string;
 }) {
   const update = useUpdateProviderIntegration(projectId);
+  const isOrgAdmin = useIsOrgAdmin(projectId);
   const [inFlight, setInFlight] = useState<AgentAccess | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
+
+  // The tier is applied HERE rather than by each caller. A saved binding carries its own
+  // `agentPathKind`, so this component has everything the rule needs — and nine call sites deciding
+  // it separately is how `mcp-servers-panel` and the connection drawer came to pass plain
+  // editability while the provider sections passed a credential lock.
+  const mayWrite = mayWriteAgentAccess(binding.agentPathKind, {
+    canEditProject: canEdit,
+    isOrgAdmin,
+  });
 
   return (
     <AgentAccessChoice
       value={inFlight ?? binding.agentAccess}
       pathKind={binding.agentPathKind}
-      canEdit={canEdit}
-      disabledReason={disabledReason}
+      canEdit={mayWrite}
+      disabledReason={disabledReason ?? agentAccessDeniedReason(binding.agentPathKind)}
       busy={inFlight !== null}
       failure={failure}
       onChange={(next) => {
