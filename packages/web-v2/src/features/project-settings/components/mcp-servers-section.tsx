@@ -149,7 +149,8 @@ export function McpServersSection({
       <p className="fg-body-sm mb-3 text-muted">
         Servers seeded into every agent dispatched for this project. Required because the runner
         ignores its own MCP config — declare the secret-free servers your jobs need here. Per-stage
-        overrides and connected integrations (Postman, Epodsystem) layer on top.
+        overrides layer on top. Connected integrations are not set here: whether an agent may use one
+        is granted on that integration&apos;s own row, under the Integrations tab.
       </p>
 
       <div className="divide-y divide-line">

@@ -89,6 +89,14 @@ vi.mock('../notifications/emit.js', () => ({
 
 const { redispatchScheduleSessionOnFailover } = await import('./failover.js');
 
+// The dispatch path asks the integration registry which providers render an MCP server for a
+// granted binding (ISS-1071). It is process-global and empty until something fills it, and reading
+// it empty THROWS rather than answering "no integrations exist" — so this file registers, as the
+// app does at boot, instead of dispatching against a vocabulary nobody declared.
+const { registerAllIntegrations } = await import('../integrations/register-all.js');
+registerAllIntegrations();
+
+
 const SCHEDULE_ID = 'sch-1';
 const SOURCE_PROJECT_ID = 'proj-source';
 const USER_ID = 'user-1';

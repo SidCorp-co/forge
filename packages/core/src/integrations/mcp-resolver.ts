@@ -13,9 +13,9 @@
  */
 
 import { logger } from '../logger.js';
-import { listAgentGrantedBindings } from './agent-access.js';
+
 import { directMcpIntegrations, mcpServerNameFor } from './registry.js';
-import { decryptConnectionSecrets, effectiveConfig } from './store.js';
+import { decryptConnectionSecrets, effectiveConfig, listAgentGrantedBindings } from './store.js';
 import type { IntegrationDeclaration } from './types.js';
 
 /**
@@ -33,7 +33,17 @@ export async function resolveGrantedMcpEntries(
   for (const decl of directMcpIntegrations()) {
     let pairs: Awaited<ReturnType<typeof listAgentGrantedBindings>>;
     try {
-      pairs = await listAgentGrantedBindings(projectId, decl.provider);
+      const rows = await listAgentGrantedBindings(projectId, decl.provider);
+      // The shape check is INSIDE the try on purpose. The guard below promises this never crashes a
+      // dispatch, and until ISS-1071 caught it the `.slice` sat outside, so a lookup that answered
+      // something other than a list took the whole dispatch down instead of taking the closed
+      // answer — the guard said one thing and the code did another.
+      if (!Array.isArray(rows)) {
+        throw new TypeError(
+          `granted-binding lookup for ${decl.provider} answered ${typeof rows}, not a list`,
+        );
+      }
+      pairs = rows;
     } catch (err) {
       // cm:guard injection is best-effort against the DATABASE and never against the grant: a lookup
       // that fails injects nothing, which is the closed answer, so a hiccup cannot widen what an

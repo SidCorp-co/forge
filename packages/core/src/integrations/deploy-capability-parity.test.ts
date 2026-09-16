@@ -17,9 +17,23 @@
  */
 
 import { DEPLOY_CAPABLE_PROVIDERS as CONTRACT_LIST } from '@forge/contracts/deploy-capability';
-import { beforeAll, describe, expect, it } from 'vitest';
-import { registerAllIntegrations } from './register-all.js';
-import { deployCapableProviders, providerCanDeploy } from './registry.js';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+
+// cm:why registering the real declarations pulls in every adapter, and coolify's reaches
+// db/client.js (and, since ISS-922, queue/boss.js via its confirm enqueue) which parses the
+// runtime env at import time — same reason `capabilities.test.ts` stubs both.
+vi.mock('../db/client.js', () => ({ db: {} }));
+vi.mock('../config/env.js', () => ({
+  env: {
+    NODE_ENV: 'test',
+    DATABASE_URL: 'postgres://localhost/stub',
+    JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef',
+    DEVICE_TOKEN_PEPPER: 'test-pepper',
+  },
+}));
+
+const { registerAllIntegrations } = await import('./register-all.js');
+const { deployCapableProviders, providerCanDeploy } = await import('./registry.js');
 
 beforeAll(() => {
   registerAllIntegrations();

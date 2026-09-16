@@ -193,6 +193,7 @@ export const sentryIntegration = declareIntegration<SentryConfig, SentrySecrets>
       kind: 'direct-mcp',
       tools: [],
       serverName: 'sentry',
+      previewSecrets: { authToken: '[redacted]' },
       justification:
         'Self-hosted Sentry is reached only through its own MCP server, which the runner executes with the token in its environment; the hosted https MCP is OAuth-only and unusable for a self-hosted instance. Forge has no issue-search API of its own to mediate, so the token reaches the box or the agent cannot read an error at all.',
       buildEntry: (config, secrets) => {

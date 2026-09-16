@@ -2,8 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../store.js', () => ({ updateConnection: async () => undefined }));
 
-const { rocketChatAdapter } = await import('./adapter.js');
+const { rocketChatAdapter, rocketchatIntegration } = await import('./adapter.js');
 
+import { grantHolds } from '../agent-access.js';
 import type { AdapterContext } from '../types.js';
 import type { RocketChatConfig, RocketChatSecrets } from './types.js';
 
@@ -66,10 +67,22 @@ describe('rocketChatAdapter.healthcheck', () => {
   });
 
   it('does not dispatch or receive webhooks (connection-only)', () => {
-    expect(rocketChatAdapter.capabilities?.canDispatch).toBe(false);
-    expect(rocketChatAdapter.capabilities?.canReceiveWebhook).toBe(false);
+    // ISS-1071 — capabilities are a property of the DECLARATION, not of the methods object. The
+    // adapter export is now only what can be called; asking it what it supports was the affordance
+    // that let `agent` look like a provider with no capabilities rather than one with no adapter.
+    const caps = rocketchatIntegration.capabilities;
+    expect(caps?.canDispatch).toBe(false);
+    expect(caps?.canReceiveWebhook).toBe(false);
     expect(() =>
       rocketChatAdapter.dispatchOutbound(ctx(), { eventName: 'x', payload: {} }),
     ).toThrow(/not supported/);
+  });
+
+  it('declares no agent path at all, so no grant on it can ever hold', () => {
+    const decl = rocketchatIntegration;
+    expect(decl.capabilities.agentPath.kind).toBe('none');
+    // The column is inert here: `grantHolds` answers false whatever a careless write stored, which
+    // is what stops a future `agent_access = 'all'` on a rocketchat binding inventing a path.
+    expect(grantHolds(decl, { agentAccess: 'all' })).toBe(false);
   });
 });

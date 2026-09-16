@@ -1,22 +1,15 @@
 /**
- * ISS-1071 — what `0255_integration_agent_access.sql` does, walked against a real Postgres.
+ * ISS-1071 — what the agent-access migration does, walked against a real Postgres.
  *
- * The migration turns a sentinel key in `pipelineConfig.mcpServers` into one column on the
- * binding, and the only interesting question is what it does to reachability: a grant it
- * closes is a path somebody had, and a grant it opens is a credential somebody did not offer.
- * So every case below is about a row's reachability BEFORE and AFTER, never about whether the
- * statement ran.
+ * Every case is about a row's REACHABILITY before and after, never about whether a statement
+ * ran: a grant this closes is a path somebody had, one it opens is a credential nobody
+ * offered. Two cases are refusals, and beside each sits its boundary — the shape that must NOT
+ * abort — because an over-broad abort is what crash-looped the beta API for 85 minutes on
+ * 0253, and a refusal with no case proving where it stops is one nobody can trust to be narrow.
  *
- * Two of them are refusals, and those are the deliverable rather than the exception: a
- * provider the file's vocabulary does not classify, and a per-stage grant a binary column
- * cannot represent. Beside each sits its boundary — the shape that must NOT abort — because
- * an over-broad abort is what crash-looped the beta API for 85 minutes on 0253, and a refusal
- * with no case proving where it stops is a refusal nobody can trust to be narrow.
- *
- * The ground is `conversations-migration-ground.ts` / `release-axes-migration-ground.ts`: a
- * template carrying every migration BELOW this one, cloned per case. It has to be, because
- * the harness's own database is already migrated PAST 0255 and there is no way to plant a
- * sentinel into a map the migration has already stripped.
+ * Ground: `release-axes-migration-ground.ts`, a template carrying every migration BELOW this
+ * one, cloned per case. It has to be — the harness's own database is already migrated past it,
+ * and there is no planting a sentinel into a map that is already stripped.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -30,11 +23,9 @@ const MIGRATIONS = fileURLToPath(new URL('../../drizzle/migrations', import.meta
 const ROLLBACK_DIR = fileURLToPath(new URL('../../drizzle/rollback/', import.meta.url));
 
 /**
- * This migration's rollback file, found by what it SAYS rather than by its index.
- *
- * The index is positional: a rebase past another migration renumbers the `.sql`, the journal
- * entry and the snapshot, and a path spelled `0255_down.sql` here would then point at another
- * issue's rollback or at nothing — and pointing at nothing is the quieter of the two.
+ * The rollback file, found by what it SAYS rather than by its index — the index is positional
+ * and a rebase renumbers it, so a hardcoded `0255_down.sql` would come to name another issue's
+ * rollback, or nothing, which is the quieter of the two.
  */
 function downFile(): string {
   const named = readdirSync(ROLLBACK_DIR)
@@ -81,6 +72,9 @@ interface Ground {
   orgId: string;
   ownerId: string;
 }
+
+/** What `sql.json` will accept, which `Record<string, unknown>` is not. */
+type Json = string | number | boolean | null | Json[] | { [key: string]: Json };
 
 let adminUrl: string;
 let admin: Sql;
@@ -139,12 +133,9 @@ async function runForward(sql: Sql): Promise<void> {
 }
 
 /**
- * The rollback, run the way an operator runs it — whole, with its own BEGIN/COMMIT, rather
- * than split at drizzle's statement breakpoints.
- *
- * Nothing else in this repository executes this file: `db/migrate.js` never reads the
- * rollback folder. Until it is run here it is a plan rather than a way back, and it is the
- * only way back from a migration that drops a column.
+ * The rollback, run whole the way an operator runs it rather than split at drizzle's
+ * breakpoints. Nothing else here executes it — `db/migrate.js` never reads the rollback
+ * folder — so until this runs it is a plan, and it is the only way back from a dropped column.
  */
 async function runDown(sql: Sql): Promise<void> {
   try {
@@ -177,13 +168,13 @@ async function plantProject(
   sql: Sql,
   g: Ground,
   slug: string,
-  agentConfig: Record<string, unknown> | null = null,
+  agentConfig: Record<string, Json> | null = null,
 ): Promise<string> {
   const id = randomUUID();
-  // cm:guard the config goes in as an OBJECT, never as `JSON.stringify(...)::jsonb`. postgres-js
-  // serialises a parameter bound to a json column itself, so a pre-stringified one is encoded
-  // twice and lands as a jsonb STRING containing JSON — `agent_config #> '{pipelineConfig,...}'`
-  // then answers NULL on every project and every case here reads as the migration doing nothing.
+  // cm:guard `sql.json(...)`, never `JSON.stringify(...)::jsonb`: postgres-js serialises a
+  // json-bound parameter itself, so a pre-stringified one is encoded TWICE and lands as a jsonb
+  // string — `agent_config #> '{pipelineConfig,…}'` then answers NULL on every project and every
+  // case here reads as the migration doing nothing. Measured; it cost the first full run.
   await sql.unsafe(
     `INSERT INTO projects (id, slug, name, created_by, org_id, agent_config, release_model)
      VALUES ($1, $2, $3, $4, $5, $6, 'none')`,
@@ -193,26 +184,22 @@ async function plantProject(
 }
 
 /**
- * A binding and the connection under it.
- *
- * `credential` is what section 5's abort reads — `secrets_enc IS NOT NULL` together with both
- * `active` flags is the whole of "this credential reaches an agent today", and a case meaning
- * to prove the boundary turns exactly one of the three off.
+ * A binding and the connection under it. `secrets_enc IS NOT NULL` plus both `active` flags is
+ * the whole of "this credential reaches an agent today", which is what the per-stage abort
+ * reads; a case proving the boundary turns exactly one of the three off.
  */
-async function plantBinding(
-  sql: Sql,
-  g: Ground,
-  row: {
-    projectId: string;
-    provider: string;
-    role?: 'deploy' | 'service';
-    stages?: string[];
-    label?: string;
-    active?: boolean;
-    connectionActive?: boolean;
-    credential?: boolean;
-  },
-): Promise<string> {
+interface BindingRow {
+  projectId: string;
+  provider: string;
+  role?: 'deploy' | 'service';
+  stages?: string[];
+  label?: string;
+  active?: boolean;
+  connectionActive?: boolean;
+  credential?: boolean;
+}
+
+async function plantBinding(sql: Sql, g: Ground, row: BindingRow): Promise<string> {
   const id = randomUUID();
   const connectionId = randomUUID();
   const role = row.role ?? 'service';
@@ -267,10 +254,9 @@ async function mapAt(sql: Sql, projectId: string, scope: string): Promise<string
 }
 
 /**
- * Every project's whole `agent_config`, in jsonb's canonical text — which is what makes the
- * rollback's "byte for byte" claim checkable at all. jsonb normalises key order and number
- * formatting on the way in, so two maps that print the same text ARE the same value, and one
- * key restored under a different name or a `false` restored as `true` changes the string.
+ * Every project's whole `agent_config` as jsonb's canonical text, which is what makes the
+ * rollback's "byte for byte" claim checkable: jsonb normalises key order on the way in, so
+ * equal text IS equal value, and a `false` restored as `true` changes the string.
  */
 async function allConfigs(sql: Sql): Promise<Record<string, string | null>> {
   const rows = await sql.unsafe(
@@ -281,10 +267,10 @@ async function allConfigs(sql: Sql): Promise<Record<string, string | null>> {
 
 /** A pipelineConfig carrying a project-default map, and optionally per-stage maps. */
 function config(
-  mcpServers: Record<string, unknown> | null,
-  states?: Record<string, Record<string, unknown>>,
-): Record<string, unknown> {
-  const pipelineConfig: Record<string, unknown> = {};
+  mcpServers: Record<string, Json> | null,
+  states?: Record<string, Record<string, Json>>,
+): Record<string, Json> {
+  const pipelineConfig: Record<string, Json> = {};
   if (mcpServers) pipelineConfig.mcpServers = mcpServers;
   if (states) {
     pipelineConfig.states = Object.fromEntries(
@@ -297,13 +283,64 @@ function config(
 /** The object spec a person writes by hand for a server the catalog does not carry. */
 const CUSTOM_SPEC = { type: 'stdio', command: 'npx', args: ['some-server@latest'], env: {} };
 
-// ===========================================================================
-// The fleet every non-refusing case stands on, planted once and read many times.
-// ===========================================================================
+/**
+ * The fleet every non-refusing case stands on, planted once and read many times.
+ *
+ * One table rather than one block per case, because each row's comment IS the case it exists
+ * for: read the row and the assertion below it names the same shape.
+ */
+const WIDE: ReadonlyArray<{
+  slug: string;
+  cfg: Record<string, Json> | null;
+  bindings: ReadonlyArray<[key: string, row: Omit<BindingRow, 'projectId'>]>;
+}> = [
+  // A project that opted itself into its storefront at the project default.
+  { slug: 'shop', cfg: config({ epodsystem: true }), bindings: [['shopEpod', { provider: 'epodsystem' }]] },
+  // Core-mediated bindings and no sentinel anywhere: today both answer any project member's
+  // agent through a core tool with no gate at all, so `none` would take a path away.
+  {
+    slug: 'deployer',
+    cfg: null,
+    bindings: [
+      ['coolify', { provider: 'coolify', role: 'deploy', stages: ['live'] }],
+      ['google', { provider: 'google' }],
+    ],
+  },
+  // A direct-MCP binding nobody declared, beside the two providers with no agent path at all.
+  {
+    slug: 'quiet',
+    cfg: config({ playwright: true }),
+    bindings: [
+      ['postman', { provider: 'postman' }],
+      ['rocketchat', { provider: 'rocketchat' }],
+      ['github', { provider: 'github' }],
+    ],
+  },
+  // A stage-only sentinel over NO binding — representable, so it must not abort.
+  { slug: 'stage-only', cfg: config(null, { developed: { sentry: true } }), bindings: [] },
+  // A per-stage `false`: a switch somebody turned off, still a sentinel, still has to go.
+  {
+    slug: 'switched-off',
+    cfg: config(null, { testing: { postman: false } }),
+    bindings: [['switchedOffPostman', { provider: 'postman' }]],
+  },
+  // A labelled epodsystem sentinel over the binding it names.
+  {
+    slug: 'two-stores',
+    cfg: config({ epodsystem_store_a: true }),
+    bindings: [['storeA', { provider: 'epodsystem', label: 'store-a' }]],
+  },
+  // Names this migration must not touch: a catalog server, a hand-written object spec, and an
+  // object stored UNDER an integration name — a custom server, not a sentinel.
+  {
+    slug: 'custom',
+    cfg: config({ playwright: true, 'my-own-server': CUSTOM_SPEC, postman: CUSTOM_SPEC }),
+    bindings: [['customPostman', { provider: 'postman' }]],
+  },
+];
 
 interface Wide {
   f: Fresh;
-  g: Ground;
   project: Record<string, string>;
   binding: Record<string, string>;
 }
@@ -312,90 +349,14 @@ async function plantWide(f: Fresh): Promise<Wide> {
   const g = await ground(f.sql);
   const project: Record<string, string> = {};
   const binding: Record<string, string> = {};
-
-  // A project that opted itself into its storefront at the project default.
-  project.shop = await plantProject(f.sql, g, 'shop', config({ epodsystem: true }));
-  binding.shopEpod = await plantBinding(f.sql, g, {
-    projectId: project.shop,
-    provider: 'epodsystem',
-  });
-
-  // A project with core-mediated bindings and no sentinel anywhere — today both answer any
-  // project member's agent with no gate at all.
-  project.deployer = await plantProject(f.sql, g, 'deployer', config(null));
-  binding.coolify = await plantBinding(f.sql, g, {
-    projectId: project.deployer,
-    provider: 'coolify',
-    role: 'deploy',
-    stages: ['live'],
-  });
-  binding.google = await plantBinding(f.sql, g, {
-    projectId: project.deployer,
-    provider: 'google',
-  });
-
-  // A direct-MCP binding nobody declared, and the two providers with no agent path at all.
-  project.quiet = await plantProject(f.sql, g, 'quiet', config({ playwright: true }));
-  binding.postman = await plantBinding(f.sql, g, {
-    projectId: project.quiet,
-    provider: 'postman',
-  });
-  binding.rocketchat = await plantBinding(f.sql, g, {
-    projectId: project.quiet,
-    provider: 'rocketchat',
-  });
-  binding.github = await plantBinding(f.sql, g, {
-    projectId: project.quiet,
-    provider: 'github',
-  });
-
-  // A stage-only sentinel over NO live binding — representable, so it must not abort.
-  project.stageOnly = await plantProject(
-    f.sql,
-    g,
-    'stage-only',
-    config(null, { developed: { sentry: true } }),
-  );
-
-  // A per-stage `false` — a switch somebody turned off, still a sentinel, still has to go.
-  project.switchedOff = await plantProject(
-    f.sql,
-    g,
-    'switched-off',
-    config(null, { testing: { postman: false } }),
-  );
-  binding.switchedOffPostman = await plantBinding(f.sql, g, {
-    projectId: project.switchedOff,
-    provider: 'postman',
-  });
-
-  // A labelled epodsystem sentinel, and the two bindings it reaches.
-  project.twoStores = await plantProject(
-    f.sql,
-    g,
-    'two-stores',
-    config({ epodsystem_store_a: true }),
-  );
-  binding.storeA = await plantBinding(f.sql, g, {
-    projectId: project.twoStores,
-    provider: 'epodsystem',
-    label: 'store-a',
-  });
-
-  // Names this migration must not touch: a catalog server, a custom object spec, and an
-  // object stored UNDER an integration name, which is a custom server and not a sentinel.
-  project.custom = await plantProject(
-    f.sql,
-    g,
-    'custom',
-    config({ playwright: true, 'my-own-server': CUSTOM_SPEC, postman: CUSTOM_SPEC }),
-  );
-  binding.customPostman = await plantBinding(f.sql, g, {
-    projectId: project.custom,
-    provider: 'postman',
-  });
-
-  return { f, g, project, binding };
+  for (const row of WIDE) {
+    const projectId = await plantProject(f.sql, g, row.slug, row.cfg);
+    project[row.slug] = projectId;
+    for (const [key, spec] of row.bindings) {
+      binding[key] = await plantBinding(f.sql, g, { ...spec, projectId });
+    }
+  }
+  return { f, project, binding };
 }
 
 describe('0255 forward — reachability is preserved row by row', () => {
@@ -441,16 +402,16 @@ describe('0255 forward — reachability is preserved row by row', () => {
   // so `none` is exactly what was true and the sentinel is simply removed. An abort here
   // would be the over-broad abort that crash-loops a deploy.
   it('accepts a stage-only sentinel over no binding, and removes it', async () => {
-    expect(await mapAt(w.f.sql, w.project.stageOnly ?? '', 'developed')).toBe('{}');
+    expect(await mapAt(w.f.sql, w.project['stage-only'] ?? '', 'developed')).toBe('{}');
   });
 
   it('removes a per-stage `false`, and records it in the before-image', async () => {
-    expect(await mapAt(w.f.sql, w.project.switchedOff ?? '', 'testing')).toBe('{}');
+    expect(await mapAt(w.f.sql, w.project['switched-off'] ?? '', 'testing')).toBe('{}');
     expect(await grantOf(w.f.sql, w.binding.switchedOffPostman ?? '')).toBe('none');
     const rows = await w.f.sql.unsafe(
       `SELECT scope, server_name, value::text AS v FROM iss1071_removed_mcp_sentinels
         WHERE project_id = $1`,
-      [w.project.switchedOff ?? ''],
+      [w.project['switched-off'] ?? ''],
     );
     expect(rows.map((r) => `${r.scope}/${r.server_name}=${r.v}`)).toEqual([
       'testing/postman=false',
@@ -459,7 +420,7 @@ describe('0255 forward — reachability is preserved row by row', () => {
 
   it('grants and removes an `epodsystem_<label>` sentinel', async () => {
     expect(await grantOf(w.f.sql, w.binding.storeA ?? '')).toBe('all');
-    expect(await mapAt(w.f.sql, w.project.twoStores ?? '', 'default')).toBe('{}');
+    expect(await mapAt(w.f.sql, w.project['two-stores'] ?? '', 'default')).toBe('{}');
   });
 
   // cm:guard only a literal boolean is the shorthand. An object under an integration name is

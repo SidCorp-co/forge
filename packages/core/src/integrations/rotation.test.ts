@@ -1,28 +1,54 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  isPreviousCredentialValid,
-  isRotatingProvider,
-  mergeRotatedSecrets,
-  ROTATION_WINDOW_MS,
-} from './rotation.js';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+
+// cm:why registering the real declarations pulls in every adapter, and coolify's reaches
+// db/client.js (and, since ISS-922, queue/boss.js via its confirm enqueue) which parses the
+// runtime env at import time — same reason `capabilities.test.ts` stubs both.
+vi.mock('../db/client.js', () => ({ db: {} }));
+vi.mock('../config/env.js', () => ({
+  env: {
+    NODE_ENV: 'test',
+    DATABASE_URL: 'postgres://localhost/stub',
+    JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef',
+    DEVICE_TOKEN_PEPPER: 'test-pepper',
+  },
+}));
+
+const { registerAllIntegrations } = await import('./register-all.js');
+const { getIntegration, listIntegrations } = await import('./registry.js');
+const { isPreviousCredentialValid, mergeRotatedSecrets, ROTATION_WINDOW_MS } = await import(
+  './rotation.js'
+);
 
 const FIXED_NOW = Date.parse('2026-01-01T00:00:00.000Z');
+
+beforeAll(() => {
+  registerAllIntegrations();
+});
 
 afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('isRotatingProvider', () => {
-  it('recognizes every provider that carries a rotating credential', () => {
-    for (const p of ['coolify', 'postman', 'epodsystem', 'sentry', 'rocketchat', 'github']) {
-      expect(isRotatingProvider(p)).toBe(true);
-    }
-  });
+// ISS-1071 deleted `isRotatingProvider` and its own per-provider table: whether a provider rotates
+// is now a fact its OWN declaration carries (`schemas.primaryCredentialField`), not a second list
+// this module keeps in lockstep with the first.
+describe('rotation is declared, not listed separately', () => {
+  it('a provider rotates iff its declaration carries a primaryCredentialField', () => {
+    const rotating = ['coolify', 'postman', 'epodsystem', 'sentry', 'google', 'rocketchat', 'github'];
+    const notRotating = ['agent'];
 
-  it('rejects a provider with no credential, and anything not a provider', () => {
-    expect(isRotatingProvider('agent')).toBe(false);
-    expect(isRotatingProvider('bitbucket')).toBe(false);
-    expect(isRotatingProvider('')).toBe(false);
+    for (const provider of rotating) {
+      const decl = getIntegration(provider);
+      expect(decl?.schemas.primaryCredentialField, provider).not.toBeNull();
+    }
+    for (const provider of notRotating) {
+      const decl = getIntegration(provider);
+      expect(decl?.schemas.primaryCredentialField, provider).toBeNull();
+    }
+    // Every declared provider is accounted for on one side or the other.
+    expect(listIntegrations().map((d) => d.provider).sort()).toEqual(
+      [...rotating, ...notRotating].sort(),
+    );
   });
 });
 
@@ -30,7 +56,8 @@ describe('mergeRotatedSecrets', () => {
   it('coolify: stores previousApiToken + future expiry when rotating', () => {
     vi.useFakeTimers();
     vi.setSystemTime(FIXED_NOW);
-    const merged = mergeRotatedSecrets('coolify', { apiToken: 'old-tok' }, { apiToken: 'new-tok' });
+    const decl = getIntegration('coolify')!;
+    const merged = mergeRotatedSecrets(decl, { apiToken: 'old-tok' }, { apiToken: 'new-tok' });
     expect(merged).toEqual({
       apiToken: 'new-tok',
       previousApiToken: 'old-tok',
@@ -41,7 +68,8 @@ describe('mergeRotatedSecrets', () => {
   it('postman: stores previousApiKey + future expiry when rotating', () => {
     vi.useFakeTimers();
     vi.setSystemTime(FIXED_NOW);
-    const merged = mergeRotatedSecrets('postman', { apiKey: 'PMAK-old' }, { apiKey: 'PMAK-new' });
+    const decl = getIntegration('postman')!;
+    const merged = mergeRotatedSecrets(decl, { apiKey: 'PMAK-old' }, { apiKey: 'PMAK-new' });
     expect(merged).toEqual({
       apiKey: 'PMAK-new',
       previousApiKey: 'PMAK-old',
@@ -52,11 +80,8 @@ describe('mergeRotatedSecrets', () => {
   it('epodsystem: stores previousApiKey + future expiry when rotating', () => {
     vi.useFakeTimers();
     vi.setSystemTime(FIXED_NOW);
-    const merged = mergeRotatedSecrets(
-      'epodsystem',
-      { apiKey: 'crmk_old' },
-      { apiKey: 'crmk_new' },
-    );
+    const decl = getIntegration('epodsystem')!;
+    const merged = mergeRotatedSecrets(decl, { apiKey: 'crmk_old' }, { apiKey: 'crmk_new' });
     expect(merged).toEqual({
       apiKey: 'crmk_new',
       previousApiKey: 'crmk_old',
@@ -65,21 +90,31 @@ describe('mergeRotatedSecrets', () => {
   });
 
   it('first credential write: omits previous + expiry when no current secret exists', () => {
-    expect(mergeRotatedSecrets('postman', null, { apiKey: 'PMAK-first' })).toEqual({
+    const postman = getIntegration('postman')!;
+    const coolify = getIntegration('coolify')!;
+    expect(mergeRotatedSecrets(postman, null, { apiKey: 'PMAK-first' })).toEqual({
       apiKey: 'PMAK-first',
     });
-    expect(mergeRotatedSecrets('coolify', {}, { apiToken: 'first-tok' })).toEqual({
+    expect(mergeRotatedSecrets(coolify, {}, { apiToken: 'first-tok' })).toEqual({
       apiToken: 'first-tok',
     });
   });
 
   it('returns null when the incoming payload has no primary credential', () => {
-    expect(mergeRotatedSecrets('postman', { apiKey: 'old' }, {})).toBeNull();
-    expect(mergeRotatedSecrets('coolify', { apiToken: 'old' }, { apiToken: '' })).toBeNull();
+    const postman = getIntegration('postman')!;
+    const coolify = getIntegration('coolify')!;
+    expect(mergeRotatedSecrets(postman, { apiKey: 'old' }, {})).toBeNull();
+    expect(mergeRotatedSecrets(coolify, { apiToken: 'old' }, { apiToken: '' })).toBeNull();
   });
 
   it('ignores the wrong-shape incoming key (apiKey supplied for coolify is a no-op)', () => {
-    expect(mergeRotatedSecrets('coolify', { apiToken: 'old' }, { apiKey: 'PMAK-x' })).toBeNull();
+    const coolify = getIntegration('coolify')!;
+    expect(mergeRotatedSecrets(coolify, { apiToken: 'old' }, { apiKey: 'PMAK-x' })).toBeNull();
+  });
+
+  it('returns null for a declaration with no rotating credential (agent)', () => {
+    const agent = getIntegration('agent')!;
+    expect(mergeRotatedSecrets(agent, { anything: 'old' }, { anything: 'new' })).toBeNull();
   });
 });
 

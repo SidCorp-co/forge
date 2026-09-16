@@ -20,6 +20,12 @@ const { configSchemaForProvider, createSchema, splitProviderConfig } = await imp
   './provider-schemas.js'
 );
 
+// The registry is process-global and empty until something fills it. Reading it empty THROWS
+// (registry.ts:assertPopulated), so a test reaching any registry-backed path registers here rather
+// than inheriting a vocabulary from whichever test file happened to run first.
+const { registerAllIntegrations } = await import('./register-all.js');
+registerAllIntegrations();
+
 const AGENT = {
   provider: 'agent' as const,
   role: 'deploy' as const,

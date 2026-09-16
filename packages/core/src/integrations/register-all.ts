@@ -13,7 +13,7 @@ import { epodsystemIntegration } from './epodsystem/adapter.js';
 import { githubIntegration } from './github/adapter.js';
 import { googleIntegration } from './google/adapter.js';
 import { postmanIntegration } from './postman/adapter.js';
-import { getIntegration, registerIntegration } from './registry.js';
+import { isRegistered, registerIntegration } from './registry.js';
 import { rocketchatIntegration } from './rocketchat/adapter.js';
 import { sentryIntegration } from './sentry/adapter.js';
 import type { IntegrationDeclaration } from './types.js';
@@ -35,7 +35,7 @@ const ALL: readonly IntegrationDeclaration[] = [
 /** Idempotent, so a test that calls it twice does not throw on the already-declared guard. */
 export function registerAllIntegrations(): void {
   for (const decl of ALL) {
-    if (getIntegration(decl.provider)) continue;
+    if (isRegistered(decl.provider)) continue;
     registerIntegration(decl);
   }
 }

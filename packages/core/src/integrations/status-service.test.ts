@@ -20,6 +20,13 @@ vi.mock('../db/client.js', () => ({ db: {} }));
 
 const { buildProviderCards } = await import('./status-service.js');
 
+// The registry is process-global and empty until something fills it. Reading it empty THROWS
+// (registry.ts:assertPopulated), so a test reaching any registry-backed path registers here rather
+// than inheriting a vocabulary from whichever test file happened to run first.
+const { registerAllIntegrations } = await import('./register-all.js');
+registerAllIntegrations();
+
+
 function row(over: Partial<Parameters<typeof buildProviderCards>[0]['rows'][number]> = {}) {
   return {
     id: 'b1',

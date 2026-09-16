@@ -8,14 +8,34 @@
  * quietly became a normalisation would have gone unnoticed in both.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import {
+
+// cm:why `checkBindingShape` asks the REGISTRY which providers can deploy (ISS-1071), and filling
+// the registry imports every adapter, several of which reach the db client and with it the whole env
+// contract — hence two mocks in a file whose subject touches neither.
+vi.mock('../config/env.js', () => ({
+  env: {
+    JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef',
+    NODE_ENV: 'test',
+    DATABASE_URL: 'postgres://x/y',
+    DEVICE_TOKEN_PEPPER: 'pepper',
+  },
+}));
+vi.mock('../db/client.js', () => ({ db: {} }));
+
+const {
   bindingShapeFields,
   cannotDeployMessage,
   checkBindingShape,
   checkRoleStagesPairing,
-} from './binding-shape.js';
+} = await import('./binding-shape.js');
+const { registerAllIntegrations } = await import('./register-all.js');
+
+// The registry is process-global and empty until something fills it; reading it empty THROWS
+// (registry.ts:assertPopulated) rather than answering "no provider can deploy", which is the shape
+// this file's refusals would otherwise report as a fact about coolify.
+registerAllIntegrations();
 
 const pairing = z.object(bindingShapeFields).superRefine(checkRoleStagesPairing);
 const withProvider = z

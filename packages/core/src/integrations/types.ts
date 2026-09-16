@@ -143,6 +143,17 @@ export type AgentPath =
       readonly serverName: string;
       /** Why this provider offers no core-mediated route. Read by the declaration checker. */
       readonly justification: string;
+      /**
+       * A credential-SHAPED placeholder, carrying no secret, so the MCP preview can render this
+       * entry's shape without decrypting anything.
+       *
+       * `buildEntry` refuses an absent credential by returning null, which is right for dispatch and
+       * wrong for a preview: the preview knows a credential is stored (`secretsEnc !== null`) and is
+       * forbidden from reading it, so with `{}` it got null back and reported no URL for a binding
+       * that has one. Every value here must be visibly redacted — it is passed to a real builder and
+       * must be impossible to mistake for a working credential if it ever escapes.
+       */
+      readonly previewSecrets: Record<string, unknown>;
       /** Renders the runner's `mcpServers` entry. Returns null when the credential is unusable. */
       buildEntry(
         config: Record<string, unknown>,

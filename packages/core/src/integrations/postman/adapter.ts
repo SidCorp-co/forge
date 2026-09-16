@@ -167,6 +167,7 @@ export const postmanIntegration = declareIntegration<PostmanConfig, PostmanSecre
       kind: 'direct-mcp',
       tools: [],
       serverName: 'postman',
+      previewSecrets: { apiKey: '[redacted]' },
       justification:
         'Postman exposes its workspace only through its own hosted MCP server, authenticated by the same API key. There is no Forge-side API to put in front of it, so the key reaches the runner or the agent reaches nothing.',
       buildEntry: (config, secrets) => {

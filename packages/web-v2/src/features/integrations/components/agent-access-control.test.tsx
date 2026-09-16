@@ -82,6 +82,20 @@ describe("AgentAccessChoice", () => {
     expect(screen.queryByText(/runner box/i)).not.toBeInTheDocument();
   });
 
+  // cm:guard core may grow a fourth `AgentPath` arm before the web knows its wording; the control
+  // must then offer nothing rather than a switch it cannot explain.
+  it("renders nothing for a kind this build has no wording for", () => {
+    const { container } = render(
+      <AgentAccessChoice
+        value="none"
+        onChange={vi.fn()}
+        pathKind={"telepathy" as never}
+        canEdit
+      />,
+    );
+    expect(container).toBeEmptyDOMElement();
+  });
+
   it("emits the open answer when switched on and the closed one when switched off", () => {
     const onChange = vi.fn();
     const { rerender } = render(

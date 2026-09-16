@@ -134,6 +134,7 @@ describe('directMcpIntegrations', () => {
           tools: [],
           serverName: 'fake-direct',
           justification: 'fixture only',
+          previewSecrets: {},
           buildEntry: () => null,
         },
       }),

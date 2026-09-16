@@ -296,6 +296,7 @@ export const epodsystemIntegration = declareIntegration<EpodsystemConfig, Epodsy
       kind: 'direct-mcp',
       tools: [],
       serverName: 'epodsystem',
+      previewSecrets: { apiKey: '[redacted]' },
       justification:
         'The storefront shop tools are the Epodsystem MCP server itself, authenticated by the store key. Forge has no API of its own in front of the theme and product surface, so the key reaches the runner or the shop skill has nothing to call.',
       buildEntry: (config, secrets) => {

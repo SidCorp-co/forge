@@ -10,11 +10,6 @@
  * agent boundary and nowhere else.
  */
 
-import { and, asc, eq } from 'drizzle-orm';
-import { db } from '../db/client.js';
-import { integrationBindings, integrationConnections } from '../db/schema.js';
-import { getIntegration } from './registry.js';
-import type { BindingWithConnection } from './store.js';
 import type { AgentPathKind, IntegrationDeclaration } from './types.js';
 
 /**
@@ -73,35 +68,8 @@ export function notGrantedMessage(provider: string, bindingId: string): string {
   return `binding ${bindingId} (${provider}) is connected but no agent on this project may use it: its agent access is \`none\`. An org owner or admin turns it on where the integration is connected — Settings → Integrations — and connection health does not gate it.`;
 }
 
-/**
- * Every binding of one provider on one project that an agent may actually use: granted, with both
- * tiers active and a credential stored, oldest first.
- *
- * Oldest-first because a provider that does NOT declare `multiBinding` takes row zero as its one
- * winner, and that pick has to be stable across dispatches.
- */
-export async function listAgentGrantedBindings(
-  projectId: string,
-  provider: string,
-): Promise<BindingWithConnection[]> {
-  const decl = getIntegration(provider);
-  if (!decl || decl.capabilities.agentPath.kind === 'none') return [];
-  const rows = await db
-    .select({ binding: integrationBindings, connection: integrationConnections })
-    .from(integrationBindings)
-    .innerJoin(
-      integrationConnections,
-      eq(integrationBindings.connectionId, integrationConnections.id),
-    )
-    .where(
-      and(
-        eq(integrationBindings.projectId, projectId),
-        eq(integrationBindings.provider, provider),
-        eq(integrationBindings.active, true),
-        eq(integrationBindings.agentAccess, 'all'),
-        eq(integrationConnections.active, true),
-      ),
-    )
-    .orderBy(asc(integrationBindings.createdAt));
-  return rows as BindingWithConnection[];
-}
+// The query that reads this grant lives in `store.ts`, with every other read of these two tables —
+// deliberately NOT here. This module must stay importable without a database: it is what the
+// capability tests, the declaration checker and the adapter tests ask "may an agent use this?", and
+// an import of `db/client.js` runs core's env validation at module load, so a pure predicate living
+// beside a query turns every such test into one that needs a live DATABASE_URL.

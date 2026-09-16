@@ -66,9 +66,12 @@ export function AgentAccessChoice({
   busy?: boolean;
   failure?: string | null;
 }) {
-  if (pathKind === "none") return null;
+  // cm:guard fails CLOSED on a kind this build has no wording for — a fourth `AgentPath` arm added
+  // in core reaches here as a value with no entry, and a switch whose consequence the screen cannot
+  // state is worse than no switch. The binding simply stays ungranted until the web knows the kind.
+  const copy = pathKind === "none" ? undefined : KIND_COPY[pathKind];
+  if (!copy) return null;
 
-  const copy = KIND_COPY[pathKind];
   const granted = value !== AGENT_ACCESS_CLOSED;
 
   return (
@@ -114,8 +117,6 @@ export function AgentAccessControl({
   const update = useUpdateProviderIntegration(projectId);
   const [inFlight, setInFlight] = useState<AgentAccess | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
-
-  if (binding.agentPathKind === "none") return null;
 
   return (
     <AgentAccessChoice

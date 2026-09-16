@@ -15,6 +15,29 @@ import type {
 
 const registry = new Map<IntegrationProvider, IntegrationDeclaration>();
 
+/**
+ * An EMPTY registry is never a legitimate state to read from, so reading one throws.
+ *
+ * Without this, every derived question answers something that looks like data: `providerNames()`
+ * returns `[]`, `deployCapableProviders()` returns `[]`, and the refusal a caller gets reads
+ * "Deploy-capable providers: ." — a sentence that names the empty set as though it were the answer.
+ * The process that forgot to call `registerAllIntegrations()` then refuses every provider in the
+ * product with a message blaming the provider. That is the silent substitution this whole issue
+ * exists to delete, reintroduced one layer down: the failure has to name its own cause instead.
+ *
+ * `getIntegration` is on this list for the same reason. `undefined` there means "no such provider"
+ * and is acted on as such by the schema door; an unpopulated registry would make every provider
+ * mean that.
+ */
+function assertPopulated(): void {
+  if (registry.size > 0) return;
+  throw new Error(
+    'integration registry is empty — registerAllIntegrations() was never called in this process. ' +
+      'Every provider would otherwise read as undeclared. Production registers in src/index.ts; a ' +
+      'test that reaches a registry-backed path registers in its own setup.',
+  );
+}
+
 export function registerIntegration(decl: IntegrationDeclaration): void {
   if (registry.has(decl.provider)) {
     throw new Error(`integration already declared for provider=${decl.provider}`);
@@ -22,16 +45,29 @@ export function registerIntegration(decl: IntegrationDeclaration): void {
   registry.set(decl.provider, decl);
 }
 
+/**
+ * Is this provider already declared? The one read that does NOT assert the registry is populated,
+ * because the registrar asks it WHILE filling an empty registry. Not a substitute for
+ * `getIntegration` anywhere else: it cannot tell a caller what the provider declares, only that
+ * something did.
+ */
+export function isRegistered(provider: string): boolean {
+  return registry.has(provider as IntegrationProvider);
+}
+
 export function getIntegration(provider: string): IntegrationDeclaration | undefined {
+  assertPopulated();
   return registry.get(provider as IntegrationProvider);
 }
 
 export function listIntegrations(): IntegrationDeclaration[] {
+  assertPopulated();
   return [...registry.values()];
 }
 
 /** Every provider name this deployment declares, for a refusal that names the legal set. */
 export function providerNames(): IntegrationProvider[] {
+  assertPopulated();
   return [...registry.keys()];
 }
 
@@ -43,6 +79,7 @@ export function providerNames(): IntegrationProvider[] {
  * this repo refuses. `agent` answers `undefined` here, which every caller already guards.
  */
 export function getAdapter(provider: string): IntegrationAdapterMethods | undefined {
+  assertPopulated();
   return registry.get(provider as IntegrationProvider)?.adapter;
 }
 

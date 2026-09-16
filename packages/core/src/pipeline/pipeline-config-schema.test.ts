@@ -311,22 +311,63 @@ describe('resume policy', () => {
   });
 });
 
-describe('mcpServers validation (ISS-623 W1)', () => {
-  it('accepts known catalog + integration true-sentinels at the project default', () => {
-    const parsed = pipelineConfigSchema.parse({
-      mcpServers: { epodsystem: true, playwright: true },
-    });
-    expect(parsed.mcpServers).toEqual({ epodsystem: true, playwright: true });
+// ISS-1071 rule 7 moved this check off the canonical schema and onto the WRITE schema. The pair is
+// asymmetric on purpose and the asymmetry is the whole assertion: four control-plane readers
+// (`devices/admissible.ts`, `pipeline/autonomous-project.ts`, `pipeline/orchestrator.ts`,
+// `pipeline/pipeline-config-service.ts`) `safeParse` a STORED document and take a silent branch on
+// failure, so a name check on the read side turns one stale document into a project that dispatches
+// nothing and reports nothing — the ISS-807 shape. A write is told what does not reach; a read of
+// something already stored is never refused.
+describe('mcpServers validation (ISS-623 W1 / ISS-1071 rule 7)', () => {
+  it('the WRITE schema rejects an unknown true-shorthand at the project default', () => {
+    expect(() => pipelineConfigPatchSchema.parse({ mcpServers: { shop: true } })).toThrow(
+      /mcpServers entry.*shop.*not a known catalog server/,
+    );
   });
 
-  it('accepts a labeled epodsystem sentinel (epodsystem_<label>)', () => {
-    const parsed = pipelineConfigSchema.parse({
-      mcpServers: { epodsystem_store_a: true },
-    });
-    expect(parsed.mcpServers).toEqual({ epodsystem_store_a: true });
+  it('the WRITE schema rejects an unknown true-shorthand per-state', () => {
+    expect(() =>
+      pipelineConfigPatchSchema.parse({
+        states: { awaiting_release: { mcpServers: { shp: true } } },
+      }),
+    ).toThrow(/mcpServers entry.*shp.*not a known catalog server/);
   });
 
-  it('accepts object-valued custom specs and false/null opt-outs unchanged', () => {
+  it('the WRITE schema now rejects a PROVIDER name, and says where the switch moved to', () => {
+    // The key change ISS-1038 is folded in for: `epodsystem: true` used to be the legal way to let
+    // an agent use an integration. It is not a server name any more, and the refusal has to send
+    // the operator to the binding rather than leaving them to find a second settings tab.
+    expect(() => pipelineConfigPatchSchema.parse({ mcpServers: { epodsystem: true } })).toThrow(
+      /agent-access switch on that integration's binding/,
+    );
+    expect(() => pipelineConfigPatchSchema.parse({ mcpServers: { epodsystem_store_a: true } })).toThrow(
+      /not a known catalog server/,
+    );
+  });
+
+  it('the READ schema refuses NONE of them, so a stored document still parses', () => {
+    // Every project that stored a sentinel before this deploy reads back intact. If this goes red,
+    // the check has crept back onto the canonical schema and those projects go dark in silence.
+    for (const doc of [
+      { mcpServers: { epodsystem: true } },
+      { mcpServers: { epodsystem_store_a: true } },
+      { mcpServers: { shop: true } },
+      { states: { awaiting_release: { mcpServers: { shp: true } } } },
+    ]) {
+      expect(() => pipelineConfigSchema.parse(doc)).not.toThrow();
+    }
+  });
+
+  it('both schemas accept a known catalog name', () => {
+    expect(pipelineConfigSchema.parse({ mcpServers: { playwright: true } }).mcpServers).toEqual({
+      playwright: true,
+    });
+    expect(pipelineConfigPatchSchema.parse({ mcpServers: { playwright: true } }).mcpServers).toEqual(
+      { playwright: true },
+    );
+  });
+
+  it('object-valued custom specs and false/null opt-outs pass both, unchanged', () => {
     const doc = {
       mcpServers: {
         custom: { type: 'stdio', command: 'foo', args: [], env: {} },
@@ -334,30 +375,8 @@ describe('mcpServers validation (ISS-623 W1)', () => {
         cleared: null,
       },
     };
-    const parsed = pipelineConfigSchema.parse(doc);
-    expect(parsed.mcpServers).toEqual(doc.mcpServers);
-  });
-
-  it('rejects an unknown true-sentinel name at the project default', () => {
-    expect(() => pipelineConfigSchema.parse({ mcpServers: { shop: true } })).toThrow(
-      /mcpServers entry.*shop.*not a known catalog server/,
-    );
-  });
-
-  it('rejects an unknown true-sentinel name per-state', () => {
-    expect(() =>
-      pipelineConfigSchema.parse({ states: { awaiting_release: { mcpServers: { shp: true } } } }),
-    ).toThrow(/mcpServers entry.*shp.*not a known catalog server/);
-  });
-
-  it('accepts a known true-sentinel name per-state', () => {
-    const parsed = pipelineConfigSchema.parse({
-      states: { awaiting_release: { mcpServers: { playwright: true, epodsystem: true } } },
-    });
-    expect(parsed.states?.awaiting_release?.mcpServers).toEqual({
-      playwright: true,
-      epodsystem: true,
-    });
+    expect(pipelineConfigSchema.parse(doc).mcpServers).toEqual(doc.mcpServers);
+    expect(pipelineConfigPatchSchema.parse(doc).mcpServers).toEqual(doc.mcpServers);
   });
 });
 
