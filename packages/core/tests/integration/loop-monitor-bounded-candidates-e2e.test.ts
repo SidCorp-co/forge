@@ -186,6 +186,32 @@ async function seedLiveJobs(
                 now() - interval '3 hours')
       `);
     }
+    // cm:guard the long tail and the phase histories hang off ACTIVE jobs, because an active job
+    // is the only kind the laterals ever drive on. Hung off the archive instead they make the
+    // table big and make every driving lookup trivial, so criterion 6's row bound passes on a
+    // fixture where each live job owns one event and nothing has been asked of the index — which
+    // is exactly the plan this change exists to remove, going green.
+    if (i === 6) {
+      await db.execute(sql`
+        INSERT INTO job_events (id, job_id, kind, data, seq, ts)
+        SELECT gen_random_uuid(), ${jobId}, 'progress', '{}'::jsonb, 1 + g,
+               now() - interval '3 hours' - ((${BUSIEST_JOB_EVENTS} - g) * interval '1 second')
+        FROM generate_series(1, ${BUSIEST_JOB_EVENTS}) g
+        ORDER BY g
+      `);
+    }
+    if (i >= 6) {
+      // Old, and ended: this run has declared phases and has still gone quiet, so it stays a
+      // candidate. Cases 1-5 above keep the phase shapes they are named for.
+      await db.execute(sql`
+        INSERT INTO phase_journal (id, project_id, run_id, phase, attempt, source,
+                                   started_at, ended_at)
+        SELECT gen_random_uuid(), ${projectId}, ${runId}, 'phase-' || p, 1, 'agent',
+               now() - interval '4 hours' + (p * interval '1 minute'),
+               now() - interval '4 hours' + (p * interval '1 minute') + interval '30 seconds'
+        FROM generate_series(1, ${PHASES_PER_RUN}) p
+      `);
+    }
   }
 }
 
@@ -197,6 +223,10 @@ let staleAlarmQuery: (now?: Date) => ReturnType<typeof sql>;
 let orphanedJobAlarmQuery: (now?: Date, scope?: { projectId?: string }) => ReturnType<typeof sql>;
 let neverClaimedAlarmQuery: (now?: Date, scope?: { projectId?: string }) => ReturnType<typeof sql>;
 
+function ownBuffers(node: PlanNode): number {
+  return (node['Shared Hit Blocks'] ?? 0) + (node['Shared Read Blocks'] ?? 0);
+}
+
 /** Every node of an ANALYZEd plan for one query, plus its total buffers. */
 async function planOf(query: ReturnType<typeof sql>): Promise<{
   nodes: PlanNode[];
@@ -207,11 +237,14 @@ async function planOf(query: ReturnType<typeof sql>): Promise<{
   );
   const raw = Object.values(rows[0] as Record<string, unknown>)[0];
   const parsed = (typeof raw === 'string' ? JSON.parse(raw) : raw) as Array<{ Plan: PlanNode }>;
-  const nodes = flatten(parsed[0]?.Plan as PlanNode);
-  const buffers = nodes.reduce(
-    (n, p) => n + (p['Shared Hit Blocks'] ?? 0) + (p['Shared Read Blocks'] ?? 0),
-    0,
-  );
+  const root = parsed[0]?.Plan as PlanNode;
+  const nodes = flatten(root);
+  // cm:guard the total is the ROOT's and never the sum of the tree. EXPLAIN (BUFFERS) reports
+  // every node's counts INCLUSIVE of its children, so adding the flattened nodes up charges the
+  // same block once per ancestor above it — and the before/after ratio criterion 8 asserts is
+  // then a function of how deep each plan happens to be rather than of what either one read. The
+  // two plans here are of different depths, so this is not a rounding error in one direction.
+  const buffers = ownBuffers(root);
   return { nodes, buffers };
 }
 
@@ -280,8 +313,8 @@ beforeAll(async () => {
     FROM jobs j WHERE j.project_id = ${projectId} AND j.status = 'done'
   `);
 
-  // One job with the long tail: `(job_id, seq)` orders by seq, so `max(ts)`
-  // over this job without `(job_id, ts)` reads every one of these rows.
+  // An archive job with a long tail, so the table's shape is a real one. The tail that is
+  // MEASURED on is the live job's in `seedLiveJobs` — this one is never a driving row.
   const tailJobRows = await harness.db.execute<{ id: string }>(sql`
     SELECT id FROM jobs WHERE project_id = ${projectId} AND status = 'done'
     ORDER BY dispatched_at LIMIT 1
@@ -311,14 +344,22 @@ afterAll(async () => {
 
 describe('ISS-1013 · the quiet-job candidate query is bounded by live jobs', () => {
   it('is planted at the shape the plans below are read on', async () => {
-    const [events] = await harness.db.execute<{ n: string; busiest: string }>(sql`
-      SELECT count(*)::text AS n,
-             (SELECT count(*)::text FROM job_events
-               GROUP BY job_id ORDER BY count(*) DESC LIMIT 1) AS busiest
-      FROM job_events
+    const [events] = await harness.db.execute<{ n: string }>(sql`
+      SELECT count(*)::text AS n FROM job_events
     `);
     expect(Number(events?.n)).toBeGreaterThan(1_000_000); // MEASURED: beta held 3.9M
-    expect(Number(events?.busiest)).toBeGreaterThanOrEqual(1_000); // CHOSEN
+
+    // cm:guard the busiest job is counted among the ACTIVE ones and not over the table. A tail
+    // sitting on a terminal job is history the laterals never drive on, so the global maximum
+    // says nothing about what one lookup costs — and the bound it was written to defend is
+    // precisely that a live job's whole history is not read to answer `max(ts)` for it.
+    const [busiest] = await harness.db.execute<{ n: string }>(sql`
+      SELECT count(*)::text AS n
+      FROM job_events e JOIN jobs j ON j.id = e.job_id
+      WHERE j.project_id = ${projectId} AND j.status IN ('dispatched', 'running')
+      GROUP BY e.job_id ORDER BY count(*) DESC LIMIT 1
+    `);
+    expect(Number(busiest?.n)).toBeGreaterThanOrEqual(1_000); // CHOSEN
 
     const [live] = await harness.db.execute<{ n: string }>(sql`
       SELECT count(*)::text AS n FROM jobs
@@ -326,13 +367,21 @@ describe('ISS-1013 · the quiet-job candidate query is bounded by live jobs', ()
     `);
     expect(Number(live?.n)).toBeGreaterThanOrEqual(40); // CHOSEN, above 7 live runs on beta
 
-    const [phases] = await harness.db.execute<{ per_run: string }>(sql`
-      SELECT round(avg(c))::text AS per_run FROM (
-        SELECT count(*) AS c FROM phase_journal GROUP BY run_id
-      ) t
+    // cm:guard driven from the active runs by LEFT JOIN, so a run carrying NO phases is still a
+    // row here. Grouping `phase_journal` alone drops every zero-phase run out of the average,
+    // which is how a fixture whose live runs have no phase history at all reports a healthy one.
+    const phaseCounts = await harness.db.execute<{ c: string }>(sql`
+      SELECT count(p.id)::text AS c
+      FROM pipeline_runs r
+      JOIN jobs j ON j.pipeline_run_id = r.id AND j.status IN ('dispatched', 'running')
+      LEFT JOIN phase_journal p ON p.run_id = r.id
+      WHERE r.project_id = ${projectId}
+      GROUP BY r.id
     `);
-    expect(Number(phases?.per_run)).toBeGreaterThanOrEqual(8); // CHOSEN
-    expect(Number(phases?.per_run)).toBeLessThanOrEqual(40);
+    const bulk = [...phaseCounts].map((r) => Number(r.c)).filter((c) => c >= 8 && c <= 40); // CHOSEN
+    const exempt = [...phaseCounts].map((r) => Number(r.c)).filter((c) => c < 8);
+    expect(bulk.length).toBe(LIVE_JOBS - 6);
+    expect(exempt.length).toBe(6); // the six named equality cases, and only those
 
     // cm:guard physical order is the third variable a planner reads, and the sign is load bearing: a fixture built descending measures about -0.95 and would pass any assertion written on the absolute value while planning nothing like an append-only event table.
     const [stats] = await harness.db.execute<{ correlation: string }>(sql`
@@ -385,6 +434,16 @@ describe('ISS-1013 · the quiet-job candidate query is bounded by live jobs', ()
     const before = await planOf(REPLACED_CTE_QUERY(projectId, 60));
     const after = await planOf(resultMissCandidateQuery({ projectId }));
 
+    // cm:guard the accounting model `planOf` rests on, asserted rather than assumed: a node's
+    // buffer counts include its children's, so the root's total dominates every node under it.
+    // Were that false the root would be a partial reading and this ratio would mean nothing,
+    // and nothing else in this file would notice.
+    for (const plan of [before, after]) {
+      for (const node of plan.nodes) {
+        expect(ownBuffers(node)).toBeLessThanOrEqual(plan.buffers);
+      }
+    }
+    expect(after.buffers).toBeGreaterThan(0);
     expect(after.buffers * 10).toBeLessThan(before.buffers);
   });
 
@@ -461,6 +520,35 @@ describe('ISS-1013 · the quiet-job candidate query is bounded by live jobs', ()
         sql`UPDATE jobs SET kill_requested_at = NULL WHERE id = ${target as string}`,
       );
     }
+  });
+
+  // cm:guard measured on the ALARM'S OWN ROWS and not on its SQL text. The unit test asserts
+  // that the phase, park and residency fragments are present; present is not the same as
+  // effective, and the question criterion 15 asks is which jobs come back. Both jobs below are
+  // quiet by `job_events` alone and well past the alarm's 65-minute threshold, so an alarm that
+  // lost either term reports them — which is the false operator alert every five minutes that
+  // this change removes.
+  it('raises no loop-miss for a job the result hop deliberately leaves alive', async () => {
+    const alarmed = new Set(
+      [...(await harness.db.execute<{ id: string }>(staleAlarmQuery(new Date())))].map((r) => r.id),
+    );
+    expect(alarmed.size).toBeGreaterThan(0);
+
+    const [recentPhase] = await harness.db.execute<{ id: string }>(sql`
+      SELECT j.id FROM jobs j
+      JOIN phase_journal p ON p.run_id = j.pipeline_run_id
+      WHERE j.project_id = ${projectId} AND j.status = 'running'
+        AND p.ended_at > now() - interval '10 minutes'
+    `);
+    expect(recentPhase?.id).toBeDefined();
+    expect(alarmed.has(recentPhase?.id as string)).toBe(false);
+
+    const [parked] = await harness.db.execute<{ id: string }>(sql`
+      SELECT j.id FROM jobs j JOIN agent_sessions s ON s.id = j.agent_session_id
+      WHERE j.project_id = ${projectId} AND s.runtime_state = 'awaiting_input'
+    `);
+    expect(parked?.id).toBeDefined();
+    expect(alarmed.has(parked?.id as string)).toBe(false);
   });
 
   // cm:guard the two queries come from `sweeper.ts` and are NOT pasted here. They used to be
