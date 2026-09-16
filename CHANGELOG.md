@@ -138,6 +138,26 @@
   rows, identifiable by the bench room's id. `docs/modules/agent-execution/assistant-bench.md`.
   (ISS-1051)
 
+- **Forge can hold a Google service account, and your agents can read and write your Sheets through
+  it.** A spreadsheet you maintain by hand — a roster, a mapping, an export somebody updates weekly
+  — used to reach an agent only by being pasted into an issue, where it was out of date the moment
+  it was pasted. Google Sheets is now an app you connect like any other: paste the service-account
+  key file Google issued, share the spreadsheet with the address the key names, and the agents
+  working that project can read it and write back to it. One account can belong to your
+  organisation and be used by every project in it, or belong to a single project, and either way
+  the key is entered once. Each project then names its own default spreadsheet, so projects sharing
+  one account do not share one sheet.
+  The key never leaves Forge. It is not put into a prompt, it is not written to the machine a job
+  runs on, and no agent is ever handed it — Forge makes the call to Google itself and hands back
+  only the rows. Test connection proves it by actually reading the spreadsheet, so a card saying
+  Connected means Google answered, and an account whose key has been revoked or whose sheet was
+  never shared shows up here rather than at the first job that needed it. Those two are told apart
+  on purpose, because one means replace the key and the other means share the sheet. A call that
+  cannot find a connection, or finds one switched off, or names no spreadsheet when none was set as
+  the default, says which of those it is instead of quietly coming back empty.
+  Only Sheets, and only what Sheets needs: reading asks Google for read permission alone, writing
+  asks for write, and nothing ever asks for access to the rest of your Drive.
+
 - **The workspace connections page is now one list per app, not a wall of equal cards.** Every
   credential used to be an identical card in a three-column grid, and the only way to find one was
   to already know what to type into the search box. That reads fine with one credential per app and
@@ -2730,6 +2750,17 @@
   ones in a reply. A link the page cannot place — one written relative to nothing it can resolve,
   or one carrying a scheme a page should never follow — is shown as text saying so rather than
   quietly sent somewhere it was never going to work.
+
+- **Testing one project's Epodsystem connection no longer hands its release settings to every
+  other project sharing that account.** One API key can be connected once and used by several
+  projects, and each project sets its own release settings on top of it — which machine runs the
+  release, what proves the deploy worked, what to do when it did not. Pressing Test connection on
+  one of those projects wrote that project's answers back onto the shared account, so a second
+  project that had set none of its own silently inherited the first one's, and a project that had
+  deliberately left its release ungated found itself gated on somebody else's checks. Test
+  connection now writes back only what it actually discovered about the account itself — the
+  organisation, the store, the theme, the domain — and leaves every project's own settings where
+  they belong.
 
 - **A conversation you archive from the all-projects Conversations page can now be found and
   brought back there.** Every room in that page's sidebar offered to archive it, and archiving

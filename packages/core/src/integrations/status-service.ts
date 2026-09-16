@@ -253,6 +253,26 @@ export async function buildIntegrationsStatusCards(projectId: string): Promise<S
         };
       },
     }),
+    // ISS-1036 — Google service account: connection-only provider; the card
+    // surfaces the account identity and the project's default spreadsheet, so
+    // the settings tab shows which sheet this project would reach.
+    ...buildProviderCards({
+      rows: integrationRows.filter((r) => r.provider === 'google'),
+      provider: 'google',
+      label: 'Google Sheets',
+      alwaysEnvKeyed: false,
+      neverCheckedDetail: 'never test-connected',
+      extraMeta: (row) => {
+        const cfg = (row.config ?? {}) as {
+          clientEmail?: string;
+          defaultSpreadsheetId?: string;
+        };
+        return {
+          clientEmail: cfg.clientEmail ?? null,
+          defaultSpreadsheetId: cfg.defaultSpreadsheetId ?? null,
+        };
+      },
+    }),
     // ISS-609 — Rocket.Chat bot: connection-only provider; card surfaces the
     // server + bound room so the project settings tab shows the live wiring.
     ...buildProviderCards({

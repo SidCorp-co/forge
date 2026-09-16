@@ -34,6 +34,13 @@ export const SCRUB_BODY_KEYS: ReadonlySet<string> = new Set([
   'bearerToken',
   // ISS-225 — previewDeploy.testCredentials[] carries QA login pairs.
   'testCredentials',
+  // ISS-1036 — a GitHub App's PEM and a Google service-account key file. Both
+  // are credentials with no token-shaped signature of their own, so the key
+  // name is the only thing that identifies them in a structured payload.
+  'privateKey',
+  'private_key',
+  'serviceAccountJson',
+  'service_account_json',
 ]);
 
 /** Matches `?token=...` / `?jwt=...` / `?access_token=...` / `?api_key=...` query params. */
@@ -45,6 +52,31 @@ export const URL_TOKEN_PATTERN = /([?&](?:token|jwt|access_token|refresh_token|a
  * params, JSON bodies, breadcrumb messages.
  */
 export const PAT_STRING_PATTERN = /forge_pat_(?:dev|stg|prd)_[A-Fa-f0-9]+/g;
+
+/**
+ * ISS-1036 — a PEM private key, whole. Matched across the body rather than
+ * per line, because the key-name rules cannot reach this: `SCRUB_BODY_KEYS`
+ * only fires where the key sits beside its name, and the per-line value match
+ * in {@link scrubLogText} stops at the first space, which in
+ * `-----BEGIN PRIVATE KEY-----` arrives before any key material. One pattern
+ * covers both shapes a key travels in — real newlines in a log, and the
+ * `\n`-escaped single line of a service-account JSON file.
+ */
+export const PEM_PRIVATE_KEY_PATTERN =
+  /-----BEGIN (?:[A-Z]{1,12} ){0,3}PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z]{1,12} ){0,3}PRIVATE KEY-----/g;
+
+// cm:guard this second pattern is not redundant with the paired one above and must run after it: a log cut mid-key has a BEGIN marker and no END, which the paired pattern does not match at all — and an unmatched truncated key is a whole credential printed in the clear, because the truncation takes the tail and not the head.
+// cm:guard two things here are de-ambiguations and not behaviour changes, and both answer CodeQL `js/polynomial-redos` (high, PR 430) against input that is a build log, a runner's stdout, a Sentry body — text nobody controls. First, the label is BOUNDED: `[A-Z ]*` overlapped the literal `PRIVATE KEY` after it, so many `-----BEGIN ` markers made the engine walk the class back a character at a time at each one. Second, the separator between two base64 runs is REQUIRED (`+`, not `*`): written `(?:(?:\\n|\s)*[A-Za-z0-9+/=]{16,})*` it could match empty at a run boundary, giving one base64 line a partition for every way of cutting it into chunks of 16. Each rewrite accepts the same strings the loose form did for every label and key shape that exists, so NO unit test can fail on either and none pretends to — the case below defends the COVERAGE the bound must not lose, and the alert clearing is the evidence for the bound itself.
+// cm:guard the continuation is runs of at least 16 base64 characters, NOT `[A-Za-z0-9+/=\s]*`. The loose form also matches ordinary prose — every word after an unterminated BEGIN marker is letters and spaces — so a log with one truncated key came back with the rest of the build output redacted, which is the diagnostic loss ISS-277 spent a day on.
+export const PEM_PRIVATE_KEY_HEAD_PATTERN =
+  /-----BEGIN (?:[A-Z]{1,12} ){0,3}PRIVATE KEY-----(?:\\n|\s)*(?:[A-Za-z0-9+/=]{16,}(?:(?:\\n|\s)+[A-Za-z0-9+/=]{16,})*)?/g;
+
+/**
+ * ISS-1036 — a Google OAuth2 access token, the thing Forge mints from a
+ * service-account key. Redacted for the same reason the key is: a token that
+ * reaches a log is a live credential for its hour.
+ */
+export const GOOGLE_ACCESS_TOKEN_PATTERN = /ya29\.[A-Za-z0-9_\-.]+/g;
 
 /**
  * ISS-412 — env-assignment lines in build/deploy logs. Matches `KEY=value`
@@ -82,7 +114,7 @@ export function scrubStringValues(obj: unknown, depth = 0): void {
   if (Array.isArray(obj)) {
     for (let i = 0; i < obj.length; i++) {
       const v = obj[i];
-      if (typeof v === 'string') obj[i] = v.replace(PAT_STRING_PATTERN, FILTERED);
+      if (typeof v === 'string') obj[i] = scrubPatInString(v);
       else scrubStringValues(v, depth + 1);
     }
     return;
@@ -90,14 +122,24 @@ export function scrubStringValues(obj: unknown, depth = 0): void {
   const rec = obj as Record<string, unknown>;
   for (const k of Object.keys(rec)) {
     const v = rec[k];
-    if (typeof v === 'string') rec[k] = v.replace(PAT_STRING_PATTERN, FILTERED);
+    if (typeof v === 'string') rec[k] = scrubPatInString(v);
     else scrubStringValues(v, depth + 1);
   }
 }
 
 /** Redact PAT plaintext inside a single string (URL, log line, breadcrumb message). */
+/**
+ * Replace every secret-SHAPED run in `s` — a Forge PAT, a PEM private key, a
+ * Google access token. Named for the PAT it started as; it now carries every
+ * pattern whose SHAPE identifies it without a key name beside it, so one call
+ * covers a value wherever it turns up.
+ */
 export function scrubPatInString(s: string): string {
-  return s.replace(PAT_STRING_PATTERN, FILTERED);
+  return s
+    .replace(PAT_STRING_PATTERN, FILTERED)
+    .replace(PEM_PRIVATE_KEY_PATTERN, FILTERED)
+    .replace(PEM_PRIVATE_KEY_HEAD_PATTERN, FILTERED)
+    .replace(GOOGLE_ACCESS_TOKEN_PATTERN, FILTERED);
 }
 
 /**
@@ -149,7 +191,9 @@ function escapeRegExp(s: string): string {
  * arbitrary text while preserving the surrounding diagnostic signal.
  *
  * Reuses the same canonical key sets as the rest of this module:
- *  - {@link PAT_STRING_PATTERN} (Forge PAT plaintext) and {@link URL_TOKEN_PATTERN}
+ *  - {@link PAT_STRING_PATTERN} (Forge PAT plaintext), {@link PEM_PRIVATE_KEY_PATTERN}
+ *    (a private key, matched across lines before the split),
+ *    {@link GOOGLE_ACCESS_TOKEN_PATTERN} and {@link URL_TOKEN_PATTERN}
  *    (tokenized URL query params).
  *  - {@link SCRUB_HEADER_KEYS}: `Authorization: Bearer xxx`, `Cookie: ...`, etc.
  *  - {@link SCRUB_BODY_KEYS}: `token=...`, `"apiKey":"..."`, `password=...`, ...
@@ -172,7 +216,10 @@ export function scrubLogText(text: string, extraSecrets: string[] = []): string 
   const bodyRes = Array.from(SCRUB_BODY_KEYS).map(
     (k) => new RegExp(`(\\b${escapeRegExp(k)}\\b\\s*[:=]\\s*"?)([^\\s",}&]+)`, 'gi'),
   );
+  // cm:guard the PEM pass runs over the WHOLE text and before the split — a key with real newlines in it is several lines, and every per-line rule below is blind to it by construction
   return text
+    .replace(PEM_PRIVATE_KEY_PATTERN, FILTERED)
+    .replace(PEM_PRIVATE_KEY_HEAD_PATTERN, FILTERED)
     .split('\n')
     .map((line) => {
       let out = scrubPatInString(scrubUrl(line));

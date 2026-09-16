@@ -70,6 +70,7 @@ import { registerCoolifyAdapter } from './integrations/coolify/adapter.js';
 import { registerEpodsystemAdapter } from './integrations/epodsystem/adapter.js';
 import { registerGitHubAdapter } from './integrations/github/adapter.js';
 import { githubCallbackRoutes, githubConnectRoutes } from './integrations/github/connect-routes.js';
+import { registerGoogleAdapter } from './integrations/google/adapter.js';
 import { registerIntegrationsHealthSweep } from './integrations/health-sweep.js';
 import { registerPostmanAdapter } from './integrations/postman/adapter.js';
 import { registerIntegrationsWorker } from './integrations/queue.js';
@@ -453,6 +454,7 @@ if (isMain) {
   await assertVaultBootSafety();
   registerCoolifyAdapter();
   registerGitHubAdapter();
+  registerGoogleAdapter();
   registerPostmanAdapter();
   registerEpodsystemAdapter();
   registerSentryAdapter();

@@ -157,7 +157,8 @@ export interface IntegrationDeliveryRow {
  * 4-value coarse bucket (needs_reauth maps to `attention`).
  */
 export interface IntegrationHealthResult {
-  status: 'ok' | 'degraded' | 'error' | 'needs_reauth';
+  // cm:guard `needs_scope` is NOT a flavour of `needs_reauth` and must stay in this union — core's `HealthStatus` has carried it since ISS-924 and this contract did not, so a 403 arrived over the wire as a value no consumer's type admitted. One says replace the credential, the other says the credential is fine and its permissions are not (ISS-1036 restored the member).
+  status: 'ok' | 'degraded' | 'error' | 'needs_reauth' | 'needs_scope';
   message?: string;
   /** Free-form provider diagnostics surfaced to operators in the test-connection UI. */
   diagnostics?: Record<string, unknown>;
@@ -299,6 +300,24 @@ export interface GithubSecretsInput {
   webhookSecret: string;
 }
 
+/**
+ * Google service-account config (ISS-1036). `clientEmail` and `projectId` are
+ * READ BACK out of the stored key by the healthcheck, never typed;
+ * `defaultSpreadsheetId` is binding-tier — one org account, one sheet per
+ * project — and is the spreadsheet a `forge_google_sheets` call naming none
+ * resolves to.
+ */
+export interface GoogleConfigInput {
+  clientEmail?: string;
+  projectId?: string;
+  defaultSpreadsheetId?: string;
+}
+
+/** The service-account key file Google issued, whole and unmodified. */
+export interface GoogleSecretsInput {
+  serviceAccountJson: string;
+}
+
 
 /**
  * Body for `POST /:projectId/integrations` — discriminated on `provider`. Each
@@ -345,6 +364,12 @@ export type IntegrationBindingCreateInput =
       environment?: IntegrationEnvironment;
       config: GithubConfigInput;
       secrets: GithubSecretsInput;
+    }
+  | {
+      provider: 'google';
+      environment?: IntegrationEnvironment;
+      config: GoogleConfigInput;
+      secrets: GoogleSecretsInput;
     }
   | {
       provider: 'agent';
@@ -406,6 +431,13 @@ export type ConnectionCreateInput =
       displayName?: string;
       config: GithubConfigInput;
       secrets: GithubSecretsInput;
+      orgId?: string;
+    }
+  | {
+      provider: 'google';
+      displayName?: string;
+      config: GoogleConfigInput;
+      secrets: GoogleSecretsInput;
       orgId?: string;
     };
 

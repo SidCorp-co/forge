@@ -26,6 +26,7 @@ const PROVIDER_ICON: Record<string, IconName> = {
   sentry: "shield",
   rocketchat: "inbox",
   claude: "agent",
+  google: "rows",
 };
 
 function providerIcon(key: string): IconName {
